@@ -141,6 +141,9 @@ public enum ScenarioCodeGen {
         return [indent + line]
     }
 
+    /// `settle: false` のときだけ ", settle: false"(既定 true は書かない)。DSL の引数順の位置に差す
+    private static func settleArg(_ step: FlowStep) -> String { step.skipsSettle ? ", settle: false" : "" }
+
     static func command(for step: FlowStep) -> String? {
         let selector = selectorText(for: step)
 
@@ -157,51 +160,50 @@ public enum ScenarioCodeGen {
                     : ""
                 // 座標タップ(locator を持たない tap)。**セレクタがあるときは常にそちらを出す**
                 if step.locator == nil, let x = step.x, let y = step.y {
-                    return "tap(x: \(FTSeconds.format(x)), y: \(FTSeconds.format(y))\(hold)\(cap))"
+                    return "tap(x: \(FTSeconds.format(x)), y: \(FTSeconds.format(y))\(hold)\(cap)\(settleArg(step)))"
                 }
                 let inference = step.containerInference == false ? ", containerInference: false" : ""
                 let link = step.linkText.map { ", linkText: \(literal($0))" } ?? ""
-                return "tap(\(literal(selector))\(hold)\(cap)\(inference)\(link)\(actionWaitArg(step))\(searchScrollArgs(step)))"
+                return "tap(\(literal(selector))\(hold)\(cap)\(inference)\(link)\(settleArg(step))\(actionWaitArg(step))\(searchScrollArgs(step)))"
             case "type":
                 let replaceArg = step.replace == true ? ", replace: true" : ""
                 // ロケータなし = フォーカス中要素へ入力(直前の tap 前提)。type("text") を出す。
                 if step.locator == nil {
-                    return "type(\(literal(step.text ?? ""))\(replaceArg))"
+                    return "type(\(literal(step.text ?? ""))\(replaceArg)\(settleArg(step)))"
                 }
                 return "type(\(literal(selector)), \(literal(step.text ?? ""))\(replaceArg)"
-                    + "\(actionWaitArg(step))\(searchScrollArgs(step)))"
+                    + "\(settleArg(step))\(actionWaitArg(step))\(searchScrollArgs(step)))"
             case "swipe":
-                let lightSettleArg = step.lightSettle.map { ", lightSettle: \($0)" } ?? ""
-                return "swipe(.\(step.direction ?? "up")\(lightSettleArg))"
+                return "swipe(.\(step.direction ?? "up")\(settleArg(step)))"
             case "rotateTo":
-                return "rotateTo(.\(step.direction ?? "landscape"))"
+                return "rotateTo(.\(step.direction ?? "landscape")\(settleArg(step)))"
             case "home":
                 return "home()"
             case "back":
-                return "back()"
+                return step.skipsSettle ? "back(settle: false)" : "back()"
             case "hideKeyboard":
-                return "hideKeyboard()"
+                return step.skipsSettle ? "hideKeyboard(settle: false)" : "hideKeyboard()"
             case "appSwitcher":
                 return "appSwitcher()"
             case "terminate":
                 return "terminateApp()"
             case "pressEnter":
-                return "pressEnter()"
+                return step.skipsSettle ? "pressEnter(settle: false)" : "pressEnter()"
             case "openURL":
                 // MCP の探索(ft_open_url)からの下書き用。DSL 側の openURL(url) と同じ形
                 return "openURL(\(literal(step.text ?? "")))"
             case "press":
                 // 長押しは tap の holdSeconds 引数で表す(DSL に別コマンドは無い)
                 let pressCap = step.maxGestureSeconds.map { ", maxGestureSeconds: \(FTSeconds.format($0))" } ?? ""
-                return "tap(\(literal(selector)), holdSeconds: \(FTSeconds.format(step.duration ?? 1.0))\(pressCap))"
+                return "tap(\(literal(selector)), holdSeconds: \(FTSeconds.format(step.duration ?? 1.0))\(pressCap)\(settleArg(step)))"
             case "clearInput":
                 if step.locator == nil {
-                    return "clearInput()"
+                    return step.skipsSettle ? "clearInput(settle: false)" : "clearInput()"
                 }
-                return "clearInput(\(literal(selector))\(actionWaitArg(step))\(searchScrollArgs(step)))"
+                return "clearInput(\(literal(selector))\(settleArg(step))\(actionWaitArg(step))\(searchScrollArgs(step)))"
             case "doubleTap":
-                return step.locator == nil ? "doubleTap()"
-                    : "doubleTap(\(literal(selector))\(actionWaitArg(step)))"
+                return step.locator == nil ? (step.skipsSettle ? "doubleTap(settle: false)" : "doubleTap()")
+                    : "doubleTap(\(literal(selector))\(settleArg(step))\(actionWaitArg(step)))"
             case "gesture":
                 guard let fingers = step.gesture, !fingers.isEmpty else { return nil }
                 // 比率は 1/1000 に丸める(MCP の下書きは絶対座標を割り戻すので桁が暴れる)。
@@ -226,6 +228,7 @@ public enum ScenarioCodeGen {
                 if let cap = step.maxGestureSeconds {
                     args.append("maxGestureSeconds: \(FTSeconds.format(cap))")
                 }
+                if step.skipsSettle { args.append("settle: false") }
                 if step.locator != nil, let wait = step.timeout {
                     args.append("waitSeconds: \(FTSeconds.format(wait))")
                 }
@@ -245,6 +248,7 @@ public enum ScenarioCodeGen {
                         args.append("maxGestureSeconds: \(FTSeconds.format(cap))")
                     }
                 }
+                if step.skipsSettle { args.append("settle: false") }
                 if step.locator != nil, let wait = step.timeout {
                     args.append("waitSeconds: \(FTSeconds.format(wait))")
                 }
@@ -259,6 +263,7 @@ public enum ScenarioCodeGen {
                         args.append("maxGestureSeconds: \(FTSeconds.format(cap))")
                     }
                 }
+                if step.skipsSettle { args.append("settle: false") }
                 if step.locator != nil, let wait = step.timeout {
                     args.append("waitSeconds: \(FTSeconds.format(wait))")
                 }
@@ -272,6 +277,7 @@ public enum ScenarioCodeGen {
                         args.append("maxGestureSeconds: \(FTSeconds.format(cap))")
                     }
                 }
+                if step.skipsSettle { args.append("settle: false") }
                 if let wait = step.timeout {
                     args.append("waitSeconds: \(FTSeconds.format(wait))")
                 }
@@ -286,6 +292,7 @@ public enum ScenarioCodeGen {
                         args.append("maxGestureSeconds: \(FTSeconds.format(cap))")
                     }
                 }
+                if step.skipsSettle { args.append("settle: false") }
                 return "swipePointToPoint(\(args.joined(separator: ", ")))"
             case "scroll":
                 // ft_batch の scrollDown/Up/Left/Right と ft_swipe(scrollFrame 指定)の下書き用。
@@ -297,7 +304,7 @@ public enum ScenarioCodeGen {
                 var args = scrollFrameArgs(step)
                 // maxSwipes は scroll では「繰り返し回数」(scrollImpl 参照)。既定 1 は書かない
                 if let times = step.maxSwipes, times > 1 { args.append("repeat: \(times)") }
-                if let lightSettle = step.lightSettle { args.append("lightSettle: \(lightSettle)") }
+                if step.skipsSettle { args.append("settle: false") }
                 return "scroll\(content.rawValue.capitalized)(\(args.joined(separator: ", ")))"
             case "scrollToEdge":
                 // 名前はコンテンツ基準(scrollToEdgeImpl の表と同じ写像。片方だけ変えない)
@@ -308,7 +315,7 @@ public enum ScenarioCodeGen {
                     .right: "scrollToRightEdge", .left: "scrollToLeftEdge",
                 ]
                 var args = scrollFrameArgs(step)
-                if let lightSettle = step.lightSettle { args.append("lightSettle: \(lightSettle)") }
+                if step.skipsSettle { args.append("settle: false") }
                 // scrollToEdge の maxSwipes は暴走止めの上限。既定は書かない
                 if let maxSwipes = step.maxSwipes, maxSwipes != FlowStep.defaultMaxEdgeSwipes {
                     args.append("maxSwipes: \(maxSwipes)")
@@ -323,7 +330,7 @@ public enum ScenarioCodeGen {
                     args.append("direction: .\(scroll.rawValue)")
                 }
                 args += scrollFrameArgs(step)
-                if let lightSettle = step.lightSettle { args.append("lightSettle: \(lightSettle)") }
+                if step.skipsSettle { args.append("settle: false") }
                 if let maxSwipes = step.maxSwipes, maxSwipes != FlowStep.defaultMaxSwipes {
                     args.append("maxSwipes: \(maxSwipes)")
                 }

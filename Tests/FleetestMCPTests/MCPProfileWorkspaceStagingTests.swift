@@ -14,7 +14,7 @@ import FTCore
 final class MCPProfileWorkspaceStagingTests: XCTestCase {
     private var root: URL!
     private var saved: [String: String?] = [:]
-    private let envKeys = ["FT_PACKAGE_ROOT", RunEnvironmentKeys.lightSettle,
+    private let envKeys = ["FT_PACKAGE_ROOT",
                            RunEnvironmentKeys.preActionPing, RunEnvironmentKeys.animations,
                            RunEnvironmentKeys.playProtectBypass]
 

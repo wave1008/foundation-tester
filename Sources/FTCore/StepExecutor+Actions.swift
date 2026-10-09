@@ -105,7 +105,7 @@ extension StepExecutor {
         }
         // holdEnd はロケータを取らない(何も送らない・ブリッジが離す時刻まで待つだけ)
         if action == "holdEnd" {
-            return try await executeHoldEnd(phase: &phase)
+            return try await executeHoldEnd(step: step, phase: &phase)
         }
 
         // `tap(scroll:)` 等の内蔵スクロール探索。**別ステップにしない**のは
@@ -773,9 +773,12 @@ extension StepExecutor {
             if let td = typeDriver, preferTypeDriver || text.contains("\n") {
                 let routed = try await typeViaTypeDriver(td, step: step, phase: &phase)
                 if routed.typed {
-                    keyboardFrameBeforeType = keyboardBefore
-                    pendingTypeKeyboardCheck = true
-                    pendingTypeEndedWithNewline = text.hasSuffix("\n")
+                    // settle:false は次のステップへ待ちを持ち越さない(印を立てない)
+                    if !step.skipsSettle {
+                        keyboardFrameBeforeType = keyboardBefore
+                        pendingTypeKeyboardCheck = true
+                        pendingTypeEndedWithNewline = text.hasSuffix("\n")
+                    }
                     // ランナーの打ち直しの申告(OKResponse.note)はこの経路でも拾う(下の主経路と同じ)
                     return StepOutcome(status: .passed, healedStep: healedStep,
                                        healedByFingerprint: healedByFingerprint,
@@ -823,9 +826,11 @@ extension StepExecutor {
             }
             // **打った(do 成功/409フォールバックのどちらでも)ので、次のロケータ操作の解決で
             // 打つ前後のキーボードを比べる**(keyboardFrameBeforeType の doc)
-            keyboardFrameBeforeType = keyboardBefore
-            pendingTypeKeyboardCheck = true
-            pendingTypeEndedWithNewline = text.hasSuffix("\n")
+            if !step.skipsSettle {
+                keyboardFrameBeforeType = keyboardBefore
+                pendingTypeKeyboardCheck = true
+                pendingTypeEndedWithNewline = text.hasSuffix("\n")
+            }
         case "clearInput":
             if let refusal = nonTextInputPreflightRefusal(element, in: snapshot.elements, action: "clearInput") {
                 return StepOutcome(status: .failed(refusal))
@@ -1614,7 +1619,7 @@ extension StepExecutor {
         default:
             return StepOutcome(status: .skipped("unknown gesture: \(action)"))
         }
-        let settled = try await settledSignature(phase: &phase).settled
+        let settled = skippingSettle(step) ? true : try await settledSignature(phase: &phase).settled
         var notes: [String] = []
         if viaXCUITest { notes.append("fell back to XCUITest") }
         if !settled { note(.settleCapped, into: &notes) }

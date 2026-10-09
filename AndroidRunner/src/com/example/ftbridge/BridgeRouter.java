@@ -136,8 +136,13 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         }
     }
 
+    /** 処理中のリクエストが `X-FT-Settle: 0` を持つか(handle の冒頭で毎回入れ直す。リクエストは1本ずつ処理)。
+     *  true の間は settle() と awaitScrollSettled を飛ばす。検証の待ち(回転到達等)は対象外 */
+    private volatile boolean skipSettle = false;
+
     @Override
     public BridgeHttpServer.Response handle(BridgeHttpServer.Request request) {
+        skipSettle = request.skipSettle;
         try {
             String route = request.method + " " + request.path;
             switch (route) {
@@ -475,7 +480,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         }
         boolean performed = target.performAction(action.getId());
         if (performed) {
-            awaitScrollSettled(target);
+            if (!skipSettle) awaitScrollSettled(target);
             settle();
         }
         o.put("performed", performed);
@@ -1043,6 +1048,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     /** settle() の内訳を logcat に出す版。tag は呼び出し元(計測時にホスト側 actionMs と突き合わせる)。
      *  ACTION_CAP_MS を超える値が出るなら待ちは quietWait の外にある。 */
     private void settle(String tag) {
+        if (skipSettle) return;  // X-FT-Settle: 0(POST /settle 自身もここで即返る)
         long t0 = SystemClock.uptimeMillis();
         String startPackage = stableActivePackage(STABLE_PACKAGE_BUDGET_MS);
         long t1 = SystemClock.uptimeMillis();

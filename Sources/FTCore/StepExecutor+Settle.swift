@@ -141,7 +141,7 @@ extension StepExecutor {
                     // **連続2回一致まで待つ**(settleAfterScroll より強い)。逆走査のドラッグは
                     // 遅い代わりに離した後もしばらく減速しながら動き、**掴んだ座標が
                     // タップまでにずれる**(実測: 176px ずれて隣の行を叩いた)
-                    _ = try await settledSignature(phase: &phase)
+                    if !skippingSettle(step) { _ = try await settledSignature(phase: &phase) }
                     return .some(fallback)
                 }
             }
@@ -159,6 +159,14 @@ extension StepExecutor {
     /// Android は従来どおり枠・署名が完全に一致するまで待つ
     func restsWithinThreshold(_ moved: Double) -> Bool {
         !isAndroid && moved <= SettleMotion.restThresholdPt
+    }
+
+    /// `settle: false` のステップの操作後の整定を飛ばすか。**飛ばすときは待つ代わりに次の解決を
+    /// キャッシュ迂回にする**(`settledSignature` が副作用で立てていた印。立てないと Android で古い木を掴む)
+    func skippingSettle(_ step: FlowStep) -> Bool {
+        guard step.skipsSettle else { return false }
+        nextResolveBypassesCache = true
+        return true
     }
 
     /// 探索が要素を見つけた直後の後始末。**スワイプを撃った周回だけ**呼ぶ。戻り値は
@@ -212,6 +220,8 @@ extension StepExecutor {
                                        screen: snapshot.screen) {
             await emptyDrag(x: x, y: y, toX: end.x, toY: end.y)
         }
+        // 空打ちは次のタッチのための操作なので残し、その後の静止待ちだけ飛ばす
+        if skippingSettle(step) { return false }
         return try await !settleAfterScroll(step: step, found: element, phase: &phase)
     }
 

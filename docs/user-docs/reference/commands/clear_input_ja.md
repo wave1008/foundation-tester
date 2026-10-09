@@ -8,8 +8,8 @@
 
 | 関数 | 説明 |
 |---|---|
-| `clearInput()` | フォーカス中の入力欄を空にします。 |
-| `clearInput(sel, waitSeconds:scroll:maxSwipes:)` | 要素を指定して入力欄を空にします。 |
+| `clearInput(settle:)` | フォーカス中の入力欄を空にします。 |
+| `clearInput(sel, settle:waitSeconds:scroll:maxSwipes:)` | 要素を指定して入力欄を空にします。 |
 
 ## 例
 
@@ -39,6 +39,7 @@ type("#note", "new content", replace: true)
   詳細は [type](./type_ja.md) 参照。
 - **Flutter の iOS ビルド**では in-app エンジンでは欄を消せず、この1コマンドだけ自動で
   XCUITest エンジンへフォールバックします(1〜2秒ほど余分にかかります)。
+- **`settle: false`** を渡すと、このコマンドの操作後の「画面が落ち着くまでの待ち」を省きます(次のステップは動いている最中の画面を見ることがあります)。詳細は [tap](./tap_ja.md) 参照。
 
 ### Link
 - [index](../../index_ja.md)

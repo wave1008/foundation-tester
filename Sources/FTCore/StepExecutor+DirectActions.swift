@@ -25,7 +25,7 @@ extension StepExecutor {
         let viaXCUITest = try await swipeWithFallback(direction, path: path, phase: &phase)
         // 慣性が止まるまで待つ。ランナー側は /swipe を整定対象から外している(そこで待っても
         // budget 内に収束しないため)ので、直後に tap する書き方をここで支える
-        let settled = try await settledSignature(phase: &phase).settled
+        let settled = skippingSettle(step) ? true : try await settledSignature(phase: &phase).settled
         var notes: [String] = []
         if viaXCUITest { notes.append("fell back to XCUITest") }
         if !settled { note(.settleCapped, into: &notes) }
@@ -49,7 +49,7 @@ extension StepExecutor {
         // (実測: 回転直後の `#tab_home` が (-6,45) 動いた後の位置に当たらず、
         // 別の要素を押していた)。スクロール後の静止をホスト側が担うのと同じ規律で、
         // 木が2回続けて同じ署名になるまで待つ
-        _ = try? await settledSignature(phase: &phase)
+        if !skippingSettle(step) { _ = try? await settledSignature(phase: &phase) }
         return StepOutcome(status: .passed)
     }
 
@@ -87,6 +87,8 @@ extension StepExecutor {
             // 「repeat 回ぶん送る」を守るため、次のスワイプ前に静止を待つ。
             // 最後の1回の後も待つ: ランナーは /swipe を整定対象から外しているので、
             // 直後に tap する書き方をここで支える(index 条件を外した理由)
+            // settle:false は最後の1本の後だけ飛ばす(本の間の静止待ちは「repeat 回ぶん送る」のための内側の整定)
+            if sentSwipes == times, skippingSettle(step) { break }
             let settled = try await settledSignature(phase: &phase)
             if !settled.settled { unsettled = true }
             // **常に引き継ぐ**: settledSignature は毎回木を撮り直しているので
@@ -314,7 +316,7 @@ extension StepExecutor {
             // 落ちる(scroll アクションが scrollPath nil のとき辿る経路と同じ考え方)
             if try await swipeWithFallback(kind.fingerDirection, phase: &phase) { viaXCUITest = true }
         }
-        let settled = try await settledSignature(phase: &phase).settled
+        let settled = skippingSettle(step) ? true : try await settledSignature(phase: &phase).settled
         var notes: [String] = []
         if let note = pendingScrollFrameNote { notes.append(note) }
         if viaXCUITest { notes.append("fell back to XCUITest") }
@@ -488,9 +490,11 @@ extension StepExecutor {
             // ロケータ有り type(case "type")と同じ判定(keyboardFrameBeforeType の doc)。
             // 「打った後」はここでは読まない —— 次のロケータ操作が解決のために撮る最初の
             // 木で比べる(エンジンに依存しない)
-            keyboardFrameBeforeType = keyboardBefore
-            pendingTypeKeyboardCheck = true
-            pendingTypeEndedWithNewline = text.hasSuffix("\n")
+            if !step.skipsSettle {
+                keyboardFrameBeforeType = keyboardBefore
+                pendingTypeKeyboardCheck = true
+                pendingTypeEndedWithNewline = text.hasSuffix("\n")
+            }
             return StepOutcome(status: .passed,
                                driverFallback: Self.joinNotes(replaceFallbackNote,
                                    "typed into \(TapTargetGeometry.describe(recovered))"
@@ -560,7 +564,7 @@ extension StepExecutor {
         }
         phase.actionMs += Self.ms(clock.now - start)
         // 木からキーボードが消えるのを待つのは次のロケータ操作の解決(pendingHideKeyboardWait の doc)
-        if isAndroid { pendingHideKeyboardWait = step.timeout ?? tunables.defaultTimeout }
+        if isAndroid, !step.skipsSettle { pendingHideKeyboardWait = step.timeout ?? tunables.defaultTimeout }
         return StepOutcome(status: .passed)
     }
 

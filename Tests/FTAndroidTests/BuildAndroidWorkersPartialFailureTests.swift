@@ -66,7 +66,6 @@ final class BuildAndroidWorkersPartialFailureTests: XCTestCase {
             wipeDataThresholdGB: 8,
             recoverCpuFallbackToGpu: false,
             locale: "ja_JP",
-            iosLightSettle: false,
             iosPreActionPing: true,
             containerInference: true,
             ocrTextOcclusionCheck: true,

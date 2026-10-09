@@ -828,7 +828,7 @@ Android の整定判定は**スナップショットの画面サイズ**で行�
   (アニメ整定をイベント駆動で待つ)が既に遷移を待つため対象外。
   **2026-10-09 からタップ・ダブルタップ・長押しは XCTest の quiescence 待ちを既定で飛ばす**(`QuiescenceWait.around` の
   `skipByDefault`)ので、タップ系の遷移の整定は操作直後の取得の `captureSettled`(2回続けて同じ木・予算で打ち切り)が
-  単独で担う(4 SUT の A/B で退行無し。スワイプは待ちを残す。詳細は §4089 付近の `iosLightSettle` の段落と
+  単独で担う(4 SUT の A/B で退行無し。スワイプは待ちを残す。詳細は §4089 付近の `settle:` の段落と
   docs/performance-tuning.md §8)
 
 **value の正規化: placeholder がそのまま来る欄は空にする**(2026-08-06)。
@@ -4093,13 +4093,24 @@ Android 実機はグローバル設定が**永続的に**書き換わるので�
 **XCUITest ランナーはタップ・ダブルタップ・長押しの前の quiescence 待ちを既定で飛ばし、整定は木の観察で行う**(操作後の
 `captureSettled`。ユーザー決定。4 SUT の A/B で退行無し)。**スワイプ(スクロールを含む)は待ちを残す**(慣性の終わりを木では
 見届けられない = E2E-RN S0090 が 6 回中 4 回落ちた)が、操作の間は待ちの上限を 6 秒に縮める(`QuiescenceWait.quiescenceCapSeconds`)。
-**簡易整定モード** `iosLightSettle`(既定 false)を true にすると**スワイプの待ちも飛ばす**(type と /drag は対象外。type はキーボード出現待ちを
-quiescence に頼るため)(`FT_IOS_LIGHT_SETTLE=1` を実行環境へ注入し、`BridgeClient.lightSettle` が受ける。CLI は
-`fleetest run --profile <名> --set iosLightSettle=true`)。DSL のスワイプ・スクロール系コマンドの `lightSettle:` で1回ずつ上書きできる(`FlowStep.lightSettle` → `StepExecutor.execute` が TaskLocal `LightSettleOverride` に載せる)。慣性のあるスクロールの直後の操作がずれうるのでオプトイン。
-**quiescence(XCTest の完了通知の待ち)と fleetest の整定(木の比較)は別物** —— 簡易整定モードでも整定はホストが木で行い、外すのは XCTest の待ちだけ。
-計測値は docs/performance-tuning.md §8。**効くのは XCUITest ランナーだけ**
-(`Runner/FleetestRunnerUITests/QuiescenceWait.swift`。リクエストの `skipQuiescence` は in-app ブリッジにも送られるが
-あちらは解釈しない = quiescence の概念が無いため)。
+**DSL の `settle: false`(コマンド1回だけ、操作後の整定をすべて飛ばす)**: スワイプ(スクロールを含む)・/drag・/systemui/* の XCTest の待ちは
+`settle: false` のときだけ飛ばす(/type・/clear・/pressEnter は対象外。キーボード出現待ちを quiescence に頼るため)。契約:
+- **ワイヤ**: ホストが該当ステップの実行中、ブリッジへの HTTP リクエストに `X-FT-Settle: 0` を付ける(`BridgeAPI.settleHeader`)。
+  ホスト側は `FlowStep.settle` → `StepExecutor.execute` が TaskLocal `SettleOverride.skip` に載せ、ブリッジクライアントが読む。
+  ブリッジの版は iOS `bridgeProtocolVersion` 165・Android `VERSION_CODE` 89。
+- **ヘッダはそのステップの全要求に付く**ので、複数回スワイプするコマンド(スクロール探索・端送り)では**1本ごとのブリッジ側の待ちも飛ぶ**。
+- **各ブリッジの読み先**: XCUITest ランナーは XCTest の完了通知の待ち(`QuiescenceWait`)と、次の snapshot での木の整定の予約
+  (`settlePending` → `captureSettled`)を外す。**GET /snapshot ではヘッダを見ない** —— `settlePending` を立てたのは前の操作(前のステップで
+  ありうる)なので、見ると前の操作の整定を打ち消す。in-app ブリッジは `InAppSettle` と描画追従の控え(`renderBefore`)・
+  Android ブリッジは `settle()`(静穏待ち)と `/scrollAction` の静止待ち。ホストは操作後の木の整定(`settledSignature` / `settleAfterScroll`。
+  飛ばしても次の解決はキャッシュ迂回にする)と、次のステップへ持ち越す待ち(`type` 後のキーボード確認・Android の `hideKeyboard` の待ち)を飛ばす。
+- **残すもの**: 結果を確かめる待ち(回転・home の到達・`type` の読み返し・焦点待ち・起動の準備待ち)と操作前の待ち。複数回スワイプするコマンドの
+  中でホストが行う計測(`scrollToBottom` 等の端の判定・スクロール探索のループ)は残し、ホスト側で省くのはコマンド最後の整定だけ。
+- 慣性のあるスクロールの直後の操作がずれうるので、使うかどうかは書き手が選ぶ(オプトイン・全体設定は無い)。
+**quiescence(XCTest の完了通知の待ち)と fleetest の整定(木の比較)は別物** —— `settle: false` はこの両方を飛ばすが、`settle` を省略したときの
+タップ系は XCTest の待ちを飛ばしても整定をホストが木で行う。
+計測値は docs/performance-tuning.md §8。**XCTest の完了通知の待ちを外すのは XCUITest ランナーだけ**
+(`Runner/FleetestRunnerUITests/QuiescenceWait.swift`。in-app ブリッジには quiescence の概念が無い)。
 
 `iosPreActionPing`(**既定 true**)は **interop WebView 画面(domInterop モード)の委譲イベント
 直前に、ランナーへ木を1回読ませてから撃つ**(`WebViewDelegatingDriver.pingDelegatedBeforeEvent`)。

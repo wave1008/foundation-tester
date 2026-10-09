@@ -2164,7 +2164,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   6 回中 4 回落ちる。探索が `#tag_15` を見つけて止まった後も慣性で流れ、中心 (-4, 720) で画面外)。**判定: タップ・入力は
   木の観察だけで足りる / スワイプの慣性は足りない** → **タップ・ダブルタップ・長押しだけ既定で待ちを飛ばし、スワイプは待ちを
   残す**ように分けた(`QuiescenceWait.around` の `skipByDefault`。版 163)。**分けた版の確認**(同じ条件): CMP 55/56(赤1本は FM が使えない機械での OCR だけの視覚検証。単独で3回は 3/3)・
-  iOS 54/54(S0080/S0060 を含む)・Flutter 45/45・RN 46/46・**S0090 単独 5/5**。この設定は同日に **`iosLightSettle`(簡易整定モード。既定 false)へ改名**した(上の記録は測ったときの名前のまま)。ランナーの `FastInput` も `QuiescenceWait` へ、リクエストの `fast` も `skipQuiescence` へ改名した(版 164)
+  iOS 54/54(S0080/S0060 を含む)・Flutter 45/45・RN 46/46・**S0090 単独 5/5**。この設定(当時の `iosFastInput`)は現在は無く、スワイプの待ちはコマンドごとの `settle: false` でだけ飛ばせる(上の記録は測ったときの名前のまま)。ランナーの `FastInput` も `QuiescenceWait` へ、リクエストの `fast` も `skipQuiescence` へ改名した(版 164)
 - ✅ **代わりに「待ちの上限を縮める」を入れた**(XCTest の完了の知らせは使い続ける): ランナーの `QuiescenceWait`(当時の名前は FastInput)が操作の間だけ
   `_XCTSetApplicationStateTimeout` で上限を 60 → 6 秒に差し替えて戻す(`QuiescenceWait.quiescenceCapSeconds`。実測の正常な待ちは
   中央値 0.01〜0.1s・95% 点 1〜1.6s・最大 5.1s)。上限 0.3 秒の陽性対照で XCTest が打ち切って続行することを確かめた。

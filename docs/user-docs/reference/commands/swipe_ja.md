@@ -8,10 +8,10 @@
 
 | 関数 | 説明 |
 |---|---|
-| `swipe(.up / .down / .left / .right, lightSettle:)` | 画面全体を**指の動きの方向**でスワイプします。`scroll*` 系の「方向はコンテンツ基準」というルールの**唯一の例外**です。詳細は [scroll](./scroll_ja.md) 参照。 |
-| `swipePointToPoint(startX:startY:endX:endY:durationSeconds: 1.5, maxGestureSeconds:)` | 2点間をドラッグします。座標は snapshot の `screen` と同じ座標系です(iOS = pt / Android = px)。`durationSeconds` の上限は既定 10 秒で、`maxGestureSeconds:` を渡すとこの1回だけ最大 60 秒まで上げられます。 |
-| `swipeElementToElement(開始sel, 終点sel, durationSeconds: 1.5, maxGestureSeconds:)` | ある要素から別の要素までドラッグします(スライダー・並べ替え・限られた領域内のドラッグ用)。ヒール(自己修復)対象は**始点だけ**で、終点はヒールされません。上限は `swipePointToPoint` と同じです。押してから動かすまでは 0.05 秒固定なので、長押しから始まる並べ替えは起動しません([gesture](./gestures_ja.md) を使ってください)。 |
-| `swipeBy(sel?, dxRatio:dyRatio:durationSeconds: 1.5, maxGestureSeconds:)` | 対象の中心から**比率**で指を動かします。横方向・縦方向の両方を非 0 にすると斜めのドラッグになります。比率の符号が指の向きを表します。比率は**対象の幅・高さに対する割合で、片側 0.9 が上限**です(指が対象の枠の中に収まる範囲。超えた指定は 0.9 に丸め、注記 `swipe-by-ratio-capped` を残します)。対象より遠くへ払うには `swipeElementToElement` か `swipePointToPoint` を使います。セレクタを省略すると画面全体が対象になります。上限は `swipePointToPoint` と同じです。 |
+| `swipe(.up / .down / .left / .right, settle:)` | 画面全体を**指の動きの方向**でスワイプします。`scroll*` 系の「方向はコンテンツ基準」というルールの**唯一の例外**です。詳細は [scroll](./scroll_ja.md) 参照。 |
+| `swipePointToPoint(startX:startY:endX:endY:durationSeconds: 1.5, maxGestureSeconds:, settle:)` | 2点間をドラッグします。座標は snapshot の `screen` と同じ座標系です(iOS = pt / Android = px)。`durationSeconds` の上限は既定 10 秒で、`maxGestureSeconds:` を渡すとこの1回だけ最大 60 秒まで上げられます。 |
+| `swipeElementToElement(開始sel, 終点sel, durationSeconds: 1.5, maxGestureSeconds:, settle:)` | ある要素から別の要素までドラッグします(スライダー・並べ替え・限られた領域内のドラッグ用)。ヒール(自己修復)対象は**始点だけ**で、終点はヒールされません。上限は `swipePointToPoint` と同じです。押してから動かすまでは 0.05 秒固定なので、長押しから始まる並べ替えは起動しません([gesture](./gestures_ja.md) を使ってください)。 |
+| `swipeBy(sel?, dxRatio:dyRatio:durationSeconds: 1.5, maxGestureSeconds:, settle:)` | 対象の中心から**比率**で指を動かします。横方向・縦方向の両方を非 0 にすると斜めのドラッグになります。比率の符号が指の向きを表します。比率は**対象の幅・高さに対する割合で、片側 0.9 が上限**です(指が対象の枠の中に収まる範囲。超えた指定は 0.9 に丸め、注記 `swipe-by-ratio-capped` を残します)。対象より遠くへ払うには `swipeElementToElement` か `swipePointToPoint` を使います。セレクタを省略すると画面全体が対象になります。上限は `swipePointToPoint` と同じです。 |
 
 ## 例
 
@@ -31,6 +31,7 @@ swipeBy("#map", dxRatio: -0.3, dyRatio: -0.2, durationSeconds: 0.5)  // 斜め�
   コンテンツ基準です(`.down` = 下方向へ読み進める = 指は上へ動きます)。
 - `swipeBy` と `swipeElementToElement` は、地図・画像ビューア・図面のパン/ズームの土台になる
   コマンドです。詳細は [gestures](./gestures_ja.md) を参照してください。
+- **`settle: false`** を渡すと、このコマンドの操作後の「画面が落ち着くまでの待ち」を省きます(次のステップは動いている最中の画面を見ることがあります)。詳細は [tap](./tap_ja.md) 参照。
 
 ### Link
 - [index](../../index_ja.md)

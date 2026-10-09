@@ -91,26 +91,30 @@ public enum DSLCommandIndex {
 
         // MARK: operation
         .init("tap", "operation",
-              "tap(selector, holdSeconds:, maxGestureSeconds:, containerInference:, linkText:, waitSeconds:, scroll:, maxSwipes:)",
+              "tap(selector, holdSeconds:, maxGestureSeconds:, containerInference:, linkText:, settle:, waitSeconds:, scroll:, maxSwipes:)",
               // **座標形はオーバーロードなので別項目にできない**(索引は関数名で一意。
               // signature 文字列は BatchArgSpecTable が位置引数名を導出するのにも使うので触らない)
               "Taps an element. holdSeconds greater than 0 makes it a long press, capped at 10s by "
                 + "default — pass maxGestureSeconds: (up to 60) to allow longer. "
-                + "There is also tap(x:, y:, holdSeconds:, maxGestureSeconds:) for raw coordinates — "
+                + "There is also tap(x:, y:, holdSeconds:, maxGestureSeconds:, settle:) for raw coordinates — "
                 + "iOS pt / Android px, the same system as the snapshot frames. Prefer a selector: "
                 + "coordinates hit something else as soon as the layout moves, and they are for screens "
                 + "where the app publishes nothing to select. Also chains as "
-                + "element.tap(holdSeconds:, maxGestureSeconds:): an element grabbed by "
+                + "element.tap(holdSeconds:, maxGestureSeconds:, settle:): an element grabbed by "
                 + "findImage/findImages is tapped at the centre of the found frame."
                 + " The selector form returns the element it grabbed (like exist / select), so"
                 + " assertions chain directly: tap(\"#ok\").textIs(\"OK\")."
                 + " linkText: taps the place where that string is drawn inside the resolved element"
                 + " (an inline link in a paragraph: tap(\"#terms\", linkText: \"Terms of Service\")):"
                 + " a descendant node with that label if the tree has one, else the text is located"
-                + " by OCR on the element's pixels; fails if neither finds it (never taps the centre).",
+                + " by OCR on the element's pixels; fails if neither finds it (never taps the centre)."
+                + " settle: false skips the post-action settle (the bridge's settle and the host's tree settle)"
+                + " for this one command, on every operation command that lists settle: — the next step may"
+                + " see a screen still moving; verification waits (typed-text readback, rotation reached,"
+                + " focus) and pre-action waits stay.",
               chainable: true),
         .init("hold", "operation",
-              "hold(selector, holdSeconds:, maxGestureSeconds:, waitSeconds:, scroll:, maxSwipes:) { }",
+              "hold(selector, holdSeconds:, maxGestureSeconds:, settle:, waitSeconds:, scroll:, maxSwipes:) { }",
               "Puts a finger down on an element and runs the block while it stays down — for parts "
                 + "that show only while touched (a tooltip); tap(holdSeconds:) cannot see these "
                 + "because it releases before the block runs. The bridge lifts the finger by itself "
@@ -132,7 +136,7 @@ public enum DSLCommandIndex {
         .init("lastElement", "operation", "lastElement",
               "The element the last single-element command grabbed. Values are frozen at grab time and cleared between scenes."),
         .init("type", "operation",
-              "type(selector, text, replace:, waitSeconds:, scroll:, maxSwipes:) / type(text, replace:)",
+              "type(selector, text, replace:, settle:, waitSeconds:, scroll:, maxSwipes:) / type(text, replace:, settle:)",
               "Types text. Prefer type(selector, text): one step resolves, focuses, types and reads the value"
                   + " back — a preceding tap(selector) or select(selector) only adds a step."
                   + " replace: true clears the field first (like clearInput) instead of appending."
@@ -144,45 +148,45 @@ public enum DSLCommandIndex {
                   + " exactly like type(selector, text). An element grabbed by findImage/findImages has no"
                   + " selector, so it fails without typing (tap it, then type(text)).",
               chainable: true),
-        .init("pressEnter", "operation", "pressEnter()",
+        .init("pressEnter", "operation", "pressEnter(settle:)",
               "Fires the Enter/IME action on the focused input."),
-        .init("hideKeyboard", "operation", "hideKeyboard()",
+        .init("hideKeyboard", "operation", "hideKeyboard(settle:)",
               "Closes the soft keyboard. Android only; on iOS use pressEnter()."),
         .init("clearInput", "operation",
-              "clearInput(selector, waitSeconds:, scroll:, maxSwipes:) / clearInput()",
+              "clearInput(selector, settle:, waitSeconds:, scroll:, maxSwipes:) / clearInput(settle:)",
               "Empties an input field. type appends, so clear first to replace."
                   + " The selector form returns the element it grabbed, so assertions chain directly."),
-        .init("swipe", "operation", "swipe(.up / .down / .left / .right, lightSettle:)",
+        .init("swipe", "operation", "swipe(.up / .down / .left / .right, settle:)",
               "Swipes the whole screen. The direction is the finger motion, unlike the scroll commands."),
         .init("rotateTo", "operation",
-              "rotateTo(.portrait / .landscape)",
+              "rotateTo(.portrait / .landscape, settle:)",
               "Rotates the app UI to that orientation. Reverted automatically to "
                   + "the original orientation at the end of the scenario."),
         .init("swipePointToPoint", "operation",
-              "swipePointToPoint(startX:, startY:, endX:, endY:, durationSeconds:, maxGestureSeconds:)",
+              "swipePointToPoint(startX:, startY:, endX:, endY:, durationSeconds:, maxGestureSeconds:, settle:)",
               "Drags between two coordinates (iOS = pt / Android = px). durationSeconds is capped at "
                   + "10s by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("swipeBy", "operation",
-              "swipeBy(selector?, dxRatio:, dyRatio:, durationSeconds:, maxGestureSeconds:, waitSeconds:)",
+              "swipeBy(selector?, dxRatio:, dyRatio:, durationSeconds:, maxGestureSeconds:, settle:, waitSeconds:)",
               "Drags from the center of the target by a ratio of its size. Diagonal is allowed "
                   + "(both ratios non-zero). No selector = the whole screen. durationSeconds is capped "
                   + "at 10s by default — pass maxGestureSeconds: (up to 60) to allow longer."
                   + " The selector form returns the element it grabbed."),
-        .init("doubleTap", "operation", "doubleTap(selector?, waitSeconds:)",
+        .init("doubleTap", "operation", "doubleTap(selector?, settle:, waitSeconds:)",
               "Double-taps. No selector = the center of the screen."
                   + " The selector form returns the element it grabbed, so assertions chain directly."),
         .init("pinchOut", "operation",
-              "pinchOut(selector?, scale:, durationSeconds:, maxGestureSeconds:, waitSeconds:)",
+              "pinchOut(selector?, scale:, durationSeconds:, maxGestureSeconds:, settle:, waitSeconds:)",
               "Pinches open (zoom in). scale must be > 1. No selector = the whole screen. "
                   + "durationSeconds is capped at 10s by default — pass maxGestureSeconds: "
                   + "(up to 60) to allow longer. The selector form returns the element it grabbed."),
         .init("pinchIn", "operation",
-              "pinchIn(selector?, scale:, durationSeconds:, maxGestureSeconds:, waitSeconds:)",
+              "pinchIn(selector?, scale:, durationSeconds:, maxGestureSeconds:, settle:, waitSeconds:)",
               "Pinches closed (zoom out). scale must be between 0 and 1. durationSeconds is capped "
                   + "at 10s by default — pass maxGestureSeconds: (up to 60) to allow longer."
                   + " The selector form returns the element it grabbed."),
         .init("gesture", "operation",
-              "gesture(selector?, maxGestureSeconds:, waitSeconds:) { FTFinger(...).move(...).hold(...) }",
+              "gesture(selector?, maxGestureSeconds:, settle:, waitSeconds:) { FTFinger(...).move(...).hold(...) }",
               "Replays several fingers' timed paths as one continuous touch sequence (no lifting "
                   + "between segments) — for gestures pinchOut/pinchIn/doubleTap/swipeBy cannot express. "
                   + "The trailing closure is an FTGestureBuilder returning [FTFinger]: each FTFinger "
@@ -192,7 +196,7 @@ public enum DSLCommandIndex {
                   + "pass maxGestureSeconds: (up to 60) to allow longer."
                   + " The selector form returns the element it grabbed."),
         .init("swipeElementToElement", "operation",
-              "swipeElementToElement(from, to, durationSeconds:, maxGestureSeconds:, waitSeconds:)",
+              "swipeElementToElement(from, to, durationSeconds:, maxGestureSeconds:, settle:, waitSeconds:)",
               "Drags from one element to another. Only the start point is healed. durationSeconds is "
                   + "capped at 10s by default — pass maxGestureSeconds: (up to 60) to allow longer."
                   + " Returns the start element it grabbed."),
@@ -200,32 +204,32 @@ public enum DSLCommandIndex {
         // MARK: scroll
         .init("scrollTo", "scroll",
               "scrollTo(selector, direction:, scrollFrame:, startMarginRatio:, endMarginRatio:,"
-                  + " containerInference:, lightSettle:, maxSwipes:)",
+                  + " containerInference:, settle:, maxSwipes:)",
               "Scrolls until the element is found. Does not tap it. Returns the element it found,"
                   + " so assertions chain directly."),
         .init("scrollDown", "scroll",
-              "scrollDown(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:, lightSettle:)",
+              "scrollDown(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:, settle:)",
               "Scrolls one screen further down the content."),
         .init("scrollUp", "scroll",
-              "scrollUp(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:, lightSettle:)",
+              "scrollUp(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:, settle:)",
               "Scrolls one screen back up the content."),
         .init("scrollRight", "scroll",
-              "scrollRight(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:, lightSettle:)",
+              "scrollRight(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:, settle:)",
               "Scrolls one screen further right in the content."),
         .init("scrollLeft", "scroll",
-              "scrollLeft(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:, lightSettle:)",
+              "scrollLeft(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:, settle:)",
               "Scrolls one screen back left in the content."),
         .init("scrollToBottom", "scroll",
-              "scrollToBottom(scrollFrame:, startMarginRatio:, endMarginRatio:, lightSettle:, maxSwipes:)",
+              "scrollToBottom(scrollFrame:, startMarginRatio:, endMarginRatio:, settle:, maxSwipes:)",
               "Scrolls until the screen stops changing. maxSwipes only caps a runaway."),
         .init("scrollToTop", "scroll",
-              "scrollToTop(scrollFrame:, startMarginRatio:, endMarginRatio:, lightSettle:, maxSwipes:)",
+              "scrollToTop(scrollFrame:, startMarginRatio:, endMarginRatio:, settle:, maxSwipes:)",
               "Scrolls back to the top edge."),
         .init("scrollToRightEdge", "scroll",
-              "scrollToRightEdge(scrollFrame:, startMarginRatio:, endMarginRatio:, lightSettle:, maxSwipes:)",
+              "scrollToRightEdge(scrollFrame:, startMarginRatio:, endMarginRatio:, settle:, maxSwipes:)",
               "Scrolls to the right edge."),
         .init("scrollToLeftEdge", "scroll",
-              "scrollToLeftEdge(scrollFrame:, startMarginRatio:, endMarginRatio:, lightSettle:, maxSwipes:)",
+              "scrollToLeftEdge(scrollFrame:, startMarginRatio:, endMarginRatio:, settle:, maxSwipes:)",
               "Scrolls to the left edge."),
         .init("withScrollDown", "scroll", "withScrollDown(scrollFrame:) { }",
               "Makes every command in the block search by scrolling down."),
@@ -245,39 +249,39 @@ public enum DSLCommandIndex {
 
         // MARK: flick
         .init("flickCenterToTop", "flick",
-              "flickCenterToTop(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:, lightSettle:)",
+              "flickCenterToTop(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:, settle:)",
               "One fast stroke from the center towards the top edge. durationSeconds is capped at 10s "
                   + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickCenterToBottom", "flick",
-              "flickCenterToBottom(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:, lightSettle:)",
+              "flickCenterToBottom(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:, settle:)",
               "One fast stroke from the center towards the bottom edge. durationSeconds is capped at "
                   + "10s by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickCenterToLeft", "flick",
-              "flickCenterToLeft(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:, lightSettle:)",
+              "flickCenterToLeft(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:, settle:)",
               "One fast stroke from the center towards the left edge. durationSeconds is capped at 10s "
                   + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickCenterToRight", "flick",
-              "flickCenterToRight(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:, lightSettle:)",
+              "flickCenterToRight(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:, settle:)",
               "One fast stroke from the center towards the right edge. durationSeconds is capped at "
                   + "10s by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickLeftToRight", "flick",
               "flickLeftToRight(scrollFrame:, startMarginRatio:, durationSeconds:, maxGestureSeconds:,"
-                  + " repeat:, intervalSeconds:, lightSettle:)",
+                  + " repeat:, intervalSeconds:, settle:)",
               "One fast stroke from the left edge to the right edge. durationSeconds is capped at 10s "
                   + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickRightToLeft", "flick",
               "flickRightToLeft(scrollFrame:, startMarginRatio:, durationSeconds:, maxGestureSeconds:,"
-                  + " repeat:, intervalSeconds:, lightSettle:)",
+                  + " repeat:, intervalSeconds:, settle:)",
               "One fast stroke from the right edge to the left edge. durationSeconds is capped at 10s "
                   + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickBottomToTop", "flick",
               "flickBottomToTop(scrollFrame:, startMarginRatio:, durationSeconds:, maxGestureSeconds:,"
-                  + " repeat:, intervalSeconds:, lightSettle:)",
+                  + " repeat:, intervalSeconds:, settle:)",
               "One fast stroke from the bottom edge to the top edge. durationSeconds is capped at 10s "
                   + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickTopToBottom", "flick",
               "flickTopToBottom(scrollFrame:, startMarginRatio:, durationSeconds:, maxGestureSeconds:,"
-                  + " repeat:, intervalSeconds:, lightSettle:)",
+                  + " repeat:, intervalSeconds:, settle:)",
               "One fast stroke from the top edge to the bottom edge. durationSeconds is capped at 10s "
                   + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
 
@@ -396,7 +400,7 @@ public enum DSLCommandIndex {
               "Clears app data and permissions but keeps the app. On a physical iPhone it reinstalls the app instead (needs appPathPhysical)."),
         .init("home", "app", "home()",
               "Goes to the home screen."),
-        .init("back", "app", "back()",
+        .init("back", "app", "back(settle:)",
               "Goes back (Android back key / iOS left-edge swipe)."),
         .init("appSwitcher", "app", "appSwitcher()",
               "Opens the app switcher."),

@@ -96,6 +96,11 @@ final class FTInAppBridge {
     /// handle の冒頭で必ず落とし、ok(_:) が note に載せる。**黙って返さない**ための1本道
     private var lastSettleCapped = false
 
+    /// 処理中のリクエストが `X-FT-Settle: 0` を持つか(handle の冒頭で毎回入れ直す。リクエストは1本ずつ処理)。
+    /// true の間は操作後の整定(InAppSettle)と描画追従の控え(captureRenderBefore)を飛ばす。
+    /// tapByRef の再試行の内側の整定(撃ち直し前の待ち)はタップそのものの一部なので飛ばさない
+    private var skipSettle = false
+
     /// リクエストごとに handle() の冒頭で1つ進める世代印。tapByRef/performSettlingIfMoved の
     /// メイン待ちが **タイムアウトで 504 を返した後に main が空いて実際に実行された**とき、
     /// その遅延コールバックが `lastSettleCapped` を書くのを、既に別のリクエストが処理中/処理済みの
@@ -119,6 +124,7 @@ final class FTInAppBridge {
     private func handle(_ req: InAppHTTPServer.Request) -> InAppHTTPServer.Response {
         requestGeneration &+= 1
         lastSettleCapped = false
+        skipSettle = req.skipSettle
         do {
             switch (req.method, req.path) {
             case ("GET", "/status"): return handleStatus()
@@ -587,6 +593,7 @@ final class FTInAppBridge {
         let activationPointMarksHitArea = AppUIFramework(rawValue: uiFramework)?.activationPointMarksHitArea ?? false
 
         func finish(_ window: UIWindow) {
+            if skipSettle { sem.signal(); return }
             InAppSettle.waitOnMain { converged in
                 if !converged, self.requestGeneration == myGeneration { self.lastSettleCapped = true }
                 sem.signal()
@@ -610,6 +617,7 @@ final class FTInAppBridge {
                 sem.signal()
                 return
             }
+            if skipSettle { sem.signal(); return }
             InAppSettle.waitOnMain { converged in
                 if !converged, self.requestGeneration == myGeneration { self.lastSettleCapped = true }
                 if self.requestGeneration == myGeneration, InAppRenderCatchUp.pixelPrint(window) == before {
@@ -1653,7 +1661,8 @@ final class FTInAppBridge {
     /// 経路を足したら必ず呼ぶ —— 呼ばないと、その操作の直後の `/screenshot` が操作前の絵を返しうる。
     /// selfRendered は `uiFramework` の `isSelfRendered`(メインに入る前に読んで渡す)
     private func captureRenderBefore(keyWindow: UIWindow, selfRendered: Bool) {
-        renderBefore = selfRendered
+        // settle: false は控えない(控えると次の /screenshot が描画の追従を待つ)。前の操作の控えも捨てる
+        renderBefore = selfRendered && !skipSettle
             ? InAppRenderCatchUp.Before(pixels: InAppRenderCatchUp.pixelPrint(keyWindow), tree: treePrint)
             : nil
     }
@@ -1746,7 +1755,7 @@ final class FTInAppBridge {
                 sem.signal()
                 return
             }
-            guard moved else { sem.signal(); return }
+            guard moved, !self.skipSettle else { sem.signal(); return }
             InAppSettle.waitOnMain(capMs: capMs) { converged in
                 if !converged, self.requestGeneration == myGeneration { self.lastSettleCapped = true }
                 sem.signal()

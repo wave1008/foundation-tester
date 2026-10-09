@@ -964,9 +964,9 @@ public final class FTDriveCore {
     /// 触らずスキップを記録するだけ**(通常のステップと同じ規律)なので、待ちはここで別途
     /// `StepExecutor.waitOutHold()` を直接呼んで行う。dry-run はどちらの経路も何もしない
     /// (`perform()` の dry-run 分岐がデバイスに触れない・下の追加待ちも dryRun で閉じる)
-    func finishHold(description: String, file: StaticString, line: UInt) {
+    func finishHold(description: String, settle: Bool, file: StaticString, line: UInt) {
         let wasAborted = scenarioAborted
-        perform(step: FlowStep(action: "holdEnd"), description: description, command: "hold",
+        perform(step: FlowStep(action: "holdEnd", settle: settle ? nil : false), description: description, command: "hold",
                file: file, line: line)
         guard wasAborted, !dryRun else { return }
         let executor = self.executor

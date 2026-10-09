@@ -93,7 +93,7 @@ extension StepExecutor {
     /// holdEnd の実体。ブリッジが `duration` 秒後に自分で指を離すので、ここでは
     /// **その時刻まで待つだけ**(何も送らない)。待ちの中身は中断中のシナリオが直接呼ぶ
     /// `waitOutHold()` と共有する(`releaseHoldAndWait` の1箇所)
-    func executeHoldEnd(phase: inout PhaseAccumulator) async throws -> StepOutcome {
+    func executeHoldEnd(step: FlowStep, phase: inout PhaseAccumulator) async throws -> StepOutcome {
         guard holdLiftsAt != nil else {
             // 一度も hold していない(holdStart が要素未発見等で送らなかった) = 何もしない
             return StepOutcome(status: .passed)
@@ -102,7 +102,7 @@ extension StepExecutor {
         if await releaseHoldAndWait(phase: &phase) {
             note(.holdEndedBeforeBlock, into: &notes)
         }
-        let settled = try await settledSignature(phase: &phase).settled
+        let settled = skippingSettle(step) ? true : try await settledSignature(phase: &phase).settled
         if !settled { note(.settleCapped, into: &notes) }
         return StepOutcome(status: .passed,
                            driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))

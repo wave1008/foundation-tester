@@ -594,10 +594,6 @@ function renderRunProfileSection(): string {
               <input type="checkbox" id="run-profile-ios-inapp-engine">
               <label for="run-profile-ios-inapp-engine">${t("panels.runProfile.inappEngineLabel")}</label>
             </div>
-            <div class="modal-row profile-checkbox-row">
-              <input type="checkbox" id="run-profile-ios-light-settle">
-              <label for="run-profile-ios-light-settle">${t("panels.runProfile.iosLightSettleLabel")}</label>
-            </div>
             <div id="run-profile-inapp-options" style="display: none;">
               <div class="modal-row profile-checkbox-row">
                 <input type="checkbox" id="run-profile-ios-pre-action-ping">

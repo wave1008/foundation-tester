@@ -8,8 +8,8 @@ Types text into a field, either the currently focused one or a specified element
 
 | function | description |
 |---|---|
-| `type("some text", replace: false)` | Types into the **currently focused** element (focus it first with `tap(inputField)`). The argument is text, not a selector — passing something that looks like a selector (starts with `#`, or contains `\|\|` / `>>`) fails before execution rather than silently typing the literal string. To actually type such a string, use the two-argument form `type("#field", "#email")`. `replace: true` clears the field (like `clearInput`) before typing. |
-| `type(sel, "some text", replace:waitSeconds:scroll:maxSwipes:)` | Resolves the element, then types into it. Japanese text is typed as-is (no IME switching needed). `replace: true` clears the field before typing. |
+| `type("some text", replace: false, settle:)` | Types into the **currently focused** element (focus it first with `tap(inputField)`). The argument is text, not a selector — passing something that looks like a selector (starts with `#`, or contains `\|\|` / `>>`) fails before execution rather than silently typing the literal string. To actually type such a string, use the two-argument form `type("#field", "#email")`. `replace: true` clears the field (like `clearInput`) before typing. |
+| `type(sel, "some text", replace:settle:waitSeconds:scroll:maxSwipes:)` | Resolves the element, then types into it. Japanese text is typed as-is (no IME switching needed). `replace: true` clears the field before typing. |
 | `select(sel).type("some text", replace:waitSeconds:)` | Types into the grabbed element. It resolves the grabbed selector again, so it behaves exactly like `type(sel, "some text")`. It fails on an element that was not found. Elements found by `findImage` / `findImages` cannot be typed into this way (call `.tap()` first, then `type("some text")`). **To just type, write `type(sel, "some text")`** — `select` only adds a step. |
 
 ## Example
@@ -69,6 +69,7 @@ field.type("alice")                // same as type("#login_id", "alice")
   `type-readback-unchanged`). If not, the input is treated as lost and re-sent. **The re-send
   happens at most once**; if the value still does not move, the step fails (repeating the
   re-send could duplicate the input).
+- **`settle: false`** skips this command's post-action wait for the screen to settle (the next step may see a moving screen). See [tap](./tap.md) for details.
 
 ### Link
 - [index](../../index.md)

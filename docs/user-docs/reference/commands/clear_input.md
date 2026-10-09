@@ -8,8 +8,8 @@ Empties an input field.
 
 | function | description |
 |---|---|
-| `clearInput()` | Empties the currently focused input field. |
-| `clearInput(sel, waitSeconds:scroll:maxSwipes:)` | Empties the specified input field. |
+| `clearInput(settle:)` | Empties the currently focused input field. |
+| `clearInput(sel, settle:waitSeconds:scroll:maxSwipes:)` | Empties the specified input field. |
 
 ## Example
 
@@ -39,6 +39,7 @@ type("#note", "new content", replace: true)
   folds the clear and the type into a single command. See [type](./type.md).
 - On the Flutter iOS build, the in-app engine cannot clear the field itself and automatically
   falls back to the XCUITest engine for this one command (adds roughly one to two seconds).
+- **`settle: false`** skips this command's post-action wait for the screen to settle (the next step may see a moving screen). See [tap](./tap.md) for details.
 
 ### Link
 - [index](../../index.md)

@@ -29,7 +29,6 @@ final class RunTunablesTests: XCTestCase {
     func testProfileDefaultTimeoutMapsIntoTunables() {
         let settings = ScenarioExecutionSettings(DeviceIndependentRunSettings(
             fm: FMConfig(), heal: false, ocrTextOcclusionCheck: true, preferCheckStateClassifier: true,
-            iosLightSettle: false,
             iosPreActionPing: true, containerInference: true, enableAnimations: false,
             playProtectBypass: true, homeOnStart: true, record: false, recordFailuresOnly: false,
             recordFullResolution: false, reportDir: nil, defaultTimeout: 12.5, scenarioTimeout: nil,
@@ -41,7 +40,6 @@ final class RunTunablesTests: XCTestCase {
     func testUnspecifiedProfileDefaultTimeoutStaysDefault() {
         let settings = ScenarioExecutionSettings(DeviceIndependentRunSettings(
             fm: FMConfig(), heal: false, ocrTextOcclusionCheck: true, preferCheckStateClassifier: true,
-            iosLightSettle: false,
             iosPreActionPing: true, containerInference: true, enableAnimations: false,
             playProtectBypass: true, homeOnStart: true, record: false, recordFailuresOnly: false,
             recordFullResolution: false, reportDir: nil, defaultTimeout: nil, scenarioTimeout: nil,

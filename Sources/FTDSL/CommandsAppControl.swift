@@ -243,7 +243,7 @@ public func home(file: StaticString = #filePath, line: UInt = #line) {
 /// (前回の back() の木を使い回すキャッシュは持たない。理由は BackEffect.swift 参照。
 /// 「間に他のコマンドが挟まっていなければ使い回せる」形は back() が連続しない限り一度も
 /// 発火せず、E2E 全 SUT で back() は各1回しか呼ばれないため実質恒久的に沈黙していた)
-public func back(file: StaticString = #filePath, line: UInt = #line) {
+public func back(settle: Bool = true, file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "back")
     let driver = core.systemDriver
     // **木を読むのは systemDriver ではなく driver**: hybrid の systemDriver は typeDriver
@@ -258,7 +258,8 @@ public func back(file: StaticString = #filePath, line: UInt = #line) {
         // 直前の type のキーボードが出きるのを先に待つ(StepExecutor.awaitKeyboardBeforeBack)
         try await executor.awaitKeyboardBeforeBack()
         let before = try? await observer.snapshot()
-        try await driver.back()
+        // performCustom は FlowStep を通らないので、ドライバへ届く TaskLocal はここで入れる(`settle:` は tap を参照)
+        try await SettleOverride.$skip.withValue(!settle) { try await driver.back() }
         guard let before, let after = try? await observer.snapshot() else { return }
         if BackEffect.shouldWarn(before: before.elements, afterObservations: [after.elements]) {
             observedNote = .backIneffective
@@ -268,10 +269,10 @@ public func back(file: StaticString = #filePath, line: UInt = #line) {
 
 /// フォーカス中の入力のキーボードを閉じる(冪等: 非表示中でも成功扱い)。
 /// home/back と違い**アプリ内**のフォーカス操作なので systemDriver ではなく driver を使う
-public func hideKeyboard(file: StaticString = #filePath, line: UInt = #line) {
+public func hideKeyboard(settle: Bool = true, file: StaticString = #filePath, line: UInt = #line) {
     // **StepExecutor を通す**(ドライバを直に呼ばない): 次のロケータ操作が木からキーボードが消えるのを
     // 待つ印(pendingHideKeyboardWait)を立てるのは executor の hideKeyboard だけ。MCP の ft_batch と同じ経路
-    let step = FlowStep(action: "hideKeyboard")
+    let step = FlowStep(action: "hideKeyboard", settle: stepSettle(settle))
     FTRuntime.requireCore(command: "hideKeyboard")
         .perform(step: step, description: "hideKeyboard", command: "hideKeyboard", file: file, line: line)
 }

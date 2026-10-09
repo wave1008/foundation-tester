@@ -39,7 +39,7 @@ final class RunnerInterruptionGuardScanTests: XCTestCase {
             return XCTFail("BridgeRouter.handle が見当たらない — テストを見直すこと")
         }
         let body = String(code[start.upperBound..<end.lowerBound])
-        XCTAssertTrue(body.contains("-> BridgeHTTPServer.Response {\n        InterruptionGuard.shared.reset()\n        do {"),
+        XCTAssertTrue(body.contains("-> BridgeHTTPServer.Response {\n        InterruptionGuard.shared.reset()\n"),
                       "要求の頭で控えを消していない(前の要求の控えが次の要求を 422 にする)")
         XCTAssertEqual(body.components(separatedBy: "InterruptionGuard.shared.take()").count - 1, 3,
                        "成功の経路と2つの catch の全部で控えを見ること")

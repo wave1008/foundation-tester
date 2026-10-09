@@ -248,7 +248,7 @@ final class BatchLineParserTests: XCTestCase {
             let message = (error as? BatchStepResolver.ResolveError)?.message ?? "\(error)"
             XCTAssertTrue(message.contains("\"containerInference:\""), message)
             XCTAssertTrue(message.contains("does not support"), message)
-            XCTAssertTrue(message.contains("selector, holdSeconds, maxGestureSeconds, waitSeconds"), message)
+            XCTAssertTrue(message.contains("selector, holdSeconds, maxGestureSeconds, settle, waitSeconds"), message)
         }
     }
 
@@ -279,24 +279,39 @@ final class BatchLineParserTests: XCTestCase {
         }
     }
 
-    // MARK: - lightSettle:
+    // MARK: - settle:
 
-    func testScrollDownLightSettleReachesTheStep() throws {
-        let raw = try resolve(command: "scrollDown", line: "scrollDown lightSettle: true")
-        let (step, _) = try MCPServer.batchStepBuilders["scrollDown"]!.build(raw)
-        XCTAssertEqual(step.lightSettle, true)
+    func testSettleFalseReachesTheStepOnEveryBuilderThatTakesIt() throws {
+        let lines: [(command: String, line: String)] = [
+            ("scrollDown", "scrollDown settle: false"),
+            ("swipe", "swipe .up settle: false"),
+            ("scrollTo", "scrollTo '#x' settle: false"),
+            ("tap", "tap '#x' settle: false"),
+            ("tap", "tap x: 10 y: 20 settle: false"),
+            ("type", "type '#f' 'abc' settle: false"),
+            ("clearInput", "clearInput '#f' settle: false"),
+            ("pressEnter", "pressEnter settle: false"),
+            ("hideKeyboard", "hideKeyboard settle: false"),
+            ("rotateTo", "rotateTo .landscape settle: false"),
+            ("doubleTap", "doubleTap '#x' settle: false"),
+            ("pinchOut", "pinchOut '#x' settle: false"),
+            ("swipeBy", "swipeBy dxRatio: 0.1 dyRatio: 0.1 settle: false"),
+            ("swipeElementToElement", "swipeElementToElement '#a' '#b' settle: false"),
+            ("swipePointToPoint", "swipePointToPoint startX: 1 startY: 2 endX: 3 endY: 4 settle: false"),
+            ("scrollToTop", "scrollToTop settle: false"),
+        ]
+        for (command, line) in lines {
+            let raw = try resolve(command: command, line: line)
+            let step = try MCPServer.batchStepBuilders[command]!.build(raw).step
+            XCTAssertEqual(step.settle, false, line)
+        }
     }
 
-    func testSwipeAndScrollToLightSettleFalseReachesTheStep() throws {
-        let swipeRaw = try resolve(command: "swipe", line: "swipe .up lightSettle: false")
-        XCTAssertEqual(try MCPServer.batchStepBuilders["swipe"]!.build(swipeRaw).step.lightSettle, false)
-        let toRaw = try resolve(command: "scrollTo", line: "scrollTo '#x' lightSettle: false")
-        XCTAssertEqual(try MCPServer.batchStepBuilders["scrollTo"]!.build(toRaw).step.lightSettle, false)
-    }
-
-    func testLightSettleOmittedLeavesNil() throws {
-        let raw = try resolve(command: "scrollToBottom", line: "scrollToBottom")
-        XCTAssertNil(try MCPServer.batchStepBuilders["scrollToBottom"]!.build(raw).step.lightSettle)
+    func testSettleTrueOrOmittedLeavesNil() throws {
+        let omitted = try resolve(command: "scrollToBottom", line: "scrollToBottom")
+        XCTAssertNil(try MCPServer.batchStepBuilders["scrollToBottom"]!.build(omitted).step.settle)
+        let explicit = try resolve(command: "swipe", line: "swipe .up settle: true")
+        XCTAssertNil(try MCPServer.batchStepBuilders["swipe"]!.build(explicit).step.settle)
     }
 
     // MARK: - 未知のラベル(シグネチャにも無い)は別の文言で弾く

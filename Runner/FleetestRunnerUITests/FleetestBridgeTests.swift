@@ -31,7 +31,7 @@ final class FleetestBridgeTests: XCTestCase {
         // XCTest の既定の割り込みハンドラ(アラートのボタンを押して操作を撃ち直す)を止める(InterruptionGuard 参照)
         InterruptionGuard.shared.install(on: self)
 
-        QuiescenceWait.installSwizzle()  // 高速入力(quiescence スキップ)。失敗しても通常動作
+        QuiescenceWait.installSwizzle()  // quiescence 待ちの制御。失敗しても通常動作
         let router = BridgeRouter()
         let server = BridgeHTTPServer(port: port) { router.handle($0) }
         router.idleSecondsProvider = { [weak server] in server?.idleBeforeLastRequest ?? 0 }

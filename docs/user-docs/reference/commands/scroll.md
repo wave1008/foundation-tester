@@ -9,15 +9,15 @@ to an edge.
 
 | function | description |
 |---|---|
-| `scrollTo(sel, direction: .down, containerInference:, lightSettle:, maxSwipes: 8)` | Scrolls until the element is found (found = success; does not tap it). |
-| `scrollDown(repeat: 1, lightSettle:)` / `scrollUp` / `scrollRight` / `scrollLeft` | Scrolls one screenful (`repeat:` times to repeat). |
-| `scrollToBottom(lightSettle:, maxSwipes: 50)` / `scrollToTop` / `scrollToRightEdge` / `scrollToLeftEdge` | Scrolls to the edge — until the screen stops changing. `maxSwipes` is a runaway guard; hitting it leaves a note on the step. |
+| `scrollTo(sel, direction: .down, containerInference:, settle:, maxSwipes: 8)` | Scrolls until the element is found (found = success; does not tap it). |
+| `scrollDown(repeat: 1, settle:)` / `scrollUp` / `scrollRight` / `scrollLeft` | Scrolls one screenful (`repeat:` times to repeat). |
+| `scrollToBottom(settle:, maxSwipes: 50)` / `scrollToTop` / `scrollToRightEdge` / `scrollToLeftEdge` | Scrolls to the edge — until the screen stops changing. `maxSwipes` is a runaway guard; hitting it leaves a note on the step. |
 | `withScrollDown { … }` / `withScrollUp` / `withScrollRight` / `withScrollLeft` | Makes every `tap` / `type` / `clearInput` / `select` / `exist` / `notExist` / `findImage` / `existImage` / `hold` inside the block search by scrolling (an explicit `scroll:` on a command still wins). **`notExist` changes meaning** inside the block — it fails as soon as the element turns up while scrolling. |
 | `withoutScroll { … }` | Cancels an outer `withScroll*` — commands inside resolve against the current screen only. |
 | `withoutContainerInference { … }` | Disables the container-inference corrections (below) for every command inside the block. |
 | `scroll: .noScroll` (an argument of `tap` / `type` / `clearInput` / `select` / `exist` / `notExist` / `findImage` / `existImage` / `hold`) | Skips scrolling for this one command even inside a `withScroll*` block (it resolves against the current screen only). Leaving the argument out follows the direction of the block. |
 
-**`lightSettle:`** (on `swipe` / `scroll*` / `scrollToBottom` etc. / `scrollTo` / `flick*`): switches light settle mode for this one call. Leave it out to follow the run profile's `iosLightSettle`; pass `true` / `false` to override it. It only affects swipes on the iOS XCUITest bridge (no effect on Android or the in-app engine). `swipePointToPoint` / `swipeBy` / `swipeElementToElement` don't take it — they use the drag path, which light settle mode doesn't cover.
+**`settle: false`** skips this command's post-action wait for the screen to settle (the next step may see a moving screen). See [tap](./tap.md) for details.
 
 **Scrolling is specified only through each command's `scroll:` argument.** A direction (`.down` / `.up` / `.right` / `.left`)
 searches while scrolling that way, and `.noScroll` never scrolls, even inside a `withScroll*` block. Leaving it out follows

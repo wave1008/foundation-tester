@@ -39,7 +39,6 @@ const runProfileOcrTextOcclusionCheck = document.getElementById('run-profile-ocr
 const runProfilePreferCheckStateClassifier = document.getElementById('run-profile-prefer-check-state-classifier');
 const runProfileContainerInference = document.getElementById('run-profile-container-inference');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
-const runProfileIosLightSettle = document.getElementById('run-profile-ios-light-settle');
 const runProfileIosPreActionPing = document.getElementById('run-profile-ios-pre-action-ping');
 const runProfileInappOptions = document.getElementById('run-profile-inapp-options');
 const runProfileHomeOnStart = document.getElementById('run-profile-home-on-start');
@@ -254,7 +253,6 @@ function renderRunProfileEditor(fields) {
   runProfilePreferCheckStateClassifier.checked = fields.preferCheckStateClassifier;
   updateInappOptionsVisibility();
   runProfileIosInappEngine.checked = fields.iosInappEngine;
-  runProfileIosLightSettle.checked = fields.iosLightSettle;
   runProfileIosPreActionPing.checked = fields.iosPreActionPing;
   runProfileHomeOnStart.checked = fields.homeOnStart;
   runProfilePlayProtectBypass.checked = fields.playProtectBypass;
@@ -378,7 +376,6 @@ function runProfileValuesEqual(fields) {
     runProfileOcrTextOcclusionCheck.checked === fields.ocrTextOcclusionCheck &&
     runProfilePreferCheckStateClassifier.checked === fields.preferCheckStateClassifier &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
-    runProfileIosLightSettle.checked === fields.iosLightSettle &&
     runProfileIosPreActionPing.checked === fields.iosPreActionPing &&
     runProfileHomeOnStart.checked === fields.homeOnStart &&
     runProfilePlayProtectBypass.checked === fields.playProtectBypass &&
@@ -471,7 +468,6 @@ function collectRunProfileFields() {
     ocrTextOcclusionCheck: runProfileOcrTextOcclusionCheck.checked,
     preferCheckStateClassifier: runProfilePreferCheckStateClassifier.checked,
     iosInappEngine: runProfileIosInappEngine.checked,
-    iosLightSettle: runProfileIosLightSettle.checked,
     iosPreActionPing: runProfileIosPreActionPing.checked,
     homeOnStart: runProfileHomeOnStart.checked,
     playProtectBypass: runProfilePlayProtectBypass.checked,

@@ -55,9 +55,10 @@ public struct FlowStep: Codable, Sendable {
     /// = 10 秒。最大 `BridgeAPI.gestureSecondsCeiling` = 60 秒)。
     /// DSL の `maxGestureSeconds:` 引数がそのまま入る。`duration` を持たないステップでは無視される
     public var maxGestureSeconds: Double?
-    /// 簡易整定モードをこのステップだけ上書きする(nil = 実行プロファイルの `iosLightSettle` に従う)。
-    /// `StepExecutor.execute` が `LightSettleOverride` に載せる。効くのは iOS XCUITest 経路の /swipe だけ
-    public var lightSettle: Bool?
+    /// false = このステップだけ操作後の整定待ちを飛ばす(nil = 整定する)。DSL の `settle: false`。
+    /// `StepExecutor.execute` が `SettleOverride` に載せ、ホスト側の整定は `skipsSettle` で飛ばす
+    public var settle: Bool?
+    public var skipsSettle: Bool { settle == false }
     /// count アサーションの期待個数(DSL の countIs)。他のステップでは nil
     public var expectedCount: Int?
     /// テキスト比較を**厳密に**行う(一切正規化しない)。DSL の `strict: true`。
@@ -176,7 +177,7 @@ public struct FlowStep: Codable, Sendable {
                 expected: String? = nil, timeout: Double? = nil, maxSwipes: Int? = nil,
                 duration: Double? = nil,
                 maxGestureSeconds: Double? = nil,
-                lightSettle: Bool? = nil,
+                settle: Bool? = nil,
                 expectedCount: Int? = nil,
                 note: String? = nil, occlusionGuard: Bool? = nil,
                 containerInference: Bool? = nil,
@@ -221,7 +222,7 @@ public struct FlowStep: Codable, Sendable {
         self.maxSwipes = maxSwipes
         self.duration = duration
         self.maxGestureSeconds = maxGestureSeconds
-        self.lightSettle = lightSettle
+        self.settle = settle
         self.expectedCount = expectedCount
         self.note = note
         self.occlusionGuard = occlusionGuard

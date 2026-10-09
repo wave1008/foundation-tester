@@ -8,9 +8,9 @@ Taps an element, or raw coordinates, on the screen.
 
 | function | description |
 |---|---|
-| `tap(sel, holdSeconds: 0, maxGestureSeconds:containerInference:linkText:waitSeconds:scroll:maxSwipes:)` | Taps the first element matching the selector. `holdSeconds` greater than 0 makes it a long press (default 0 = normal tap, capped at 10 seconds by default — pass `maxGestureSeconds:` to allow up to 60 for this one call). Waits for the target to become enabled before tapping (see Notes). Returns the tapped element, so assertions chain directly: `tap("#btn_ok").textIs("OK")`. |
+| `tap(sel, holdSeconds: 0, maxGestureSeconds:containerInference:linkText:settle:waitSeconds:scroll:maxSwipes:)` | Taps the first element matching the selector. `holdSeconds` greater than 0 makes it a long press (default 0 = normal tap, capped at 10 seconds by default — pass `maxGestureSeconds:` to allow up to 60 for this one call). Waits for the target to become enabled before tapping (see Notes). Returns the tapped element, so assertions chain directly: `tap("#btn_ok").textIs("OK")`. |
 | `tap(sel, linkText: "text")` | Taps the place where `linkText` is drawn **inside** the element the selector resolves to — for an inline link in a paragraph, which the accessibility tree does not expose as a node on Compose Multiplatform, Android Views (`ClickableSpan`) and SwiftUI (`AttributedString` links). Located first from the tree (a descendant whose label or value equals `linkText`, as Flutter and React Native expose links), then by OCR on the element's pixels. If neither finds it the step fails and lists what OCR read — it never falls back to the element's centre. The step note records which way located it (`tree` / `ocr`). A link wrapped across two lines is not found by OCR. Without `linkText:` it taps the centre of the element. |
-| `tap(x: Double, y: Double, holdSeconds: 0, maxGestureSeconds:)` | Taps raw coordinates. Coordinates use the same system as the `screen` frame in a snapshot — iOS = pt, Android = px (not dp). Prefer a selector whenever one is available. On iOS with the in-app engine, a point off the screen or on the software keyboard fails (the in-app engine cannot press keys — close the keyboard with `pressEnter` first), and an element clipped out of its scroll container is not activated even if its frame contains the point. |
+| `tap(x: Double, y: Double, holdSeconds: 0, maxGestureSeconds:, settle:)` | Taps raw coordinates. Coordinates use the same system as the `screen` frame in a snapshot — iOS = pt, Android = px (not dp). Prefer a selector whenever one is available. On iOS with the in-app engine, a point off the screen or on the software keyboard fails (the in-app engine cannot press keys — close the keyboard with `pressEnter` first), and an element clipped out of its scroll container is not activated even if its frame contains the point. |
 | `tap(sel, scroll: .noScroll)` | Taps without scrolling, even inside a `withScrollDown { }` block. |
 | `tapAppIcon(name?)` | Taps the app icon on the home screen. Name defaults to the app profile's `appName` when omitted. |
 
@@ -58,6 +58,16 @@ tap(x: 120, y: 640)                    // only when no selector is available
   |---|---|
   | Writing a scenario (kept long-term) | Prefer a selector. Coordinates are a last resort — they hit whatever is there once the layout moves. |
   | Ad-hoc exploration | A selector is still preferred, but coordinates are fine if they resolve faster. |
+- **`settle: false` skips the wait for the screen to settle after this one command.** Normally a command
+  waits for the screen to settle before returning (the bridge's settle wait and fleetest's comparison of
+  the element tree after the command; each wait has an upper limit), so the next step sees the final positions. With `settle: false`
+  those post-action waits are skipped for that call only, so the command returns sooner and the next step may
+  see a screen that is still moving (positions can be off). Use it when speed matters more and the next step
+  does not depend on final positions. Waits that verify the result (for example the typed text being read back,
+  or the orientation actually changing) and waits before the action are kept. Commands that take it: `tap`
+  (selector and `x:y:`), `doubleTap`, `hold`, `type`, `clearInput`, `pressEnter`, `hideKeyboard`, `back`,
+  `rotateTo`, `swipe*`, `flick*`, `scroll*`, `scrollTo*`, `pinchOut` / `pinchIn`, `gesture`. It goes after the
+  command-specific arguments and before `waitSeconds:`.
 
 ### Link
 - [index](../../index.md)

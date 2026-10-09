@@ -53,7 +53,7 @@ extension MCPServer {
 
     static let batchStepBuilders: [String: BatchStepBuilder] = [
         "tap": BatchStepBuilder(
-            keys: ["selector", "holdSeconds", "maxGestureSeconds", "waitSeconds", "scroll", "maxSwipes",
+            keys: ["selector", "holdSeconds", "maxGestureSeconds", "settle", "waitSeconds", "scroll", "maxSwipes",
                    "x", "y", "linkText"]
         ) { raw in
             let hold = raw["holdSeconds"] as? Double ?? FlowStep.defaultTapHoldSeconds
@@ -75,7 +75,7 @@ extension MCPServer {
                         + " drop one (a selector survives a layout change, coordinates do not)")
                 }
                 let step = FlowStep(action: "tap", duration: duration,
-                                    maxGestureSeconds: maxGestureSeconds, x: x, y: y)
+                                    maxGestureSeconds: maxGestureSeconds, settle: batchSettle(raw), x: x, y: y)
                 return (step, "tap (\(FTSeconds.format(x)), \(FTSeconds.format(y)))")
             }
             if raw["x"] != nil || raw["y"] != nil {
@@ -88,6 +88,7 @@ extension MCPServer {
                                 direction: search.direction,
                                 timeout: raw["waitSeconds"] as? Double, maxSwipes: search.maxSwipes,
                                 duration: duration, maxGestureSeconds: maxGestureSeconds,
+                                settle: batchSettle(raw),
                                 linkText: raw["linkText"] as? String)
             return (step, "tap \"\(selector.text)\"")
         },
@@ -99,7 +100,7 @@ extension MCPServer {
                                 timeout: raw["waitSeconds"] as? Double, maxSwipes: search.maxSwipes)
             return (step, "select \"\(selector.text)\"")
         },
-        "type": BatchStepBuilder(keys: ["selector", "text", "replace", "waitSeconds", "scroll", "maxSwipes"]) { raw in
+        "type": BatchStepBuilder(keys: ["selector", "text", "replace", "settle", "waitSeconds", "scroll", "maxSwipes"]) { raw in
             let replace = raw["replace"] as? Bool == true
             // **空文字は replace: true のときだけ通す**: 欄を空にする形で、DSL の
             // `type(_:_:replace:)` と `ft_type` が同じことをする(断ると「シナリオに書ける行が
@@ -113,61 +114,66 @@ extension MCPServer {
             var step = FlowStep(action: "type", locator: selector?.primary,
                                 fallbacks: selector.flatMap(batchFallbacks), text: text,
                                 direction: search.direction,
-                                timeout: raw["waitSeconds"] as? Double, maxSwipes: search.maxSwipes)
+                                timeout: raw["waitSeconds"] as? Double, maxSwipes: search.maxSwipes,
+                                settle: batchSettle(raw))
             step.replace = replace ? true : nil
             let target = selector.map { " \"\($0.text)\"" } ?? ""
             let suffix = replace ? " (replace)" : ""
             return (step, "type\(target) \"\(text)\"\(suffix)")
         },
-        "pressEnter": BatchStepBuilder(keys: []) { _ in (FlowStep(action: "pressEnter"), "pressEnter") },
-        "rotateTo": BatchStepBuilder(keys: ["orientation"]) { raw in
+        "pressEnter": BatchStepBuilder(keys: ["settle"]) { raw in
+            (FlowStep(action: "pressEnter", settle: batchSettle(raw)), "pressEnter")
+        },
+        "rotateTo": BatchStepBuilder(keys: ["orientation", "settle"]) { raw in
             guard let text = raw["orientation"] as? String,
                   let orientation = FTOrientation.parse(text) else {
                 throw MCPError("rotateTo takes .portrait or .landscape")
             }
-            var step = FlowStep(action: "rotateTo")
+            var step = FlowStep(action: "rotateTo", settle: batchSettle(raw))
             step.direction = orientation.rawValue
             return (step, "rotateTo .\(orientation.rawValue)")
         },
-        "hideKeyboard": BatchStepBuilder(keys: []) { _ in
-            (FlowStep(action: "hideKeyboard"), "hideKeyboard")
+        "hideKeyboard": BatchStepBuilder(keys: ["settle"]) { raw in
+            (FlowStep(action: "hideKeyboard", settle: batchSettle(raw)), "hideKeyboard")
         },
-        "clearInput": BatchStepBuilder(keys: ["selector", "waitSeconds", "scroll", "maxSwipes"]) { raw in
+        "clearInput": BatchStepBuilder(keys: ["selector", "settle", "waitSeconds", "scroll", "maxSwipes"]) { raw in
             let selector = try optionalBatchSelector(raw)
             let search = try batchSearch(raw, command: "clearInput", hasSelector: selector != nil)
             let step = FlowStep(action: "clearInput", locator: selector?.primary,
                                 fallbacks: selector.flatMap(batchFallbacks),
                                 direction: search.direction,
-                                timeout: raw["waitSeconds"] as? Double, maxSwipes: search.maxSwipes)
+                                timeout: raw["waitSeconds"] as? Double, maxSwipes: search.maxSwipes,
+                                settle: batchSettle(raw))
             return (step, selector.map { "clearInput \"\($0.text)\"" } ?? "clearInput")
         },
-        "swipe": BatchStepBuilder(keys: ["direction", "lightSettle"]) { raw in
+        "swipe": BatchStepBuilder(keys: ["direction", "settle"]) { raw in
             guard let text = raw["direction"] as? String, let direction = FTSwipeDirection(rawValue: text)
             else {
                 throw MCPError("swipe requires direction (one of up/down/left/right — finger direction)")
             }
             return (FlowStep(action: "swipe", direction: direction.rawValue,
-                             lightSettle: raw["lightSettle"] as? Bool), "swipe \(direction.rawValue)")
+                             settle: batchSettle(raw)), "swipe \(direction.rawValue)")
         },
-        "doubleTap": BatchStepBuilder(keys: ["selector", "waitSeconds"]) { raw in
+        "doubleTap": BatchStepBuilder(keys: ["selector", "settle", "waitSeconds"]) { raw in
             let selector = try optionalBatchSelector(raw)
             let step = FlowStep(action: "doubleTap", locator: selector?.primary,
                                 fallbacks: selector.flatMap(batchFallbacks),
-                                timeout: raw["waitSeconds"] as? Double)
+                                timeout: raw["waitSeconds"] as? Double,
+                                settle: batchSettle(raw))
             return (step, selector.map { "doubleTap \"\($0.text)\"" } ?? "doubleTap")
         },
         "pinchOut": BatchStepBuilder(
-            keys: ["selector", "scale", "durationSeconds", "maxGestureSeconds", "waitSeconds"]
+            keys: ["selector", "scale", "durationSeconds", "maxGestureSeconds", "settle", "waitSeconds"]
         ) {
             try batchPinchStep("pinchOut", defaultScale: FlowStep.defaultPinchOutScale, raw: $0)
         },
         "pinchIn": BatchStepBuilder(
-            keys: ["selector", "scale", "durationSeconds", "maxGestureSeconds", "waitSeconds"]
+            keys: ["selector", "scale", "durationSeconds", "maxGestureSeconds", "settle", "waitSeconds"]
         ) {
             try batchPinchStep("pinchIn", defaultScale: FlowStep.defaultPinchInScale, raw: $0)
         },
         "swipeBy": BatchStepBuilder(
-            keys: ["selector", "dxRatio", "dyRatio", "durationSeconds", "maxGestureSeconds", "waitSeconds"]
+            keys: ["selector", "dxRatio", "dyRatio", "durationSeconds", "maxGestureSeconds", "settle", "waitSeconds"]
         ) { raw in
             guard let dxRatio = raw["dxRatio"] as? Double, let dyRatio = raw["dyRatio"] as? Double else {
                 throw MCPError("swipeBy requires dxRatio and dyRatio")
@@ -179,12 +185,13 @@ extension MCPServer {
                                 timeout: raw["waitSeconds"] as? Double,
                                 duration: duration == FlowStep.defaultSwipeDurationSeconds ? nil : duration,
                                 maxGestureSeconds: raw["maxGestureSeconds"] as? Double,
+                                settle: batchSettle(raw),
                                 dxRatio: dxRatio, dyRatio: dyRatio)
             let target = selector.map { " \"\($0.text)\"" } ?? ""
             return (step, "swipeBy\(target) (\(dxRatio), \(dyRatio))")
         },
         "swipeElementToElement": BatchStepBuilder(
-            keys: ["selector", "to", "durationSeconds", "maxGestureSeconds"]
+            keys: ["selector", "to", "durationSeconds", "maxGestureSeconds", "settle"]
         ) { raw in
             let from = try requiredBatchSelector(raw, command: "swipeElementToElement")
             guard let toText = raw["to"] as? String, !toText.isEmpty else {
@@ -195,13 +202,14 @@ extension MCPServer {
             let step = FlowStep(action: "swipeElementToElement", locator: from.primary,
                                 fallbacks: batchFallbacks(from), endLocator: to.primary,
                                 duration: duration == FlowStep.defaultSwipeDurationSeconds ? nil : duration,
-                                maxGestureSeconds: raw["maxGestureSeconds"] as? Double)
+                                maxGestureSeconds: raw["maxGestureSeconds"] as? Double,
+                                settle: batchSettle(raw))
             return (step, "swipeElementToElement \"\(from.text)\" → \"\(to.text)\"")
         },
         // 座標どうしのドラッグ。DSL と同じ StepExecutor の1アクション(`tap x: y:` と同じ扱い =
         // シナリオ行へ 1:1 で書き出せるので「通ったバッチはシナリオ行になる」は保たれる)
         "swipePointToPoint": BatchStepBuilder(
-            keys: ["startX", "startY", "endX", "endY", "durationSeconds", "maxGestureSeconds"]
+            keys: ["startX", "startY", "endX", "endY", "durationSeconds", "maxGestureSeconds", "settle"]
         ) { raw in
             guard let startX = raw["startX"] as? Double, let startY = raw["startY"] as? Double,
                   let endX = raw["endX"] as? Double, let endY = raw["endY"] as? Double else {
@@ -211,12 +219,13 @@ extension MCPServer {
             let step = FlowStep(action: "swipePointToPoint",
                                 duration: duration == FlowStep.defaultSwipeDurationSeconds ? nil : duration,
                                 maxGestureSeconds: raw["maxGestureSeconds"] as? Double,
+                                settle: batchSettle(raw),
                                 x: startX, y: startY, toX: endX, toY: endY)
             return (step, "swipePointToPoint (\(FTSeconds.format(startX)), \(FTSeconds.format(startY)))"
                 + " → (\(FTSeconds.format(endX)), \(FTSeconds.format(endY)))")
         },
         "scrollTo": BatchStepBuilder(
-            keys: ["selector", "direction", "lightSettle", "maxSwipes", "scrollFrame"]
+            keys: ["selector", "direction", "settle", "maxSwipes", "scrollFrame"]
         ) { raw in
             let selector = try requiredBatchSelector(raw, command: "scrollTo")
             guard let direction = FTScrollDirection(rawValue: raw["direction"] as? String ?? "down") else {
@@ -225,35 +234,40 @@ extension MCPServer {
             let step = FlowStep(action: "scrollTo", locator: selector.primary,
                                 fallbacks: batchFallbacks(selector), direction: direction.swipe.rawValue,
                                 maxSwipes: raw["maxSwipes"] as? Int ?? FlowStep.defaultMaxSwipes,
-                                lightSettle: raw["lightSettle"] as? Bool,
+                                settle: batchSettle(raw),
                                 scrollFrame: try batchScrollFrame(raw))
             return (step, "scrollTo \"\(selector.text)\"")
         },
-        "scrollDown": BatchStepBuilder(keys: ["repeat", "lightSettle", "scrollFrame"]) {
+        "scrollDown": BatchStepBuilder(keys: ["repeat", "settle", "scrollFrame"]) {
             try batchScrollStep(.down, raw: $0)
         },
-        "scrollUp": BatchStepBuilder(keys: ["repeat", "lightSettle", "scrollFrame"]) {
+        "scrollUp": BatchStepBuilder(keys: ["repeat", "settle", "scrollFrame"]) {
             try batchScrollStep(.up, raw: $0)
         },
-        "scrollRight": BatchStepBuilder(keys: ["repeat", "lightSettle", "scrollFrame"]) {
+        "scrollRight": BatchStepBuilder(keys: ["repeat", "settle", "scrollFrame"]) {
             try batchScrollStep(.right, raw: $0)
         },
-        "scrollLeft": BatchStepBuilder(keys: ["repeat", "lightSettle", "scrollFrame"]) {
+        "scrollLeft": BatchStepBuilder(keys: ["repeat", "settle", "scrollFrame"]) {
             try batchScrollStep(.left, raw: $0)
         },
-        "scrollToBottom": BatchStepBuilder(keys: ["maxSwipes", "lightSettle", "scrollFrame"]) {
+        "scrollToBottom": BatchStepBuilder(keys: ["maxSwipes", "settle", "scrollFrame"]) {
             try batchScrollEdgeStep(.down, name: "scrollToBottom", raw: $0)
         },
-        "scrollToTop": BatchStepBuilder(keys: ["maxSwipes", "lightSettle", "scrollFrame"]) {
+        "scrollToTop": BatchStepBuilder(keys: ["maxSwipes", "settle", "scrollFrame"]) {
             try batchScrollEdgeStep(.up, name: "scrollToTop", raw: $0)
         },
-        "scrollToRightEdge": BatchStepBuilder(keys: ["maxSwipes", "lightSettle", "scrollFrame"]) {
+        "scrollToRightEdge": BatchStepBuilder(keys: ["maxSwipes", "settle", "scrollFrame"]) {
             try batchScrollEdgeStep(.right, name: "scrollToRightEdge", raw: $0)
         },
-        "scrollToLeftEdge": BatchStepBuilder(keys: ["maxSwipes", "lightSettle", "scrollFrame"]) {
+        "scrollToLeftEdge": BatchStepBuilder(keys: ["maxSwipes", "settle", "scrollFrame"]) {
             try batchScrollEdgeStep(.left, name: "scrollToLeftEdge", raw: $0)
         },
     ]
+
+    /// `settle: false` だけを FlowStep へ運ぶ(true は既定 = nil)
+    private static func batchSettle(_ raw: [String: Any]) -> Bool? {
+        raw["settle"] as? Bool == false ? false : nil
+    }
 
     private static func requiredBatchSelector(_ raw: [String: Any], command: String) throws -> FTSelector {
         guard let text = raw["selector"] as? String, !text.isEmpty else {
@@ -306,6 +320,7 @@ extension MCPServer {
                             timeout: raw["waitSeconds"] as? Double,
                             duration: duration == FlowStep.defaultPinchDurationSeconds ? nil : duration,
                             maxGestureSeconds: raw["maxGestureSeconds"] as? Double,
+                            settle: batchSettle(raw),
                             scale: scale)
         let target = selector.map { " \"\($0.text)\"" } ?? ""
         return (step, "\(action)\(target) x\(scale)")
@@ -315,7 +330,7 @@ extension MCPServer {
         throws -> (step: FlowStep, summary: String) {
         let times = raw["repeat"] as? Int ?? 1
         let step = FlowStep(action: "scroll", direction: direction.swipe.rawValue,
-                            maxSwipes: max(1, times), lightSettle: raw["lightSettle"] as? Bool,
+                            maxSwipes: max(1, times), settle: batchSettle(raw),
                             scrollFrame: try batchScrollFrame(raw))
         let name = "scroll\(direction.rawValue.capitalized)"
         return (step, times > 1 ? "\(name) ×\(times)" : name)
@@ -325,7 +340,7 @@ extension MCPServer {
                                             raw: [String: Any]) throws -> (step: FlowStep, summary: String) {
         let step = FlowStep(action: "scrollToEdge", direction: direction.swipe.rawValue,
                             maxSwipes: raw["maxSwipes"] as? Int ?? FlowStep.defaultMaxEdgeSwipes,
-                            lightSettle: raw["lightSettle"] as? Bool,
+                            settle: batchSettle(raw),
                             scrollFrame: try batchScrollFrame(raw))
         return (step, name)
     }

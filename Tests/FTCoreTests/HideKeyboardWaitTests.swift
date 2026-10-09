@@ -88,7 +88,7 @@ final class HideKeyboardWaitTests: XCTestCase {
         let start = try XCTUnwrap(source.range(of: "public func hideKeyboard("))
         let end = try XCTUnwrap(source.range(of: "\n}\n", range: start.upperBound..<source.endIndex))
         let body = source[start.upperBound..<end.lowerBound]
-        XCTAssertTrue(body.contains("FlowStep(action: \"hideKeyboard\")") && body.contains(".perform(step:"),
+        XCTAssertTrue(body.contains("FlowStep(action: \"hideKeyboard\"") && body.contains(".perform(step:"),
                       "hideKeyboard() が executor を通っていない")
         XCTAssertFalse(body.contains("performCustom"), "ドライバを直に呼んでいる")
     }

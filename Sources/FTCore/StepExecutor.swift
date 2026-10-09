@@ -681,8 +681,8 @@ public final class StepExecutor {
     /// プライマリ → フォールバック → 指紋照合(アクションのみ)
     public func execute(_ original: FlowStep,
                         fingerprint rawFingerprint: LocatorFingerprint? = nil) async -> StepOutcome {
-        // nil でも withValue で入れる = 外側のステップの上書きを持ち越さない
-        await LightSettleOverride.$current.withValue(original.lightSettle) {
+        // 常に withValue で入れる = 外側のステップの上書きを持ち越さない
+        await SettleOverride.$skip.withValue(original.settle == false) {
             await executeStep(original, fingerprint: rawFingerprint)
         }
     }

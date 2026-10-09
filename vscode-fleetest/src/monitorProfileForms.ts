@@ -122,7 +122,7 @@ export function validateNewProjectName(name: string, existing: readonly string[]
 
 /** 実行プロファイル設定フォームのフィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
  * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、
- * iosLightSettle / iosPreActionPing は「iOS」セクションのサブオプション
+ * iosPreActionPing は「iOS」セクションのサブオプション
  * (親チェックボックスの状態に関わらず独立して保持・保存する。表示上の非表示切替は
  * runProfilesTab.js の責務)。fmTextOcclusionCheck/screenLooksLike/ocrTextOcclusionCheck は
  * 「Advanced Features」セクションの独立トグル(親チェックボックスは無い。fmTextOcclusionCheck は
@@ -162,7 +162,6 @@ export interface RunProfileFormFields {
    * Swift 側は RunProfileDocument.preferCheckStateClassifier */
   readonly preferCheckStateClassifier: boolean;
   readonly iosInappEngine: boolean;
-  readonly iosLightSettle: boolean;
   /// **既定 true**。domInterop の委譲イベント直前にランナーへ1回問い合わせてから撃つ
   /// (attach セッションの静かなイベント欠落の防御。Swift 側は iosPreActionPing → FT_PRE_ACTION_PING)
   readonly iosPreActionPing: boolean;
@@ -194,7 +193,7 @@ export interface RunProfileFormFields {
  * (0.5 のようなスキーマ違反値もそのまま表示し、整数化はしない)。defaultTimeout は GUI のフォーム欄では
  * 扱わない(CLI `--set defaultTimeout=` と手編集のためにキーとしては有効なまま。
  * updateRunProfileInObject の `{ ...source }` がそのまま保つ)。recordFailuresOnly/
- * recordFullResolution/iosLightSettle/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1000)。
+ * recordFullResolution/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1000)。
  * heal/screenLooksLike/fmTextOcclusionCheck/ocrTextOcclusionCheck/preferCheckStateClassifier/containerInference/
  * homeOnStart/playProtectBypass/record はスキーマ既定と合わせ既定 true。
  */
@@ -216,7 +215,6 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const screenLooksLike = typeof source.screenLooksLike === "boolean" ? source.screenLooksLike : true;
   const containerInference = typeof source.containerInference === "boolean" ? source.containerInference : true;
   const iosInappEngine = typeof source.iosInappEngine === "boolean" ? source.iosInappEngine : true;
-  const iosLightSettle = typeof source.iosLightSettle === "boolean" ? source.iosLightSettle : false;
   const iosPreActionPing = typeof source.iosPreActionPing === "boolean" ? source.iosPreActionPing : true;
   const homeOnStart = typeof source.homeOnStart === "boolean" ? source.homeOnStart : true;
   const playProtectBypass = typeof source.playProtectBypass === "boolean" ? source.playProtectBypass : true;
@@ -279,7 +277,6 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     ocrTextOcclusionCheck,
     preferCheckStateClassifier,
     iosInappEngine,
-    iosLightSettle,
     iosPreActionPing,
     homeOnStart,
     playProtectBypass,
@@ -311,7 +308,7 @@ export type RunProfileUpdateResult =
  * recordBitrateKbps は空文字ならキー削除、正の整数文字列以外はエラー。
  * devices は fields.devices の順に並べ直し、既存 devices 配列の同名エントリ(未知キー込み)を
  * 再利用する(新規名は { name } のみ追加。同名重複があれば最初の1件を採用)。
- * record/recordFailuresOnly/recordFullResolution/iosLightSettle/enableAnimations は false のとき
+ * record/recordFailuresOnly/recordFullResolution/enableAnimations は false のとき
  * キー自体を書かない
  * (既定値のノイズを既存プロファイルに足さない。parseRunProfileForForm の「欠落→false」と対で
  * round-trip が安定する)。
@@ -350,7 +347,7 @@ export function updateRunProfileInObject(
   result.playProtectBypass = fields.playProtectBypass;  // 同上(既定 true 側)
   result.record = fields.record;  // 同上(既定 true 側。CLI の `doc.record ?? true` と一致)
   for (const key of [
-    "recordFailuresOnly", "recordFullResolution", "iosLightSettle", "recoverCpuFallbackToGpu",
+    "recordFailuresOnly", "recordFullResolution", "recoverCpuFallbackToGpu",
     "enableAnimations",
   ] as const) {
     if (fields[key]) {

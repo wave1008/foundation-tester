@@ -401,6 +401,7 @@ public final class AndroidDriver: AppDriver {
     /// ルートが無い等で失敗したときだけ 800ms へ落ちる(整定ゼロで進むと直後の
     /// snapshot が遷移前の画面を掴むため、黙って素通ししない)。
     private func settleViaBridge() async {
+        if SettleOverride.skip { return }  // settle: false = 操作後の整定待ちを全部飛ばす(800ms の縮退も含む)
         do {
             try await withBridge { try await $0.settle() }
         } catch {

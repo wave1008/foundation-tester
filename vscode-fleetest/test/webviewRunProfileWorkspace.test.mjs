@@ -108,7 +108,6 @@ const RUN_PROFILE_FIELDS = {
   ocrTextOcclusionCheck: true,
   preferCheckStateClassifier: true,
   iosInappEngine: true,
-  iosLightSettle: false,
   homeOnStart: true,
   enableAnimations: false,
   reportDir: "reports",

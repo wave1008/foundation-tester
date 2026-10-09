@@ -887,10 +887,11 @@ public struct FTElement {
     @discardableResult
     public func tap(holdSeconds: Double = FlowStep.defaultTapHoldSeconds,
                     maxGestureSeconds: Double? = nil,
+                    settle: Bool = true,
                     file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         guard let imageLabel else {
             return tapImpl(selector, holdSeconds: holdSeconds, maxGestureSeconds: maxGestureSeconds,
-                           waitSeconds: nil, scroll: nil,
+                           settle: settle, waitSeconds: nil, scroll: nil,
                            maxSwipes: nil, containerInference: nil, file: file, line: line)
         }
         guard let imageFrame else {
@@ -903,6 +904,7 @@ public struct FTElement {
         let x = imageFrame.x + imageFrame.width / 2
         let y = imageFrame.y + imageFrame.height / 2
         coordinateTap(x: x, y: y, holdSeconds: holdSeconds, maxGestureSeconds: maxGestureSeconds,
+                      settle: settle,
                       description: "tap image \"\(imageLabel)\" (\(String(format: "%.1f", x)), \(String(format: "%.1f", y)))",
                       file: file, line: line)
         return self
@@ -913,10 +915,11 @@ public struct FTElement {
     /// **findImage / findImages で掴んだ要素は入力せずに失敗する** —— 書けるセレクタを持たない(飾りの名前は
     /// 引き直すと必ず落ちる)うえ、座標へは入力できない。`tap()` で焦点を立ててから `type(text)` と書く
     @discardableResult
-    public func type(_ text: String, replace: Bool = false, waitSeconds: Double? = nil,
+    public func type(_ text: String, replace: Bool = false, settle: Bool = true,
+                     waitSeconds: Double? = nil,
                      file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         guard let imageLabel else {
-            return typeImpl(selector, text, replace: replace, waitSeconds: waitSeconds,
+            return typeImpl(selector, text, replace: replace, settle: settle, waitSeconds: waitSeconds,
                             scroll: nil, maxSwipes: nil, file: file, line: line)
         }
         FTRuntime.requireCore(command: "type").performCustom(

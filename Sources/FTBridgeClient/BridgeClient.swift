@@ -30,8 +30,6 @@ public final class BridgeClient: AppDriver, Sendable {
     /// テスト seam(下の internal init)経由でのみ短縮注入できる
     let interactionTimeout: TimeInterval
     let sessionTimeout: TimeInterval
-    /// 簡易整定モード(スワイプ・スクロールでも XCTest の待ちを飛ばす)。init 時に FT_IOS_LIGHT_SETTLE 環境変数から確定
-    let lightSettle: Bool
     /// 実機の UDID(nil = シミュレータ)。install の simctl / devicectl 分岐と、`fleetest launch` の
     /// インストール確認(実機の /status は udid を返さない)に使う
     public let physicalUDID: String?
@@ -61,18 +59,8 @@ public final class BridgeClient: AppDriver, Sendable {
         get { mutable.withLock { $0.tokenReloader } }
         set { mutable.withLock { $0.tokenReloader = newValue } }
     }
-    /// リクエストに載せる値(簡易整定モードのときだけ `true`。それ以外はキーごと省略)。ランナーはタップ・ダブルタップ・長押しを
-    /// 既定で XCTest の待ち無しにし、スワイプ(スクロールを含む)は `skipQuiescence: true` のときだけ待ちを飛ばす(QuiescenceWait.around の doc)。
-    /// スワイプを既定で飛ばさないのは、慣性の終わりを木で見届けられず探索直後の位置がずれるため
-    /// (E2E-RN S0090・E2E-iOS S0080/S0060。docs/performance-tuning.md §8)
-    private var skipQuiescenceFlag: Bool? {
-        Self.skipQuiescence(profileLightSettle: lightSettle, override: LightSettleOverride.current)
-    }
-
-    /// コマンドの `lightSettle:` 上書きがあればそれ、無ければプロファイル。false はキーごと省略(nil)
-    static func skipQuiescence(profileLightSettle: Bool, override: Bool?) -> Bool? {
-        (override ?? profileLightSettle) ? true : nil
-    }
+    /// `SettleOverride.skip` の間だけ `X-FT-Settle: 0` を載せる(BridgeAPI.settleHeader)。nil = ヘッダ無し = 従来どおり整定
+    static func settleHeaderValue(skip: Bool) -> String? { skip ? "0" : nil }
 
     /// tap(ref:) が受け取った OKResponse.note(AppDriver.lastActionNote 参照)。
     /// tap(ref:) 呼び出しの冒頭で必ずクリアする(残ると別ステップに誤って付く)。
@@ -183,11 +171,6 @@ public final class BridgeClient: AppDriver, Sendable {
         self.mutable = Mutex(Mutable(token: token, tokenReloader: {
             (try? RepoRoot.find()).flatMap { BridgeEndpoint.load(port: port, repoRoot: $0).token }
         }))
-        // 簡易整定モード(スワイプ・スクロールでも XCTest の待ちを飛ばす。既定 OFF)はプロセス単位の環境変数で有効化する
-        // (実行プロファイル iosLightSettle / CLI `--set iosLightSettle=true` を `FTCore.RunEnvironment` が
-        //  FT_IOS_LIGHT_SETTLE=1 へ注入。BridgeClient は hybrid のフォールバック経路でも生成されるため
-        //  init 引数ではなく env で統一)
-        self.lightSettle = ProcessInfo.processInfo.environment[RunEnvironmentKeys.lightSettle] == "1"
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = timeoutSeconds
         self.session = URLSession(configuration: config)
@@ -836,7 +819,7 @@ public final class BridgeClient: AppDriver, Sendable {
             try await tap(x: center.x, y: center.y)
             return
         }
-        let res: OKResponse = try await post("/tap", body: TapRequest(ref: ref, skipQuiescence: skipQuiescenceFlag),
+        let res: OKResponse = try await post("/tap", body: TapRequest(ref: ref),
                                              timeout: interactionTimeout)
         lastActionNote = res.note
         lastTapHitAreaMiss = res.hitAreaMiss
@@ -849,7 +832,7 @@ public final class BridgeClient: AppDriver, Sendable {
     }
 
     public func tap(x: Double, y: Double) async throws {
-        let _: OKResponse = try await post("/tap", body: TapRequest(x: x, y: y, skipQuiescence: skipQuiescenceFlag),
+        let _: OKResponse = try await post("/tap", body: TapRequest(x: x, y: y),
                                            timeout: interactionTimeout)
     }
 
@@ -937,7 +920,7 @@ public final class BridgeClient: AppDriver, Sendable {
         atEdgeOnLastSwipe = nil
         let response: OKResponse = try await post(
             "/swipe",
-            body: SwipeRequest(direction: direction, skipQuiescence: skipQuiescenceFlag,
+            body: SwipeRequest(direction: direction,
                                scroll: intent == .gesture ? nil : true,
                                durationMs: Self.strokeMs(for: intent, path: path),
                                fling: Self.fling(for: intent),
@@ -1008,7 +991,7 @@ public final class BridgeClient: AppDriver, Sendable {
     }
 
     public func doubleTap(x: Double, y: Double) async throws {
-        let _: OKResponse = try await post("/doubletap", body: TapRequest(x: x, y: y, skipQuiescence: skipQuiescenceFlag),
+        let _: OKResponse = try await post("/doubletap", body: TapRequest(x: x, y: y),
                                            timeout: interactionTimeout)
     }
 
@@ -1072,14 +1055,12 @@ public final class BridgeClient: AppDriver, Sendable {
             try await press(x: center.x, y: center.y, duration: duration)
             return
         }
-        let _: OKResponse = try await post("/press", body: PressRequest(ref: ref, duration: duration,
-                                                                        skipQuiescence: skipQuiescenceFlag),
+        let _: OKResponse = try await post("/press", body: PressRequest(ref: ref, duration: duration),
                                            timeout: timeout(forDuration: duration))
     }
 
     public func press(x: Double, y: Double, duration: Double) async throws {
-        let _: OKResponse = try await post("/press", body: PressRequest(x: x, y: y, duration: duration,
-                                                                        skipQuiescence: skipQuiescenceFlag),
+        let _: OKResponse = try await post("/press", body: PressRequest(x: x, y: y, duration: duration),
                                            timeout: timeout(forDuration: duration))
     }
 
@@ -1191,6 +1172,9 @@ public final class BridgeClient: AppDriver, Sendable {
         }
         if let token {
             req.setValue(token, forHTTPHeaderField: BridgeAPI.bridgeTokenHeader)
+        }
+        if let v = Self.settleHeaderValue(skip: SettleOverride.skip) {
+            req.setValue(v, forHTTPHeaderField: BridgeAPI.settleHeader)
         }
         let (data, response) = try await send(req)
         guard (response as? HTTPURLResponse)?.statusCode == 401 else { return (data, response) }

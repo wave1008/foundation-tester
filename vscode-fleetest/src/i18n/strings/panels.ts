@@ -143,10 +143,6 @@ export const panelsStrings = {
     ja: "高速なinappエンジンを使用する（Simulatorのみ有効）",
     en: "Use the fast in-app engine (Simulator only)",
   },
-  "panels.runProfile.iosLightSettleLabel": {
-    ja: "簡易整定モードを有効にする（スワイプ・スクロールの完了イベントを待たないので高速化します。最終的な位置はズレる場合があります）",
-    en: "Enable light settle mode (does not wait for swipe and scroll completion events, which speeds things up; the final position may drift)",
-  },
   "panels.runProfile.iosPreActionPingLabel": {
     ja: "WebView画面は直前の接続確認(ランナーへの問い合わせ)を行い安定性を向上させる",
     en: "On WebView screens, ping the runner right before each action to improve stability",

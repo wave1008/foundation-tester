@@ -180,7 +180,7 @@ extension MCPServer {
         let resolved = try ProfileResolver.resolve(project: project, runName: profileName)
         prologue.append(contentsOf: resolved.warnings.map { "⚠️ \($0)" })
         // CLI の profile 経路(ProfileRunner/ApiRunCommand)と同じ1箇所(FTCore.RunEnvironment)を
-        // 通す —— Play Protect のキルスイッチだけでなく iosLightSettle/iosPreActionPing/
+        // 通す —— Play Protect のキルスイッチだけでなく iosPreActionPing/
         // enableAnimations も同時に注入する
         RunEnvironment.apply(resolved)
         // **ブリッジ準備より前に appPath の原本を apps/ へ運ぶ**(ProfileRunner/ApiRunCommand と同じ)。

@@ -517,7 +517,7 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertEqual(
             RemoteRunArgs.build(project: "E2E", profile: "ios-inapp",
                                 scenarios: ["Login.S0010", "Login.S0020"], folders: ["smoke"],
-                                setOverrides: ["heal": true, "iosLightSettle": true, "enableAnimations": true],
+                                setOverrides: ["heal": true, "iosPreActionPing": true, "enableAnimations": true],
                                 noLPT: true, lptHistoryRuns: 3,
                                 performanceMode: true,
                                 remoteJUnitPath: "/remote/junit.xml",
@@ -527,7 +527,7 @@ final class RemoteDispatchTests: XCTestCase {
                 "--report-dir", "/remote/reports",
                 "--scenario", "Login.S0010", "--scenario", "Login.S0020",
                 "--folder", "smoke",
-                "--set", "enableAnimations=true", "--set", "heal=true", "--set", "iosLightSettle=true",
+                "--set", "enableAnimations=true", "--set", "heal=true", "--set", "iosPreActionPing=true",
                 "--no-lpt", "--lpt-history-runs", "3", "--performance",
                 "--junit", "/remote/junit.xml",
             ])

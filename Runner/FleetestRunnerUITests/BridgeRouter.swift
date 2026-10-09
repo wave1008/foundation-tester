@@ -53,6 +53,13 @@ final class BridgeRouter {
     // 書いていたのは **350ms ガード込みの値を素のコストと取り違えた誤り**だった。
     private var settlePending = false
 
+    /// 処理中のリクエストが `X-FT-Settle: 0` を持つか(handle の冒頭で毎回入れ直す。リクエストは main で直列)。
+    /// true の間は操作後の整定待ち(settlePending の立て込み・XCTest の quiescence 待ち)を飛ばす。
+    /// **GET /snapshot ではヘッダを見ない** —— settlePending を立てたのは前の操作(前のステップでありうる)なので、
+    /// ここで captureSettled を省くと前の操作の整定を次のステップの settle: false が打ち消す
+    /// (settle: false の操作は settlePending を立てないので、自分の分は元から待たない)
+    private var skipSettle = false
+
     /// この snapshot 1回に適用する要素上限(`?max=`)。**要求ごとに handleSnapshot が入れ直す**
     /// ので持ち越しは起きない(接続は1本ずつ順に処理される = 別要求と混ざらない)
     var snapshotElementLimit = BridgeAPI.maxSnapshotElements
@@ -87,6 +94,7 @@ final class BridgeRouter {
 
     func handle(_ request: BridgeHTTPServer.Request) -> BridgeHTTPServer.Response {
         InterruptionGuard.shared.reset()
+        skipSettle = request.skipSettle
         do {
             var response: BridgeHTTPServer.Response
             switch (request.method, request.path) {
@@ -122,7 +130,7 @@ final class BridgeRouter {
             default:
                 return .error("not found: \(request.method) \(request.path)", status: 404)
             }
-            if request.method == "POST", Self.mutatingPaths.contains(request.path) {
+            if request.method == "POST", Self.mutatingPaths.contains(request.path), !skipSettle {
                 settlePending = true
             }
             // **アラートに遮られて XCTest が諦めた操作を 200 にしない**(issue は record で握りつぶされる)。
@@ -493,7 +501,9 @@ final class BridgeRouter {
                                              isLandscape: XCUIDevice.shared.orientation.isLandscape) {
             throw refuseLandscapeSpringBoardTap()
         }
-        coordinate(systemUIAnchor(), CGPoint(x: frame.midX, y: frame.midY)).tap()
+        skippingQuiescenceIfRequested {
+            coordinate(systemUIAnchor(), CGPoint(x: frame.midX, y: frame.midY)).tap()
+        }
         return .json(OKResponse())
     }
 
@@ -535,11 +545,13 @@ final class BridgeRouter {
     private func handleSystemUISwipe(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
         let app = systemUIAnchor()
-        switch req.direction {
-        case .up: app.swipeUp()
-        case .down: app.swipeDown()
-        case .left: app.swipeLeft()
-        case .right: app.swipeRight()
+        skippingQuiescenceIfRequested {
+            switch req.direction {
+            case .up: app.swipeUp()
+            case .down: app.swipeDown()
+            case .left: app.swipeLeft()
+            case .right: app.swipeRight()
+            }
         }
         return .json(OKResponse())
     }
@@ -686,7 +698,7 @@ final class BridgeRouter {
         QuiescenceWait.resetTiming()
         _ = QuiescenceWait.takeCapNote()  // 前の操作の数え残しを捨てる(応答の注記はこの操作の分だけ)
         let start = DispatchTime.now()
-        try QuiescenceWait.around(req.skipQuiescence, skipByDefault: true) {
+        try QuiescenceWait.around(skip: skipSettle, skipByDefault: true) {
             coordinate(app, point).tap()
         }
         let totalMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e6
@@ -747,6 +759,12 @@ final class BridgeRouter {
                status: 501)
     }
 
+    /// `X-FT-Settle: 0` のときだけ XCTest の待ちを飛ばす(それ以外は何も変えない = 待ちの上限を縮める cap も掛けない)。
+    /// /drag・/systemui/* 用。/type・/clear・/pressEnter には使わない(キーボード出現待ちが quiescence に依存)
+    private func skippingQuiescenceIfRequested<T>(_ body: () throws -> T) rethrows -> T {
+        try skipSettle ? QuiescenceWait.around(skip: true, body) : body()
+    }
+
     private func handleSwipe(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
         let app = try requireForegroundAppForGesture()
@@ -782,17 +800,17 @@ final class BridgeRouter {
         // 動かすことが目的で、未指定側(全画面)の挙動を変えるものではない
         if let path = req.path {
             pressDrag(app, from: CGPoint(x: path.fromX, y: path.fromY),
-                      to: CGPoint(x: path.toX, y: path.toY), velocity: velocity, skipQuiescence: req.skipQuiescence)
+                      to: CGPoint(x: path.toX, y: path.toY), velocity: velocity)
             return .json(OKResponse())
         }
         // 横向きだけ `swipeUp()` 系が不発(2026-08-31・実機 iPhone 13 landscape 844x390 実測:
         // 8方向 switch のどれも画面を動かさない。縦向きは同じ switch のままでよい)。
         // path 指定と同じ press-drag へ落とし、始点・終点は landscapeDefaultSwipe が決める
         if let (from, to) = Self.landscapeDefaultSwipe(req.direction, frame: app.frame) {
-            pressDrag(app, from: from, to: to, velocity: velocity, skipQuiescence: req.skipQuiescence)
+            pressDrag(app, from: from, to: to, velocity: velocity)
             return .json(OKResponse())
         }
-        QuiescenceWait.around(req.skipQuiescence) {
+        QuiescenceWait.around(skip: skipSettle) {
             switch (req.direction, velocity) {
             case (.up, nil): app.swipeUp()
             case (.down, nil): app.swipeDown()
@@ -810,10 +828,10 @@ final class BridgeRouter {
     /// path 指定 swipe と横向き既定 swipe が共有する press-drag(velocity nil = 素の
     /// `press(forDuration:thenDragTo:)`。既定速度を模倣しない理由は handleSwipe のコメント)
     private func pressDrag(_ app: XCUIApplication, from: CGPoint, to: CGPoint,
-                           velocity: XCUIGestureVelocity?, skipQuiescence: Bool?) {
+                           velocity: XCUIGestureVelocity?) {
         let fromCoordinate = coordinate(app, from)
         let toCoordinate = coordinate(app, to)
-        QuiescenceWait.around(skipQuiescence) {
+        QuiescenceWait.around(skip: skipSettle) {
             if let velocity {
                 fromCoordinate.press(forDuration: BridgeRouter.gestureMinSeconds, thenDragTo: toCoordinate,
                                       withVelocity: velocity, thenHoldForDuration: 0)
@@ -882,7 +900,7 @@ final class BridgeRouter {
             throw BridgeError(400, violation)
         }
         guard let requestedDuration = req.duration else {
-            from.press(forDuration: press, thenDragTo: to)
+            skippingQuiescenceIfRequested { from.press(forDuration: press, thenDragTo: to) }
             return .json(OKResponse())
         }
         let distance = hypot(req.toX - req.fromX, req.toY - req.fromY)
@@ -897,8 +915,10 @@ final class BridgeRouter {
         }
         // **thenHoldForDuration に正の値を渡しても慣性は消えない**(2026-08-02 実測。
         // 指を保持するだけでイベントが出ず velocity 計算が更新されない)。0 のままにすること
-        from.press(forDuration: press, thenDragTo: to,
-                   withVelocity: XCUIGestureVelocity(velocity), thenHoldForDuration: 0)
+        skippingQuiescenceIfRequested {
+            from.press(forDuration: press, thenDragTo: to,
+                       withVelocity: XCUIGestureVelocity(velocity), thenHoldForDuration: 0)
+        }
         return .json(OKResponse())
     }
 
@@ -927,7 +947,7 @@ final class BridgeRouter {
             return .json(OKResponse())
         }
         _ = QuiescenceWait.takeCapNote()
-        try QuiescenceWait.around(req.skipQuiescence, skipByDefault: true) {
+        try QuiescenceWait.around(skip: skipSettle, skipByDefault: true) {
             coordinate(app, point).doubleTap()
         }
         return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
@@ -1115,7 +1135,7 @@ final class BridgeRouter {
         let app = try requireForegroundAppForGesture()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
         _ = QuiescenceWait.takeCapNote()
-        try QuiescenceWait.around(req.skipQuiescence, skipByDefault: true) {
+        try QuiescenceWait.around(skip: skipSettle, skipByDefault: true) {
             coordinate(app, point).press(forDuration: req.duration)
         }
         return .json(OKResponse(note: QuiescenceWait.takeCapNote()))

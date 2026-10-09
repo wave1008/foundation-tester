@@ -1242,7 +1242,6 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.ocrTextOcclusionCheck === "boolean" &&
         typeof value.fields.preferCheckStateClassifier === "boolean" &&
         typeof value.fields.iosInappEngine === "boolean" &&
-        typeof value.fields.iosLightSettle === "boolean" &&
         typeof value.fields.iosPreActionPing === "boolean" &&
         typeof value.fields.homeOnStart === "boolean" &&
         typeof value.fields.enableAnimations === "boolean" &&

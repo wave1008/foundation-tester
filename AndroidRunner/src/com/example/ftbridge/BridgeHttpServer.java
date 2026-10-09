@@ -26,8 +26,10 @@ final class BridgeHttpServer {
         final String origin;
         final String secFetchSite;
         final String host;
+        /** `X-FT-Settle: 0` が付いていれば true(操作後の整定待ちを全部飛ばす)。同期相手: BridgeDTO.swift の BridgeAPI.settleHeader */
+        final boolean skipSettle;
         Request(String method, String path, String query, byte[] body,
-                String origin, String secFetchSite, String host) {
+                String origin, String secFetchSite, String host, boolean skipSettle) {
             this.method = method;
             this.path = path;
             this.query = query;
@@ -35,6 +37,7 @@ final class BridgeHttpServer {
             this.origin = origin;
             this.secFetchSite = secFetchSite;
             this.host = host;
+            this.skipSettle = skipSettle;
         }
     }
 
@@ -199,6 +202,7 @@ final class BridgeHttpServer {
         String origin = null;
         String secFetchSite = null;
         String host = null;
+        boolean skipSettle = false;
         for (int i = 1; i < lines.length; i++) {
             String line = lines[i];
             int colon = line.indexOf(':');
@@ -217,6 +221,8 @@ final class BridgeHttpServer {
                 secFetchSite = value;
             } else if (key.equalsIgnoreCase("Host")) {
                 host = value;
+            } else if (key.equalsIgnoreCase("X-FT-Settle")) {
+                skipSettle = value.equals("0");
             }
         }
         // 過大/不正な Content-Length は無制限メモリ確保・長時間読取の的になるため弾く(不正=null→400)。
@@ -229,7 +235,7 @@ final class BridgeHttpServer {
             if (n <= 0) break;
             body.write(chunk, 0, n);
         }
-        return new Request(requestLine[0], path, query, body.toByteArray(), origin, secFetchSite, host);
+        return new Request(requestLine[0], path, query, body.toByteArray(), origin, secFetchSite, host, skipSettle);
     }
 
     private static int indexOfHeaderEnd(byte[] data) {

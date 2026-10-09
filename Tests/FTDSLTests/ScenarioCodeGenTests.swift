@@ -247,21 +247,42 @@ final class ScenarioCodeGenTests: XCTestCase {
             .contains("repeat:"))
     }
 
-    /// lightSettle は true / false とも明示した値をそのまま出す(false = プロファイルが ON でもこの1回は待つ)。
-    /// 省略(nil)は出さない。引数の位置は DSL の並びと一致すること(ずれると生成物がコンパイルできない)
-    func testLightSettleIsEmittedInDSLArgumentOrder() {
-        XCTAssertTrue(render([FlowStep(action: "swipe", direction: "up", lightSettle: true)])
-            .contains("swipe(.up, lightSettle: true)"))
-        XCTAssertTrue(render([FlowStep(action: "scroll", direction: "up", maxSwipes: 3, lightSettle: false)])
-            .contains("scrollDown(repeat: 3, lightSettle: false)"))
-        XCTAssertTrue(render([FlowStep(action: "scrollToEdge", direction: "up", maxSwipes: 5, lightSettle: true)])
-            .contains("scrollToBottom(lightSettle: true, maxSwipes: 5)"))
-        XCTAssertTrue(render([FlowStep(action: "scrollTo", locator: FlowLocator(id: "footer"), direction: "up",
-                                       maxSwipes: 4, lightSettle: true)])
-            .contains("scrollTo(\"#footer\", lightSettle: true, maxSwipes: 4)"))
+    /// settle は false のときだけ `settle: false` を出す(省略 = 既定の整定あり)。
+    /// 引数の位置は DSL の並びと一致すること(ずれると生成物がコンパイルできない)
+    func testSettleFalseIsEmittedInDSLArgumentOrder() {
+        func code(_ step: FlowStep) -> String { render([step]) }
+        XCTAssertTrue(code(FlowStep(action: "swipe", direction: "up", settle: false))
+            .contains("swipe(.up, settle: false)"))
+        XCTAssertTrue(code(FlowStep(action: "scroll", direction: "up", maxSwipes: 3, settle: false))
+            .contains("scrollDown(repeat: 3, settle: false)"))
+        XCTAssertTrue(code(FlowStep(action: "scrollToEdge", direction: "up", maxSwipes: 5, settle: false))
+            .contains("scrollToBottom(settle: false, maxSwipes: 5)"))
+        XCTAssertTrue(code(FlowStep(action: "scrollTo", locator: FlowLocator(id: "footer"), direction: "up",
+                                    maxSwipes: 4, settle: false))
+            .contains("scrollTo(\"#footer\", settle: false, maxSwipes: 4)"))
+        XCTAssertTrue(code(FlowStep(action: "tap", locator: FlowLocator(id: "ok"), timeout: 2, settle: false))
+            .contains("tap(\"#ok\", settle: false, waitSeconds: 2)"))
+        XCTAssertTrue(code(FlowStep(action: "tap", settle: false, x: 10, y: 20))
+            .contains("tap(x: 10, y: 20, settle: false)"))
+        XCTAssertTrue(code(FlowStep(action: "type", locator: FlowLocator(id: "f"), text: "a", timeout: 2,
+                                    settle: false, replace: true))
+            .contains("type(\"#f\", \"a\", replace: true, settle: false, waitSeconds: 2)"))
+        XCTAssertTrue(code(FlowStep(action: "type", text: "a", settle: false))
+            .contains("type(\"a\", settle: false)"))
+        XCTAssertTrue(code(FlowStep(action: "rotateTo", direction: "landscape", settle: false))
+            .contains("rotateTo(.landscape, settle: false)"))
+        XCTAssertTrue(code(FlowStep(action: "pressEnter", settle: false)).contains("pressEnter(settle: false)"))
+        XCTAssertTrue(code(FlowStep(action: "hideKeyboard", settle: false)).contains("hideKeyboard(settle: false)"))
+        XCTAssertTrue(code(FlowStep(action: "back", settle: false)).contains("back(settle: false)"))
+        XCTAssertTrue(code(FlowStep(action: "doubleTap", locator: FlowLocator(id: "d"), timeout: 1, settle: false))
+            .contains("doubleTap(\"#d\", settle: false, waitSeconds: 1)"))
+        XCTAssertTrue(code(FlowStep(action: "swipePointToPoint", duration: 2, settle: false,
+                                    x: 1, y: 2, toX: 3, toY: 4))
+            .contains("endY: 4, durationSeconds: 2, settle: false)"))
         XCTAssertFalse(render([FlowStep(action: "swipe", direction: "up"),
-                               FlowStep(action: "scroll", direction: "up")])
-            .contains("lightSettle"))
+                               FlowStep(action: "scroll", direction: "up"),
+                               FlowStep(action: "swipe", direction: "up", settle: true)])
+            .contains("settle"))
     }
 
     /// replace: true のステップだけ `replace: true` を出し、未指定/false は既定ケースとして

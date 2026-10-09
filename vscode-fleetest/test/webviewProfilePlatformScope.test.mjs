@@ -121,7 +121,6 @@ function runProfileData(app, devices) {
       ocrTextOcclusionCheck: true,
       preferCheckStateClassifier: true,
       iosInappEngine: true,
-      iosLightSettle: false,
       iosPreActionPing: true,
       homeOnStart: true,
       playProtectBypass: true,

@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 164
+    public static let bridgeProtocolVersion = 165
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -180,6 +180,11 @@ public enum BridgeAPI {
     public static let bridgeTokenEnvKey = "FT_BRIDGE_TOKEN"
     /// トークンを運ぶ HTTP ヘッダ名
     public static let bridgeTokenHeader = "X-FT-Token"
+    /// `X-FT-Settle: 0` = このリクエストの操作後の待ち(画面の整定待ち)を全部飛ばす。無ければ従来どおり整定する。
+    /// BridgeClient が `SettleOverride.skip` の間だけ全リクエストに載せる。読み手は3つ: XCUITest ランナー(BridgeRouter)・
+    /// in-app ブリッジ(InAppHTTPServer)・Android ブリッジ(BridgeHttpServer.java = 文字列を複製。同期相手)。
+    /// 検証の待ち(回転到達・ホーム到達・打鍵の読み戻し・前面待ち)と操作前の待ちは飛ばさない
+    public static let settleHeader = "X-FT-Settle"
 
     /// 暗号論的乱数 32 バイトを16進(64文字)にしたもの
     public static func makeBridgeToken() -> String {
@@ -735,7 +740,7 @@ public struct LaunchRequest: Codable {
     public var activate: Bool?
     /// true ならプロキシ接続のみ(XCUIApplication を生成・保持するだけで launch/activate を呼ばない。
     /// simctl で起動済みのアプリに使う=FastLaunchDriver)。activate より優先。
-    /// 旧ランナーは無視して launch する(TapRequest.skipQuiescence と同じ互換方針で版は据え置き)
+    /// 旧ランナーは無視して launch する(追加 optional のため版は据え置き)
     public var attachOnly: Bool?
     public init(bundleID: String, activate: Bool? = nil, attachOnly: Bool? = nil) {
         self.bundleID = bundleID
@@ -914,7 +919,7 @@ public struct SnapshotResponse: Codable, Sendable {
     /// **要素の形から推測してはいけない**: Android は webView 型を出すが web フラグを持たないため、
     /// 推測すると「XCUITest へ委譲」と名乗って Android のデバッグを誤誘導する実害がある。
     /// 経路を知っているのは snapshot を返した本人だけなので、そこに申告させる。
-    /// 追加 optional フィールドのみなので bridgeProtocolVersion は据え置き(TapRequest.skipQuiescence と同じ方針。
+    /// 追加 optional フィールドのみなので bridgeProtocolVersion は据え置き(webViewPath と同じ方針。
     /// 旧ブリッジは返さず nil = 申告なし = 注記も出ない、で安全に縮退する)
     public var webViewPath: String?
     /// **ソフトキーボードが表示中か**(true のときだけ送る = checked/web/focused と同じ省略規約。
@@ -952,7 +957,7 @@ public struct SnapshotResponse: Codable, Sendable {
     /// **内訳が分からないと間引きの方針が妥当かを議論できない**。
     /// 落とした本人にしか分からないのでブリッジが申告する。
     /// 追加 optional フィールドのみ = 旧ブリッジは返さず nil(件数だけ出す)で安全に縮退する
-    /// (webViewPath / TapRequest.skipQuiescence と同じ方針)。**iOS の2ブリッジだけが申告する** ——
+    /// (webViewPath と同じ方針)。**iOS の2ブリッジだけが申告する** ——
     /// Android の SnapshotBuilder は tier3 を持たず、内訳の語彙が揃わない
     public var truncatedTiers: [String: Int]?
 
@@ -1031,17 +1036,10 @@ public struct TapRequest: Codable {
     public var ref: Int?
     public var x: Double?
     public var y: Double?
-    /// true = この操作の XCTest の quiescence 待ち(完了通知の待ち。fleetest の整定 = 木の比較とは別物)を飛ばす。
-    /// ホストは簡易整定モード(iosLightSettle / DSL の `lightSettle:`)のときに送る。nil = ランナーの既定(タップ・ダブルタップ・長押しは
-    /// 飛ばす・スワイプは待つ。QuiescenceWait.around)。省略可能な追加フィールドは bridgeProtocolVersion を据え置く方針
-    /// (旧ランナーは無視して通常動作・旧ホストは未指定。bump すると稼働中の旧ホスト常駐プロセスが新ランナーを stale 判定して
-    /// 再起動ループに入るため、追加フィールドでは上げない。欄の改名は別 = 版を上げる)
-    public var skipQuiescence: Bool?
-    public init(ref: Int? = nil, x: Double? = nil, y: Double? = nil, skipQuiescence: Bool? = nil) {
+    public init(ref: Int? = nil, x: Double? = nil, y: Double? = nil) {
         self.ref = ref
         self.x = x
         self.y = y
-        self.skipQuiescence = skipQuiescence
     }
 }
 
@@ -1289,8 +1287,6 @@ public enum ScrollPointReach {
 
 public struct SwipeRequest: Codable {
     public var direction: FTSwipeDirection
-    /// TapRequest.skipQuiescence と同じ(互換性の注記もそちらを参照)
-    public var skipQuiescence: Bool?
     /// **スクロールが目的**の swipe か(scrollTo / scrollToEdge / scrollDown が立てる)。
     /// DSL の `swipe` はジェスチャそのものが目的なので立てない。
     ///
@@ -1298,8 +1294,7 @@ public struct SwipeRequest: Codable {
     /// アクションで代行できるが、**ジェスチャ目的の swipe を同じ経路へ流すと、画面内の
     /// スクロール可能な親が受理してしまい、ジェスチャ検出パッドに届かないまま 200 を返す**
     /// (実測: E2E-Flutter のジェスチャ画面が黙って空振りした)。
-    /// 旧ブリッジは無視して従来動作(TapRequest.skipQuiescence と同じ互換方針で版は据え置かない —
-    /// 挙動が変わるので handleSwipe 側の変更とセットで上げる)
+    /// 旧ブリッジは無視して従来動作(挙動が変わるので handleSwipe 側の変更とセットで版を上げる)
     public var scroll: Bool?
     /// 指の移動距離(画面比)。**Android ブリッジだけが読む**。未指定はブリッジの軸別既定
     /// (縦 0.4・横 0.6 = 従来の固定座標と同一)。ホストは送らない(計測・将来の override 用の口。
@@ -1332,12 +1327,11 @@ public struct SwipeRequest: Codable {
     /// ことはできないので、端の判定はホストのループが持つ(`velocity`/`fling` が
     /// 速さのノブ)。旧ブリッジは無視して従来どおりページ送りする(正しいが遅いまま)
     public var edge: Bool?
-    public init(direction: FTSwipeDirection, skipQuiescence: Bool? = nil, scroll: Bool? = nil,
+    public init(direction: FTSwipeDirection, scroll: Bool? = nil,
                 distance: Double? = nil, durationMs: Int? = nil, fling: Bool? = nil,
                 velocity: Double? = nil, path: FTSwipePath? = nil, edge: Bool? = nil) {
         self.path = path
         self.direction = direction
-        self.skipQuiescence = skipQuiescence
         self.scroll = scroll
         self.distance = distance
         self.durationMs = durationMs
@@ -1415,15 +1409,11 @@ public struct PressRequest: Codable {
     public var x: Double?
     public var y: Double?
     public var duration: Double
-    /// TapRequest.skipQuiescence と同じ(互換性の注記もそちらを参照)
-    public var skipQuiescence: Bool?
-    public init(ref: Int? = nil, x: Double? = nil, y: Double? = nil, duration: Double,
-                skipQuiescence: Bool? = nil) {
+    public init(ref: Int? = nil, x: Double? = nil, y: Double? = nil, duration: Double) {
         self.ref = ref
         self.x = x
         self.y = y
         self.duration = duration
-        self.skipQuiescence = skipQuiescence
     }
 }
 

@@ -8,7 +8,7 @@
 // - skipping / capArmed はリクエスト処理(main queue 直列。BridgeHTTPServer 参照)からのみ触ること。
 // - 注意: type(typeText)には適用しない。キーボード出現待ちを quiescence に依存しているため
 //   (BridgeRouter.handleType のコメント参照)、スキップすると入力欠落の実害が出る。
-// - **タップ・ダブルタップ・長押しは既定で待ちを飛ばす**(QuiescenceWait.around の skipByDefault)。/drag(handleDrag)はここを通らない
+// - **タップ・ダブルタップ・長押しは既定で待ちを飛ばす**(QuiescenceWait.around の skipByDefault)。/drag と /systemui/* は `X-FT-Settle: 0` のときだけ通る(skippingQuiescenceIfRequested)
 // - **飛ばさない回(スワイプ = スクロールを含む)も、操作(QuiescenceWait.around の中)の間だけ待ちの上限を
 //   `quiescenceCapSeconds` に縮める**(cappedWait)。起動・前面化・入力の中の待ちは縮めない —— activate の中の待ちを
 //   切ると前面化そのものが完了せずホストが 45s で時間切れになった(実測)。XCTest の上限は
@@ -151,20 +151,20 @@ enum QuiescenceWait {
             ? "\(Int(quiescenceCapSeconds))s" : "unavailable (XCTest's own limit applies)")
     }
 
-    /// リクエスト単位の一時有効化(available でなければ何もしない)。`skipByDefault` はリクエストが `skipQuiescence` を言わないときの既定:
+    /// リクエスト単位の一時有効化(available でなければ何もしない)。`skip` は `X-FT-Settle: 0`(DSL の `settle: false`)。
+    /// `skipByDefault` はヘッダが無いときの既定:
     /// **タップ・ダブルタップ・長押しは true**(待ちを飛ばし、整定は木の観察 = captureSettled が担う)/
     /// **スワイプ(スクロールを含む)は false**(待ちを残す。慣性の終わりを木では見届けられず、RN の横スクロール E2E-RN S0090 が
     /// 6 回中 4 回落ちた —— 探索が対象を見つけて止まった後も慣性で流れて画面外へ出る。タップ系は 4 SUT で退行無し。
-    /// 実測と経緯は docs/performance-tuning.md §8)。`skipQuiescence: true` はどちらも飛ばす(ホストは簡易整定モード = iosLightSettle / DSL の `lightSettle:` のときにこれを送る。
-    /// 簡易整定モード = 整定を木の比較だけに任せるモードで、そのために XCTest の待ちを外すのがこの欄)
-    static func around<T>(_ skipQuiescence: Bool?, skipByDefault: Bool = false, _ body: () throws -> T) rethrows -> T {
-        guard available, skipQuiescence ?? skipByDefault else {
+    /// 実測と経緯は docs/performance-tuning.md §8)。`skip: true` はどちらも飛ばす
+    static func around<T>(skip: Bool, skipByDefault: Bool = false, _ body: () throws -> T) rethrows -> T {
+        guard available, skip || skipByDefault else {
             capArmed = true
             defer { capArmed = false }
             return try body()
         }
-        // 検証用(簡易整定モードでホストが skipQuiescence: true を送ったことの確認)。タップ系は既定で毎回ここを通るので、明示の skipQuiescence: true のときだけ出す
-        if skipQuiescence == true { NSLog("[fleetest] QuiescenceWait: skipping (light settle)") }
+        // 検証用(ヘッダで待ちが飛んだことの確認)。タップ系は既定で毎回ここを通るので、ヘッダが待ちを外させた回だけ出す
+        if skip && !skipByDefault { NSLog("[fleetest] QuiescenceWait: skipping (settle: false)") }
         skipping = true
         defer { skipping = false }
         return try body()
