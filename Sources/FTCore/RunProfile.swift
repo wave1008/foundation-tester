@@ -418,11 +418,10 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// design.md §11.2)。iOS には影響しない。同期相手: vscode-fleetest/schemas/run-profile.schema.json
     /// と src/monitorModel.ts の RunProfileFormFields
     public var locale: String?
-    /// iOS xcuitest ブリッジの高速入力(quiescence 待ちスキップ)。true で FT_FAST_INPUT=1 を
-    /// 実行環境に注入する(伝搬経路は BridgeClient.fastInput 参照)。効くのはタップ・ダブルタップ・
-    /// 長押し・スワイプ(スクロール含む)だけで **type と /drag は対象外**(FastInput.swift)。操作後の木の整定
-    /// (captureSettled)は残る。動きの激しい画面では整定前タップのフレークリスクを伴う(既定 false)
-    public var iosFastInput: Bool?
+    /// iOS xcuitest ブリッジの簡易整定モード(スワイプ・スクロールでも XCTest の待ちを飛ばす。タップ系は設定に関わらず飛ばす)。
+    /// true で FT_IOS_LIGHT_SETTLE=1 を実行環境に注入する(伝搬経路は BridgeClient.lightSettle 参照)。慣性のあるスクロールの
+    /// 直後の位置がずれうる(既定 false)
+    public var iosLightSettle: Bool?
     /// **interop WebView 画面の委譲イベント直前にランナーへ1回接続確認(木を1回読ませる)するか**(既定 true)。
     /// attach したままの XCUITest セッションは放置後の座標イベントを 200 のまま届け損なう
     /// (実測 ~13% → 接続確認で 0/50。A/B は docs/verification.md §interop WebView)。false で
@@ -479,7 +478,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 wipeDataOnBloat: Bool? = nil, updateWebView: Bool? = nil,
                 wipeDataThresholdGB: Double? = nil,
                 recoverCpuFallbackToGpu: Bool? = nil,
-                locale: String? = nil, iosFastInput: Bool? = nil, iosPreActionPing: Bool? = nil,
+                locale: String? = nil, iosLightSettle: Bool? = nil, iosPreActionPing: Bool? = nil,
                 containerInference: Bool? = nil,
                 enableAnimations: Bool? = nil, homeOnStart: Bool? = nil,
                 playProtectBypass: Bool? = nil, record: Bool? = nil,
@@ -501,7 +500,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.wipeDataThresholdGB = wipeDataThresholdGB
         self.recoverCpuFallbackToGpu = recoverCpuFallbackToGpu
         self.locale = locale
-        self.iosFastInput = iosFastInput
+        self.iosLightSettle = iosLightSettle
         self.iosPreActionPing = iosPreActionPing
         self.containerInference = containerInference
         self.enableAnimations = enableAnimations
@@ -521,7 +520,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "reportDir", "defaultTimeout", "scenarioTimeout",
         "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
         "recoverCpuFallbackToGpu", "locale",
-        "iosFastInput", "iosPreActionPing", "enableAnimations", "homeOnStart",
+        "iosLightSettle", "iosPreActionPing", "enableAnimations", "homeOnStart",
         "playProtectBypass",
         "containerInference",
         "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution", "remoteControl",
@@ -549,7 +548,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     fileprivate static let overridableKeyKinds: [String: ValueKind] = [
         "heal": .bool, "fmTextOcclusionCheck": .bool,
         "screenLooksLike": .bool, "ocrTextOcclusionCheck": .bool, "preferCheckStateClassifier": .bool,
-        "iosInappEngine": .bool, "iosFastInput": .bool, "iosPreActionPing": .bool,
+        "iosInappEngine": .bool, "iosLightSettle": .bool, "iosPreActionPing": .bool,
         "containerInference": .bool, "enableAnimations": .bool, "homeOnStart": .bool,
         "playProtectBypass": .bool, "updateWebView": .bool, "wipeDataOnBloat": .bool,
         "recoverCpuFallbackToGpu": .bool, "record": .bool, "recordFailuresOnly": .bool,
@@ -585,7 +584,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
             case ("ocrTextOcclusionCheck", .bool(let v)): copy.ocrTextOcclusionCheck = v
             case ("preferCheckStateClassifier", .bool(let v)): copy.preferCheckStateClassifier = v
             case ("iosInappEngine", .bool(let v)): copy.iosInappEngine = v
-            case ("iosFastInput", .bool(let v)): copy.iosFastInput = v
+            case ("iosLightSettle", .bool(let v)): copy.iosLightSettle = v
             case ("iosPreActionPing", .bool(let v)): copy.iosPreActionPing = v
             case ("containerInference", .bool(let v)): copy.containerInference = v
             case ("enableAnimations", .bool(let v)): copy.enableAnimations = v
@@ -782,7 +781,7 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
     public let ocrTextOcclusionCheck: Bool
     /// RunProfileDocument.preferCheckStateClassifier(**既定 true**)
     public let preferCheckStateClassifier: Bool
-    public let iosFastInput: Bool
+    public let iosLightSettle: Bool
     public let iosPreActionPing: Bool
     public let containerInference: Bool
     public let enableAnimations: Bool
@@ -835,7 +834,7 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
             heal: doc.heal ?? true,
             ocrTextOcclusionCheck: doc.ocrTextOcclusionCheck ?? true,
             preferCheckStateClassifier: doc.preferCheckStateClassifier ?? true,
-            iosFastInput: doc.iosFastInput ?? false,
+            iosLightSettle: doc.iosLightSettle ?? false,
             iosPreActionPing: doc.iosPreActionPing ?? true,
             containerInference: doc.containerInference ?? true,
             enableAnimations: doc.enableAnimations ?? false,
@@ -978,8 +977,8 @@ public struct ResolvedProfile: Sendable {
     public let recoverCpuFallbackToGpu: Bool
     /// Android エミュレータのブート後にブリッジ /locale で適用するロケール(既定 "ja_JP")
     public let locale: String
-    /// iOS xcuitest ブリッジの高速入力(RunProfileDocument.iosFastInput。既定 false)
-    public let iosFastInput: Bool
+    /// iOS xcuitest ブリッジの簡易整定モード(RunProfileDocument.iosLightSettle。既定 false)
+    public let iosLightSettle: Bool
     /// interop WebView の直前の接続確認(RunProfileDocument.iosPreActionPing。**既定 true**)
     public let iosPreActionPing: Bool
     /// 容器の推測に依存する補正(RunProfileDocument.containerInference。**既定 true**)
@@ -1558,7 +1557,7 @@ public enum ProfileResolver {
             wipeDataThresholdGB: wipeDataThresholdGB,
             recoverCpuFallbackToGpu: runDoc.recoverCpuFallbackToGpu ?? false,
             locale: locale,
-            iosFastInput: settings.iosFastInput,
+            iosLightSettle: settings.iosLightSettle,
             iosPreActionPing: settings.iosPreActionPing,
             containerInference: settings.containerInference,
             ocrTextOcclusionCheck: settings.ocrTextOcclusionCheck,

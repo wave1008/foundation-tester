@@ -2163,10 +2163,10 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   Flutter の IME の Enter 5/5 対 5/5(= 全体の run の赤は偶然)・**RN 横スクロール S0090 5/5 対 2/5**(全体の run と合わせ
   6 回中 4 回落ちる。探索が `#tag_15` を見つけて止まった後も慣性で流れ、中心 (-4, 720) で画面外)。**判定: タップ・入力は
   木の観察だけで足りる / スワイプの慣性は足りない** → **タップ・ダブルタップ・長押しだけ既定で待ちを飛ばし、スワイプは待ちを
-  残す**ように分けた(`FastInput.with` の `skipByDefault`。版 163)。**分けた版の確認**(同じ条件): CMP 55/56(赤1本は FM が使えない機械での OCR だけの視覚検証。単独で3回は 3/3)・
-  iOS 54/54(S0080/S0060 を含む)・Flutter 45/45・RN 46/46・**S0090 単独 5/5**
-- ✅ **代わりに「待ちの上限を縮める」を入れた**(XCTest の完了の知らせは使い続ける): ランナーの FastInput が操作の間だけ
-  `_XCTSetApplicationStateTimeout` で上限を 60 → 6 秒に差し替えて戻す(`FastInput.quiescenceCapSeconds`。実測の正常な待ちは
+  残す**ように分けた(`QuiescenceWait.around` の `skipByDefault`。版 163)。**分けた版の確認**(同じ条件): CMP 55/56(赤1本は FM が使えない機械での OCR だけの視覚検証。単独で3回は 3/3)・
+  iOS 54/54(S0080/S0060 を含む)・Flutter 45/45・RN 46/46・**S0090 単独 5/5**。この設定は同日に **`iosLightSettle`(簡易整定モード。既定 false)へ改名**した(上の記録は測ったときの名前のまま)。ランナーの `FastInput` も `QuiescenceWait` へ、リクエストの `fast` も `skipQuiescence` へ改名した(版 164)
+- ✅ **代わりに「待ちの上限を縮める」を入れた**(XCTest の完了の知らせは使い続ける): ランナーの `QuiescenceWait`(当時の名前は FastInput)が操作の間だけ
+  `_XCTSetApplicationStateTimeout` で上限を 60 → 6 秒に差し替えて戻す(`QuiescenceWait.quiescenceCapSeconds`。実測の正常な待ちは
   中央値 0.01〜0.1s・95% 点 1〜1.6s・最大 5.1s)。上限 0.3 秒の陽性対照で XCTest が打ち切って続行することを確かめた。
   **起動・前面化・入力の中の待ちは縮めない**(activate の待ちを切ると前面化が完了せず 45s で時間切れ)。**正常な待ちの最大より
   短くしない**(イベントループの知らせを打ち切ると後続が約 50s 止まった)。Simulator を起こし直した後の E2E-CMP
@@ -2331,6 +2331,8 @@ window/transition/animator の `*_scale` はチューニングノブではなく
      必要=エラーメッセージで案内)。
      なお XCUITest の quiescence 自体を私有 API で無効化する案(WDA 方式)は、
      代替の整定信号がプロセス外から得られないため 2 とセットでない限り採らない
+     (**2026-10-09 にタップ・ダブルタップ・長押しだけ既定で無効化した** —— 代替の整定信号は木の観察(`captureSettled`)で
+     足りると 4 SUT の A/B で確かめた。スワイプは慣性を木で見届けられず残した。待ちの上限も操作の間だけ 60 → 6 秒。§8)
   4. **cross-app ハイブリッド(in-app 主 + XCUITest フォールバック)**: `engine=hybrid` を指定すると in-app(主・高速)で駆動し、対象要素が
      in-app snapshot に無いとき **XCUITest(システム UI)へ自動フォールバック**する。in-app は
      同一プロセスしか見えない(=速さの源泉と表裏)ので、既に前面にあるシステム UI(権限ダイアログ等)

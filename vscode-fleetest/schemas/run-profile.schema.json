@@ -152,9 +152,9 @@
       "pattern": "^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$",
       "default": "ja_JP"
     },
-    "iosFastInput": {
+    "iosLightSettle": {
       "type": "boolean",
-      "description": "iOS xcuitest ブリッジのスワイプ(スクロールを含む)でも quiescence 待ちを飛ばす(タップ・ダブルタップ・長押しは設定に関わらず飛ばす。テキスト入力・drag は対象外)。慣性のあるスクロールの直後の操作がずれるリスクあり(既定 false)"
+      "description": "簡易整定モード。iOS xcuitest ブリッジのスワイプ(スクロールを含む)でも完了イベント(XCTest の quiescence 待ち)を待たないので速くなるが、最終的な位置はずれる場合がある(タップ・ダブルタップ・長押しは設定に関わらず待たない。テキスト入力・drag は対象外。既定 false)"
     },
     "homeOnStart": {
       "type": "boolean",

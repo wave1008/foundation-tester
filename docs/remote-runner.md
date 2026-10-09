@@ -2076,7 +2076,8 @@ upstream main を clone して update.sh で追従するので、2人の rev は
   載らないポート(= `/status` が返らない)は従来「宛先が引けない → 通す」だったが、**「応答しない」を
   「死んでいる」と読まない**規律(docs/design.md の `BridgeDiscovery.isBound` と同じ)がここには
   効いていなかった ——
-  駆動中の XCUITest ブリッジは操作の間 `/status` を返さない(quiescence 待ちで数十秒ブロックする)ので、
+  駆動中の XCUITest ブリッジは操作の間 `/status` を返さない(quiescence 待ちでブロックする。操作の間の待ちは上限 6 秒に
+  縮めてあるが、起動・前面化の中の待ちは数十秒になりうる)ので、
   走査漏れを無条件に「通す」へ倒すと**いちばん使用中のときだけ門が開く**という逆向きの穴になる。
   実地 2026-09-22 の対照: 走査に載ったポートへの `bridge down --port` は
   `refusing to stop: … is being driven by an MCP session (fleetest-mcp pid …)` で正しく拒否した一方、

@@ -98,7 +98,7 @@ const RUN_PROFILE_DATA = {
     ocrTextOcclusionCheck: true,
     preferCheckStateClassifier: true,
     iosInappEngine: true,
-    iosFastInput: false,
+    iosLightSettle: false,
     iosPreActionPing: true,
     homeOnStart: true,
     playProtectBypass: true,

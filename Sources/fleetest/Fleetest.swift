@@ -578,7 +578,7 @@ struct RunScenarios: AsyncParsableCommand {
         // (`DeviceIndependentRunSettings`)。`--profile` ありの経路は `ProfileResolver.resolve`
         // が同じ上書きをもう一度当てる(実プロファイルの値まで見えるので、ここでの計算は
         // その代わりにはならない ——ここは「プロファイルを経由しない env トグル」専用)。
-        // BridgeClient(ホスト・サブプロセス両方)が FT_FAST_INPUT を読む
+        // BridgeClient(ホスト・サブプロセス両方)が FT_IOS_LIGHT_SETTLE を読む
         let profileOverrides = try RunProfileSetOverride.parse(setOverrides)
         let noProfileSettings = DeviceIndependentRunSettings.resolve(
             DeviceIndependentRunSettings.profileLessBase.applyingOverrides(profileOverrides))

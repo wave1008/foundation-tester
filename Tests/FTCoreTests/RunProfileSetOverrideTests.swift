@@ -273,7 +273,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         case "ocrTextOcclusionCheck": return doc.ocrTextOcclusionCheck.map(RunProfileSetValue.bool)
         case "preferCheckStateClassifier": return doc.preferCheckStateClassifier.map(RunProfileSetValue.bool)
         case "iosInappEngine": return doc.iosInappEngine.map(RunProfileSetValue.bool)
-        case "iosFastInput": return doc.iosFastInput.map(RunProfileSetValue.bool)
+        case "iosLightSettle": return doc.iosLightSettle.map(RunProfileSetValue.bool)
         case "iosPreActionPing": return doc.iosPreActionPing.map(RunProfileSetValue.bool)
         case "containerInference": return doc.containerInference.map(RunProfileSetValue.bool)
         case "enableAnimations": return doc.enableAnimations.map(RunProfileSetValue.bool)
@@ -303,7 +303,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
     private static let sampleRawValues: [String: String] = [
         "heal": "false", "fmTextOcclusionCheck": "false",
         "screenLooksLike": "false", "ocrTextOcclusionCheck": "false", "preferCheckStateClassifier": "false",
-        "iosInappEngine": "false", "iosFastInput": "true", "iosPreActionPing": "false",
+        "iosInappEngine": "false", "iosLightSettle": "true", "iosPreActionPing": "false",
         "containerInference": "false", "enableAnimations": "true", "homeOnStart": "false",
         "playProtectBypass": "false", "updateWebView": "false", "wipeDataOnBloat": "false",
         "recoverCpuFallbackToGpu": "true", "record": "true", "recordFailuresOnly": "true",
@@ -394,7 +394,7 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
                                              screenLooksLike: true))
         XCTAssertTrue(settings.heal)
         XCTAssertTrue(settings.ocrTextOcclusionCheck)
-        XCTAssertFalse(settings.iosFastInput)
+        XCTAssertFalse(settings.iosLightSettle)
         XCTAssertTrue(settings.iosPreActionPing)
         XCTAssertTrue(settings.containerInference)
         XCTAssertFalse(settings.enableAnimations)

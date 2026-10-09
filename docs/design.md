@@ -826,6 +826,10 @@ Android の整定判定は**スナップショットの画面サイズ**で行�
   固定待機は XCUITest が非同期遷移完了の event-driven な信号を出さないための妥協(要 private の
   quiescence API を使えば event-driven 化できるが未採用)。inapp エンジンは tap 側の `InAppSettle`
   (アニメ整定をイベント駆動で待つ)が既に遷移を待つため対象外。
+  **2026-10-09 からタップ・ダブルタップ・長押しは XCTest の quiescence 待ちを既定で飛ばす**(`QuiescenceWait.around` の
+  `skipByDefault`)ので、タップ系の遷移の整定は操作直後の取得の `captureSettled`(2回続けて同じ木・予算で打ち切り)が
+  単独で担う(4 SUT の A/B で退行無し。スワイプは待ちを残す。詳細は §4089 付近の `iosLightSettle` の段落と
+  docs/performance-tuning.md §8)
 
 **value の正規化: placeholder がそのまま来る欄は空にする**(2026-08-06)。
 WebKit は空の `<input>` の AXValue に placeholder を入れて返す(UIKit の入力欄は入れない)ため、
@@ -4088,12 +4092,12 @@ Android 実機はグローバル設定が**永続的に**書き換わるので�
 
 **XCUITest ランナーはタップ・ダブルタップ・長押しの前の quiescence 待ちを既定で飛ばし、整定は木の観察で行う**(操作後の
 `captureSettled`。ユーザー決定。4 SUT の A/B で退行無し)。**スワイプ(スクロールを含む)は待ちを残す**(慣性の終わりを木では
-見届けられない = E2E-RN S0090 が 6 回中 4 回落ちた)が、操作の間は待ちの上限を 6 秒に縮める(`FastInput.quiescenceCapSeconds`)。
-`iosFastInput`(既定 false)を true にすると**スワイプの待ちも飛ばす**(type と /drag は対象外。type はキーボード出現待ちを
-quiescence に頼るため)(`FT_FAST_INPUT=1` を実行環境へ注入し、`BridgeClient.fastInput` が受ける。CLI は
-`fleetest run --profile <名> --set iosFastInput=true`)。慣性のあるスクロールの直後の操作がずれうるのでオプトイン。
+見届けられない = E2E-RN S0090 が 6 回中 4 回落ちた)が、操作の間は待ちの上限を 6 秒に縮める(`QuiescenceWait.quiescenceCapSeconds`)。
+**簡易整定モード** `iosLightSettle`(既定 false)を true にすると**スワイプの待ちも飛ばす**(type と /drag は対象外。type はキーボード出現待ちを
+quiescence に頼るため)(`FT_IOS_LIGHT_SETTLE=1` を実行環境へ注入し、`BridgeClient.lightSettle` が受ける。CLI は
+`fleetest run --profile <名> --set iosLightSettle=true`)。慣性のあるスクロールの直後の操作がずれうるのでオプトイン。
 計測値は docs/performance-tuning.md §8。**効くのは XCUITest ランナーだけ**
-(`Runner/FleetestRunnerUITests/FastInput.swift`。`fast` は in-app ブリッジにも送られるが
+(`Runner/FleetestRunnerUITests/QuiescenceWait.swift`。リクエストの `skipQuiescence` は in-app ブリッジにも送られるが
 あちらは解釈しない = quiescence の概念が無いため)。
 
 `iosPreActionPing`(**既定 true**)は **interop WebView 画面(domInterop モード)の委譲イベント

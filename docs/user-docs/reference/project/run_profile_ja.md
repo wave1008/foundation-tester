@@ -37,7 +37,7 @@
 | `updateWebView` | bool | `true` | 実行開始時に端末上の WebView 版を揃える(同じシナリオが端末の WebView 版によって挙動が変わるのを防ぐ) |
 | `recoverCpuFallbackToGpu` | bool | `false` | 実行開始時、CPU 描画(swiftshader)へフォールバック済みの Android Emulator を GPU モードで起動し直す |
 | `locale` | string | `"ja_JP"` | Android Emulator のブート時に適用するロケール。iOS には影響しない |
-| `iosFastInput` | bool | `false` | iOS XCUITest ブリッジの**スワイプ(スクロールを含む)**でも、XCTest がアプリからの処理・アニメーション完了の通知を待つ処理(quiescence 待ち)を飛ばす。**タップ・ダブルタップ・長押しはこの設定に関わらず常に飛ばす**。テキスト入力と drag には効かない(テキスト入力はキーボードが出るのをこの待ちに頼っているため)。操作後に木の変化が止まるのを待つ整定はそのまま残る。速いが、慣性のあるスクロールでは止まりきる前に次へ進み、直後の操作がずれることがある。効くのは XCUITest ブリッジだけ |
+| `iosLightSettle` | bool | `false` | **簡易整定モード**。iOS XCUITest ブリッジの**スワイプ(スクロールを含む)**でも、XCTest の完了イベント(アプリからの処理・アニメーション完了の通知)を待たないので高速化する。最終的な位置はずれる場合がある(慣性のあるスクロールでは止まりきる前に次へ進むため)。**タップ・ダブルタップ・長押しはこの設定に関わらず待たない**(画面が落ち着いたかは fleetest が要素の一覧を見て判断する)。テキスト入力と drag には効かない。効くのは XCUITest ブリッジだけ |
 | `iosPreActionPing` | bool | `true` | interop WebView 画面(Compose/Flutter 等の埋め込み WebView)でタップ・入力の直前にランナーへ1回問い合わせてから撃つ。attach したままの XCUITest セッションは放置後の座標イベントを成功応答のまま届け損なうことがある。コストは該当画面のイベント1回につき約 +0.4 秒(読み取りと他の画面には掛からない)。hybrid エンジンのときだけ効く |
 | `containerInference` | bool | `true` | スクロール容器を幾何から推測する補正(端の見切れ・座標補正等)を有効にする。FM とは無関係 |
 | `enableAnimations` | bool | `false` | 実行のためにアプリのアニメーションを無効化せず残す |

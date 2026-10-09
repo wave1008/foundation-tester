@@ -44,7 +44,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
             heal: true,
             ocrTextOcclusionCheck: false,
             preferCheckStateClassifier: false,
-            iosFastInput: true,
+            iosLightSettle: true,
             iosPreActionPing: false,
             containerInference: false,
             enableAnimations: true,
@@ -64,7 +64,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
     func testDeviceIndependentRunSettingsMappingLeavesProfileNameNil() {
         let settings = ScenarioExecutionSettings(DeviceIndependentRunSettings(
             fm: FMConfig(), heal: false, ocrTextOcclusionCheck: true, preferCheckStateClassifier: true,
-            iosFastInput: false,
+            iosLightSettle: false,
             iosPreActionPing: true, containerInference: true, enableAnimations: false,
             playProtectBypass: true, homeOnStart: true, record: false, recordFailuresOnly: false,
             recordFullResolution: false, reportDir: nil, defaultTimeout: nil, scenarioTimeout: nil,
@@ -85,7 +85,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
             reportDir: URL(fileURLWithPath: "/tmp/dummy/reports"),
             defaultTimeout: 12.5, scenarioTimeout: 42, wipeDataOnBloat: true, updateWebView: false,
             wipeDataThresholdGB: 8, recoverCpuFallbackToGpu: false, locale: "ja_JP",
-            iosFastInput: false, iosPreActionPing: true, containerInference: false,
+            iosLightSettle: false, iosPreActionPing: true, containerInference: false,
             ocrTextOcclusionCheck: false,
             preferCheckStateClassifier: false,
             enableAnimations: false,

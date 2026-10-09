@@ -32,7 +32,7 @@ const FORM_FIELDS = {
   ocrTextOcclusionCheck: true,
   preferCheckStateClassifier: true,
   iosInappEngine: true,
-  iosFastInput: false,
+  iosLightSettle: false,
   iosPreActionPing: true,
   homeOnStart: true,
   playProtectBypass: true,

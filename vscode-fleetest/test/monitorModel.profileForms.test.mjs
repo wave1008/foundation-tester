@@ -43,7 +43,7 @@ const VALID_RUN_PROFILE_SAVE = {
     ocrTextOcclusionCheck: true,
     preferCheckStateClassifier: true,
     iosInappEngine: true,
-    iosFastInput: false,
+    iosLightSettle: false,
     iosPreActionPing: true,
     homeOnStart: true,
     enableAnimations: false,
@@ -102,7 +102,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields22�
         ocrTextOcclusionCheck: false,
         preferCheckStateClassifier: false,
         iosInappEngine: false,
-        iosFastInput: true,
+        iosLightSettle: true,
         iosPreActionPing: false,
         homeOnStart: true,
         enableAnimations: true,
@@ -195,7 +195,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 空文字・fields
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
-      fields: { ...VALID_RUN_PROFILE_SAVE.fields, iosFastInput: "true" }, // boolean でない
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, iosLightSettle: "true" }, // boolean でない
     }),
     false,
   );
@@ -639,7 +639,7 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
     ocrTextOcclusionCheck: false,
     preferCheckStateClassifier: false,
     iosInappEngine: false,
-    iosFastInput: true,
+    iosLightSettle: true,
     iosPreActionPing: false,
     homeOnStart: true,
     playProtectBypass: false,
@@ -669,7 +669,7 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
     ocrTextOcclusionCheck: false,
     preferCheckStateClassifier: false,
     iosInappEngine: false,
-    iosFastInput: true,
+    iosLightSettle: true,
     iosPreActionPing: false,
     homeOnStart: true,
     playProtectBypass: false,
@@ -688,7 +688,7 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、heal/screenLooksLike/fmTextOcclusionCheck/containerInference=true、iosInappEngine=true、wipeDataOnBloat=true、wipeDataThresholdGB=''、record=true、recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionPing=true)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、heal/screenLooksLike/fmTextOcclusionCheck/containerInference=true、iosInappEngine=true、wipeDataOnBloat=true、wipeDataThresholdGB=''、record=true、recordFailuresOnly/recordFullResolution/iosLightSettle/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionPing=true)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
     app: "",
@@ -700,7 +700,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/reco
     ocrTextOcclusionCheck: true,
     preferCheckStateClassifier: true,
     iosInappEngine: true,
-    iosFastInput: false,
+    iosLightSettle: false,
     iosPreActionPing: true,
     homeOnStart: true,
     playProtectBypass: true,
@@ -719,7 +719,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/reco
   });
 });
 
-test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文字列、record/recordFailuresOnly/recordFullResolution/iosFastInput が文字列、remoteControl が非オブジェクト 等)", () => {
+test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文字列、record/recordFailuresOnly/recordFullResolution/iosLightSettle が文字列、remoteControl が非オブジェクト 等)", () => {
   const parsed = parseRunProfileForForm({
     app: null,
     devices: "not-an-array",
@@ -730,7 +730,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     ocrTextOcclusionCheck: "true",
     preferCheckStateClassifier: "true",
     iosInappEngine: "false",
-    iosFastInput: "true",
+    iosLightSettle: "true",
     reportDir: false,
     wipeDataOnBloat: "false",
     wipeDataThresholdGB: {},
@@ -752,7 +752,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     ocrTextOcclusionCheck: true,
     preferCheckStateClassifier: true,
     iosInappEngine: true,
-    iosFastInput: false,
+    iosLightSettle: false,
     iosPreActionPing: true,
     homeOnStart: true,
     playProtectBypass: true,
@@ -829,10 +829,10 @@ test("parseRunProfileForForm: enableAnimations は boolean ならそのまま返
   assert.equal(parseRunProfileForForm({ enableAnimations: "true" }).enableAnimations, false);
 });
 
-test("parseRunProfileForForm: iosFastInput は boolean ならそのまま返し、欠落/非 boolean は既定値 false", () => {
-  assert.equal(parseRunProfileForForm({ iosFastInput: true }).iosFastInput, true);
-  assert.equal(parseRunProfileForForm({}).iosFastInput, false);
-  assert.equal(parseRunProfileForForm({ iosFastInput: "true" }).iosFastInput, false);
+test("parseRunProfileForForm: iosLightSettle は boolean ならそのまま返し、欠落/非 boolean は既定値 false", () => {
+  assert.equal(parseRunProfileForForm({ iosLightSettle: true }).iosLightSettle, true);
+  assert.equal(parseRunProfileForForm({}).iosLightSettle, false);
+  assert.equal(parseRunProfileForForm({ iosLightSettle: "true" }).iosLightSettle, false);
 });
 
 test("parseRunProfileForForm: recordBitrateKbps は number なら String() 化、string ならそのまま返す", () => {
@@ -1048,7 +1048,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   ocrTextOcclusionCheck: true,
   preferCheckStateClassifier: true,
   iosInappEngine: true,
-  iosFastInput: false,
+  iosLightSettle: false,
   iosPreActionPing: true,
   homeOnStart: true,
   enableAnimations: false,
@@ -1086,7 +1086,7 @@ test("updateRunProfileInObject: 基本更新(app/heal/fmTextOcclusionCheck/scree
   assert.equal("recordFailuresOnly" in result.object, false);
   assert.equal("recordBitrateKbps" in result.object, false);
   assert.equal("recordFullResolution" in result.object, false);
-  assert.equal("iosFastInput" in result.object, false);
+  assert.equal("iosLightSettle" in result.object, false);
   assert.equal("enableAnimations" in result.object, false); // 既定(無効化)はキーを書かない
   assert.equal("remoteControl" in result.object, false); // 3欄とも未設定ならセクション自体を書かない
 });
@@ -1119,8 +1119,8 @@ test("updateRunProfileInObject: remoteControl.workspace は空文字でセクシ
   assert.deepEqual(preserved.object.remoteControl, { workspace: "../new-ws", futureKey: true });
 });
 
-test("updateRunProfileInObject: recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations は true のときのみ書き込み、false なら既存キーごと削除する", () => {
-  for (const key of ["recordFailuresOnly", "recordFullResolution", "iosFastInput", "enableAnimations"]) {
+test("updateRunProfileInObject: recordFailuresOnly/recordFullResolution/iosLightSettle/enableAnimations は true のときのみ書き込み、false なら既存キーごと削除する", () => {
+  for (const key of ["recordFailuresOnly", "recordFullResolution", "iosLightSettle", "enableAnimations"]) {
     const enabled = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, [key]: true });
     assert.equal(enabled.ok, true);
     assert.equal(enabled.object[key], true, `${key}: true で書き込まれるべき`);

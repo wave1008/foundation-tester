@@ -1,14 +1,14 @@
-// FastInput.swift
-// レバー1 PoC: XCUITest がタップ等の前に行う暗黙の quiescence 待ち(アプリのアイドル+
-// アニメーション整定)をスキップする高速入力。XCUIApplicationProcess の private メソッドを
-// swizzle し、`enabled` が true の間だけ元実装を呼ばず即 return する。
+// QuiescenceWait.swift
+// XCUITest が操作の前後に行う暗黙の quiescence 待ち(アプリのアイドル + アニメーション整定)の扱い。
+// XCUIApplicationProcess の private メソッドを swizzle し、`skipping` が true の間は元実装を呼ばず即 return、
+// それ以外は上限を縮めて元実装を呼ぶ(cappedWait)。
 // - private API 依存: セレクタは Xcode バージョンで変わりうるため候補を全て試し、1つも
 //   見つからなければ無効(available=false)として通常動作にフォールバックする。
-// - enabled はリクエスト処理(main queue 直列。BridgeHTTPServer 参照)からのみ触ること。
+// - skipping / capArmed はリクエスト処理(main queue 直列。BridgeHTTPServer 参照)からのみ触ること。
 // - 注意: type(typeText)には適用しない。キーボード出現待ちを quiescence に依存しているため
 //   (BridgeRouter.handleType のコメント参照)、スキップすると入力欠落の実害が出る。
-// - **タップ・ダブルタップ・長押しは既定で待ちを飛ばす**(FastInput.with の skipByDefault)。/drag(handleDrag)は FastInput を通らない
-// - **飛ばさない回(スワイプ = スクロールを含む)も、操作(FastInput.with の中)の間だけ待ちの上限を
+// - **タップ・ダブルタップ・長押しは既定で待ちを飛ばす**(QuiescenceWait.around の skipByDefault)。/drag(handleDrag)はここを通らない
+// - **飛ばさない回(スワイプ = スクロールを含む)も、操作(QuiescenceWait.around の中)の間だけ待ちの上限を
 //   `quiescenceCapSeconds` に縮める**(cappedWait)。起動・前面化・入力の中の待ちは縮めない —— activate の中の待ちを
 //   切ると前面化そのものが完了せずホストが 45s で時間切れになった(実測)。XCTest の上限は
 //   全体で共有の `_XCTApplicationStateTimeout()`(既定 60s。起動・前面化・終了・URL も同じ値を使う)なので、
@@ -17,10 +17,10 @@
 import Foundation
 import ObjectiveC
 
-enum FastInput {
-    /// true の間、swizzle 済み quiescence 待ちが no-op になる(リクエスト毎に立てて必ず戻す)
-    static var enabled = false
-    /// swizzle が1つ以上成功したか(/status の fastInputAvailable として申告)
+enum QuiescenceWait {
+    /// true の間、swizzle 済み quiescence 待ちが no-op になる(待ちを飛ばす)(リクエスト毎に立てて必ず戻す)
+    static var skipping = false
+    /// swizzle が1つ以上成功したか(/status の quiescenceControlAvailable として申告)
     private(set) static var available = false
 
     /// 計測用: resetTiming() 以降に **元の quiescence 待ちの中で消えた時間**(ms)。
@@ -55,7 +55,7 @@ enum FastInput {
     private static var capDepth = 0
     /// 上限まで待った回数(リクエストごとに takeCapNote が読んで消す)
     private static var capHits = 0
-    /// true の間だけ待ちの上限を縮める(FastInput.with が操作の間だけ立てる)
+    /// true の間だけ待ちの上限を縮める(QuiescenceWait.around が操作の間だけ立てる)
     private static var capArmed = false
 
     /// 元の待ちを、上限を縮めた状態で呼ぶ。上限の関数が無ければそのまま呼ぶ
@@ -94,7 +94,7 @@ enum FastInput {
     /// (呼び出し経路が複数あるため、見つかったものは全部差し替える)。
     static func installSwizzle() {
         guard let cls = NSClassFromString("XCUIApplicationProcess") else {
-            NSLog("[fleetest] FastInput: XCUIApplicationProcess が見つかりません(無効)")
+            NSLog("[fleetest] QuiescenceWait: XCUIApplicationProcess が見つかりません(無効)")
             return
         }
         // 候補は歴代 Xcode で観測されている signature(引数 Bool 0〜2個)
@@ -112,38 +112,38 @@ enum FastInput {
                 typealias Fn = @convention(c) (AnyObject, Selector, Bool, Bool) -> Void
                 let orig = unsafeBitCast(original, to: Fn.self)
                 let block: @convention(block) (AnyObject, Bool, Bool) -> Void = { obj, a, b in
-                    if FastInput.enabled { return }
+                    if QuiescenceWait.skipping { return }
                     let start = DispatchTime.now()
-                    FastInput.cappedWait { orig(obj, sel, a, b) }
-                    FastInput.addQuiescence(since: start)
+                    QuiescenceWait.cappedWait { orig(obj, sel, a, b) }
+                    QuiescenceWait.addQuiescence(since: start)
                 }
                 method_setImplementation(method, imp_implementationWithBlock(block))
             case 1:
                 typealias Fn = @convention(c) (AnyObject, Selector, Bool) -> Void
                 let orig = unsafeBitCast(original, to: Fn.self)
                 let block: @convention(block) (AnyObject, Bool) -> Void = { obj, a in
-                    if FastInput.enabled { return }
+                    if QuiescenceWait.skipping { return }
                     let start = DispatchTime.now()
-                    FastInput.cappedWait { orig(obj, sel, a) }
-                    FastInput.addQuiescence(since: start)
+                    QuiescenceWait.cappedWait { orig(obj, sel, a) }
+                    QuiescenceWait.addQuiescence(since: start)
                 }
                 method_setImplementation(method, imp_implementationWithBlock(block))
             default:
                 typealias Fn = @convention(c) (AnyObject, Selector) -> Void
                 let orig = unsafeBitCast(original, to: Fn.self)
                 let block: @convention(block) (AnyObject) -> Void = { obj in
-                    if FastInput.enabled { return }
+                    if QuiescenceWait.skipping { return }
                     let start = DispatchTime.now()
-                    FastInput.cappedWait { orig(obj, sel) }
-                    FastInput.addQuiescence(since: start)
+                    QuiescenceWait.cappedWait { orig(obj, sel) }
+                    QuiescenceWait.addQuiescence(since: start)
                 }
                 method_setImplementation(method, imp_implementationWithBlock(block))
             }
             available = true
-            NSLog("[fleetest] FastInput: swizzled %@", candidate.name)
+            NSLog("[fleetest] QuiescenceWait: swizzled %@", candidate.name)
         }
         if !available {
-            NSLog("[fleetest] FastInput: quiescence セレクタが1つも見つかりません(無効・通常動作)")
+            NSLog("[fleetest] QuiescenceWait: quiescence セレクタが1つも見つかりません(無効・通常動作)")
         }
         // 起動時に1行(上限の口が消えたことが run を待たずに分かる)
         NSLog("[fleetest] quiescence cap: %@", (available && timeoutGetter != nil && timeoutSetter != nil)
@@ -154,16 +154,17 @@ enum FastInput {
     /// **タップ・ダブルタップ・長押しは true**(待ちを飛ばし、整定は木の観察 = captureSettled が担う)/
     /// **スワイプ(スクロールを含む)は false**(待ちを残す。慣性の終わりを木では見届けられず、RN の横スクロール E2E-RN S0090 が
     /// 6 回中 4 回落ちた —— 探索が対象を見つけて止まった後も慣性で流れて画面外へ出る。タップ系は 4 SUT で退行無し。
-    /// 実測と経緯は docs/performance-tuning.md §8)。`fast: true`(iosFastInput=true)はどちらも飛ばす
-    static func with<T>(_ fast: Bool?, skipByDefault: Bool = false, _ body: () throws -> T) rethrows -> T {
-        guard available, fast ?? skipByDefault else {
+    /// 実測と経緯は docs/performance-tuning.md §8)。`skipQuiescence: true`(簡易整定モード iosLightSettle=true)はどちらも飛ばす
+    static func around<T>(_ skipQuiescence: Bool?, skipByDefault: Bool = false, _ body: () throws -> T) rethrows -> T {
+        guard available, skipQuiescence ?? skipByDefault else {
             capArmed = true
             defer { capArmed = false }
             return try body()
         }
-        NSLog("[fleetest] FastInput: engaged")  // 検証用(fast リクエストの発火確認)
-        enabled = true
-        defer { enabled = false }
+        // 検証用(簡易整定モードの発火確認)。タップ系は既定で毎回ここを通るので、明示の skipQuiescence: true のときだけ出す
+        if skipQuiescence == true { NSLog("[fleetest] QuiescenceWait: skipping (light settle)") }
+        skipping = true
+        defer { skipping = false }
         return try body()
     }
 }

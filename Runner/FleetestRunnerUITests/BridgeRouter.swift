@@ -158,7 +158,7 @@ final class BridgeRouter {
             protocolVersion: BridgeAPI.bridgeProtocolVersion,
             // 画面が進んでいるかの計器(DisplayHeartbeat 参照)。凍結を絵の一様さではなく直接測る
             displayIdleSeconds: DisplayHeartbeat.shared.idleSeconds,
-            fastInputAvailable: FastInput.available,
+            quiescenceControlAvailable: QuiescenceWait.available,
             // 起動元の自己申告(doctor の刈り取り判定が依存。BridgeDTO の各フィールド参照)
             ownerRepo: ProcessInfo.processInfo.environment["FT_OWNER_REPO"],
             ownerPid: Int(ProcessInfo.processInfo.processIdentifier),
@@ -682,11 +682,11 @@ final class BridgeRouter {
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
         // 計測: `tap()` は「イベント合成」と「暗黙の quiescence 待ち」の両方を含む1呼び出しで、
         // ホスト側の actionMs からは分解できない。quiescence 側だけ swizzle 経由で数え、
-        // 残り(synth)を引き算で出す(FastInput.quiescenceMs の但し書きも読むこと)
-        FastInput.resetTiming()
-        _ = FastInput.takeCapNote()  // 前の操作の数え残しを捨てる(応答の注記はこの操作の分だけ)
+        // 残り(synth)を引き算で出す(QuiescenceWait.quiescenceMs の但し書きも読むこと)
+        QuiescenceWait.resetTiming()
+        _ = QuiescenceWait.takeCapNote()  // 前の操作の数え残しを捨てる(応答の注記はこの操作の分だけ)
         let start = DispatchTime.now()
-        try FastInput.with(req.fast, skipByDefault: true) {
+        try QuiescenceWait.around(req.skipQuiescence, skipByDefault: true) {
             coordinate(app, point).tap()
         }
         let totalMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e6
@@ -695,9 +695,9 @@ final class BridgeRouter {
         // 誤読する事故が起きる。異常に遅い tap だけは必ず記録が残るようにしておく
         if Self.timingEnabled || totalMs >= Self.timingAlwaysLogMs {
             NSLog("[fleetest] tapTiming total=%.0f quiesce=%.0f synth=%.0f", totalMs,
-                  FastInput.quiescenceMs, totalMs - FastInput.quiescenceMs)
+                  QuiescenceWait.quiescenceMs, totalMs - QuiescenceWait.quiescenceMs)
         }
-        return .json(OKResponse(note: FastInput.takeCapNote()))
+        return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
     }
 
     /// typeText("\n") は XCUITest 内部で Return キー相当に落ちる(ソフトキーボードの改行/送信
@@ -782,17 +782,17 @@ final class BridgeRouter {
         // 動かすことが目的で、未指定側(全画面)の挙動を変えるものではない
         if let path = req.path {
             pressDrag(app, from: CGPoint(x: path.fromX, y: path.fromY),
-                      to: CGPoint(x: path.toX, y: path.toY), velocity: velocity, fast: req.fast)
+                      to: CGPoint(x: path.toX, y: path.toY), velocity: velocity, skipQuiescence: req.skipQuiescence)
             return .json(OKResponse())
         }
         // 横向きだけ `swipeUp()` 系が不発(2026-08-31・実機 iPhone 13 landscape 844x390 実測:
         // 8方向 switch のどれも画面を動かさない。縦向きは同じ switch のままでよい)。
         // path 指定と同じ press-drag へ落とし、始点・終点は landscapeDefaultSwipe が決める
         if let (from, to) = Self.landscapeDefaultSwipe(req.direction, frame: app.frame) {
-            pressDrag(app, from: from, to: to, velocity: velocity, fast: req.fast)
+            pressDrag(app, from: from, to: to, velocity: velocity, skipQuiescence: req.skipQuiescence)
             return .json(OKResponse())
         }
-        FastInput.with(req.fast) {
+        QuiescenceWait.around(req.skipQuiescence) {
             switch (req.direction, velocity) {
             case (.up, nil): app.swipeUp()
             case (.down, nil): app.swipeDown()
@@ -810,10 +810,10 @@ final class BridgeRouter {
     /// path 指定 swipe と横向き既定 swipe が共有する press-drag(velocity nil = 素の
     /// `press(forDuration:thenDragTo:)`。既定速度を模倣しない理由は handleSwipe のコメント)
     private func pressDrag(_ app: XCUIApplication, from: CGPoint, to: CGPoint,
-                           velocity: XCUIGestureVelocity?, fast: Bool?) {
+                           velocity: XCUIGestureVelocity?, skipQuiescence: Bool?) {
         let fromCoordinate = coordinate(app, from)
         let toCoordinate = coordinate(app, to)
-        FastInput.with(fast) {
+        QuiescenceWait.around(skipQuiescence) {
             if let velocity {
                 fromCoordinate.press(forDuration: BridgeRouter.gestureMinSeconds, thenDragTo: toCoordinate,
                                       withVelocity: velocity, thenHoldForDuration: 0)
@@ -926,11 +926,11 @@ final class BridgeRouter {
                 orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait)
             return .json(OKResponse())
         }
-        _ = FastInput.takeCapNote()
-        try FastInput.with(req.fast, skipByDefault: true) {
+        _ = QuiescenceWait.takeCapNote()
+        try QuiescenceWait.around(req.skipQuiescence, skipByDefault: true) {
             coordinate(app, point).doubleTap()
         }
-        return .json(OKResponse(note: FastInput.takeCapNote()))
+        return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
     }
 
     /// 各タッチの接触時間[秒]。実測 2026-09-24 でこの長さのときだけ RN の PanResponder が拾った
@@ -1114,11 +1114,11 @@ final class BridgeRouter {
         }
         let app = try requireForegroundAppForGesture()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
-        _ = FastInput.takeCapNote()
-        try FastInput.with(req.fast, skipByDefault: true) {
+        _ = QuiescenceWait.takeCapNote()
+        try QuiescenceWait.around(req.skipQuiescence, skipByDefault: true) {
             coordinate(app, point).press(forDuration: req.duration)
         }
-        return .json(OKResponse(note: FastInput.takeCapNote()))
+        return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
     }
 
     /// 指を置いたら応答を返し、duration 秒後に離れる(契約は BridgeDTO.HoldRequest)。/press は離すまで

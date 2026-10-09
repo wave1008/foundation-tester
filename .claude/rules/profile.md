@@ -1,6 +1,6 @@
 ---
 paths:
-  - "Runner/FleetestRunnerUITests/FastInput.swift"
+  - "Runner/FleetestRunnerUITests/QuiescenceWait.swift"
   - "Tests/FTCoreTests/ProfileResolver*.swift"
   - "Sources/FTCore/RunProfile*.swift"
   - "Sources/FTCore/RunProfile.swift"
