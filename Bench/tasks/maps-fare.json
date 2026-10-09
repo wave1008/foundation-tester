@@ -1,0 +1,8 @@
+{
+  "id": "maps-fare",
+  "archetype": "map",
+  "requires": "iOS シミュレータ1台に xcuitest ブリッジ(システムアプリを触るので in-app では不可)+ Apple マップ",
+  "maxTurns": 80,
+  "expect": "715",
+  "prompt": "fleetest の MCP ツール(ft_*)だけを使って、iOS シミュレータ上の Apple マップ(com.apple.Maps)を操作してください。\n\nゴール: 赤羽駅から立川駅までの電車の運賃(IC 運賃)を調べること。前の検索結果が画面に残っている可能性があるので、最初にマップを起動し直してください。経路の URL やディープリンクは使わず、画面を操作してください。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます(システムアプリなので xcuitest ブリッジのポートが要ります)。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: 赤羽→立川 <運賃>\n読み取れなかった場合は RESULT: unknown と出力してください。"
+}

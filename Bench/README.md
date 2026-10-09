@@ -64,6 +64,7 @@ Scripts/mcp-bench.sh --task cmp-scroll-find --repeat 5 \
 | `cmp-noid-directional` | no-id | id を公開しないアプリ(方向セレクタしか使えない) |
 | `cmp-webview-aria` | webview | `#id` が効かない画面・`aria-label` 由来のラベル(内蔵 HTML なので通信に依存しない) |
 | `maps-route` | map | 実アプリ・高密度・システムアプリ(xcuitest ブリッジが要る) |
+| `maps-fare` | map | `maps-route` と同じ Apple マップで**IC 運賃**を読む(運賃は日によって変わらないので `expect` で値まで照合できる)。URL を使わず画面を操作させる |
 | `and-maps-route` | map | `maps-route` の **Android 版**(Google マップ・同じ赤羽→立川)。経路はサーバから来るので盤面は日により変わる = 同じ日の A/B でだけ比べる |
 | `ios-settings-about` | settings | 実アプリ・深い設定ツリー(2階層たどって値を読む) |
 | `and-settings-keyboard` | settings | **Android の**設定ツリー(3階層 + 根のスクロール。行の状態=スイッチも読む) |
