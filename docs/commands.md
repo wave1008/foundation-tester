@@ -25,7 +25,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `tap` / `type` / `clearInput` / `doubleTap` / ジェスチャ系(セレクタあり) | 約 0.7 秒(ロケータ解決の再試行) |
 | `select` / `exist` / `notExist` / `countIs` / テキスト・値・状態の検証 / `existImage` | 実行プロファイルの `defaultTimeout`(既定 5 秒) |
 | `findImage` / `ifCanSelect` / `repeatWhileCanSelect` | 0(今の画面を1回だけ見る) |
-| `waitForDisplay` / `waitForClose` / `appIs` | 15 秒 |
+| `waitForDisplay` / `waitForClose` / `waitForSettle` / `appIs` | 15 秒 |
 | `doUntilTrue` | 10 秒(1コマンドの上限 120 秒は超えられない) |
 
 - **要素が見つからなければ失敗**(シナリオ中断)。**唯一の例外は `select`** で、掴めなければ
@@ -427,6 +427,7 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 | `exist(sel, requireVisible:waitSeconds:scroll:maxSwipes:)` | 存在検証。テキストの視覚検証を有効にした run(実行プロファイル `fmTextOcclusionCheck`(FM の段)か `ocrTextOcclusionCheck`(OCR の段)が true)では**実際に見えていること**も確認する(幾何 → OCR / FM の視覚照合。§共通の引数 `requireVisible`)。戻り値にチェーン可(後述) |
 | `waitForDisplay(sel, waitSeconds: 15)` | 要素が表示されるまで待つ(**スクロールしない**)。戻り値は `FTElement`(`exist` と同様チェーン可)。見つからなければ失敗しシナリオ中断。**判定は `exist` と同じ可視性込み**(コマンド名 displayed の意味に沿わせている)で、**`exist` の `requireVisible: false` に当たる逃げ道は無い** — 覆われ検出を外したいなら `exist(sel, requireVisible: false, waitSeconds: 15)` を使う |
 | `waitForClose(sel, waitSeconds: 15)` | 要素が消えるまで待つ(**スクロールしない**)。`sel` は省略不可(Shirates の直前セレクタ再利用の省略形は無い。`lastElement` はあるが、待ち対象がソース上で読めなくなるため引数は必須のまま) |
+| `waitForSettle(sel?, quietSeconds:, throwsException: true, waitSeconds: 15)` | **画面(`sel` を渡せばその要素の枠)の画素が `quietSeconds` のあいだ1つも変わらなくなる**まで待ち、続けてアクセシビリティの木が追いつくまで待ってから返る。戻り値は `Bool`(`@discardableResult`。`if` の条件に使える)。`findImage` / `imageIs` / OCR を使うテキストの視覚検証・画素単位の操作・レポート用のスクリーンショットの**直前**に、スクロールやフリックの慣性が完全に止まるのを待つために使う。**明示したときだけ待つ** —— 通常の操作はこの待ちをしない。範囲は常に各辺 10% を除いて比べる。引数・失敗文言・エンジンごとの経路は下記「`waitForSettle`」 |
 | `notExist(sel, waitSeconds:scroll:maxSwipes:)` | **消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じた確認に。`scroll:` 指定時は**その方向へスクロールしながら探し、見つかった時点で不在検証を失敗させる**(`exist(scroll:)` の裏返し。見つからなければ従来どおり現在のビューポートでの消滅待ちに進む) |
 | `countIs(sel, 個数, waitSeconds:)` | 候補の個数。**ツリー上の件数**で可視性は見ない。`\|\|` は和集合の総数(重複は 1 度だけ)。**ラベルで数えるときは型で絞る**(`.button&&項目` — ボタンと内側のラベルは別要素として両方載るため) |
 | `enabledIsTrue()` / `enabledIsFalse()` | 有効/無効の検証(タイムアウトまで状態変化を待つ)。**対象は直前に掴んだ要素**(`select("#btn").enabledIsTrue()`)。**初回の判定は選んだ時点の状態**で、`select` が「見えない」と判定して空要素を返した要素(文字を描かない骨組みの行等)でも同じ(`StepOutcome.notVisibleSelection`。文字の値は読ませない) |
@@ -448,6 +449,54 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 > 使うなら「大づかみの確認」に留め、失敗させたくない検証は木のアサーション
 > (`exist` / `textIs` / `countIs`)で書く。説明文を変えたら、通したい画面と通したくない画面の
 > 両方に**実機のスクショで**当て直すこと。
+
+### `waitForSettle`: 画面の静止と木の同期を待つ
+
+```swift
+@discardableResult
+waitForSettle(_ selector: String? = nil, quietSeconds: Double? = nil,
+              throwsException: Bool = true, waitSeconds: Double? = nil) -> Bool
+```
+
+- **画像の判定の前に、止まるのを待つ明示のコマンド**。`findImage` / `existImage` / `imageIs` / OCR を使うテキストの視覚検証、
+  画素単位の操作、レポート用のスクリーンショットは絵を読むので、スクロール・フリックの直後に慣性が残っていると別の位置の画素を読む。
+  **通常の操作(`tap` / `swipe` / `scroll*` 等)はこの待ちをしない** —— 操作ごとに画像の静止を待つ方式は E2E で +14〜36% 遅く、
+  正しさの差が出なかったので撤去した(docs/performance-tuning.md §3.34)。絵が要る直前だけ、このコマンドを書く。
+  `settle: false`(操作後の整定を省く。上の「`settle:`」)とは別の仕組み
+- **待つのは2段**(両段を合わせた全体の上限が `waitSeconds`):
+  1. **画像**: 範囲の画素が `quietSeconds` のあいだ**1つも変わらない**まで待つ
+  2. **木**: 画素が静止した後、アクセシビリティの木が追いつくまで待つ(**範囲に入る要素だけ**を比べた木のスナップショットが2回連続で同一)。
+     絵が止まっても木が遅れて追いつくことがある(Compose の木は絵より遅れる実測がある。§3.34)ので、次のロケータ操作が古い木を読まないための段。両段が上限内に済めば `true` を返す
+- **引数**:
+
+| 引数 | 意味 |
+|---|---|
+| `selector` | 省略 = 画面全体。渡すとその要素の枠が範囲(見つからなければ**必ず失敗**。下記の `throwsException` の範囲を参照)。止まらない物(スピナー・シマーの骨組み)を範囲から外したいときに、それを含まない要素を渡す |
+| `quietSeconds: 秒` | 画面がこの時間のあいだ変わらなければ「止まった」とする**基準**。範囲 0.1〜5 秒。省略時の既定は**アプリの UI フレームワークで決まる**: iOS の Compose Multiplatform(と判定できないとき)= 0.8 秒・iOS のそれ以外のフレームワークと Android = 0.5 秒。根拠は慣性の終わりに出る描画の間隔の最大の実測(CMP の 1px ずつの這い 650ms・SwiftUI 368ms・Android の負荷時 385ms)に約 1.2 倍の余裕。実測は docs/performance-tuning.md §3.34 |
+| `waitSeconds: 秒` | 待ち全体(`selector` の要素の解決 + 画像 + 木)の**上限**。要素が見つからないときは、この時間まで探してから失敗する。省略時 15 秒(`waitForDisplay` / `waitForClose` / `appIs` と同じ)。範囲 0〜60 秒 |
+| `throwsException: Bool` | 既定 true。上限までに止まらなかったとき true = ステップが失敗してシナリオ中断・false = ステップは通り、注記 `settle-not-reached` を残して `false` を返す(Shirates の引数名)。**効くのは時間切れだけ**(下記) |
+
+- **比べる範囲は、常に各辺を 10% ずつ除いた内側**。スクロールバー・インジケータのフェード、ステータスバー、ホームインジケータは、
+  本体の動きが止まったあとも変わり続けるため(画面全体のときも要素の枠のときも同じ)
+- **`throwsException: false` は時間切れだけを通す。範囲の要素が見つからないときは、どちらの値でも必ず失敗する**(ユーザー決定
+  2026-08-02「`optional:` / `throwsException: false` の廃止」の例外。どの引数も存在しない要素を通さない方針は変えず、
+  この1コマンドの時間切れに限って許す。docs/shirates-parity.md の「名前の相違」の `optional:` の行は据え置き)
+- **失敗文言は事実だけ**: 画像の段は `the screen kept changing for N s (last change at x, y, w×h)`(最後に変化した矩形)・
+  木の段は `the screen was still but the accessibility tree kept changing for N s (changing: …)`(止まらなかった要素)。
+  要素を探すのに上限の大半を使い、残りが `quietSeconds` より短かったときは「変わり続けた」とは言わず
+  `only N s of waitSeconds was left after finding the element, shorter than quietSeconds (Q s)`(`waitSeconds` 自体が短いときは
+  `waitSeconds is shorter than quietSeconds …`)。座標は小数1桁に丸める。
+  どちらの段で何秒変わり続けたかが分かれば、止まらない物を範囲から外す(`selector` を絞る)か `quietSeconds` / `waitSeconds` を調整する
+- **判定はブリッジの中で完結し、画像はホストへ出さない**。`POST /waitForSettle` に `{region?, quietMs, timeoutMs}` を送り、
+  `{settled, elapsedMs, frames, lastChangeRegion?}` が返る(ブリッジの版は iOS `bridgeProtocolVersion` 174・Android `VERSION_CODE` 100)。経路:
+  - **iOS は hybrid(既定エンジン)でも、撮影は常に XCUITest ランナー**。in-app のスクリーンショットはアプリ自身の描画しか写さず
+    (キーボード・システムアラート・他プロセスが無い)、アプリの中で撮り続けるとメインスレッドを塞ぐため。木の同期だけは次のステップを
+    解決するドライバで行う(hybrid なら in-app の木)。`engine: "inapp"` だけで XCUITest ランナーを持たないデバイスは、
+    hybrid か xcuitest への切り替えを案内して失敗する
+  - **Android は instrumentation ブリッジの中で撮る**。実機は続けて撮り、エミュレータは 50ms・変化している間は 50→100ms・
+    窓の中ほどと終わり(エミュレータのスクリーンショットはホストの CPU を使うため)
+- `ft_batch` も `waitForSettle` を同じ引数で受ける。他ツールの `waitForAnimationToEnd` は `UnavailableCommands` が受け止め、
+  `waitForSettle()` を案内する(別名は置かない)
 
 ## テキスト・値の検証
 
@@ -735,7 +784,7 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 
 | コマンド | 説明 |
 |---|---|
-| `wait(秒)` | 固定待ち。**要素の出現待ちには使わない**(暗黙待ちで足りる)。出番はセレクタで待てない整定(アニメ中の座標ずれ等)だけ |
+| `wait(秒)` | 固定待ち。**要素の出現待ちには使わない**(暗黙待ちで足りる)。出番はセレクタで待てない整定(アニメ中の座標ずれ等)だけ。**画面の静止を待ちたいなら固定の `wait` でなく `waitForSettle`**(存在・状態の検証の表) |
 | `ifCanSelect(sel, waitSeconds: 0) { … }.ifElse { … }` | セレクタが解決できたらブロック実行。**既定は即時 1 回判定**(待つなら `waitSeconds:`。小数可)。出るか不定のダイアログの無害化に。**dry-run では両方のブロックを列挙する**(`.ifElse` の中の構文誤り・未知の `#id` もデバイス無しで返すため) |
 | `ios { … }` / `android { … }` | 対象 OS のときだけ実行 |
 | `repeatWhileCanSelect(sel, maxLoopCount: 10, waitSeconds: 0, title:) { … }` | セレクタが解決できる限り繰り返す(件数不定の一括操作に)。上限到達は失敗にしないが記録に残る |

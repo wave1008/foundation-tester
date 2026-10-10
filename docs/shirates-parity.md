@@ -189,6 +189,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `wait` | 同名 | ✅ |
 | `waitForDisplay` | `waitForDisplay(sel, waitSeconds: 15)` | ✅ 2026-08-03 スクロールしない・戻り値 `FTElement`。Shirates の `throwsException` に相当する引数は持たない(常に失敗として記録する) |
 | `waitForClose` | `waitForClose(sel, waitSeconds: 15)` | ✅ 2026-08-03 **`expression` 省略不可**(Shirates の直前セレクタ再利用の省略形は不採用。`lastElement` は 2026-08-04 に実装済みだが、待ち対象がソース上で読めなくなるため待ち系には省略形を置かない) |
+| — | `waitForSettle(sel?, quietSeconds:, throwsException: true, waitSeconds: 15)` | 🟢 **Shirates に対応物は無い**。画面(`sel` を渡せばその要素の枠。各辺 10% を除く)の画素が `quietSeconds` のあいだ変わらなくなり、さらにアクセシビリティの木が追いつくまで待つ。画像の判定・画素単位の操作・レポート用のスクリーンショットの直前に、スクロールやフリックの慣性が止まるのを待つ**明示のコマンド**(通常の操作は待たない)。**`throwsException`(Shirates の引数名)は、このコマンドの時間切れだけに効く** —— `false` なら失敗にせず注記 `settle-not-reached` を残して `false` を返す。**`sel` の要素が見つからないときは `throwsException` の値によらず常に失敗する**(下の「名前の相違」の `optional:` / `throwsException: false` の全廃は操作・検証について据え置き。時間切れだけが文書化された例外)。他ツールの名前 `waitForAnimationToEnd` は `UnavailableCommands` が受け止め、`waitForSettle()` を案内する。仕様は docs/commands.md「`waitForSettle`」・設計は docs/design.md §4.7 |
 | `usingWaitSeconds` | `waitSeconds:` 引数 / 実行プロファイル `defaultTimeout` | 🟡 **待つ上限の引数名は全コマンドで `waitSeconds:`**(Shirates と同名。ユーザー決定 2026-09-19。以前は操作・検証が `timeout:`、待機・分岐が `waitSeconds:` と割れていた。実行プロファイルのキー `defaultTimeout` / `scenarioTimeout` と MCP ツールの `timeout` は別物で据え置き) |
 | `waitScreen` / `waitScreenOf` | — | ➖ 画面ニックネーム機構を持たない |
 
@@ -275,7 +276,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 |---|---|---|
 | `restartApp` | `restartApp` | ✅ **揃えた**(旧名 `relaunchApp` から改名。2026-07-31) |
 | `notExist` | `dontExist` | ➖ **`notExist` を維持**(ユーザー決定 2026-07-31)。`notExist` は否定の意味が読み取りやすく、`exist` との対称も保てる。**再提案しない** |
-| `optional:` 引数なし | `throwsException: false` | ➖ **全廃**(ユーザー決定 2026-08-02)。空振りを許す引数が操作系にあると腐ったセレクタが緑で残る。代替は `irregularHandler` / `ifCanSelect`、値を読む用途は `select` の空要素。**再提案しない** |
+| `optional:` 引数なし | `throwsException: false` | ➖ **全廃**(ユーザー決定 2026-08-02)。空振りを許す引数が操作系にあると腐ったセレクタが緑で残る。代替は `irregularHandler` / `ifCanSelect`、値を読む用途は `select` の空要素。**再提案しない**。唯一の例外は `waitForSettle` の `throwsException`(効くのは時間切れだけ・要素が見つからなければ常に失敗。「同期」の表) |
 
 ## OS で挙動が割れるもの(利用者に見える差)
 

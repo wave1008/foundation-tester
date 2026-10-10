@@ -1372,6 +1372,18 @@ ARC 下で out パラメータを受けるには `NSString * __unsafe_unretained
   Android = View の描画(`OnDrawListener`。SurfaceView に描くものは見えない)、Flutter = フレームのコールバック
 - 本体は SUT ごとに写しがある(iOS 3つ・Android 3つ)。直すときは全部を同じに直す(各ファイルの冒頭に写しの一覧)
 
+## 「動き続ける画面」の対照はアニメーションで作らない —— E2E はアプリのアニメーションを止めて回す(2026-10-10)
+
+実行プロファイルの既定(`enableAnimations` 無し = `AnimationPolicy` が無効化)では、Android は `animator_duration_scale` などを 0、
+iOS は Reduce Motion をオンにして回す。**進捗バーの `tween`・回転インジケータ・Compose の `Animatable` は動かず一瞬で終わる**。
+waitForSettle の時間切れの対照を E2EX の進捗の画面(2 秒の進捗バー + 回転インジケータ)で作ったら、両 OS で画面は本当に静止していて
+「静止した」が正しい答えだった(実装の不具合ではなく対照の誤り)。
+
+- 動き続ける画面が要る対照は、**この設定に左右されない動き**で作る —— スクロールの慣性(fling。iOS CMP 約 4 秒・Android 約 1.3 秒)。
+  例: `TestProjects/E2E-CMP/scenarios/26_画面の静止を待つ.swift` の S0020
+- 判定材料: 赤のはずが緑なら、まず端末のアニメーションの設定(`adb shell settings get global animator_duration_scale`)と、
+  失敗時のスクリーンショットでその要素が最後の状態になっているかを見る
+
 ## ブリッジが「何を見ているか」は使い捨てのプローブ版で採る(2026-08-06)
 
 a11y trait も Compose の役割マーカーもヘッダに無く、**推測で条件を書くと、緑のまま誤検出する**。

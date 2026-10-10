@@ -414,8 +414,8 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 
 | ブリッジ | 共通コアへの追加 | 計 |
 |---|---|---|
-| XCUITest(Runner/) | `POST /drag`・`POST /gesture`・`POST /hold`・`POST /appswitcher`・`POST /home`・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/covering`・`GET /systemui/snapshot`・`POST /systemui/tap`・`POST /systemui/drag`・`POST /systemui/swipe` | 28 |
-| Android(AndroidRunner/) | `POST /gesture`・`POST /hold`・`POST /locale`・`POST /settle`・`POST /scrollAction`(§4.5) | 18 |
+| XCUITest(Runner/) | `POST /drag`・`POST /gesture`・`POST /hold`・`POST /appswitcher`・`POST /home`・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/covering`・`GET /systemui/snapshot`・`POST /systemui/tap`・`POST /systemui/drag`・`POST /systemui/swipe`・`POST /waitForSettle`(§4.7) | 29 |
+| Android(AndroidRunner/) | `POST /gesture`・`POST /hold`・`POST /locale`・`POST /settle`・`POST /scrollAction`(§4.5)・`POST /waitForSettle`(§4.7) | 19 |
 | InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate` | 16 |
 
 **ジェスチャの秒数(`/press` の duration・`/drag` の press+移動・速度つき `/swipe`・`/pinch`・`/gesture` の全体)の上限は2層**:
@@ -1058,6 +1058,43 @@ Compose では壊れており、クランプされた画面外セルを `hittabl
 
 補足: この frame 破綻とは別に、Compose の合成 a11y 要素は `accessibilityActivate()` が発火しないため、
 inapp の ref タップも座標フォールバックに落ち、同じ壊れた frame を踏む(座標非依存の起動経路が無い)。
+
+### 4.7 waitForSettle(画面の静止と木の同期)
+
+DSL `waitForSettle(_ selector: String? = nil, quietSeconds: Double? = nil, throwsException: Bool = true, waitSeconds: Double? = nil) -> Bool`
+(引数の意味・失敗文言は docs/commands.md「`waitForSettle`」)。**明示したときだけ待つ**。通常の操作の後に画像の静止を毎回待つ方式は、
+E2E の A/B で +14〜36% 遅く正しさの差が無かったので撤去した。実測・残す知見(信号ごとの見落とし・描画間隔の最大・撮影の費用)は
+docs/performance-tuning.md §3.34。
+
+**エンドポイント契約**: `POST /waitForSettle` に `{region?, quietMs, timeoutMs}` →
+`{settled, elapsedMs, frames, lastChangeRegion?}`。`region` 省略 = 画面全体。`settled` は窓(`quietMs`)のあいだ範囲の画素が1つも変わらなかったか、
+`frames` は撮った枚数、`lastChangeRegion` は最後に画素が変わった矩形(失敗文言 `last change at x, y, w×h` の元)。
+**判定はブリッジの中で完結し、画像はホストへ出さない**(転送は撮影より高い。§3.34)。ブリッジの版は iOS `bridgeProtocolVersion` 174・
+Android `VERSION_CODE` 100。XCUITest ランナーと Android ブリッジが持ち、**in-app ブリッジは持たない**。
+
+**2段**(`waitSeconds` は `selector` の要素の解決と両段を合わせた上限。解決に使った分を引いた残りで画像の段、その残りで木の段。
+実装は `StepExecutor+WaitForSettle.swift`、判定の純粋関数は `WaitForSettleJudgement.swift`):
+1. **画像**: 上のブリッジ呼び出し。止まらなければ `the screen kept changing for N s (last change at …)` で時間切れ(座標は小数1桁)。
+   ブリッジに渡せた時間が `quietSeconds` より短かったとき(要素の解決で上限の大半を使った・`waitSeconds` < `quietSeconds`)は
+   「変わり続けた」とは言えないので、残り時間と窓を事実として書く(`only N s of waitSeconds was left after finding the element, …`)。
+   XCUITest ランナーは返す直前に `settlePending` を立てる(次の snapshot を XCTest のキャッシュでなく取り直した木にする)
+2. **木**: 画像が静止した後、ホストが**範囲に入る要素だけ**(範囲なし = 画面の枠に入る要素。画面外の行はラベルが取得のたびに揺れるので
+   全体の木は比べない)を型・id・ラベル・枠の署名で比べ、2回連続で同一になるまで取り直す。周期は整定のポーリングと同じ規則
+   (`settleSleepMs`)、Android はキャッシュを迂回して撮る(`.afterOwnMove`)。絵が止まっても木は遅れることがある(Compose の木は
+   絵より遅れ、慣性の間は凍る。§3.34)ため。止まらなければ `the screen was still but the accessibility tree kept changing for N s (changing: …)`。
+   終わった後の次のロケータ操作の解決もキャッシュを迂回する
+
+**比べる範囲は常に各辺を 10% ずつ除く**。スクロールバー・インジケータのフェード、ステータスバー、ホームインジケータは本体が止まった後も
+変わり続けるため(§3.34 の実測: Android のタップの 0.3〜2 秒後に出る変化は装飾だけ)。止まらない物(スピナー・シマー)は DSL の `selector` で範囲から外す。
+
+**エンジンごとの経路と理由**:
+- **iOS は hybrid(既定)でも、撮影は常に XCUITest ランナー**。in-app のスクリーンショットはアプリ自身の描画しか写さず(キーボード・システムアラート・
+  他プロセスが無い)、アプリのプロセスの中で撮り続けるとメインスレッドを塞ぐため。`engine: "inapp"` だけで XCUITest ランナーを持たないデバイスは、
+  hybrid か xcuitest への切り替えを案内して失敗する。木の段は**次のステップを解決するドライバ**を使う(hybrid なら in-app の木 = 次の解決が読む木と揃える)
+- **Android は instrumentation ブリッジの中で撮る**。実機は連続で撮り、エミュレータは 50ms → 変化している間は 50→100ms → 窓の中ほどと終わり
+  (エミュレータのスクリーンショットはホストの CPU を使うため間引く)
+- **静止の窓 `quietSeconds` の既定**は `FTCore.WaitForSettleDefaults.quietSeconds(framework:isAndroid:)` の1箇所(iOS の Compose Multiplatform と
+  フレームワーク不明 = 0.8 秒・それ以外の iOS と Android = 0.5 秒。根拠は慣性の終わりの描画間隔の最大の実測 × 約 1.2)
 
 ---
 

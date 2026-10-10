@@ -80,6 +80,7 @@ Shirates に対応物が無いもの:
 | `clearAppData(bundleID?)` | 再インストール不要でアプリのデータと権限を消す(初回起動・権限ダイアログのテストに) |
 | `openURL(url)` / `launchApp(url:)` | ディープリンク配送(アプリ再起動あり・なしの両方) |
 | `rotateTo(.landscape)` | 画面を回転する。シナリオ終了時に元の向きへ自動で戻る |
+| `waitForSettle(sel?, quietSeconds:, throwsException:, waitSeconds:)` | 画面(または要素の範囲)の画素が止まりきり、木も追いつくまで待つ —— スクロールの慣性が止まりきった画面で画像の判定やスクリーンショットをしたいときに([wait](../reference/commands/wait_ja.md)) |
 | `iosAlertHandler(alert:, button:)` | iOS のシステムアラート(権限確認等)を自動で閉じる(別プロセスなので `irregularHandler` では扱えない) |
 | `@Draft("理由")` | 実装中(未完成)マーク。`@Deleted` と同様に一括実行から除外されるが、完全一致 ID なら実行できる |
 | `group("名前") { }` | 一連のステップをレポート上でラベル付けする。実行・失敗の扱いは変わらない |

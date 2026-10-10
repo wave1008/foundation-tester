@@ -80,6 +80,7 @@ Shirates has no equivalent for these:
 | `clearAppData(bundleID?)` | clears app data and permissions without reinstalling — for onboarding / permission-dialog tests |
 | `openURL(url)` / `launchApp(url:)` | deep-link delivery, with or without restarting the app |
 | `rotateTo(.landscape)` | rotates the device; the scenario restores the original orientation on completion |
+| `waitForSettle(sel?, quietSeconds:, throwsException:, waitSeconds:)` | waits until the pixels of the screen (or of an element's area) stop completely and the accessibility tree has caught up — for image checks or screenshots after scroll inertia has fully stopped ([wait](../reference/commands/wait.md)) |
 | `iosAlertHandler(alert:, button:)` | auto-dismisses iOS system alerts (permission prompts etc. — a separate process, so `irregularHandler` can't see them) |
 | `@Draft("reason")` | marks a scenario as work-in-progress; excluded from bulk runs like `@Deleted`, but can still be run by exact ID |
 | `group("name") { }` | prefixes a run of steps with a label in the report; doesn't change execution or failure handling |

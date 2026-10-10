@@ -130,7 +130,7 @@ scenarios the AI assistant wrote, or to write some yourself.
 - Repeating action
     - [repeatWhileCanSelect, doUntilTrue](reference/commands/repeat.md)
 - Syncing
-    - [wait, waitForDisplay, waitForClose](reference/commands/wait.md)
+    - [wait, waitForDisplay, waitForClose, waitForSettle](reference/commands/wait.md)
 - Descriptor
     - [group, procedure, beforeEach, afterEach, setUpDevice, tearDownDevice](reference/commands/descriptors.md)
 - Screenshot
