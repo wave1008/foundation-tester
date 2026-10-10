@@ -10,11 +10,25 @@ import 'package:flutter/scheduler.dart';
 class RenderProbe {
   static RandomAccessFile? _log;
 
+  /// Android のアプリのプロセス名(= パッケージ名)。/proc/self/cmdline の最初の NUL まで。読めなければ null
+  static String? _androidPackageName() {
+    try {
+      final name = File('/proc/self/cmdline').readAsStringSync().split('\u0000').first.trim();
+      return name.isEmpty ? null : name;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static void startIfRequested() {
-    // Android の systemTemp はアプリの cache ではない(run-as で置いた目印が見えなかった)ので cache も候補にする
+    // Android の systemTemp はアプリの cache ではない(run-as で置いた目印が見えなかった)ので cache も候補にする。
+    // パッケージ名は自分のプロセス名から取る(決め打ちにしない)
     final candidates = [
       Directory.systemTemp.path,
-      if (Platform.isAndroid) '/data/user/0/com.ftester.e2e.flutter/cache',
+      if (Platform.isAndroid) ...[
+        for (final pkg in [_androidPackageName()])
+          if (pkg != null) '/data/user/0/$pkg/cache',
+      ],
     ];
     final dir = candidates.firstWhere((d) => File('$d/render-probe.on').existsSync(), orElse: () => '');
     if (dir.isEmpty) return;

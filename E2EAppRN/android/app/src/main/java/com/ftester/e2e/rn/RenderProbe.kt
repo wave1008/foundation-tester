@@ -8,6 +8,7 @@ import android.view.View
 import java.io.File
 import java.io.FileWriter
 import java.util.WeakHashMap
+import java.util.concurrent.Executors
 
 /**
  * 計測用の描画プローブ(目印 render-probe.on があるときだけ動く)。目印とログの置き場は2つ:
@@ -20,6 +21,9 @@ import java.util.WeakHashMap
  */
 object RenderProbe {
     private var writer: FileWriter? = null
+    /** 書き込みと flush は専用の1本のスレッドで行う(UI スレッドで描画のたびにファイル I/O をすると、測っている描画そのものを遅らせる)。
+     *  1本なので書き込みの順序は描画の順のまま・FileWriter を同時に触らない */
+    private val io = Executors.newSingleThreadExecutor()
     /** リスナーを付けた decorView(前面に戻るたびに足すと1回の描画が複数行になる) */
     private val observed = WeakHashMap<View, Boolean>()
 
@@ -46,7 +50,10 @@ object RenderProbe {
 
     private fun record() {
         val w = writer ?: return
-        w.write("${System.currentTimeMillis()}\n")
-        w.flush()
+        val now = System.currentTimeMillis()  // 時刻は描画のその場で取る(書き込みだけを後へ回す)
+        io.execute {
+            w.write("$now\n")
+            w.flush()
+        }
     }
 }

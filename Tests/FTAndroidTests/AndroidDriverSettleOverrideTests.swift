@@ -1,6 +1,7 @@
 // settle: false(SettleOverride.skip)の間は、adb のキー操作の後の整定(settleViaBridge = ブリッジの POST /settle、
-// 失敗時は 800ms の固定待ち)を撃たない。back() はキー操作 → settleViaBridge の順なので、その後に adb が
-// 呼ばれたか(ブリッジを起こしに行ったか)と所要で見分ける
+// 失敗時は 800ms の固定待ち)を撃たない。back() はキー操作 → settleViaBridge の順で、固定待ちに入るのは
+// ブリッジを起こしに行って(= adb を呼んで)失敗した後だけ。だから「キー操作の後に adb が呼ばれたか」で見分ける
+// (所要の上限で見ない: 並列の負荷で 0.5 秒を超えて落ちた。下限を見る陽性対照は負荷で崩れない)
 
 import FTCore
 import XCTest
@@ -43,13 +44,11 @@ final class AndroidDriverSettleOverrideTests: XCTestCase {
     func testBackWithSettleFalseDoesNotSettleViaTheBridge() async throws {
         let adb = try fakeADB()
         let driver = AndroidDriver(serial: serial, adbPath: adb.path)
-        let start = Date()
         try await SettleOverride.$skip.withValue(true) { try await driver.back() }
-        let elapsed = Date().timeIntervalSince(start)
         let made = calls(adb.log)
-        XCTAssertEqual(made.count, 1, "キー操作の後にブリッジを起こしに行った: \(made)")
+        // キー操作の1回だけ = ブリッジを起こしに行っていない = その失敗の後の 800ms の固定待ちにも入っていない
+        XCTAssertEqual(made.count, 1, "キー操作の後にブリッジを起こしに行った(失敗すれば 800ms の固定待ちへ落ちる): \(made)")
         XCTAssertTrue(made.first?.contains("keyevent") == true, "\(made)")
-        XCTAssertLessThan(elapsed, 0.5, "800ms の固定待ちへ落ちた")
     }
 
     /// 陽性対照: 既定(settle する)ではキー操作の後にブリッジへ整定を頼みに行き、失敗すると固定待ちへ落ちる
