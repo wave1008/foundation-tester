@@ -3,6 +3,8 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'render_probe.dart';
+
 import 'screens/noid_screen.dart';
 import 'screens/screens.dart';
 import 'screens/screens2.dart';
@@ -45,6 +47,7 @@ class DeepLinkState {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  RenderProbe.startIfRequested();
   // **必須**: Flutter の semantics ツリーは支援技術が要求したときだけ構築される。
   // ensureSemantics() で常時 ON にしないと、ブリッジによっては要素が1つも見えない
   // (= どのセレクタも解決できない)。E2E 用アプリなので恒久的に有効化する。

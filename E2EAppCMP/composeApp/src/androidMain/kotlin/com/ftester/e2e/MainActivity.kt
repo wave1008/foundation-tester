@@ -11,6 +11,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        RenderProbe.startIfRequested(application)
         handleDeepLink(intent)
         setContent {
             App()

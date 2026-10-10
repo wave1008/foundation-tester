@@ -28,5 +28,6 @@ class MainApplication : Application(), ReactApplication {
     // fleetest が DOM を読めない(他の SUT は debuggable ビルドなので既定で開く)
     WebView.setWebContentsDebuggingEnabled(true)
     loadReactNative(this)
+    RenderProbe.startIfRequested(this)
   }
 }

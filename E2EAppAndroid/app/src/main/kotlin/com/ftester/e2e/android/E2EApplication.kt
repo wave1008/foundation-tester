@@ -59,5 +59,6 @@ class E2EApplication : Application() {
         super.onCreate()
         Prefs.init(this)
         LaunchCounter.count()
+        RenderProbe.startIfRequested(this)
     }
 }

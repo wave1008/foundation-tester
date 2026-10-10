@@ -3,6 +3,10 @@ import ComposeApp
 
 @main
 struct iOSApp: App {
+    init() {
+        RenderProbe.startIfRequested()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
