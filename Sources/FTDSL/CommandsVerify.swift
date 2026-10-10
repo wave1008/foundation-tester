@@ -950,6 +950,7 @@ public struct FTElement {
         coordinateTap(x: x, y: y, holdSeconds: holdSeconds, maxGestureSeconds: maxGestureSeconds,
                       settle: settle,
                       description: "tap image \"\(imageLabel)\" (\(String(format: "%.1f", x)), \(String(format: "%.1f", y)))",
+                      paced: false,  // 見つけた枠の座標を叩く = 待つと古くなる
                       file: file, line: line)
         return self
     }

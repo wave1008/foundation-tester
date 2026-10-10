@@ -235,6 +235,17 @@ class セレクタ画面の機能一式が正しく動くこと {
                         試行回数 += 1
                         return 試行回数 >= 3
                     }
+                    // ブロックの中で DSL のコマンドを呼べる(Shirates の `{ scrollDown(); canSelect(...) }` の形)。
+                    // タブはどの画面でも見えている(scene 23 で送った後でも)
+                    var 読んだ回数 = 0
+                    doUntilTrue("中で select を呼び 3 回目で成立する", waitSeconds: 10, intervalSeconds: 0.1) {
+                        読んだ回数 += 1
+                        return select("#tab_home").isNotEmpty && 読んだ回数 >= 3
+                    }
+                    // procedure の中でも DSL のコマンドを呼べる(レポートでは中の成功したステップを畳む)
+                    procedure("タブが見えていることを確かめる") {
+                        exist("#tab_home")
+                    }
                 }
             }
             scene(26, "15.S0010: フォールバック・型限定ラベル・相対セレクタ") {

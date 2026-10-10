@@ -46,6 +46,15 @@ public enum ScenarioReportWriter {
 
             var section: String? = "(uncategorized)"
             for step in scene.steps {
+                // procedure の中のステップは畳む(Shirates の procedure = describe + silent)。失敗・判定不能・
+                // フォールバック通過・自己修復と screenshot() の画像は畳まない(原因・セレクタの直し方・利用者が
+                // 明示的に撮った絵を見えなくしない)
+                if step.insideProcedure, step.screenshotData == nil {
+                    switch step.status {
+                    case .failed, .inconclusive, .passedViaFallback, .healed: break
+                    default: continue
+                    }
+                }
                 if step.section != section {
                     section = step.section
                     if let section { md += "\n### \(section)\n\n" } else { md += "\n" }

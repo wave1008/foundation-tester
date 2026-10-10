@@ -403,11 +403,15 @@ public struct StepCountsRecord: Codable, Sendable {
     /// guarded のうち、絵が古いまま撮り直しても stale で素通りした回(`StepNote.staleScreenshot`)。
     /// guarded が nil なら常に nil
     public var guardStaleFrame: Int?
+    /// ステップの減速(`HostLoadPacing`)で実際に待ったステップ数と、その待ちの合計(ミリ秒。ステップの
+    /// durationMs には含まれない)。1度も待たなかったシナリオは両方 nil
+    public var paced: Int?
+    public var pacedMs: Int?
 
     public init(total: Int = 0, passed: Int = 0, failed: Int = 0, skipped: Int = 0,
                 healed: Int = 0, passedViaFallback: Int = 0, inconclusive: Int? = nil,
                 viaHeldValue: Int? = nil, guarded: Int? = nil, guardSkipped: Int? = nil,
-                guardStaleFrame: Int? = nil) {
+                guardStaleFrame: Int? = nil, paced: Int? = nil, pacedMs: Int? = nil) {
         self.total = total
         self.passed = passed
         self.failed = failed
@@ -419,6 +423,8 @@ public struct StepCountsRecord: Codable, Sendable {
         self.guarded = guarded
         self.guardSkipped = guardSkipped
         self.guardStaleFrame = guardStaleFrame
+        self.paced = paced
+        self.pacedMs = pacedMs
     }
 }
 
@@ -502,6 +508,8 @@ public struct TimelineStepRecord: Codable, Sendable {
     /// occlusion-guard の OCR/FM 段と、そのうち OCR だけ(ScenarioEvent の同名欄の doc)
     public var guardMs: Int?
     public var ocrMs: Int?
+    /// ステップの減速で待った時間(ScenarioEvent.pacingMs)。nil = 待っていない
+    public var pacingMs: Int?
     /// StepNote の rawValue(ScenarioEvent.notes 由来)。**run 横断の集計はここだけを見る**
     /// (description の文言一致で数えない。StepNote の doc 参照)。注記が無いステップと、
     /// notes を持たない旧レコードはどちらも nil
@@ -513,7 +521,7 @@ public struct TimelineStepRecord: Codable, Sendable {
                 snapshotMs: Int? = nil, actionMs: Int? = nil, waitMs: Int? = nil,
                 scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, ioBlockedMs: Int? = nil,
                 stallMs: Int? = nil, poolStallMs: Int? = nil, guardMs: Int? = nil,
-                ocrMs: Int? = nil, notes: [String]? = nil) {
+                ocrMs: Int? = nil, pacingMs: Int? = nil, notes: [String]? = nil) {
         self.scene = scene
         self.sceneTitle = sceneTitle
         self.section = section
@@ -532,6 +540,7 @@ public struct TimelineStepRecord: Codable, Sendable {
         self.poolStallMs = poolStallMs
         self.guardMs = guardMs
         self.ocrMs = ocrMs
+        self.pacingMs = pacingMs
         self.notes = notes
     }
 }
@@ -802,7 +811,12 @@ public struct ScenarioRecordBuilder {
             scheduleDelayMs: event.scheduleDelayMs, cpuMs: event.cpuMs,
             ioBlockedMs: event.ioBlockedMs,
             stallMs: event.stallMs, poolStallMs: event.poolStallMs, guardMs: event.guardMs, ocrMs: event.ocrMs,
+            pacingMs: event.pacingMs,
             notes: event.notes?.isEmpty == true ? nil : event.notes))
+        if let pacingMs = event.pacingMs {
+            stepCounts.paced = (stepCounts.paced ?? 0) + 1
+            stepCounts.pacedMs = (stepCounts.pacedMs ?? 0) + pacingMs
+        }
         if event.notes?.contains(StepNote.heldValue.rawValue) == true {
             stepCounts.viaHeldValue = (stepCounts.viaHeldValue ?? 0) + 1
         }

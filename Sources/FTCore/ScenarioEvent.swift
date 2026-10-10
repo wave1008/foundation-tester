@@ -89,6 +89,9 @@ public struct ScenarioEvent: Codable, Sendable {
     /// guardMs の内訳: **OCR 段だけ**(残りが FM 段)。近道が近道になっているかを見る欄。
     /// 注記 `ocr-budget-exhausted` と併せて読む —— 予算ちょうどで並んでいれば予算が狭い
     public var ocrMs: Int?
+    /// kind == step。ステップの減速(`HostLoadPacing`)で**実際に待った**ミリ秒。nil = 待っていない。
+    /// durationMs には含まれない(待ちは計時の前)
+    public var pacingMs: Int?
     /// kind == scenarioFinished。このシナリオの FM 呼び出し実測(回数・レイテンシ)。
     /// FM を使わなかったシナリオでは nil(キーごと省略)。FM はホスト全体で直列化するため、
     /// 並列実行では他レーンの待ちも含む値になる(FMHealth の doc 参照)

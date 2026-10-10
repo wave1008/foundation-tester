@@ -338,6 +338,8 @@ func holdImpl(_ selector: FTSelector, holdSeconds: Double?, maxGestureSeconds: D
                         scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))
     let description = "hold \"\(selector.text)\" (\(FTSeconds.format(holdSeconds))s)"
     let result = perform("hold", selector, step: step, description: description, file: file, line: line)
+    // 押している間(中のステップと離す操作)は減速しない(FTDriveCore.holdsInProgress)
+    core.holdsInProgress += 1
     switch result.status {
     case .passed, .passedViaFallback, .healed:
         body()
@@ -345,6 +347,7 @@ func holdImpl(_ selector: FTSelector, holdSeconds: Double?, maxGestureSeconds: D
         core.noteUnexecutedBlock()
     }
     core.finishHold(description: "release \"\(selector.text)\"", settle: settle, file: file, line: line)
+    core.holdsInProgress -= 1
     return FTElement(selector: selector, matched: result.element)
 }
 
@@ -502,12 +505,12 @@ public func tap(x: Double, y: Double, holdSeconds: Double = FlowStep.defaultTapH
 /// **FlowStep を通す**(ft_batch の `tap x: y:` と同じ経路): システム UI の門・秒数の検査・
 /// 直前の操作記録のリセットは StepExecutor の入口にしか無い
 func coordinateTap(x: Double, y: Double, holdSeconds: Double, maxGestureSeconds: Double?,
-                   settle: Bool, description: String, file: StaticString, line: UInt) {
+                   settle: Bool, description: String, paced: Bool = true, file: StaticString, line: UInt) {
     let step = FlowStep(action: "tap",
                         duration: holdSeconds == FlowStep.defaultTapHoldSeconds ? nil : holdSeconds,
                         maxGestureSeconds: maxGestureSeconds, settle: stepSettle(settle), x: x, y: y)
     FTRuntime.requireCore(command: "tap")
-        .perform(step: step, description: description, command: "tap", file: file, line: line)
+        .perform(step: step, description: description, command: "tap", paced: paced, file: file, line: line)
 }
 
 /// 2点間ドラッグ(座標は snapshot の screen と同じ座標系。iOS = pt / Android = px)。

@@ -244,6 +244,22 @@ public enum ScenarioHost {
         config.redactAccountValues == true ? ["--redact-account-values"] : []
     }
 
+    /// マシン側の `hostLoadPacing` を子へ渡す引数。有効なときだけ付ける(CPU は子が操作の直前に自分で測る)。
+    /// 不正な設定は既定の段へ倒し、`warn` で説明を渡す
+    static func hostLoadPacingArguments(_ config: LocalConfig,
+                                        warn: (String) -> Void = { _ in }) -> [String] {
+        guard let resolution = HostLoadPacing.resolve(config.hostLoadPacing) else { return [] }
+        if let warning = resolution.warning { warn(warning) }
+        let plan = HostLoadPacingPlan(tiers: resolution.tiers)
+        guard let data = try? JSONEncoder().encode(plan), let json = String(data: data, encoding: .utf8) else {
+            return []
+        }
+        return ["--host-load-pacing", json]
+    }
+
+    /// 不正設定の警告は親プロセスで1回だけ(シナリオごとに出さない)
+    private static let hostLoadPacingWarned = LockedValue(false)
+
     public static func runnerURL(project: TestProject) throws -> URL {
         if let root = packageRoot() {
             let debugBinary = root.appendingPathComponent(".build/debug")
@@ -556,7 +572,15 @@ public enum ScenarioHost {
                     // TestLog.directoryForLog の run のフォルダ(この親プロセスの全シナリオで同じ)
                     "--run-started-at", TestLogSessionLabel.processStart]
         if settings.heal { args.append("--heal") }
-        args += accountRedactionArguments(LocalConfig.load())
+        let machineConfig = LocalConfig.load()
+        args += accountRedactionArguments(machineConfig)
+        if !dryRun {
+            args += hostLoadPacingArguments(machineConfig) { warning in
+                if !hostLoadPacingWarned.withLock({ let was = $0; $0 = true; return was }) {
+                    ConsoleOut.err("[fleetest] " + warning)
+                }
+            }
+        }
         if !fm.enabled { args.append("--no-fm") }
         if !fm.fmTextOcclusionCheck { args.append("--no-fm-text-occlusion-check") }
         if !fm.screenLooksLike { args.append("--no-screen-looks-like") }

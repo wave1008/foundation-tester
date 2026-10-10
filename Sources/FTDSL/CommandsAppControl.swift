@@ -393,7 +393,8 @@ func ftSleepNanoseconds(_ seconds: Double) -> UInt64 {
 public func wait(_ seconds: Double,
                  file: StaticString = #filePath, line: UInt = #line) {
     FTRuntime.requireCore(command: "wait")
-        .performCustom(description: "wait \(FTSeconds.format(seconds))s", command: "wait", file: file, line: line) {
+        .performCustom(description: "wait \(FTSeconds.format(seconds))s", command: "wait", file: file, line: line,
+                       paced: false) {
             try await Task.sleep(nanoseconds: ftSleepNanoseconds(seconds))
         }
 }
@@ -694,38 +695,70 @@ public func ftRunTearDownDevice(_ body: () -> Void) {
     FTRuntime.requireCore(command: "tearDownDevice").runLifecycle("tearDownDevice", allowAfterFailure: true, body)
 }
 
-/// 条件が満たされるまで任意の Swift コードを繰り返す(Shirates の doUntilTrue 相当)。
-/// **アプリ側・外部の状態を待つためのもの**で、画面要素の出現待ちは各コマンドの `waitSeconds:` を使う
-/// (こちらは記録が1ステップに畳まれるため、要素待ちに使うと失敗時の情報が減る)。
-/// action が true を返せば成功。waitSeconds 経過または maxLoopCount 到達で NG(シナリオ中断)。
-/// action が throw した場合は**リトライせず**その場で NG にする(状態の待ちと実行時エラーを混ぜない)。
-/// dry-run では body を実行せず1ステップとして記録するだけ(performCustom の既定動作)
+/// 条件が満たされるまでブロックを繰り返す(Shirates の doUntilTrue 相当)。**ブロックの中で DSL のコマンドを呼べる**
+/// (Shirates の基本形 `{ scrollDown(); canSelect(...) }`)—— DSL スレッドで同期に実行する(repeatWhileCanSelect と同じ)。
+/// 1周ごとに `"<title> #n"` のまとまりとして記録し、最後に結果を1ステップ残す。
+/// ブロックが true を返せば成功。waitSeconds 経過または maxLoopCount 到達で NG(シナリオ中断)。
+/// ブロックが throw したら**リトライせず**その場で NG(状態の待ちと実行時エラーを混ぜない)。
+/// 中の DSL コマンドが失敗したらシナリオの中断に従って止まる(その失敗は記録済みなので重ねて記録しない)。
+/// **1つのステップではない**ので、コマンド1つの締切(FTSync.commandTimeout)は掛からず waitSeconds だけで止まる。
+/// 上限は時計で測り、中の操作の前でステップの減速が待った分は差し引く(負荷が高いときだけ試せる回数が減らないように)。
+/// dry-run は1周だけ回して中のステップを列挙する
 public func doUntilTrue(_ title: String, waitSeconds: Double? = nil, intervalSeconds: Double? = nil,
                         maxLoopCount: Int? = nil,
                         file: StaticString = #filePath, line: UInt = #line,
-                        _ body: @escaping () async throws -> Bool) {
+                        _ body: () throws -> Bool) {
     let core = FTRuntime.requireCore(command: "doUntilTrue")
+    let description = "doUntilTrue \"\(title)\""
+    if core.scenarioAborted {
+        core.recordStep(description: description, status: .skipped(core.skipReason), file: "\(file)", line: Int(line),
+                        command: "doUntilTrue")
+        return
+    }
     let waitSeconds = waitSeconds ?? core.tunables.doUntilTrueTimeout
     let intervalSeconds = intervalSeconds ?? core.tunables.doUntilTrueInterval
     let maxLoopCount = maxLoopCount ?? core.tunables.doUntilTrueMaxLoopCount
-    core.performCustom(description: "doUntilTrue \"\(title)\"", command: "doUntilTrue", file: file, line: line) {
-            let deadline = Date().addingTimeInterval(waitSeconds)
-            var loops = 0
-            while true {
-                if try await body() { return }
-                loops += 1
-                if loops >= maxLoopCount {
-                    throw FTCommandError.message(
-                        "doUntilTrue \"\(title)\" did not hold within the \(maxLoopCount)-attempt limit")
-                }
-                if Date() >= deadline {
-                    throw FTCommandError.message(
-                        "doUntilTrue \"\(title)\" did not hold within \(FTSeconds.format(waitSeconds))s"
-                        + " (\(loops) attempt(s))")
-                }
-                try await Task.sleep(nanoseconds: ftSleepNanoseconds(intervalSeconds))
-            }
+    let clock = ContinuousClock()
+    let start = clock.now
+    var deadline = Date().addingTimeInterval(waitSeconds)
+    var loops = 0
+    var failure: (reason: String, kind: StepFailureKind?)?
+    while true {
+        let pacedBefore = core.pacedMsTotal.value
+        var held = false
+        var thrown: Error?
+        core.runGroup("\(title) #\(loops + 1)") {
+            do { held = try body() } catch { thrown = error }
         }
+        loops += 1
+        deadline += Double(core.pacedMsTotal.value - pacedBefore) / 1000
+        if core.scenarioAborted { return }
+        if let thrown {
+            failure = (thrown.localizedDescription, StepExecutor.failureKind(thrown: thrown))
+            break
+        }
+        if held || core.isDryRun { break }
+        if loops >= maxLoopCount {
+            failure = ("doUntilTrue \"\(title)\" did not hold within the \(maxLoopCount)-attempt limit", nil)
+            break
+        }
+        if Date() >= deadline {
+            failure = ("doUntilTrue \"\(title)\" did not hold within \(FTSeconds.format(waitSeconds))s"
+                       + " (\(loops) attempt(s))", nil)
+            break
+        }
+        // 負値・NaN は 0 に丸める(UInt64 へ直す経路と同じ規律。trap させない)
+        Thread.sleep(forTimeInterval: intervalSeconds.isFinite ? max(0, intervalSeconds) : 0)
+    }
+    let durationMs = continuousClockMilliseconds(clock.now - start)
+    if let failure {
+        core.recordStep(description: description, status: .failed(failure.reason), file: "\(file)", line: Int(line),
+                        durationMs: durationMs, command: "doUntilTrue", failureKind: failure.kind)
+        core.handleFailure(stepDescription: description, reason: failure.reason)
+    } else {
+        core.recordStep(description: "\(description) → \(loops) attempt(s)", status: .passed, file: "\(file)",
+                        line: Int(line), durationMs: durationMs, command: "doUntilTrue")
+    }
 }
 
 /// DSL コマンドが自前で NG にするときのエラー(メッセージがそのままステップの失敗理由になる)
@@ -739,12 +772,42 @@ enum FTCommandError: LocalizedError {
     }
 }
 
-/// 任意の Swift コード(データセットアップ等)を 1 ステップとして実行・記録する。
-/// クロージャ内では try / await が使える。throw は NG として記録されシナリオを中断する
+/// 手順に名前を付けて1つにまとめる(Shirates の procedure = describe + silent)。**ブロックの中で DSL のコマンドを呼べる**
+/// —— DSL スレッドで同期に実行する(repeatWhileCanSelect / doUntilTrue と同じ)。中のステップは `[title]` を前置して
+/// 記録し、**レポート(.md)では畳む**(成功・skip は出さず `procedure "title"` の1行だけ。失敗・判定不能・フォールバック・
+/// 自己修復・screenshot() の絵は畳まない = ScenarioReportWriter)。結果 JSON・イベントには全部残す。
+/// 中のコマンドが失敗したらシナリオ中断に従って止まる(その失敗が記録に残るので重ねて記録しない)。
+/// throw したらその場で NG。**1つのステップではない**ので FTSync のコマンド上限は掛からない。
+/// 中の生の Swift コードは、前段が失敗していれば走らない(scene のブロックと違う = 失敗後に走らせたくない処理の置き場)。
+/// dry-run でも中を実行する(中の DSL は dry-run の扱いになる。生の Swift は scene のブロックと同じく走る)
 public func procedure(_ title: String,
                       file: StaticString = #filePath, line: UInt = #line,
-                      _ body: @escaping () async throws -> Void) {
-    FTRuntime.requireCore(command: "procedure")
-        .performCustom(description: "procedure \"\(title)\"", command: "procedure", file: file, line: line, body)
+                      _ body: () throws -> Void) {
+    let core = FTRuntime.requireCore(command: "procedure")
+    let description = "procedure \"\(title)\""
+    if core.scenarioAborted {
+        core.recordStep(description: description, status: .skipped(core.skipReason), file: "\(file)", line: Int(line),
+                        command: "procedure")
+        return
+    }
+    let clock = ContinuousClock()
+    let start = clock.now
+    var thrown: Error?
+    core.procedureDepth += 1
+    core.runGroup(title) {
+        do { try body() } catch { thrown = error }
+    }
+    core.procedureDepth -= 1
+    if core.scenarioAborted { return }
+    let durationMs = continuousClockMilliseconds(clock.now - start)
+    if let thrown {
+        let reason = thrown.localizedDescription
+        core.recordStep(description: description, status: .failed(reason), file: "\(file)", line: Int(line),
+                        durationMs: durationMs, command: "procedure", failureKind: StepExecutor.failureKind(thrown: thrown))
+        core.handleFailure(stepDescription: description, reason: reason)
+    } else {
+        core.recordStep(description: description, status: .passed, file: "\(file)", line: Int(line),
+                        durationMs: durationMs, command: "procedure")
+    }
 }
 

@@ -382,30 +382,32 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         XCTAssertTrue(core.finalRecord.passed)
     }
 
-    /// **FTSync のコマンド上限は doUntilTrue の waitSeconds より先に効く**
-    /// (docs/commands.md「1 コマンドの壁時計上限は 120 秒」。上限より長い待ちは書いても待てない)。
-    /// 上限を縮めて同じ関係を再現する — 逆転すると doUntilTrue 側のメッセージで落ちるので区別できる
-    func testDoUntilTrueCannotWaitLongerThanTheCommandTimeout() {
+    /// **doUntilTrue はコマンド上限(FTSync.commandTimeout)に掛からず、waitSeconds で止まる**
+    /// (1つのステップではなく、中で DSL のコマンドを繰り返すブロック = Shirates と同じ)。
+    /// 上限を waitSeconds より短く縮めて、doUntilTrue 自身の文言で落ちることを見る
+    func testDoUntilTrueIsBoundByItsOwnWaitSecondsNotTheCommandTimeout() {
         let core = makeCore(driver: StubDriver(), dryRun: false)
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)
         let savedTimeout = FTSync.commandTimeout
-        FTSync.commandTimeout = 0.3
+        FTSync.commandTimeout = 0.2
         defer {
             FTSync.commandTimeout = savedTimeout
             FTRuntime.tearDown()
         }
 
+        let started = Date()
         scenario {
             scene(1, "s") {
-                action { doUntilTrue("成立しない条件", waitSeconds: 30) { false } }
+                action { doUntilTrue("成立しない条件", waitSeconds: 0.6, intervalSeconds: 0.05) { false } }
             }
         }
 
-        guard case .failed(let reason) = steps(core)[0].status else {
-            return XCTFail("上限を超えても NG になっていない: \(steps(core)[0].status)")
+        let last = steps(core).last
+        guard case .failed(let reason)? = last?.status else {
+            return XCTFail("成立しないのに NG になっていない: \(String(describing: last?.status))")
         }
-        XCTAssertTrue(reason.contains("the operation timed out"),
-                      "waitSeconds(30s)が先に効いてしまっている: \(reason)")
+        XCTAssertTrue(reason.contains("did not hold within 0.6s"), "waitSeconds で止まっていない: \(reason)")
+        XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(started), 0.6, "コマンド上限(0.2 秒)で打ち切られている")
     }
 
     /// ifCanSelect(waitSeconds: 0.3) が 0.5 秒刻みに丸められないこと。

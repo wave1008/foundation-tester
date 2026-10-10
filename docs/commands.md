@@ -26,7 +26,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `select` / `exist` / `notExist` / `countIs` / テキスト・値・状態の検証 / `existImage` | 実行プロファイルの `defaultTimeout`(既定 5 秒) |
 | `findImage` / `ifCanSelect` / `repeatWhileCanSelect` | 0(今の画面を1回だけ見る) |
 | `waitForDisplay` / `waitForClose` / `waitForSettle` / `appIs` | 15 秒 |
-| `doUntilTrue` | 10 秒(1コマンドの上限 120 秒は超えられない) |
+| `doUntilTrue` | 10 秒(ブロックであってコマンド1つではないので、120 秒の上限は掛からない) |
 
 - **要素が見つからなければ失敗**(シナリオ中断)。**唯一の例外は `select`** で、掴めなければ
   失敗させず空要素を返す(`.isEmpty` で分岐する)。**「出るか不定」を表す引数は無い** —
@@ -39,8 +39,8 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
   ため、失敗後に走らせたくない処理は `procedure { }` に包む
 - **1 コマンド(1 ステップ)の壁時計上限は 120 秒**。超えると NG になり、**その処理はキャンセルされる**
   (途中で止まる。放置すると諦めたはずの操作が後続ステップの最中に効いてしまうため)。
-  効くのは `procedure { }` / `doUntilTrue` / `wait` のような長い処理で、
-  **`doUntilTrue(waitSeconds:)` にこれより長い値を書いても待てない**。
+  効くのは `wait` のような長い処理で、**`procedure { }` / `doUntilTrue` には掛からない**
+  (中で DSL のコマンドを実行するブロックで、1つのステップではない。`doUntilTrue` が止まるのは自分の `waitSeconds:` / `maxLoopCount:` だけ)。
   長い処理はステップを分けるか、外部プロセスに逃がして完了だけを待つ形にする
 - スクロールの方向は**すべてコンテンツ基準**(`.down` = 下に読み進める = 指は上へ動く)。
   **例外は `swipe` だけ**(生のジェスチャなので指の動き)
@@ -52,7 +52,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 - **飛ばすもの**: ブリッジの整定(iOS の XCUITest は XCTest の完了通知の待ちを含む・in-app ブリッジの整定・Android ブリッジの静止待ち)、コマンド後にホストが木を比べて行う整定、次のステップへ持ち越される待ち(`type` 後のキーボード確認・Android の `hideKeyboard` の待ち)
 - **残すもの**: 結果を確かめる待ち(`rotateTo` の向き到達・`home` の到達・`type` の読み返し・焦点待ち・起動の準備待ち)と、操作の**前**の待ち。複数回スワイプするコマンドの中の**アルゴリズムとしての整定**(`scrollToBottom` 等の端の計測・スクロール探索のループ)も残り、ホスト側で省くのは**コマンド最後の整定だけ**。ただしヘッダはステップの全要求に付くので、**探索・端送りの1本ごとのブリッジ側の待ち(XCUITest の XCTest の完了通知の待ちを含む)は飛ぶ** = 慣性の残ったまま次の1本を判定しうる
 - **対象**: `tap`(セレクタ・`x:y:`)・`doubleTap`・`hold`・`type`・`clearInput`・`pressEnter`・`swipe` / `swipePointToPoint` / `swipeBy` / `swipeElementToElement`・`flick*`(8本)・`scrollDown/Up/Right/Left`・`scrollToBottom/Top/RightEdge/LeftEdge`・`scrollTo`・`pinchOut` / `pinchIn`・`gesture`・`rotateTo`・`back`・`hideKeyboard`。`ft_batch` も同じコマンドで `settle` キーを受ける
-- **使いどころ**: 速さを優先したく、次のステップが最終的な位置に依存しないとき(連続入力・結果を見ない連打など)
+- **使いどころ**: 速さを優先したく、次のステップが最終的な位置に依存しないとき(連続入力・結果を見ない連打など)。**ステップの減速(Mac の CPU が高いときの操作前の待ち)もこのコマンドでは入らない**(消える表示を叩く操作に付ける)
 - **注意**: 次のステップは**まだ動いている最中の画面**を見ることがある(位置がずれうる)。慣性のあるスクロールの直後にタップする、のような使い方は避ける
 - **仕組み**: ホストが該当ステップの実行中、ブリッジへの HTTP リクエストに `X-FT-Settle: 0` ヘッダを付ける(`BridgeAPI.settleHeader`)。`FlowStep.settle` → `StepExecutor.execute` が TaskLocal `SettleOverride.skip` に載せる。ブリッジの版は iOS `bridgeProtocolVersion` 165・Android `VERSION_CODE` 89。設計は docs/design.md
 
@@ -658,7 +658,7 @@ API 応答・計算結果など**デバイスに触れない値**の検証。文
 失敗すれば他のコマンドと同じく 1 ステップとして記録されシナリオを中断する。
 
 ```swift
-let 合計 = try await fetchTotal()        // procedure { } 内で取得した値など
+let 合計 = httpRequest("https://api.example.com/total").text   // API から取った値など
 合計.thisContains("1,200")
 合計.thisStartsWith("合計")
 (10 * 3).thisIs(30)
@@ -788,14 +788,14 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 | `ifCanSelect(sel, waitSeconds: 0) { … }.ifElse { … }` | セレクタが解決できたらブロック実行。**既定は即時 1 回判定**(待つなら `waitSeconds:`。小数可)。出るか不定のダイアログの無害化に。**dry-run では両方のブロックを列挙する**(`.ifElse` の中の構文誤り・未知の `#id` もデバイス無しで返すため) |
 | `ios { … }` / `android { … }` | 対象 OS のときだけ実行 |
 | `repeatWhileCanSelect(sel, maxLoopCount: 10, waitSeconds: 0, title:) { … }` | セレクタが解決できる限り繰り返す(件数不定の一括操作に)。上限到達は失敗にしないが記録に残る |
-| `doUntilTrue("説明", waitSeconds: 10, intervalSeconds: 0.5, maxLoopCount: 100) { 条件 }` | 条件(`() async throws -> Bool`)が true になるまで繰り返す。**アプリ・外部の状態待ち専用**(要素の出現待ちは各コマンドの `waitSeconds:`)。throw したらリトライせず即 NG。`waitSeconds` は下記の 120 秒上限を超えられない |
+| `doUntilTrue("説明", waitSeconds: 10, intervalSeconds: 0.5, maxLoopCount: 100) { 条件 }` | ブロック(`() throws -> Bool`)が true を返すまで繰り返す。**中で DSL のコマンドを呼べる**(Shirates の `{ scrollDown(); canSelect(...) }` の形。例: `{ scrollDown(); return select("#target").isNotEmpty }`)。1周ごとに `"<説明> #n"` のまとまりとして記録し、最後に結果を1ステップ残す。中のコマンドが失敗したらシナリオ中断(重ねて記録しない)。throw したらリトライせず即 NG。上限は `waitSeconds` / `maxLoopCount` だけ(120 秒の上限は掛からない)。中の操作の前でステップの減速が待った分は上限から差し引く。要素が出るのを待つだけなら各コマンドの `waitSeconds:` を使う |
 
 ## 構造化・前後処理・割り込み
 
 | コマンド | 説明 |
 |---|---|
 | `group("名前") { … }` | 記録に `[名前]` を前置するだけのまとまり(実行・失敗の扱いは素の列と同じ) |
-| `procedure("説明") { try await … }` | 任意の Swift(データ投入等)を 1 ステップとして記録。throw は NG としてシナリオ中断 |
+| `procedure("説明") { … }` | 手順に名前を付けて1つにまとめる(Shirates の `procedure` = `describe` + `silent`)。**中で DSL のコマンドを呼べる**(同期のブロック。DSL スレッドで実行)。中のステップは `[説明]` を前置して記録し、**レポート(.md)では畳む**(成功・skip は出さず `procedure "説明"` の1行だけ。失敗・判定不能・フォールバック・自己修復・`screenshot()` の絵は畳まない)。結果 JSON には全部残る。前段が失敗していれば中を実行しない(失敗後に走らせたくない処理の置き場)。throw は NG としてシナリオ中断。120 秒の上限は掛からない。データの投入は中で `httpRequest` を使う |
 | `func beforeEach()` / `func afterEach()` | テストクラスに書くと各 `@Test` の前後で自動実行。**afterEach は失敗後でも実行される**。改名前の `setUp()` / `tearDown()` は呼ばれない(普通のメソッドになる)ので、`@TestClass` の中に書くとビルド時に警告が出る |
 | `func setUpDevice()` | テストクラスに書くと、**1回の run × 1デバイス × 1クラスで高々1回**、そのデバイスに配られたそのクラスの最初のシナリオの `beforeEach()` の前に走る(順序は setUpDevice → beforeEach → 本体 → afterEach)。走らせるかは親(run を束ねる側)が決める。値を他のシナリオへ渡すなら §メモ。**インスタンスのプロパティはそのシナリオのプロセスだけで見える**(シナリオごとに別プロセス) |
 | `func tearDownDevice()` | テストクラスに書くと、**そのデバイスがその run の仕事を終えた後**(キューを掃き切った後)に、そのデバイスでそのクラスのシナリオが1本でも走っていれば**1回だけ**、専用のプロセスで走る(共有キューでは「このデバイスでのクラス最後のシナリオ」が取り出し時点で決まらないため、シナリオのプロセスの中では走らせない)。`setUpDevice` の成否に関わらず走る(片付け)。メモは読める。**デバイスが途中で離脱した・中断した run では走らない**。結果は results / JUnit に載らず、run ログの1行(失敗なら ⚠️ と最初の失敗ステップ・レポートのパス)とレポート(`<クラス>.tearDownDevice`)に残る(合否・exit code は変えない) |

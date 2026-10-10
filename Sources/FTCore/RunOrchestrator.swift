@@ -954,7 +954,8 @@ public enum ScenarioRunner {
                       scheduleDelayMs: event.scheduleDelayMs, cpuMs: event.cpuMs,
                       ioBlockedMs: event.ioBlockedMs,
                       stallMs: event.stallMs, poolStallMs: event.poolStallMs,
-                      guardMs: event.guardMs, ocrMs: event.ocrMs)
+                      guardMs: event.guardMs, ocrMs: event.ocrMs,
+                      pacingMs: event.pacingMs)
         }
         return StepResult(index: event.index ?? 0, description: event.description ?? "",
                           status: status, scene: event.scene, sceneTitle: event.sceneTitle,

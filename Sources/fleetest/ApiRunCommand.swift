@@ -1580,6 +1580,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             step.poolStallMs = result.timing?.poolStallMs
             step.guardMs = result.timing?.guardMs
             step.ocrMs = result.timing?.ocrMs
+            step.pacingMs = result.timing?.pacingMs
             step.at = result.at
             step.command = result.command
             step.failureKind = result.failureKind

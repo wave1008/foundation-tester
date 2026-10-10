@@ -161,6 +161,20 @@ struct RunScenario: AsyncParsableCommand {
           help: "Replace values returned by account() with *** in reports and logs (set by ScenarioHost from the machine config)")
     var redactAccountValues = false
 
+    @Option(name: .customLong("host-load-pacing"),
+            help: "JSON of HostLoadPacingPlan (set by ScenarioHost from the machine config; omitted = no pacing)")
+    var hostLoadPacing: String?
+
+    /// `--host-load-pacing` の復号。親が組み立てた JSON なので、**失敗は黙って減速なしへ倒さず止める**
+    static func decodeHostLoadPacing(_ json: String?) throws -> HostLoadPacingPlan? {
+        guard let json else { return nil }
+        do {
+            return try JSONDecoder().decode(HostLoadPacingPlan.self, from: Data(json.utf8))
+        } catch {
+            throw ValidationError("--host-load-pacing is not valid HostLoadPacingPlan JSON: \(error.localizedDescription)")
+        }
+    }
+
     @Flag(name: .customLong("no-fm"), help: "Do not use any FM feature (text visual verification / screenLooksLike)")
     var noFM = false
 
@@ -252,6 +266,7 @@ struct RunScenario: AsyncParsableCommand {
 
     func run() async throws {
         let runTunables = try Self.decodeTunables(tunables)
+        let runHostLoadPacing = try Self.decodeHostLoadPacing(hostLoadPacing)
         // **stdin の1行目はデバイスセッション**(DeviceSessionHandoff.swift)。制御コマンドの読み手
         // スレッドや他の stdin 読みより先に、ここで読み切る
         var deviceSession: DeviceSessionHandoff?
@@ -580,6 +595,12 @@ struct RunScenario: AsyncParsableCommand {
             core.runSetUpDevice = deviceSession.runSetUpDevice
         }
         core.redactAccountValues = redactAccountValues
+        core.hostLoadPacing = runHostLoadPacing
+        if runHostLoadPacing != nil {
+            // 測れない(サンドボックス等で host_processor_info が失敗)ときは1回言って減速なしで続ける
+            let hostCPU = InstantHostCPU(logFailure: { ConsoleOut.err("[fleetest] host load pacing is off: " + $0) })
+            core.hostCPUNow = { hostCPU.read() }
+        }
         core.stillFrameCapture = stillFramesDir.map { StillFrameCapture(dir: URL(fileURLWithPath: $0)) }
         // 利用者が書けるフォルダ(サンドボックスの中で書けるのはレポートの出力先の下と子の TMPDIR の下)
         core.directoryForLog = TestLogPaths.logDirectory(

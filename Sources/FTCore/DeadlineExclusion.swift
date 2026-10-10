@@ -1,5 +1,6 @@
 // 「ツールの都合で待った時間」を締め切り(FTSync のコマンド待ち・ScenarioHost の scenarioTimeout)
-// の計算から差し引くための帳簿。今のところ対象は OCR 近道のコンパイル待ち(RegionText.awaitModelCompile)だけ。
+// の計算から差し引くための帳簿。対象は OCR 近道のコンパイル待ち(RegionText.awaitModelCompile)・FM の順番待ち(FMGate)・
+// ステップの減速の待ち(FTDriveCore.paceBeforeOperation)。
 // **1 プロセス 1 シナリオ・ステップは逐次実行**なので、プロセス全体で1個の状態でよい
 // (begin/end は重ねて呼ばれない前提)。lock は別スレッド/Task(NDJSON 読み取りループ・
 // killer タスク)からの読み取りを守るためのもの。

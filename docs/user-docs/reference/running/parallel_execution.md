@@ -46,6 +46,47 @@ own subprocess, so platforms stay isolated).
   snapshot automatically at start, but if it still fails, run `bridge up` then launch the app and take one
   snapshot by hand (MCP `ft_launch` and `ft_snapshot`; see [MCP Server](../tools/mcp_server.md)) before the real run.
 
+## Slowing down when the Mac is busy
+
+**When the Mac's CPU is very busy, fleetest briefly holds back before the next step** (on by default).
+With the CPU pinned near 100%, image and text checks are more likely to go wrong.
+
+- Right before a step that changes the screen (`tap`, `type`, scrolling, `launchApp` and so on), it
+  measures the whole Mac's CPU usage at that moment and waits **0.2 s at 90% or more, or 1 s at 95% or
+  more**, then runs the step. It waits once per step at most; it never waits for the load to go down.
+- It does not wait before checks (`exist`, `textIs` and so on) or `select`, so that something that
+  disappears right after an action (a Snackbar, say) is not missed. It does not wait while a
+  `hold { }` is pressing, or before `tap()` on an element found by image (`findImage` and so on) —
+  that taps the position where the image was found, which would go stale. Steps that use a selector
+  read the screen again after the wait and find their target then.
+- It does not wait before an operation marked `settle: false` either. Put `settle: false` on an
+  operation that has to be quick — tapping something that disappears, or operating in quick succession.
+- The wait is counted neither against the step's own limit (`waitSeconds`) nor against the scenario's
+  time limit (`scenarioTimeout`), so it never makes a step or a scenario time out.
+  When the Mac is not busy, nothing waits.
+- It works the same for physical and virtual devices, on iOS and Android — what it measures is the Mac.
+
+The time spent waiting is recorded in the results JSON (`pacingMs` per step, and `steps.paced` /
+`steps.pacedMs` per scenario; see [results_analysis.md](./results_analysis.md)).
+
+To change the tiers or turn it off, write it in that machine's `~/.config/fleetest/config.json`
+(on a remote runner, the runner's own file is used).
+
+```json
+{
+  "hostLoadPacing": {
+    "tiers": [
+      { "cpuPercentAtLeast": 90, "delayMs": 200 },
+      { "cpuPercentAtLeast": 95, "delayMs": 1000 }
+    ]
+  }
+}
+```
+
+To turn it off, use `"hostLoadPacing": { "disabled": true }`. If the values are not valid (a usage at
+or below 0 or above 100, a negative wait, or the same usage twice), the defaults are used and a
+warning is printed once at the start of the run.
+
 ## `--broadcast`
 
 `--broadcast` is the one case that does **not** share scenarios out: it runs the selected set

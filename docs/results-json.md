@@ -361,7 +361,7 @@ Android の凍結事後判定(`AndroidHealthProbe.observeBlankAndRepair`)が試�
 | timedOut | Bool? | タイムアウトで強制終了したか |
 | startedAt / durationMs | String / Int | |
 | scenes | [SceneResultRecord] | シーン単位の合否・所要(`scene` / `title` / `passed` / `durationMs`)。**`skipped`(Bool?)= 手順を1つ以上持ち全部 skipped で実行されなかった scene**(打ち切りで本体を飛ばした scene。`passed` は true のままなので成功と区別する印はこの欄)。**true のときだけ書く**(欄が無い = skipped ではない。古い記録・手順が無い scene・実行された scene)。定義は `SceneRecordData.isSkipped` の1箇所 |
-| steps | StepCountsRecord | 状態別のステップ数(`total` / `passed` / `failed` / `skipped` / `healed` / `passedViaFallback` / `inconclusive` / `viaHeldValue` / `guarded` / `guardSkipped` / `guardStaleFrame`。最後の3つは下記) |
+| steps | StepCountsRecord | 状態別のステップ数(`total` / `passed` / `failed` / `skipped` / `healed` / `passedViaFallback` / `inconclusive` / `viaHeldValue` / `guarded` / `guardSkipped` / `guardStaleFrame` / `paced` / `pacedMs`。`guarded` から3つは下記) |
 | failedSteps | [FailedStepRecord]? | **失敗時のみ**。下記 |
 | fixSuggestions | [FixSuggestionRecord]? | セレクタの修正提案(**成否によらず**残る) |
 | errorLogs | [String]? | ❌/⚠️/⏱ で始まるログの末尾5件。**失敗時のみ** |
@@ -446,6 +446,10 @@ snapshot/action/wait のどれにも計上されない時間だった実測。
 | `poolStallMs` | 協調スレッドプール上の心拍が遅れたぶん | 0 = プールは詰まっていない |
 | `guardMs` | occlusion-guard の **Vision OCR 段と FM 照合段**(スクショは actionMs 側) | **所要の 99.7〜99.9%** |
 | `ocrMs` | `guardMs` の内訳のうち **OCR 段だけ**(残りが FM 段)。注記 `ocr-budget-exhausted` と併せて読む | 修正後 p50 121 / p90 153 / max 456ms |
+| `pacingMs` | ステップの減速(マシン設定 `hostLoadPacing`)で**実際に待った**ミリ秒。**`durationMs` に含まれない**(待ちは計時の前)。無い = 待っていない(設定が無効・CPU が段に届かない・CPU を測れない・画面を変える操作ではないステップ・`hold { }` の押している間・dry-run) | 段の `delayMs` 付近 |
+
+シナリオ単位の集計は `steps.paced`(待ったステップ数)と `steps.pacedMs`(待ちの合計ミリ秒)。
+1度も待たなかったシナリオは両方とも欄ごと無い(0 を書かない)。run.json の集計には載せない。
 
 `guardMs > 0` のステップを1プロセス内で並べると、**最初にガードへ入った1ステップだけが
 36〜108 秒を払い、以降は 100〜300ms** になる —— 仕事量ではなく**プロセスにつき 1 回の初期化**である

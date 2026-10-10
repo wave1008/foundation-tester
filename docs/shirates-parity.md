@@ -171,7 +171,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 |---|---|---|
 | `ifCanSelect { }` | 同名 + `.ifElse { }` | ✅ **「出るか不定」の唯一の表現手段**(`optional:` 廃止後。アプリ内メッセージは `irregularHandler`) |
 | `ifCanSelectNot` | `.ifElse` で代替 | 🟡 |
-| `doUntilTrue` | 同名(引数名も準拠) | ✅ |
+| `doUntilTrue` | 同名(引数名も準拠)。ブロックの中で DSL のコマンドを呼べる | 🟡 `retryOnError`(Shirates の既定 true)・`throwOnError`・`throwOnOverMaxLoopCount`・`refreshCache`・`onTimeout`・`onMaxLoop`・`onError` は未実装。throw は即 NG(Shirates の既定はリトライ) |
 | `android` / `ios` | 同名 | ✅ |
 | `ifTrue` / `ifFalse`(Boolean) | 素の Swift `if` | ➖ 分岐の語彙を増やすと生成側の誤選択が増える |
 | `ifScreenIs(Not)` / `ifStringIs` / `ifContains` 等 | — | ➖ 分岐の語彙を増やすと生成側の誤選択が増える(`ifTrue` と同じ理由)。条件は素の Swift `if` と `ifCanSelect` の2つに絞る |
@@ -203,7 +203,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `isAppInstalled` / `launchAppByShell` | CLI 側(`fleetest install`)。DSL には無い | ➖ **導入はシナリオの外**(2026-08-21 判定)。実行プロファイルの `appPath` + `autoInstall` が run の前に面倒を見るので、シナリオが導入状態を分岐に使う形は増やさない(`installApp` / `removeApp` は明示的に操作したいとき用に既にある) |
 | `goPreviousApp` | `appSwitcher()`(スイッチャーを開くだけ) | 🟡 |
 | `internetOn/Off` / `wiFiOn/Off` / `mobileOn/Off` | — | ⏳ **足す**(2026-08-21 判定。基準①=回避策が無い唯一の項目)。**通信断の状態を作れない**ので、オフライン時の表示・再試行・エラーダイアログを検証できない。**実害**: 受け手のアプリは規約画面を外部サイトから読み、通信が失敗するとエラーダイアログを出す —— それが偶発的にテストを落とすのに、**意図的に再現することも防ぐこともできない**。**Android のみ**(`adb shell svc wifi/data`)で、**iOS シミュレータはホストのネットワークを共有するため同等の手段が無い**(実機も同様)。足すときは 🟡(Android 限定)として書く |
-| `shell` / `shellAsync` | `procedure { }` 内で任意 Swift | 🟡 |
+| `shell` / `shellAsync` | `procedure { }` 内で任意の Swift(同期のブロック) | 🟡 |
 | `screenshot` | `screenshot(filename?)` | ✅ 2026-08-03(**ファイル名はラベル無しの1形だけ** = 2026-09-19。Kotlin は名前付き引数を位置でも渡せるので `screenshot("a.png")` がそのまま通る。`filename:` のラベル形は置かない)**`filename` のみ**(他3引数は Shirates の auto-screenshot 機構の制御で、fleetest は毎操作の自動撮影を持たない)。画像はレポートの該当ステップ直後に埋め込む。失敗時の証跡・MCP `ft_screenshot` とは別経路 |
 | — | `home()` / `back()` | 🟢 OS 差を吸収した1コマンド |
 | — | `clearAppData(bundleID?)` | 🟢 再インストール不要でアプリデータ**と権限**を消す。初回起動・オンボーディング・権限ダイアログのテストが書ける(iOS はシミュレータ専用。キーチェーン/Keystore の値は残る) |
@@ -214,7 +214,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 | Shirates | fleetest | |
 |---|---|---|
-| `procedure` | 同名(1ステップとして記録) | ✅ |
+| `procedure` | 同名。中で DSL のコマンドを呼べる・レポートでは中の成功したステップを畳み `procedure` の1行だけ(Shirates の `describe` + `silent` と同じ見え方)。失敗・フォールバック・自己修復は畳まない・結果 JSON には全部残す | ✅ |
 | `@Deleted` | 同名マクロ | ✅ |
 | `describe` / `caption` / `comment` / `target` / `output` / `codeblock` | `scene` の説明文に集約 | 🟡 |
 | `macro` | Swift の関数 + `@FTCommand` | 🟡 **コード生成は無い**(手順のまとまりは `group("名") { }` が記録側を担う)。`@FTCommand("説明")` を付けると `fleetest api dsl-commands` / `ft_dsl_commands` の索引に `[project: file:line]` 付きで載り、MCP/エージェントが実在を確認したうえで使える(独自のマクロ機構は間接参照が増えるだけなので入れない) |

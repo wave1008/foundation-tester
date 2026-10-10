@@ -21,10 +21,13 @@ public struct DSLStepRecord: Sendable {
     /// 他コマンドは常に nil(failureScreenshot とは別経路)
     public let screenshotData: Data?
     public let screenshotLabel: String?
+    /// `procedure { }` の中で記録したステップ。レポート(.md)は成功・skip を畳む(Shirates の procedure = describe + silent)。
+    /// 結果 JSON・イベントには全部残す(事実は省かない)
+    public let insideProcedure: Bool
 
     public init(index: Int, section: String?, description: String, status: StepResult.Status,
                 file: String, line: Int, durationMs: Int? = nil,
-                screenshotData: Data? = nil, screenshotLabel: String? = nil) {
+                screenshotData: Data? = nil, screenshotLabel: String? = nil, insideProcedure: Bool = false) {
         self.index = index
         self.section = section
         self.description = description
@@ -34,6 +37,7 @@ public struct DSLStepRecord: Sendable {
         self.durationMs = durationMs
         self.screenshotData = screenshotData
         self.screenshotLabel = screenshotLabel
+        self.insideProcedure = insideProcedure
     }
 }
 
@@ -275,6 +279,19 @@ public final class FTDriveCore {
     let datasets = LockedValue<[ScenarioDataset.Kind: ScenarioDataset]>([:])
     /// `account()` の値を伏せ字の登録簿へ入れるか(マシン側の `redactAccountValues`。既定 false)
     public var redactAccountValues = false
+    /// ステップの減速の計画(`--host-load-pacing`)。nil = 減速しない(設定で無効・dry-run・MCP の直接操作・コード生成)
+    public var hostLoadPacing: HostLoadPacingPlan?
+    /// その瞬間の CPU 使用率(0〜1)を測る口。ScenarioRunnerMain が `InstantHostCPU.read` を入れる(テストは差し替える)。
+    /// nil = 測れない = 減速しない
+    public var hostCPUNow: (() -> Double?)?
+    /// 押している最中の `hold { }` の数(holdImpl が押した後に増やし、離した後に減らす)。0 でない間は減速しない ——
+    /// 押す時間はブリッジの時計で決まるので、中で待つと中の操作が離した後へずれる
+    var holdsInProgress = 0
+    /// 実行中の `procedure { }` の深さ(DSL スレッドだけが触る。groupStack と同じ)。0 でない間の記録はレポートで畳む
+    var procedureDepth = 0
+    /// このシナリオで減速が待った合計(ミリ秒)。時計で上限を測るループ(doUntilTrue)が、中の操作の前の待ちを
+    /// 上限から差し引くために読む
+    let pacedMsTotal = LockedValue(0)
     /// `TestLog.directoryForLog` / `TestLog.directoryForTemp` の実体(ScenarioRunnerMain が設定する)。nil = その文脈では使えない
     public var directoryForLog: URL?
     public var directoryForTemp: URL?
@@ -748,6 +765,7 @@ public final class FTDriveCore {
                  selectorText: String? = nil,
                  selectorError: String? = nil, commandError: String? = nil,
                  heldElement: ElementInfo? = nil,
+                 paced: Bool = true,
                  file: StaticString, line: UInt) -> PerformResult {
         // 全コマンドの唯一の合流点(セレクタを取らないコマンドも含む)なので、ここで一度だけ
         // ブロックの文脈を埋める。tap/scrollTo は明示引数を effectiveContainerInference 済みで
@@ -836,6 +854,11 @@ public final class FTDriveCore {
         }
 
         let executor = self.executor
+        // paced = false は「前のステップが画面から読んだ座標を叩く」操作(画像で掴んだ要素の tap)。
+        // 待つと読んでから叩くまでが延び、その間に画面が動けば古い座標を叩く(セレクタの操作はこの後で木を取り直す)
+        let pacingMs = paced && HostLoadPacing.pacesBefore(action: step.action, isVerification: step.isVerification,
+                                                            settle: step.settle)
+            ? paceBeforeOperation() : nil
         // 打ち切られた回は outcome が nil = StepExecutor の計時ごと失われるので、**ホスト側でも測る**。
         // ここを測らないと、いちばん高いステップ(コマンド上限まるごと)だけが結果 JSON に
         // 時間ゼロで載り、scenes[].durationMs もその分を落とす(results DB で確認:
@@ -894,7 +917,7 @@ public final class FTDriveCore {
                    cpuMs: cpuMs, ioBlockedMs: ioBlockedMs,
                    stallMs: stallMs, poolStallMs: poolStallMs,
                    guardMs: outcome?.timing?.guardMs, ocrMs: outcome?.timing?.ocrMs,
-                   at: recordedAt,
+                   pacingMs: pacingMs, at: recordedAt,
                    notes: outcome?.notes ?? [], guarded: outcome?.guardEntered ?? false,
                    command: command, failureKind: failureKind,
                    // 画像の判定(分類器・existImage)・リンク文字の OCR で落ちたときだけ入る(StepOutcome.evidenceImage)。
@@ -1169,16 +1192,37 @@ public final class FTDriveCore {
         emit(event)
     }
 
+    /// ステップの減速: 計画があれば操作の直前に**その瞬間**の CPU を測り、段に当たるときだけ**1回**眠る
+    /// (負荷が下がるまで繰り返さない)。実際に眠った時間(ミリ秒。測る窓は含めない)を返し、待たなかったら nil。
+    /// 呼ぶのはステップの計時と FTSync の締切の**外**(測る窓も待ちも durationMs と締切に入らない)
+    func paceBeforeOperation() -> Int? {
+        guard let plan = hostLoadPacing, holdsInProgress == 0, let hostCPUNow else { return nil }
+        let delay = HostLoadPacing.delayMs(cpu: hostCPUNow(), tiers: plan.tiers)
+        guard delay > 0 else { return nil }
+        let clock = ContinuousClock()
+        let start = clock.now
+        // ツールの都合の待ち = scenarioTimeout の締め切りから差し引く(負荷が高い間に長いシナリオが時間切れの赤にならない)
+        let token = DeadlineExclusion.begin(cap: .milliseconds(delay))
+        Thread.sleep(forTimeInterval: Double(delay) / 1000)
+        DeadlineExclusion.end(token)
+        let sleptMs = continuousClockMilliseconds(clock.now - start)
+        pacedMsTotal.withLock { $0 += sleptMs }
+        return sleptMs
+    }
+
     /// 任意の async 処理を 1 ステップとして実行・記録する(launch / procedure / wait 等)。
     /// launchTiming は launchApp/restartApp だけが渡す(body 完了後に読む actionMs/waitMs 取得元。
     /// 他の呼び出しは既定 nil = durationMs のみ)。
     /// isAssertion は **appIs だけ** true(FlowStep を持たない唯一の検証コマンドで、
     /// 渡さないと verify も expectation も「検証0本」と数えてしまう)
+    /// paced は**それ自体が操作でない**ステップだけ false(wait = 眠るだけ / doUntilTrue・procedure =
+    /// 入れ物で、中の操作が各自で待つ。true だと入れ物の前と中の最初の操作の前で二重に待つ)
     @discardableResult
     func performCustom(description: String, command: String? = nil,
                        file: StaticString, line: UInt,
                        launchTiming: (() -> LaunchTiming?)? = nil,
                        isAssertion: Bool = false,
+                       paced: Bool = true,
                        note: (() -> StepNote?)? = nil,
                        _ body: @escaping () async throws -> Void) -> StepResult.Status {
         let filePath = relativePath("\(file)")
@@ -1199,6 +1243,8 @@ public final class FTDriveCore {
             return .passed
         }
 
+        // appIs(検証)の前には待たない(perform と同じ理由)
+        let pacingMs = isAssertion || !paced ? nil : paceBeforeOperation()
         // launch/wait/procedure 等は画面を変え得る → occlusion-guard のスクショ再利用を無効化
         executor.invalidateScreenshotCache()
         // launch 系の直後は OS のアラート(通知・ATT・権限)が出やすい。登録の無い run でも
@@ -1237,7 +1283,7 @@ public final class FTDriveCore {
         let recordedDescription = resolvedNote.map { "\(description)(\($0.text))" } ?? description
         recordStep(description: recordedDescription, status: status, file: "\(file)", line: Int(line),
                    durationMs: elapsedMs, actionMs: timing?.actionMs, waitMs: timing?.waitMs,
-                   at: ISO8601Millis.string(from: Date()),
+                   pacingMs: pacingMs, at: ISO8601Millis.string(from: Date()),
                    notes: resolvedNote.map { [$0] } ?? [],
                    command: command, failureKind: failureKind)
         captureStillFrameIfRecording(changedScreen: !isAssertion, status: status)
@@ -1445,7 +1491,7 @@ public final class FTDriveCore {
         }()
         guard firstViolation else { return }
         let reason = "the DSL command \"\(command)\" was called from outside the DSL thread "
-            + "(inside a Task or another thread). Wrap asynchronous work in procedure { }"
+            + "(inside a Task or another thread). Call DSL commands directly from the scenario, not from asynchronous code"
         recordStep(description: "thread violation: \(command)", status: .failed(reason), file: "", line: 0)
     }
 
@@ -1471,7 +1517,7 @@ public final class FTDriveCore {
                     actionMs: Int? = nil, waitMs: Int? = nil,
                     scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, ioBlockedMs: Int? = nil,
                     stallMs: Int? = nil, poolStallMs: Int? = nil, guardMs: Int? = nil,
-                    ocrMs: Int? = nil, at: String? = nil,
+                    ocrMs: Int? = nil, pacingMs: Int? = nil, at: String? = nil,
                     notes: [StepNote] = [], guarded: Bool = false,
                     command: String? = nil, failureKind: StepFailureKind? = nil,
                     screenshotData: Data? = nil, screenshotLabel: String? = nil) {
@@ -1490,7 +1536,8 @@ public final class FTDriveCore {
         let record = DSLStepRecord(index: stepCounter, section: currentSection,
                                    description: displayed, status: status,
                                    file: relativePath(file), line: line, durationMs: durationMs,
-                                   screenshotData: screenshotData, screenshotLabel: screenshotLabel)
+                                   screenshotData: screenshotData, screenshotLabel: screenshotLabel,
+                                   insideProcedure: procedureDepth > 0)
         appendToCurrentScene(record)
 
         var event = ScenarioEvent(kind: "step")
@@ -1513,6 +1560,7 @@ public final class FTDriveCore {
         event.poolStallMs = poolStallMs
         event.guardMs = guardMs
         event.ocrMs = ocrMs
+        event.pacingMs = pacingMs
         event.actionMs = actionMs
         event.waitMs = waitMs
         event.at = at

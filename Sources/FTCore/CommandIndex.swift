@@ -63,8 +63,8 @@ public enum DSLCommandIndex {
               "The verification part of a scene. A block with no assertions is reported as a warning."),
         .init("group", "structure", "group(name) { }",
               "Prefixes the recorded steps with [name]. Execution and failure semantics are unchanged."),
-        .init("procedure", "structure", "procedure(description) { try await ... }",
-              "Runs arbitrary async Swift as one step. A throw fails the scenario."),
+        .init("procedure", "structure", "procedure(description) { ... }",
+              "Names a group of steps (DSL commands allowed inside); the report folds the passed ones. A throw fails the scenario."),
         .init("verify", "structure", "verify(message) { }",
               "Records the block as one check step. Zero assertions inside is inconclusive."),
         .init("irregularHandler", "structure", "irregularHandler(detect, dismiss:, maxDismissals:?)",
@@ -431,7 +431,7 @@ public enum DSLCommandIndex {
               "repeatWhileCanSelect(selector, maxLoopCount:, waitSeconds:, title:) { }",
               "Repeats while the selector keeps resolving."),
         .init("doUntilTrue", "control", "doUntilTrue(description, waitSeconds:, intervalSeconds:, maxLoopCount:) { condition }",
-              "Repeats until the async condition is true. For app or external state, not elements."),
+              "Repeats the block (DSL commands allowed inside) until it returns true."),
 
         // MARK: memo (per-device values shared by the scenarios of one run)
         .init("writeMemo", "memo", "writeMemo(key, text)",

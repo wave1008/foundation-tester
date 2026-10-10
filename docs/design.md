@@ -2344,11 +2344,17 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   **打ち切ったことは記録に出す**(`→ 10 回(上限に達したため打ち切り。まだ残っている可能性があります)`)。
   これが無いと「ちょうど 10 件だった」のか「まだ残っている」のかが後から読めない。
   dry-run は canSelect が常に true を返すため **1 周だけ**回してステップ列挙に留める
-- **`doUntilTrue(title, waitSeconds:intervalSeconds:maxLoopCount:)`**(2026-07-27。Shirates 準拠の名前):
-  任意の Swift 条件が true になるまで繰り返す。**アプリ・外部の状態待ち専用**で、要素の出現待ちは
-  各コマンドの `waitSeconds:` を使う(こちらは記録が1ステップに畳まれ、失敗時の情報が減るため)。
-  action が throw したら**リトライせず**即 NG(状態待ちと実行時エラーを混ぜない)。
-  dry-run は performCustom の既定どおり body を実行しない
+- **`doUntilTrue(title, waitSeconds:intervalSeconds:maxLoopCount:)`**(Shirates 準拠の名前):
+  ブロックが true を返すまで繰り返す。**ブロックは同期(`() throws -> Bool`)で DSL スレッドで実行する**
+  = 中で DSL のコマンドを呼べる(Shirates の基本形 `{ scrollDown(); canSelect(...) }`。`repeatWhileCanSelect` と同じ形)。
+  以前はブロックを非同期のクロージャとして performCustom の中(DSL スレッドの外)で走らせていたため、中の DSL が
+  全部スレッド違反になっていた(利用者向けの例すら動かなかった)。1周ごとに `"<title> #n"` の group として記録し、
+  最後に結果を1ステップ残す。中のコマンドの失敗はシナリオ中断に従って止まる(重ねて記録しない)。
+  throw したら**リトライせず**即 NG。**1つのステップではない**ので FTSync のコマンド上限は掛からず、
+  `waitSeconds` / `maxLoopCount` だけで止まる。上限は時計で測り、中の操作の前でステップの減速が待った分は
+  差し引く(`FTDriveCore.pacedMsTotal`)。dry-run は1周だけ回して中のステップを列挙する。
+  Shirates の `retryOnError` / `throwOnError` / `throwOnOverMaxLoopCount` / `refreshCache` / `onTimeout` /
+  `onMaxLoop` / `onError` は未実装(docs/shirates-parity.md)
 - **`tap(scroll:)` / `type(scroll:)` / `exist(scroll:)`**
   (2026-07-27。Shirates の `tapWithScrollDown` 相当。**関数名の別名は置かない** = 下記「スクロールの語彙」):
   コマンド名の変種を増やさず引数で表す。**探索は同じステップに畳む**(`FlowStep.direction` /
@@ -2802,8 +2808,8 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   `Task.sleep`。どちらも cancel 対応)。cancel を見ない処理(Process 実行等)は走り切るだけで悪化しない。
   **副作用: op は任意の await 点で巻き戻り得る**ので、掴んだ資源の解放は `defer` に置くこと
   (契約は `FMGate.enter()` のコメント。ここを崩すとホスト全体の FM ロックが漏れる)。
-  この上限は `procedure` / `doUntilTrue` にも効き、`doUntilTrue(waitSeconds:)` に 120 秒より
-  長い値を書いても待てない(利用者向けの記述は docs/commands.md)
+  `procedure` と `doUntilTrue` は中で DSL のコマンドを実行するブロックで、1つのステップではないので
+  この上限は掛からない(利用者向けの記述は docs/commands.md)
 - 失敗セマンティクス: コマンド NG → **シナリオ全体を中断**(以降のステップは scene を跨いで
   すべて skipped。throw を使わない Shirates 的中断)。afterEach だけは失敗後でも実行される。
   2026-07-27 変更(ユーザー決定): 以前は scene 単位のスキップで次の scene へ進んでいたが、

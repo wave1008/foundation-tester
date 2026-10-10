@@ -44,6 +44,9 @@ public struct LocalConfig: Codable, Sendable, Equatable {
     /// true で `account()` の値をレポート・実行ログ・結果 JSON で `***` に伏せる(`SecretRedactor`)。
     /// nil・false = 伏せない(既定)。**読むのは親の `ScenarioHost.run` だけ**で、子へは `--redact-account-values` で渡す
     public var redactAccountValues: Bool?
+    /// ホストの CPU 負荷に応じたステップの減速(`HostLoadPacing`)。nil(欄ごと無い)= 既定で有効・既定の段。
+    /// **読むのは親の `ScenarioHost.run` だけ**で、子へは `--host-load-pacing` で渡す
+    public var hostLoadPacing: HostLoadPacing?
 
     public init(defaultProject: String? = nil,
                 lastRunProfile: [String: String]? = nil,
@@ -51,7 +54,7 @@ public struct LocalConfig: Codable, Sendable, Equatable {
                 remoteHosts: [RemoteHostEntry]? = nil, issuerId: String? = nil,
                 fmConcurrency: Int? = nil, localMachineEnabled: Bool? = nil,
                 retention: RetentionPolicy? = nil, sandbox: ScenarioSandbox.MachineSettings? = nil,
-                redactAccountValues: Bool? = nil) {
+                redactAccountValues: Bool? = nil, hostLoadPacing: HostLoadPacing? = nil) {
         self.defaultProject = defaultProject
         self.lastRunProfile = lastRunProfile
         self.developmentTeam = developmentTeam
@@ -63,6 +66,7 @@ public struct LocalConfig: Codable, Sendable, Equatable {
         self.retention = retention
         self.sandbox = sandbox
         self.redactAccountValues = redactAccountValues
+        self.hostLoadPacing = hostLoadPacing
     }
 
     /// 実機署名の設定。優先順位: 環境変数 > 設定ファイル。

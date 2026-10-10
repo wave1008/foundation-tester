@@ -10,7 +10,7 @@ per-test setup/teardown.
 | function | description |
 |---|---|
 | `group("name") { }` | Prefixes the steps inside with `[name]` in the report. Execution and failure semantics are unchanged. |
-| `procedure("description") { try await ... }` | Runs arbitrary async Swift as one recorded step. A thrown error fails the scenario. |
+| `procedure("description") { ... }` | Names a group of steps as one procedure. You can call commands inside. The report shows only the `procedure "description"` line and folds the inner steps that passed (a failed step is still shown). A thrown error fails the scenario. |
 | `func beforeEach()` | Defined on the test class; runs automatically before each `@Test`. |
 | `func setUpDevice()` | Defined on the test class; runs **at most once per run, per device, per class** — before `beforeEach()` of the first scenario of that class that lands on the device. Share what it prepares with [`writeMemo` / `readMemo`](memo.md). |
 | `func afterEach()` | Defined on the test class; runs automatically after each `@Test`, **including after a failure**. |
@@ -34,7 +34,9 @@ class LoginFlow {
         scenario {
             group("prepare test data") {
                 procedure("seed the account via API") {
-                    try await seedTestAccount()
+                    let response = httpRequest("https://api.example.com/test-accounts", method: "POST",
+                                               body: #"{"email":"user@example.com"}"#)
+                    response.status.thisIs(201)
                 }
             }
             scene(1, "log in") {
@@ -55,7 +57,7 @@ class LoginFlow {
 ## Notes
 
 - **`procedure { }` is where a scenario should put code it does not want to run after a
-  failure.** Raw Swift inside a block is not skipped when an earlier step in the scene has
+  failure.** If an earlier step has failed, the block does not run at all. Raw Swift inside a block is not skipped when an earlier step in the scene has
   failed, so wrap anything that should not fire on a broken state in `procedure { }` (a
   thrown error there aborts the scenario the same way a failed command does).
 - `setUpDevice()` runs in the process of that first scenario only, so **instance properties it sets are not visible to other scenarios** — pass values with `writeMemo` / `readMemo`. If it fails, the remaining scenarios of that class on the same device are recorded as failed without running, and it is never retried on that device within the run.

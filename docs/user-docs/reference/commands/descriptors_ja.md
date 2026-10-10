@@ -10,7 +10,7 @@
 | 関数 | 説明 |
 |---|---|
 | `group("名前") { }` | 中のステップにレポート上で `[名前]` を前置します。実行・失敗の扱いは素の列と同じです。 |
-| `procedure("説明") { try await ... }` | 任意の async Swift を1ステップとして記録します。throw するとシナリオが失敗します。 |
+| `procedure("説明") { ... }` | 手順に名前を付けて1つにまとめます。中でコマンドを呼べます。レポートには `procedure "説明"` の1行だけが出て、中の成功したステップは畳まれます(失敗したステップは出ます)。throw するとシナリオが失敗します。 |
 | `func beforeEach()` | テストクラスに定義すると、各 `@Test` の前に自動実行されます。 |
 | `func setUpDevice()` | テストクラスに定義すると、**1回の run × 1デバイス × 1クラスで高々1回**、そのデバイスに配られたそのクラスの最初のシナリオの `beforeEach()` の前に自動実行されます。用意した値は [`writeMemo` / `readMemo`](memo_ja.md) で他のシナリオへ渡します。 |
 | `func afterEach()` | テストクラスに定義すると、各 `@Test` の後に自動実行されます。**失敗後でも実行されます**。 |
@@ -34,7 +34,9 @@ class ログインフロー {
         scenario {
             group("テストデータの準備") {
                 procedure("API 経由でアカウントを投入する") {
-                    try await seedTestAccount()
+                    let response = httpRequest("https://api.example.com/test-accounts", method: "POST",
+                                               body: #"{"email":"user@example.com"}"#)
+                    response.status.thisIs(201)
                 }
             }
             scene(1, "ログインする") {
@@ -54,7 +56,7 @@ class ログインフロー {
 
 ## 注意点
 
-- **`procedure { }` は、失敗後に走らせたくない処理を置く場所です。** ブロック内の生 Swift
+- **`procedure { }` は、失敗後に走らせたくない処理を置く場所です。** 前段が失敗していれば、中は実行されません。 ブロック内の生 Swift
   コードは、そのシーンの前段が失敗していてもスキップされません。壊れた状態で発火させたく
   ない処理は `procedure { }` に包んでください(中で throw すれば、コマンドの失敗と同じように
   シナリオが中断します)。

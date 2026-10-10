@@ -128,11 +128,14 @@ public struct StepTiming: Sendable, Equatable {
     public var poolStallMs: Int?
     public var guardMs: Int?
     public var ocrMs: Int?
+    /// ステップの減速で待った時間。StepExecutor は測れない(FTRuntime が計時の前に待つ)ので、
+    /// サブプロセスの ScenarioEvent から写した値だけ。意味は ScenarioEvent の同名欄の doc
+    public var pacingMs: Int?
 
     public init(durationMs: Int, snapshotMs: Int? = nil, actionMs: Int? = nil, waitMs: Int? = nil,
                 scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, ioBlockedMs: Int? = nil,
                 stallMs: Int? = nil, poolStallMs: Int? = nil, guardMs: Int? = nil,
-                ocrMs: Int? = nil) {
+                ocrMs: Int? = nil, pacingMs: Int? = nil) {
         self.durationMs = durationMs
         self.snapshotMs = snapshotMs
         self.actionMs = actionMs
@@ -144,6 +147,7 @@ public struct StepTiming: Sendable, Equatable {
         self.poolStallMs = poolStallMs
         self.guardMs = guardMs
         self.ocrMs = ocrMs
+        self.pacingMs = pacingMs
     }
 }
 

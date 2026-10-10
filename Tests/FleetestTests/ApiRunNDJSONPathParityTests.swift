@@ -35,7 +35,7 @@ final class ApiRunNDJSONPathParityTests: XCTestCase {
         e.index = 7; e.description = "tap \"ログイン\""; e.status = "failed"; e.detail = "not found"
         e.durationMs = 120; e.snapshotMs = 30; e.actionMs = 40; e.waitMs = 10
         e.scheduleDelayMs = 1; e.cpuMs = 2; e.ioBlockedMs = 3; e.stallMs = 4; e.poolStallMs = 5
-        e.guardMs = 6; e.ocrMs = 7
+        e.guardMs = 6; e.ocrMs = 7; e.pacingMs = 8
         e.notes = ["system-alert-present"]
         e.at = "2026-10-02T10:00:00.000Z"
         e.command = "tap"
