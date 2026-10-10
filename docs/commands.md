@@ -49,12 +49,12 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
 `settle: false` を渡すと、**そのコマンド1回だけ**、操作の後に「画面が落ち着くまで」待つ処理をすべて飛ばす。省略(= `true`)は従来どおり待つ。
 
-- **飛ばすもの**: ブリッジの整定(iOS の XCUITest は XCTest の完了通知の待ちを含む・in-app ブリッジの整定・Android ブリッジの静止待ち)、コマンド後にホストが木を比べて行う整定、次のステップへ持ち越される待ち(`type` 後のキーボード確認・Android の `hideKeyboard` の待ち)
+- **飛ばすもの**: ブリッジの整定(既定の画像整定 = 画面が止まるまで撮り続ける待ち・iOS の XCUITest は XCTest の完了通知の待ちを含む・in-app ブリッジの整定・Android ブリッジの静止待ち)、コマンド後にホストが木を比べて行う整定、次のステップへ持ち越される待ち(`type` 後のキーボード確認・Android の `hideKeyboard` の待ち)
 - **残すもの**: 結果を確かめる待ち(`rotateTo` の向き到達・`home` の到達・`type` の読み返し・焦点待ち・起動の準備待ち)と、操作の**前**の待ち。複数回スワイプするコマンドの中の**アルゴリズムとしての整定**(`scrollToBottom` 等の端の計測・スクロール探索のループ)も残り、ホスト側で省くのは**コマンド最後の整定だけ**。ただしヘッダはステップの全要求に付くので、**探索・端送りの1本ごとのブリッジ側の待ち(XCUITest の XCTest の完了通知の待ちを含む)は飛ぶ** = 慣性の残ったまま次の1本を判定しうる
 - **対象**: `tap`(セレクタ・`x:y:`)・`doubleTap`・`hold`・`type`・`clearInput`・`pressEnter`・`swipe` / `swipePointToPoint` / `swipeBy` / `swipeElementToElement`・`flick*`(8本)・`scrollDown/Up/Right/Left`・`scrollToBottom/Top/RightEdge/LeftEdge`・`scrollTo`・`pinchOut` / `pinchIn`・`gesture`・`rotateTo`・`back`・`hideKeyboard`。`ft_batch` も同じコマンドで `settle` キーを受ける
 - **使いどころ**: 速さを優先したく、次のステップが最終的な位置に依存しないとき(連続入力・結果を見ない連打など)
 - **注意**: 次のステップは**まだ動いている最中の画面**を見ることがある(位置がずれうる)。慣性のあるスクロールの直後にタップする、のような使い方は避ける
-- **仕組み**: ホストが該当ステップの実行中、ブリッジへの HTTP リクエストに `X-FT-Settle: 0` ヘッダを付ける(`BridgeAPI.settleHeader`)。`FlowStep.settle` → `StepExecutor.execute` が TaskLocal `SettleOverride.skip` に載せる。ブリッジの版は iOS `bridgeProtocolVersion` 165・Android `VERSION_CODE` 89。設計は docs/design.md
+- **仕組み**: ホストが該当ステップの実行中、ブリッジへの HTTP リクエストに `X-FT-Settle: 0` ヘッダを付ける(`BridgeAPI.settleHeader`)。`FlowStep.settle` → `StepExecutor.execute` が TaskLocal `SettleOverride.skip` に載せる。ブリッジの版は iOS `bridgeProtocolVersion` 165・Android `VERSION_CODE` 89 以降。省かない場合の待ち(既定の画像整定)の仕組みは docs/design.md §4.7
 
 ## 操作
 

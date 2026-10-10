@@ -260,6 +260,11 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 | Android の WebView(全フレームワーク) | DOM の変更が a11y へ 4〜8 秒遅れる | A | WebView の中のノードだけ `refresh()` してから読む |
 | Compose(iOS) | 縁のぼかし(scroll edge effect)のアニメーションが終わらず、整定が上限に張り付く | A | `filters.*` のアニメーションを動きとして数えない |
 | Flutter(iOS) | 慣性が 800ms でも収束しない | C | XCUITest ランナーの整定予算を固定(待ち切らない) |
+| Compose・Flutter(iOS・XCUITest エンジン) | XCTest の完了通知(quiescence)がスクロールの慣性と無関係に約 0.5 秒で来る(慣性はその後 1.3〜3.0 秒続く)。UIKit 系(SwiftUI・UIKit・RN)は慣性の終わりと一致する(−0.16〜+0.02 秒) | C | 既定の画像整定で、UIKit 系のスクロールは完了通知を待ってから窓 250ms、自前描画は通知を待たず画面が止まるまで撮る(変化の後 150ms あけて撮る)。窓は Flutter 250ms・CMP 450ms(`ImageSettlePlan`。design.md §4.7) |
+| Compose(iOS) | a11y の木が絵より遅れ、慣性の間は凍る(40/40)。画像だけで整定すると `type(replace:)` の直後に古い木を掴む | A | 自前描画のタップ・入力は、画像整定の後も次の snapshot の木の整定を残す(`X-FT-Settle-Tree: 1`)。スクロールはホストの木の整定を残す |
+| Compose(iOS) | スクロールの最後(撃ってから 3.8〜4.4 秒)に 1px ずつの這いが続き、描画の間隔が最大 650ms になる | B | 窓 450ms はこの這いを「止まった」とみなして返す(残り数 px を取りこぼす。広げると上限に当たり毎回注記が出るので据え置き・ユーザー決定) |
+| 全フレームワーク(Android) | 縦・横のスクロールバーは停止の約 300ms 後にフェードを始め、画面遷移でも約 1.5 秒後にフェードする | A | スワイプの画像整定は枠(無ければ画面全体)の各辺 10% を削った内側を比べる。タップの後のフェードは窓が先に返るので待たない |
+| UI フレームワーク別(両 OS) | 慣性の長さが違う(撃ってから描画が止まるまでの実測最大: iOS SwiftUI 3.7・RN 2.7・Flutter 2.9・CMP 4.4 秒 / Android View 1.6・CMP 1.3・RN 2.3・Flutter 1.4 秒) | C | 画像整定の上限をフレームワーク別に持つ(`ImageSettleCap`)。分からないときはその OS の最大 |
 | Compose・Flutter(iOS・in-app) | 画面を切り替えた直後、a11y の木は新しい画面なのに絵(自前の Metal 描画)が追いつかない。CMP は起動後の初回訪問でタップが返ってから 0.27〜0.45 秒のあいだ**切り替え前の絵**をバイト同一で返す(2回目の訪問・SwiftUI では起きない) | A | 操作の直前に低解像度の画素と木の指紋を控え、**木が変わったのに画素が操作前のままの間だけ**待ってから撮る(`InAppRenderCatchUp`・v117)。遷移の完了は待たない。操作1回あたり約 12ms、待つのは追いついていない回だけ(初回訪問で約 0.3〜0.4 秒) |
 | Compose(iOS・XCUITest エンジン) | 上と同じ遅れが XCUITest のスクリーンショットでも起きる。タブを切り替えた直後の 0.3 秒以上、**切り替え前の画面**が返る(木は新しい画面)。ただし絵はバイト同一ではなく、押したタブの強調が載っている | B | **既知の制約**。待たずに1回だけ見る `findImage` / `findImages`(既定 `waitSeconds` 0)は別の画面を切って「無い」と答える。待つ `existImage` と、`waitSeconds` を渡した `findImage` は通る。in-app の v117 を移しても直らない(押した強調で画素が変わるので「画素が操作前のまま」の判定が発火しない)ので入れていない。fleetest 自身の E2E は、待つ版を E2E-CMP 20 S0020 に、待たない版(in-app の証人)を 23 に分け、後者は `Scripts/e2e.sh` が in-app のときだけ回す |
 | Flutter / Compose / SwiftUI / RN | 起動直後の白い画面(blank)の長さが描画の重さに比例する(誤った再起動は Flutter 10・Compose 3・SwiftUI/RN 0) | C | blank の判定窓を約10秒にする |
@@ -372,6 +377,7 @@ SwiftUI の pinch(SUT が枠で切り取っていなかった)・inputs S0030/40
 
 | 版・コミット | 内容 |
 |---|---|
+| iOS v171・Android v97 `c0e9b9a3` | 操作後の整定を画像の静止判定にし、上限・窓・完了通知の扱い・木の整定の残し方を UI フレームワーク別に決める(`ImageSettleCap` / `ImageSettlePlan`) |
 | `9bbf17dd` | 入力系(`type` / `pressEnter` / `clearInput`)の 409 を、MCP・ライブ操作でも XCUITest へ回す(`DriverError.isTextInputFallback` / `isClearInputFallback`)。この表の「→ XCUITest へ」は DSL でしか成り立っておらず、**同じ構成の同じ操作が `ft_type` / `ft_press_enter` / `ft_clear_input` では落ちていた** |
 | v117 | in-app のスクリーンショットは、自前描画(Compose / Flutter)で木が絵より先に進んでいる間は撮らない(`InAppRenderCatchUp`。findImage / imageIs / 分類器 / occlusion-guard が別の画面の画素を切り出していた) |
 | — | チェック状態を見本画像から判定する CheckStateClassifier(Shirates Vision の移植。実行プロファイル `preferCheckStateClassifier`・既定 true) |
