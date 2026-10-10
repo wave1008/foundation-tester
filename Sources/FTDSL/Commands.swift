@@ -161,7 +161,8 @@ func perform(_ command: String, _ selector: FTSelector, step: FlowStep,
 /// ここを通るのはセレクタを取るコマンドだけなので locator の有無は見ない
 /// (セレクタを取らない `swipe` / `launchApp` 等は core.perform を直接呼ぶ = 差し替わらない)
 private func definesSingleElement(_ step: FlowStep) -> Bool {
-    step.assert != "notExists" && step.assert != "count"
+    // waitForSettle の要素は比べる範囲の指定であって、掴んだ要素ではない
+    step.assert != "notExists" && step.assert != "count" && step.action != "waitForSettle"
 }
 
 // MARK: - scroll: 引数

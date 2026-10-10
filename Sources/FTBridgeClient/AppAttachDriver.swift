@@ -295,6 +295,12 @@ public final class AppAttachDriver: AppDriver {
     public func openAppSwitcher() async throws { try await client.openAppSwitcher() }
 
     public func screenshot() async throws -> Data { try await client.screenshot() }
+    /// ensureAttached を挟まない(screenshot と同じ全画面の撮影でセッション不要。
+    /// activate は待っている画面を動かしうる)
+    public func waitForSettle(_ request: WaitForSettleRequest,
+                              timeoutSeconds: Double) async throws -> WaitForSettleResponse {
+        try await client.waitForSettle(request, timeoutSeconds: timeoutSeconds)
+    }
     public func status() async throws -> StatusResponse { try await client.status() }
     // simctl/devicectl 経由のホスト操作でセッション不要(isAppForeground と同じくそのまま使える)
     public func openURL(_ url: String, bundleID: String?) async throws {

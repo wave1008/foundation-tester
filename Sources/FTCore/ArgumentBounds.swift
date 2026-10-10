@@ -59,6 +59,9 @@ public enum ArgumentBounds {
         "scale": Bound(min: 0, minExclusive: true),
         "port": Bound(min: 1, max: 65535),
         "waitSeconds": Bound(min: 0),
+        // waitForSettle の静止の窓。範囲は BridgeAPI が定義元(ms)。ft_batch の DSL 行だけが使う鍵
+        "quietSeconds": Bound(min: Double(BridgeAPI.waitForSettleQuietRangeMs.lowerBound) / 1000,
+                              max: Double(BridgeAPI.waitForSettleQuietRangeMs.upperBound) / 1000),
         // ft_run_status / ft_stop_run の pid(Int32 に収まる正の整数)
         "pid": Bound(min: 1, max: Double(Int32.max)),
         "repeat": Bound(min: 1),

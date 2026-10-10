@@ -224,6 +224,17 @@ extension MCPServer {
             return (step, "swipePointToPoint (\(FTSeconds.format(startX)), \(FTSeconds.format(startY)))"
                 + " → (\(FTSeconds.format(endX)), \(FTSeconds.format(endY)))")
         },
+        // DSL の waitForSettle と同じ1アクション。waitSeconds の既定はステップに載せず executor が解く(tunables)。
+        // 範囲の要素が解決できない失敗は throwsException に関わらず失敗(DSL と同じ)
+        "waitForSettle": BatchStepBuilder(keys: ["selector", "quietSeconds", "throwsException", "waitSeconds"]) { raw in
+            let selector = try optionalBatchSelector(raw)
+            let step = FlowStep(action: "waitForSettle", locator: selector?.primary,
+                                fallbacks: selector.flatMap(batchFallbacks),
+                                timeout: raw["waitSeconds"] as? Double,
+                                quietSeconds: raw["quietSeconds"] as? Double,
+                                throwsException: raw["throwsException"] as? Bool == false ? false : nil)
+            return (step, selector.map { "waitForSettle \"\($0.text)\"" } ?? "waitForSettle")
+        },
         "scrollTo": BatchStepBuilder(
             keys: ["selector", "direction", "settle", "maxSwipes", "scrollFrame"]
         ) { raw in

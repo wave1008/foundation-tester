@@ -1025,6 +1025,14 @@ public final class BridgeClient: AppDriver, Sendable {
                                            timeout: timeout(forDuration: request.totalSeconds))
     }
 
+    /// 応答は撮影を続けて静止するまで(最長 `request.timeoutMs`)返らないので、HTTP の待ちは呼び手が
+    /// `timeoutSeconds` で渡す(要求の timeoutMs より長く取ること。短いと待っている最中に bridgeUnreachable を誤報する)。
+    /// XCUITest ランナー v174〜 / Android v100〜 のみ。in-app ブリッジは持たない(InAppDriver が 501 で断る)
+    public func waitForSettle(_ request: WaitForSettleRequest,
+                              timeoutSeconds: Double) async throws -> WaitForSettleResponse {
+        try await post("/waitForSettle", body: request, timeout: timeoutSeconds)
+    }
+
     /// Captured only on this client's first `rotate(to:)` call in the current scenario (nil = not
     /// used yet, or already restored). Read from the bridge (GET /status) rather than assumed,
     /// since the bridge is the source of truth for its own orientation.

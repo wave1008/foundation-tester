@@ -335,6 +335,13 @@ public final class WebViewDelegatingDriver: AppDriver {
         try await screenDriver.gesture(request)
     }
 
+    /// **mode を見ず常に delegated(XCUITest)**: 全画面の撮影は in-app が持たない(501)ので、
+    /// normal のとき screenDriver(= primary)へ送ると毎回 501 を拾うだけになる
+    public func waitForSettle(_ request: WaitForSettleRequest,
+                              timeoutSeconds: Double) async throws -> WaitForSettleResponse {
+        try await delegated.waitForSettle(request, timeoutSeconds: timeoutSeconds)
+    }
+
     // MARK: - 常に in-app 側で扱う操作
 
     // ライフサイクルは注入起動を持つ in-app 側の責務(XCUITest から起動すると dylib が入らない)。

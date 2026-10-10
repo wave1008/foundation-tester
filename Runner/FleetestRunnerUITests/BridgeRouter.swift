@@ -122,6 +122,8 @@ final class BridgeRouter {
             case ("POST", "/press"): response = try handlePress(request.body)
             // **mutatingPaths に入れない**: 直後の snapshot が整定を待つと、置いている間の木を読めない
             case ("POST", "/hold"): response = try handleHold(request.body)
+            // **mutatingPaths に入れない**(操作ではない)。settlePending はハンドラが自分で立てる
+            case ("POST", "/waitForSettle"): response = try handleWaitForSettle(request.body)
             case ("GET", "/screenshot"): response = handleScreenshot()
             case ("POST", "/appswitcher"): response = try handleAppSwitcher()
             case ("POST", "/home"): response = try handleHome()
@@ -1163,6 +1165,151 @@ final class BridgeRouter {
 
     private func handleScreenshot() -> BridgeHTTPServer.Response {
         .png(XCUIScreen.main.screenshot().pngRepresentation)
+    }
+
+    // MARK: - waitForSettle
+
+    /// 1 枚ぶんの比較用の画素。layout が nil = 画素が読めず PNG のバイト列で比べた(外接矩形は求められない)
+    private struct SettleFrame {
+        let bytes: Data
+        let layout: SettleLayout?
+    }
+
+    /// 切り出した画素列の幾何(px)。bytes は行ごとに詰めてあり `width * bytesPerPixel * height` バイト
+    private struct SettleLayout: Equatable {
+        let width: Int
+        let height: Int
+        let bytesPerPixel: Int
+        /// 撮影画像の中での切り出しの原点
+        let originX: Int
+        let originY: Int
+        /// px / pt(`UIImage.scale`)
+        let scale: Double
+    }
+
+    private static func clamped(_ value: Int, to range: ClosedRange<Int>) -> Int {
+        min(max(value, range.lowerBound), range.upperBound)
+    }
+
+    /// POST /waitForSettle(契約は BridgeDTO.WaitForSettleRequest)。画面の画素だけを見るのでセッションは要らず、
+    /// 操作でもないので mutatingPaths に入れない。
+    /// - 撮影は間を置かず連続で回す: 撮影自体が間隔(Simulator 約 90〜110ms・iPhone SE3 30〜40ms)
+    /// - 静止 = 「直前の絵と違った最後の撮影」から quietMs 経過。最初の撮影の時刻が最初の「変わった時刻」なので、
+    ///   何も動かない画面は窓 1 回分で返る。上限(timeoutMs)も最初の撮影から数える
+    /// - 比べるのは `BridgeAPI.waitForSettleCompareRect` で各辺を削った内側(縁のインジケータのフェードを拾わない)
+    /// - 外接矩形のために持つ画素は「最後に変わった2枚」だけ(1枚 数MB。増やさない)
+    /// - 返したら settlePending を立てる: 直後にホストが木を読むので、XCTest のキャッシュでなく取り直した木を渡す
+    /// - 1 周ごとに画像を作るので autoreleasepool で区切る
+    private func handleWaitForSettle(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(WaitForSettleRequest.self, body)
+        if let r = req.region,
+           !(r.x.isFinite && r.y.isFinite && r.width.isFinite && r.height.isFinite && r.width > 0 && r.height > 0) {
+            throw BridgeError(400, "region must have a finite origin and a positive width and height")
+        }
+        let quietSeconds = Double(Self.clamped(req.quietMs, to: BridgeAPI.waitForSettleQuietRangeMs)) / 1000
+        let timeoutSeconds = Double(Self.clamped(req.timeoutMs, to: BridgeAPI.waitForSettleTimeoutRangeMs)) / 1000
+
+        var latest: SettleFrame?
+        var beforeLastChange: SettleFrame?
+        var firstAt: TimeInterval = 0
+        var lastChangeAt: TimeInterval = 0
+        var now: TimeInterval = 0
+        var frames = 0
+        var settled = false
+        while true {
+            let frame = autoreleasepool { settleFrame(region: req.region) }
+            now = ProcessInfo.processInfo.systemUptime
+            frames += 1
+            if let last = latest {
+                // 一致した絵は捨てる(latest は「最後に変わった絵」のまま = 外接矩形の相手)
+                if last.bytes != frame.bytes {
+                    beforeLastChange = last
+                    latest = frame
+                    lastChangeAt = now
+                }
+            } else {
+                latest = frame
+                firstAt = now
+                lastChangeAt = now
+            }
+            if now - lastChangeAt >= quietSeconds { settled = true; break }
+            if now - firstAt >= timeoutSeconds { break }
+        }
+        var changedRegion: FTRect?
+        if !settled, let before = beforeLastChange, let after = latest {
+            changedRegion = Self.differingRect(before, after)
+        }
+        settlePending = true
+        return .json(WaitForSettleResponse(settled: settled, elapsedMs: Int(((now - firstAt) * 1000).rounded()),
+                                           frames: frames, lastChangeRegion: changedRegion))
+    }
+
+    /// 1 枚撮って、比べる範囲だけを詰めた画素列にする。範囲が画面に掛からないときは画面全体(の内側)を比べる
+    /// (見ていない所の「静止」を黙って返さない側)。画素が読めないときだけ PNG のバイト列にする
+    private func settleFrame(region: FTRect?) -> SettleFrame {
+        let shot = XCUIScreen.main.screenshot()
+        let image = shot.image
+        guard let cg = image.cgImage else { return SettleFrame(bytes: shot.pngRepresentation, layout: nil) }
+        let whole = FTRect(x: 0, y: 0, width: Double(image.size.width), height: Double(image.size.height))
+        for frame in (region.map { [$0, whole] } ?? [whole]) {
+            if let packed = Self.packedPixels(of: cg, scale: image.scale, frame: frame) { return packed }
+        }
+        return SettleFrame(bytes: shot.pngRepresentation, layout: nil)
+    }
+
+    /// frame(pt)の内側を `image.scale` で px に直して crop し、画素を行ごとに詰め直す。
+    /// **行の stride にはパディングが入りうる**(そのまま比べると画素が同じでも不一致になる)。
+    /// 切り出せない(枠が画面外・画素が読めない)ときは nil
+    private static func packedPixels(of cg: CGImage, scale: CGFloat, frame: FTRect) -> SettleFrame? {
+        let inner = BridgeAPI.waitForSettleCompareRect(frame)
+        let rect = CGRect(x: inner.x * scale, y: inner.y * scale, width: inner.width * scale, height: inner.height * scale)
+            .integral.intersection(CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+        guard !rect.isNull, rect.width >= 1, rect.height >= 1, let crop = cg.cropping(to: rect),
+              let data = crop.dataProvider?.data as Data? else { return nil }
+        let bytesPerPixel = crop.bitsPerPixel / 8
+        let rowBytes = crop.width * bytesPerPixel
+        guard bytesPerPixel > 0, crop.bytesPerRow >= rowBytes,
+              data.count >= crop.bytesPerRow * (crop.height - 1) + rowBytes else { return nil }
+        let layout = SettleLayout(width: crop.width, height: crop.height, bytesPerPixel: bytesPerPixel,
+                                  originX: Int(rect.minX), originY: Int(rect.minY), scale: Double(scale))
+        if crop.bytesPerRow == rowBytes {
+            return SettleFrame(bytes: data.prefix(rowBytes * crop.height), layout: layout)
+        }
+        var packed = Data(capacity: rowBytes * crop.height)
+        for row in 0..<crop.height {
+            let start = data.startIndex + row * crop.bytesPerRow
+            packed.append(data[start..<start + rowBytes])
+        }
+        return SettleFrame(bytes: packed, layout: layout)
+    }
+
+    /// 同じ幾何の2枚の差の外接矩形(snapshot の座標系 = pt)。幾何が違う・画素列でないときは nil
+    private static func differingRect(_ a: SettleFrame, _ b: SettleFrame) -> FTRect? {
+        guard let layout = a.layout, layout == b.layout else { return nil }
+        let bpp = layout.bytesPerPixel
+        let rowBytes = layout.width * bpp
+        guard rowBytes > 0, layout.height > 0,
+              a.bytes.count == rowBytes * layout.height, b.bytes.count == a.bytes.count else { return nil }
+        var minX = layout.width, maxX = -1, minY = layout.height, maxY = -1
+        a.bytes.withUnsafeBytes { pa in
+            b.bytes.withUnsafeBytes { pb in
+                guard let baseA = pa.baseAddress, let baseB = pb.baseAddress else { return }
+                for y in 0..<layout.height {
+                    let rowA = baseA + y * rowBytes
+                    let rowB = baseB + y * rowBytes
+                    if memcmp(rowA, rowB, rowBytes) == 0 { continue }
+                    minY = min(minY, y)
+                    maxY = max(maxY, y)
+                    for x in 0..<layout.width where memcmp(rowA + x * bpp, rowB + x * bpp, bpp) != 0 {
+                        minX = min(minX, x)
+                        maxX = max(maxX, x)
+                    }
+                }
+            }
+        }
+        guard maxX >= minX, maxY >= minY else { return nil }
+        return FTRect(x: Double(layout.originX + minX) / layout.scale, y: Double(layout.originY + minY) / layout.scale,
+                      width: Double(maxX - minX + 1) / layout.scale, height: Double(maxY - minY + 1) / layout.scale)
     }
 
     /// **ホームボタン機かどうか**(iPhone に限る)。ホームボタン機では画面下端から上へのスワイプは

@@ -314,6 +314,40 @@ final class BatchLineParserTests: XCTestCase {
         XCTAssertNil(try MCPServer.batchStepBuilders["swipe"]!.build(explicit).step.settle)
     }
 
+    // MARK: - waitForSettle
+
+    func testWaitForSettleLineCarriesEveryArgumentIntoTheStep() throws {
+        let raw = try resolve(command: "waitForSettle",
+                              line: "waitForSettle '#list' quietSeconds: 1.2 throwsException: false waitSeconds: 5")
+        let step = try MCPServer.batchStepBuilders["waitForSettle"]!.build(raw).step
+        XCTAssertEqual(step.action, "waitForSettle")
+        XCTAssertEqual(step.locator, FTSelector.parse("#list").primary)
+        XCTAssertEqual(step.quietSeconds, 1.2)
+        XCTAssertEqual(step.throwsException, false)
+        XCTAssertEqual(step.timeout, 5)
+    }
+
+    /// 省略した引数は nil のまま運ぶ(waitSeconds の既定は executor が tunables で解く)。`throwsException: true` は既定なので nil
+    func testWaitForSettleOmittedArgumentsStayNil() throws {
+        let bare = try MCPServer.batchStepBuilders["waitForSettle"]!
+            .build(try resolve(command: "waitForSettle", line: "waitForSettle")).step
+        XCTAssertNil(bare.locator)
+        XCTAssertNil(bare.quietSeconds)
+        XCTAssertNil(bare.throwsException)
+        XCTAssertNil(bare.timeout)
+        let explicitTrue = try MCPServer.batchStepBuilders["waitForSettle"]!
+            .build(try resolve(command: "waitForSettle", line: "waitForSettle throwsException: true")).step
+        XCTAssertNil(explicitTrue.throwsException)
+    }
+
+    /// quietSeconds の値域は表(`ArgumentBounds`)が持つ。リテラルで書く(定義元の定数を期待値に流用しない)
+    func testQuietSecondsBoundIsOneTenthToFiveSeconds() {
+        XCTAssertNotNil(ArgumentBounds.violation("quietSeconds", 0.05))
+        XCTAssertNotNil(ArgumentBounds.violation("quietSeconds", 5.5))
+        XCTAssertNil(ArgumentBounds.violation("quietSeconds", 0.1))
+        XCTAssertNil(ArgumentBounds.violation("quietSeconds", 5))
+    }
+
     // MARK: - 未知のラベル(シグネチャにも無い)は別の文言で弾く
 
     func testUnknownLabelIsRejectedWithADifferentMessage() {
@@ -442,6 +476,9 @@ final class BatchLineParserTests: XCTestCase {
             FlowStep(action: "scrollToEdge", direction: "down"),
             FlowStep(action: "scrollToEdge", direction: "left"),
             FlowStep(action: "scrollToEdge", direction: "right"),
+            FlowStep(action: "waitForSettle"),
+            FlowStep(action: "waitForSettle", locator: selA.primary, fallbacks: fallbacks(selA),
+                     timeout: 5, quietSeconds: 1.2, throwsException: false),
         ]
     }
 

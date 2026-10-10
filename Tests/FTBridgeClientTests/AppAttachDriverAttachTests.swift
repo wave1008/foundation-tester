@@ -7,18 +7,31 @@ import XCTest
 @testable import FTBridgeClient
 import FTCore
 
-/// 受けたリクエストのパスを順に記録し、すべて 200 `{}` を返す最小 HTTP スタブ。
-/// **private ではなく internal**: HybridFallbackDriverTests.swift(同じ FTBridgeClientTests
-/// ターゲット)が実物の AppAttachDriver 経由の統合テストで再利用する
-/// @unchecked: `_paths` は lock の下・`serverFD` は init と stop(テストのスレッド)だけが書く
+/// 受けたリクエストのパスを順に・本文をパスごとに記録し、すべて 200 で `body`(既定 `{"ok":true}`)を
+/// `delaySeconds` 後に返す最小 HTTP スタブ。
+/// **private ではなく internal**: HybridFallbackDriverTests.swift・WaitForSettleWireTests.swift(同じ FTBridgeClientTests
+/// ターゲット)が実物のドライバ経由の統合テストで再利用する
+/// @unchecked: `_paths` / `_bodies` / `_responseBody` は lock の下・`serverFD` は init と stop(テストのスレッド)だけが書く
 final class RecordingStubServer: @unchecked Sendable {
     private var serverFD: Int32 = -1
     let port: UInt16
     private let lock = NSLock()
     private var _paths: [String] = []
+    private var _bodies: [String: String] = [:]
+    private var _responseBody: String
     var paths: [String] { lock.lock(); defer { lock.unlock() }; return _paths }
+    /// "POST /waitForSettle" のように「メソッド パス」で引く。最後に受けた本文
+    func body(for path: String) -> String? { lock.lock(); defer { lock.unlock() }; return _bodies[path] }
+    /// 以降の応答の本文を差し替える(リクエストの合間に変えられる)
+    func setBody(_ body: String) { lock.lock(); _responseBody = body; lock.unlock() }
+    private var responseBody: String { lock.lock(); defer { lock.unlock() }; return _responseBody }
 
-    init() throws {
+    /// 応答を返すまでの待ち(秒)。クライアントのタイムアウトが効くかを見るテスト用(受付スレッドは1本なので直列に待つ)
+    private let delaySeconds: Double
+
+    init(body: String = #"{"ok":true}"#, delaySeconds: Double = 0) throws {  // body の既定は OKResponse(BridgeDTO)と同じ形
+        self._responseBody = body
+        self.delaySeconds = delaySeconds
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { throw Failure.socket(errno) }
         var yes: Int32 = 1
@@ -43,23 +56,43 @@ final class RecordingStubServer: @unchecked Sendable {
         self.port = UInt16(bigEndian: assigned.sin_port)
         self.serverFD = fd
 
+        let delay = delaySeconds
         Thread.detachNewThread { [weak self, fd] in
             while true {
                 var ca = sockaddr()
                 var cl = socklen_t(MemoryLayout<sockaddr>.size)
                 let c = accept(fd, &ca, &cl)
                 if c < 0 { break }  // serverFD の close で脱出
-                var buffer = [UInt8](repeating: 0, count: 4096)
-                let n = read(c, &buffer, buffer.count)
-                if n > 0, let request = String(bytes: buffer[0..<n], encoding: .utf8) {
-                    let head = request.split(separator: " ")
+                // 待っている間にクライアントがタイムアウトで切ると、書き込みが SIGPIPE でテストプロセスごと落とす
+                var noSigPipe: Int32 = 1
+                setsockopt(c, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+                // **本文まで読み切る**(URLSession はヘッダと本文を別のセグメントで送りうる)。
+                // 縮めると POST の本文が空のまま記録される
+                var raw = Data()
+                var buffer = [UInt8](repeating: 0, count: 8192)
+                while true {
+                    let n = read(c, &buffer, buffer.count)
+                    if n <= 0 { break }
+                    raw.append(contentsOf: buffer[0..<n])
+                    guard let text = String(data: raw, encoding: .utf8),
+                          let headerEnd = text.range(of: "\r\n\r\n") else { continue }
+                    let header = String(text[text.startIndex..<headerEnd.lowerBound])
+                    let length = header.components(separatedBy: "\r\n")
+                        .first { $0.lowercased().hasPrefix("content-length:") }
+                        .flatMap { Int($0.split(separator: ":")[1].trimmingCharacters(in: .whitespaces)) } ?? 0
+                    let requestBody = String(text[headerEnd.upperBound...])
+                    guard requestBody.utf8.count >= length else { continue }
+                    let head = header.split(separator: " ")
                     if head.count >= 2 {
                         self?.lock.lock()
                         self?._paths.append("\(head[0]) \(head[1])")
+                        self?._bodies["\(head[0]) \(head[1])"] = requestBody
                         self?.lock.unlock()
                     }
+                    break
                 }
-                let body = #"{"ok":true}"#  // OKResponse(BridgeDTO)と同じ形
+                if delay > 0 { Thread.sleep(forTimeInterval: delay) }
+                let body = self?.responseBody ?? #"{"ok":true}"#
                 let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
                     + "Content-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
                 _ = response.withCString { write(c, $0, strlen($0)) }

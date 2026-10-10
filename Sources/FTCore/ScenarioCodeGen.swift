@@ -282,6 +282,13 @@ public enum ScenarioCodeGen {
                     args.append("waitSeconds: \(FTSeconds.format(wait))")
                 }
                 return "swipeElementToElement(\(args.joined(separator: ", ")))"
+            case "waitForSettle":
+                // 引数の並びは DSL と同じ(対象 → quietSeconds → throwsException → waitSeconds)。nil / 既定の true は書かない
+                var args: [String] = step.locator == nil ? [] : [literal(selector)]
+                if let quiet = step.quietSeconds { args.append("quietSeconds: \(FTSeconds.format(quiet))") }
+                if step.throwsException == false { args.append("throwsException: false") }
+                if let wait = step.timeout { args.append("waitSeconds: \(FTSeconds.format(wait))") }
+                return "waitForSettle(\(args.joined(separator: ", ")))"
             case "swipePointToPoint":
                 guard let x = step.x, let y = step.y, let toX = step.toX, let toY = step.toY else { return nil }
                 var args = ["startX: \(FTSeconds.format(x))", "startY: \(FTSeconds.format(y))",

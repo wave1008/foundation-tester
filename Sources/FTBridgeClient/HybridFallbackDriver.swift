@@ -122,6 +122,14 @@ public final class HybridFallbackDriver: AppDriver {
         try await withFallback { try await $0.gesture(request) }
     }
 
+    /// **primary を試さず最初から fallback へ送る**: in-app は 501 と決まっている(アプリ自身の描画しか撮れず、
+    /// キーボード・システムアラートが映らない)ので試す意味が無い。
+    /// 全画面の撮影は対象 bundle に依らない(fallback と foreignApp は同じランナー)ので delegatedApp でも宛先は同じ
+    public func waitForSettle(_ request: WaitForSettleRequest,
+                              timeoutSeconds: Double) async throws -> WaitForSettleResponse {
+        try await fallback.waitForSettle(request, timeoutSeconds: timeoutSeconds)
+    }
+
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {
         try await withFallback {

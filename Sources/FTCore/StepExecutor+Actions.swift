@@ -9,6 +9,11 @@ extension StepExecutor {
     func executeAction(_ action: String, step: FlowStep,
                                fingerprint: LocatorFingerprint? = nil,
                                phase: inout PhaseAccumulator) async throws -> StepOutcome {
+        var step = step
+        // waitForSettle は待ちの上限を必ず持たせてから解決する(ft_batch は waitSeconds 省略時に nil で来る)。
+        // **上限の無いステップの解決は、容器の外の残骸(ghost)を戻すために容器を送る** = 待つだけのコマンドが画面を動かす。
+        // 探す時間も waitSeconds ではなく約 0.7 秒(3回)になる
+        if action == "waitForSettle", step.timeout == nil { step.timeout = waitForSettleSeconds(for: step).wait }
         // **デバイスに触る前に、入口1箇所で**ジェスチャの秒数を検査する(FlowStep.duration を
         // 使う action 全部: tap の長押し・flick・pinchOut/pinchIn・swipeBy・swipeElementToElement)。
         // duration が nil(既定のまま)は検査しない
@@ -16,13 +21,19 @@ extension StepExecutor {
             action: action, duration: step.duration, maxGestureSeconds: step.maxGestureSeconds) {
             return StepOutcome(status: .failed(violation))
         }
+        // waitForSettle の quietSeconds / waitSeconds もデバイスに触る前に入口で断る(範囲は BridgeAPI が定義元)
+        if action == "waitForSettle", let violation = waitForSettleViolation(for: step) {
+            return StepOutcome(status: .failed(violation))
+        }
         let clock = ContinuousClock()
+        let actionStart = clock.now   // waitForSettle の待ち時間(範囲の要素の解決を含む)の起点
         cachedScreenshot = nil   // 画面を変える操作 → occlusion-guard スクショ再利用を無効化
         // 直前の操作の記録は**次の操作が画面を変えるまで**有効(検証は画面を変えないので消さない)。
         // `select` は掴むだけでデバイス操作が無いので例外 —— `tap → select → textIs` という
         // 一番ありふれた形で、落ちるのは textIs 側だから、ここで消すと肝心なときに証跡が無くなる
-        // 掴むだけでデバイスを動かさないアクション(スクロールしない findImage / findImages も同じ)
-        let grabsOnly = action == "select"
+        // 掴むだけでデバイスを動かさないアクション(スクロールしない findImage / findImages も同じ)。
+        // waitForSettle は待つだけで画面にも焦点にも触れないので同じ扱い(`tap → waitForSettle → 検証` で証跡を消さない)
+        let grabsOnly = action == "select" || action == "waitForSettle"
             || (Self.isFindImageAction(action) && step.direction == nil)
         if action == "tap" {
             // 前のタップは、このタップが解決に使う木と比べてから確定する(tapAwaitingNextTree の doc)
@@ -106,6 +117,12 @@ extension StepExecutor {
         // holdEnd はロケータを取らない(何も送らない・ブリッジが離す時刻まで待つだけ)
         if action == "holdEnd" {
             return try await executeHoldEnd(step: step, phase: &phase)
+        }
+        // 範囲の指定が無い waitForSettle は画面全体。指定があるときは下の通常の解決(スクロールはしない)を通り、
+        // 解決できなければ throwsException に関わらず失敗する(`case "waitForSettle"`)
+        if action == "waitForSettle", step.locator == nil, step.fallbacks?.isEmpty ?? true {
+            let waited = try await executeWaitForSettle(step: step, region: nil, startedAt: actionStart, phase: &phase)
+            return StepOutcome(status: waited.status, driverFallback: waited.note)
         }
 
         // `tap(scroll:)` 等の内蔵スクロール探索。**別ステップにしない**のは
@@ -689,6 +706,14 @@ extension StepExecutor {
             // 消える —— しかも消えるのは activate 不発のような**まさに飲まれた場面**で、
             // 両方が要るときに片方を失っていた(レビューで発覚)
             driverFallback = Self.joinNotes(driverFallback, actingDriver.lastActionNote)
+        case "waitForSettle":
+            // 範囲 = 解決した要素の frame(解決できなかった失敗は上で確定済み)。待つだけで何も送らない
+            let waited = try await executeWaitForSettle(step: step, region: element.frame,
+                                                        startedAt: actionStart, phase: &phase)
+            driverFallback = Self.joinNotes(driverFallback, waited.note)
+            guard case .passed = waited.status else {
+                return StepOutcome(status: waited.status, driverFallback: driverFallback)
+            }
         case "holdStart":
             // 二重 hold は禁止: ブリッジは指を1本下ろすだけで、前の hold がまだ下がっている間は
             // 離し時刻を上書きすると先に下ろした指がいつ離れるか分からなくなる

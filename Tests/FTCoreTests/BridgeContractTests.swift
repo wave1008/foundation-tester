@@ -73,6 +73,8 @@ final class BridgeContractTests: XCTestCase {
         "POST /gesture", "POST /hidekeyboard", "POST /hold", "POST /home", "POST /pinch", "POST /press",
         "POST /pressEnter", "POST /rotate", "POST /session", "POST /swipe", "POST /tap", "POST /terminate",
         "POST /type",
+        // waitForSettle(v174)。画面全体を撮るのでセッションを要さない。in-app は持たない(アプリ自身の描画しか撮れない)
+        "POST /waitForSettle",
     ]
 
     static let androidRoutes: Set<String> = [
@@ -80,6 +82,7 @@ final class BridgeContractTests: XCTestCase {
         "POST /clear", "POST /doubletap", "POST /gesture", "POST /hold", "POST /locale", "POST /pinch", "POST /press",
         "POST /pressEnter", "POST /scrollAction", "POST /session", "POST /settle", "POST /swipe",
         "POST /tap", "POST /terminate", "POST /type",
+        "POST /waitForSettle",
     ]
 
     private var repoRoot: URL {
@@ -134,7 +137,7 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "7a0c3b6359ecb213cc028afee402efb227e85c3c06f61d1d065c70288b1e3e4a",
             "Sources/FTCore/AXFrameRescale.swift": "2e09609619aefcc33658163d57e1751f475771dc3841c79f9ca0b721c8fd1250",
-            "Sources/FTCore/BridgeDTO.swift": "80f4e2063ac7e9f47dd125d52f0cce515e7fa8dc9b770207039d0b7c8e89138e",
+            "Sources/FTCore/BridgeDTO.swift": "d07a2ccdf631ac6580210fc3712016054870fdfd28809616599d0160380e41d2",
             "Sources/FTCore/TypeReadback.swift": "c9080f52f741398ba61e2d7f1ab7a880721379c27f33ee09ef1dedf5b768e9c8",
             "Sources/FTCore/UIFrameworkMarkers.swift": "1601c9feecaa817d73deea4445523522341ae1b777086b55c33c6e0a74fef6b8",
             "Sources/FTCore/WebViewDOMSnapshot.swift": "7e254f20bc68685cad1ecb85e4c6ccf9628d7e33d9697d47a9ca26b3b72fed36",
@@ -143,7 +146,7 @@ final class BridgeContractTests: XCTestCase {
             "Runner/FleetestRunnerUITests/BridgeHTTPServer.swift": "0b78c5bf0d29f3088a49d741dc840590f37b4cdd8179329ce253124de29ccaf7",
             "Runner/FleetestRunnerUITests/BridgeRouter+Snapshot.swift": "55f5bdc9607198d489299ee946d4c2521802836219e3f9d2712bc06adace4334",
             "Runner/FleetestRunnerUITests/BridgeRouter+TextInput.swift": "7b71ad3f8f69da5426879061271d50092a6897d1842047334622614e10f3b831",
-            "Runner/FleetestRunnerUITests/BridgeRouter.swift": "5608481871cd46a1dd301a4d238a7b904e04147272ef2461090efa34d8b69b6a",
+            "Runner/FleetestRunnerUITests/BridgeRouter.swift": "300387c60ed7aa464214371944e748c856bfe04f1e84a55f272b2000e6b1545d",
             "Runner/FleetestRunnerUITests/BridgingHeader.h": "f7ff424d9283644d0e7a0c6e202911ecbf2d9c12d469eea330d91471c4788272",
             "Runner/FleetestRunnerUITests/CoordinatePinch.swift": "2fe85aaf98e42be9310de3dc95602831ec8a6ea9997b26daac84056b3da50f30",
             "Runner/FleetestRunnerUITests/DisplayHeartbeat.swift": "c62c30a45e842d5ec7aff60210284d679b76f6e44358a3f4c97429fe918e5ffa",
@@ -153,7 +156,7 @@ final class BridgeContractTests: XCTestCase {
             "Runner/FleetestRunnerUITests/ObjCExceptionCatcher.h": "5a98cdbeefb031137a985b2f4430a5e12fec447a492599f8f4da1bd2c7101edc",
             "Runner/FleetestRunnerUITests/ObjCExceptionCatcher.m": "8b41a8a81bc8199bca13a364717614684f8003999c7675d9a63242c8e74c26be",
             "Sources/FTCore/AXFrameRescale.swift": "2e09609619aefcc33658163d57e1751f475771dc3841c79f9ca0b721c8fd1250",
-            "Sources/FTCore/BridgeDTO.swift": "80f4e2063ac7e9f47dd125d52f0cce515e7fa8dc9b770207039d0b7c8e89138e",
+            "Sources/FTCore/BridgeDTO.swift": "d07a2ccdf631ac6580210fc3712016054870fdfd28809616599d0160380e41d2",
             "Sources/FTCore/SnapshotDedupe.swift": "f987a913f2010e8cd81e381c595c15242f58225c71a11a9be206590baccf8c9b",
             "Sources/FTCore/TypeReadback.swift": "c9080f52f741398ba61e2d7f1ab7a880721379c27f33ee09ef1dedf5b768e9c8",
         ],
@@ -162,7 +165,7 @@ final class BridgeContractTests: XCTestCase {
             "AndroidRunner/build.sh": "b136074f6bd0753af9c4186ec066407492125748aef24dd13e6556cfd3c3524a",
             "AndroidRunner/src/com/example/ftbridge/BridgeHttpServer.java": "863ec6982e6dd41c6bda8f8f6fe998c17c95b0f250c7f57345e6c5cb617f26ac",
             "AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java": "78fe5cc272782a091bbbc512d1693bed0a192cf363548699a586cb0f3d614824",
-            "AndroidRunner/src/com/example/ftbridge/BridgeRouter.java": "b6a55cb3168a7156f9d99f553532a3deef89fd49f8e52b5109f480d24e5e4298",
+            "AndroidRunner/src/com/example/ftbridge/BridgeRouter.java": "e968fd28c3f5bcbd6f02cb3acf90489dfa81f969b1a36c4e8d7e7a23620abc2d",
             "AndroidRunner/src/com/example/ftbridge/DisplayHeartbeat.java": "b00ff62b9a909e7e46df1a7a1aa1f39ba0a5711834092148adfee9f6bd6c7d9a",
             "AndroidRunner/src/com/example/ftbridge/ImeOnboarding.java": "fe2d90d892046f64e4893c008148d47886e36bceb244dd9e68e560b368f0193b",
             "AndroidRunner/src/com/example/ftbridge/KeyboardPrimerActivity.java": "f5a4751486cd8349a8f10b65332d6a3e1d77c3d82e0528e8518ec646aad152d9",

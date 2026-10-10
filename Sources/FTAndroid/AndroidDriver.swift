@@ -973,6 +973,12 @@ public final class AndroidDriver: AppDriver {
         try await withBridge { try await $0.gesture(request) }
     }
 
+    /// apk の中で撮影して判定する(画像はホストへ出さない)。HTTP の待ちは呼び手の `timeoutSeconds`
+    public func waitForSettle(_ request: WaitForSettleRequest,
+                              timeoutSeconds: Double) async throws -> WaitForSettleResponse {
+        try await withBridge { try await $0.waitForSettle(request, timeoutSeconds: timeoutSeconds) }
+    }
+
     // MARK: - Rotation (host-side adb; no bridge route — adb already does this without one)
 
     /// Captured only on this driver instance's first `rotate(to:)` call (nil = not used yet, or

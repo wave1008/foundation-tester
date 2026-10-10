@@ -254,6 +254,26 @@ final class FakeAppDriver: AppDriver {
         log.entries.append("\(name).pinch")
     }
 
+    /// waitForSettle の応答列(呼び出し回数ぶん。尽きたら最後を繰り返す)。空 = 常に静止して返す
+    var waitForSettleResponses: [WaitForSettleResponse] = []
+    /// 非 nil なら waitForSettle がこのエラーを throw する(501 = 画面全体を撮れないエンジンの検証用)
+    var waitForSettleError: Error?
+    /// waitForSettle に渡った要求と HTTP の待ちの上限(送り先の取り違え・範囲・窓の配線確認用)
+    private(set) var waitForSettleRequests: [(request: WaitForSettleRequest, timeoutSeconds: Double)] = []
+    /// 非 nil なら waitForSettle が応答を返す前にこの分だけ待つ(段1が waitSeconds を使うことの再現用)
+    var waitForSettleDelay: Duration?
+
+    func waitForSettle(_ request: WaitForSettleRequest, timeoutSeconds: Double) async throws -> WaitForSettleResponse {
+        waitForSettleRequests.append((request, timeoutSeconds))
+        log.entries.append("\(name).waitForSettle")
+        if let waitForSettleDelay { try? await Task.sleep(for: waitForSettleDelay) }
+        if let waitForSettleError { throw waitForSettleError }
+        guard !waitForSettleResponses.isEmpty else {
+            return WaitForSettleResponse(settled: true, elapsedMs: request.quietMs, frames: 2)
+        }
+        return waitForSettleResponses[min(waitForSettleRequests.count - 1, waitForSettleResponses.count - 1)]
+    }
+
     /// 非 nil なら gesture がこのエラーを throw する(501 切替の検証用)
     var gestureError: Error?
     private(set) var lastGesture: GestureRequest?

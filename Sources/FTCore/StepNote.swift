@@ -19,6 +19,10 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 探索の終端で出る場合だけ文言が変わる(`StepExecutor.scrollSearchNote`)が**コードは同じ**
     case settleCapped = "settle-capped"
 
+    /// waitForSettle(throwsException: false)で、画面(または木)が待ちの上限まで止まらなかった。失敗にせず先へ進んだ
+    /// (どちらの段で何秒変わり続けたかはステップの注記の本文に載る)
+    case settleNotReached = "settle-not-reached"
+
     /// 掴んだ値だけでアサートを満たし、デバイスを 1 度も見なかった(FTRuntime の高速経路)。
     /// このステップは durationMs=0 で記録されるため、**内訳の母数から抜ける**。
     /// 「速くなったのは実装のおかげか、この経路の当たり率が上がっただけか」を切り分けるために数える
@@ -385,6 +389,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
             return "Vision returned untrustworthy image feature prints and the Vision helper process could not"
                 + " help, so the image search waited and ran again"
         case .settleCapped: return "the screen did not settle (poll limit)"
+        case .settleNotReached: return "waitForSettle gave up: the screen did not settle within the wait limit (throwsException: false)"
         case .heldValue: return "from the grabbed value"
         case .scrollFrameMissing: return "the scrollFrame did not resolve, so the search stopped early"
         case .sheetCollapsed: return "the list stopped moving inside a partially open sheet"

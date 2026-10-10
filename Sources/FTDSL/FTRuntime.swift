@@ -175,6 +175,8 @@ struct PerformResult {
     var notVisibleSelection: ElementInfo? = nil
     /// findImage / findImages が見つけた要素(StepOutcome.imageMatches)
     var imageMatches: [FindImage.Match]? = nil
+    /// ステップの機械可読な注記(StepOutcome.notes)。waitForSettle が「諦めて通った」ことを読む
+    var notes: [StepNote] = []
 }
 
 // MARK: - ドライブコア(コマンドの実体)
@@ -952,7 +954,8 @@ public final class FTDriveCore {
         noteAssertionUnlessSkipped(status)
         return PerformResult(status: status, element: outcome?.resolvedElement,
                              notVisibleSelection: outcome?.notVisibleSelection,
-                             imageMatches: outcome?.imageMatches)
+                             imageMatches: outcome?.imageMatches,
+                             notes: outcome?.notes ?? [])
     }
 
     /// `hold { }` の後始末(FTDSL.holdImpl から**常に**呼ばれる)。**中断されていても待つ** ——

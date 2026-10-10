@@ -249,6 +249,13 @@ public final class InAppDriver: AppDriver {
     public func hold(x: Double, y: Double, duration: Double) async throws {
         throw Self.inappOnly("hold")
     }
+    /// **client へ転送しない**: in-app はアプリ自身の描画しか撮れず(キーボード・システムアラートが映らない)、
+    /// プロセス内の撮影はメインスレッドを塞ぐ。501 = ホストが XCUITest 側へ回す合図
+    public func waitForSettle(_ request: WaitForSettleRequest, timeoutSeconds: Double) async throws -> WaitForSettleResponse {
+        throw DriverError.badResponse(status: 501,
+            body: "waitForSettle cannot run on the in-app engine (it only sees the app's own drawing:"
+                + " no keyboard, no system alerts). Switch the run profile to hybrid or xcuitest")
+    }
 
     private static func inappOnly(_ action: String) -> DriverError {
         .badResponse(status: 501,

@@ -200,6 +200,14 @@ public enum DSLCommandIndex {
               "Drags from one element to another. Only the start point is healed. durationSeconds is "
                   + "capped at 10s by default — pass maxGestureSeconds: (up to 60) to allow longer."
                   + " Returns the start element it grabbed."),
+        .init("waitForSettle", "operation",
+              "waitForSettle(selector?, quietSeconds:, throwsException:, waitSeconds:)",
+              "Waits until the screen (or the region of the selector's element) stops changing completely, "
+                  + "then until the accessibility tree has caught up. quietSeconds is how long the pixels must "
+                  + "stay unchanged (default by UI framework: 0.8s for Compose Multiplatform on iOS, 0.5s otherwise). Gives up after "
+                  + "waitSeconds (default 15, max 60): fails, or with throwsException: false returns false and "
+                  + "goes on. Returns true when settled. An unresolvable selector always fails. "
+                  + "iOS captures through XCUITest, so the in-app-only engine cannot run it."),
 
         // MARK: scroll
         .init("scrollTo", "scroll",

@@ -178,6 +178,10 @@ public final class FastLaunchDriver: AppDriver {
                              durationSeconds: durationSeconds)
     }
     public func gesture(_ request: GestureRequest) async throws { try await base.gesture(request) }
+    public func waitForSettle(_ request: WaitForSettleRequest,
+                              timeoutSeconds: Double) async throws -> WaitForSettleResponse {
+        try await base.waitForSettle(request, timeoutSeconds: timeoutSeconds)
+    }
     public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
         try await base.rotate(to: orientation)
     }

@@ -215,6 +215,9 @@ public func waitUntilVisible(_ selector: String) { fatalError() }
 @available(*, unavailable, message: "fleetest spells this waitForClose(selector)")
 public func waitForGone(_ selector: String) { fatalError() }
 
+@available(*, unavailable, message: "fleetest spells this waitForSettle(). It waits until the pixels of the screen stop changing, then until the accessibility tree has caught up; pass a selector to watch only that element's region")
+public func waitForAnimationToEnd(timeout: Double? = nil, waitSeconds: Double? = nil) { fatalError() }
+
 @available(*, unavailable, message: "fleetest spells this wait(seconds). Do not use it to wait for an element — every command already polls until its timeout")
 public func sleep(_ seconds: Double) { fatalError() }
 

@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 173
+    public static let bridgeProtocolVersion = 174
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -267,6 +267,22 @@ public enum BridgeAPI {
     /// duration=1e9 でランナーは3秒で ok を返すが testmanagerd は残り続け、数時間で170〜280GB。
     /// 止めるには testmanagerd 自体を kill するしかない。→ maintainer-notes §49.1)
     public static let gestureSecondsCeiling: Double = 60
+
+    /// waitForSettle で比べる範囲を各辺この割合だけ内側へ削る(100×200 → 内側 80×160)。縁で止まった後も変わり続ける
+    /// もの(スクロールバー・インジケータのフェード = 停止の約 0.3〜1.5 秒後、画面全体ならステータスバー・ホームインジケータ)を
+    /// 拾わないため。同期相手: AndroidRunner/…/BridgeRouter.java の WAIT_FOR_SETTLE_REGION_INSET(XCUITest ランナーは FTCore を共有)
+    public static let waitForSettleRegionInsetRatio = 0.1
+    /// `waitForSettleRegionInsetRatio` を適用した比較範囲
+    public static func waitForSettleCompareRect(_ region: FTRect) -> FTRect {
+        let dx = region.width * waitForSettleRegionInsetRatio
+        let dy = region.height * waitForSettleRegionInsetRatio
+        return FTRect(x: region.x + dx, y: region.y + dy, width: region.width - 2 * dx, height: region.height - 2 * dy)
+    }
+    /// waitForSettle の静止の窓の受け付け範囲(ms)。ホストの門(DSL・ft_batch)とブリッジの両方がこの範囲で断る/丸める。
+    /// 下限 = 撮影の間隔(Simulator 約 100ms)より短い窓は判定にならない・上限 = 窓は「止まった」の基準で待ちの上限ではない
+    public static let waitForSettleQuietRangeMs = 100...5_000
+    /// waitForSettle の待ちの上限の受け付け範囲(ms)。上限はジェスチャの絶対上限と同じ 60 秒(撮影を続ける時間の天井)
+    public static let waitForSettleTimeoutRangeMs = 0...60_000
 
     /// `/gesture` の指の本数の上限。**装置の上限ではなく操作の意味から決めた値**(片手の指の本数。
     /// 6本以上を要する UI は無い)。ホストの門(`TouchGesture.validate`)と XCUITest ランナーの
@@ -1282,6 +1298,41 @@ public enum ScrollPointReach {
         let coversRoot = frame.x <= 1 && frame.y <= 1
             && frame.x + frame.width >= rootWidth - 1 && frame.y + frame.height >= rootHeight - 1
         return !coversRoot
+    }
+}
+
+/// `POST /waitForSettle`(DSL の waitForSettle。XCUITest ランナー v174〜・Android v100〜。**in-app は持たない** = 501。
+/// hybrid は最初から XCUITest 側へ送る)。ブリッジの中でスクリーンショットを撮り続け、比べる範囲の画素が `quietMs` の間
+/// 1 度も変わらなくなったら返す。**画像はホストへ出さない**(判定はブリッジの中で完結)。上限は最初の撮影から数える
+public struct WaitForSettleRequest: Codable, Sendable, Equatable {
+    /// 比べる範囲(snapshot と同じ座標系 = iOS pt / Android px)。nil = 画面全体。
+    /// どちらも `BridgeAPI.waitForSettleCompareRect` で各辺を削った内側を比べる
+    public var region: FTRect?
+    /// 静止の窓(ms。`BridgeAPI.waitForSettleQuietRangeMs`)
+    public var quietMs: Int
+    /// 待ちの上限(ms。`BridgeAPI.waitForSettleTimeoutRangeMs`)
+    public var timeoutMs: Int
+    public init(region: FTRect?, quietMs: Int, timeoutMs: Int) {
+        self.region = region
+        self.quietMs = quietMs
+        self.timeoutMs = timeoutMs
+    }
+}
+
+public struct WaitForSettleResponse: Codable, Sendable, Equatable {
+    /// true = 窓の間、画素が変わらなかった / false = 上限まで変わり続けた
+    public var settled: Bool
+    /// 最初の撮影から返すまで(ms)
+    public var elapsedMs: Int
+    /// 撮影した枚数
+    public var frames: Int
+    /// settled == false のときだけ: 最後に変わった2枚の差の外接矩形(比べた範囲の中・snapshot の座標系)。求められなければ nil
+    public var lastChangeRegion: FTRect?
+    public init(settled: Bool, elapsedMs: Int, frames: Int, lastChangeRegion: FTRect? = nil) {
+        self.settled = settled
+        self.elapsedMs = elapsedMs
+        self.frames = frames
+        self.lastChangeRegion = lastChangeRegion
     }
 }
 

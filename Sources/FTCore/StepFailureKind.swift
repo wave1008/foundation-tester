@@ -33,7 +33,8 @@ public enum StepFailureKind: String, Sendable, Codable, CaseIterable {
     /// ドライバは応答したがエラーを返した(HTTP のエラー応答)。到達はしている
     case driverError = "driver-error"
 
-    /// ステップの実行が制限時間内に返らなかった(FTSync.commandTimeout)
+    /// ステップの実行が制限時間内に返らなかった(FTSync.commandTimeout)。waitForSettle で画面・木が `waitSeconds` までに
+    /// 静止しなかったときもこれ(待つこと自体が目的のコマンドの時間切れ)
     case timeout = "timeout"
 
     /// 対象アプリがデバイスに入っていなかった(起動前の検査で確定した事実)

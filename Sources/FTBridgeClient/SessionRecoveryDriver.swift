@@ -230,6 +230,13 @@ public final class SessionRecoveryDriver: AppDriver {
         try await withRecovery { try await base.gesture(request) }
     }
 
+    /// 回復を挟まず素通し: 全画面の撮影はセッション不要(409 を出さない)で、
+    /// 回復の activate は待っている画面(キーボード・アラート)を動かしうる
+    public func waitForSettle(_ request: WaitForSettleRequest,
+                              timeoutSeconds: Double) async throws -> WaitForSettleResponse {
+        try await base.waitForSettle(request, timeoutSeconds: timeoutSeconds)
+    }
+
     public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
         try await withRecovery { try await base.rotate(to: orientation) }
     }

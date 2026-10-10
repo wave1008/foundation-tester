@@ -196,7 +196,7 @@ private let lastElementPlaceholder = "<lastElement: nothing has been grabbed yet
 /// **直前に掴んだ要素**(Shirates の `TestDriver.lastElement` 相当)。
 /// 要素を1つに定めて解決したコマンド(`select` / `exist` / `tap` / `type` / `waitForDisplay` /
 /// テキスト・値の検証など)が通るたびに差し替わる。差し替えないのは**要素を1つに定めないもの**
-/// (`notExist` / `countIs`)と**セレクタを取らないもの**(`swipe` / `launchApp` など)。
+/// (`notExist` / `countIs`)・**範囲を指すだけのもの**(`waitForSettle`)・**セレクタを取らないもの**(`swipe` / `launchApp` など)。
 ///
 ///     select("#txt_total")
 ///     lastElement.text.thisContains("1,200")
@@ -741,6 +741,50 @@ private func waitForCloseImpl(_ selector: FTSelector, waitSeconds: Double?,
                         timeout: waitSeconds)
     perform("waitForClose", selector, step: step,
             description: "waitForClose \"\(selector.text)\"", file: file, line: line)
+}
+
+/// 画面(selector 指定時はその要素の範囲)の画素が完全に止まるまで待ち、そのあと accessibility tree が追いつくまで待つ。
+/// アニメーション・スクロールの慣性・遷移の完了を待つ明示コマンド(使ったステップだけが費用を払う)。
+/// quietSeconds = 画素が変わらず続くべき長さ(nil = UI フレームワーク別の既定)。
+/// **戻り値**: 静止したら true。waitSeconds(nil = `tunables.screenWaitTimeout`・最大 60)まで止まらなかったとき、
+/// throwsException が true(既定)なら失敗でシナリオを中断し、false なら false を返して先へ進む。
+/// **範囲の要素が解決できないときは throwsException に関わらず失敗**(空振りを許す引数は置かない)。
+/// 範囲の要素は `lastElement` を差し替えない(範囲の指定であって、掴んだ要素ではない)。
+/// iOS は XCUITest 側で撮るので in-app 単独のエンジンでは使えない(hybrid / xcuitest)
+@discardableResult
+public func waitForSettle(_ selector: String? = nil, quietSeconds: Double? = nil, throwsException: Bool = true,
+                          waitSeconds: Double? = nil,
+                          file: StaticString = #filePath, line: UInt = #line) -> Bool {
+    waitForSettleImpl(selector.map(FTSelector.parse), quietSeconds: quietSeconds, throwsException: throwsException,
+                      waitSeconds: waitSeconds, file: file, line: line)
+}
+
+@discardableResult
+public func waitForSettle(_ selector: Sel, quietSeconds: Double? = nil, throwsException: Bool = true,
+                          waitSeconds: Double? = nil,
+                          file: StaticString = #filePath, line: UInt = #line) -> Bool {
+    waitForSettleImpl(selector.ftSelector, quietSeconds: quietSeconds, throwsException: throwsException,
+                      waitSeconds: waitSeconds, file: file, line: line)
+}
+
+private func waitForSettleImpl(_ selector: FTSelector?, quietSeconds: Double?, throwsException: Bool,
+                               waitSeconds: Double?, file: StaticString, line: UInt) -> Bool {
+    let core = FTRuntime.requireCore(command: "waitForSettle")
+    // 既定が環境で変わる waitSeconds は tunables で解く(waitForClose と同じ)。throwsException は既定を nil のまま運ぶ
+    let step = FlowStep(action: "waitForSettle", locator: selector?.primary, fallbacks: selector?.stepFallbacks,
+                        timeout: waitSeconds ?? core.tunables.screenWaitTimeout,
+                        quietSeconds: quietSeconds, throwsException: throwsException ? nil : false)
+    var description = "waitForSettle"
+    if let selector { description += " \"\(selector.text)\"" }
+    if let quietSeconds { description += " (quiet \(FTSeconds.format(quietSeconds))s)" }
+    let result: PerformResult
+    if let selector {
+        result = perform("waitForSettle", selector, step: step, description: description, file: file, line: line)
+    } else {
+        result = core.perform(step: step, description: description, command: "waitForSettle", file: file, line: line)
+    }
+    // 諦めて通ったステップは成功の状態 + 注記 `settle-not-reached`。この注記が「静止していない」の唯一の印
+    return StepExecutor.isSuccess(result.status) && !result.notes.contains(.settleNotReached)
 }
 
 

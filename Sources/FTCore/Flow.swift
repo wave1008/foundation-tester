@@ -170,6 +170,12 @@ public struct FlowStep: Codable, Sendable {
     /// `tap(sel, linkText:)` の対象文字列。locator で解決した要素の**中で**この文字列が描かれている位置を押す
     /// (`LinkTextLocator`)。**tap 以外は未使用**。nil = 従来どおり要素の中心
     public var linkText: String?
+    /// waitForSettle の静止の窓(秒)。nil = UI フレームワーク別の既定(`WaitForSettleDefaults`)。**waitForSettle 以外は未使用**
+    public var quietSeconds: Double?
+    /// waitForSettle で静止しなかったとき失敗にするか(nil / true = 失敗してシナリオ中断・false = 注記 `settle-not-reached` を
+    /// 残して先へ進む)。**範囲の要素が見つからないときは常に失敗**(空振りを許す引数は置かない = ユーザー決定。docs/shirates-parity.md の `optional:` の行。
+    /// これは時間切れだけに効く)。**waitForSettle 以外は未使用**
+    public var throwsException: Bool?
 
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
                 fallbacks: [FlowLocator]? = nil, endLocator: FlowLocator? = nil,
@@ -192,8 +198,11 @@ public struct FlowStep: Codable, Sendable {
                 imageThreshold: Double? = nil, aspectRatioTolerance: Double? = nil,
                 preferCheckStateClassifier: Bool? = nil,
                 gesture: [FTFinger]? = nil,
-                linkText: String? = nil) {
+                linkText: String? = nil,
+                quietSeconds: Double? = nil, throwsException: Bool? = nil) {
         self.linkText = linkText
+        self.quietSeconds = quietSeconds
+        self.throwsException = throwsException
         self.preferCheckStateClassifier = preferCheckStateClassifier
         self.gesture = gesture
         self.x = x

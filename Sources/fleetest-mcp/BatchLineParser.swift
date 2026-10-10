@@ -478,11 +478,11 @@ enum BatchStepResolver {
         // x/y は座標タップ(`tap x: 120 y: 640`)。単位は snapshot の screen と同じ
         // (iOS = pt / Android = px)なので整数で書かれることが多いが、型は Double で揃える
         "holdSeconds", "waitSeconds", "scale", "durationSeconds", "maxGestureSeconds",
-        "dxRatio", "dyRatio", "x", "y",
+        "dxRatio", "dyRatio", "x", "y", "quietSeconds",
         // swipePointToPoint の2点(単位は x / y と同じ)
         "startX", "startY", "endX", "endY",
     ]
-    static let boolKeys: Set<String> = ["replace", "settle"]
+    static let boolKeys: Set<String> = ["replace", "settle", "throwsException"]
 
     private static func assign(_ raw: inout [String: Any], dictKey: String, value: BatchLineValue,
                                command: String, displayName: String) throws {

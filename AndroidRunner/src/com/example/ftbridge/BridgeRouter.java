@@ -164,6 +164,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                 case "POST /terminate": return handleTerminate();
                 case "POST /locale": return handleLocale(body(request));
                 case "POST /settle": return handleSettle();
+                case "POST /waitForSettle": return handleWaitForSettle(body(request));
                 default:
                     return BridgeHttpServer.Response.error(404,
                             "not found: " + request.method + " " + request.path);
@@ -796,6 +797,217 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
         bitmap.recycle();
         return BridgeHttpServer.Response.png(out.toByteArray());
+    }
+
+    // MARK: - waitForSettle
+
+    /** waitForSettle の静止の窓の受け付け範囲(ms)と待ちの上限の受け付け範囲(ms)。Sources/FTCore/BridgeDTO.swift の
+     *  BridgeAPI.waitForSettleQuietRangeMs / waitForSettleTimeoutRangeMs の写し(片方だけ変えない。AndroidWaitForSettleScanTests が固定する) */
+    private static final int WAIT_FOR_SETTLE_QUIET_MIN_MS = 100;
+    private static final int WAIT_FOR_SETTLE_QUIET_MAX_MS = 5000;
+    private static final int WAIT_FOR_SETTLE_TIMEOUT_MIN_MS = 0;
+    private static final int WAIT_FOR_SETTLE_TIMEOUT_MAX_MS = 60000;
+    /**
+     * エミュレータか。撮影の負担の行き先で撮り方を分ける: エミュレータの撮影はホストの CPU を使う(1枚約 22 ms・連続で
+     * 1台約 1.5 コア。並列の E2E で積み上がる)ので枚数を抑える。実機は端末内で済み、撮影自体(Pixel 4a 約 50 ms)が間隔になる
+     */
+    private static final boolean IS_EMULATOR = "ranchu".equals(Build.HARDWARE) || "goldfish".equals(Build.HARDWARE)
+            || Build.PRODUCT.startsWith("sdk_");
+    /** エミュレータ: 1枚目から2枚目までの間隔(ms)。変化が1枚だけのときの次の間隔にも使う。タップの描画は約 100 ms 以内に終わるので早めに捉える */
+    private static final long WAIT_FOR_SETTLE_FIRST_GAP_MS = 50;
+    /** エミュレータ: 変化が続く間の間隔の上限(ms)。50 → 100 と広げる。広げすぎると動きの終わりの検出がその分遅れる */
+    private static final long WAIT_FOR_SETTLE_MAX_INTERVAL_MS = 100;
+    /** 比べる範囲を各辺削る割合(100×200 なら内側 80×160)。縁のスクロールバー・インジケータのフェード(止まった後も変わる)を拾わないため。
+     *  同期相手: Sources/FTCore/BridgeDTO.swift の BridgeAPI.waitForSettleRegionInsetRatio */
+    private static final double WAIT_FOR_SETTLE_REGION_INSET = 0.1;
+
+    /**
+     * POST /waitForSettle(契約は FTCore/BridgeDTO.WaitForSettleRequest)。スクリーンショットを撮り続け、比べる範囲(region か画面全体の
+     * 各辺を WAIT_FOR_SETTLE_REGION_INSET 削った内側)が「前の撮影と違った最後の撮影」から quietMs 経つまで変わらなければ settled。
+     * 最初の撮影の時刻が最初の「変わった時刻」(何も動かない画面は窓 1 回分で返る)。上限 timeoutMs も最初の撮影から数える。
+     * 撮影の開始時刻は nextCaptureAt(実機は連続・エミュレータは間引く)。Bitmap 同士で比べ(閾値0)、PNG エンコードは挟まない。画像はホストへ出さない。
+     * 上限まで変わり続けたら settled=false で、最後に変わった2枚の差の外接矩形(撮影画像の px = snapshot の座標系)を載せる。
+     * 撮れない(null)ときは止めて settled=false・矩形なし(整定したことにしない)。Bitmap は必ず recycle する。
+     * a11y の静穏待ちは並走させない: 木の同期はホストが静止の後に取る
+     */
+    private BridgeHttpServer.Response handleWaitForSettle(JSONObject body) throws JSONException {
+        if (!body.has("quietMs") || !body.has("timeoutMs")) {
+            throw new BridgeException(400, "quietMs and timeoutMs are required");
+        }
+        double[] region = null;
+        JSONObject r = body.optJSONObject("region");
+        if (r != null) {
+            double x = r.optDouble("x", Double.NaN);
+            double y = r.optDouble("y", Double.NaN);
+            double w = r.optDouble("width", Double.NaN);
+            double h = r.optDouble("height", Double.NaN);
+            if (Double.isNaN(x) || Double.isNaN(y) || !(w > 0) || !(h > 0)
+                    || Double.isInfinite(x) || Double.isInfinite(y) || Double.isInfinite(w) || Double.isInfinite(h)) {
+                throw new BridgeException(400, "region must have x, y and a positive width and height");
+            }
+            region = new double[]{x, y, w, h};
+        }
+        final long quietMs = Math.max(WAIT_FOR_SETTLE_QUIET_MIN_MS,
+                Math.min(body.optLong("quietMs"), WAIT_FOR_SETTLE_QUIET_MAX_MS));
+        final long timeoutMs = Math.max(WAIT_FOR_SETTLE_TIMEOUT_MIN_MS,
+                Math.min(body.optLong("timeoutMs"), WAIT_FOR_SETTLE_TIMEOUT_MAX_MS));
+
+        long firstAt = 0;
+        long lastAt = 0;
+        long lastChangeAt = 0;
+        int changeStreak = 0;
+        boolean lastChanged = false;
+        int frames = 0;
+        boolean settled = false;
+        boolean shotFailed = false;
+        Bitmap latest = null;          // 最後に変わった絵(一致した絵は捨てる)
+        Bitmap beforeLastChange = null; // その直前の絵(外接矩形の相手)
+        int[] latestOrigin = null;
+        int[] beforeOrigin = null;
+        int[] changedBounds = null;
+        try {
+            while (true) {
+                if (frames > 0) {
+                    long target = Math.min(nextCaptureAt(IS_EMULATOR, frames, firstAt, lastAt, lastChangeAt,
+                            changeStreak, lastChanged, quietMs), firstAt + timeoutMs);
+                    long wait = target - SystemClock.uptimeMillis();
+                    if (wait > 0) SystemClock.sleep(wait);
+                }
+                Bitmap full = ua().takeScreenshot();
+                if (full == null) {
+                    assertConnectionAlive(ua());  // 口が死んでいれば 503(ホストが作り直す)。生きていて撮れないだけなら settled=false
+                    shotFailed = true;
+                    break;
+                }
+                long now = SystemClock.uptimeMillis();
+                int[] cb = waitForSettleCompareBounds(region, full.getWidth(), full.getHeight());
+                Bitmap b = Bitmap.createBitmap(full, cb[0], cb[1], cb[2], cb[3]);
+                if (b != full) full.recycle();  // 全面一致の矩形は同一インスタンスが返る
+                frames++;
+                lastAt = now;
+                if (frames == 1) {
+                    firstAt = now;
+                    lastChangeAt = now;
+                    lastChanged = false;
+                    latest = b;
+                    latestOrigin = new int[]{cb[0], cb[1]};
+                } else if (!latest.sameAs(b)) {
+                    lastChangeAt = now;
+                    lastChanged = true;
+                    changeStreak++;
+                    if (beforeLastChange != null) beforeLastChange.recycle();
+                    beforeLastChange = latest;
+                    beforeOrigin = latestOrigin;
+                    latest = b;
+                    latestOrigin = new int[]{cb[0], cb[1]};
+                } else {
+                    lastChanged = false;
+                    changeStreak = 0;
+                    b.recycle();
+                }
+                if (now - lastChangeAt >= quietMs) { settled = true; break; }
+                if (now - firstAt >= timeoutMs) break;
+            }
+            if (!settled && !shotFailed && beforeLastChange != null) {
+                changedBounds = differingBounds(beforeLastChange, latest, beforeOrigin, latestOrigin);
+            }
+        } finally {
+            if (latest != null) latest.recycle();
+            if (beforeLastChange != null) beforeLastChange.recycle();
+        }
+        JSONObject o = new JSONObject();
+        o.put("settled", settled);
+        o.put("elapsedMs", frames > 0 ? lastAt - firstAt : 0);
+        o.put("frames", frames);
+        if (changedBounds != null) {
+            JSONObject rect = new JSONObject();
+            rect.put("x", changedBounds[0]);
+            rect.put("y", changedBounds[1]);
+            rect.put("width", changedBounds[2]);
+            rect.put("height", changedBounds[3]);
+            o.put("lastChangeRegion", rect);
+        }
+        return BridgeHttpServer.Response.json(200, o.toString());
+    }
+
+    /**
+     * waitForSettle の次の撮影開始時刻(uptime ms)。時刻はどれも撮影の終了時刻。実機は待たない(= lastAt)。エミュレータは
+     * ①1枚目の FIRST_GAP 後 ②変化が続く間は 50 → MAX_INTERVAL と広げる ③一致したら窓の中間と満了時刻の2点だけ撮る
+     * (満了時刻ちょうどに撮るので、窓が満ちてから次の撮影を待つ遅れが無い)。
+     * 根拠(密な撮影記録の上の再生・Emulator 4 SUT・平常と CPU 100% 負荷): 固定 100 ms 間隔と同じ撮影枚数で
+     * 応答が平常 20〜50 ms・負荷時 50〜100 ms 短い。窓の中で変化して元の絵に戻る(2点では見えない)事象は約 300 操作で 0 件
+     */
+    static long nextCaptureAt(boolean emulator, int frames, long firstAt, long lastAt, long lastChangeAt,
+                              int changeStreak, boolean lastChanged, long quietMs) {
+        if (!emulator) return lastAt;
+        if (frames == 1) return firstAt + WAIT_FOR_SETTLE_FIRST_GAP_MS;
+        if (lastChanged) {
+            return lastAt + (changeStreak <= 1 ? WAIT_FOR_SETTLE_FIRST_GAP_MS : WAIT_FOR_SETTLE_MAX_INTERVAL_MS);
+        }
+        long mid = lastChangeAt + quietMs / 2;
+        if (mid > lastAt) return mid;
+        return Math.max(lastAt, lastChangeAt + quietMs);
+    }
+
+    /**
+     * 比べる範囲 {x, y, 幅, 高さ}(撮影画像の px)。region(null = 画面全体)の各辺を WAIT_FOR_SETTLE_REGION_INSET 削って
+     * 画像に収める。region が画面に掛からないときは画面全体を比べる(見ていない所の「静止」を黙って返さない側)
+     */
+    static int[] waitForSettleCompareBounds(double[] region, int imageW, int imageH) {
+        double x = 0, y = 0, w = imageW, h = imageH;
+        if (region != null && region[0] < imageW && region[1] < imageH
+                && region[0] + region[2] > 0 && region[1] + region[3] > 0) {
+            x = region[0];
+            y = region[1];
+            w = region[2];
+            h = region[3];
+        }
+        double dx = w * WAIT_FOR_SETTLE_REGION_INSET;
+        double dy = h * WAIT_FOR_SETTLE_REGION_INSET;
+        int left = Math.max(0, Math.min((int) Math.round(x + dx), imageW - 1));
+        int top = Math.max(0, Math.min((int) Math.round(y + dy), imageH - 1));
+        int width = Math.max(1, Math.min((int) Math.round(w - 2 * dx), imageW - left));
+        int height = Math.max(1, Math.min((int) Math.round(h - 2 * dy), imageH - top));
+        return new int[]{left, top, width, height};
+    }
+
+    /** 2枚の差の外接矩形 {x, y, 幅, 高さ}(撮影画像の px)。大きさか切り出しの原点が違う・画素が読めないときは null */
+    private static int[] differingBounds(Bitmap a, Bitmap b, int[] originA, int[] originB) {
+        if (a.getWidth() != b.getWidth() || a.getHeight() != b.getHeight()
+                || originA[0] != originB[0] || originA[1] != originB[1]) return null;
+        Bitmap softA = null;
+        Bitmap softB = null;
+        try {
+            // HARDWARE の Bitmap は getPixels できない
+            softA = a.getConfig() == Bitmap.Config.HARDWARE ? a.copy(Bitmap.Config.ARGB_8888, false) : a;
+            softB = b.getConfig() == Bitmap.Config.HARDWARE ? b.copy(Bitmap.Config.ARGB_8888, false) : b;
+            if (softA == null || softB == null) return null;
+            int w = a.getWidth();
+            int h = a.getHeight();
+            int[] rowA = new int[w];
+            int[] rowB = new int[w];
+            int minX = w, maxX = -1, minY = h, maxY = -1;
+            for (int y = 0; y < h; y++) {
+                softA.getPixels(rowA, 0, w, 0, y, w, 1);
+                softB.getPixels(rowB, 0, w, 0, y, w, 1);
+                if (Arrays.equals(rowA, rowB)) continue;
+                minY = Math.min(minY, y);
+                maxY = Math.max(maxY, y);
+                for (int x = 0; x < w; x++) {
+                    if (rowA[x] != rowB[x]) {
+                        minX = Math.min(minX, x);
+                        maxX = Math.max(maxX, x);
+                    }
+                }
+            }
+            if (maxX < minX || maxY < minY) return null;
+            return new int[]{originA[0] + minX, originA[1] + minY, maxX - minX + 1, maxY - minY + 1};
+        } catch (RuntimeException e) {
+            return null;  // 外接矩形が求められないだけ。判定(settled)は変えない
+        } finally {
+            if (softA != null && softA != a) softA.recycle();
+            if (softB != null && softB != b) softB.recycle();
+        }
     }
 
     /** 1回分の起動試行。前面判定タイムアウトは例外ではなく false */
