@@ -39,7 +39,7 @@ public final class HybridFallbackDriver: AppDriver {
     /// 続く snapshot がアプリ自身の古い木を返す**(実測。
     /// ホーム画面を読もうとして 30 要素のアプリ画面が返った)
     private var delegatedApp = false
-    /// 直前の swipe を実際に受けたドライバ(reachedEdgeOnLastSwipe の読み先)
+    /// 直前の swipe / drag を実際に受けたドライバ(reachedEdgeOnLastSwipe・lastGestureImageSettleCapped の読み先)
     private var lastSwipeDriver: AppDriver?
 
     /// primary を使えない状態か(背面化 or primary が抱えられない対象)
@@ -124,10 +124,10 @@ public final class HybridFallbackDriver: AppDriver {
 
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {
-        try await withFallback {
+        lastSwipeDriver = try await withFallbackTracking {
             try await $0.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
                               pressSeconds: pressSeconds, durationSeconds: durationSeconds)
-        }
+        }.performer
     }
 
     public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
@@ -384,6 +384,7 @@ public final class HybridFallbackDriver: AppDriver {
     /// 読むのは**直前の swipe を受けたドライバ**(fallback/foreignApp が送ったのに primary を
     /// 読むと、古い申告か nil を返す)
     public var reachedEdgeOnLastSwipe: Bool? { (lastSwipeDriver ?? primary).reachedEdgeOnLastSwipe }
+    public var lastGestureImageSettleCapped: Bool? { (lastSwipeDriver ?? primary).lastGestureImageSettleCapped }
     public var lastLaunchTiming: LaunchTiming? { primary.lastLaunchTiming }
     /// tap(ref:) と同じ `active` を読む(foreignApp 委譲中の XCUITest は常に nil)
     public var lastTapHitAreaMiss: TapHitAreaMiss? { active.lastTapHitAreaMiss }

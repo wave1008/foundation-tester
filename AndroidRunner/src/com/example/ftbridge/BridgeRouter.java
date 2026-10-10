@@ -143,6 +143,10 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     private volatile boolean imageSettle = false;
     /** 直近の settleByImage が上限で打ち切ったときの note(整定したら null)。handle の冒頭で消し、ok() / scrollAction の応答が載せる */
     private volatile String lastSettleNote = null;
+    /** この要求で settleByImage が判定まで回ったときの結果(FALSE = 止まった / TRUE = 上限)。回っていなければ null。
+     *  handle の冒頭で消し、ok() が `imageSettleCapped` として載せる(同期相手: BridgeDTO.swift の OKResponse.imageSettleCapped。
+     *  ホストはこれが載ったときだけ木の整定を省ける) */
+    private volatile Boolean lastImageSettleCapped = null;
 
     /** 画像整定の既定の上限(ms)= ホストが `X-FT-Settle-Cap-Ms` を送らない(UI フレームワークが分からない)とき。
      *  Android の表の最大(RN 2.3 s。表と根拠は FTCore.ImageSettleCap。片方だけ変えない)。尽きたら動いたまま返し、応答の note に残す */
@@ -178,6 +182,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         imageSettleCapMs = request.settleCapMs > 0 ? request.settleCapMs : IMAGE_SETTLE_DEFAULT_CAP_MS;
         imageSettleQuietMs = request.settleQuietMs > 0 ? request.settleQuietMs : IMAGE_SETTLE_QUIET_MS;
         lastSettleNote = null;
+        lastImageSettleCapped = null;
         try {
             String route = request.method + " " + request.path;
             switch (route) {
@@ -1206,6 +1211,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         joinQuietThread(quietThread);
         // 文言は BridgeAPI.imageSettleCapNote(seconds:) と同じ形(ホストは末尾の "(image settle cap)" で識別する)
         lastSettleNote = settled ? null : "screen kept changing for " + (imageSettleCapMs / 1000.0) + "s (image settle cap)";
+        lastImageSettleCapped = settled ? Boolean.FALSE : Boolean.TRUE;
         if (BridgeInstrumentation.timingEnabled) {
             android.util.Log.i(BridgeInstrumentation.TAG, "settleTiming " + tag + " image frames=" + frames
                     + " elapsed=" + (SystemClock.uptimeMillis() - t0) + " settled=" + settled
@@ -1325,9 +1331,10 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     /** 画像整定が上限で打ち切られていれば note を載せる(settle() を呼ぶ全ルートの共通の出口) */
     private BridgeHttpServer.Response ok() {
         String note = lastSettleNote;
-        if (note != null) {
-            return BridgeHttpServer.Response.json(200, "{\"ok\":true,\"note\":\"" + note + "\"}");
-        }
-        return BridgeHttpServer.Response.json(200, "{\"ok\":true}");
+        Boolean capped = lastImageSettleCapped;
+        StringBuilder body = new StringBuilder("{\"ok\":true");
+        if (note != null) body.append(",\"note\":\"").append(note).append('"');  // 文言は固定の英数字(引用符を含まない)
+        if (capped != null) body.append(",\"imageSettleCapped\":").append(capped.booleanValue());
+        return BridgeHttpServer.Response.json(200, body.append('}').toString());
     }
 }

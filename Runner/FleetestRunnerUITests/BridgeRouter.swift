@@ -61,8 +61,9 @@ final class BridgeRouter {
     private var skipSettle = false
 
     /// 処理中のリクエストが画像整定の対象か(handle の冒頭で毎回入れ直す)。`X-FT-Settle-Mode: image` かつ
-    /// `X-FT-Settle: 0` でなく、`imageSettlePaths` の POST のとき true。true の間は XCTest の quiescence 待ちを
-    /// 飛ばし(swipe / drag)、操作の後に `captureStill` を回す(settlePending は立てない)
+    /// `X-FT-Settle: 0` でなく、`imageSettlePaths` の POST のとき true。true の間は swipe / drag / `/systemui/*` の
+    /// XCTest の quiescence 待ちを飛ばし(`X-FT-Settle-Event: 1` のときは飛ばさない)、操作の後に `captureStill` を回す
+    /// (settlePending は `X-FT-Settle-Tree: 1` のときだけ立てる)
     private var imageSettle = false
     /// captureStill が上限で打ち切られたのに応答へ載せる口が無かった分(OKResponse に復号できない応答)。
     /// 次の snapshot(/snapshot・/systemui/snapshot)が note にして消費する
@@ -116,6 +117,8 @@ final class BridgeRouter {
     func handle(_ request: BridgeHTTPServer.Request) -> BridgeHTTPServer.Response {
         InterruptionGuard.shared.reset()
         skipSettle = request.skipSettle
+        // 持ち越した打ち切りの note は「その操作の直後の snapshot」の分。次の操作が来たら古い(別の操作の snapshot に付けない)
+        if request.method == "POST" { pendingImageSettleNote = nil }
         imageSettle = request.method == "POST" && !request.skipSettle
             && request.settleMode == BridgeAPI.settleModeImage && Self.imageSettlePaths.contains(request.path)
         imageSettleCapSeconds = request.settleCapMs.map { Double($0) / 1000 } ?? BridgeAPI.imageSettleCapSeconds
@@ -342,7 +345,8 @@ final class BridgeRouter {
     /// (最初の撮影から)で打ち切り(false)。
     /// - 時間窓にする理由: 連続 N 枚一致だと窓が撮影 2 枚ぶん(約 180ms)で、慣性の減速の尾に出る描画間隔
     ///   (実測最大 368ms)より短く、動いている最中に返る。アニメの開始が操作の返りより遅れる場合も窓が覆う
-    /// - 撮影間隔は置かない: 撮影自体が間隔(Simulator 約 90ms・iPhone SE3 30〜55ms)
+    /// - 撮影間隔は既定で置かない: 撮影自体が間隔(Simulator 約 90〜110ms・iPhone SE3 30〜40ms)。ホストが
+    ///   `X-FT-Settle-Backoff-Ms` を送ったときだけ、前と違った撮影の直後に待つ(自前描画のスクロールの慣性中)
     /// - `lastChangeAt` の初期値は最初の撮影時刻: 操作が画面を変えない(no-op)ときの待ちは窓 1 回分で済む
     /// - region 指定(スクロール容器の枠)のときはその矩形だけを比べる: スクロールに要るのは容器の中身の停止だけで、
     ///   外で動き続ける要素(バナー・スピナー)に整定を握らせない。nil(タップ・全画面 swipe)は全画面を比べる。
@@ -405,18 +409,20 @@ final class BridgeRouter {
         return packed
     }
 
-    /// 操作が成功した応答に対し画像整定を回し、打ち切られたら note を載せる。OKResponse に復号できない応答は
-    /// pendingImageSettleNote に回す(次の snapshot が出す)
+    /// 操作が成功した応答に対し画像整定を回し、結果を `imageSettleCapped` に載せる(ホストはこれが立ったときだけ
+    /// 木の整定を省ける)。打ち切られたら note も載せる。OKResponse に復号できない応答は note だけ
+    /// pendingImageSettleNote に回す(次の snapshot が出す。imageSettleCapped は載らない = ホストは木の整定を残す)
     private func settledByImage(_ response: BridgeHTTPServer.Response, region: FTRect?,
                                 insetWholeScreen: Bool) -> BridgeHTTPServer.Response {
-        if captureStill(region: region, insetWholeScreen: insetWholeScreen) { return response }
-        let text = BridgeAPI.imageSettleCapNote(seconds: imageSettleCapSeconds)
-        NSLog("[fleetest] image settle: %@", text)
+        let still = captureStill(region: region, insetWholeScreen: insetWholeScreen)
+        let text = still ? nil : BridgeAPI.imageSettleCapNote(seconds: imageSettleCapSeconds)
+        if let text { NSLog("[fleetest] image settle: %@", text) }
         guard var ok = try? decoder.decode(OKResponse.self, from: response.body) else {
-            pendingImageSettleNote = text
+            if let text { pendingImageSettleNote = text }
             return response
         }
-        ok.note = [ok.note, text].compactMap { $0 }.joined(separator: " / ")
+        ok.imageSettleCapped = !still
+        if let text { ok.note = [ok.note, text].compactMap { $0 }.joined(separator: " / ") }
         return .json(ok)
     }
 

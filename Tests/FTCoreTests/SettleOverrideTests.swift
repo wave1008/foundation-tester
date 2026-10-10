@@ -86,7 +86,6 @@ final class SettleOverrideTests: XCTestCase {
     private func snapshots(_ step: FlowStep) async -> (count: Int, bypass: Bool) {
         let driver = FakeAppDriver(name: "primary", log: CallLog(), snapshotElements: [[list()]])
         let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
-        executor.imageSettleEnabled = false   // 画像整定ではホストの木の整定が変わる(ImageSettlePlanTests)。ここは従来経路の固定
         let outcome = await executor.execute(step)
         if case .passed = outcome.status {} else { XCTFail("\(outcome.status)") }
         return (driver.snapshotCallCount, executor.nextResolveBypassesCache)

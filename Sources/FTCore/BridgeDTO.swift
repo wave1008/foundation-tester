@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 171
+    public static let bridgeProtocolVersion = 172
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1524,11 +1524,17 @@ public struct OKResponse: Codable {
     public var atEdge: Bool?
     /// in-app の ref タップ(`/tap` の ref 指定)だけが立てる(v159〜)。`TapHitAreaMiss` の doc
     public var hitAreaMiss: TapHitAreaMiss?
-    public init(ok: Bool = true, note: String? = nil, atEdge: Bool? = nil, hitAreaMiss: TapHitAreaMiss? = nil) {
+    /// ブリッジがこの要求の後に**画像整定を回した**ときだけ立つ(XCUITest v172〜・Android v98〜)。false = 画面が止まって
+    /// 返した / true = 上限まで動き続けて返した。**nil = 画像整定していない**(in-app・`X-FT-Settle-Mode` 無し・
+    /// `X-FT-Settle: 0`・撮影できなかった)= ホストは木の整定を省けない(`AppDriver.lastGestureImageSettleCapped`)
+    public var imageSettleCapped: Bool?
+    public init(ok: Bool = true, note: String? = nil, atEdge: Bool? = nil, hitAreaMiss: TapHitAreaMiss? = nil,
+                imageSettleCapped: Bool? = nil) {
         self.ok = ok
         self.note = note
         self.atEdge = atEdge
         self.hitAreaMiss = hitAreaMiss
+        self.imageSettleCapped = imageSettleCapped
     }
 }
 

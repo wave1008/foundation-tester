@@ -46,6 +46,8 @@ public final class WebViewDelegatingDriver: AppDriver {
     private var note: String?
     /// 直前の tap(ref:) を screenDriver が受けたか(lastTapHitAreaMiss の素通しの条件)
     private var lastTapWentToScreen = false
+    /// 直前の swipe / drag を実際に受けたドライバ(lastGestureImageSettleCapped の読み先。スクロールは primary / delegated に振り分く)
+    private var lastGestureDriver: AppDriver?
 
     /// Web コンテンツが現れるまでの初回待ちの**上限**。XCUITest 側の WebView AX 活性化は
     /// **Simulator の実測 2.3s** で、これはそれに余裕を持たせた値。
@@ -277,6 +279,7 @@ public final class WebViewDelegatingDriver: AppDriver {
     }
     public func hideKeyboard() async throws { try await screenDriver.hideKeyboard() }
     public func swipe(_ direction: FTSwipeDirection) async throws {
+        lastGestureDriver = screenDriver
         try await screenDriver.swipe(direction)
     }
     /// 用途つき版。**delegated/domInterop 中でもスクロール目的だけは in-app を先に試す**:
@@ -291,13 +294,16 @@ public final class WebViewDelegatingDriver: AppDriver {
     public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
                       path: FTSwipePath?) async throws {
         guard mode != .normal, intent != .gesture else {
+            lastGestureDriver = screenDriver
             try await screenDriver.swipe(direction, intent: intent, path: path)
             return
         }
         do {
+            lastGestureDriver = primary
             try await primary.swipe(direction, intent: intent, path: path)
         } catch {
             guard DriverError.isEngineIncapable(error) else { throw error }
+            lastGestureDriver = delegated
             try await delegated.swipe(direction, intent: intent, path: path)
         }
     }
@@ -315,6 +321,7 @@ public final class WebViewDelegatingDriver: AppDriver {
     }
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {
+        lastGestureDriver = screenDriver
         try await screenDriver.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
                                     pressSeconds: pressSeconds, durationSeconds: durationSeconds)
     }
@@ -427,6 +434,7 @@ public final class WebViewDelegatingDriver: AppDriver {
     /// 委譲中は自分の注記を優先し、無ければ実行したドライバのものを透過する
     public var lastActionNote: String? { note ?? screenDriver.lastActionNote }
     public var reachedEdgeOnLastSwipe: Bool? { screenDriver.reachedEdgeOnLastSwipe }
+    public var lastGestureImageSettleCapped: Bool? { (lastGestureDriver ?? screenDriver).lastGestureImageSettleCapped }
     /// DOM 経路の tap は screenDriver を通らない = そちらの値は前回の tap のまま残っているので返さない
     public var lastTapHitAreaMiss: TapHitAreaMiss? { lastTapWentToScreen ? screenDriver.lastTapHitAreaMiss : nil }
     /// launch は常に primary(in-app)固定(launch(bundleID:) 参照)。screenDriver/mode の状態には無関係

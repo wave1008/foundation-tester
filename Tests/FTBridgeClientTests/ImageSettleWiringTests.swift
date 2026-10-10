@@ -80,6 +80,20 @@ final class ImageSettleWiringTests: XCTestCase {
         XCTAssertTrue(code.contains("RunEnvironmentKeys.settleMode"))
     }
 
+    /// Android も画像整定の結果を `imageSettleCapped` で載せ、要求ごとに消す(同期相手: OKResponse.imageSettleCapped)
+    func testAndroidReportsTheImageSettleOutcome() throws {
+        let code = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("AndroidRunner/src/com/example/ftbridge/BridgeRouter.java"), encoding: .utf8)
+        XCTAssertTrue(code.contains(#"body.append(",\"imageSettleCapped\":").append(capped.booleanValue());"#))
+        XCTAssertTrue(code.contains("lastImageSettleCapped = settled ? Boolean.FALSE : Boolean.TRUE;"))
+        XCTAssertTrue(code.contains("        lastImageSettleCapped = null;\n        try {"), "要求の冒頭で消していない")
+        XCTAssertEqual(OKResponse(imageSettleCapped: true).imageSettleCapped, true)
+        let decoded = try JSONDecoder().decode(OKResponse.self, from: Data(#"{"ok":true,"imageSettleCapped":false}"#.utf8))
+        XCTAssertEqual(decoded.imageSettleCapped, false)
+        XCTAssertNil(try JSONDecoder().decode(OKResponse.self, from: Data(#"{"ok":true}"#.utf8)).imageSettleCapped)
+    }
+
     func testServerParsesTheHeader() throws {
         let code = try runnerSource("BridgeHTTPServer.swift")
         XCTAssertTrue(code.contains("BridgeAPI.settleModeHeader.lowercased()"))
@@ -103,7 +117,10 @@ final class ImageSettleWiringTests: XCTestCase {
         XCTAssertTrue(code.contains("response = settledByImage(response, region: region, insetWholeScreen: isSwipe)"))
         XCTAssertTrue(code.contains("region = req.path?.region"), "/swipe の region を画像整定へ渡していない")
         XCTAssertTrue(code.contains("request.path == \"/swipe\""), "region の絞り込みは /swipe だけ")
-        XCTAssertTrue(code.contains("if captureStill(region: region, insetWholeScreen: insetWholeScreen) { return response }"))
+        XCTAssertTrue(code.contains("let still = captureStill(region: region, insetWholeScreen: insetWholeScreen)"))
+        XCTAssertTrue(code.contains("ok.imageSettleCapped = !still"), "画像整定の結果を応答に載せていない(ホストが木の整定を省けない)")
+        XCTAssertTrue(code.contains("if request.method == \"POST\" { pendingImageSettleNote = nil }"),
+                      "持ち越した note を次の操作で捨てていない")
         guard let start = code.range(of: "private func captureStill(region: FTRect?, insetWholeScreen: Bool) -> Bool {") else {
             return XCTFail("captureStill が見当たらない")
         }

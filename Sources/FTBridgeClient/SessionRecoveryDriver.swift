@@ -124,6 +124,7 @@ public final class SessionRecoveryDriver: AppDriver {
     /// 8 秒級の遅れの理由が読めない)。base の注記があればそちらを優先する
     public var lastActionNote: String? { base.lastActionNote ?? accessibilityOutageNote }
     public var reachedEdgeOnLastSwipe: Bool? { base.reachedEdgeOnLastSwipe }
+    public var lastGestureImageSettleCapped: Bool? { base.lastGestureImageSettleCapped }
     public var lastTapHitAreaMiss: TapHitAreaMiss? { base.lastTapHitAreaMiss }
     public var lastLaunchTiming: LaunchTiming? { base.lastLaunchTiming }
 

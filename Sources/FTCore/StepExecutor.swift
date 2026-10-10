@@ -548,9 +548,6 @@ public final class StepExecutor {
     /// **使うのは空打ちの発火条件(shouldEmptyDrag)と、待つ間の読み直しの迂回(repollBypassesCache)だけ**。
     /// 他の判定には持ち込まない
     let uiFramework: AppUIFramework?
-    /// 画像整定が有効か(`FT_SETTLE_MODE != tree`)。false のとき従来どおりホストが操作後の木の整定を必ず払う。
-    /// 実行環境からの1回読み。テストだけが差し替える(環境変数を書き換えずに両モードを通すため)
-    var imageSettleEnabled = ImageSettlePlan.imageModeEnabled(environment: ProcessInfo.processInfo.environment)
 
     /// 要素が現れる・値が変わるのを**待つ間の 2 回目以降の読み**で、ドライバのキャッシュを迂回するか。
     /// Android の Compose は、新しく出たノードを a11y のキャッシュへ 800ms 以上出さない

@@ -9,7 +9,8 @@
 // - 注意: type(typeText)には適用しない。キーボード出現待ちを quiescence に依存しているため
 //   (BridgeRouter.handleType のコメント参照)、スキップすると入力欠落の実害が出る。
 // - **タップ・ダブルタップ・長押しは既定で待ちを飛ばす**(QuiescenceWait.around の skipByDefault)。/drag と /systemui/* は `X-FT-Settle: 0` のときだけ通る(skippingQuiescenceIfRequested)
-// - **`X-FT-Settle-Mode: image` の間はスワイプ・/drag・/systemui/tap も待ちを飛ばす**(BridgeRouter.imageSettle。慣性の終わりは quiescence ではなく操作後の captureStill が見る)
+// - **`X-FT-Settle-Mode: image` の間はスワイプ・/drag・/systemui/tap も待ちを飛ばす**(BridgeRouter.imageSettle。慣性の終わりは quiescence ではなく操作後の captureStill が見る)。
+//   **例外は `X-FT-Settle-Event: 1`**(UIKit 系のスクロール。完了通知が慣性の終わりと一致するので待ってから captureStill)
 // - **飛ばさない回(スワイプ = スクロールを含む)も、操作(QuiescenceWait.around の中)の間だけ待ちの上限を
 //   `quiescenceCapSeconds` に縮める**(cappedWait)。起動・前面化・入力の中の待ちは縮めない —— activate の中の待ちを
 //   切ると前面化そのものが完了せずホストが 45s で時間切れになった(実測)。XCTest の上限は

@@ -15,6 +15,7 @@ public final class BridgeClient: AppDriver, Sendable {
         var resolvedBrowserDOMTarget: BrowserDOMTarget??
         var browserDOMCenters: [Int: (x: Double, y: Double)] = [:]
         var atEdgeOnLastSwipe: Bool?
+        var lastGestureImageSettleCapped: Bool?
         var lastTapHitAreaMiss: TapHitAreaMiss?
         var originalOrientation: FTOrientation?
     }
@@ -939,10 +940,16 @@ public final class BridgeClient: AppDriver, Sendable {
         set { mutable.withLock { $0.atEdgeOnLastSwipe = newValue } }
     }
     public var reachedEdgeOnLastSwipe: Bool? { atEdgeOnLastSwipe }
+    /// 直前の swipe / drag の `OKResponse.imageSettleCapped`(`AppDriver.lastGestureImageSettleCapped`)。in-app は立てない
+    public private(set) var lastGestureImageSettleCapped: Bool? {
+        get { mutable.withLock { $0.lastGestureImageSettleCapped } }
+        set { mutable.withLock { $0.lastGestureImageSettleCapped = newValue } }
+    }
 
     public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
                       path: FTSwipePath? = nil) async throws {
         atEdgeOnLastSwipe = nil
+        lastGestureImageSettleCapped = nil
         let response: OKResponse = try await post(
             "/swipe",
             body: SwipeRequest(direction: direction,
@@ -954,6 +961,7 @@ public final class BridgeClient: AppDriver, Sendable {
                                edge: intent == .edge ? true : nil),
             timeout: interactionTimeout)
         atEdgeOnLastSwipe = response.atEdge
+        lastGestureImageSettleCapped = response.imageSettleCapped
     }
 
     /// 端送りの1本を a11y のスクロール操作で送る(**Android ブリッジだけ**が持つ口。契約は BridgeDTO.ScrollActionRequest)
@@ -1009,10 +1017,12 @@ public final class BridgeClient: AppDriver, Sendable {
 
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {
-        let _: OKResponse = try await post("/drag", body: DragRequest(
+        lastGestureImageSettleCapped = nil
+        let response: OKResponse = try await post("/drag", body: DragRequest(
             fromX: fromX, fromY: fromY, toX: toX, toY: toY,
             press: pressSeconds, duration: durationSeconds),
             timeout: timeout(forDuration: pressSeconds + durationSeconds))
+        lastGestureImageSettleCapped = response.imageSettleCapped
     }
 
     public func doubleTap(x: Double, y: Double) async throws {
