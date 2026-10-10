@@ -2,7 +2,7 @@
 // fleetest 機能: waitForSettle(画面の画素の静止 + 木の同期。docs/commands.md §waitForSettle)。
 // flick を settle: false で撃って慣性を残し、waitForSettle で止まりきってから、
 // 1 秒置いても先頭に見えている行が変わらない(= 本当に止まった)ことを確かめる。
-// CMP は慣性の最後に 1px ずつの這いがあり(最大 650ms 間隔)、木も絵より遅れる = 最も厳しい SUT。
+// View/XML の慣性は最長 1.7 秒。同じ内容の CMP 版(E2E-CMP/26)が最も厳しい条件を受け持つ。
 // 時間切れの対照は慣性で作る: E2E はアプリのアニメーションを止めて回す(Android は animator_duration_scale=0・
 // iOS は Reduce Motion)ので、進捗バーや回転インジケータは動かず対照にならない。スクロールの慣性はこの設定に左右されない
 
