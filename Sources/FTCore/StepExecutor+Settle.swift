@@ -169,6 +169,17 @@ extension StepExecutor {
         return true
     }
 
+    /// スクロール系の操作の後にホストの木の整定を飛ばすか。画像整定の計画が `hostTreeSettle == false` のとき
+    /// (ブリッジが絵・木の追いつきを済ませて返す)。**飛ばすときは `skippingSettle` と同じく次の解決をキャッシュ迂回にする**
+    /// (`settledSignature` の副作用だった。立てないと Android で古い木を掴む)
+    func skippingHostTreeSettle() -> Bool {
+        guard imageSettleEnabled,
+              !ImageSettlePlan.plan(framework: uiFramework, isAndroid: isAndroid, kind: .scroll).hostTreeSettle
+        else { return false }
+        nextResolveBypassesCache = true
+        return true
+    }
+
     /// 探索が要素を見つけた直後の後始末。**スワイプを撃った周回だけ**呼ぶ。戻り値は
     /// 「静止待ちが収束せず打ち切られた」= 呼び手はそれを注記に載せる。
     /// **順序に意味がある**(逆にすると Android で誤タップが再発する。実測)

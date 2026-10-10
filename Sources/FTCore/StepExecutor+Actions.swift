@@ -1619,7 +1619,7 @@ extension StepExecutor {
         default:
             return StepOutcome(status: .skipped("unknown gesture: \(action)"))
         }
-        let settled = skippingSettle(step) ? true : try await settledSignature(phase: &phase).settled
+        let settled = skippingSettle(step) || skippingHostTreeSettle() ? true : try await settledSignature(phase: &phase).settled
         var notes: [String] = []
         if viaXCUITest { notes.append("fell back to XCUITest") }
         if !settled { note(.settleCapped, into: &notes) }

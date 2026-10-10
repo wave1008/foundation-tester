@@ -548,6 +548,9 @@ public final class StepExecutor {
     /// **使うのは空打ちの発火条件(shouldEmptyDrag)と、待つ間の読み直しの迂回(repollBypassesCache)だけ**。
     /// 他の判定には持ち込まない
     let uiFramework: AppUIFramework?
+    /// 画像整定が有効か(`FT_SETTLE_MODE != tree`)。false のとき従来どおりホストが操作後の木の整定を必ず払う。
+    /// 実行環境からの1回読み。テストだけが差し替える(環境変数を書き換えずに両モードを通すため)
+    var imageSettleEnabled = ImageSettlePlan.imageModeEnabled(environment: ProcessInfo.processInfo.environment)
 
     /// 要素が現れる・値が変わるのを**待つ間の 2 回目以降の読み**で、ドライバのキャッシュを迂回するか。
     /// Android の Compose は、新しく出たノードを a11y のキャッシュへ 800ms 以上出さない
@@ -682,8 +685,11 @@ public final class StepExecutor {
     public func execute(_ original: FlowStep,
                         fingerprint rawFingerprint: LocatorFingerprint? = nil) async -> StepOutcome {
         // 常に withValue で入れる = 外側のステップの上書きを持ち越さない
-        await SettleOverride.$skip.withValue(original.settle == false) {
-            await executeStep(original, fingerprint: rawFingerprint)
+        // 画像整定の計画はアプリの UI フレームワークと OS と操作の種類で決まる(表は ImageSettlePlan。BridgeClient がヘッダで渡す)
+        return await SettleOverride.$skip.withValue(original.settle == false) {
+            await ImageSettlePlan.$context.withValue(.init(framework: uiFramework, isAndroid: isAndroid)) {
+                await executeStep(original, fingerprint: rawFingerprint)
+            }
         }
     }
 

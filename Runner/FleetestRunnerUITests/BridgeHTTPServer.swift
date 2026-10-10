@@ -19,6 +19,18 @@ final class BridgeHTTPServer {
         let token: String?
         /// `X-FT-Settle: 0` が付いていれば true(操作後の整定待ちを全部飛ばす)。同期相手: BridgeAPI.settleHeader
         let skipSettle: Bool
+        /// `X-FT-Settle-Mode` の値(小文字化済み・無ければ nil)。同期相手: BridgeAPI.settleModeHeader
+        let settleMode: String?
+        /// `X-FT-Settle-Cap-Ms` の値(`BridgeAPI.imageSettleCapRangeMs` の外・無ければ nil)。同期相手: BridgeAPI.settleCapHeader
+        let settleCapMs: Int?
+        /// `X-FT-Settle-Quiet-Ms` の値(`BridgeAPI.imageSettleQuietRangeMs` の外・無ければ nil)。同期相手: BridgeAPI.settleQuietHeader
+        let settleQuietMs: Int?
+        /// `X-FT-Settle-Event: 1`(XCTest の完了通知を待ってから画像整定する)。同期相手: BridgeAPI.settleEventHeader
+        let settleWaitEvent: Bool
+        /// `X-FT-Settle-Tree: 1`(画像整定の後も次の snapshot の木の整定を残す)。同期相手: BridgeAPI.settleTreeHeader
+        let settleArmTree: Bool
+        /// `X-FT-Settle-Backoff-Ms` の値(`BridgeAPI.imageSettleBackoffRangeMs` の外・無ければ nil)。同期相手: BridgeAPI.settleBackoffHeader
+        let settleBackoffMs: Int?
         /// ブラウザ由来かの判定材料(BridgeAPI.browserRequestRefusal)
         let origin: String?
         let secFetchSite: String?
@@ -307,8 +319,20 @@ final class BridgeHTTPServer {
         var secFetchSite: String?
         var host: String?
         var skipSettle = false
+        var settleMode: String?
+        var settleCapMs: Int?
+        var settleQuietMs: Int?
+        var settleWaitEvent = false
+        var settleArmTree = false
+        var settleBackoffMs: Int?
+        let settleQuietKey = BridgeAPI.settleQuietHeader.lowercased()
+        let settleEventKey = BridgeAPI.settleEventHeader.lowercased()
+        let settleTreeKey = BridgeAPI.settleTreeHeader.lowercased()
+        let settleBackoffKey = BridgeAPI.settleBackoffHeader.lowercased()
+        let settleCapKey = BridgeAPI.settleCapHeader.lowercased()
         let tokenHeaderKey = BridgeAPI.bridgeTokenHeader.lowercased()
         let settleHeaderKey = BridgeAPI.settleHeader.lowercased()
+        let settleModeKey = BridgeAPI.settleModeHeader.lowercased()
         for line in lines.dropFirst() {
             let kv = line.split(separator: ":", maxSplits: 1)
             guard kv.count == 2 else { continue }
@@ -317,6 +341,12 @@ final class BridgeHTTPServer {
             case "content-length": contentLength = Int(value) ?? 0
             case tokenHeaderKey: token = value
             case settleHeaderKey: skipSettle = value == "0"
+            case settleModeKey: settleMode = value.lowercased()
+            case settleCapKey: settleCapMs = Int(value).flatMap { BridgeAPI.imageSettleCapRangeMs.contains($0) ? $0 : nil }
+            case settleQuietKey: settleQuietMs = Int(value).flatMap { BridgeAPI.imageSettleQuietRangeMs.contains($0) ? $0 : nil }
+            case settleEventKey: settleWaitEvent = value == "1"
+            case settleTreeKey: settleArmTree = value == "1"
+            case settleBackoffKey: settleBackoffMs = Int(value).flatMap { BridgeAPI.imageSettleBackoffRangeMs.contains($0) ? $0 : nil }
             case "origin": origin = value
             case "sec-fetch-site": secFetchSite = value
             case "host": host = value
@@ -338,7 +368,9 @@ final class BridgeHTTPServer {
                        path: cut.map { String(target[target.startIndex..<$0]) } ?? target,
                        query: cut.map { String(target[target.index(after: $0)...]) } ?? "",
                        body: body,
-                       token: token, skipSettle: skipSettle, origin: origin, secFetchSite: secFetchSite, host: host)
+                       token: token, skipSettle: skipSettle, settleMode: settleMode, settleCapMs: settleCapMs,
+                       settleQuietMs: settleQuietMs, settleWaitEvent: settleWaitEvent, settleArmTree: settleArmTree, settleBackoffMs: settleBackoffMs,
+                       origin: origin, secFetchSite: secFetchSite, host: host)
     }
 
     private func writeResponse(_ fd: Int32, _ response: Response) {

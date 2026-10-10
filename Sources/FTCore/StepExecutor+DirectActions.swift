@@ -25,7 +25,7 @@ extension StepExecutor {
         let viaXCUITest = try await swipeWithFallback(direction, path: path, phase: &phase)
         // 慣性が止まるまで待つ。ランナー側は /swipe を整定対象から外している(そこで待っても
         // budget 内に収束しないため)ので、直後に tap する書き方をここで支える
-        let settled = skippingSettle(step) ? true : try await settledSignature(phase: &phase).settled
+        let settled = skippingSettle(step) || skippingHostTreeSettle() ? true : try await settledSignature(phase: &phase).settled
         var notes: [String] = []
         if viaXCUITest { notes.append("fell back to XCUITest") }
         if !settled { note(.settleCapped, into: &notes) }
@@ -89,6 +89,10 @@ extension StepExecutor {
             // 直後に tap する書き方をここで支える(index 条件を外した理由)
             // settle:false は最後の1本の後だけ飛ばす(本の間の静止待ちは「repeat 回ぶん送る」のための内側の整定)
             if sentSwipes == times, skippingSettle(step) { break }
+            if skippingHostTreeSettle() {
+                if sentSwipes == times { break }
+                continue
+            }
             let settled = try await settledSignature(phase: &phase)
             if !settled.settled { unsettled = true }
             // **常に引き継ぐ**: settledSignature は毎回木を撮り直しているので
@@ -316,7 +320,7 @@ extension StepExecutor {
             // 落ちる(scroll アクションが scrollPath nil のとき辿る経路と同じ考え方)
             if try await swipeWithFallback(kind.fingerDirection, phase: &phase) { viaXCUITest = true }
         }
-        let settled = skippingSettle(step) ? true : try await settledSignature(phase: &phase).settled
+        let settled = skippingSettle(step) || skippingHostTreeSettle() ? true : try await settledSignature(phase: &phase).settled
         var notes: [String] = []
         if let note = pendingScrollFrameNote { notes.append(note) }
         if viaXCUITest { notes.append("fell back to XCUITest") }
