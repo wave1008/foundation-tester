@@ -1355,6 +1355,23 @@ ARC 下で out パラメータを受けるには `NSString * __unsafe_unretained
 コンパイルエラー)。**採った事実は実装のコメントに数値・署名ごと残す** —— 次に Xcode が上がった
 とき、何を採り直せばよいかがそこにしか無い。
 
+## アプリの描画の時刻は SUT の描画プローブで採る(2026-10-10・計測専用)
+
+ツールの待ち(整定・応答)が画面の描画とどうずれるかは、**ツールの出力ではなくアプリ側の時刻**で測る
+(自分の出力で外の性質を断定しない)。E2E の SUT には描画プローブが常備してあり、**有効にしない限り何もしない**。
+
+| SUT | 有効にする | ログ(同じ場所)と時計 |
+|---|---|---|
+| iOS(E2EAppIOS・E2EAppCMP の iosApp・E2EAppRN の AppDelegate) | 起動の環境 `FT_RENDER_PROBE=1`(`simctl launch` は `SIMCTL_CHILD_FT_RENDER_PROBE=1`)。`2` は変わったレイヤーの持ち主のクラス名も出す詳細モード。環境を渡せない起動(in-app 注入)はアプリの `tmp/render-probe.on`(中身 `1` か `2`) | `tmp/render-probe.log`。`<CACurrentMediaTime> <レイヤー数>` = Simulator ではホストの `CLOCK_UPTIME_RAW` と同じ時計(Python 3.9 の `time.monotonic` は基準が違うので `clock_gettime(CLOCK_UPTIME_RAW)` で比べる) |
+| Android(E2EAppAndroid・E2EAppCMP・E2EAppRN) | `adb shell run-as <pkg> touch files/render-probe.on`。release ビルドの RN は `/sdcard/Android/data/<pkg>/files/render-probe.on` | 目印と同じ場所の `render-probe.log`。壁時計の ms(ホストが `adb shell date +%s%3N` の往復が最短の回で差を測って揃える) |
+| Flutter | iOS はアプリの tmp、Android は `run-as <pkg> touch cache/render-probe.on` | 同じ場所の `render-probe.log`。壁時計の ms |
+
+- **目印ファイルは読んだら消える**(次の起動の1回だけ効く)。毎回の起動の前に置き直す。残る形だった間は、計測に使った端末で
+  普段の起動・E2E でもプローブが回り続けていた(毎フレームの走査・書き込み = 性能の計測を乱す)
+- 見ているもの: iOS = アプリがコミットしたレイヤー木(スクロールインジケータは除く。画面に出るのは次の vsync = 約 +16ms)、
+  Android = View の描画(`OnDrawListener`。SurfaceView に描くものは見えない)、Flutter = フレームのコールバック
+- 本体は SUT ごとに写しがある(iOS 3つ・Android 3つ)。直すときは全部を同じに直す(各ファイルの冒頭に写しの一覧)
+
 ## ブリッジが「何を見ているか」は使い捨てのプローブ版で採る(2026-08-06)
 
 a11y trait も Compose の役割マーカーもヘッダに無く、**推測で条件を書くと、緑のまま誤検出する**。

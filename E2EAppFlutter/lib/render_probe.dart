@@ -18,6 +18,8 @@ class RenderProbe {
     ];
     final dir = candidates.firstWhere((d) => File('$d/render-probe.on').existsSync(), orElse: () => '');
     if (dir.isEmpty) return;
+    // 目印は読んだら消す(次の起動の1回だけ効く)。残すと以後の普段の起動・E2E でもフレームごとに書き続ける
+    File('$dir/render-probe.on').deleteSync();
     _log = File('$dir/render-probe.log').openSync(mode: FileMode.write);
     SchedulerBinding.instance.addPersistentFrameCallback((_) {
       final ms = DateTime.now().microsecondsSinceEpoch / 1000.0;

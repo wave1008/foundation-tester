@@ -4,8 +4,10 @@ import android.app.Activity
 import android.app.Application
 import android.os.Bundle
 import android.view.ViewTreeObserver
+import android.view.View
 import java.io.File
 import java.io.FileWriter
+import java.util.WeakHashMap
 
 /**
  * 計測用の描画プローブ(目印 render-probe.on があるときだけ動く)。目印とログの置き場は2つ:
@@ -18,15 +20,20 @@ import java.io.FileWriter
  */
 object RenderProbe {
     private var writer: FileWriter? = null
+    /** リスナーを付けた decorView(前面に戻るたびに足すと1回の描画が複数行になる) */
+    private val observed = WeakHashMap<View, Boolean>()
 
     fun startIfRequested(app: Application) {
         val dir = listOfNotNull(app.filesDir, app.getExternalFilesDir(null))
             .firstOrNull { File(it, "render-probe.on").exists() } ?: return
+        // 目印は読んだら消す(次の起動の1回だけ効く)。残すと以後の普段の起動・E2E でも描画のたびに書き続ける
+        File(dir, "render-probe.on").delete()
         writer = FileWriter(File(dir, "render-probe.log"), false)
         app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
-                val observer = activity.window.decorView.viewTreeObserver
-                observer.addOnDrawListener(ViewTreeObserver.OnDrawListener { record() })
+                val decor = activity.window.decorView
+                if (observed.put(decor, true) != null) return
+                decor.viewTreeObserver.addOnDrawListener(ViewTreeObserver.OnDrawListener { record() })
             }
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
             override fun onActivityStarted(activity: Activity) {}

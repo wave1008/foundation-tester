@@ -23,6 +23,8 @@ final class RenderProbe: NSObject {
         let flag = (NSTemporaryDirectory() as NSString).appendingPathComponent("render-probe.on")
         let mode = ProcessInfo.processInfo.environment["FT_RENDER_PROBE"]
             ?? (try? String(contentsOfFile: flag, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 目印は読んだら消す(次の起動の1回だけ効く)。残すと以後の普段の起動・E2E でも毎フレームの走査が回り続ける
+        try? FileManager.default.removeItem(atPath: flag)
         guard mode == "1" || mode == "2" else { return }
         shared.verbose = mode == "2"
         DispatchQueue.main.async { shared.start() }
