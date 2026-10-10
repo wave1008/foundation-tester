@@ -185,6 +185,32 @@ final class MCPProductionAppShapesTests: XCTestCase {
             .identifier, "map_list_toggle_fab")
     }
 
+    /// **中心が中身のすぐ脇に落ちる容器では黙る**。実測(Apple マップの経路カード): 中心 (138,746) は
+    /// 「54分」の右の余白・「発車時刻…」(上端 750)の 4pt 上にあり、タップは正しく詳細を開いた
+    func testCentreRightBesideItsOwnLabelsIsNotFlagged() {
+        let screen402 = FTRect(x: 0, y: 0, width: 402, height: 874)
+        let elements = [
+            element(1, "RoutePlanningCell", depth: 2, type: "other", 23, 704, 351, 120),
+            element(2, "TitleLabel-SubtitleLabel", depth: 3, type: "other", 38, 723, 201, 46),
+            element(3, "TitleLabel", depth: 4, type: "staticText", 38, 723, 48, 25, label: "54分"),
+            element(4, "SubtitleLabel", depth: 4, type: "staticText", 38, 750, 201, 19,
+                    label: "発車時刻5:11 · 6:05到着予定"),
+        ]
+        let target = elements.first { $0.identifier == "TitleLabel-SubtitleLabel" }!
+        XCTAssertNil(RefGuard.missesItsOwnContent(target, in: elements, screen: screen402))
+    }
+
+    /// **中身から離れていれば言う**(すぐ脇の除外が、左右に離れた部品の間の空白まで黙らせないこと)
+    func testCentreBetweenFarApartButtonsIsStillFlagged() {
+        let elements = [
+            element(1, "toolbar", depth: 2, type: "other", 0, 0, 400, 44),
+            element(2, "back", depth: 3, type: "button", 0, 0, 44, 44, label: "戻る"),
+            element(3, "share", depth: 3, type: "button", 356, 0, 44, 44, label: "共有"),
+        ]
+        let target = elements.first { $0.identifier == "toolbar" }!
+        XCTAssertNotNil(RefGuard.missesItsOwnContent(target, in: elements, screen: screen))
+    }
+
     /// 中心が子の上にあるふつうの容器では黙る
     func testContainerWhoseCenterIsOverItsContentIsNotFlagged() {
         let elements = [

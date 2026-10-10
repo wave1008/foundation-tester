@@ -141,7 +141,9 @@ extension MCPServer {
 
         Coordinates (x/y and frames) are always in ft_snapshot units — iOS=pt / Android=px — never \
         screenshot pixels. Selector arguments use the DSL syntax: #id, a label, .type, a||b; quotes \
-        wrapped around the whole selector are stripped.
+        wrapped around the whole selector are stripped. A bare label must equal the whole label — \
+        write text*, *text or *text* for a prefix, suffix or substring; waitFor on a bare label \
+        ignores partial matches and runs to waitSeconds.
 
         Tree options on tools that return an element list: expandBulk unfolds groups of 20+ \
         non-interactive leaves sharing one id (map pins and the like) that are folded into one \

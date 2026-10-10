@@ -92,6 +92,9 @@ public enum TapTargetGeometry {
                 && e.frame.y <= cy && cy <= e.frame.y + e.frame.height
         }
         guard !children.contains(where: covers) else { return nil }
+        guard !centreIsInContentGap(cx: cx, cy: cy,
+                                    children.filter { contains(element.frame, $0.frame) })
+        else { return nil }
         // **囲っている対話要素がタップを受け止めるなら黙る**: 中心が空白でも、外側の
         // 行やカードが clickable なら押した結果は妥当。**画面規模のものは数えない** ——
         // 地図やキャンバスは全画面 clickable で、そこへ抜けること自体が今回の実害
@@ -111,6 +114,24 @@ public enum TapTargetGeometry {
         return children
             .filter { contains(element.frame, $0.frame) }
             .max { ($0.frame.width * $0.frame.height) < ($1.frame.width * $1.frame.height) }
+    }
+
+    /// **文字だけの塊の隙間に中心が落ちた**か(子が全部 staticText・中心がその外接矩形の内側)。
+    /// 文字の塊の隙間を押すと塊を載せた行が受けるので「背後へ抜けた」は言わない。
+    /// 実測(Apple マップの経路カード): `#TitleLabel-SubtitleLabel` (38,723 201x46) の中心 (138,746) は
+    /// 「54分」(38,723 48x25)の右の余白・「発車時刻…」(38,750 201x19)の 4pt 上に落ち、タップは
+    /// 正しく詳細を開いたのに警告した。**緩めると真陽性まで黙る**(実アプリのコーパスで確認):
+    /// 子までの距離(子の短辺未満)では `#footer_container` の FAB(中心から 111px・短辺 147)、
+    /// 型を問わない外接矩形ではボタン群の隙間(`#MUActionGroupSectionView`・カメラのズーム切替)まで黙った
+    static func centreIsInContentGap(cx: Double, cy: Double, _ children: [ElementInfo]) -> Bool {
+        guard children.count >= 2,
+              children.allSatisfy({ ElementInfo.normalizedType($0.type) == "staticText" })
+        else { return false }
+        let frames = children.map(\.frame).filter { $0.width > 0 && $0.height > 0 }
+        guard frames.count >= 2 else { return false }
+        let minX = frames.map(\.x).min()!, maxX = frames.map { $0.x + $0.width }.max()!
+        let minY = frames.map(\.y).min()!, maxY = frames.map { $0.y + $0.height }.max()!
+        return minX <= cx && cx <= maxX && minY <= cy && cy <= maxY
     }
 
     /// 入れ子の別アクションとみなす面積比の上限。**0.25** は実測で決めた:

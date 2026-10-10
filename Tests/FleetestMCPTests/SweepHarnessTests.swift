@@ -113,8 +113,9 @@ final class SweepHarnessTests: XCTestCase {
                                          nested: 1, scrolledOut: 0),
         // 2026-08-08 採取(v58 = 間引きの bulk 拡張後)。東京駅カード + 地図 POI 67個の木。
         // overlay 17 の内訳: POI 同士の重なり14(駅構内の高密度で実描画どおり・非操作)/
-        // カード見出し系3。misses 2 は見出し容器。すべて非操作なので warnedTappable 0
-        "ios-maps_station": Counts(ghost: 0, overlay: 17, stacked: 0, misses: 2, disabled: 0,
+        // カード見出し系3。misses 1 は見出し容器(`#TransitDepartureRow` は文字だけの塊の隙間なので言わない)。
+        // すべて非操作なので warnedTappable 0
+        "ios-maps_station": Counts(ghost: 0, overlay: 17, stacked: 0, misses: 1, disabled: 0,
                                    warnedTappable: 0),
         // 2026-08-09 採取。**nested 検知の witness**: `#Maps.PlaceTableViewCell` (20,138 362x155) の
         // 中心 (201,215) が、同じセルの中の `#FeaturedInMultipleGuidesContextLineItem`
@@ -187,8 +188,9 @@ final class SweepHarnessTests: XCTestCase {
         // 真陽性(ios-news_feed の 60)は不変。
         // overlay 31 は `#options_menu_container` (0,112 1080x1457) が重ね合わせ層の中心を
         // 覆う形で、器が層より後に来る木の順序どおり = 現状固定(タップ対象は0件なので
-        // warnedTappable も0)。misses 1 は中心が中身に乗らない器 = 受理済みの型
-        "and-camera_canvas": Counts(ghost: 0, overlay: 31, stacked: 0, misses: 1, disabled: 0,
+        // warnedTappable も0)。misses 0: `#zoom_toggle_ui` の中心は「1×」「2」(どちらも staticText)の
+        // 隙間で、文字だけの塊の隙間は言わない(`centreIsInContentGap`)。背後へ抜けるかはデバイスで未確認のまま受け入れた
+        "and-camera_canvas": Counts(ghost: 0, overlay: 31, stacked: 0, misses: 0, disabled: 0,
                                     offscreen: 0, warnedTappable: 0, keyboard: 0, sliver: 0,
                                     nested: 0, scrolledOut: 0),
         // 2026-08-14 採取(**iOS 実機**の SmartNews・フィード先頭)。**append-on-scroll の本物**で、
@@ -237,15 +239,17 @@ final class SweepHarnessTests: XCTestCase {
         "ios-photos_grid": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 1, disabled: 0,
                                   offscreen: 0, warnedTappable: 0, keyboard: 0, sliver: 0,
                                   nested: 0, scrolledOut: 0),
-        "ios-place": Counts(ghost: 0, overlay: 3, stacked: 0, misses: 2, disabled: 0,
+        // misses 1: `#TransitDepartureRow`(列車名と時刻の間)は文字だけの塊の隙間なので言わない
+        "ios-place": Counts(ghost: 0, overlay: 3, stacked: 0, misses: 1, disabled: 0,
                             warnedTappable: 0),
         // 2026-08-09 採取。**scrolledOut 検知の witness**: 場所カードを送ると
         // `#MUScrollableStackView` (0,72 402x802) の上へ抜けたガイド欄が frame ごと木に残る。
         // scrolledOut 3 は容器3枚(`#CuratedGuidesSection` / `#MUCuratedGuidesSectionView` /
         // その collectionView)。中のセルは「自分の横カルーセルの中」に居るので印が付かず、
         // 代わりに offscreen(中心が画面の外)で拾われる —— 両者は排他ではなく、重い方を先に言う。
-        // offscreen 13 と warnedTappable 6 は既存検知の素の結果で、全件が画面外の実座標
-        "ios-place_guides_scrolled": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 3,
+        // offscreen 13 と warnedTappable 6 は既存検知の素の結果で、全件が画面外の実座標。
+        // misses 1: `#DayRow` / `#HoursSummary`(曜日・状態と時刻の間)は文字だけの塊の隙間なので言わない
+        "ios-place_guides_scrolled": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 1,
                                             disabled: 0, offscreen: 13, warnedTappable: 6,
                                             keyboard: 0, sliver: 0, nested: 0, scrolledOut: 3),
         "ios-profile": Counts(),

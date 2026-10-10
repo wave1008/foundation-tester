@@ -57,6 +57,14 @@ final class MCPGuidanceTests: XCTestCase {
                       "「常に batch」と読めてはいけない(探索は個別ツール): \(text)")
     }
 
+    /// **ラベルの完全一致と部分一致の書き方を最初に言う**。実地: `waitFor: "円"` が画面の
+    /// 「715円」に部分一致するだけで上限まで待ち、2 回で約 35 秒を空費した(外れた後の注記では手遅れ)
+    func testInstructionsStateThatABareLabelIsAnExactMatch() {
+        let text = MCPServer.serverInstructions
+        XCTAssertTrue(text.contains("A bare label must equal the whole label"), text)
+        XCTAssertTrue(text.contains("*text*"), text)
+    }
+
     /// **案内は1箇所だけ**(2026-08-10 のスキーマ痩身)。個別ツールの説明へ同じ文言を複製すると、
     /// 全ツールぶん毎セッションのコンテキスト費用になる —— 複製を求められたことがあるが、
     /// 同じ効果は instructions 1箇所で得られる
