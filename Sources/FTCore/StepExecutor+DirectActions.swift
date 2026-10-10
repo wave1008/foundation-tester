@@ -25,12 +25,10 @@ extension StepExecutor {
         let viaXCUITest = try await swipeWithFallback(direction, path: path, phase: &phase)
         // 慣性が止まるまで待つ。ランナー側は /swipe を整定対象から外している(そこで待っても
         // budget 内に収束しないため)ので、直後に tap する書き方をここで支える
-        let acting = gestureActingDriver(viaXCUITest: viaXCUITest)
-        let settled = skippingSettle(step) || skippingHostTreeSettle(actingDriver: acting) ? true : try await settledSignature(phase: &phase).settled
+        let settled = skippingSettle(step) ? true : try await settledSignature(phase: &phase).settled
         var notes: [String] = []
         if viaXCUITest { notes.append("fell back to XCUITest") }
-        // ブリッジの画像整定が上限まで動き続けた(ホストの整定を省いた回はこれが唯一の申告)
-        if !settled || acting.lastGestureImageSettleCapped == true { note(.settleCapped, into: &notes) }
+        if !settled { note(.settleCapped, into: &notes) }
         return StepOutcome(status: .passed,
                            driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
     }
@@ -82,10 +80,8 @@ extension StepExecutor {
                     Self.scrollFrameFailFastMessage(step, action: "swipe", swipes: sentSwipes)))
             }
             let path = latest.flatMap { scrollPath(step: step, intent: .search, in: $0) }
-            let viaThis = try await swipeWithFallback(direction, intent: .search, path: path, phase: &phase)
-            if viaThis { viaXCUITest = true }
-            let acting = gestureActingDriver(viaXCUITest: viaThis)
-            if acting.lastGestureImageSettleCapped == true { unsettled = true }
+            if try await swipeWithFallback(direction, intent: .search, path: path,
+                                           phase: &phase) { viaXCUITest = true }
             sentSwipes += 1
             // 続けて投げるとフリングの停止だけに消費されて空振りする(Android 実測)。
             // 「repeat 回ぶん送る」を守るため、次のスワイプ前に静止を待つ。
@@ -93,10 +89,6 @@ extension StepExecutor {
             // 直後に tap する書き方をここで支える(index 条件を外した理由)
             // settle:false は最後の1本の後だけ飛ばす(本の間の静止待ちは「repeat 回ぶん送る」のための内側の整定)
             if sentSwipes == times, skippingSettle(step) { break }
-            if skippingHostTreeSettle(actingDriver: acting) {
-                if sentSwipes == times { break }
-                continue
-            }
             let settled = try await settledSignature(phase: &phase)
             if !settled.settled { unsettled = true }
             // **常に引き継ぐ**: settledSignature は毎回木を撮り直しているので
@@ -324,12 +316,11 @@ extension StepExecutor {
             // 落ちる(scroll アクションが scrollPath nil のとき辿る経路と同じ考え方)
             if try await swipeWithFallback(kind.fingerDirection, phase: &phase) { viaXCUITest = true }
         }
-        let acting = gestureActingDriver(viaXCUITest: viaXCUITest)
-        let settled = skippingSettle(step) || skippingHostTreeSettle(actingDriver: acting) ? true : try await settledSignature(phase: &phase).settled
+        let settled = skippingSettle(step) ? true : try await settledSignature(phase: &phase).settled
         var notes: [String] = []
         if let note = pendingScrollFrameNote { notes.append(note) }
         if viaXCUITest { notes.append("fell back to XCUITest") }
-        if !settled || acting.lastGestureImageSettleCapped == true { note(.settleCapped, into: &notes) }
+        if !settled { note(.settleCapped, into: &notes) }
         return StepOutcome(status: .passed,
                            driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
     }

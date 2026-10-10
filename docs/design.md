@@ -830,8 +830,6 @@ Android の整定判定は**スナップショットの画面サイズ**で行�
   `skipByDefault`)ので、タップ系の遷移の整定は操作直後の取得の `captureSettled`(2回続けて同じ木・予算で打ち切り)が
   単独で担う(4 SUT の A/B で退行無し。スワイプは待ちを残す。詳細は §4089 付近の `settle:` の段落と
   docs/performance-tuning.md §8)
-  **2026-10-10 から既定の整定は画像の静止判定**(§4.7)。この段落の `settlePending` は自前描画のタップ・入力
-  (`X-FT-Settle-Tree: 1`)と `FT_SETTLE_MODE=tree` のときに残る
 
 **value の正規化: placeholder がそのまま来る欄は空にする**(2026-08-06)。
 WebKit は空の `<input>` の AXValue に placeholder を入れて返す(UIKit の入力欄は入れない)ため、
@@ -1062,57 +1060,6 @@ Compose では壊れており、クランプされた画面外セルを `hittabl
 inapp の ref タップも座標フォールバックに落ち、同じ壊れた frame を踏む(座標非依存の起動経路が無い)。
 
 ---
-
-### 4.7 操作後の整定 = 画面の静止(画像整定。2026-10-10・iOS ブリッジ v172・Android v98)
-
-**既定の整定は「ブリッジがスクリーンショットを撮り続け、窓の時間だけ画面が変わらなければ整定」**。撮影・切り出し・比較は
-XCUITest ランナーと Android の instrumentation の中で完結させ、**画像はホストへ出さない**(ホストへ返すのは結果と注記だけ)。
-計測・採否・定数の根拠は docs/performance-tuning.md §3.34、フレームワークごとの差は docs/framework-differences.md §3。
-
-**判定**
-- 静止 = 「直前の撮影と違った最後の撮影」から窓の時間、一致が続いた。最初の撮影の時刻を起点にするので、画面を変えない操作の待ちは窓1回分
-- 上限は最初の撮影から数える(Android は判定の開始から)。尽きたら動いたまま返し、応答の note に
-  `screen kept changing for <秒>s (image settle cap)` を載せる(`BridgeAPI.imageSettleCapNote`。iOS で OKResponse に載せられない応答は
-  次の snapshot の note へ回し、その前に次の操作が来たら捨てる)
-- **画像整定を回した要求の応答には `OKResponse.imageSettleCapped` が載る**(false = 止まった / true = 上限)。載らない = 画像整定して
-  いない(in-app・ヘッダ無し・`X-FT-Settle: 0`・Android で撮影できなかった・`adb` / gRPC で撃った drag)。ドライバは swipe / drag の
-  分を `AppDriver.lastGestureImageSettleCapped` に写し(冒頭で消す。包むドライバは受けたドライバの値を素通し)、ホストはこれを見て
-  木の整定を省くかを決め、true なら注記 `settle-capped` を残す(文言の照合はしない)
-- 比べる範囲: スワイプは scrollFrame(`SwipeRequest.path.region`)、無ければ画面全体の**各辺 10% を削った内側**
-  (`BridgeAPI.imageSettleCompareRect`。縁のスクロールバー・インジケータのフェードを拾わない)。タップ等は画面全体
-- iOS は全画面なら PNG のバイト列を比べる(デコード不要)。枠のときは CGImage を切り出して行を詰め直して比べる。Android は `Bitmap.sameAs`(PNG にしない)
-- 窓より短い周期で点滅し続けるもの(カーソル)は止めない: 点滅の半周期(約 0.5 秒)が窓(250〜450ms)より長いので、その間に静止が成立する
-
-**ホストが送るヘッダ**(`BridgeClient.imageSettleHeaders`。表は `ImageSettlePlan` = アプリの UI フレームワーク × OS × 操作の種類。
-ブリッジはヘッダが無い・範囲外なら自分の既定):
-
-| ヘッダ | 値 | 意味 |
-|---|---|---|
-| `X-FT-Settle-Mode` | `image` | 画像整定にする。`FT_SETTLE_MODE=tree` のときだけ付けない |
-| `X-FT-Settle-Cap-Ms` | 900〜10000 | 上限(`ImageSettleCap`) |
-| `X-FT-Settle-Quiet-Ms` | 50〜2000 | 窓 |
-| `X-FT-Settle-Event` | `1` | iOS: swipe / drag の XCTest の完了通知を待ってから画像整定する(UIKit 系のスクロール。通知が慣性の終わりと一致する) |
-| `X-FT-Settle-Tree` | `1` | iOS: 画像整定の後も、次の snapshot の木の整定(`settlePending`)を残す(自前描画のタップ・入力。木が絵より遅れる) |
-| `X-FT-Settle-Backoff-Ms` | 0〜1000 | iOS: 前と違った撮影の後、次の撮影まで待つ(自前描画のスクロール。慣性の間の無駄な撮影を減らす) |
-
-`X-FT-Settle: 0`(DSL の `settle: false`)は画像整定も飛ばす。**ヘッダはステップの全要求に付く**ので、探索・端送りの1本ごとの
-ブリッジ側の待ちにも同じ計画が効く。
-
-**エンジン・OS ごとの置き場**
-- **iOS XCUITest**: 対象パスは `/systemui/tap` `/tap` `/type` `/clear` `/pressEnter` `/press` `/swipe` `/drag`(検証の待ちが要る
-  `/session` `/home` `/appswitcher` と `/rotate` は対象外)。画像整定の間は swipe / drag / `/systemui/*` の quiescence を飛ばす
-  (`X-FT-Settle-Event: 1` のときは飛ばさない)。撮影の間隔は置かない(撮影自体が Simulator 約 90〜110ms・SE3 30〜40ms)
-- **Android**: `settle()` を呼ぶ全経路で画像整定に差し替え、**a11y の静穏待ち(従来の整定)を別スレッドで並走させて両方を待つ**
-  (絵の静止は木の追いつきを保証しない)。撮影時刻は `nextCaptureAt`: 実機は連続(撮影は端末内で済む)、Emulator は
-  1枚目の 50ms 後 → 変化の間 50 → 100ms → 静止後は窓の中間と満了時刻の2点(撮影がホストの CPU を使うので枚数を抑える)。
-  撮れない(null)ときは並走中の静穏待ちを待って返す
-- **in-app**: 画像整定を持たない(`contentOffset` を直接書くので慣性が無い。整定は従来どおり `InAppSettle`)
-- **ホスト**: swipe / drag の後の木の整定(`settledSignature`)は、**操作したドライバのブリッジが画像整定を申告し
-  (`lastGestureImageSettleCapped` が非 nil)、かつ計画が `hostTreeSettle == false`(iOS UIKit 系と Android)**のときだけ省く
-  (`StepExecutor.skippingHostTreeSettle`。省くときも次の解決はキャッシュを迂回する)。申告で決めるのは、同じドライバでも経路で
-  整定の有無が割れるため(in-app は画像整定を持たない・Android の drag はブリッジを通らない)。`performGesture` で省けるのは
-  `swipeBy`(drag)だけ(ピンチ・ダブルタップ・`/gesture` はブリッジが画像整定せず、申告も消さない)。端送り(`scrollToBottom` 等)の
-  アルゴリズムとしての整定は残す
 
 ## 5. FM 呼び出し層(FTFoundationModels)設計
 

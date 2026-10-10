@@ -15,7 +15,6 @@ public final class BridgeClient: AppDriver, Sendable {
         var resolvedBrowserDOMTarget: BrowserDOMTarget??
         var browserDOMCenters: [Int: (x: Double, y: Double)] = [:]
         var atEdgeOnLastSwipe: Bool?
-        var lastGestureImageSettleCapped: Bool?
         var lastTapHitAreaMiss: TapHitAreaMiss?
         var originalOrientation: FTOrientation?
     }
@@ -62,31 +61,6 @@ public final class BridgeClient: AppDriver, Sendable {
     }
     /// `SettleOverride.skip` の間だけ `X-FT-Settle: 0` を載せる(BridgeAPI.settleHeader)。nil = ヘッダ無し = 従来どおり整定
     static func settleHeaderValue(skip: Bool) -> String? { skip ? "0" : nil }
-    /// 既定は画像整定(`X-FT-Settle-Mode: image`)。環境変数 `FT_SETTLE_MODE` に `tree` を明示したときだけ
-    /// ヘッダを付けない = ブリッジの従来の整定(比較・切り分け用の逃げ道)。それ以外の値も画像整定に倒す
-    static func settleModeHeaderValue(mode: String?) -> String? {
-        let env = mode.map { [RunEnvironmentKeys.settleMode: $0] } ?? [:]
-        return ImageSettlePlan.imageModeEnabled(environment: env) ? BridgeAPI.settleModeImage : nil
-    }
-    /// 画像整定の間だけ載せるヘッダ一式(モード + 操作ごとの計画)。`context` が nil なら計画は載せない(ブリッジの既定)。
-    /// 任意のヘッダ(event / tree / backoff)は値が有効なときだけ載せる
-    static func imageSettleHeaders(modeValue: String?, context: ImageSettlePlan.Context?,
-                                   path: String) -> [String: String] {
-        guard let modeValue else { return [:] }
-        var headers = [BridgeAPI.settleModeHeader: modeValue]
-        guard let context else { return headers }
-        let plan = ImageSettlePlan.plan(framework: context.framework, isAndroid: context.isAndroid,
-                                        kind: ImageSettlePlan.kind(forBridgePath: path))
-        headers[BridgeAPI.settleCapHeader] = String(plan.capMs)
-        headers[BridgeAPI.settleQuietHeader] = String(plan.quietMs)
-        if plan.waitEvent { headers[BridgeAPI.settleEventHeader] = "1" }
-        if plan.armTree { headers[BridgeAPI.settleTreeHeader] = "1" }
-        if plan.backoffMs > 0 { headers[BridgeAPI.settleBackoffHeader] = String(plan.backoffMs) }
-        return headers
-    }
-    /// init で1回だけ読んだ `settleModeHeaderValue` の結果(リクエストごとに環境を引かない)
-    let settleModeValue = BridgeClient.settleModeHeaderValue(
-        mode: ProcessInfo.processInfo.environment[RunEnvironmentKeys.settleMode])
 
     /// tap(ref:) が受け取った OKResponse.note(AppDriver.lastActionNote 参照)。
     /// tap(ref:) 呼び出しの冒頭で必ずクリアする(残ると別ステップに誤って付く)。
@@ -940,16 +914,10 @@ public final class BridgeClient: AppDriver, Sendable {
         set { mutable.withLock { $0.atEdgeOnLastSwipe = newValue } }
     }
     public var reachedEdgeOnLastSwipe: Bool? { atEdgeOnLastSwipe }
-    /// 直前の swipe / drag の `OKResponse.imageSettleCapped`(`AppDriver.lastGestureImageSettleCapped`)。in-app は立てない
-    public private(set) var lastGestureImageSettleCapped: Bool? {
-        get { mutable.withLock { $0.lastGestureImageSettleCapped } }
-        set { mutable.withLock { $0.lastGestureImageSettleCapped = newValue } }
-    }
 
     public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
                       path: FTSwipePath? = nil) async throws {
         atEdgeOnLastSwipe = nil
-        lastGestureImageSettleCapped = nil
         let response: OKResponse = try await post(
             "/swipe",
             body: SwipeRequest(direction: direction,
@@ -961,7 +929,6 @@ public final class BridgeClient: AppDriver, Sendable {
                                edge: intent == .edge ? true : nil),
             timeout: interactionTimeout)
         atEdgeOnLastSwipe = response.atEdge
-        lastGestureImageSettleCapped = response.imageSettleCapped
     }
 
     /// 端送りの1本を a11y のスクロール操作で送る(**Android ブリッジだけ**が持つ口。契約は BridgeDTO.ScrollActionRequest)
@@ -1017,12 +984,10 @@ public final class BridgeClient: AppDriver, Sendable {
 
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {
-        lastGestureImageSettleCapped = nil
-        let response: OKResponse = try await post("/drag", body: DragRequest(
+        let _: OKResponse = try await post("/drag", body: DragRequest(
             fromX: fromX, fromY: fromY, toX: toX, toY: toY,
             press: pressSeconds, duration: durationSeconds),
             timeout: timeout(forDuration: pressSeconds + durationSeconds))
-        lastGestureImageSettleCapped = response.imageSettleCapped
     }
 
     public func doubleTap(x: Double, y: Double) async throws {
@@ -1210,10 +1175,6 @@ public final class BridgeClient: AppDriver, Sendable {
         }
         if let v = Self.settleHeaderValue(skip: SettleOverride.skip) {
             req.setValue(v, forHTTPHeaderField: BridgeAPI.settleHeader)
-        }
-        for (name, value) in Self.imageSettleHeaders(modeValue: settleModeValue,
-                                                     context: ImageSettlePlan.context, path: path) {
-            req.setValue(value, forHTTPHeaderField: name)
         }
         let (data, response) = try await send(req)
         guard (response as? HTTPURLResponse)?.statusCode == 401 else { return (data, response) }

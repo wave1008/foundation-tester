@@ -51,10 +51,6 @@ final class FakeAppDriver: AppDriver {
     /// テスト専用: snapshot() を返す前にこの分だけ待つ(SlowSnapshotBudget の配線を実際の
     /// StepExecutor ループで検証するため。nil = 待たない)
     var snapshotDelay: Duration?
-    /// `AppDriver.lastGestureImageSettleCapped` の答え(swipe / drag の後にブリッジが画像整定したか)。
-    /// 既定 nil = 画像整定していない(in-app・tree モードと同じ = ホストは木の整定を残す)
-    var gestureImageSettleCapped: Bool?
-    var lastGestureImageSettleCapped: Bool? { gestureImageSettleCapped }
 
     init(name: String, log: CallLog, snapshotElements: [[ElementInfo]] = [],
          screenshots: [Data]? = nil) {

@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 172
+    public static let bridgeProtocolVersion = 173
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -185,60 +185,6 @@ public enum BridgeAPI {
     /// in-app ブリッジ(InAppHTTPServer)・Android ブリッジ(BridgeHttpServer.java = 文字列を複製。同期相手)。
     /// 検証の待ち(回転到達・ホーム到達・打鍵の読み戻し・前面待ち)と操作前の待ちは飛ばさない
     public static let settleHeader = "X-FT-Settle"
-
-    /// `X-FT-Settle-Mode: image` = 操作後の整定を木の比較ではなく連続スクリーンショットの一致で見る(ホストの既定。`FT_SETTLE_MODE=tree` で外せる)。
-    /// 無ければ従来どおり。`X-FT-Settle: 0` が付いていればそちらが勝つ(全部飛ばす)。
-    /// BridgeClient が環境変数 `RunEnvironmentKeys.settleMode` が `image` の間だけ全リクエストに載せる。
-    /// 読み手: XCUITest ランナー(BridgeRouter)・Android ブリッジ(文字列を複製。同期相手)
-    public static let settleModeHeader = "X-FT-Settle-Mode"
-    /// `settleModeHeader` の値(画像整定)。ホストの既定
-    public static let settleModeImage = "image"
-    /// 環境変数 `FT_SETTLE_MODE` でこれを指定したときだけ、ホストはヘッダを付けない(= ブリッジの従来の整定)。ワイヤには載らない
-    public static let settleModeTree = "tree"
-    /// `X-FT-Settle-Cap-Ms: <ms>` = このリクエストの画像整定の上限(ホストが UI フレームワークと OS から決める。
-    /// 表は `FTCore.ImageSettleCap`)。読み手: XCUITest ランナー・Android ブリッジ(文字列を複製。同期相手)。
-    /// 受け取れる範囲は `imageSettleCapRangeMs`(外れた値・無いときはブリッジの既定 = その OS の最大)
-    public static let settleCapHeader = "X-FT-Settle-Cap-Ms"
-    /// 以下4つは操作ごとの整定計画(`FTCore.ImageSettlePlan`)。ホストが画像整定(`settleModeHeader`)の間だけ載せ、
-    /// 読み手は XCUITest ランナー・Android ブリッジ(文字列と範囲を複製。同期相手)。範囲外・無いときはブリッジの既定。
-    /// `X-FT-Settle-Quiet-Ms: <ms>` = 静止の窓(既定 `imageSettleQuietSeconds`)。受け取れる範囲は `imageSettleQuietRangeMs`
-    public static let settleQuietHeader = "X-FT-Settle-Quiet-Ms"
-    /// 静止の窓の受け取り範囲[ms]。下限 50 = フレーム間隔(60fps で約 17ms)の約 3 倍、上限 2000 = 桁外れの値で 1 操作が止まり続けないための砦
-    public static let imageSettleQuietRangeMs: ClosedRange<Int> = 50...2000
-    /// `X-FT-Settle-Event: 1` = (iOS)swipe/drag の画像整定の前に XCTest の完了通知(quiescence)を待つ。無い = 待たない
-    public static let settleEventHeader = "X-FT-Settle-Event"
-    /// `X-FT-Settle-Tree: 1` = (iOS)ランナーが次の snapshot の木の整定(settlePending)も立てる。無い = 立てない
-    public static let settleTreeHeader = "X-FT-Settle-Tree"
-    /// `X-FT-Settle-Backoff-Ms: <ms>` = (iOS)前の絵と違った撮影の後、次の撮影までこれだけ待つ。無い・0 = 待たない
-    public static let settleBackoffHeader = "X-FT-Settle-Backoff-Ms"
-    /// 撮影間隔の受け取り範囲[ms]。上限 1000 = 静止の窓の上限 2000 の半分(窓より長いと静止を見逃す)
-    public static let imageSettleBackoffRangeMs: ClosedRange<Int> = 0...1000
-    /// 画像整定でスクロール容器の枠(`SwipeRequest.path.region`)を比べるとき、上下左右をそれぞれ削る割合。
-    /// 100×200 の枠なら内側の 80×160 を比べる。スクロールバー・スクロールインジケータ(枠の縁にあり、止まった後も
-    /// フェードで変わり続ける)を判定から外すため(ユーザー決定)。削るのは比較範囲だけで、region 自体(in-app が容器を
-    /// 特定するのに使う)は変えない。読み手: XCUITest ランナー・Android ブリッジ(値を複製。同期相手)
-    public static let imageSettleRegionInsetRatio: Double = 0.1
-    /// 枠の各辺を `imageSettleRegionInsetRatio` だけ内側へ削った比較範囲
-    public static func imageSettleCompareRect(_ region: FTRect) -> FTRect {
-        let dx = region.width * imageSettleRegionInsetRatio, dy = region.height * imageSettleRegionInsetRatio
-        return FTRect(x: region.x + dx, y: region.y + dy, width: region.width - 2 * dx, height: region.height - 2 * dy)
-    }
-    /// ヘッダで受け取る上限の範囲[ms]。下限 = 静止窓の 2 倍(窓より短い上限は静止を判定できない)、
-    /// 上限 = 表の最大 4.4s の約 2 倍(桁外れの値で 1 操作が止まり続けないための砦)
-    public static let imageSettleCapRangeMs: ClosedRange<Int> = 900...10_000
-    /// iOS のブリッジの既定の上限[秒](ヘッダが無いとき = UI フレームワークが分からない)。
-    /// `ImageSettleCap.iosFallbackSeconds` と同じ値(ランナーは FTCore のそちらを持たないので複製。片方だけ変えない)。
-    /// 尽きたら待たずに返し、応答/次の snapshot の note に `imageSettleCapNote(seconds:)` を載せる
-    public static let imageSettleCapSeconds: Double = 4.4
-    /// 画像整定の静止窓[秒]: 直前の絵と違った最後の撮影からこれだけ変化が無ければ静止。根拠: 動いている最中の
-    /// 描画間隔の実測最大 368ms(SwiftUI/CMP の慣性の尾・アイドル時も CPU 100% 負荷時も)× 約1.2。
-    /// 短いと減速の尾の途中で返り、長いと全操作がその分余計に待つ。読み手: XCUITest ランナー(BridgeRouter)・
-    /// Android ブリッジ(値を複製。同期相手)
-    public static let imageSettleQuietSeconds: Double = 0.45
-    /// 画像整定が上限で打ち切られたときの note。ホスト・テストは末尾の "(image settle cap)" で識別する
-    public static func imageSettleCapNote(seconds: Double) -> String {
-        "screen kept changing for \(seconds)s (image settle cap)"
-    }
 
     /// 暗号論的乱数 32 バイトを16進(64文字)にしたもの
     public static func makeBridgeToken() -> String {
@@ -1524,17 +1470,11 @@ public struct OKResponse: Codable {
     public var atEdge: Bool?
     /// in-app の ref タップ(`/tap` の ref 指定)だけが立てる(v159〜)。`TapHitAreaMiss` の doc
     public var hitAreaMiss: TapHitAreaMiss?
-    /// ブリッジがこの要求の後に**画像整定を回した**ときだけ立つ(XCUITest v172〜・Android v98〜)。false = 画面が止まって
-    /// 返した / true = 上限まで動き続けて返した。**nil = 画像整定していない**(in-app・`X-FT-Settle-Mode` 無し・
-    /// `X-FT-Settle: 0`・撮影できなかった)= ホストは木の整定を省けない(`AppDriver.lastGestureImageSettleCapped`)
-    public var imageSettleCapped: Bool?
-    public init(ok: Bool = true, note: String? = nil, atEdge: Bool? = nil, hitAreaMiss: TapHitAreaMiss? = nil,
-                imageSettleCapped: Bool? = nil) {
+    public init(ok: Bool = true, note: String? = nil, atEdge: Bool? = nil, hitAreaMiss: TapHitAreaMiss? = nil) {
         self.ok = ok
         self.note = note
         self.atEdge = atEdge
         self.hitAreaMiss = hitAreaMiss
-        self.imageSettleCapped = imageSettleCapped
     }
 }
 

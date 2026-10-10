@@ -1619,15 +1619,10 @@ extension StepExecutor {
         default:
             return StepOutcome(status: .skipped("unknown gesture: \(action)"))
         }
-        // ホストの木の整定を省けるのは drag(swipeBy)だけ: ピンチ・ダブルタップ・`/gesture` はブリッジが画像整定しない
-        // (iOS ランナーの対象パス外)うえ、swipe / drag の申告を消さないので前の swipe の値が残っている
-        let acting = gestureActingDriver(viaXCUITest: viaXCUITest)
-        let viaDrag = action == "swipeBy"
-        let settled = skippingSettle(step) || (viaDrag && skippingHostTreeSettle(actingDriver: acting))
-            ? true : try await settledSignature(phase: &phase).settled
+        let settled = skippingSettle(step) ? true : try await settledSignature(phase: &phase).settled
         var notes: [String] = []
         if viaXCUITest { notes.append("fell back to XCUITest") }
-        if !settled || (viaDrag && acting.lastGestureImageSettleCapped == true) { note(.settleCapped, into: &notes) }
+        if !settled { note(.settleCapped, into: &notes) }
         // 比率は対象の大きさに対する割合で片側 maxPanRatio が上限。超えた指定を黙って丸めると、小さい要素で
         // 「14 倍払った」つもりが数 pt しか動かず緑になる(実測: シートの見出しで閉じなかった)
         if action == "swipeBy",

@@ -682,11 +682,8 @@ public final class StepExecutor {
     public func execute(_ original: FlowStep,
                         fingerprint rawFingerprint: LocatorFingerprint? = nil) async -> StepOutcome {
         // 常に withValue で入れる = 外側のステップの上書きを持ち越さない
-        // 画像整定の計画はアプリの UI フレームワークと OS と操作の種類で決まる(表は ImageSettlePlan。BridgeClient がヘッダで渡す)
-        return await SettleOverride.$skip.withValue(original.settle == false) {
-            await ImageSettlePlan.$context.withValue(.init(framework: uiFramework, isAndroid: isAndroid)) {
-                await executeStep(original, fingerprint: rawFingerprint)
-            }
+        await SettleOverride.$skip.withValue(original.settle == false) {
+            await executeStep(original, fingerprint: rawFingerprint)
         }
     }
 

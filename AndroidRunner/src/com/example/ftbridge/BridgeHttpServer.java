@@ -28,14 +28,8 @@ final class BridgeHttpServer {
         final String host;
         /** `X-FT-Settle: 0` が付いていれば true(操作後の整定待ちを全部飛ばす)。同期相手: BridgeDTO.swift の BridgeAPI.settleHeader */
         final boolean skipSettle;
-        /** `X-FT-Settle-Mode` の値(小文字化済み。"image" = 画面の静止で整定)。無ければ null。同期相手: BridgeDTO.swift */
-        final String settleMode;
-        /** `X-FT-Settle-Cap-Ms` の値(900..10000 の外・無ければ -1)。同期相手: BridgeDTO.swift の BridgeAPI.settleCapHeader / imageSettleCapRangeMs */
-        final long settleCapMs;
-        /** `X-FT-Settle-Quiet-Ms` の値(50..2000 の外・無ければ -1。画像整定の静止窓の上書き) */
-        final long settleQuietMs;
         Request(String method, String path, String query, byte[] body,
-                String origin, String secFetchSite, String host, boolean skipSettle, String settleMode, long settleCapMs, long settleQuietMs) {
+                String origin, String secFetchSite, String host, boolean skipSettle) {
             this.method = method;
             this.path = path;
             this.query = query;
@@ -44,9 +38,6 @@ final class BridgeHttpServer {
             this.secFetchSite = secFetchSite;
             this.host = host;
             this.skipSettle = skipSettle;
-            this.settleMode = settleMode;
-            this.settleCapMs = settleCapMs;
-            this.settleQuietMs = settleQuietMs;
         }
     }
 
@@ -212,9 +203,6 @@ final class BridgeHttpServer {
         String secFetchSite = null;
         String host = null;
         boolean skipSettle = false;
-        String settleMode = null;
-        long settleCapMs = -1;
-        long settleQuietMs = -1;
         for (int i = 1; i < lines.length; i++) {
             String line = lines[i];
             int colon = line.indexOf(':');
@@ -235,22 +223,6 @@ final class BridgeHttpServer {
                 host = value;
             } else if (key.equalsIgnoreCase("X-FT-Settle")) {
                 skipSettle = value.equals("0");
-            } else if (key.equalsIgnoreCase("X-FT-Settle-Mode")) {
-                settleMode = value.toLowerCase(java.util.Locale.ROOT);
-            } else if (key.equalsIgnoreCase("X-FT-Settle-Cap-Ms")) {
-                try {
-                    long v = Long.parseLong(value.trim());
-                    settleCapMs = (v >= 900 && v <= 10000) ? v : -1;
-                } catch (NumberFormatException e) {
-                    settleCapMs = -1;
-                }
-            } else if (key.equalsIgnoreCase("X-FT-Settle-Quiet-Ms")) {
-                try {
-                    long v = Long.parseLong(value.trim());
-                    settleQuietMs = (v >= 50 && v <= 2000) ? v : -1;
-                } catch (NumberFormatException e) {
-                    settleQuietMs = -1;
-                }
             }
         }
         // 過大/不正な Content-Length は無制限メモリ確保・長時間読取の的になるため弾く(不正=null→400)。
@@ -263,7 +235,7 @@ final class BridgeHttpServer {
             if (n <= 0) break;
             body.write(chunk, 0, n);
         }
-        return new Request(requestLine[0], path, query, body.toByteArray(), origin, secFetchSite, host, skipSettle, settleMode, settleCapMs, settleQuietMs);
+        return new Request(requestLine[0], path, query, body.toByteArray(), origin, secFetchSite, host, skipSettle);
     }
 
     private static int indexOfHeaderEnd(byte[] data) {

@@ -60,28 +60,6 @@ final class BridgeRouter {
     /// (settle: false の操作は settlePending を立てないので、自分の分は元から待たない)
     private var skipSettle = false
 
-    /// 処理中のリクエストが画像整定の対象か(handle の冒頭で毎回入れ直す)。`X-FT-Settle-Mode: image` かつ
-    /// `X-FT-Settle: 0` でなく、`imageSettlePaths` の POST のとき true。true の間は swipe / drag / `/systemui/*` の
-    /// XCTest の quiescence 待ちを飛ばし(`X-FT-Settle-Event: 1` のときは飛ばさない)、操作の後に `captureStill` を回す
-    /// (settlePending は `X-FT-Settle-Tree: 1` のときだけ立てる)
-    private var imageSettle = false
-    /// captureStill が上限で打ち切られたのに応答へ載せる口が無かった分(OKResponse に復号できない応答)。
-    /// 次の snapshot(/snapshot・/systemui/snapshot)が note にして消費する
-    private var pendingImageSettleNote: String?
-    /// この要求の画像整定の上限[秒]。ホストが UI フレームワークで決めた `X-FT-Settle-Cap-Ms`、無ければ iOS の既定
-    /// (`BridgeAPI.imageSettleCapSeconds` = 表の最大)。handle の冒頭で毎回入れ直す
-    private var imageSettleCapSeconds = BridgeAPI.imageSettleCapSeconds
-    /// この要求の静止窓[秒]・完了通知待ち・木の整定の持ち越し・変化後の撮影間隔[秒]。ホストが要求ごとに決めて
-    /// ヘッダで送る(無ければ従来どおり: 窓は `BridgeAPI.imageSettleQuietSeconds`・他は off / 0)。handle の冒頭で毎回入れ直す
-    private var imageSettleQuietSeconds = BridgeAPI.imageSettleQuietSeconds
-    private var imageSettleWaitEvent = false
-    private var imageSettleArmTree = false
-    private var imageSettleBackoffSeconds: Double = 0
-
-    /// 画像整定の対象パス = settlePending を立てる経路から検証の待ちが要る /session・/home・/appswitcher を除き、
-    /// 慣性が残る /swipe・/drag を足したもの。/rotate・/pinch・/doubletap の扱いは従来どおり(対象外)
-    private static let imageSettlePaths: Set<String> = ["/systemui/tap", "/tap", "/type", "/clear", "/pressEnter", "/press", "/swipe", "/drag"]
-
     /// この snapshot 1回に適用する要素上限(`?max=`)。**要求ごとに handleSnapshot が入れ直す**
     /// ので持ち越しは起きない(接続は1本ずつ順に処理される = 別要求と混ざらない)
     var snapshotElementLimit = BridgeAPI.maxSnapshotElements
@@ -117,15 +95,6 @@ final class BridgeRouter {
     func handle(_ request: BridgeHTTPServer.Request) -> BridgeHTTPServer.Response {
         InterruptionGuard.shared.reset()
         skipSettle = request.skipSettle
-        // 持ち越した打ち切りの note は「その操作の直後の snapshot」の分。次の操作が来たら古い(別の操作の snapshot に付けない)
-        if request.method == "POST" { pendingImageSettleNote = nil }
-        imageSettle = request.method == "POST" && !request.skipSettle
-            && request.settleMode == BridgeAPI.settleModeImage && Self.imageSettlePaths.contains(request.path)
-        imageSettleCapSeconds = request.settleCapMs.map { Double($0) / 1000 } ?? BridgeAPI.imageSettleCapSeconds
-        imageSettleQuietSeconds = request.settleQuietMs.map { Double($0) / 1000 } ?? BridgeAPI.imageSettleQuietSeconds
-        imageSettleWaitEvent = request.settleWaitEvent
-        imageSettleArmTree = request.settleArmTree
-        imageSettleBackoffSeconds = request.settleBackoffMs.map { Double($0) / 1000 } ?? 0
         do {
             var response: BridgeHTTPServer.Response
             switch (request.method, request.path) {
@@ -161,18 +130,7 @@ final class BridgeRouter {
             default:
                 return .error("not found: \(request.method) \(request.path)", status: 404)
             }
-            if imageSettle, response.status == 200 {
-                // 比較範囲の絞り込みは /swipe だけ: 容器の枠(path.region)、無ければ画面全体。どちらも各辺 10% を削る
-                // (縁のスクロールインジケータを外す)。タップ等は画面全体をそのまま比べる(PNG のまま = デコード不要)
-                var region: FTRect?
-                let isSwipe = request.path == "/swipe"
-                if isSwipe, let req = try? decoder.decode(SwipeRequest.self, from: request.body) {
-                    region = req.path?.region
-                }
-                response = settledByImage(response, region: region, insetWholeScreen: isSwipe)
-                // 木の整定を次の snapshot に残す(画像整定は絵だけを見るので、木の追随はホストの指示があるときだけ)
-                if imageSettleArmTree, Self.mutatingPaths.contains(request.path) { settlePending = true }
-            } else if request.method == "POST", Self.mutatingPaths.contains(request.path), !skipSettle {
+            if request.method == "POST", Self.mutatingPaths.contains(request.path), !skipSettle {
                 settlePending = true
             }
             // **アラートに遮られて XCTest が諦めた操作を 200 にしない**(issue は record で握りつぶされる)。
@@ -307,7 +265,7 @@ final class BridgeRouter {
                            width: cap.screen.width, height: cap.screen.height),
             elements: withFocusedFlag(cap.elements, app: app),
             truncatedCount: cap.truncated,
-            note: combinedSnapshotNote(settleCapped: cap.settleCapped),
+            note: cap.settleCapped ? "snapshot taken before the screen settled (budget)" : nil,
             offscreen: cap.offscreen.isEmpty ? nil : cap.offscreen,
             keyboardShown: cap.keyboardFrame != nil ? true : nil,
             keyboardFrame: cap.keyboardFrame.map {
@@ -338,100 +296,6 @@ final class BridgeRouter {
         var out = elements
         out[index].focused = true
         return out
-    }
-
-    /// 画面が止まるまで撮り続ける(`X-FT-Settle-Mode: image`)。静止 = 「直前の絵と違った最後の撮影」から
-    /// `imageSettleQuietSeconds`(要求ごと・既定 `BridgeAPI.imageSettleQuietSeconds`)経った(true)。上限 `BridgeAPI.imageSettleCapSeconds`
-    /// (最初の撮影から)で打ち切り(false)。
-    /// - 時間窓にする理由: 連続 N 枚一致だと窓が撮影 2 枚ぶん(約 180ms)で、慣性の減速の尾に出る描画間隔
-    ///   (実測最大 368ms)より短く、動いている最中に返る。アニメの開始が操作の返りより遅れる場合も窓が覆う
-    /// - 撮影間隔は既定で置かない: 撮影自体が間隔(Simulator 約 90〜110ms・iPhone SE3 30〜40ms)。ホストが
-    ///   `X-FT-Settle-Backoff-Ms` を送ったときだけ、前と違った撮影の直後に待つ(自前描画のスクロールの慣性中)
-    /// - `lastChangeAt` の初期値は最初の撮影時刻: 操作が画面を変えない(no-op)ときの待ちは窓 1 回分で済む
-    /// - region 指定(スクロール容器の枠)のときはその矩形だけを比べる: スクロールに要るのは容器の中身の停止だけで、
-    ///   外で動き続ける要素(バナー・スピナー)に整定を握らせない。nil(タップ・全画面 swipe)は全画面を比べる。
-    ///   全画面でもステータスバーは除かない: 閾値 0 + 時間窓なので、分の更新が重なっても窓 1 回分の延長で済む
-    /// - 1 周ごとに画像を作るので autoreleasepool で区切る
-    private func captureStill(region: FTRect?, insetWholeScreen: Bool) -> Bool {
-        var previous: Data?
-        var firstAt: Date?
-        var lastChangeAt = Date()
-        var didChange = false
-        while true {
-            // 慣性中は毎枚違うので間を置かない連続撮影(Simulator 約 90ms/枚)は無駄。変化した直後だけ間を置く。
-            // 一致した直後は置かない(静止の検出を遅らせない)。間隔は窓(450ms)より十分短い値をホストが送る
-            if didChange, imageSettleBackoffSeconds > 0 { Thread.sleep(forTimeInterval: imageSettleBackoffSeconds) }
-            let current: Data = autoreleasepool { frameSignature(region: region, insetWholeScreen: insetWholeScreen) }
-            let now = Date()
-            if firstAt == nil {
-                firstAt = now
-                lastChangeAt = now
-                didChange = false
-            } else if previous != current {
-                lastChangeAt = now
-                didChange = true
-            } else {
-                didChange = false
-            }
-            previous = current
-            if now.timeIntervalSince(lastChangeAt) >= imageSettleQuietSeconds { return true }
-            if now.timeIntervalSince(firstAt ?? now) >= imageSettleCapSeconds { return false }
-        }
-    }
-
-    /// 1 枚ぶんの比較用バイト列。region なし = PNG をそのまま(デコード不要で安い。同じ画素 → 同じ byte)。
-    /// region あり = PNG は切り出せないので CGImage で pt→px(`image.scale`)に直して crop し、画素を行ごとに
-    /// 詰め直す(行の stride にはパディングが入りうる = そのまま比べると画素が同じでも不一致になる)。
-    /// 切り出せない(枠が画面外・画素が読めない)ときは PNG にフォールバック(整定を黙って諦めない側)
-    /// insetWholeScreen: region が無いときも画面全体を枠として内側を比べる(容器の分からないスワイプ)
-    private func frameSignature(region: FTRect?, insetWholeScreen: Bool) -> Data {
-        let shot = XCUIScreen.main.screenshot()
-        let size = shot.image.size
-        let base = region ?? (insetWholeScreen ? FTRect(x: 0, y: 0, width: Double(size.width), height: Double(size.height)) : nil)
-        guard let rawRegion = base, let cg = shot.image.cgImage else { return shot.pngRepresentation }
-        let region = BridgeAPI.imageSettleCompareRect(rawRegion)  // 縁のスクロールインジケータを外す
-        let scale = shot.image.scale
-        let rect = CGRect(x: region.x * scale, y: region.y * scale,
-                          width: region.width * scale, height: region.height * scale)
-            .integral.intersection(CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
-        guard !rect.isNull, rect.width >= 1, rect.height >= 1, let crop = cg.cropping(to: rect),
-              let data = crop.dataProvider?.data as Data? else { return shot.pngRepresentation }
-        let rowBytes = crop.width * (crop.bitsPerPixel / 8)
-        guard crop.bytesPerRow >= rowBytes, data.count >= crop.bytesPerRow * (crop.height - 1) + rowBytes else {
-            return shot.pngRepresentation
-        }
-        if crop.bytesPerRow == rowBytes { return data.prefix(rowBytes * crop.height) }
-        var packed = Data(capacity: rowBytes * crop.height)
-        for row in 0..<crop.height {
-            let start = data.startIndex + row * crop.bytesPerRow
-            packed.append(data[start..<start + rowBytes])
-        }
-        return packed
-    }
-
-    /// 操作が成功した応答に対し画像整定を回し、結果を `imageSettleCapped` に載せる(ホストはこれが立ったときだけ
-    /// 木の整定を省ける)。打ち切られたら note も載せる。OKResponse に復号できない応答は note だけ
-    /// pendingImageSettleNote に回す(次の snapshot が出す。imageSettleCapped は載らない = ホストは木の整定を残す)
-    private func settledByImage(_ response: BridgeHTTPServer.Response, region: FTRect?,
-                                insetWholeScreen: Bool) -> BridgeHTTPServer.Response {
-        let still = captureStill(region: region, insetWholeScreen: insetWholeScreen)
-        let text = still ? nil : BridgeAPI.imageSettleCapNote(seconds: imageSettleCapSeconds)
-        if let text { NSLog("[fleetest] image settle: %@", text) }
-        guard var ok = try? decoder.decode(OKResponse.self, from: response.body) else {
-            if let text { pendingImageSettleNote = text }
-            return response
-        }
-        ok.imageSettleCapped = !still
-        if let text { ok.note = [ok.note, text].compactMap { $0 }.joined(separator: " / ") }
-        return .json(ok)
-    }
-
-    /// snapshot の note = 予算打ち切り + 持ち越した画像整定の打ち切り(両方消費する)
-    private func combinedSnapshotNote(settleCapped: Bool) -> String? {
-        defer { pendingImageSettleNote = nil }
-        let parts = [settleCapped ? "snapshot taken before the screen settled (budget)" : nil,
-                     pendingImageSettleNote].compactMap { $0 }
-        return parts.isEmpty ? nil : parts.joined(separator: " / ")
     }
 
     /// 整定してから取得する(操作直後の 1 回だけ)。
@@ -619,7 +483,7 @@ final class BridgeRouter {
                            width: cap.screen.width, height: cap.screen.height),
             elements: cap.elements,
             truncatedCount: cap.truncated,
-            note: combinedSnapshotNote(settleCapped: false)))
+            note: nil))
     }
 
     /// `/systemui/snapshot` が振った ref を叩く。**アプリの refFrames は読まない**
@@ -898,7 +762,7 @@ final class BridgeRouter {
     /// `X-FT-Settle: 0` のときだけ XCTest の待ちを飛ばす(それ以外は何も変えない = 待ちの上限を縮める cap も掛けない)。
     /// /drag・/systemui/* 用。/type・/clear・/pressEnter には使わない(キーボード出現待ちが quiescence に依存)
     private func skippingQuiescenceIfRequested<T>(_ body: () throws -> T) rethrows -> T {
-        try skipSettle || (imageSettle && !imageSettleWaitEvent) ? QuiescenceWait.around(skip: true, body) : body()
+        try skipSettle ? QuiescenceWait.around(skip: true, body) : body()
     }
 
     private func handleSwipe(_ body: Data) throws -> BridgeHTTPServer.Response {
@@ -946,7 +810,7 @@ final class BridgeRouter {
             pressDrag(app, from: from, to: to, velocity: velocity)
             return .json(OKResponse())
         }
-        QuiescenceWait.around(skip: skipSettle || (imageSettle && !imageSettleWaitEvent)) {
+        QuiescenceWait.around(skip: skipSettle) {
             switch (req.direction, velocity) {
             case (.up, nil): app.swipeUp()
             case (.down, nil): app.swipeDown()
@@ -967,7 +831,7 @@ final class BridgeRouter {
                            velocity: XCUIGestureVelocity?) {
         let fromCoordinate = coordinate(app, from)
         let toCoordinate = coordinate(app, to)
-        QuiescenceWait.around(skip: skipSettle || (imageSettle && !imageSettleWaitEvent)) {
+        QuiescenceWait.around(skip: skipSettle) {
             if let velocity {
                 fromCoordinate.press(forDuration: BridgeRouter.gestureMinSeconds, thenDragTo: toCoordinate,
                                       withVelocity: velocity, thenHoldForDuration: 0)

@@ -15,9 +15,6 @@ public enum RunEnvironmentKeys {
     public static let animations = AnimationPolicy.environmentKey
     /// AdbInstallVerifier.bypassEnabled が読む
     public static let playProtectBypass = "FT_PLAY_PROTECT_BYPASS"
-    /// BridgeClient が init で1回読む。既定(未設定)で全リクエストに `BridgeAPI.settleModeHeader: image` を載せ、`tree` を明示したときだけ載せない(プロファイルキー無し)。
-    /// 親の環境に置くだけでシナリオ子プロセスへ届く(`FT_` 接頭辞は `ScenarioSandbox.inheritedEnvironment` を通る)ので `variables` / `apply` には載せない
-    public static let settleMode = "FT_SETTLE_MODE"
 }
 
 public enum RunEnvironment {

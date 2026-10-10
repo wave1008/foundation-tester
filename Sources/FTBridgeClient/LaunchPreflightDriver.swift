@@ -63,7 +63,6 @@ public final class LaunchPreflightDriver: AppDriver {
     public func systemUICovering() async throws -> SystemUICoveringResponse? { try await base.systemUICovering() }
     public var lastActionNote: String? { base.lastActionNote }
     public var reachedEdgeOnLastSwipe: Bool? { base.reachedEdgeOnLastSwipe }
-    public var lastGestureImageSettleCapped: Bool? { base.lastGestureImageSettleCapped }
     public var lastTapHitAreaMiss: TapHitAreaMiss? { base.lastTapHitAreaMiss }
     public var lastLaunchTiming: LaunchTiming? { base.lastLaunchTiming }
 

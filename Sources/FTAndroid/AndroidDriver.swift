@@ -820,11 +820,7 @@ public final class AndroidDriver: AppDriver {
     }
 
     public func swipe(_ direction: FTSwipeDirection) async throws {
-        lastGestureImageSettleCapped = nil
-        lastGestureImageSettleCapped = try await withBridge {
-            try await $0.swipe(direction)
-            return $0.lastGestureImageSettleCapped
-        }
+        try await withBridge { try await $0.swipe(direction) }
     }
 
     /// 用途つき版。**Android は用途でジェスチャが変わる**(edge は強いフリング)ので、
@@ -838,7 +834,6 @@ public final class AndroidDriver: AppDriver {
     public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
                       path: FTSwipePath?) async throws {
         atEdgeOnLastSwipe = nil
-        lastGestureImageSettleCapped = nil
         if intent == .edge, await webViewJumpToEdge(direction) { return }
         // **ドラッグより先に a11y のスクロール操作で送る**: ドラッグは端を越えた余りが入れ子の親
         // (SwipeRefreshLayout 等)へ渡り、上端へ戻す最後の1本が引っ張って更新になる。
@@ -864,10 +859,7 @@ public final class AndroidDriver: AppDriver {
                            pressSeconds: 0, durationSeconds: Self.edgeStrokeSeconds)
             return
         }
-        lastGestureImageSettleCapped = try await withBridge {
-            try await $0.swipe(direction, intent: intent, path: path)
-            return $0.lastGestureImageSettleCapped
-        }
+        try await withBridge { try await $0.swipe(direction, intent: intent, path: path) }
     }
 
     /// 端送りのストローク。**ブリッジの `/swipe` ではなく drag(注入器直結)で撃つ**理由は2つ:
@@ -948,9 +940,6 @@ public final class AndroidDriver: AppDriver {
     /// 読み直しの後の素取得を確かめる控え(A11yCacheStalenessGuard)
     private var cacheStalenessGuard = A11yCacheStalenessGuard()
     public var reachedEdgeOnLastSwipe: Bool? { atEdgeOnLastSwipe }
-    /// 直前の swipe / drag の画像整定の申告(`AppDriver.lastGestureImageSettleCapped`)。ブリッジの `/swipe` だけが立てる
-    /// (drag は gRPC / adb で撃つのでブリッジが整定しない = nil。端送りの a11y スクロール・CDP の飛ばしも nil)
-    public private(set) var lastGestureImageSettleCapped: Bool?
 
     /// ダブルタップ・ピンチは**ブリッジ apk 経由だけ**(gRPC の道は作らない)。
     /// gRPC は `EmulatorController` = エミュレータ専用で実機に無く、一方 apk の
@@ -1120,7 +1109,6 @@ public final class AndroidDriver: AppDriver {
     /// 短く切られて誤った成功になる → maintainer-notes §49.1)。
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {
-        lastGestureImageSettleCapped = nil
         let durationMs = min(max(Int((durationSeconds * 1000).rounded()), 50),
                              Int(BridgeAPI.gestureSecondsCeiling * 1000))
         let fromXi = try Self.checkedInt32(fromX, field: "fromX")

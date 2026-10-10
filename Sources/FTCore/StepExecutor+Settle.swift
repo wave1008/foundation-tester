@@ -169,22 +169,6 @@ extension StepExecutor {
         return true
     }
 
-    /// スクロール系の操作(swipe / drag)の後にホストの木の整定を飛ばすか。①操作したドライバのブリッジがその操作の後に
-    /// 画像整定した(`lastGestureImageSettleCapped` が非 nil。in-app・adb / gRPC の drag・`FT_SETTLE_MODE=tree` は nil =
-    /// 誰も整定していないので飛ばさない)②計画が `hostTreeSettle == false`(iOS UIKit 系・Android)の両方のとき。
-    /// **swipe / drag の直後にだけ呼ぶ**(他の操作は申告を消さないので前の swipe の値が残る)。
-    /// **飛ばすときは `skippingSettle` と同じく次の解決をキャッシュ迂回にする**(`settledSignature` の副作用だった。立てないと Android で古い木を掴む)
-    func skippingHostTreeSettle(actingDriver: AppDriver) -> Bool {
-        guard actingDriver.lastGestureImageSettleCapped != nil,
-              !ImageSettlePlan.plan(framework: uiFramework, isAndroid: isAndroid, kind: .scroll).hostTreeSettle
-        else { return false }
-        nextResolveBypassesCache = true
-        return true
-    }
-
-    /// swipe / drag を実際に受けたドライバ(`swipeWithFallback` / `dragWithFallback` が XCUITest へ回したら typeDriver)
-    func gestureActingDriver(viaXCUITest: Bool) -> AppDriver { viaXCUITest ? (typeDriver ?? driver) : driver }
-
     /// 探索が要素を見つけた直後の後始末。**スワイプを撃った周回だけ**呼ぶ。戻り値は
     /// 「静止待ちが収束せず打ち切られた」= 呼び手はそれを注記に載せる。
     /// **順序に意味がある**(逆にすると Android で誤タップが再発する。実測)

@@ -139,50 +139,10 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     /** 処理中のリクエストが `X-FT-Settle: 0` を持つか(handle の冒頭で毎回入れ直す。リクエストは1本ずつ処理)。
      *  true の間は settle() と awaitScrollSettled を飛ばす。検証の待ち(回転到達等)は対象外 */
     private volatile boolean skipSettle = false;
-    /** `X-FT-Settle-Mode: image` なら true。settle() を画面の静止判定(settleByImage)に差し替える。handle の冒頭で入れ直す */
-    private volatile boolean imageSettle = false;
-    /** 直近の settleByImage が上限で打ち切ったときの note(整定したら null)。handle の冒頭で消し、ok() / scrollAction の応答が載せる */
-    private volatile String lastSettleNote = null;
-    /** この要求で settleByImage が判定まで回ったときの結果(FALSE = 止まった / TRUE = 上限)。回っていなければ null。
-     *  handle の冒頭で消し、ok() が `imageSettleCapped` として載せる(同期相手: BridgeDTO.swift の OKResponse.imageSettleCapped。
-     *  ホストはこれが載ったときだけ木の整定を省ける) */
-    private volatile Boolean lastImageSettleCapped = null;
-
-    /** 画像整定の既定の上限(ms)= ホストが `X-FT-Settle-Cap-Ms` を送らない(UI フレームワークが分からない)とき。
-     *  Android の表の最大(RN 2.3 s。表と根拠は FTCore.ImageSettleCap。片方だけ変えない)。尽きたら動いたまま返し、応答の note に残す */
-    private static final long IMAGE_SETTLE_DEFAULT_CAP_MS = 2300;
-    /** この要求の画像整定の上限(ms)。handle の冒頭でヘッダ(なければ既定)から入れ直す */
-    private volatile long imageSettleCapMs = IMAGE_SETTLE_DEFAULT_CAP_MS;
-    /** この要求の画像整定の静止窓(ms)。handle の冒頭でヘッダ(なければ IMAGE_SETTLE_QUIET_MS)から入れ直す */
-    private volatile long imageSettleQuietMs = IMAGE_SETTLE_QUIET_MS;
-    /**
-     * 画像整定の静止窓(ms): 最後に前フレームと違った撮影からこの時間一致が続いたら整定。
-     * 値はユーザー決定。根拠: 内容の動き中の描画間隔の実測最大 295 ms(CMP の画面遷移・エミュレータ・CPU 100% 負荷。
-     * 150 ms では負荷時の画面遷移で 42 回中 2 回、動きの途中で返った)。スワイプは比較範囲を枠の内側 80% に絞るので、
-     * 縁のスクロールバーのフェード(停止の 300 ms 後)は窓が長くても待たない。短いと動きの途中で返り、長いと全操作がその分待つ
-     */
-    private static final long IMAGE_SETTLE_QUIET_MS = 320;
-    /**
-     * エミュレータか。撮影の負担の行き先で撮り方を分ける: エミュレータの撮影はホストの CPU を使う(1枚約 22 ms・連続で
-     * 1台約 1.5 コア。並列の E2E で積み上がる)ので枚数を抑える。実機は端末内で済み、撮影自体(Pixel 4a 約 50 ms)が間隔になる
-     */
-    private static final boolean IS_EMULATOR = "ranchu".equals(Build.HARDWARE) || "goldfish".equals(Build.HARDWARE)
-            || Build.PRODUCT.startsWith("sdk_");
-    /** エミュレータ: 1枚目から2枚目までの間隔(ms)。タップの描画は約 100 ms 以内に終わるので早めに2枚目で捉える */
-    private static final long IMAGE_SETTLE_FIRST_GAP_MS = 50;
-    /** エミュレータ: 変化が続く間の間隔の上限(ms)。50 → 100 と広げる。広げすぎると動きの終わりの検出がその分遅れる */
-    private static final long IMAGE_SETTLE_MAX_INTERVAL_MS = 100;
-    /** スクロール容器の枠を比べるとき各辺を削る割合(100×200 なら内側 80×160)。同期相手: BridgeDTO.swift の BridgeAPI.imageSettleRegionInsetRatio */
-    private static final double IMAGE_SETTLE_REGION_INSET = 0.1;
 
     @Override
     public BridgeHttpServer.Response handle(BridgeHttpServer.Request request) {
         skipSettle = request.skipSettle;
-        imageSettle = "image".equals(request.settleMode);
-        imageSettleCapMs = request.settleCapMs > 0 ? request.settleCapMs : IMAGE_SETTLE_DEFAULT_CAP_MS;
-        imageSettleQuietMs = request.settleQuietMs > 0 ? request.settleQuietMs : IMAGE_SETTLE_QUIET_MS;
-        lastSettleNote = null;
-        lastImageSettleCapped = null;
         try {
             String route = request.method + " " + request.path;
             switch (route) {
@@ -458,16 +418,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         if (path != null) {
             InputInjector.swipe(ua(), path.optDouble("fromX"), path.optDouble("fromY"),
                     path.optDouble("toX"), path.optDouble("toY"), strokeMs, syntheticUp);
-            // path.region(任意・px・画面座標 {x,y,width,height})= 画像整定の比較範囲。無ければ画面全体。
-            // どちらも settleByImage が各辺 IMAGE_SETTLE_REGION_INSET を削る(縁のスクロールバーを外す)
-            Rect region = new Rect(screen);
-            JSONObject r = path.optJSONObject("region");
-            if (r != null) {
-                int rx = (int) Math.round(r.optDouble("x")), ry = (int) Math.round(r.optDouble("y"));
-                int rw = (int) Math.round(r.optDouble("width")), rh = (int) Math.round(r.optDouble("height"));
-                if (rw > 0 && rh > 0) region = new Rect(rx, ry, rx + rw, ry + rh);
-            }
-            settle("swipe", region);
+            settle();
             return ok();
         }
         switch (direction) {
@@ -479,7 +430,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                 throw new BridgeException(400, "direction must be one of up/down/left/right");
         }
         InputInjector.swipe(ua(), from[0], from[1], to[0], to[1], strokeMs, syntheticUp);
-        settle("swipe", new Rect(screen));  // 容器の枠が無いスワイプも画面全体の内側で比べる
+        settle();
         return ok();
     }
 
@@ -529,12 +480,10 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         }
         boolean performed = target.performAction(action.getId());
         if (performed) {
-            // 画像整定は a11y の矩形ポーリングを包含するので二重に待たない
-            if (!skipSettle && !imageSettle) awaitScrollSettled(target);
-            settle("scrollAction", screenRect());  // スクロールなので画面全体の内側で比べる(容器の枠は届かない)
+            if (!skipSettle) awaitScrollSettled(target);
+            settle();
         }
         o.put("performed", performed);
-        if (lastSettleNote != null) o.put("note", lastSettleNote);
         return BridgeHttpServer.Response.json(200, o.toString());
     }
 
@@ -1099,16 +1048,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     /** settle() の内訳を logcat に出す版。tag は呼び出し元(計測時にホスト側 actionMs と突き合わせる)。
      *  ACTION_CAP_MS を超える値が出るなら待ちは quietWait の外にある。 */
     private void settle(String tag) {
-        settle(tag, null);
-    }
-
-    /** region は画像整定の比較範囲(スクロール容器の px 矩形)。従来の整定では使わない */
-    private void settle(String tag, Rect region) {
         if (skipSettle) return;  // X-FT-Settle: 0(POST /settle 自身もここで即返る)
-        if (imageSettle) {
-            settleByImage(tag, region);
-            return;
-        }
         long t0 = SystemClock.uptimeMillis();
         String startPackage = stableActivePackage(STABLE_PACKAGE_BUDGET_MS);
         long t1 = SystemClock.uptimeMillis();
@@ -1117,136 +1057,6 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         if (BridgeInstrumentation.timingEnabled) {
             android.util.Log.i(BridgeInstrumentation.TAG, "settleTiming " + tag
                     + " stablePkg=" + (t1 - t0) + " quiet=" + (t2 - t1));
-        }
-    }
-
-    /** a11y イベントの静穏待ち(stableActivePackage + quietWait)。settle() と画像整定の並走スレッドが共有する */
-    private void a11yQuietWait() {
-        String startPackage = stableActivePackage(STABLE_PACKAGE_BUDGET_MS);
-        quietWaiter.quietWait(startPackage, QuietWaiter.QUIET_MS, QuietWaiter.ACTION_CAP_MS);
-    }
-
-    /**
-     * スクリーンショットを連続で撮り続け、直近の「前フレームと違った撮影」から imageSettleQuietMs 経つまで
-     * 一致が続いたら整定とみなす(連続2枚一致では足りない: 2枚が表示1フレーム内に収まりうる・動きの出だしが遅れる)。
-     * 撮影の開始時刻は nextCaptureAt(実機は連続・エミュレータは間引く)。Bitmap 同士で比べ(閾値0)、PNG エンコードは挟まない。
-     * 上限(imageSettleCapMs)まで動き続けたら返し lastSettleNote を立てる。Bitmap は必ず recycle する。
-     * a11y の静穏待ち(a11yQuietWait)を別スレッドで並走させ、両方終わってから返す: 画像の静止はピクセルが止まった証明で
-     * しかなく、アクセシビリティ木が画面に追いついた保証は無い(Compose は木がピクセルより遅れる。iOS CMP の E2E 失敗で確認)。
-     * 静穏待ちの静穏期間 200 ms は静止窓 320 ms に収まるので並走の追加コストはほぼ無く、上限は ACTION_CAP_MS で抑えられる。
-     * スレッド安全: QuietWaiter は lock の内側でだけ target / lastRelevantEventMs を触り、同時に走る quietWait は
-     * 要求が直列なので常に1本。並走スレッドは ua() の IPC(getRootInActiveWindow)だけで、撮影スレッドの takeScreenshot と
-     * 状態を共有しない。撮れない(null)ときは並走中の静穏待ちを待って返す。
-     * region 非null(スクロール容器の px 矩形)ならその範囲だけ比べる: スクロールは容器の中身が止まれば
-     * よく、容器外で動き続ける要素(バナー・スピナー)に整定を握らせない。矩形は撮影サイズへ丸める
-     */
-    private void settleByImage(String tag, Rect region) {
-        long t0 = SystemClock.uptimeMillis();
-        long lastChangeAt = t0;
-        long firstAt = t0;
-        long lastAt = t0;
-        int changeStreak = 0;
-        boolean lastChanged = false;
-        int frames = 0;
-        boolean settled = false;
-        Bitmap prev = null;
-        final long quietMs = imageSettleQuietMs;
-        Thread quietThread = new Thread(new Runnable() {
-            @Override public void run() {
-                try { a11yQuietWait(); } catch (RuntimeException ignored) { /* 待ちが取れないだけ。画像側の判定は続ける */ }
-            }
-        }, "ft-a11y-quiet");
-        quietThread.start();
-        long loopEnd = t0;
-        try {
-            while (true) {
-                if (frames > 0) {
-                    long target = Math.min(nextCaptureAt(IS_EMULATOR, frames, firstAt, lastAt, lastChangeAt,
-                            changeStreak, lastChanged, quietMs), t0 + imageSettleCapMs);
-                    long wait = target - SystemClock.uptimeMillis();
-                    if (wait > 0) SystemClock.sleep(wait);
-                }
-                Bitmap full = ua().takeScreenshot();
-                if (full == null) {
-                    if (prev != null) { prev.recycle(); prev = null; }
-                    joinQuietThread(quietThread);
-                    return;
-                }
-                long now = SystemClock.uptimeMillis();
-                Bitmap b = full;
-                if (region != null) {
-                    // 縁のスクロールバー(止まった後もフェードで変わる)を外すため、各辺を IMAGE_SETTLE_REGION_INSET だけ内側へ削る
-                    int dx = (int) Math.round(region.width() * IMAGE_SETTLE_REGION_INSET);
-                    int dy = (int) Math.round(region.height() * IMAGE_SETTLE_REGION_INSET);
-                    int x = Math.max(0, Math.min(region.left + dx, full.getWidth() - 1));
-                    int y = Math.max(0, Math.min(region.top + dy, full.getHeight() - 1));
-                    int w = Math.max(1, Math.min(region.width() - 2 * dx, full.getWidth() - x));
-                    int h = Math.max(1, Math.min(region.height() - 2 * dy, full.getHeight() - y));
-                    b = Bitmap.createBitmap(full, x, y, w, h);
-                    if (b != full) full.recycle();  // 全面一致の矩形は同一インスタンスが返る
-                }
-                frames++;
-                lastAt = now;
-                if (frames == 1) {
-                    firstAt = now;
-                    lastChangeAt = now;
-                    lastChanged = false;
-                } else if (!prev.sameAs(b)) {
-                    lastChangeAt = now;
-                    lastChanged = true;
-                    changeStreak++;
-                } else {
-                    lastChanged = false;
-                    changeStreak = 0;
-                }
-                if (prev != null) prev.recycle();
-                prev = b;
-                if (now - lastChangeAt >= quietMs) { settled = true; break; }
-                if (now - t0 >= imageSettleCapMs) break;
-            }
-            loopEnd = SystemClock.uptimeMillis();
-        } finally {
-            if (prev != null) prev.recycle();
-        }
-        joinQuietThread(quietThread);
-        // 文言は BridgeAPI.imageSettleCapNote(seconds:) と同じ形(ホストは末尾の "(image settle cap)" で識別する)
-        lastSettleNote = settled ? null : "screen kept changing for " + (imageSettleCapMs / 1000.0) + "s (image settle cap)";
-        lastImageSettleCapped = settled ? Boolean.FALSE : Boolean.TRUE;
-        if (BridgeInstrumentation.timingEnabled) {
-            android.util.Log.i(BridgeInstrumentation.TAG, "settleTiming " + tag + " image frames=" + frames
-                    + " elapsed=" + (SystemClock.uptimeMillis() - t0) + " settled=" + settled
-                    + " quiet=" + quietMs + " emulator=" + IS_EMULATOR
-                    + " quietJoinMs=" + (SystemClock.uptimeMillis() - loopEnd)
-                    + " region=" + (region != null ? "yes" : "no"));
-        }
-    }
-
-    /**
-     * 画像整定の次の撮影開始時刻(uptime ms)。時刻はどれも撮影の終了時刻。実機は待たない(= lastAt)。エミュレータは
-     * ①1枚目の FIRST_GAP 後 ②変化が続く間は 50 → MAX_INTERVAL と広げる ③一致したら窓の中間と満了時刻の2点だけ撮る
-     * (満了時刻ちょうどに撮るので、窓が満ちてから次の撮影を待つ遅れが無い)。
-     * 根拠(密な撮影記録の上の再生・Emulator 4 SUT・平常と CPU 100% 負荷): 固定 100 ms 間隔と同じ撮影枚数で
-     * 応答が平常 20〜50 ms・負荷時 50〜100 ms 短い。窓の中で変化して元の絵に戻る(2点では見えない)事象は約 300 操作で 0 件
-     */
-    static long nextCaptureAt(boolean emulator, int frames, long firstAt, long lastAt, long lastChangeAt,
-                              int changeStreak, boolean lastChanged, long quietMs) {
-        if (!emulator) return lastAt;
-        if (frames == 1) return firstAt + IMAGE_SETTLE_FIRST_GAP_MS;
-        if (lastChanged) {
-            return lastAt + (changeStreak <= 1 ? IMAGE_SETTLE_FIRST_GAP_MS : IMAGE_SETTLE_MAX_INTERVAL_MS);
-        }
-        long mid = lastChangeAt + quietMs / 2;
-        if (mid > lastAt) return mid;
-        return Math.max(lastAt, lastChangeAt + quietMs);
-    }
-
-    /** 並走の静穏待ちスレッドの終了を待つ。上限は quietWait 自身の ACTION_CAP_MS + stableActivePackage の予算(+余裕)。
-     *  割り込まれたら中断フラグを戻して待ちを諦める */
-    private void joinQuietThread(Thread t) {
-        try {
-            t.join(QuietWaiter.ACTION_CAP_MS + STABLE_PACKAGE_BUDGET_MS + 500);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         }
     }
 
@@ -1328,13 +1138,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                 + " so the host can rebuild it — retry the step");
     }
 
-    /** 画像整定が上限で打ち切られていれば note を載せる(settle() を呼ぶ全ルートの共通の出口) */
-    private BridgeHttpServer.Response ok() {
-        String note = lastSettleNote;
-        Boolean capped = lastImageSettleCapped;
-        StringBuilder body = new StringBuilder("{\"ok\":true");
-        if (note != null) body.append(",\"note\":\"").append(note).append('"');  // 文言は固定の英数字(引用符を含まない)
-        if (capped != null) body.append(",\"imageSettleCapped\":").append(capped.booleanValue());
-        return BridgeHttpServer.Response.json(200, body.append('}').toString());
+    private static BridgeHttpServer.Response ok() {
+        return BridgeHttpServer.Response.json(200, "{\"ok\":true}");
     }
 }

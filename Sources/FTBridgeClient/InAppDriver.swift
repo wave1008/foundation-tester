@@ -261,8 +261,6 @@ public final class InAppDriver: AppDriver {
     public var lastActionNote: String? { client.lastActionNote }
     /// 端の申告は素通し(捨てると端送りが毎回ホストの署名判定まで回る)
     public var reachedEdgeOnLastSwipe: Bool? { client.reachedEdgeOnLastSwipe }
-    /// in-app ブリッジは画像整定を持たない(応答に imageSettleCapped が載らない = 常に nil)。素通しで足りる
-    public var lastGestureImageSettleCapped: Bool? { client.lastGestureImageSettleCapped }
     public var lastTapHitAreaMiss: TapHitAreaMiss? { client.lastTapHitAreaMiss }
     public var lastLaunchTiming: LaunchTiming? { lastLaunchTimingValue }
     public func backGestureEdgeWidths() async -> (left: Double, right: Double, bottom: Double)? {

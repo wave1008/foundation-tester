@@ -18,14 +18,7 @@ final class RecordingStubServer: @unchecked Sendable {
     private var _paths: [String] = []
     var paths: [String] { lock.lock(); defer { lock.unlock() }; return _paths }
 
-    private var _body: String
-    /// 以降の要求に返す本文を差し替える(同じクライアントで応答の違いを続けて見るため)
-    func setBody(_ body: String) { lock.lock(); _body = body; lock.unlock() }
-    private var currentBody: String { lock.lock(); defer { lock.unlock() }; return _body }
-
-    /// body = すべての要求に返す本文(既定は OKResponse の最小形)
-    init(body: String = #"{"ok":true}"#) throws {
-        _body = body
+    init() throws {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { throw Failure.socket(errno) }
         var yes: Int32 = 1
@@ -66,7 +59,7 @@ final class RecordingStubServer: @unchecked Sendable {
                         self?.lock.unlock()
                     }
                 }
-                let body = self?.currentBody ?? #"{"ok":true}"#
+                let body = #"{"ok":true}"#  // OKResponse(BridgeDTO)と同じ形
                 let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
                     + "Content-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
                 _ = response.withCString { write(c, $0, strlen($0)) }

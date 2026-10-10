@@ -154,13 +154,6 @@ public protocol AppDriver {
     /// 「次の tap(ref:) でクリアする」規約(lastActionNote と同じ)。**包むドライバは素通しすること**、
     /// **プロトコル要件として宣言すること**(reachedEdgeOnLastSwipe と同じ理由)
     var lastTapHitAreaMiss: TapHitAreaMiss? { get }
-    /// 直前の swipe / drag の後に、ブリッジが**画像整定を回したか**とその結果(`OKResponse.imageSettleCapped` の写し)。
-    /// nil = 画像整定していない(in-app・adb / gRPC で撃った・`FT_SETTLE_MODE=tree`・旧ブリッジ)/ false = 止まって返した /
-    /// true = 上限まで動き続けた。swipe / drag の冒頭で消す。**ホストが木の整定を省いてよいのは非 nil のときだけ**
-    /// (`StepExecutor.skippingHostTreeSettle`)。**読むのは swipe / drag の直後だけ**(他の操作は消さないので前の値が残る)。
-    /// **包むドライバは直前の swipe / drag を受けたドライバの値を素通しすること**、**プロトコル要件として宣言すること**
-    /// (reachedEdgeOnLastSwipe と同じ理由)
-    var lastGestureImageSettleCapped: Bool? { get }
     /// 2点間ドラッグ(座標は snapshot の screen と同じ座標系)。pressSeconds=押下静止時間、
     /// durationSeconds=移動時間(実機ジェスチャの速度・長押しに反映される)。
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
@@ -451,7 +444,6 @@ public extension AppDriver {
     /// 素通しすること**(捨てると端送りが毎回ホストの署名判定まで回る)
     var reachedEdgeOnLastSwipe: Bool? { nil }
     var lastTapHitAreaMiss: TapHitAreaMiss? { nil }
-    var lastGestureImageSettleCapped: Bool? { nil }
     /// 既定は「答えられない」。答えられるのは XCUITest ブリッジを話す BridgeClient だけ
     func hitTest(ref: Int) async throws -> HitTestAnswer { .unavailable }
     var lastLaunchTiming: LaunchTiming? { nil }
