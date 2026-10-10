@@ -55,6 +55,9 @@ waitForSettle(_ selector: String? = nil, quietSeconds: Double? = nil,
 - 画像の判定(`findImage` / `existImage` / `imageIs`)や、OCR を使うテキストの視覚検証の前
 - 画素単位の位置に依存する操作の前
 - レポート用のスクリーンショットの前
+- **Compose Multiplatform・Flutter の iOS アプリで、自分で払った(`scrollDown()`・`flick*` など)直後に要素をタップするとき**
+  —— 慣性が残っている間のタッチは、スクロール容器が「慣性を止める」のに使ってしまい、タップとして届きません。
+  探索つきの操作(`tap(…, scroll:)`・`scrollTo`)はツールが自動で処置するので不要です
 
 特に、スクロールやフリックの直後に慣性がまだ内容を動かしているときに効きます。
 

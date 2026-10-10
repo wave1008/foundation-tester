@@ -58,6 +58,9 @@ that reads the picture:
 - an image check (`findImage` / `existImage` / `imageIs`) or a text visual verification that uses OCR
 - an operation that depends on exact pixels
 - a screenshot for the report
+- **a tap right after you swiped yourself (`scrollDown()`, `flick*`, …) in a Compose Multiplatform or Flutter app on
+  iOS** — while inertia is still running, the scroll container uses the touch to stop the inertia and the tap never
+  arrives. Search-and-scroll operations (`tap(…, scroll:)`, `scrollTo`) are handled by the tool automatically
 
 It matters most right after a scroll or a flick, when inertia may still be moving the content.
 
