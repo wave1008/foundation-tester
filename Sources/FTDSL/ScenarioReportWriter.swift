@@ -82,6 +82,13 @@ public enum ScenarioReportWriter {
                 md += ". Input may have been swallowed by it, so `tap` can report success while nothing happened"
                 md += " (windows owned by other processes never appear in the app element list).\n"
             }
+            // **一覧を伏せた理由を言う**(FTRuntime.handleFailure がシステムアラートの下の失敗では一覧を載せない)。
+            // 黙って消すと「取り損ねた」のか「わざと省いた」のか読み手が区別できない
+            if scene.failureUnderSystemAlert, scene.failureElements == nil {
+                md += "\n> ⚠️ **A system alert was in front of the app at the failure**, so the app's element list is"
+                md += " left out — nothing in it could be reached. The failure message names the alert;"
+                md += " handle it in the scenario first.\n"
+            }
             if let elements = scene.failureElements, !elements.isEmpty {
                 // 直すための一次情報。スクショより先に置く(モデルは PNG から #id を読めない)
                 md += "\n<details><summary>Element list at the moment of failure</summary>\n\n```\n"

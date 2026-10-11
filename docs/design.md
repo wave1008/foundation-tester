@@ -365,8 +365,12 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   ボタン)を残す。止めない・閉じない(新しい検知は警告から。閉じるのはシナリオの責務)。
   失敗文言に題名が出るので、時間切れの仕分けが「アラートだった」で即決まる。**MCP も同じ形**
   (2026-08-31): `ft_launch` / `ft_open_url` / `ft_install` / `ft_clear_app_data` の直後の**最初の
-  `ft_snapshot` で1回**、**ref の操作(ft_tap / ft_type / ft_clear_input / ft_long_press / ft_batch の1手目)
-  では毎回聞き、前面にあれば断る**(題名・ボタンを名指しして SpringBoard へ attach する手順を出す。
+  `ft_snapshot` で1回**(出ていたら閉じるまで木を返す応答ごとに確かめ続ける)、**ref の操作(ft_tap / ft_type / ft_clear_input / ft_long_press / ft_batch の1手目)
+  では毎回聞き、前面にあれば断る**。**アラートが前面にある間はアプリの木を出さない**(ユーザー決定 2026-10-11。
+  背面の木は押せない要素の一覧で、読み手はそこから次の手を探す。木から決まる注記も出さない)。**アプリ内の alert**
+  (木の中の `alert`。描かれているものだけ = 枠が0・画面外は閉じた後の残り)は、その部分木だけを返す。判定は
+  `FTCore.AlertTreeScope` の1箇所で、MCP の木を返す口(`snapshotBody` と `ft_scroll_to`)と DSL の失敗レポートの
+  要素一覧(`FTRuntime.handleFailure` = システムアラートの下では一覧ごと伏せ、レポートが伏せた理由を1行言う)が共有する(題名・ボタンを名指しして SpringBoard へ attach する手順を出す。
   SpringBoard に attach 中は断らない)。**MCP だけ警告でなく拒否**なのは、どちらのエンジンでも操作が
   届くため —— in-app はアラートを残したまま背面のアプリが反応し、XCUITest は XCTest の割り込み処理が
   アラートのボタンを押して権限を黙って変えていた(拒否側とは限らず「許可」も押し、遮られた操作を撃ち直した。2026-10-03 にランナーへ `InterruptionGuard` を置いて既定のハンドラを止めた = **遮られた操作は 422 で返り、アラートは押されない**。MCP の事前拒否は、7 秒待たずに題名とボタンを名指しする口として残す)。座標の操作は断らない(XCUITest では
@@ -3694,6 +3698,15 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     名乗っていたが、**`ft_scroll_to` は継承そのものをしていなかった**(黙って全行を返す)。
     interactiveOnly を渡した後、**どのツールで読むかで出力量が変わる**のは、指定が効いていない
     ように見える。**木を返す口はすべてこの1関数を通す**(2つ目の継承規則を書かない)。
+    2026-10-11 に**素の `ft_snapshot` と `ft_batch` も同じ継承**にした(ft_snapshot の省略を「記憶を消す」に
+    していたため、「以後は黙って引き継ぐ」と宣言した直後の素の ft_snapshot が全行を返し宣言が嘘になった)。
+    外すのは `interactiveOnly: false` の明示だけ。**宣言は値が変わったときに1回**(同じ値を明示し直しても言い直さない)。
+    操作の応答(snapshotAfter・ft_scroll_to・ft_batch・ft_rotate)では曖昧ラベル・重複 id の表の**明細を畳む**
+    (`snapshotBody(foldsSelectorTables:)`。事実 = ×N は残す)。操作の応答では**操作できる要素を含む群だけ**を並べる
+    (`NoteCatalog.Input.actionResponse`。レイアウト容器だけの群は撃つ相手にならない)。満額は `ft_snapshot` だけ = セレクタを書くために読む口。
+    **ベンチ(`Scripts/mcp-bench.sh`)での手数の確認は未実施**(計測4回続けて全エージェントが冗長と指摘した量の削減)。
+    **初出だけ満額の注記(`once` / `onceNonEmpty`)の鍵はデバイス(engineKey)ごと**(`MCPServer.noteScope`)——
+    1つのサーバを2つのエージェントが別のデバイスで共有すると、2人目は初出を見ていないのに「初出の注記を見よ」と言われた
     **⑶ シート展開救済の名乗り**(`MCPServer.sheetRescueMarker`)—— 散文は出ていたが、所要時間の
     内訳(`sheet-expand rescue +1.4s`)と語が違い、**1つの文字列では拾えなかった**。
     構造化フラグの要望だったが、**この応答の宛先はエージェントの本文1本**なので機械可読チャネルは
@@ -4129,7 +4142,7 @@ Android 実機はグローバル設定が**永続的に**書き換わるので�
 `captureSettled`。ユーザー決定。4 SUT の A/B で退行無し)。**スワイプ(スクロールを含む)は待ちを残す**(慣性の終わりを木では
 見届けられない = E2E-RN S0090 が 6 回中 4 回落ちた)が、操作の間は待ちの上限を 6 秒に縮める(`QuiescenceWait.quiescenceCapSeconds`)。
 **DSL の `settle: false`(コマンド1回だけ、操作後の整定をすべて飛ばす)**: スワイプ(スクロールを含む)・/drag・/systemui/* の XCTest の待ちは
-`settle: false` のときだけ飛ばす(/type・/clear・/pressEnter は対象外。キーボード出現待ちを quiescence に頼るため)。契約:
+`settle: false` のときだけ飛ばす(/type・/clear・/pressEnter は飛ばさないが、v175 から待ちの上限だけ 6s に縮める = `QuiescenceWait.capping`。キーボード出現待ちを quiescence に頼るため飛ばせないが、落ち着かないアプリでは打鍵ごとに XCTest 既定の 60s を待っていた)。契約:
 - **ワイヤ**: ホストが該当ステップの実行中、ブリッジへの HTTP リクエストに `X-FT-Settle: 0` を付ける(`BridgeAPI.settleHeader`)。
   ホスト側は `FlowStep.settle` → `StepExecutor.execute` が TaskLocal `SettleOverride.skip` に載せ、ブリッジクライアントが読む。
   ブリッジの版は iOS `bridgeProtocolVersion` 165・Android `VERSION_CODE` 89。

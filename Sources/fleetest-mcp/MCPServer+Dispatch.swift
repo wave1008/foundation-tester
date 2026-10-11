@@ -418,8 +418,19 @@ extension MCPServer {
         let watchdog = SlowCallWatchdog.start(callID: callID, tool: tool)
         defer { watchdog.finish() }
         return try await Self.$currentCallID.withValue(callID) {
-            try await callBody(tool: tool, args: args)
+            // **全呼び出しの段階の内訳を記録へ残す**(応答に出すのは `elapsedBreakdownSeconds` 以上だけ)。
+            // 15 秒未満の差(iOS の ft_launch 6.3 秒 / Android 1.2 秒)の理由を測る材料が無かった
+            defer { if rpcTraceEnabled { Self.tracePhases(tool: tool, callID: callID) } }
+            return try await callBody(tool: tool, args: args)
         }
+    }
+
+    /// `.fleetest/mcp-rpc.log` へ「phases call#N <tool> <段階> <秒> · …」を1行。`currentCallID` の中で呼ぶ
+    static func tracePhases(tool: String, callID: Int) {
+        let phases = SlowCallWatchdog.breakdown()
+        guard !phases.isEmpty else { return }
+        SlowCallWatchdog.traceRPC("phases call#\(callID) \(tool) "
+            + phases.map { "\($0.phase) \(elapsedText(milliseconds: $0.seconds * 1000))" }.joined(separator: " · "))
     }
 
     private func callBody(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
@@ -537,6 +548,7 @@ extension MCPServer {
             // 起動し直せなければ元のエラーがそのまま catch へ落ち、connectionLostHint 等はそのまま効く
             // (MCPToolFailure は接続拒否ではないので撃ち直しの対象にならない = シナリオを二重に走らせない)
             SlowCallWatchdog.mark("running \(tool)")
+            noteScope = Self.toolAcceptsDeviceTarget(tool) ? Self.engineKey(resolved) : ""
             return await decorated(try await dispatchRetryingAfterBridgeRecovery(tool: tool, args: resolved))
         } catch let failure as MCPToolFailure {
             // 中身は呼び手が組み上げた報告そのもの。接続断の診断(デバイス走査)は足さない
@@ -1145,13 +1157,16 @@ extension MCPServer {
     /// 選ばれなかった側は評価されない(full/short とも重い計算のことがある —— 実測
     /// unlabeledClickablesNote 等で1本 29〜116ms)
     func once(_ key: String, full: @autoclosure () -> String, short: @autoclosure () -> String) -> String {
-        explainedNotes.insert(key).inserted ? full() : short()
+        explainedNotes.insert(scopedNoteKey(key)).inserted ? full() : short()
     }
+
+    /// 鍵をデバイス(`noteScope`)ごとに分ける(宣言は MCPServer.noteScope)
+    private func scopedNoteKey(_ key: String) -> String { noteScope + "|" + key }
 
     /// 「この鍵は初出か」だけを返す `once` の同型。本文の2形を持たない注記
     /// (見出しそのものを短縮する類)が使う。**鍵の名前空間は `once` と共有**
     func firstTime(_ key: String) -> Bool {
-        explainedNotes.insert(key).inserted
+        explainedNotes.insert(scopedNoteKey(key)).inserted
     }
 
     /// `once` を「注記が空のときはキーを消費しない」形にした版。full が空の画面で先に呼ぶと、
@@ -1166,10 +1181,10 @@ extension MCPServer {
     /// いずれも `guard !xxx.isEmpty else { return "" }` を abbreviated 分岐より手前に持つので、
     /// 空かどうかは abbreviated の値に依らない
     func onceNonEmpty(_ key: String, render: (_ abbreviated: Bool) -> String) -> String {
-        let abbreviated = explainedNotes.contains(key)
+        let abbreviated = explainedNotes.contains(scopedNoteKey(key))
         let rendered = render(abbreviated)
         guard !rendered.isEmpty else { return "" }
-        if !abbreviated { explainedNotes.insert(key) }
+        if !abbreviated { explainedNotes.insert(scopedNoteKey(key)) }
         return rendered
     }
 

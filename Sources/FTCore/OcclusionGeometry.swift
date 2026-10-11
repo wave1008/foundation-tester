@@ -32,6 +32,15 @@ public enum OcclusionGeometry {
             // リスト行の容器が「閉じる」を誤って遮蔽扱いした)。**この判定を先に置く**のが要点 ——
             // 包含判定は 1pt 差で外れるほど際どく、閾値では守り切れない
             if ContainerGeometry.isOutsideContainer(other, in: elements, screen: screen) { return false }
+            // **申告スクロール容器の子は、容器の枠の外の点を覆えない**(スクロール容器は中身を自分の枠で切る)。
+            // `outsideDeclaredScroller` は交差ゼロしか見ないので、容器に数 pt だけ掛かって残った送り出し済みの行が、
+            // 容器の上に載った見出しの「閉じる」を覆うと誤報した(実測・Apple マップの乗車案内: 先頭行 y=59..148 が
+            // 容器 y=144.. に 4pt 掛かり、閉じる (336,88) を覆うと言った。タップは閉じるに当たった)。
+            // 祖先の復元は間引きで嘘になるので `hasSiblingsInside` を同じ門にする(outsideDeclaredScroller と同じ)
+            if let scroller = TapTargetGeometry.ancestors(of: other, in: elements).first(where: { $0.scrollable == true }),
+               !(scroller.frame.x <= cx && cx <= scroller.frame.x + scroller.frame.width
+                 && scroller.frame.y <= cy && cy <= scroller.frame.y + scroller.frame.height),
+               TapTargetGeometry.hasSiblingsInside(at: other.depth, inside: scroller, in: elements) { return false }
             // **容器の内側でも、原点へ潰れているだけなら描かれていない**。`isOutsideContainer` は容器の
             // **外**しか見ないため、容器の**原点にクランプ**された残骸(同じ原点の同 depth 兄弟が3つ以上=
             // `hasClampedCoordinates` と同じ現象)を素通ししていた(実測・ios-news_feed: overlay 警告52件中

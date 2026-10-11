@@ -72,6 +72,33 @@ extension MCPServer {
         return "  \(label) ×\(matches.count): \(shownRefs)\(cut) — \(reason)"
     }
 
+    /// 畳んだ群の行(`compactGroupLine`)の末尾の理由が同じなら、1回だけ末尾に言う(実測: 5群が同じ
+    /// 「repeats inside #X; every alternative is index-based, so tap by ref instead.」を5回繰り返していた)。
+    /// 1群だけなら行のまま。理由が違う群はそれぞれの行に残す
+    static func foldingSharedReasons(_ lines: [String]) -> [String] {
+        func split(_ line: String) -> (head: String, reason: String)? {
+            guard line.hasPrefix("  "), line.contains(" ×"),
+                  let range = line.range(of: " — ", options: .backwards) else { return nil }
+            return (String(line[..<range.lowerBound]), String(line[range.upperBound...]))
+        }
+        var counts: [String: Int] = [:]
+        for line in lines { if let reason = split(line)?.reason { counts[reason, default: 0] += 1 } }
+        let shared = Set(counts.filter { $0.value >= 2 }.map(\.key))
+        guard !shared.isEmpty else { return lines }
+        var out: [String] = []
+        var folded: [String] = []
+        for line in lines {
+            if let parts = split(line), shared.contains(parts.reason) {
+                out.append(parts.head)
+                if !folded.contains(parts.reason) { folded.append(parts.reason) }
+            } else {
+                out.append(line)
+            }
+        }
+        out.append(contentsOf: folded.map { "  (lines above with no trailing note: \($0))" })
+        return out
+    }
+
     /// `ambiguousLabelsNote` と `duplicateIDsNote` が共有する描画本体。差分はグループ化キー
     /// (呼び出し側で `label` に整形済み — `"\"foo\""` か `"#foo"`)と3つの文言だけなので、
     /// ここは凡例ヘッダ・グループごとの明細・打ち切り行・`anyStable` フッタだけを持つ。
@@ -121,7 +148,7 @@ extension MCPServer {
                 lines.append("  Tap these by ref. To get a selector for one of them,"
                     + " ft_tap prints the selector it recommends for the element it hit.")
             }
-            return lines.joined(separator: "\n") + "\n"
+            return Self.foldingSharedReasons(lines).joined(separator: "\n") + "\n"
         }
         // **畳んだ行は既に「tap by ref instead」と言っている**(compactGroupLine)。全部が
         // 畳まれた回に末尾の総括まで出すと、同じ助言が N+1 回並ぶ(監査で実測:
@@ -163,7 +190,7 @@ extension MCPServer {
             lines.append("  none of the above have a stable selector on this screen —"
                 + " prefer tapping by ref for these.")
         }
-        return lines.joined(separator: "\n") + "\n"
+        return Self.foldingSharedReasons(lines).joined(separator: "\n") + "\n"
     }
 
     /// 同一ラベルが複数に一致するときの要約注記(欠陥⑩)。id の重複は別パッケージが
@@ -171,8 +198,9 @@ extension MCPServer {
     /// 実測: 経路検索の候補一覧で「東京駅」が9件一致し、素のラベルでは一意に指せなかった
     /// `abbreviated`(F-6 の対象拡大): 明細行(ラベルごとの候補列挙)と末尾の
     /// 「+N more」は既定と同じまま、ヘッダの凡例だけ「初出の注記を見よ」に圧縮する
+    /// `operableOnly`: 操作できる要素を1つも含まない群を出さない(操作の応答用。NoteCatalog.Input.actionResponse)
     static func ambiguousLabelsNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false,
-                                    brief: Bool = false,
+                                    brief: Bool = false, operableOnly: Bool = false,
                                     cache: SnapshotAnnotationCache? = nil) -> String {
         var groups: [String: [ElementInfo]] = [:]
         for e in snapshot.elements {
@@ -202,6 +230,7 @@ extension MCPServer {
             // ボタン群が丸ごと注記から消えていた
             .filter { !isSymbolOnlyLabel($0.key)
                 || $0.value.contains { BridgeSnapshotThinning.operableTypes.contains($0.type) } }
+            .filter { !operableOnly || $0.value.contains { BridgeSnapshotThinning.operableTypes.contains($0.type) } }
             .sorted { groupPrecedes(key: $0.key, count: $0.value.count,
                                     otherKey: $1.key, otherCount: $1.value.count) }
         guard !ambiguous.isEmpty else { return "" }
@@ -211,7 +240,12 @@ extension MCPServer {
         // **cache 経由なら duplicateIDsNote と同じ SelectorNaming を共有する**:
         // 両方の群に出る要素の graded を二重に検証しない
         let naming = cache?.selectorNaming(snapshot) ?? SelectorNaming(snapshot)
-        return renderGroups(ambiguous.map { (label: "\"\($0.key)\"", matches: $0.value) },
+        // **先頭・末尾の空白を持つラベルはそう言う**(実測・Google マップ: `"  埼京線"` のアイコン分の空白。
+        // 照合は空白を落とさないので、写すなら空白ごと・または `*text*`)。表示も照合も変えない(Shirates 準拠の完全一致)
+        let spacedLabels = ambiguous.contains { $0.key != $0.key.trimmingCharacters(in: .whitespaces) }
+        let spaceNote = spacedLabels && !abbreviated
+            ? "  (a label shown with leading/trailing spaces really has them — copy it exactly, or match with *text*)\n" : ""
+        return spaceNote + renderGroups(ambiguous.map { (label: "\"\($0.key)\"", matches: $0.value) },
                             naming: naming, in: snapshot,
                             fullHeader: "note: these labels match multiple elements, so a plain label"
                                 + " selector cannot pick one uniquely. Write one of these instead"
@@ -231,7 +265,7 @@ extension MCPServer {
     /// 仕組み**(SelectorNaming.graded)を使い回す —— 採番規則を2つ持たない。
     /// `abbreviated` はラベル版と同じ意味(F-6)
     static func duplicateIDsNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false,
-                                 brief: Bool = false,
+                                 brief: Bool = false, operableOnly: Bool = false,
                                  cache: SnapshotAnnotationCache? = nil) -> String {
         var groups: [String: [ElementInfo]] = [:]
         for e in snapshot.elements {
@@ -250,6 +284,7 @@ extension MCPServer {
             // **expandBulk の値では切り替えない**: 個別列挙させたい回でも、165 行ぶんの
             // 「一意でない」は読み手の役に立たない
             .filter { bulkFolded[$0.key] == nil }
+            .filter { !operableOnly || $0.value.contains { BridgeSnapshotThinning.operableTypes.contains($0.type) } }
             .sorted { groupPrecedes(key: $0.key, count: $0.value.count,
                                     otherKey: $1.key, otherCount: $1.value.count) }
         guard !duplicated.isEmpty else { return "" }

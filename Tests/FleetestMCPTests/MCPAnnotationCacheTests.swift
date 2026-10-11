@@ -240,7 +240,7 @@ final class MCPAnnotationCacheTests: XCTestCase {
                                recordSnapshot: { _, _, _ in })
         let cache = MCPServer.SnapshotAnnotationCache()
         MCPServer.ghostFlagsComputations = 0
-        let body = await server.snapshotBody(snap, driver: driver, args: [:], cache: cache)
+        let body = await server.snapshotBody(snap, driver: driver, args: [:], foldsSelectorTables: false, cache: cache)
         XCTAssertTrue(body.contains("#dup"), body)
 
         // **cache のカウンタではなく実計算の総数を見る**: cache 側だけを数えると、cache を
@@ -277,7 +277,7 @@ final class MCPAnnotationCacheTests: XCTestCase {
         let cache = MCPServer.SnapshotAnnotationCache()
         cache.primeGhostFlagsForTesting([1: MCPServer.offscreenMark])
 
-        let body = await server.snapshotBody(snap, driver: driver, args: [:], cache: cache)
+        let body = await server.snapshotBody(snap, driver: driver, args: [:], foldsSelectorTables: false, cache: cache)
 
         // ghostNote 自身の note に出る(ghostNote が cache.ghostFlags を読んだ証拠)
         XCTAssertTrue(body.contains("⚠️offscreen rows below"), body)

@@ -36,14 +36,18 @@ enum NoteCatalog {
         /// 明細(要素ごとの代替セレクタ)を畳む鍵。`brief` の宣言参照。
         /// **差し替え口**(既定 = env 由来。テストは自分の集合を渡してこの経路を通す)
         let brief: Set<String>
+        /// 操作の応答(snapshotAfter・ft_scroll_to・ft_batch)か。曖昧ラベル・重複 id の表を**操作できる要素を含む群だけ**に
+        /// 絞る(レイアウト容器だけの群は撃つ相手にならない。計測5回続けて「毎回 5〜10 行」と指摘された)。ft_snapshot は満額
+        let actionResponse: Bool
 
         init(snapshot: SnapshotResponse, collapsingBulk: Bool = true,
              cache: MCPServer.SnapshotAnnotationCache? = nil,
-             brief: Set<String> = NoteCatalog.brief) {
+             brief: Set<String> = NoteCatalog.brief, actionResponse: Bool = false) {
             self.snapshot = snapshot
             self.collapsingBulk = collapsingBulk
             self.cache = cache ?? MCPServer.SnapshotAnnotationCache()
             self.brief = brief
+            self.actionResponse = actionResponse
         }
     }
 
@@ -129,13 +133,13 @@ enum NoteCatalog {
         Entry(key: "ambiguousLabelsNote", contexts: [.snapshot, .scrollTo], abbreviates: true) { input, abbreviated in
             MCPServer.ambiguousLabelsNote(input.snapshot, abbreviated: abbreviated,
                                           brief: input.brief.contains("ambiguousLabelsNote"),
-                                          cache: input.cache)
+                                          operableOnly: input.actionResponse, cache: input.cache)
         },
         // ラベル版の直後に置く(読み手はどちらも「一意に指せるか」を見に来る)
         Entry(key: "duplicateIDsNote", contexts: [.snapshot, .scrollTo], abbreviates: true) { input, abbreviated in
             MCPServer.duplicateIDsNote(input.snapshot, abbreviated: abbreviated,
                                        brief: input.brief.contains("duplicateIDsNote"),
-                                       cache: input.cache)
+                                       operableOnly: input.actionResponse, cache: input.cache)
         },
         Entry(key: "keyboardCoverageNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
             MCPServer.keyboardCoverageNote(input.snapshot)

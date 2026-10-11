@@ -163,3 +163,9 @@
 
 **検算**: マスク前後で `SweepHarnessTests` / `NoteCoverageTests` / `MCPSelectorDurabilityTests` の
 基準値が**1つも動かない**ことを確認済み。次に実文言を含む画面を採るときも同じ規約で落とすこと。
+
+**2026-10-11 に足した1枚**(`duplicateRegionNote` の誤検知の witness):
+
+| ファイル | アーキタイプ | 由来 | 何を代表するか |
+|---|---|---|---|
+| `ios-maps_transit_boarding_cards` | dense-list | Apple マップの乗車案内(経路の詳細。発車時刻のカードが横に2枚) | **同じ構造の兄弟カードが x だけずれて並ぶ**形。`OccupancyAndExitStackView` → `CarStackView` → アイコン3枚の6要素(名前も値も無い)が2枚で一致し、「同じ6要素が2回」と誤って言っていた。`DuplicateRegion.find` が**名前か値を持つ要素を含む並びだけ**を候補にする根拠 |

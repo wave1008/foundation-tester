@@ -15,6 +15,7 @@ extension MCPServer {
         // 全行の木を返し、宣言が嘘になった(計測のエージェントが指摘)
         let (args, inheritedNote) = inheritingSnapshotFilters(args)
         let snapshotDriver = try await driver(args)
+        let previousRead = lastSnapshots[Self.engineKey(args)]
         var snapshot: SnapshotResponse
         do {
             snapshot = try await freshSnapshot(snapshotDriver, args: args)
@@ -41,7 +42,10 @@ extension MCPServer {
             // (base 込みの ref を native ref と取り違えて比較するため)
             snapshot = waited.refetched ? adoptSnapshot(waited.snapshot, args: args) : waited.snapshot
             if !waited.found {
-                waitNote = Self.waitMissHeadline(waitFor, seconds: seconds, quietStopAfter: waited.quietStopAfter)
+                let explain = firstTime("waitMissExplained")
+                waitNote = Self.waitMissHeadline(waitFor, seconds: seconds, quietStopAfter: waited.quietStopAfter,
+                                                 explain: explain)
+                    + Self.appearedPromptNote(before: previousRead, now: snapshot)
                     + " — this is the screen as it is now\(Self.truncationHint(snapshot))"
                     + (waited.partialSeenAfter.map { seenAfter in
                         // **完全一致でなく部分一致が先に出た形を名指しする**: 満額待った理由
@@ -56,7 +60,7 @@ extension MCPServer {
                           // **部分一致が出ていたときは出さない**: そちらのほうが具体的な
                           // ヒントなので、的の外れた推測を並べて紛らわせない
                           + Self.similarLabelsHint(waitFor, in: snapshot)))
-                    + Self.waitForScrollHint(in: snapshot) + "\n"
+                    + Self.waitForScrollHint(in: snapshot, explain: explain) + "\n"
             }
         }
         // **プラットフォームはドライバの実体から採る**(profile 指定時は args["platform"] が
@@ -64,7 +68,7 @@ extension MCPServer {
         recordSnapshot(snapshot, snapshotDriver is AndroidDriver ? "android" : "ios", args)
         return text(withPendingWarnings(
             await snapshotBody(snapshot, driver: snapshotDriver, args: args,
-                               extraNote: inheritedNote + waitNote),
+                               extraNote: inheritedNote + waitNote, foldsSelectorTables: false),
             args: args))
     }
 

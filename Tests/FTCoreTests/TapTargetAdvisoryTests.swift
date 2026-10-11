@@ -401,6 +401,29 @@ final class TapTargetAdvisoryTests: XCTestCase {
         XCTAssertTrue(control?.contains("#Button") == true, control ?? "-")
     }
 
+    /// **容器に数 pt だけ掛かって残った行は、容器の外の見出しを覆わない**(実測・Apple マップの乗車案内: 先頭行が容器の
+    /// 上端に 4pt 掛かり、容器の上の「閉じる」を覆うと誤報した)。行の中心が容器の中にあるなら従来どおり
+    func testARowBarelyInsideTheScrollerDoesNotCoverTheHeaderAboveIt() {
+        let close = element(5, "TransitNavigationEndButton", "button", 336, 88, 44, 44, depth: 6)
+        var list = element(6, "TransitDirectionsListView", "scrollView", 0, 144, 402, 730, depth: 6)
+        list.scrollable = true
+        // **行にはラベルを付ける**(無ラベルの葉は `isBlankLeafContainer` で先に外れ、この判定を通らない = 対照が素通りする)
+        var leftover = element(7, "TransitDirectionsInstructionsStepView", "other", 0, 59, 402, 89, depth: 8)
+        leftover.label = "出発, 赤羽駅"
+        var sibling1 = element(12, "TransitDirectionsInstructionsStepView", "other", 0, 144, 402, 128, depth: 8)
+        sibling1.label = "JR 埼京線に乗車"
+        var sibling2 = element(34, "TransitDirectionsInstructionsStepView", "other", 0, 343, 402, 73, depth: 8)
+        sibling2.label = "武蔵浦和で降車"
+
+        let elements = [close, list, leftover, sibling1, sibling2]
+        XCTAssertNil(OcclusionGeometry.overlayCovering(close, in: elements, screen: screen))
+        // 対照: **容器の中身**(容器の子)が容器の中の点で後の行に覆われる形は、従来どおり言う
+        // (容器の外の要素に置くと `scrollContentUnderOverlay` = 見出しの下をくぐる形の除外に入る)
+        let inside = element(8, "inside", "button", 336, 150, 44, 44, depth: 9)
+        XCTAssertEqual(OcclusionGeometry.overlayCovering(inside, in: [list, inside, leftover, sibling1, sibling2],
+                                                         screen: screen)?.ref, 12)
+    }
+
     /// **ゲート**: 上のクロムの下へスクロールで潜っている疑い(2026-08-14・iOS カレンダーで実測)。
     /// ナビバーは木の**前**にあるので `drawnAbove` が false になり遮蔽として名指しされない ——
     /// その死角を拾って `AppDriver.hittable` へ聞きに行く入口

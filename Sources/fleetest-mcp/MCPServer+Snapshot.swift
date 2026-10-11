@@ -380,8 +380,13 @@ extension MCPServer {
     /// `extraNote` は ft_snapshot の waitFor 用(すり替わりの直後・他の注記より前に置く)。
     /// `cache` は計測用の注入口(既定 nil = 呼ぶたびに新しく作る、production の全経路がこちら)。
     /// **snapshot を跨いで渡さない**——SnapshotAnnotationCache のコメント参照
+    /// `foldsSelectorTables`: 曖昧ラベル・重複 id の表の明細(要素ごとの代替セレクタ)を畳むか。**ft_snapshot だけ
+    /// false**(セレクタを書くために読む口)。操作の応答では畳む —— 計測4回続けて全エージェントが「毎回長い・読み飛ばす」と
+    /// 指摘し、量は木の本体と同じくらいあった。事実(×N で一意に指せない)は残り、撃った要素のセレクタは ft_tap が出す。
+    /// **既定値を置かない**(新しい呼び口に決めさせる)
     func snapshotBody(_ snapshot: SnapshotResponse, driver: AppDriver,
                               args: [String: Any], extraNote: String = "",
+                              foldsSelectorTables: Bool,
                               cache: SnapshotAnnotationCache? = nil) async -> String {
         let cache = cache ?? SnapshotAnnotationCache()
         // **背面のアプリのツリーを「今の画面」として返さない**: XCUITest の snapshot は
@@ -417,7 +422,16 @@ extension MCPServer {
         if systemAlertProbePending.contains(alertKey) {
             systemAlertProbePending.remove(alertKey)
             let alert = await Self.systemAlertNote(driver: driver)
-            if !alert.isEmpty { alertNote = alert + "\n" }
+            if !alert.isEmpty {
+                alertNote = alert + "\n"
+                // **出ている間は次の応答でも確かめる**(閉じるまで木を伏せ続ける)。閉じたら照会も止む
+                systemAlertProbePending.insert(alertKey)
+            }
+        }
+        // **アラートが前面にある間はアプリの木を出さない**(ユーザー決定): 背面の木は押せない要素の一覧で、
+        // 読み手はそこから次の手を探してしまう。注記(木から決まるもの)も背面の木の話なので出さない
+        if !alertNote.isEmpty {
+            return switchedNote + alertNote + extraNote + backgroundNote
         }
         // **ghostNote と render で畳みの有無を揃える**: 片方だけ expandBulk を無視すると、
         // 注記は「畳んだ」と言うのに木は個別列挙、という食い違いになる
@@ -437,9 +451,19 @@ extension MCPServer {
                        + Self.shorteningAdvice(snapshot, cache: cache) + "\n",
                    short: "")
             : ""
+        if let inAppAlert = AlertTreeScope.frontInAppAlert(in: snapshot) {
+            return switchedNote + ceilingNote + extraNote + backgroundNote
+                + Self.inAppAlertNote(inAppAlert, in: snapshot)
+                + SnapshotRenderer.render(AlertTreeScope.alertOnly(inAppAlert, in: snapshot), flagging: [:],
+                                          collapsingBulk: collapsingBulk, interactiveOnly: false,
+                                          unit: Self.coordinateUnit(driver))
+        }
         return switchedNote + alertNote + ceilingNote + extraNote + backgroundNote
             + catalogNotes(NoteCatalog.Input(snapshot: snapshot, collapsingBulk: collapsingBulk,
-                                             cache: cache), context: .snapshot)
+                                             cache: cache,
+                                             brief: Self.briefKeys(foldsSelectorTables: foldsSelectorTables),
+                                             actionResponse: foldsSelectorTables),
+                           context: .snapshot)
             + SnapshotRenderer.render(snapshot, flagging: cache.ghostFlags(snapshot),
                                       collapsingBulk: collapsingBulk,
                                       interactiveOnly: args["interactiveOnly"] as? Bool == true,
@@ -669,8 +693,11 @@ extension MCPServer {
                     && beforeAction.map { Self.looksUnchanged($0, snapshot) } == true
                 let dialogHint = unchangedSinceAction
                     ? await Self.systemDialogHint(engine: engines[Self.engineKey(args)], driver: snapshotDriver) : ""
+                let explainMiss = waited.found ? false : firstTime("waitMissExplained")
                 waitNote = waited.found ? "waitFor \"\(waitFor)\" appeared.\n"
-                    : Self.waitMissHeadline(waitFor, seconds: seconds, quietStopAfter: waited.quietStopAfter)
+                    : Self.waitMissHeadline(waitFor, seconds: seconds, quietStopAfter: waited.quietStopAfter,
+                                            explain: explainMiss)
+                        + Self.appearedPromptNote(before: beforeAction, now: snapshot)
                         + " — this is the screen as it is now\(Self.truncationHint(snapshot))"
                         + (waited.partialSeenAfter.map { seenAfter in
                             " — a partial match was already on screen \(Int(seenAfter.rounded()))s"
@@ -678,7 +705,7 @@ extension MCPServer {
                                 + " appeared, so the wait ran to the deadline"
                         } ?? (Self.notationHint(waitFor, in: snapshot)
                               + Self.similarLabelsHint(waitFor, in: snapshot)))
-                        + Self.waitForScrollHint(in: snapshot)
+                        + Self.waitForScrollHint(in: snapshot, explain: explainMiss)
                         // **操作の効果も疑う**(監査): waitFor はここでしか「操作前の木」
                         // を持たない(ft_snapshot 単独には操作前が無い)。判定は settle-lite/
                         // waitForChange と同じ looksUnchanged を再利用する(2つ目の同一性判定を書かない)
@@ -739,10 +766,12 @@ extension MCPServer {
                 snapshot = reread
             }
             recordSnapshot(snapshot, snapshotDriver is AndroidDriver ? "android" : "ios", args)
-            // waitFor 済みなら「待たずに読んだ」前提の immediateReadNote は誤解を招くので出さない
-            let readNote = waitNote.isEmpty ? immediateReadNote() : ""
+            // waitFor / waitForChange / 撮り直し(settleNote)の後の木は「待たずに読んだ」のではないので immediateReadNote を
+            // 出さない(計測で指摘: waitForChange が成立した応答に「操作の直後に読んだ」と付いていた)
+            let readNote = waitNote.isEmpty && settleNote.isEmpty ? immediateReadNote() : ""
             let body = "\n\n" + inheritedNote + waitNote + settleNote + readNote
-                + (await snapshotBody(snapshot, driver: snapshotDriver, args: effectiveArgs))
+                + (await snapshotBody(snapshot, driver: snapshotDriver, args: effectiveArgs,
+                                      foldsSelectorTables: true))
             return (body, true)
         } catch {
             let body = "\n\n(snapshotAfter could not read the screen:"
@@ -750,6 +779,20 @@ extension MCPServer {
                 + " take an ft_snapshot yourself)"
             return (body, false)
         }
+    }
+
+    /// アプリ内のアラートの注記(木はアラートの部分木だけ = `AlertTreeScope`)
+    static func inAppAlertNote(_ alert: ElementInfo, in snapshot: SnapshotResponse) -> String {
+        let buttons = AlertTreeScope.buttonLabels(of: alert, in: snapshot)
+        return "note: \(RefGuard.describe(alert)) is in front of the app"
+            + (buttons.isEmpty ? "" : " (buttons: " + buttons.map { "\"\($0)\"" }.joined(separator: " / ") + ")")
+            + ". The screen behind it is left out of the list below — nothing there can be reached until the"
+            + " alert is closed. Handle the alert first: ft_tap one of its buttons by ref.\n"
+    }
+
+    /// 明細を畳む注記の鍵(`FT_MCP_NOTES_BRIEF` の指定に足す)
+    static func briefKeys(foldsSelectorTables: Bool) -> Set<String> {
+        foldsSelectorTables ? NoteCatalog.brief.union(["ambiguousLabelsNote", "duplicateIDsNote"]) : NoteCatalog.brief
     }
 
     /// 何も読めない木か(要素が無い、または全要素が interactiveOnly で隠れるレイアウト専用)。判定は描画側の
@@ -816,8 +859,10 @@ extension MCPServer {
             // 済んでいることを先に言い、残る唯一の疑い(静止した読み込み中)と、
             // それに効く**別の**手(waitFor)を名指しする
             note += once("waitForChangeFirstReadNote",
-                full: "note: the difference was already present on the first"
-                    + " read, so no transition was observed. The tree was still"
+                // 「遷移は観測されなかった」と書くと、遷移が確かに起きた場面で誤読される(計測で指摘)。
+                // 言いたいのは「読む前に終わっていた」
+                full: "note: the change had already completed by the first"
+                    + " read (the difference was there from the start), so there was no transition to watch. The tree was still"
                     + " re-read until it stopped changing, so reading it again"
                     + " now returns the same thing — another ft_snapshot will not"
                     + " tell you more. What this cannot rule out is a screen that"
@@ -905,9 +950,9 @@ extension MCPServer {
     /// 聞く)/ 出ていないときは黙る
     static func systemAlertNote(driver: AppDriver) async -> String {
         guard let what = await frontSystemAlert(driver: driver) else { return "" }
-        return "note: \(what) is in front of the app — the tree below is the app behind it;"
-            + " a user cannot reach any of it and the alert is drawn by SpringBoard so it never"
-            + " appears here. \(handleAlertFirst)."
+        return "note: \(what) is in front of the app. The app's element list is left out while it is up —"
+            + " nothing in the app can be reached until the alert is closed, and the alert is drawn by"
+            + " SpringBoard so it never appears in the list. \(handleAlertFirst)."
     }
 
     /// **中心がソフトキーボードの下にある要素への ref 操作は断る**(ユーザー決定)。
@@ -1622,7 +1667,8 @@ extension MCPServer {
                 + truncatedDuringSearch
                 + Self.scrollTimingNote(totalMs: Int((timingClock.now - timingStart)
                                                      / .milliseconds(1)),
-                                        swipes: outcome.scrollSwipes, rescueMs: rescueMs)
+                                        swipes: outcome.scrollSwipes, rescueMs: rescueMs,
+                                        timing: outcome.timing)
                 + "scrollTo \"\(selectorText)\" did not reach the element"
                 + " (\(reason))\(manualExpand)\(Self.truncationHint(after))."
                 + " \(Self.visibleLabelsHint(after))"
@@ -1717,17 +1763,28 @@ extension MCPServer {
         let collapsingBulk = treeArgs["expandBulk"] as? Bool != true
         let totalMs = Int((timingClock.now - timingStart) / .milliseconds(1))
         let timingNote = Self.scrollTimingNote(totalMs: totalMs, swipes: outcome.scrollSwipes,
-                                               rescueMs: rescueMs)
+                                               rescueMs: rescueMs, timing: outcome.timing)
         // **ghostNote と render で ghostFlags を共有**: 同じ `after` に対する
         // 応答1回ぶんのキャッシュ。SnapshotAnnotationCache のコメント参照(寿命はこの呼び出しだけ)
         let cache = SnapshotAnnotationCache()
+        // **アプリ内のアラートが前面なら、木はアラートの部分木だけ**(snapshotBody と同じ規律 = `AlertTreeScope`)
+        if let inAppAlert = AlertTreeScope.frontInAppAlert(in: after) {
+            return text(switched + scrollFrameLabelNote + sheetNote + timingNote
+                + Self.scrollToHeadline(selectorText, swipes: outcome.scrollSwipes) + "\(landed)\(fallbackNote).\n"
+                + Self.inAppAlertNote(inAppAlert, in: after)
+                + SnapshotRenderer.render(AlertTreeScope.alertOnly(inAppAlert, in: after), flagging: [:],
+                                          collapsingBulk: collapsingBulk, interactiveOnly: false,
+                                          unit: Self.coordinateUnit(scrollDriver)))
+        }
         return text(switched + scrollFrameLabelNote + sheetNote + timingNote
             + Self.scrollToHeadline(selectorText, swipes: outcome.scrollSwipes) + "\(landed)\(fallbackNote)."
             + " The refs below are fresh\n" + inheritedNote + scrollAreaNote
             // **ft_snapshot より少ない**(scrollFrame 候補・重複 id 系は出さない)。その差は
             // NoteCatalog の contexts が持つ = 2箇所の並びを読み比べる必要はない
             + catalogNotes(NoteCatalog.Input(snapshot: after, collapsingBulk: collapsingBulk,
-                                             cache: cache), context: .scrollTo)
+                                             cache: cache, brief: Self.briefKeys(foldsSelectorTables: true),
+                                             actionResponse: true),
+                           context: .scrollTo)
             // **既定で畳む**(expandBulk で戻せる): ft_scroll_to の答えは「探した1つがどこに居るか」
             // なので、地図のピンが数十行並ぶ意味は薄い。ft_snapshot と同じ規則にする
             // (ここだけ interactiveOnly を無視すると常に全行を出してしまう)

@@ -183,7 +183,9 @@ extension MCPServer {
             : " This session still has \(sorted.count) reachable \(unitNoun)"
                 + " (\(sorted.prefix(rememberedDeviceListCap).joined(separator: ", ")))."
         let crossed = otherPlatform.map {
-            " This session has also driven \($0), and no platform was given either."
+            // **サーバは複数の呼び手で共有されうる**(計測で2人のエージェントが1つのサーバを別のデバイスで使い、1台しか触っていない
+            // 呼び手に「この session は iOS も動かした」と言って意味が通らなかった)。誰が、ではなく何が動いているかを言う
+            " This server is also driving \($0) (possibly for another caller sharing it), and no platform was given either."
         } ?? ""
         return "no udid/port/serial given, and this session's earlier target is gone.\(left)\(crossed)"
             + " Refusing to fall back to whichever bridge happens to be running: that would operate"
@@ -226,7 +228,9 @@ extension MCPServer {
             driven = " This session has driven \(sorted.count) \(deviceNoun) (\(list))."
         }
         let crossed = otherPlatform.map {
-            " This session has also driven \($0), and no platform was given either."
+            // **サーバは複数の呼び手で共有されうる**(計測で2人のエージェントが1つのサーバを別のデバイスで使い、1台しか触っていない
+            // 呼び手に「この session は iOS も動かした」と言って意味が通らなかった)。誰が、ではなく何が動いているかを言う
+            " This server is also driving \($0) (possibly for another caller sharing it), and no platform was given either."
         } ?? ""
         return "no udid/port/serial given, and the target is not unique.\(driven)\(crossed)"
             + " Refusing to guess: picking the most recently used device silently would run this"

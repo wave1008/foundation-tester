@@ -713,7 +713,7 @@ extension MCPServer {
                 }
                 recordSnapshot(stopped, batchDriver is AndroidDriver ? "android" : "ios", args)
                 throw MCPError(lines.joined(separator: "\n") + stoppedNote
-                    + inheritedNote + (await snapshotBody(stopped, driver: batchDriver, args: treeArgs)))
+                    + inheritedNote + (await snapshotBody(stopped, driver: batchDriver, args: treeArgs, foldsSelectorTables: true)))
             }
             var okLine = "\(index + 1). \(plan.summary) — ok (\(ms)ms)"
             if case .passedViaFallback(let locator) = outcome.status {
@@ -736,14 +736,19 @@ extension MCPServer {
                                                 elementLimit: try pollElementLimit(args))
             let final = waited.refetched ? adoptSnapshot(waited.snapshot, args: args) : waited.snapshot
             recordSnapshot(final, batchDriver is AndroidDriver ? "android" : "ios", args)
+            let explainMiss = waited.found ? false : firstTime("waitMissExplained")
             let waitNote = waited.found ? "waitFor \"\(waitFor)\" appeared.\n"
-                : Self.waitMissHeadline(waitFor, seconds: seconds, quietStopAfter: waited.quietStopAfter)
+                : Self.waitMissHeadline(waitFor, seconds: seconds, quietStopAfter: waited.quietStopAfter,
+                                        explain: explainMiss)
+                    // alert は batchAlertAppearedNote が先に言う(重ねない)
+                    + (Self.batchAlertAppearedNote(beforeBatch: beforeBatch, final: final).isEmpty
+                       ? Self.appearedPromptNote(before: beforeBatch, now: final) : "")
                     + " — this is the screen as it is now"
                     + Self.truncationHint(final) + Self.notationHint(waitFor, in: final)
                     + Self.similarLabelsHint(waitFor, in: final) + "\n"
             return text(lines.joined(separator: "\n") + "\n\nAll \(plans.count) step(s) passed.\n\n"
                 + Self.batchAlertAppearedNote(beforeBatch: beforeBatch, final: final)
-                + waitNote + inheritedNote + (await snapshotBody(final, driver: batchDriver, args: treeArgs)))
+                + waitNote + inheritedNote + (await snapshotBody(final, driver: batchDriver, args: treeArgs, foldsSelectorTables: true)))
         }
         let (unchangedNote, final) = try await Self.batchUnchangedNote(
             beforeBatch: beforeBatch, final: try await freshSnapshot(batchDriver, args: args),
@@ -756,7 +761,7 @@ extension MCPServer {
         recordSnapshot(final, batchDriver is AndroidDriver ? "android" : "ios", args)
         return text(lines.joined(separator: "\n") + "\n\nAll \(plans.count) step(s) passed.\n\n"
             + Self.batchAlertAppearedNote(beforeBatch: beforeBatch, final: final)
-            + unchangedNote + inheritedNote + (await snapshotBody(final, driver: batchDriver, args: treeArgs)))
+            + unchangedNote + inheritedNote + (await snapshotBody(final, driver: batchDriver, args: treeArgs, foldsSelectorTables: true)))
     }
 
     /// 宣言の手(`irregularHandler`)から実行器の割り込みハンドラを作る。DSL の `FTRuntime.addInterruptHandler`

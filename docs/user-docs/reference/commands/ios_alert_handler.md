@@ -91,6 +91,9 @@ the alert to clear (or be closed by a registered button), and fails with
 
 - The failure message lists the alert's actual buttons — since labels match exactly, this is
   the way to learn the correct string without capturing a fast-vanishing alert on video.
+- A failure that happens under a system alert leaves the app's element list out of the report
+  (nothing in it could be reached) and says so; the alert's title and buttons are in the failure
+  message instead.
 - This exists because the in-app engine's tap is a direct call, not an OS touch event — it
   would otherwise reach the app underneath a covering alert, something a real person could not
   do. Android is not affected (its element tree is rooted at the active window, so covered app

@@ -6,8 +6,10 @@
 // - private API 依存: セレクタは Xcode バージョンで変わりうるため候補を全て試し、1つも
 //   見つからなければ無効(available=false)として通常動作にフォールバックする。
 // - skipping / capArmed はリクエスト処理(main queue 直列。BridgeHTTPServer 参照)からのみ触ること。
-// - 注意: type(typeText)には適用しない。キーボード出現待ちを quiescence に依存しているため
-//   (BridgeRouter.handleType のコメント参照)、スキップすると入力欠落の実害が出る。
+// - **type / clear / pressEnter は待ちを飛ばさず、上限だけ縮める**(`QuiescenceWait.capping`。ヘッダで飛ばす口は無い)。
+//   キーボード出現待ちを quiescence に依存しているので飛ばすと入力欠落の実害が出るが、縮めないと落ち着かないアプリで
+//   打鍵1回ごとに XCTest の既定 60s を待つ(実測・Apple マップの経路画面: `Type` の後の "Wait for … to idle" が 60s ×2 で、
+//   その間ランナーは他の要求に答えられず、読み手は再試行を繰り返した)。キーボードの出現は 1s 以内(上限 6s はその数倍)。
 // - **タップ・ダブルタップ・長押しは既定で待ちを飛ばす**(QuiescenceWait.around の skipByDefault)。/drag と /systemui/* は `X-FT-Settle: 0` のときだけ通る(skippingQuiescenceIfRequested)
 // - **飛ばさない回(スワイプ = スクロールを含む)も、操作(QuiescenceWait.around の中)の間だけ待ちの上限を
 //   `quiescenceCapSeconds` に縮める**(cappedWait)。起動・前面化・入力の中の待ちは縮めない —— activate の中の待ちを
@@ -157,6 +159,15 @@ enum QuiescenceWait {
     /// **スワイプ(スクロールを含む)は false**(待ちを残す。慣性の終わりを木では見届けられず、RN の横スクロール E2E-RN S0090 が
     /// 6 回中 4 回落ちた —— 探索が対象を見つけて止まった後も慣性で流れて画面外へ出る。タップ系は 4 SUT で退行無し。
     /// 実測と経緯は docs/performance-tuning.md §8)。`skip: true` はどちらも飛ばす
+    /// **待ちは飛ばさず、上限だけ `quiescenceCapSeconds` に縮める**(type / clear / pressEnter 用。ヘッダ `X-FT-Settle` を見ない =
+    /// 打鍵の前の待ちはキーボードの出現を兼ねるので、利用者の `settle: false` でも飛ばさない)
+    static func capping<T>(_ body: () throws -> T) rethrows -> T {
+        guard available else { return try body() }
+        capArmed = true
+        defer { capArmed = false }
+        return try body()
+    }
+
     static func around<T>(skip: Bool, skipByDefault: Bool = false, _ body: () throws -> T) rethrows -> T {
         guard available, skip || skipByDefault else {
             capArmed = true

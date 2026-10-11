@@ -156,6 +156,13 @@ final class ScenarioReportWriterTests: XCTestCase {
         XCTAssertTrue(content.contains("a system alert was in front of the app"), content)
     }
 
+    /// システムアラートの下の失敗では要素一覧を伏せる(FTRuntime.handleFailure)。**伏せた理由を言う**
+    /// (黙って消すと取り損ねたのか省いたのか区別できない)。アラートが無ければ言わない
+    func testTheOmittedElementListUnderASystemAlertIsExplained() throws {
+        XCTAssertTrue(try reportForBlankEvidence(underSystemAlert: true).contains("element list is left out"))
+        XCTAssertFalse(try reportForBlankEvidence(underSystemAlert: false).contains("element list is left out"))
+    }
+
     // MARK: - notices(シナリオ全体の注意書き。M6: Android 実機の画面消灯を stderr だけでなく
     // レポートにも載せる)
 

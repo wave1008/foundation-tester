@@ -40,6 +40,15 @@ extension BridgeRouter {
     /// (実測1件: 高負荷で `Type '...' into "field_single" TextView` の Synthesize event を
     /// 最後にランナーが死んだ)。
     func handleType(_ body: Data) throws -> BridgeHTTPServer.Response {
+        _ = QuiescenceWait.takeCapNote()  // 前の操作の数え残しを捨てる(応答の注記はこの操作の分だけ)
+        // **待ちの上限を縮めて打つ**(QuiescenceWait の冒頭)。上限まで待った回は注記に残す(読み手が遅さの理由を読める)
+        let note = try QuiescenceWait.capping { try typeAndReadBack(body) }
+        return .json(OKResponse(note: [note, QuiescenceWait.takeCapNote()].compactMap { $0 }.joined(separator: "; ")
+            .nilIfEmpty))
+    }
+
+    /// `/type` の本体(戻り値は読み返しの注記)。待ちの上限は `handleType` が掛ける
+    private func typeAndReadBack(_ body: Data) throws -> String? {
         let req = try decode(TypeRequest.self, body)
         let app = try requireForegroundAppForInput()
         let focusBefore = focusBeforeTappingNonInput(app, ref: req.ref)
@@ -68,7 +77,7 @@ extension BridgeRouter {
             // 本文を入れ切ってから発火する(app 全体へ送るのは従来どおり。要素への typeText は
             // ランナーごと落ちうる)
             if hasTrailingNewline { app.typeText("\n") }
-            return .json(OKResponse(note: note))
+            return note
         }
         // **この分岐だけ焦点の有無を確かめる**(ライブクエリ = 上のコメントで避けている
         // コストそのものだが、検証つきの主経路には持ち込まない・この分岐だけで払う)。
@@ -94,10 +103,10 @@ extension BridgeRouter {
            TypeReadback.isTextInput(target), !TypeReadback.isMaskedInput(target) {
             let note = try performTypeReadback(app, target: target, main: main)
             app.typeText("\n")
-            return .json(OKResponse(note: note))
+            return note
         }
         app.typeText(req.text)
-        return .json(OKResponse())
+        return nil
     }
 
     /// `/type` の読み返しループ本体。ref 経路(`refElements` から引いた対象)・焦点経由
@@ -344,6 +353,12 @@ extension BridgeRouter {
     /// Flutter はタップからフォーカス移動までが非同期で、直後は前の欄や無焦点が見える
     /// (`awaitClearFocusTarget` 参照。InAppBridge.requireFocusMoved と同じ設計)。
     func handleClear(_ body: Data) throws -> BridgeHTTPServer.Response {
+        _ = QuiescenceWait.takeCapNote()
+        try QuiescenceWait.capping { try clearFocusedInput(body) }   // 上限は handleType と同じ理由
+        return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
+    }
+
+    private func clearFocusedInput(_ body: Data) throws {
         let req = try decode(ClearRequest.self, body)
         let app = try requireForegroundAppForInput()
         let focused: XCUIElement
@@ -433,7 +448,6 @@ extension BridgeRouter {
         // 取るので、clear → type を撮り直さずに続けると clear 前の値を期待に足して再送し、
         // 消したはずの文字列が戻る(実機 iPhone 13・2026-08-31: replace で `   モバイル   `)
         if let ref = req.ref { refElements[ref]?.value = nil }
-        return .json(OKResponse())
     }
 
     /// ref を渡された clear の焦点待ち(FocusWait.waitSeconds が上限・FocusWait.pollSeconds が刻み。
@@ -510,4 +524,8 @@ extension BridgeRouter {
         if let placeholder = element.placeholderValue, value == placeholder { return nil }
         return value
     }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

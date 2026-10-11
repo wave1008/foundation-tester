@@ -122,15 +122,55 @@ extension MCPServer {
     /// 逃げ道は払った場所で言う(`SnapshotTruncation.remedy` と同じ規律)
     /// waitFor が外れたときの見出し(ft_snapshot・snapshotAfter・ft_batch が共有)。**切り上げたなら、そう言う** ——
     /// 黙って「現れなかった」とだけ言うと、読み込みの遅い画面で誤った「無い」として読まれる
-    static func waitMissHeadline(_ waitFor: String, seconds: Double, quietStopAfter: Double?) -> String {
+    /// `explain`: 逃げ道の説明(waitForChange・waitSeconds)を付けるか。**デバイスごとに初回だけ**(呼び手が
+    /// `firstTime("waitMissExplained")` を渡す。同じ長文が1計測で3回出ていた)
+    static func waitMissHeadline(_ waitFor: String, seconds: Double, quietStopAfter: Double?,
+                                 explain: Bool = true) -> String {
         guard let stopped = quietStopAfter else {
-            return "waitFor \"\(waitFor)\" did not appear within \(secondsText(seconds))" + waitTimeoutRemedy
+            return "waitFor \"\(waitFor)\" did not appear within \(secondsText(seconds))"
+                + (explain ? waitTimeoutRemedy : "")
         }
         return "waitFor \"\(waitFor)\" did not appear — the screen had not changed for"
             + " \(secondsText(waitForQuietCutoffSeconds)), so the wait stopped after \(secondsText(stopped))"
-            + " instead of running to the \(secondsText(seconds)) cap (if it is still loading without changing"
-            + " the screen, wait with waitForChange: true)"
+            + " instead of running to the \(secondsText(seconds)) cap"
+            + (explain ? " (if it is still loading without changing the screen, wait with waitForChange: true)" : "")
     }
+
+    /// **待ちが外れたとき、前面に新しく出たものを名指しする**(待ちは足さない = 外れた応答に事実を足すだけ)。
+    /// 実測(Apple マップ): 操作の後に遅れて出た通知の全面シートと「安全に目的地に到達するために」に3回ぶつかり、
+    /// 待ちが外れても木を読み直すまで気付かなかった(1回あたり待ち約4秒 + 思考約3秒)。
+    /// ①操作前に無かった alert → 名前とボタン ②操作前に無かったラベルの操作子だけが `appearedPromptMaxButtons` 個以下
+    /// しか無い画面 → そのボタン(型の無い全面シートはこの形でしか見えない)。比べる木(操作前・前回の読み)が無ければ言わない
+    static func appearedPromptNote(before: SnapshotResponse?, now: SnapshotResponse) -> String {
+        guard let before else { return "" }
+        let earlierAlerts = Set(before.elements.filter { ElementInfo.normalizedType($0.type) == "alert" }
+            .map { $0.label ?? "" })
+        func buttonLabels(_ elements: [ElementInfo]) -> [String] {
+            elements.filter { BridgeSnapshotThinning.operableTypes.contains($0.type) }
+                .compactMap { $0.label.map(SnapshotRenderer.displayText) }.filter { !$0.isEmpty }
+        }
+        // **木を伏せる側と同じ判定**(`AlertTreeScope.frontInAppAlert` = いちばん手前・描かれているもの)。別に数えると
+        // 注記と木で別のアラートを指す
+        if let alert = AlertTreeScope.frontInAppAlert(in: now), !earlierAlerts.contains(alert.label ?? "") {
+            let buttons = AlertTreeScope.buttonLabels(of: alert, in: now)
+            // `describe` が型名(alert)を含むので「an alert」を重ねない(計測で "an alert alert" と指摘)
+            return " — \(RefGuard.describe(alert)) has come up since the previous read"
+                + (buttons.isEmpty ? "" : " (buttons: " + buttons.map { "\"\($0)\"" }.joined(separator: " / ") + ")")
+                + "; it may be what is in the way"
+        }
+        let buttons = buttonLabels(now.elements)
+        let earlierButtons = buttonLabels(before.elements)
+        let earlierLabels = Set(before.elements.compactMap { $0.label.map(SnapshotRenderer.displayText) })
+        // **「全部が新しい」を求めない**(実測: 通知の販促シートの「閉じる」は前の画面にもあり、黙った)。
+        // 押せる物が減って(= 画面が置き換わった)、そのうち1つでも前に無かったなら言う
+        guard (1...appearedPromptMaxButtons).contains(buttons.count), earlierButtons.count > buttons.count,
+              buttons.contains(where: { !earlierLabels.contains($0) }) else { return "" }
+        return " — the screen now offers only " + buttons.map { "\"\($0)\"" }.joined(separator: " / ")
+            + " (fewer than before, and not all of them were in the previous read): a prompt or sheet may have come up in front"
+    }
+    /// 「前面に出たもの」とみなす操作子の上限。**根拠**: 実測の全面シートは2個(通知を有効にする / 今はしない)、
+    /// アプリ内 alert のボタンは1〜3個。普通の画面は操作子がこれより多い。**尽きたとき**: 注記が出ないだけ
+    static let appearedPromptMaxButtons = 3
 
     static let waitTimeoutRemedy =
         " (waitSeconds: <seconds> sets this cap — a smaller one to find out sooner,"
@@ -157,10 +197,17 @@ extension MCPServer {
             : "scrolled to \"\(selectorText)\""
     }
 
-    static func scrollTimingNote(totalMs: Int, swipes: Int?, rescueMs: Int?) -> String {
+    /// `timing` は探索の段階ごとの積算(木の読み・ジェスチャ・待ち)。遅い探索の時間がどこへ行ったかを言う
+    /// (実測: 目的の語が無い探索が 3 スワイプで 15.9 秒・6 スワイプで 38 秒かかり、内訳が読めなかった)
+    static func scrollTimingNote(totalMs: Int, swipes: Int?, rescueMs: Int?, timing: StepTiming?) -> String {
         guard totalMs >= scrollTimingNoteThresholdMs || rescueMs != nil else { return "" }
         var parts: [String] = []
         if let swipes { parts.append("\(swipes) swipe(s)") }
+        if let timing {
+            let phases = [("reading the tree", timing.snapshotMs), ("gestures", timing.actionMs), ("waiting", timing.waitMs)]
+                .compactMap { name, ms in ms.flatMap { $0 > 0 ? "\(name) \(Self.elapsedText(milliseconds: Double($0)))" : nil } }
+            if !phases.isEmpty { parts.append(phases.joined(separator: ", ")) }
+        }
         if let rescueMs {
             parts.append("sheet-expand rescue +\(Self.elapsedText(milliseconds: Double(rescueMs)))")
         }
@@ -779,8 +826,9 @@ extension MCPServer {
     /// **ft_snapshot(MCPServer+ScreenTools.swift)と snapshotAfter(MCPServer+Snapshot.swift)の
     /// 両方が呼ぶ唯一の定義元**(片方だけ変わる事故を防ぐ)。スクロール容器が1つも申告されて
     /// いない画面ではスクロールが答えになり得ないので黙る
-    static func waitForScrollHint(in snapshot: SnapshotResponse) -> String {
+    static func waitForScrollHint(in snapshot: SnapshotResponse, explain: Bool = true) -> String {
         guard !ScrollFrameCandidates.candidates(in: snapshot).isEmpty else { return "" }
+        guard explain else { return " — if the target is further down, use ft_scroll_to." }
         return " — waitFor only looks at what is currently rendered: if the target is further down,"
             + " use ft_scroll_to (it searches by scrolling)."
     }

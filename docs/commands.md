@@ -1054,6 +1054,9 @@ may have been swallowed by it (nothing was re-sent: repeating it could double-fi
 毎回同じ答えでよいなら、実行プロファイルに**押してよいラベルを並べる**と自動で押す(下記)。
 **XCUITest を通る操作がアラートに遮られたときも押さない** —— その操作は届かず、ランナーが 422 で
 「a system alert is in front of the app (title: …, buttons: …)」と名指しして失敗する(撃ち直さない)。
+**システムアラートの下で失敗した回のレポートはアプリの要素一覧を載せない**(どれも押せなかった画面なので、
+読むと原因を取り違える。伏せた理由はレポートに1行出る。アプリ内の alert ならその部分木だけ載せる。
+判定は MCP と共有の `FTCore.AlertTreeScope`)。
 XCTest の既定の割り込みハンドラ(ボタンを押して撃ち直す。「許可」も押す)は止めてある
 (`Runner/FleetestRunnerUITests/InterruptionGuard.swift`)。
 

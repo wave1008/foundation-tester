@@ -1635,7 +1635,14 @@ public final class FTDriveCore {
         }
         let context = FTSync.run { () async -> (Data?, Bool, String?) in
             let snapshot = try? await driver.snapshot()
-            let elementsText = snapshot.map { SnapshotRenderer.render($0) }
+            // **アラートが前面にある失敗では、背面のアプリの要素一覧を載せない**(MCP と同じ規律 = `AlertTreeScope`):
+            // 押せなかった画面の一覧を読むと「対象はあったのに撃てなかった」と原因を取り違える。システムアラートは
+            // 一覧ごと伏せ(原因は失敗文言とスクショが言う)、アプリ内のアラートはその部分木だけを残す
+            let elementsText: String? = systemAlertPresent ? nil : snapshot.map { snapshot in
+                AlertTreeScope.frontInAppAlert(in: snapshot)
+                    .map { SnapshotRenderer.render(AlertTreeScope.alertOnly($0, in: snapshot)) }
+                    ?? SnapshotRenderer.render(snapshot)
+            }
             var screenshot = await takeScreenshot()
             var evidenceBlank = false
             if inferFrozenFromBlankFrame, let shot = screenshot,

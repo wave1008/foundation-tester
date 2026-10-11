@@ -173,6 +173,14 @@ final class SweepHarnessTests: XCTestCase {
         "ios-maps_transit_steps_expanded": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 4,
                                                   disabled: 0, offscreen: 2, warnedTappable: 3,
                                                   keyboard: 0, sliver: 0, nested: 0, scrolledOut: 5),
+        // 2026-10-11 採取(`duplicateRegionNote` の誤検知の witness。README 参照)。
+        // overlay 1 = `#DetailButton` ← `#PrimaryAccessoryLabel`(時刻の文字が詳細ボタンの中心に載る。expanded と同じ形)。
+        // **申告容器の切り抜きで消えた2件**(`#CardHeader` / `#TransitNavigationEndButton` ← 容器に 4pt だけ掛かって残った先頭行)
+        // は誤検知(タップは閉じるに当たった = 実測)。offscreen 14 は横に2枚目の時刻カード(x=340.. 中心 462 > 画面幅 402)。
+        // scrolledOut 4 は先頭行の子(容器の上へ抜けた行)。misses 7 は文字だけの塊の隙間
+        "ios-maps_transit_boarding_cards": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 7, disabled: 0,
+                                                  offscreen: 14, warnedTappable: 3, keyboard: 0, sliver: 0,
+                                                  nested: 0, scrolledOut: 4),
         // 2026-08-12 採取。**チャット + ソフトキーボード**(会話を開いて入力欄に焦点)。
         // タップ対象が無い画面という点は変わらない ——「何も出ない実アプリの画面」の供給源
         // (検知が常に何か出す装置になっていないことの陰性対照)。
@@ -304,8 +312,11 @@ final class SweepHarnessTests: XCTestCase {
         //     外側の中心を横取りする = nested 13。いずれも実描画どおりで、撃てば内側/手前に当たる。
         // **web ページは「画面の下 1/4 がブラウザ chrome と広告」が常態**なので密度が高くなる
         // (testWarningDensityStaysLow の免除表を参照)
-        "ios-browser_nationwide": Counts(ghost: 0, overlay: 22, stacked: 0, misses: 0, disabled: 0,
-                                         offscreen: 3, warnedTappable: 35, keyboard: 0, sliver: 0,
+        // overlay 22→21 / warnedTappable 35→34: 消えた1件(`link "32/23"` ← `link "東海北陸近畿"`)は対象の中心が
+        // 画面の下端(y=874.5 = 画面高 874 の外)で、覆いの側は全画面 scrollView の子 = 容器の外の点は覆えない
+        // (`OcclusionGeometry.occluder` の申告容器の切り抜き)。対象自体が画面外で、警告は offscreen 側が担う
+        "ios-browser_nationwide": Counts(ghost: 0, overlay: 21, stacked: 0, misses: 0, disabled: 0,
+                                         offscreen: 3, warnedTappable: 34, keyboard: 0, sliver: 0,
                                          nested: 13, scrolledOut: 0),
         // 同上 + **スタートページのオーバーレイが背後の WebView 本文を覆う**形。
         // overlay 64 のうち 55 はカード群(#favoritesItemIdentifierContent 33 /
@@ -317,8 +328,11 @@ final class SweepHarnessTests: XCTestCase {
         // 旧の容器推定が `link (140,65 134x17)` を容器と取り違えて立てていた**誤検知**で、
         // 容器推定が scrollable 申告の祖先(scrollView)を優先するようになって消えた。
         // 同じ2件は被覆(overlay)として残る = 件数の移動であって検知の消失ではない
-        "ios-browser_startpage": Counts(ghost: 0, overlay: 66, stacked: 0, misses: 0, disabled: 1,
-                                        offscreen: 4, warnedTappable: 67, keyboard: 55, sliver: 0,
+        // overlay 66→63 / warnedTappable 67→66(申告容器の切り抜き): 消えた3件はどれも対象の中心が画面の下端より下
+        // (`link "32/23"` y=874.5・`link "東海北陸近畿"` y=908.5・無名 link)で、覆いの側(リンク・スタートページのカード)は
+        // 全画面の scrollView / collectionView の子 = その点には描けない。対象は画面外で offscreen 側が担う
+        "ios-browser_startpage": Counts(ghost: 0, overlay: 63, stacked: 0, misses: 0, disabled: 1,
+                                        offscreen: 4, warnedTappable: 66, keyboard: 55, sliver: 0,
                                         nested: 13, scrolledOut: 0),
         // Android の web は検知がほとんど出ない(a11y 木が浅く、覆う要素が申告されない)。
         // overlay 1 = `button "さらに表示" ← link "13106"` は **確認済みの誤検知**:
@@ -594,9 +608,10 @@ final class SweepHarnessTests: XCTestCase {
     /// 覆ったまま木に残る」が常態で、**画面が本当に大半塞がっている** —— 検知の質の問題ではない
     static let densityExemptions: [String: Int] = [
         // 内訳は baselines の当該コメント(広告帯・Safari ツールバー・HTML 入れ子リンク)
-        "ios-browser_nationwide.json": 39,
+        // 39→38 / 63→62: 申告容器の切り抜きで消えた overlay(対象の中心が画面の下端より下。baselines の当該コメント)
+        "ios-browser_nationwide.json": 38,
         // 内訳は同上 + スタートページのカードが背後の WebView 本文を覆う
-        "ios-browser_startpage.json": 63,
+        "ios-browser_startpage.json": 62,
         // **分母が6しかない画面**。半開きシートの経路詳細はタップ対象が
         // `#DetailButton`×3・「閉じる」・「さらに表示」・グラバーの6個だけで、警告2件で 33% に
         // 乗る。2件とも検分済みの真陽性(容器の外へ出た leftover の `#DetailButton` と、

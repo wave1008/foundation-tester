@@ -27,9 +27,10 @@ final class SystemAlertSnapshotNoteTests: XCTestCase {
     /// タイトル・ボタンは受け手報告の実例(実機 iPhone 13・ローカルネットワークアラート)
     private static let expectedNote =
         "note: a system alert (\"“SUT Store”がローカルネットワーク上のデバイスを見つけることを"
-        + "許可しますか?\", buttons: \"許可しない\" / \"許可\") is in front of the app — the tree"
-        + " below is the app behind it; a user cannot reach any of it and the alert is drawn by"
-        + " SpringBoard so it never appears here. Handle the alert first: `ft_tap alertButton: \"<button>\"`"
+        + "許可しますか?\", buttons: \"許可しない\" / \"許可\") is in front of the app. The app's element"
+        + " list is left out while it is up — nothing in the app can be reached until the alert is closed,"
+        + " and the alert is drawn by SpringBoard so it never appears in the list. Handle the alert first:"
+        + " `ft_tap alertButton: \"<button>\"`"
         + " presses one of its buttons and returns to your app."
 
     /// ft_launch の直後、最初の ft_snapshot はアラートを名指しする
@@ -44,19 +45,61 @@ final class SystemAlertSnapshotNoteTests: XCTestCase {
     }
 
     /// 一度読んだら消費され、2回目の ft_snapshot には出ない。probe 自体も1回しか撃たれない
-    /// (登録があるからといって毎回 /systemalert を往復させない)
-    func testSecondSnapshotDoesNotRepeatTheNoteAndProbesOnlyOnce() async throws {
+    /// (登録があるからといって毎回 /systemalert を往復させない)。**出ている間は確かめ続けて木を伏せる**
+    /// (ユーザー決定: アラートの間の背面の木は押せない要素の一覧で意味が無い)。閉じたら照会も止む
+    func testTheTreeIsOmittedWhileTheAlertIsUpAndProbingStopsAfterItCloses() async throws {
+        driver.snapshotResponse = SnapshotResponse(sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+            elements: [ElementInfo(ref: 1, type: "button", identifier: "behind", label: "背面", value: nil,
+                                   placeholder: nil, enabled: true, frame: FTRect(x: 0, y: 100, width: 100, height: 44),
+                                   depth: 1)], truncatedCount: 0)
         driver.scriptedSystemAlert = SystemAlertProbeResponse(
             present: true, title: "位置情報の利用を許可しますか?", buttons: ["許可", "許可しない"])
         _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.example.app"])
-        let first = try await server.call(tool: "ft_snapshot", args: [:])
-        XCTAssertTrue(combinedText(first).contains("note: a system alert"), combinedText(first))
+        let first = combinedText(try await server.call(tool: "ft_snapshot", args: [:]))
+        XCTAssertTrue(first.contains("note: a system alert"), first)
+        XCTAssertFalse(first.contains("id=behind"), "アラートの間に背面の木を出した: \(first)")
 
-        let second = try await server.call(tool: "ft_snapshot", args: [:])
-        XCTAssertFalse(combinedText(second).contains("note: a system alert"), combinedText(second))
+        let stillUp = combinedText(try await server.call(tool: "ft_snapshot", args: [:]))
+        XCTAssertTrue(stillUp.contains("note: a system alert"), stillUp)
+        XCTAssertFalse(stillUp.contains("id=behind"), stillUp)
 
-        XCTAssertEqual(driver.calls.filter { $0 == "systemAlert" }.count, 1,
-                       "\(driver.calls)")
+        driver.scriptedSystemAlert = SystemAlertProbeResponse(present: false, title: nil, buttons: [])
+        let closed = combinedText(try await server.call(tool: "ft_snapshot", args: [:]))
+        XCTAssertTrue(closed.contains("id=behind"), closed)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        XCTAssertEqual(driver.calls.filter { $0 == "systemAlert" }.count, 3, "\(driver.calls)")
+    }
+
+    /// **アプリ内の alert が出ている間は、木をアラートの部分木だけにする**(背面は押せない)
+    func testAnInAppAlertShowsOnlyTheAlertSubtree() async throws {
+        func el(_ ref: Int, _ type: String, _ label: String, depth: Int) -> ElementInfo {
+            ElementInfo(ref: ref, type: type, identifier: nil, label: label, value: nil, placeholder: nil,
+                        enabled: true, frame: FTRect(x: 40, y: Double(100 + ref * 50), width: 300, height: 44), depth: depth)
+        }
+        driver.snapshotResponse = SnapshotResponse(sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+            elements: [el(1, "button", "背面のボタン", depth: 1), el(2, "alert", "安全に目的地に到達するために", depth: 1),
+                       el(3, "button", "OK", depth: 2)], truncatedCount: 0)
+        let text = combinedText(try await server.call(tool: "ft_snapshot", args: [:]))
+        XCTAssertTrue(text.contains("buttons: \"OK\""), text)
+        XCTAssertTrue(text.contains("[3] button \"OK\""), text)
+        XCTAssertFalse(text.contains("背面のボタン"), text)
+    }
+
+    /// **ft_scroll_to も、アプリ内のアラートが前面なら木をアラートの部分木だけにする**(自前で木を描く口なので別に配線が要る)
+    func testScrollToAlsoShowsOnlyTheAlertSubtree() async throws {
+        func el(_ ref: Int, _ type: String, _ label: String, depth: Int) -> ElementInfo {
+            ElementInfo(ref: ref, type: type, identifier: nil, label: label, value: nil, placeholder: nil,
+                        enabled: true, frame: FTRect(x: 40, y: Double(100 + ref * 50), width: 300, height: 44), depth: depth)
+        }
+        driver.snapshotResponse = SnapshotResponse(sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+            elements: [el(1, "button", "背面のボタン", depth: 1), el(2, "alert", "安全に目的地に到達するために", depth: 1),
+                       el(3, "button", "OK", depth: 2)], truncatedCount: 0)
+        let text = combinedText(try await server.call(tool: "ft_scroll_to", args: ["selector": "OK"]))
+        XCTAssertTrue(text.contains("[3] button \"OK\""), text)
+        XCTAssertFalse(text.contains("背面のボタン"), text)
     }
 
     /// present: false は沈黙する(黙って消費だけはする)

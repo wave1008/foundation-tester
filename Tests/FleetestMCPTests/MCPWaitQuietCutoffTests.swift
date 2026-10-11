@@ -75,4 +75,18 @@ final class MCPWaitQuietCutoffTests: XCTestCase {
         XCTAssertFalse(text.contains("had not changed"), text)
         XCTAssertTrue(text.contains("did not appear"), text)
     }
+
+    /// **外れた待ちの逃げ道の説明は、デバイスごとに初回だけ**(同じ長文が1計測で3回出ていた)。2回目は見出しと秒数だけ
+    func testTheMissExplanationIsGivenOnce() async throws {
+        let driver = FakeDriver()
+        driver.snapshotResponse = tree([element(1, "button", label: "計画")])
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver }, recordSnapshot: { _, _, _ in })
+        let first = try await server.call(tool: "ft_snapshot", args: ["waitFor": "*経路*", "waitSeconds": 1.0])
+            .compactMap { $0["text"] as? String }.joined()
+        XCTAssertTrue(first.contains("waitSeconds: <seconds> sets this cap"), first)
+        let second = try await server.call(tool: "ft_snapshot", args: ["waitFor": "*経路*", "waitSeconds": 1.0])
+            .compactMap { $0["text"] as? String }.joined()
+        XCTAssertTrue(second.contains("did not appear within 1s"), second)
+        XCTAssertFalse(second.contains("waitSeconds: <seconds> sets this cap"), second)
+    }
 }

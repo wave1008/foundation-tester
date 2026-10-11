@@ -307,6 +307,23 @@ final class DuplicateRegionTests: XCTestCase {
             }
         }
     }
+
+    /// **名前も値も無い要素だけの一致は残骸と言わない**(実測・Apple マップの乗車案内の時刻カード2枚: 同じ構造の
+    /// 入れ物とアイコンが x だけずれて並ぶ)。同じ並びに名前を持つ要素が1つあれば従来どおり拾う
+    func testARunOfUnlabeledElementsIsNotADuplicate() {
+        func card(x: Double, refBase: Int, label: String?) -> [ElementInfo] {
+            let types = ["other", "other", "other", "image", "image", "image"]
+            return types.enumerated().map { offset, type in
+                ElementInfo(ref: refBase + offset, type: type, identifier: nil,
+                            label: offset == 0 ? label : nil, value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: x + Double(offset) * 22, y: 338, width: 20, height: 20), depth: 14 + offset)
+            }
+        }
+        let unlabeled = card(x: 64, refBase: 29, label: nil) + card(x: 340, refBase: 40, label: nil)
+        XCTAssertNil(DuplicateRegion.find(in: unlabeled))
+        let labeled = card(x: 64, refBase: 29, label: "乗車位置") + card(x: 340, refBase: 40, label: "乗車位置")
+        XCTAssertNotNil(DuplicateRegion.find(in: labeled), "名前を持つ並びまで黙った")
+    }
 }
 
 /// 与えた木をそのまま返し、tap を記録するドライバ
@@ -332,6 +349,7 @@ private final class DuplicateRegionDriver: AppDriver {
     func swipe(_ direction: FTSwipeDirection) async throws {}
     func screenshot() async throws -> Data { Data() }
     func terminate() async throws {}
+
 }
 
 /// DSL のタップが注記を運ぶこと。**操作は止めない**(どちらのコピーが生きているかは木から

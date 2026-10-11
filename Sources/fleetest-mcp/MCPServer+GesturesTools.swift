@@ -196,7 +196,7 @@ extension MCPServer {
         return text("Rotated to \(settled.rawValue). The frames below are in the new"
             + " coordinate system — refs taken before the rotation are gone."
             + relayoutCaveat + autoRotateCaveat + "\n\n"
-            + (await snapshotBody(rotated, driver: rotateDriver, args: args)))
+            + (await snapshotBody(rotated, driver: rotateDriver, args: args, foldsSelectorTables: true)))
     }
 
     /// DSL の `hideKeyboard()` と同じ StepExecutor のアクションを撃つ(ft_batch と同じ経路)。

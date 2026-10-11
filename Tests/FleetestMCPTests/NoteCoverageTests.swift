@@ -94,6 +94,7 @@ final class NoteCoverageTests: XCTestCase {
         // **全行が同じ id を共有する**密なリストで、`and-apps_list`(id を1つも持たない密な
         // リスト)と同じ family の逆の極なので dense-list に入れる
         "ios-maps_transit_steps": "map", "ios-maps_transit_steps_expanded": "dense-list",
+        "ios-maps_transit_boarding_cards": "dense-list",
         // 2026-08-13 の監査(長い再利用リスト)で足した1枚。Android 設定の「すべてのアプリ」——
         // **40 要素すべてが identifier を持たず、scrollable を申告する要素も1つも無い**。
         // id を前提にした指標(前の木の id がどれだけ生き残るか)が**定義すらできない**盤面で、
@@ -182,13 +183,13 @@ final class NoteCoverageTests: XCTestCase {
         // 2026-08-28: `and-browser_weather_weekly` が戻った(2026-08-23 以前と同じ)。容器推定で
         // 申告の祖先へ倒すのを「候補が小さすぎるとき」だけに絞った代償。理由と秤は
         // SweepHarnessTests の同フィクスチャの注記
-        "ghostNote": Coverage(fixtures: ["and-browser_weather_weekly", "ios-maps_transit_steps", "ios-maps_transit_steps_expanded", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 1999),
+        "ghostNote": Coverage(fixtures: ["and-browser_weather_weekly", "ios-maps_transit_boarding_cards", "ios-maps_transit_steps", "ios-maps_transit_steps_expanded", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 2347),
         // 横スクロール後の前後コピーが両方木に残る形の witness(ios-browser_jma_hscroll。
         // refs 72-81 vs 158-167 = 同じ行で x が定数200ptずれた10ペア)。他の全画面は最大3
         // (and-home)で、単純なキーだけの一致では別々の表の同名見出しに誤発火するため
         // y/x の幾何制約を必須にした(MCPServer.duplicateRegionNote の当該コメント参照)
         "duplicateRegionNote": Coverage(fixtures: ["ios-browser_jma_hscroll"], bytes: 391),
-        "scrollFrameCandidates": Coverage(fixtures: ["and-form_keyboard", "and-place_expanded", "and-results", "ios-browser_startpage", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-maps_transit_steps", "ios-maps_transit_steps_expanded", "ios-messages_keyboard", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 3168),
+        "scrollFrameCandidates": Coverage(fixtures: ["and-form_keyboard", "and-place_expanded", "and-results", "ios-browser_startpage", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-maps_transit_boarding_cards", "ios-maps_transit_steps", "ios-maps_transit_steps_expanded", "ios-messages_keyboard", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 3429),
         // 2026-08-15 に J1順位表(両OS)を追加して +555 バイト。and-/ios- とも 120要素上限で
         // 38〜42件が脱落する高密度ページ(ios-browser_nationwide と同型)
         "truncationNote": Coverage(fixtures: ["and-browser_j1_standings", "ios-browser_j1_standings", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_yahoo_top", "ios-maps_station", "ios-news_feed"], bytes: 2149),
@@ -227,12 +228,12 @@ final class NoteCoverageTests: XCTestCase {
         // and-sutec_home(Android の Compose Scaffold・2026-08-31)で +1,135 バイト: 商品カードの
         // 画像とテキストが同じ商品名を持ち、バッジ「セール」「新着」も複数カードで重なる形(iOS 版の
         // sutec-home と同じ由来。判定は変えず、Android の木でも同じ量が出ることの記録)
-        "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_j1_standings", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-camera_canvas", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "and-sutec_home", "ios-browser_j1_standings", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-browser_yahoo_top", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-maps_transit_steps_expanded", "ios-messages_keyboard", "ios-news_feed", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sut-e2e_noid", "sutec-detail", "sutec-home"], bytes: 24294),
+        "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_j1_standings", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-camera_canvas", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "and-sutec_home", "ios-browser_j1_standings", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-browser_yahoo_top", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-maps_transit_boarding_cards", "ios-maps_transit_steps_expanded", "ios-messages_keyboard", "ios-news_feed", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sut-e2e_noid", "sutec-detail", "sutec-home"], bytes: 23694),
         // 2026-08-15 に 16,940 → 16,984(+44)。**発火する画面は1枚も増えていない** ——
         // 増えたのは ios-place_guides_scrolled の `#PlaceCollectionCell` ×3 の**中身**で、
         // 40字超のラベルしか無い行に `*断片*` が書けるようになったぶん(以前は索引形 `~`)。
         // 索引形が stable な式に替わった = 増えたバイトはそのまま再現性の改善
-        "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-browser_startpage", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-maps_transit_steps", "ios-maps_transit_steps_expanded", "ios-news_feed", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 20420),
+        "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-browser_startpage", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-maps_transit_boarding_cards", "ios-maps_transit_steps", "ios-maps_transit_steps_expanded", "ios-news_feed", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 21769),
         // bytes 1169→1366→1170(2026-08-14・「chrome の部分木は覆われた側に数えない」修正):
         // fixtures 集合は不変(発火する画面は変わらない = 全画面「nothing tappable」か列挙のどちらか
         // では出続ける)。ios-maps_suggest_guides/ios-messages_keyboard は列挙(2件)から

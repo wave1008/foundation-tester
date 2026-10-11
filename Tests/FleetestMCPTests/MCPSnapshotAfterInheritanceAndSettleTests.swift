@@ -173,6 +173,22 @@ final class MCPSnapshotAfterSettleLiteTests: XCTestCase {
         XCTAssertTrue(text.contains("id=MapsSearchTextField"), text)
     }
 
+    /// **waitForChange・撮り直しの後の木に「操作の直後に読んだ」と言わない**(計測で指摘)。待たずに読んだ回だけ言う
+    func testTheImmediateReadNoteIsNotAddedAfterAWait() async throws {
+        let before = settleSnapshot([settleElement(ref: 1, id: "login_btn", label: "ログイン")])
+        let after = settleSnapshot([settleElement(ref: 1, id: "login_btn", label: "ログイン"),
+                                    settleElement(ref: 2, type: "staticText", id: "welcome", label: "ようこそ")])
+        driver.scriptedSnapshots = [before, before, after, after]
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let changed = bodyText(try await server.call(
+            tool: "ft_tap", args: ["x": 1.0, "y": 2.0, "snapshotAfter": true, "waitForChange": true]))
+        XCTAssertFalse(changed.contains("immediate"), changed)
+        // 対照: 待たずに読んで木が変わっていた回(撮り直しも入らない)には言う
+        driver.scriptedSnapshots = [before, before]
+        let immediate = bodyText(try await server.call(tool: "ft_tap", args: ["x": 1.0, "y": 2.0, "snapshotAfter": true]))
+        XCTAssertTrue(immediate.contains("read immediately after the action") || immediate.contains("immediate read"), immediate)
+    }
+
     /// value だけ変わっている(ft_type 直後の典型)→ 再読しない(snapshot は1回だけ)。
     /// value を比較に含めるのが要点 —— 含めなければこのケースも「変化なし」と誤認して待たされる
     func testValueOnlyChangeSkipsTheReRead() async throws {

@@ -110,6 +110,14 @@ public enum DuplicateRegion {
         // 周期的な窓は「パターンが繰り返されているだけの1本の行」と「2つの独立した領域」を
         // 幾何的に区別できない(A,B,A,B,… の前半と後半はつねに一致してしまう)。この判定は
         // 最終的な最長一致(採用直前)だけに掛ける ——「拾い直し」まではしない(棄却したら nil)
+        // **名前も値も無い要素だけの一致は候補にしない**(実測・Apple マップの乗車案内: 横並びの時刻カード2枚が
+        // 同じ構造 = `OccupancyAndExitStackView` → `CarStackView` → アイコン3枚 を持ち、ラベルの違う行(22:08 / 22:11)の
+        // 外側で6要素が一致した。witness(気象庁の表)の一致は文字のセル = 名前を持つ)。構造だけの繰り返しは
+        // 兄弟カードの正当な形で、残骸の証拠にならない
+        func carriesIdentity(from start: Int, length: Int) -> Bool {
+            (start..<(start + length)).contains { !keys[$0].label.isEmpty || !keys[$0].value.isEmpty }
+        }
+
         func isPeriodic(from start: Int, length: Int) -> Bool {
             guard length >= 2 else { return false }
             for p in 1..<length {
@@ -137,7 +145,8 @@ public enum DuplicateRegion {
                 // 重なる区間は候補にしない。**採用時に弾く**(最後に弾くと、重なる長い一致が
                 // 本物の短い一致を隠して黙る)
                 if length > bestLength, j - i >= length,
-                   spansTwoKinds(from: i - length, length: length) {
+                   spansTwoKinds(from: i - length, length: length),
+                   carriesIdentity(from: i - length, length: length) {
                     bestLength = length
                     bestI = i - length
                     bestJ = j - length

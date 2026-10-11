@@ -57,6 +57,13 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   (代替手段の無い盤面でも 5/5 完了。Bench/measurements.md)、**足す/消すの判断材料は
   note B(実現バイト)**。`NoteBudgetTests` の**本数と鍵の集合の等号固定**は
   引き続き効かせる(予算を動かすには根拠を台帳へ書く)
+- **MCP サーバの要求は fd 0 から引き剥がした流れで読む**(`MCPServer.detachRequestStream` = 起動時に fd 0 を `/dev/null` へ
+  差し替える)。子プロセス(`adb shell` 等)は fd 0 を受け継ぐので、そのままだと**次の要求の行を子が読んで消し、その呼び出しは
+  永久に返らない**(2026-10-11: iOS と Android の ft_launch が 66ms 差で届き id が1つ飛んだ)。子を起こす経路を1本ずつ
+  塞がない(漏れる)。**返らない呼び出しの切り分け**は `.fleetest/mcp-rpc.log`(要求の受信・応答の送信・段階の内訳を
+  1行ずつ)と `.fleetest/mcp-slow-calls.log`(60 秒を超えた呼び出しの段階とブリッジへ出している要求。
+  `SlowCallWatchdog`)で、サーバに届いたか・応答を書いたかを先に分ける。JSON にできない応答は捨てずに同じ id でエラーを返す
+  (`MCPServer.send`)→ maintainer-notes §79
 - **診断のために外部コマンドを撃つ経路も、協調スレッドプールにブロッキングを載せない**
   (ft_status の udid 診断が全ポートへ `lsof` を同時に撃ってプールを塞ぎ、200 秒返らなくなった。
   台帳から候補を絞る → `ps` 1 回 + `isBound` 数本で 1.2 秒)→ maintainer-notes §27

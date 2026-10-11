@@ -734,8 +734,9 @@ final class BridgeRouter {
             throw BridgeError(422, "nothing has keyboard focus, so Enter has nowhere to go."
                 + " Tap the input field first (or type into it), then press Enter")
         }
-        app.typeText("\n")
-        return .json(OKResponse())
+        _ = QuiescenceWait.takeCapNote()
+        QuiescenceWait.capping { app.typeText("\n") }   // 上限は handleType と同じ理由
+        return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
     }
 
     /// **iOS ではキーボードを閉じられない**(docs/design.md に不採用の記録)。Esc は不発で、
@@ -762,7 +763,7 @@ final class BridgeRouter {
     }
 
     /// `X-FT-Settle: 0` のときだけ XCTest の待ちを飛ばす(それ以外は何も変えない = 待ちの上限を縮める cap も掛けない)。
-    /// /drag・/systemui/* 用。/type・/clear・/pressEnter には使わない(キーボード出現待ちが quiescence に依存)
+    /// /drag・/systemui/* 用。/type・/clear・/pressEnter はこれを使わず `QuiescenceWait.capping`(飛ばさず上限だけ縮める)
     private func skippingQuiescenceIfRequested<T>(_ body: () throws -> T) rethrows -> T {
         try skipSettle ? QuiescenceWait.around(skip: true, body) : body()
     }
