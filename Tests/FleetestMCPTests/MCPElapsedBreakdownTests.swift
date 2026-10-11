@@ -33,4 +33,20 @@ final class MCPElapsedBreakdownTests: XCTestCase {
         let outer = try XCTUnwrap(spent.first?.seconds)
         XCTAssertGreaterThanOrEqual(outer, 0.29, "入れ子の後の外側の時間が足し戻されていない: \(spent)")
     }
+
+    /// **操作の時間を直前の「確認」の段に積まない**(計測: Android にも「probing for a system alert 9.2s」と出ていた)
+    func testTheActionItselfHasItsOwnPhase() async throws {
+        let driver = FakeDriver()
+        var phaseAtTap: String?
+        driver.onTap = {
+            // mark は直前の段を返す = 撃った瞬間の段。読んだらすぐ戻す
+            let previous = SlowCallWatchdog.mark("probe")
+            SlowCallWatchdog.restore(previous)
+            phaseAtTap = previous?.phase
+        }
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver }, recordSnapshot: { _, _, _ in })
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        _ = try await server.call(tool: "ft_tap", args: ["ref": 1])
+        XCTAssertEqual(phaseAtTap, "performing the action")
+    }
 }

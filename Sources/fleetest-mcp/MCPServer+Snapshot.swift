@@ -1003,6 +1003,8 @@ extension MCPServer {
         case proceed(note: String)
     }
 
+    static let performingActionPhase = "performing the action"
+
     static func systemAlertGate(_ target: ElementInfo, driver: AppDriver,
                                 engine: String?) async -> SystemAlertGate {
         let probe: SystemAlertProbeResponse?
@@ -1159,6 +1161,9 @@ extension MCPServer {
             case .proceed(let note): probeNote = note
             }
         }
+        // **ここから先は操作そのもの**(打たないと操作の時間が直前の「確認」の段に積まれ、Android にも
+        // 「probing for a system alert 9.2s」と出ていた = 計測で誤読した)
+        SlowCallWatchdog.mark(Self.performingActionPhase)
         // **ref の出所についての注記はまとめて先頭に置く**(何に当たったかより前に言う)。
         // 2つは排他 —— screenChangedUnderRefNote は isStale のとき黙る
         let actedSinceTakenFrom = (sessionActionCounts[Self.engineKey(args)] ?? 0)

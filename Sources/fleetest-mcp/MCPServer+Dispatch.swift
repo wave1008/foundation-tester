@@ -78,6 +78,7 @@ extension MCPServer {
             case .proceed(let note): gateNote = note
             }
         }
+        SlowCallWatchdog.mark(Self.performingActionPhase)   // verifiedRef と同じ(操作の時間を確認の段に積まない)
         guard let target = resolved?.element else {
             // 世代が無かった(ft_snapshot を挟まずに撃たれた)= 撮ったばかりの木から素直に引く。
             // 世代があったのに見つからない(= 直近5世代のどれにも無い番号)なら unknown ref

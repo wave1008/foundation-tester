@@ -12,9 +12,9 @@ final class RunnerQuiescenceCapCoverageTests: XCTestCase {
     private static let wrappers = ["gestureQuiescence {", "QuiescenceWait.around(", "QuiescenceWait.capping"]
     /// 呼び手が包みの中で呼ぶ関数 → その包みの印(呼び手のソースに現れるべき文字列)
     private static let wrappedByCaller: [String: String] = [
-        "typeAndReadBack": "QuiescenceWait.capping { try typeAndReadBack(body) }",
-        "performTypeReadback": "QuiescenceWait.capping { try typeAndReadBack(body) }",
-        "clearFocusedInput": "QuiescenceWait.capping { try clearFocusedInput(body) }",
+        "typeAndReadBack": "QuiescenceWait.capping(skipPostEvent: true) { try typeAndReadBack(body) }",
+        "performTypeReadback": "QuiescenceWait.capping(skipPostEvent: true) { try typeAndReadBack(body) }",
+        "clearFocusedInput": "QuiescenceWait.capping(skipPostEvent: false) { try clearFocusedInput(body) }",
         "sendHomeGesture": "gestureQuiescence { sendHomeGesture(sb) }",
     ]
 

@@ -177,10 +177,14 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         try record("clearAppData(\(bundleID))", "clearAppData")
     }
 
+    /// tap(ref:) を撃った瞬間に呼ぶ(段階の内訳の検証用)
+    var onTap: (() -> Void)?
+
     func tap(ref: Int) async throws {
         lastActionNote = nil
         lastTapHitAreaMiss = nil
         try record("tap(ref:\(ref))", "tap")
+        onTap?()
         lastActionNote = scriptedActionNote
         lastTapHitAreaMiss = scriptedHitAreaMiss
     }

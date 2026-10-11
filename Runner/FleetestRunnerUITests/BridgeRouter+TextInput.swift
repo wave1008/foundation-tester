@@ -49,7 +49,7 @@ extension BridgeRouter {
     func handleType(_ body: Data) throws -> BridgeHTTPServer.Response {
         _ = QuiescenceWait.takeCapNote()  // 前の操作の数え残しを捨てる(応答の注記はこの操作の分だけ)
         // **待ちの上限を縮めて打つ**(QuiescenceWait の冒頭)。上限まで待った回は注記に残す(読み手が遅さの理由を読める)
-        let note = try QuiescenceWait.capping { try typeAndReadBack(body) }
+        let note = try QuiescenceWait.capping(skipPostEvent: true) { try typeAndReadBack(body) }
         return .json(OKResponse(note: [note, QuiescenceWait.takeCapNote()].compactMap { $0 }.joined(separator: "; ")
             .nilIfEmpty))
     }
@@ -361,7 +361,7 @@ extension BridgeRouter {
     /// (`awaitClearFocusTarget` 参照。InAppBridge.requireFocusMoved と同じ設計)。
     func handleClear(_ body: Data) throws -> BridgeHTTPServer.Response {
         _ = QuiescenceWait.takeCapNote()
-        try QuiescenceWait.capping { try clearFocusedInput(body) }   // 上限は handleType と同じ理由
+        try QuiescenceWait.capping(skipPostEvent: false) { try clearFocusedInput(body) }   // 上限は handleType と同じ理由
         return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
     }
 

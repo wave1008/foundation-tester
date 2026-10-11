@@ -735,7 +735,7 @@ final class BridgeRouter {
                 + " Tap the input field first (or type into it), then press Enter")
         }
         _ = QuiescenceWait.takeCapNote()
-        QuiescenceWait.capping { app.typeText("\n") }   // 上限は handleType と同じ理由
+        QuiescenceWait.capping(skipPostEvent: false) { app.typeText("\n") }   // 上限は handleType と同じ理由
         return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
     }
 

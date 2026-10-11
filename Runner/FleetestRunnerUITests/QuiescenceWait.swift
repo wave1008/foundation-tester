@@ -7,6 +7,7 @@
 //   見つからなければ無効(available=false)として通常動作にフォールバックする。
 // - skipping / capArmed はリクエスト処理(main queue 直列。BridgeHTTPServer 参照)からのみ触ること。
 // - **type / clear / pressEnter は待ちを飛ばさず、上限だけ縮める**(`QuiescenceWait.capping`。ヘッダで飛ばす口は無い)。
+//   **/type だけは操作の後の待ちを飛ばす**(`skipPostEvent`。完了は読み返しが確かめる)
 //   キーボード出現待ちを quiescence に依存しているので飛ばすと入力欠落の実害が出るが、縮めないと落ち着かないアプリで
 //   打鍵1回ごとに XCTest の既定 60s を待つ(実測・Apple マップの経路画面: `Type` の後の "Wait for … to idle" が 60s ×2 で、
 //   その間ランナーは他の要求に答えられず、読み手は再試行を繰り返した)。キーボードの出現は 1s 以内(上限 6s はその数倍)。
@@ -25,6 +26,11 @@ import ObjectiveC
 enum QuiescenceWait {
     /// true の間、swizzle 済み quiescence 待ちが no-op になる(待ちを飛ばす)(リクエスト毎に立てて必ず戻す)
     static var skipping = false
+    /// true の間、**操作の後の**待ち(isPreEvent == false)だけを飛ばす(/type。`capping(skipPostEvent:)` が立てて戻す)。
+    /// 打鍵の後の完了は読み返し(TypeReadback)が値で確かめるので二重だった —— 知らせを返さないアプリでは
+    /// /type 1回が前後の待ちで 6s × 2 = 12.9s かかっていた(実測・Apple マップ)。前の待ちはキーボードの出現を兼ねるので残す
+    private static var skippingPostEvent = false
+    private static var postEventSkips = 0
     /// swizzle が1つ以上成功したか(/status の quiescenceControlAvailable として申告)
     private(set) static var available = false
 
@@ -118,6 +124,8 @@ enum QuiescenceWait {
                 let orig = unsafeBitCast(original, to: Fn.self)
                 let block: @convention(block) (AnyObject, Bool, Bool) -> Void = { obj, a, b in
                     if QuiescenceWait.skipping { return }
+                    // b = isPreEvent(セレクタの2つ目の引数)
+                    if QuiescenceWait.skippingPostEvent, !b { QuiescenceWait.postEventSkips += 1; return }
                     let start = DispatchTime.now()
                     QuiescenceWait.cappedWait { orig(obj, sel, a, b) }
                     QuiescenceWait.addQuiescence(since: start)
@@ -163,10 +171,18 @@ enum QuiescenceWait {
     /// 実測と経緯は docs/performance-tuning.md §8)。`skip: true` はどちらも飛ばす
     /// **待ちは飛ばさず、上限だけ `quiescenceCapSeconds` に縮める**(type / clear / pressEnter 用。ヘッダ `X-FT-Settle` を見ない =
     /// 打鍵の前の待ちはキーボードの出現を兼ねるので、利用者の `settle: false` でも飛ばさない)
-    static func capping<T>(_ body: () throws -> T) rethrows -> T {
+    /// `skipPostEvent`: 操作の後の待ちを飛ばす(/type だけ true。既定値を置かない = 呼び手に決めさせる)
+    static func capping<T>(skipPostEvent: Bool, _ body: () throws -> T) rethrows -> T {
         guard available else { return try body() }
         capArmed = true
-        defer { capArmed = false }
+        skippingPostEvent = skipPostEvent
+        postEventSkips = 0
+        defer {
+            capArmed = false
+            skippingPostEvent = false
+            // 陽性対照の手掛かり(飛ばした回数。0 なら isPreEvent の読みが合っていない)
+            if skipPostEvent { NSLog("[fleetest] quiescence: skipped %d post-event wait(s)", postEventSkips) }
+        }
         return try body()
     }
 
