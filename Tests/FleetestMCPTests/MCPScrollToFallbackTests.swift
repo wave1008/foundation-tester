@@ -31,7 +31,7 @@ final class MCPScrollToFallbackTests: XCTestCase {
     func testFallbackMatchIsAScrollToSuccess() async throws {
         let text = body(try await server.call(tool: "ft_scroll_to",
                                               args: ["selector": "#no_such_id||#login_btn"]))
-        XCTAssertTrue(text.contains("scrolled to"), text)
+        XCTAssertTrue(text.contains("scrolled to") || text.contains("was already on screen"), text)  // 成功の見出し(scrollToHeadline)
         XCTAssertTrue(text.contains("matched via the fallback"), text)
         XCTAssertFalse(text.contains("passedViaFallback("), text)
         XCTAssertFalse(text.contains("FlowLocator("), text)

@@ -106,10 +106,15 @@ struct DeviceSession {
     /// 「木は変わったのに絵が前回と同一 = 古いフレームを返し続けている」と言える(treeFingerprint の
     /// 前後比較単独では拾えなかった動機の事象: 木は新しいのに絵だけ古い)
     var lastScreenshot: StaleFrameDetector.Record?
-    /// ft_snapshot で**明示された** interactiveOnly/expandBulk。呼ばれるたびに
-    /// 丸ごと置き換える(省略されたキーは記憶から消える)。snapshotAfterBody が、呼び出し側の
-    /// args に無いキーだけこれで補う — 明示した値が常に優先(snapshotAfterBody 参照)
+    /// 木を返すツールに**明示された** interactiveOnly/expandBulk(キーごとに上書き)。木を返す口は
+    /// args に無いキーだけこれで補う — 明示した値が常に優先(`inheritingSnapshotFilters`)
     var rememberedSnapshotFilters: [String: Bool]?
+    /// 継承を宣言済みの指定のキー。**宣言は1回だけ**(毎回の応答に同じ1行が載ると読み手が読み飛ばす = 計測で指摘)。
+    /// 別の値を明示したキーは外す = 次の継承でまた1回言う
+    var announcedInheritedFilters: Set<String>?
+    /// 「その ref は操作の直後の読み(読み込みの途中)から採った」注記を言ったか。**1セッション1回**
+    /// (害の無い事実で、地図の検索では ref を撃つたびに出ていた = 計測で指摘)
+    var loadingRefNoteShown = false
     /// **切り詰められた web ページを見たデバイス**。以後の読みは最初から要素上限の
     /// 天井で撮る(`needsWebPageCeiling`)。2枚払うのはラッチした1回だけ ——
     /// 毎回「撮る→切り詰めを見て撮り直す」だと、waitFor のポーリングで読みが倍になる

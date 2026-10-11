@@ -42,12 +42,14 @@ final class RefScreenProvenanceTests: XCTestCase {
 
     private func note(_ takenFrom: SnapshotResponse?, _ fresh: SnapshotResponse,
                       isStale: Bool = false, actedSinceTakenFrom: Bool = false,
-                      takenRightAfterOwnAction: Bool = false) -> String {
+                      takenRightAfterOwnAction: Bool = false,
+                      loadingNoteShownBefore: Bool = false) -> String {
         MCPServer.screenChangedUnderRefNote(
             ref: 350, takenFrom: takenFrom, fresh: fresh, isStale: isStale,
             matched: element(350, id: "btn_back", label: "戻る"),
             actedSinceTakenFrom: actedSinceTakenFrom,
-            takenRightAfterOwnAction: takenRightAfterOwnAction)
+            takenRightAfterOwnAction: takenRightAfterOwnAction,
+            loadingNoteShownBefore: loadingNoteShownBefore)
     }
 
     /// **本命**: 木が別物になっていたら言う
@@ -126,8 +128,15 @@ final class RefScreenProvenanceTests: XCTestCase {
     /// **その木が自分の操作の直後の読みなら、外部要因を名指ししない**(読み込みの途中だった可能性を言う)
     func testDoesNotBlameExternalActorsWhenTheRefCameFromTheReadRightAfterOwnAction() {
         let message = note(selector, lifecycle, takenRightAfterOwnAction: true)
-        XCTAssertTrue(message.contains("first read after this session's own last action"), message)
+        XCTAssertTrue(message.contains("was read while the screen was still updating after this session's own last"), message)
         XCTAssertFalse(message.contains("another process or a person"), message)
+    }
+
+    /// **「操作の直後の読み」の注記は1セッション1回**(地図の検索では ref を撃つたびに出ていた = 計測で指摘)。
+    /// 外部要因の注記は回数で黙らせない(別の事実を言うので)
+    func testTheReadRightAfterOwnActionNoteIsSaidOnlyOnce() {
+        XCTAssertEqual(note(selector, lifecycle, takenRightAfterOwnAction: true, loadingNoteShownBefore: true), "")
+        XCTAssertTrue(note(selector, lifecycle, loadingNoteShownBefore: true).contains("nothing this session did"))
     }
 
     // MARK: - 地図の地点(畳まれる飾りの葉)
@@ -165,7 +174,7 @@ final class RefScreenProvenanceTests: XCTestCase {
         let message = MCPServer.screenChangedUnderRefNote(
             ref: 500, takenFrom: taken, fresh: fresh, isStale: false,
             matched: fresh.elements.first { $0.ref == 500 }!, actedSinceTakenFrom: false,
-            takenRightAfterOwnAction: false)
+            takenRightAfterOwnAction: false, loadingNoteShownBefore: false)
         XCTAssertFalse(message.isEmpty)
     }
 
@@ -254,8 +263,20 @@ final class RefScreenProvenanceTests: XCTestCase {
         driver.scriptedSnapshots = [settled, settled]
         let result = try await server.call(tool: "ft_tap", args: ["ref": ref])
         let text = try XCTUnwrap(result.first?["text"] as? String)
-        XCTAssertTrue(text.contains("first read after this session's own last action"), text)
+        XCTAssertTrue(text.contains("was read while the screen was still updating after this session's own last"), text)
         XCTAssertFalse(text.contains("another process or a person"), text)
+
+        // 2回目の同じ形は黙る(配線: 言った回にだけ印が立つ)
+        driver.scriptedSnapshots = [settled, lifecycle]
+        let again = try await server.call(tool: "ft_tap", args: ["ref": ref, "snapshotAfter": true])
+        let againText = again.compactMap { $0["text"] as? String }.joined()
+        let match2 = try XCTUnwrap(againText.firstMatch(of: /\[(\d+)\] button "セッション\+1"/), againText)
+        let ref2 = try XCTUnwrap(Int(match2.1))
+        driver.scriptedSnapshots = [settled, settled]
+        let secondResult = try await server.call(tool: "ft_tap", args: ["ref": ref2])
+        let second = try XCTUnwrap(secondResult.first?["text"] as? String)
+        XCTAssertFalse(second.contains("still updating"), second)
+        XCTAssertFalse(second.contains("another process or a person"), second)
     }
 
     /// **陰性対照**: 素の ft_snapshot で読んだ木(操作を伴わない呼び出し)なら、従来どおり外部要因の可能性を言う

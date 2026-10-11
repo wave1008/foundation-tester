@@ -187,7 +187,7 @@ final class MCPAuditRound21Tests: XCTestCase {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in driver },
                                recordSnapshot: { _, _, _ in })
         let body = text(try await server.call(tool: "ft_scroll_to", args: ["selector": "*週間*"]))
-        XCTAssertTrue(body.contains("scrolled to"), body)
+        XCTAssertTrue(body.contains("scrolled to") || body.contains("was already on screen"), body)  // 成功の見出し(scrollToHeadline)
         XCTAssertTrue(body.contains("3 elements match this selector"), body)
         XCTAssertTrue(body.contains("the first in tree order was used"), body)
     }
@@ -202,7 +202,7 @@ final class MCPAuditRound21Tests: XCTestCase {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in driver },
                                recordSnapshot: { _, _, _ in })
         let body = text(try await server.call(tool: "ft_scroll_to", args: ["selector": "*週間*"]))
-        XCTAssertTrue(body.contains("scrolled to"), body)
+        XCTAssertTrue(body.contains("scrolled to") || body.contains("was already on screen"), body)  // 成功の見出し(scrollToHeadline)
         XCTAssertFalse(body.contains("elements match this selector"), body)
     }
 }

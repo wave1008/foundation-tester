@@ -84,7 +84,14 @@ final class FMLivenessProbeThresholdTests: XCTestCase {
                        "probeOnce が閾値を通さず dead を書いている")
         XCTAssertEqual(code.components(separatedBy: "FMLiveness.record(path: path, state: state, source: .probe").count - 1, 1,
                        "台帳への書き込みは settle の1箇所だけ")
-        XCTAssertEqual(code.components(separatedBy: "return settle(path: path").count - 1, 2,
-                       "成功・失敗の両方が settle を通る")
+        XCTAssertEqual(code.components(separatedBy: "return settle(path: path").count - 1, 3,
+                       "成功・失敗・期限切れ(DeadlineRace)の3つが settle を通る")
+    }
+}
+
+/// FM の実呼び出し1回の上限(生きている FM の実測 0.7〜4.7 秒の4倍強)。値はリテラルで固定する
+final class FMLivenessProbeCallTimeoutTests: XCTestCase {
+    func testTheProbeCallTimeoutIsPinned() {
+        XCTAssertEqual(FMLivenessProbe.probeCallTimeoutSeconds, 20)
     }
 }

@@ -47,6 +47,7 @@ final class MCPServer {
     var installedPackagePaths: SessionMap<String> { SessionMap(server: self, path: \.installedPackagePath) }
     var lastScreenshots: SessionMap<StaleFrameDetector.Record> { SessionMap(server: self, path: \.lastScreenshot) }
     var rememberedSnapshotFilters: SessionMap<[String: Bool]> { SessionMap(server: self, path: \.rememberedSnapshotFilters) }
+    var announcedInheritedFilters: SessionMap<Set<String>> { SessionMap(server: self, path: \.announcedInheritedFilters) }
     var sheetRescueFutile: SessionMap<Set<String>> { SessionMap(server: self, path: \.sheetRescueFutile) }
     var pendingWarnings: SessionMap<[String]> { SessionMap(server: self, path: \.pendingWarnings) }
     var lastScreenProbe: SessionMap<(fingerprint: Int, warning: String)> { SessionMap(server: self, path: \.lastScreenProbe) }
@@ -61,6 +62,7 @@ final class MCPServer {
     var webPageCeilingLatched: SessionFlags { SessionFlags(server: self, path: \.webPageCeilingLatched) }
     var preparedPhysicalAndroid: SessionFlags { SessionFlags(server: self, path: \.preparedPhysicalAndroid) }
     var bridgeRecoveryFailed: SessionFlags { SessionFlags(server: self, path: \.bridgeRecoveryFailed) }
+    var loadingRefNoteShown: SessionFlags { SessionFlags(server: self, path: \.loadingRefNoteShown) }
 
     /// ft_start_run が起こした run の台帳(MCPServer+RunJobs.swift)。stored property なのでここに置く
     let runJobs = MCPRunJobRegistry()
@@ -91,6 +93,8 @@ final class MCPServer {
     var explainedNotes: Set<String> = []
     /// 応答の書き出し口。**stdout は JSON-RPC 専用**(診断を混ぜるとクライアントのパースが壊れる)
     let write: (Data) -> Void
+    /// stdio のメインループ(`run`)の中だけ true = 要求と応答を `.fleetest/mcp-rpc.log` に残す(テストは本物の台帳へ書かない)
+    var rpcTraceEnabled = false
     /// ドライバ生成の差し替え口。nil = 実デバイスを解決する(既定)
     let makeDriver: ((_ args: [String: Any]) async throws -> AppDriver)?
     /// スナップショットの `#id` を台帳へ落とす口。**テストは必ず差し替える**
@@ -153,9 +157,15 @@ final class MCPServer {
             Self.logStderr("FT_MCP_NOTES_BRIEF: NOT a note key (ignored): "
                 + unknownBriefKeys.joined(separator: ", "))
         }
-        while let line = readLine(strippingNewline: true) {
+        rpcTraceEnabled = true
+        guard let requests = Self.detachRequestStream(fd: STDIN_FILENO) else {
+            Self.logStderr("could not take over stdin for requests — exiting")
+            return
+        }
+        while let line = Self.readRequestLine(requests) {
             // **壊れた行でループを抜けない**: 1行の不正でサーバが死ぬとセッションごと落ちる
             guard let message = Self.parseMessage(line) else {
+                SlowCallWatchdog.traceRPC("recv unparsable bytes=\(line.utf8.count)")
                 // 読めない行にも答える(JSON-RPC 2.0 の Parse error / Invalid Request を id: null で)。
                 // 黙って捨てると、その行が要求だった場合クライアントは応答を永久に待つ
                 // (負荷テストで実測: NaN を含む ft_tap の行で 420 秒無応答)
@@ -164,12 +174,39 @@ final class MCPServer {
                 }
                 continue
             }
+            let tool = (message["params"] as? [String: Any])?["name"] as? String
+            SlowCallWatchdog.traceRPC("recv id=\(message["id"].map { "\($0)" } ?? "-") \(message["method"] as? String ?? "?")"
+                + (tool.map { " " + $0 } ?? ""))
             await handle(message)
         }
         // stdin EOF = セッションの終わり。デバイスの印を残すと、使っていないデバイスを run が避け続ける
         if let deviceLeaseStateDir {
             MCPDeviceLease.removeAll(stateDir: deviceLeaseStateDir, pid: ProcessInfo.processInfo.processIdentifier)
         }
+    }
+
+    /// **要求の流れを fd 0 から引き剥がし、fd 0 には /dev/null を据える**(戻り値は要求を読む流れ)。
+    /// 起動する子プロセス(`adb shell` 等)は既定で fd 0 を受け継ぐので、そのままだと**次の要求の行を子が読んで消す**
+    /// (実測: iOS と Android の ft_launch が 66ms 差で届き、サーバは id=4 の次に id=6 を受け取った = id=5 が消え、
+    /// その呼び出しは永久に返らなかった。子を起こす経路を1本ずつ塞ぐのでは漏れるので、受け継がれる側を断つ)
+    static func detachRequestStream(fd: Int32) -> UnsafeMutablePointer<FILE>? {
+        let requestFD = dup(fd)
+        guard requestFD >= 0 else { return nil }
+        let devNull = open("/dev/null", O_RDONLY)
+        guard devNull >= 0, dup2(devNull, fd) >= 0 else { close(requestFD); return nil }
+        close(devNull)
+        return fdopen(requestFD, "r")
+    }
+
+    /// 改行区切りの1行(改行は落とす)。EOF なら nil
+    static func readRequestLine(_ stream: UnsafeMutablePointer<FILE>) -> String? {
+        var buffer: UnsafeMutablePointer<CChar>?
+        var capacity = 0
+        defer { free(buffer) }
+        guard getline(&buffer, &capacity, stream) >= 0, let buffer else { return nil }
+        var line = String(cString: buffer)
+        if line.hasSuffix("\n") { line.removeLast() }
+        return line
     }
 
     /// 1行を JSON-RPC メッセージとして解釈する。空行・非 JSON・JSON オブジェクトでないものは nil
@@ -316,10 +353,52 @@ final class MCPServer {
         send(["jsonrpc": "2.0", "id": id ?? NSNull(), "error": error])
     }
 
+    /// **JSON にできない応答を黙って捨てない**: 捨てるとクライアントは応答を永久に待ち、呼び出し自体は終わっているので
+    /// 止まった呼び出しの記録(`SlowCallWatchdog`)も出ない(実測: ft_launch / ft_tap / ft_status が数分〜無期限に返らなかった)。
+    /// 代わりに同じ id で JSON-RPC のエラーを返し、JSON にできない値の場所を名指しする
     private func send(_ object: [String: Any]) {
-        guard var data = try? JSONSerialization.data(withJSONObject: object) else { return }
+        var data: Data
+        if JSONSerialization.isValidJSONObject(object),
+           let encoded = try? JSONSerialization.data(withJSONObject: object) {
+            data = encoded
+        } else {
+            let path = Self.firstNonJSONPath(object, at: "") ?? "(unknown)"
+            Self.logStderr("reply dropped: not JSON-serializable at \(path)")
+            let id = object["id"].flatMap { $0 is String || $0 is Int ? $0 : nil } ?? NSNull()
+            let fallback: [String: Any] = ["jsonrpc": "2.0", "id": id, "error": [
+                "code": -32603,
+                "message": "internal error: the response held a value JSON cannot carry (at \(path)), so it was"
+                    + " not sent. The operation itself may have run — take a fresh ft_snapshot before repeating it."]]
+            guard let encoded = try? JSONSerialization.data(withJSONObject: fallback) else { return }
+            data = encoded
+        }
         data.append(0x0A)
         write(data)
+        if rpcTraceEnabled {
+            SlowCallWatchdog.traceRPC("send id=\(object["id"].map { "\($0)" } ?? "-") bytes=\(data.count)")
+        }
+    }
+
+    /// JSON にできない最初の値の場所(`.result.content[0].text` の形)。NaN・無限大と、JSON の型でない値
+    static func firstNonJSONPath(_ value: Any, at path: String) -> String? {
+        switch value {
+        case let dict as [String: Any]:
+            for (key, child) in dict.sorted(by: { $0.key < $1.key }) {
+                if let found = firstNonJSONPath(child, at: path + "." + key) { return found }
+            }
+            return nil
+        case let array as [Any]:
+            for (index, child) in array.enumerated() {
+                if let found = firstNonJSONPath(child, at: path + "[\(index)]") { return found }
+            }
+            return nil
+        case is String, is NSNull, is Bool:
+            return nil
+        case let number as NSNumber:
+            return number.doubleValue.isFinite ? nil : path + " = \(number)"
+        default:
+            return path + " (\(type(of: value)))"
+        }
     }
 
 

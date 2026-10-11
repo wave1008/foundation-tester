@@ -14,6 +14,8 @@ public enum OcclusionGeometry {
         let cx = element.frame.x + element.frame.width / 2
         let cy = element.frame.y + element.frame.height / 2
         let excluded = TapTargetGeometry.lineage(of: element, in: elements)
+        let overlaidScrollContent = scrollContentUnderOverlay(element, cx: cx, cy: cy,
+                                                              excluded: excluded, in: elements)
         // **いちばん手前を返す**(DSL の `OcclusionSuspicion.covering` と揃えた)。配列順で最初の候補を
         // 返すと中間層を名指しして実際の最前面(タップを受け取った要素)を素通しする。塗り順が
         // 採れる場では最前面を計算できるので、当てずっぽうを残す理由が無い
@@ -23,6 +25,7 @@ public enum OcclusionGeometry {
                   other.frame.y <= cy, cy <= other.frame.y + other.frame.height
             else { return false }
             if isBlankLeafContainer(other, in: elements) { return false }
+            if overlaidScrollContent.contains(other.ref) { return false }
             if reportsContentExtent(other) { return false }
             // **描かれていないものは何も覆えない**(外部フィードバックで発覚)。相手がスクロール容器の
             // 外に出ている(= 残像)なら、矩形が重なっていても実際にはそこに無い(実例: 画面外へ出た
@@ -231,6 +234,31 @@ public enum OcclusionGeometry {
     private static func frameKey(_ frame: FTRect) -> String {
         "\(frame.x.rounded()),\(frame.y.rounded()),"
             + "\(frame.width.rounded()),\(frame.height.rounded())"
+    }
+
+    /// **対象の中心を含む申告スクロール容器のうち、対象がその中身でないもの**(容器自身+子孫)。
+    /// 容器の枠の上に載った中身でない要素(カードの見出し・閉じるボタン)は容器より手前に描かれる
+    /// (奥なら中身に隠れて押せない)が、iOS は z を出さず木では容器より前に並ぶため、塗り順の代用(木の順序)が
+    /// 見出しの下へ送られた行を「手前」と読む(実測・Apple マップの経路詳細: 下へ送った後の
+    /// `#CardButtonTypeClose` (342,88) に `"さらに表示"` (306,101) が被ると警告し、タップは閉じるに当たった)。
+    /// **z があれば塗り順が真値なのでこの除外を使わない**。
+    /// **中身が容器の上端より上へ送られていて、対象が容器の上半分に居るときだけ**(= 中身がその帯の下を
+    /// くぐっている証拠がある)。条件を外すと、手前に重ねた容器が背後の本文リンクを本当に覆う形
+    /// (Safari のスタートページ = `testScrollContainerWithContentAtThePointStillOccludes`)を黙らせる。
+    /// 下端は見ない(長い一覧は常に下端の外へ中身があり、証拠にならない)
+    static func scrollContentUnderOverlay(_ element: ElementInfo, cx: Double, cy: Double,
+                                          excluded: Set<Int>, in elements: [ElementInfo]) -> Set<Int> {
+        guard element.z == nil else { return [] }
+        var result: Set<Int> = []
+        for scroller in elements where scroller.scrollable == true && !excluded.contains(scroller.ref)
+            && scroller.frame.x <= cx && cx <= scroller.frame.x + scroller.frame.width
+            && scroller.frame.y <= cy && cy <= scroller.frame.y + scroller.frame.height / 2 {
+            let content = LocatorResolver.descendants(of: scroller, in: elements)
+            guard content.contains(where: { $0.frame.y < scroller.frame.y }) else { continue }
+            result.insert(scroller.ref)
+            result.formUnion(content.map(\.ref))
+        }
+        return result
     }
 
     /// **何も描いていない葉コンテナ**は遮蔽候補から除外する: label・value が空で子孫を持たない

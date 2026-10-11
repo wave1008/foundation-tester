@@ -255,7 +255,8 @@ extension MCPServer {
     static func screenChangedUnderRefNote(ref: Int, takenFrom: SnapshotResponse?,
                                           fresh: SnapshotResponse, isStale: Bool,
                                           matched: ElementInfo, actedSinceTakenFrom: Bool,
-                                          takenRightAfterOwnAction: Bool) -> String {
+                                          takenRightAfterOwnAction: Bool,
+                                          loadingNoteShownBefore: Bool) -> String {
         // **畳まれる飾りの葉(地図の地点)は比べない**: 地図は利用者が何もしなくても地点を出し入れするので、
         // 含めると地図の画面では毎回「このセッションは何もしていないのに変わった」と言う(Apple マップの経路画面で
         // `#VKPointFeature` 133件の増減だけで発火)。**撃つ相手がその群の一員なら比べる**(地点そのものを撃つ形)
@@ -264,12 +265,17 @@ extension MCPServer {
         guard !isStale, let taken = takenFrom,
               Self.treeIdentity(taken, ignoringBulk: ignoresBulk)
                 != Self.treeIdentity(fresh, ignoringBulk: ignoresBulk) else { return "" }
+        // **操作の直後に読んだ木なら、読み込みの続きで変わっただけのことが多い**(実測: Apple マップの候補・経路で3回続けて
+        // 正しい要素に当たっていた)。撃った先を名指しして事実だけ言い、撮り直しの命令は付けない(操作はもう済んでいる)
+        // **1セッション1回**(`loadingNoteShownBefore`)。2回目以降も同じ事実で、撃った先は応答本文が名指しする
+        if takenRightAfterOwnAction, !actedSinceTakenFrom {
+            guard !loadingNoteShownBefore else { return "" }
+            return " note: [\(ref)] was read while the screen was still updating after this session's own last"
+                + " action (results loading, an animation); it was matched to \(RefGuard.describe(matched))"
+                + " in the current tree. Said once per session — later refs read this way are matched silently."
+        }
         let cause = actedSinceTakenFrom
             ? "this session's own actions since that snapshot are the likely cause"
-            : takenRightAfterOwnAction
-            ? "this session did nothing since, but that snapshot was the first read after this"
-                + " session's own last action — the screen may still have been updating from it"
-                + " (results loading, an animation)"
             : "nothing this session did changed it — the app itself, another process or a"
                 + " person moved the screen on"
         return " note: [\(ref)] came from a snapshot whose tree no longer matches the current one,"
@@ -569,25 +575,43 @@ extension MCPServer {
             + " it was ignored)"
     }
 
-    /// 直近の ft_snapshot の**明示指定**(`rememberedSnapshotFilters`)を、木を返す応答へ引き継ぐ。
+    /// ft_scroll_to の失敗文の本体。**シート展開の救済を撃った回は総称の「シートを広げて再試行」を外す**
+    /// (救済が同じことを試し、その結果を sheetNote が言っている。残すと「3回目もうまくいかない」の直後に
+    /// 「広げて再試行」と言う矛盾になる = 計測で指摘)
+    static func scrollFailureReason(_ message: String, sheetRescued: Bool) -> String {
+        sheetRescued ? message.replacingOccurrences(of: StepExecutor.halfOpenSheetHint, with: "") : message
+    }
+
+    /// 直近に明示された指定(`rememberedSnapshotFilters`)を、木を返す応答へ引き継ぐ。
     ///
-    /// **木を返す口はすべてここを通す**(`snapshotAfter` と `ft_scroll_to`)。片方だけ継承すると
+    /// **木を返す口はすべてここを通す**(`ft_snapshot`・`snapshotAfter`・`ft_scroll_to`)。片方だけ継承すると
     /// 「interactiveOnly を渡した後、どのツールで読むかで出力量が変わる」になり、読み手は
     /// 自分の指定が効いていないと読む —— 実際に `ft_scroll_to` だけが継承せず、
     /// 継承しなかったことも言っていない形になっていた。
     /// **明示された値が常に優先**: args に無いキーだけ記憶で補う。補った値が true の
     /// ときだけ宣言する(false を補っても render の既定と同じなので出力は変わらない)
+    /// **木を返すツールに明示した指定も覚える**(キーごとに上書き)。ft_snapshot の指定しか覚えていなかったので、
+    /// `ft_launch interactiveOnly: true snapshotAfter: true` の次の ft_tap が全行の木を返していた(実測: 計測の
+    /// エージェント3人が同じ指摘)
     func inheritingSnapshotFilters(_ args: [String: Any]) -> (args: [String: Any], note: String) {
         let key = Self.engineKey(args)
         var effective = args
         var note = ""
         for filterKey in ["interactiveOnly", "expandBulk"] {
-            guard !(args[filterKey] is Bool),
-                  let remembered = rememberedSnapshotFilters[key]?[filterKey] else { continue }
+            if let explicit = args[filterKey] as? Bool {
+                // 宣言し直すのは**値が変わったときだけ**(同じ値を明示し直すたびに宣言すると、毎回明示する読み手には
+                // 毎回出る = 計測で4回出た)
+                if rememberedSnapshotFilters[key]?[filterKey] != explicit {
+                    announcedInheritedFilters[key]?.remove(filterKey)
+                }
+                rememberedSnapshotFilters[key, default: [:]][filterKey] = explicit
+                continue
+            }
+            guard let remembered = rememberedSnapshotFilters[key]?[filterKey] else { continue }
             effective[filterKey] = remembered
-            if remembered {
-                note += "(\(filterKey): true inherited from your last ft_snapshot —"
-                    + " pass \(filterKey): false to override)\n"
+            if remembered, announcedInheritedFilters[key, default: []].insert(filterKey).inserted {
+                note += "(\(filterKey): true inherited from an earlier call —"
+                    + " pass \(filterKey): false to override; later responses inherit it without saying so)\n"
             }
         }
         return (effective, note)
@@ -621,6 +645,7 @@ extension MCPServer {
     func snapshotAfterBodyWithStatus(_ args: [String: Any],
                                      outsideTheAppTree: Bool) async -> (text: String, succeeded: Bool) {
         guard args["snapshotAfter"] as? Bool == true else { return ("", false) }
+        SlowCallWatchdog.mark("reading the screen after the action")
         do {
             let snapshotDriver = try await driver(args)
             let key = Self.engineKey(args)
@@ -645,8 +670,7 @@ extension MCPServer {
                 let dialogHint = unchangedSinceAction
                     ? await Self.systemDialogHint(engine: engines[Self.engineKey(args)], driver: snapshotDriver) : ""
                 waitNote = waited.found ? "waitFor \"\(waitFor)\" appeared.\n"
-                    : "waitFor \"\(waitFor)\" did not appear within \(Self.secondsText(seconds))"
-                        + Self.waitTimeoutRemedy
+                    : Self.waitMissHeadline(waitFor, seconds: seconds, quietStopAfter: waited.quietStopAfter)
                         + " — this is the screen as it is now\(Self.truncationHint(snapshot))"
                         + (waited.partialSeenAfter.map { seenAfter in
                             " — a partial match was already on screen \(Int(seenAfter.rounded()))s"
@@ -702,6 +726,17 @@ extension MCPServer {
                         + " expect content in it.\n"
                     snapshot = reread
                 }
+            } else if Self.looksBlank(snapshot) {
+                // **何も読めない木**(全要素がレイアウト専用 = 遷移の途中)。黙って返すと読み手は空の木から次の一手を
+                // 探す(実測: Apple マップで全画面シートを閉じた直後の木が layout-only の1行だけ)。猶予は settle-lite と同じ1回
+                try await Task.sleep(nanoseconds: UInt64(max(0, settleWaitSeconds) * 1_000_000_000))
+                let reread = try await freshSnapshot(snapshotDriver, args: args)
+                settleNote = Self.looksBlank(reread)
+                    ? "note: the screen still had nothing readable after a short re-read wait — a transition may"
+                        + " still be running; use ft_snapshot waitFor: <something you expect on the next screen>.\n"
+                    : "note: the tree right after the action had nothing readable on it (a transition in"
+                        + " progress), so it was re-read once after a short wait — the tree below is the re-read.\n"
+                snapshot = reread
             }
             recordSnapshot(snapshot, snapshotDriver is AndroidDriver ? "android" : "ios", args)
             // waitFor 済みなら「待たずに読んだ」前提の immediateReadNote は誤解を招くので出さない
@@ -715,6 +750,12 @@ extension MCPServer {
                 + " take an ft_snapshot yourself)"
             return (body, false)
         }
+    }
+
+    /// 何も読めない木か(要素が無い、または全要素が interactiveOnly で隠れるレイアウト専用)。判定は描画側の
+    /// `isHiddenByInteractiveOnly` を共有する(2つ目の「中身があるか」を書かない)
+    static func looksBlank(_ snapshot: SnapshotResponse) -> Bool {
+        SnapshotRenderer.hiddenByInteractiveOnlyCount(snapshot) == snapshot.elements.count
     }
 
     /// `snapshotAfterBodyWithStatus` の waitForChange 分岐(waitFor の隣の抽出)。
@@ -905,6 +946,7 @@ extension MCPServer {
     static func systemAlertGate(_ target: ElementInfo, driver: AppDriver,
                                 engine: String?) async -> SystemAlertGate {
         let probe: SystemAlertProbeResponse?
+        SlowCallWatchdog.mark("probing for a system alert")
         do {
             probe = try await driver.systemAlert()
         } catch {
@@ -1044,6 +1086,7 @@ extension MCPServer {
             : ""
         let takenFrom = generationSnapshot(containing: ref, args: args)
         let lastRendered = takenFrom?.elements ?? []
+        SlowCallWatchdog.mark("re-reading the tree to check ref [\(ref)]")
         var fresh = try await freshSnapshot(driver, args: args)
         fresh = try await consumePendingTypeKeyboardCheck(fresh, driver: driver, args: args)
         if let message = Self.refFromAnotherAppMessage(
@@ -1060,10 +1103,17 @@ extension MCPServer {
         // 2つは排他 —— screenChangedUnderRefNote は isStale のとき黙る
         let actedSinceTakenFrom = (sessionActionCounts[Self.engineKey(args)] ?? 0)
             > (generationActionCount(containing: ref, args: args) ?? 0)
-        let originNote = staleNote + probeNote + Self.screenChangedUnderRefNote(
+        let takenRightAfterOwnAction = generationFollowsOwnAction(containing: ref, args: args)
+        let screenChangedNote = Self.screenChangedUnderRefNote(
             ref: ref, takenFrom: takenFrom, fresh: fresh,
             isStale: resolved.isStale, matched: target, actedSinceTakenFrom: actedSinceTakenFrom,
-            takenRightAfterOwnAction: generationFollowsOwnAction(containing: ref, args: args))
+            takenRightAfterOwnAction: takenRightAfterOwnAction,
+            loadingNoteShownBefore: loadingRefNoteShown.contains(key))
+        // 「操作の直後の読み」の分岐で言ったときだけ立てる(その分岐の条件と同じ)
+        if !screenChangedNote.isEmpty, takenRightAfterOwnAction, !actedSinceTakenFrom {
+            loadingRefNoteShown.insert(key)
+        }
+        let originNote = staleNote + probeNote + screenChangedNote
         // **申告 keyboardFrame はキー面だけ**(サジェストバー・地球儀/Dictate 行を含まない)。
         // 木の chrome で広げ、chrome 自身とその部分木は除外する(KeyboardOcclusion の doc)。
         // DSL 側(StepExecutor+Actions.swift)も同じ型で揃える —— 片方だけ広げると
@@ -1517,7 +1567,7 @@ extension MCPServer {
             let reason: String
             switch outcome.status {
             case .failed(let message), .skipped(let message), .inconclusive(let message):
-                reason = message
+                reason = Self.scrollFailureReason(message, sheetRescued: !sheetNote.isEmpty)
             case .passed, .passedViaFallback, .healed:
                 reason = "could not confirm the result"
             }
@@ -1672,7 +1722,7 @@ extension MCPServer {
         // 応答1回ぶんのキャッシュ。SnapshotAnnotationCache のコメント参照(寿命はこの呼び出しだけ)
         let cache = SnapshotAnnotationCache()
         return text(switched + scrollFrameLabelNote + sheetNote + timingNote
-            + "scrolled to \"\(selectorText)\"\(landed)\(fallbackNote)."
+            + Self.scrollToHeadline(selectorText, swipes: outcome.scrollSwipes) + "\(landed)\(fallbackNote)."
             + " The refs below are fresh\n" + inheritedNote + scrollAreaNote
             // **ft_snapshot より少ない**(scrollFrame 候補・重複 id 系は出さない)。その差は
             // NoteCatalog の contexts が持つ = 2箇所の並びを読み比べる必要はない

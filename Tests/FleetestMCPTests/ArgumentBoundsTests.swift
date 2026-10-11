@@ -220,7 +220,7 @@ final class ArgumentBoundsTests: XCTestCase {
     func testScrollToZeroMaxSwipesSucceeds() async throws {
         let text = body(try await server.call(tool: "ft_scroll_to",
                                               args: ["selector": "#login_btn", "maxSwipes": 0]))
-        XCTAssertTrue(text.contains("scrolled to"), text)
+        XCTAssertTrue(text.contains("scrolled to") || text.contains("was already on screen"), text)  // 成功の見出し(scrollToHeadline)
     }
 
     func testLogsNegativeLinesAndSinceSecondsAreRejected() async {

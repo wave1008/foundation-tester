@@ -1243,7 +1243,20 @@ public final class BridgeClient: AppDriver, Sendable {
         }
     }
 
+    /// 出ている最中のブリッジ要求(MCP の止まった呼び出しの記録 `SlowCallWatchdog` が読む)。値は表示用の1行と開始時刻
+    private static let inFlight = LockedValue<[UUID: (label: String, started: Date)]>([:])
+
+    /// 出ている最中のブリッジ要求を「METHOD path → host:port (N s)」で返す(古い順)
+    public static func inFlightRequests(now: Date) -> [String] {
+        inFlight.withLock { $0.values.sorted { $0.started < $1.started } }
+            .map { "\($0.label) (\(Int(now.timeIntervalSince($0.started)))s)" }
+    }
+
     private func send(_ req: URLRequest) async throws -> (Data, URLResponse) {
+        let requestID = UUID()
+        let label = "\(req.httpMethod ?? "GET") \(req.url?.path ?? "?") → \(req.url?.host ?? "?"):\(req.url?.port.map(String.init) ?? "?")"
+        Self.inFlight.withLock { $0[requestID] = (label, Date()) }
+        defer { _ = Self.inFlight.withLock { $0.removeValue(forKey: requestID) } }
         do {
             if let collector = HTTPTimingCollector.shared {
                 return try await session.data(for: req, delegate: collector)

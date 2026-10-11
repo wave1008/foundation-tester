@@ -40,6 +40,12 @@ public enum SheetGeometry {
 }
 
 extension StepExecutor {
+    /// 半開のボトムシートの中で止まった探索の総称ヒント(失敗文の末尾)。**MCP はシート展開の救済を撃った回にこれを
+    /// 失敗文から外す**(救済が同じことを試して結果を名指ししているので、残すと「3回目もうまくいかない」の直後に
+    /// 「広げて再試行」と言う矛盾になる = 計測で指摘)
+    public static let halfOpenSheetHint = " If the list sits inside a half-open bottom sheet, expand the sheet first"
+        + " (drag its grabber upward) and retry."
+
 
     struct ScrollSearchResult {
         var found: Bool
@@ -231,8 +237,7 @@ extension StepExecutor {
         // シート的な容器の有無だけを見て決めるため、探索方向を問わず true になり得た)
         let sheetHint = vertical && result?.stoppedUnmoving == true
             && result?.containerIsPartialHeight == true
-            ? " If the list sits inside a half-open bottom sheet, expand the sheet first"
-                + " (drag its grabber upward) and retry."
+            ? Self.halfOpenSheetHint
             : ""
         // `scrollFrame` を指定していれば全画面探索はそもそも起きない = 未指定のときだけ
         // 埋まる(ScrollSearchResult.directionMatchedScrollFrameCandidate の doc)。

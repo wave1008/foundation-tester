@@ -184,3 +184,13 @@ final class MCPScrollTimingNoteTests: XCTestCase {
         XCTAssertFalse(note.contains("swipe(s)"), note)
     }
 }
+
+/// 救済を撃った回の失敗文に、総称の「シートを広げて再試行」を残さない(救済の結果と矛盾する = 計測で指摘)
+final class MCPScrollFailureReasonTests: XCTestCase {
+    func testTheGenericSheetHintIsDroppedOnlyAfterTheRescue() {
+        let message = "element not found after 6 scroll(s)." + StepExecutor.halfOpenSheetHint
+        XCTAssertEqual(MCPServer.scrollFailureReason(message, sheetRescued: true),
+                       "element not found after 6 scroll(s).")
+        XCTAssertEqual(MCPServer.scrollFailureReason(message, sheetRescued: false), message)
+    }
+}

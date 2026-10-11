@@ -51,7 +51,32 @@ final class MCPSnapshotAfterFilterInheritanceTests: XCTestCase {
             tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true]))
         XCTAssertFalse(after.contains("id=spacer"), after)
         XCTAssertTrue(
-            after.contains("interactiveOnly: true inherited from your last ft_snapshot"), after)
+            after.contains("interactiveOnly: true inherited from an earlier call"), after)
+    }
+
+    /// **継承の宣言は1回だけ**(毎回の応答に同じ1行が載っていた = 計測で指摘)。同じ値を明示し直しても言い直さない
+    /// (毎回明示する読み手に毎回出ていた = 計測で4回)。値を変えたら、次の継承でまた1回言う
+    func testTheInheritanceIsAnnouncedOnlyOnceUntilTheValueChanges() async throws {
+        _ = try await server.call(tool: "ft_snapshot", args: ["interactiveOnly": true])
+        _ = try await server.call(tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true])
+        let second = bodyText(try await server.call(tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true]))
+        XCTAssertFalse(second.contains("id=spacer"), "継承そのものは続く: \(second)")
+        XCTAssertFalse(second.contains("inherited from an earlier call"), second)
+        _ = try await server.call(tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true, "interactiveOnly": true])
+        let sameValue = bodyText(try await server.call(tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true]))
+        XCTAssertFalse(sameValue.contains("inherited from an earlier call"), sameValue)
+        _ = try await server.call(tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true, "interactiveOnly": false])
+        _ = try await server.call(tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true, "interactiveOnly": true])
+        let changed = bodyText(try await server.call(tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true]))
+        XCTAssertTrue(changed.contains("inherited from an earlier call"), changed)
+    }
+
+    /// **ft_batch の最後の木も継承する**(ft_batch だけ全行の木を返していた = 計測で指摘)
+    func testTheBatchTreeInheritsInteractiveOnly() async throws {
+        _ = try await server.call(tool: "ft_snapshot", args: ["interactiveOnly": true])
+        let text = bodyText(try await server.call(tool: "ft_batch", args: ["steps": "tap '#login_btn'"]))
+        XCTAssertTrue(text.contains("All 1 step(s) passed"), text)
+        XCTAssertFalse(text.contains("id=spacer"), text)
     }
 
     /// 呼び出し側が明示した値が常に優先 —— interactiveOnly: false を渡せば継承されない
@@ -60,17 +85,31 @@ final class MCPSnapshotAfterFilterInheritanceTests: XCTestCase {
         let after = bodyText(try await server.call(
             tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true, "interactiveOnly": false]))
         XCTAssertTrue(after.contains("id=spacer"), after)
-        XCTAssertFalse(after.contains("inherited from your last ft_snapshot"), after)
+        XCTAssertFalse(after.contains("inherited from an earlier call"), after)
     }
 
-    /// ft_snapshot を明示なしで呼び直すと記憶は丸ごと消える(次の snapshotAfter は継承しない)
-    func testAPlainFtSnapshotCallClearsTheMemory() async throws {
+    /// **ft_launch(snapshotAfter 付き)に明示した指定も覚える**。ft_snapshot の指定しか覚えていなかったので、
+    /// 起動の次の ft_tap が全行の木を返していた(計測のエージェント3人が同じ指摘)
+    func testAnExplicitFilterOnAnyTreeReturningToolIsRemembered() async throws {
+        _ = try await server.call(tool: "ft_launch",
+                                  args: ["bundleId": "com.example.app", "snapshotAfter": true, "interactiveOnly": true])
+        let after = bodyText(try await server.call(
+            tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true]))
+        XCTAssertFalse(after.contains("id=spacer"), after)
+        XCTAssertTrue(after.contains("interactiveOnly: true inherited from an earlier call"), after)
+    }
+
+    /// **素の ft_snapshot も継承する**(「以後は黙って引き継ぐ」と宣言した後に、素の ft_snapshot が全行の木を返して
+    /// 宣言が嘘になっていた = 計測で指摘)。外すのは false の明示だけ
+    func testAPlainFtSnapshotInheritsAndOnlyAnExplicitFalseClears() async throws {
         _ = try await server.call(tool: "ft_snapshot", args: ["interactiveOnly": true])
-        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let plain = bodyText(try await server.call(tool: "ft_snapshot", args: [:]))
+        XCTAssertFalse(plain.contains("id=spacer"), plain)
+        _ = try await server.call(tool: "ft_snapshot", args: ["interactiveOnly": false])
         let after = bodyText(try await server.call(
             tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true]))
         XCTAssertTrue(after.contains("id=spacer"), after)
-        XCTAssertFalse(after.contains("inherited from your last ft_snapshot"), after)
+        XCTAssertFalse(after.contains("inherited from an earlier call"), after)
     }
 }
 
@@ -118,6 +157,20 @@ final class MCPSnapshotAfterSettleLiteTests: XCTestCase {
             tool: "ft_tap", args: ["x": 1.0, "y": 2.0, "snapshotAfter": true]))
         XCTAssertTrue(text.contains("tree below is the re-read"), text)
         XCTAssertTrue(text.contains("id=welcome"), text)
+    }
+
+    /// **何も読めない木(全要素がレイアウト専用 = 遷移の途中)は1回だけ読み直し、そう言う**
+    /// (実測: Apple マップで全画面シートを閉じた直後の木が layout-only の1行だけで、黙って返していた)
+    func testABlankTreeRightAfterTheActionIsReReadOnce() async throws {
+        let before = settleSnapshot([settleElement(ref: 1, id: "dismiss", label: "今はしない")])
+        let blank = settleSnapshot([settleElement(ref: 1, type: "other")])
+        let after = settleSnapshot([settleElement(ref: 1, type: "searchField", id: "MapsSearchTextField", label: "検索")])
+        driver.scriptedSnapshots = [before, blank, after]
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = bodyText(try await server.call(
+            tool: "ft_tap", args: ["x": 1.0, "y": 2.0, "snapshotAfter": true]))
+        XCTAssertTrue(text.contains("had nothing readable on it"), text)
+        XCTAssertTrue(text.contains("id=MapsSearchTextField"), text)
     }
 
     /// value だけ変わっている(ft_type 直後の典型)→ 再読しない(snapshot は1回だけ)。

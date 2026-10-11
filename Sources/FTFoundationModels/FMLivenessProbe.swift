@@ -49,6 +49,15 @@ public enum FMLivenessProbe {
     /// 死活確認の実呼び出しに許す出力トークン。**答えの中身は見ない**(呼べたかどうかだけ)
     private static let maxResponseTokens = 8
 
+    /// 実呼び出し1回を待つ上限(秒)。**根拠**: 生きている FM の1回は 0.7〜4.7 秒(実測。上の probeIntervalSeconds の doc)。
+    /// その4倍強。**上限が要る理由**: ANE が「no memory」で死んだ機械では respond が戻らない(実測: MCP の ft_status が
+    /// この呼び出しで2分以上止まり、FMLock も握ったままだった)。**尽きたとき**: 「N 秒応答が無かった」を失敗として記録する
+    /// (台帳の扱いは他の失敗と同じ = 連続 FMBreaker.threshold 回で死)。応答しない呼び出しは待たずに放置する(DeadlineRace)
+    static let probeCallTimeoutSeconds: TimeInterval = 20
+
+    /// 実呼び出し1回の結末。nil(DeadlineRace の期限切れ)と区別するため、失敗の説明はここに入れる
+    private enum CallOutcome: Sendable { case answered, failed(String) }
+
     /// 台帳が古い経路だけを実呼び出しで取り直す。返すのは**取り直した後の読み**。
     /// `maxAge` は「これより新しければ撃たない」境目(既定 = プローブ間隔)。
     @discardableResult
@@ -127,36 +136,54 @@ public enum FMLivenessProbe {
     @discardableResult
     public static func probeOnce(path: FMLiveness.Path, now: Date = Date()) async -> FMLiveness.Verdict {
         let startedAt = Date()
-        do {
-            switch path {
-            case .text:
-                _ = try await LanguageModelSession().respond(
-                    to: "Answer with just OK.",
-                    options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: maxResponseTokens))
-            case .vision:
-                guard #available(macOS 27, *) else {
-                    // 呼び出し側(refresh)は isSupported で弾いているので通らない。#available は
-                    // Attachment に触るためにコンパイラが要求する分岐
-                    let verdict = FMLiveness.Verdict(
-                        state: .dead, checkedAt: now.timeIntervalSince1970,
-                        source: .availability, error: FMVisionSupport.requirement)
-                    return verdict
-                }
-                _ = try await LanguageModelSession().respond(
-                    generating: FMLoadGenerator.LoadVisionVerdict.self,
-                    options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 16)
-                ) {
-                    "Is this image a single solid color?"
-                    Attachment(FMLoadGenerator.probeImage)
-                }
+        if path == .vision, !visionIsAvailableOnThisOS() {
+            // 呼び出し側(refresh)は isSupported で弾いているので通らない(#available の分岐はコンパイラの要求)
+            return FMLiveness.Verdict(state: .dead, checkedAt: now.timeIntervalSince1970,
+                                      source: .availability, error: FMVisionSupport.requirement)
+        }
+        let outcome = await DeadlineRace.first(seconds: probeCallTimeoutSeconds) { () -> CallOutcome in
+            do {
+                try await callOnce(path: path)
+                return .answered
+            } catch {
+                return .failed(FMHealth.describe(error))
             }
-            let ms = Int(Date().timeIntervalSince(startedAt) * 1000)
+        }
+        let ms = Int(Date().timeIntervalSince(startedAt) * 1000)
+        switch outcome {
+        case .answered:
             FMBreaker.recordSuccess()
             return settle(path: path, error: nil, ms: ms)
-        } catch {
-            let ms = Int(Date().timeIntervalSince(startedAt) * 1000)
+        case .failed(let description):
             FMBreaker.recordFailure()
-            return settle(path: path, error: FMHealth.describe(error), ms: ms)
+            return settle(path: path, error: description, ms: ms)
+        case nil:
+            FMBreaker.recordFailure()
+            return settle(path: path, error: "no answer within \(Int(probeCallTimeoutSeconds))s", ms: ms)
+        }
+    }
+
+    private static func visionIsAvailableOnThisOS() -> Bool {
+        if #available(macOS 27, *) { return true }
+        return false
+    }
+
+    /// 実呼び出し1回(上限は呼び手の probeOnce が DeadlineRace で切る)
+    private static func callOnce(path: FMLiveness.Path) async throws {
+        switch path {
+        case .text:
+            _ = try await LanguageModelSession().respond(
+                to: "Answer with just OK.",
+                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: maxResponseTokens))
+        case .vision:
+            guard #available(macOS 27, *) else { return }   // probeOnce が先に弾く(コンパイラの要求する分岐)
+            _ = try await LanguageModelSession().respond(
+                generating: FMLoadGenerator.LoadVisionVerdict.self,
+                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 16)
+            ) {
+                "Is this image a single solid color?"
+                Attachment(FMLoadGenerator.probeImage)
+            }
         }
     }
 

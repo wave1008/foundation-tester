@@ -381,6 +381,26 @@ final class TapTargetAdvisoryTests: XCTestCase {
         XCTAssertTrue(note?.contains("#StartPageCollectionView") == true, note ?? "-")
     }
 
+    /// **容器の上端に載った見出しを、その下へ送られた中身が覆っているとは言わない**
+    /// (実測・Apple マップの経路詳細を下へ送った後: 閉じるに「さらに表示」が被ると警告し、タップは閉じるに当たった)。
+    /// 並びと枠は実物どおり(見出しが容器より前・中身の先頭行が容器の上端より上へ出ている)
+    func testScrolledContentDoesNotCoverTheHeaderOnTheScrollersTopEdge() {
+        let close = element(1765, "CardButtonTypeClose", "button", 342, 88, 44, 44, depth: 12)
+        var list = element(1766, "TransitDirectionsListView", "scrollView", 0, 72, 402, 802, depth: 8)
+        list.scrollable = true
+        let firstRow = element(1767, "TransitDirectionsInstructionsStepView", "other", 0, -47, 402, 72, depth: 9)
+        var more = element(1783, "Button", "button", 306, 101, 80, 33, depth: 15)
+        more.label = "さらに表示"
+        let elements = [close, list, firstRow, more]
+        XCTAssertNil(TapTargetGeometry.occlusionAdvisory(for: close, in: elements, screen: screen,
+                                                         isAndroid: false))
+        // 対照: 中身が上端より上へ送られていない(= くぐっている証拠が無い)なら従来どおり言う
+        let unscrolled = [close, list, element(1767, "row", "other", 0, 72, 402, 72, depth: 9), more]
+        let control = TapTargetGeometry.occlusionAdvisory(for: close, in: unscrolled, screen: screen,
+                                                          isAndroid: false)
+        XCTAssertTrue(control?.contains("#Button") == true, control ?? "-")
+    }
+
     /// **ゲート**: 上のクロムの下へスクロールで潜っている疑い(2026-08-14・iOS カレンダーで実測)。
     /// ナビバーは木の**前**にあるので `drawnAbove` が false になり遮蔽として名指しされない ——
     /// その死角を拾って `AppDriver.hittable` へ聞きに行く入口

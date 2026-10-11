@@ -562,7 +562,9 @@ final class MCPRefGuardTests: XCTestCase {
     func testScrollToStillSucceedsWhenTheTargetIsThere() async throws {
         driver.snapshotResponse = screen([element(ref: 1, id: "row_40", label: "行 40", x: 16, y: 100)])
         let text = Self.text(try await server.call(tool: "ft_scroll_to", args: ["selector": "#row_40"]))
-        XCTAssertTrue(text.contains("scrolled to \"#row_40\""), text)
+        // 最初から画面に居る形(スワイプ0回)なので「スクロールした」とは言わない(scrollToHeadline)
+        XCTAssertTrue(text.contains("\"#row_40\" was already on screen"), text)
+        XCTAssertTrue(text.contains("[1] #row_40"), "掴んだ要素を名指しすること: \(text)")
     }
 
     // MARK: - Android には無い「XCUITest の木」の注意を名指ししない(§19.3 M5)
@@ -1443,5 +1445,12 @@ final class MCPRefGuardTests: XCTestCase {
         let text = Self.text(try await server.call(tool: "ft_snapshot", args: ["expandBulk": true]))
         XCTAssertFalse(text.contains("folded into the"), text)
         XCTAssertTrue(text.contains("[21] #poi"), text)
+    }
+
+    /// **1回もスワイプしていなければ「スクロールした」と言わない**(目的の要素が最初から画面に居た形)
+    func testScrollToHeadlineDoesNotClaimAScrollWhenNoSwipeWasNeeded() {
+        XCTAssertEqual(MCPServer.scrollToHeadline("*円*", swipes: 0), "\"*円*\" was already on screen (no scroll needed)")
+        XCTAssertEqual(MCPServer.scrollToHeadline("*円*", swipes: 2), "scrolled to \"*円*\"")
+        XCTAssertEqual(MCPServer.scrollToHeadline("*円*", swipes: nil), "scrolled to \"*円*\"", "回数が分からなければ従来の文")
     }
 }

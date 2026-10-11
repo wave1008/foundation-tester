@@ -63,7 +63,7 @@ final class MCPScrollToOffscreenGateTests: XCTestCase {
 
         let text = body(try await server.call(tool: "ft_scroll_to",
                                               args: ["selector": "#route2", "maxSwipes": 0]))
-        XCTAssertTrue(text.contains("scrolled to"), text)
+        XCTAssertTrue(text.contains("scrolled to") || text.contains("was already on screen"), text)  // 成功の見出し(scrollToHeadline)
     }
 
     /// **回帰**: ビューポートより大きい要素(縦3000pt、画面高874)は中心が
@@ -76,7 +76,7 @@ final class MCPScrollToOffscreenGateTests: XCTestCase {
 
         let text = body(try await server.call(tool: "ft_scroll_to",
                                               args: ["selector": "#route2", "maxSwipes": 0]))
-        XCTAssertTrue(text.contains("scrolled to"), text)
+        XCTAssertTrue(text.contains("scrolled to") || text.contains("was already on screen"), text)  // 成功の見出し(scrollToHeadline)
         XCTAssertFalse(text.contains("off screen"), text)
     }
 

@@ -120,6 +120,18 @@ extension MCPServer {
     /// 外れた回の文がどこにもそれを名指していなかったため、読み手には「5秒固定」と読まれ、
     /// **外れると分かっている待ちにも毎回満額**を払っていた。
     /// 逃げ道は払った場所で言う(`SnapshotTruncation.remedy` と同じ規律)
+    /// waitFor が外れたときの見出し(ft_snapshot・snapshotAfter・ft_batch が共有)。**切り上げたなら、そう言う** ——
+    /// 黙って「現れなかった」とだけ言うと、読み込みの遅い画面で誤った「無い」として読まれる
+    static func waitMissHeadline(_ waitFor: String, seconds: Double, quietStopAfter: Double?) -> String {
+        guard let stopped = quietStopAfter else {
+            return "waitFor \"\(waitFor)\" did not appear within \(secondsText(seconds))" + waitTimeoutRemedy
+        }
+        return "waitFor \"\(waitFor)\" did not appear — the screen had not changed for"
+            + " \(secondsText(waitForQuietCutoffSeconds)), so the wait stopped after \(secondsText(stopped))"
+            + " instead of running to the \(secondsText(seconds)) cap (if it is still loading without changing"
+            + " the screen, wait with waitForChange: true)"
+    }
+
     static let waitTimeoutRemedy =
         " (waitSeconds: <seconds> sets this cap — a smaller one to find out sooner,"
         + " a larger one for a slow load)"
@@ -138,6 +150,13 @@ extension MCPServer {
 
     /// ft_scroll_to の所要時間の内訳(成功・見つからない の両方の応答の先頭)。**純粋関数**にして計測点(ContinuousClock)と
     /// 切り離す。swipes が nil(runScrollSearch を経由しなかった)でも壊れない
+    /// ft_scroll_to の応答の見出し。**1回もスワイプしていなければ「スクロールした」と言わない**(目的の要素が最初から
+    /// 画面に居た形。実測: 「scrolled to」と返り、動いたと読まれた)。回数が分からない(nil)ときは従来の文
+    static func scrollToHeadline(_ selectorText: String, swipes: Int?) -> String {
+        swipes == 0 ? "\"\(selectorText)\" was already on screen (no scroll needed)"
+            : "scrolled to \"\(selectorText)\""
+    }
+
     static func scrollTimingNote(totalMs: Int, swipes: Int?, rescueMs: Int?) -> String {
         guard totalMs >= scrollTimingNoteThresholdMs || rescueMs != nil else { return "" }
         var parts: [String] = []
@@ -168,8 +187,12 @@ extension MCPServer {
     /// (FMLivenessProbe.refresh の門)ので、ft_status が FM の枠を奪って run を遅らせることはない。
     /// ここで出さないと、エージェントは「occlusion-guard が効いていない画面」を
     /// **健全な画面と同じ形で受け取る**(FM の失敗は screenLooksLike では素通り・occlusion-guard では OCR だけの判定になる)
+    /// **台帳を読むだけ**(FM を呼ばない)。ft_status は接続の状態を手早く見る口で、FM の実呼び出し(1回 1〜5 秒・
+    /// 死んだ ANE では戻らない)を抱えない —— 実測: この呼び出しで ft_status が2分以上止まり、FMLock も握ったままだった。
+    /// 台帳はモニター(`api host-metrics --fm-probe`)と run の実呼び出しが養う。古ければ「不明」= 何も言わない。
+    /// 確かめたいときは ft_doctor(実呼び出しで確かめる)
     static func fmLivenessNote() async -> String {
-        let reading = await FMLivenessProbe.refresh()
+        let reading = FMLiveness.current()
         guard let reason = reading.deadSummary(limit: 200) else { return "" }
         // text 経路を使うのはシナリオの下書き・命名だけ(run の中では使わない)
         let disabled = reading.deadPaths == ["vision"]
@@ -484,8 +507,14 @@ extension MCPServer {
     /// **判定は `FTCore.DuplicateRegion` が唯一の定義元**(閾値・y/x 制約・誤検知の witness・
     /// アルゴリズムの根拠はそちら。DSL のタップも同じ判定を `StepNote.staleDuplicateRegion`
     /// として運ぶ)。ここが持つのは文言だけ
-    static func duplicateRegionNote(_ snapshot: SnapshotResponse) -> String {
+    /// **2回目からは短縮する**(`abbreviated`)。同じ画面を読み直すたびに同じ長文と「ft_screenshot で確かめよ」が
+    /// 出ていた(実測: Apple マップの乗車案内の横スクロールで毎回)。どの ref が対かは毎回言う(ref は読みごとに変わる)
+    static func duplicateRegionNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false) -> String {
         guard let match = DuplicateRegion.find(in: snapshot.elements) else { return "" }
+        if abbreviated {
+            return "note: the same \(match.length) elements are listed twice ([\(match.firstRef)] and"
+                + " [\(match.secondRef)]) — refs from one copy may be stale (see the earlier note).\n"
+        }
         return "note: the tree appears to list the same \(match.length) elements twice — starting at"
             + " [\(match.firstRef)] and again at [\(match.secondRef)] (same type/label/value, same row,"
             + " shifted x). This happens when a scrollable region moved (e.g. a"
@@ -752,7 +781,7 @@ extension MCPServer {
     /// いない画面ではスクロールが答えになり得ないので黙る
     static func waitForScrollHint(in snapshot: SnapshotResponse) -> String {
         guard !ScrollFrameCandidates.candidates(in: snapshot).isEmpty else { return "" }
-        return " waitFor only looks at what is currently rendered — if the target is further down,"
+        return " — waitFor only looks at what is currently rendered: if the target is further down,"
             + " use ft_scroll_to (it searches by scrolling)."
     }
 

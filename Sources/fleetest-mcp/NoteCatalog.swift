@@ -81,8 +81,8 @@ enum NoteCatalog {
         },
         // ghostNote と同じ「一覧の中の ref が信用できるか」の系統なので直後に置く
         // (こちらは残像ではなく重複コピー —— 横スクロールで前のコピーが残る形)
-        Entry(key: "duplicateRegionNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
-            MCPServer.duplicateRegionNote(input.snapshot)
+        Entry(key: "duplicateRegionNote", contexts: [.snapshot, .scrollTo], abbreviates: true) { input, abbreviated in
+            MCPServer.duplicateRegionNote(input.snapshot, abbreviated: abbreviated)
         },
         // scrollFrame 候補は ft_scroll_to では別に組み立てる(渡された引数で文面が変わるため)
         Entry(key: "scrollFrameCandidates", contexts: [.snapshot], abbreviates: false) { input, _ in

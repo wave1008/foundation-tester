@@ -411,7 +411,18 @@ extension MCPServer {
         return nil
     }
 
+    /// **呼び出しの番号(`currentCallID`)と見張り(`SlowCallWatchdog`)はここで1回だけ付ける**。本体は `callBody`
     func call(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
+        let callID = nextCallID
+        nextCallID += 1
+        let watchdog = SlowCallWatchdog.start(callID: callID, tool: tool)
+        defer { watchdog.finish() }
+        return try await Self.$currentCallID.withValue(callID) {
+            try await callBody(tool: tool, args: args)
+        }
+    }
+
+    private func callBody(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
         // **未知のツール名はここで断る**(デバイスを触るより前)。この後の
         // foldingUDIDIntoPort は udid → port の解決にブリッジ走査を撃つので、ここで弾かないと
         // 「打ち間違えたツール名」が「ブリッジが無い」という誤った診断になる
@@ -472,8 +483,9 @@ extension MCPServer {
                 // **udid を宣言していないツールでは走査しない**(ft_logs = ブリッジが死んだ後に読むツール。
                 // 畳むと「no running bridge」で落ち、読みたいクラッシュログに届かない)
                 folded = Self.strippingSelectorQuotes(Self.toolFoldsUDID(tool)
-                    ? try await Self.foldingUDIDIntoPort(
-                        args, rememberedPort: rememberedPort(forUDID: args["udid"] as? String)) : args)
+                    ? try await SlowCallWatchdog.marking("resolving the target device") {
+                        try await Self.foldingUDIDIntoPort(
+                            args, rememberedPort: self.rememberedPort(forUDID: args["udid"] as? String)) } : args)
             } catch {
                 let hint = await connectionLostHint(error, args: args)
                 throw hint.isEmpty ? error : MCPError(error.localizedDescription + hint)
@@ -517,17 +529,15 @@ extension MCPServer {
             if Self.toolAcceptsDeviceTarget(tool) {
                 await recheckXCUITestRunnerIfSlow(args: resolved, elapsedMs: elapsedMs)
             }
-            return Self.withElapsed(content, since: start, clock: clock)
+            return Self.withElapsed(content, since: start, clock: clock,
+                                    breakdown: SlowCallWatchdog.breakdown())
         }
         do {
             // **失敗したら1回だけブリッジを起動し直して撃ち直す**(MCPServer+BridgeRecovery.swift)。
             // 起動し直せなければ元のエラーがそのまま catch へ落ち、connectionLostHint 等はそのまま効く
             // (MCPToolFailure は接続拒否ではないので撃ち直しの対象にならない = シナリオを二重に走らせない)
-            let callID = nextCallID
-            nextCallID += 1
-            return await decorated(try await Self.$currentCallID.withValue(callID) {
-                try await dispatchRetryingAfterBridgeRecovery(tool: tool, args: resolved)
-            })
+            SlowCallWatchdog.mark("running \(tool)")
+            return await decorated(try await dispatchRetryingAfterBridgeRecovery(tool: tool, args: resolved))
         } catch let failure as MCPToolFailure {
             // 中身は呼び手が組み上げた報告そのもの。接続断の診断(デバイス走査)は足さない
             throw MCPToolFailure(content: await decorated(failure.content))
@@ -710,11 +720,23 @@ extension MCPServer {
     /// **末尾に独立した content ブロックとして足す**(本文へ混ぜない): 本文を読む側は
     /// `content[0].text` を見るので、混ぜると所要時間が結果の文字列の一部になって
     /// 照合や引用を汚す。画像を返す ft_screenshot でも同じ形で足せる
+    /// **`elapsedBreakdownSeconds` 以上かかった呼び出しは段階ごとの内訳を添える**(何に時間を使ったかを言う。
+    /// 実測: Apple マップの「今はしない」の ft_tap が 25.2 秒かかり、応答からは理由が読めなかった)
     static func withElapsed(_ content: [[String: Any]], since start: ContinuousClock.Instant,
-                            clock: ContinuousClock) -> [[String: Any]] {
+                            clock: ContinuousClock,
+                            breakdown: [(phase: String, seconds: Double)]) -> [[String: Any]] {
         let ms = (clock.now - start) / .milliseconds(1)
-        return content + [["type": "text", "text": "⏱ \(Self.elapsedText(milliseconds: ms))"]]
+        var text = "⏱ \(Self.elapsedText(milliseconds: ms))"
+        if ms >= elapsedBreakdownSeconds * 1000, breakdown.count > 1 {
+            text += " (" + breakdown.map { "\($0.phase) \(Self.elapsedText(milliseconds: $0.seconds * 1000))" }
+                .joined(separator: " · ") + ")"
+        }
+        return content + [["type": "text", "text": text]]
     }
+    /// 内訳を添える下限(秒)。**根拠**: 地図の計測で、説明の要らない呼び出し(waitFor の空振りの
+    /// 切り上げ・データ消去を含む)の最長は 12.8 秒。それを超えた1本(25.2 秒)は理由が読めなかった。
+    /// **尽きたとき**: 内訳が付かないだけ(⏱ の総計は常に出る)
+    static let elapsedBreakdownSeconds: Double = 15
 
     /// 1秒未満はミリ秒・以上は小数1桁の秒(読み手が桁を数えなくて済む形)
     static func elapsedText(milliseconds: Double) -> String {
@@ -1004,7 +1026,7 @@ extension MCPServer {
             return " (selector: \(graded.selector)\(caution))"
         }
         return " — no stable selector for this element, so a scenario cannot reproduce this"
-            + " by selector; use a labelled ancestor, or have the app expose an id"
+            + " by selector; use a labelled ancestor (or, if you can change the app, give it an id)"
             + Self.homeScreenLaunchHint(snapshot.sessionBundleID)
     }
 

@@ -16,6 +16,8 @@ extension MCPServer {
     /// **差し替えドライバ(テスト)では何もしない**(`prepareAndroidDeviceIfNeeded` が
     /// `makeDriver == nil` を見る)ので、既存のテストの呼び出し列は1つも変わらない
     func driver(_ args: [String: Any]) async throws -> AppDriver {
+        let previousPhase = SlowCallWatchdog.mark("resolving the device's bridge")
+        defer { SlowCallWatchdog.restore(previousPhase) }
         let resolved = try await resolveDriver(args)
         await prepareAndroidDeviceIfNeeded(resolved, args: args)
         return resolved
@@ -1646,13 +1648,28 @@ extension MCPServer {
     /// —— waitSeconds を食い潰さない固定小コストに抑えるための蓋(settleWaitSeconds × この回数)
     static let changeSettleRereads = 3
 
+    /// 外れた待ちを切り上げる「木が変わらない時間」(秒)。**根拠**: 正しく当たった待ちで、当たる前に木が変わらなかった
+    /// 最長は 0.9 秒(地図の経路検索の実測 16 回)、わざと遅らせた画面は 2.0 秒(E2EY の読み込み中の骨組み = 動かない
+    /// 灰色の帯。契約は E2EYAppCMP/docs/ui-contract.md の A3)。その上に余裕を足した値。**尽きたとき**: 応答で
+    /// 「N 秒動かなかったので切り上げた」と言い、まだ読み込み中なら waitForChange で待つよう案内する
+    /// (`waitMissHeadline`)。これより長く何も変えずに読み込む画面は、届く前に切り上げる
+    static let waitForQuietCutoffSeconds: Double = 3.0
+
+    /// 切り上げてよい待ちか。上限が切り上げの時間以下なら意味が無い(呼び手が短い上限を選んでいる)・部分一致が
+    /// 見えた・読み込み中の印(中身の無い大きなスクロール領域 = `emptyLoadingScroller`)があるときは上限まで待つ
+    static func quietCutoffApplies(cap: Double, partialSeen: Bool, latest: SnapshotResponse) -> Bool {
+        cap > waitForQuietCutoffSeconds && !partialSeen && emptyLoadingScroller(in: latest) == nil
+    }
+
     /// selector が出るまで snapshot を撃ち直す。**照合は DSL と同じ**(FTSelector →
     /// StepExecutor)なので、ここで書ける式はそのままシナリオへ持ち込める。
     ///
-    /// **完全一致が出るまで満額待つ**(案B): 周回ごとに部分一致の有無だけ
+    /// **部分一致が見えた待ちは満額待つ**(案B): 周回ごとに部分一致の有無だけ
     /// (`notationHint` はメモリ上の計算で往復を払わない)見て、最初に見えた経過秒とヒントを
-    /// 覚える。**早期打ち切りはしない** —— ローディング中のプレースホルダが部分一致で先に出て、
-    /// 本命が後から来る画面があるため(打ち切ると本命を待ち損ねる)
+    /// 覚える —— ローディング中のプレースホルダが部分一致で先に出て、本命が後から来る画面があるため。
+    /// **部分一致も読み込み中の印も無く、木が `waitForQuietCutoffSeconds` 変わらなければ切り上げる**
+    /// (`quietStopAfter` = 切り上げた経過秒。根拠は定数の doc)。外れたセレクタ(AI が表記を推測で外した)を
+    /// 上限まで待っていた(実測: 地図の計測で空振り15回・各7〜12秒)
     /// `refetched`: 撃ち直しが1回でも起きたか(ref 世代管理で追加)。false のとき
     /// `snapshot` は引数 `first` そのもの(値も ref 番号も変わっていない)。呼び手はこれを見て
     /// `adoptSnapshot` を通すかどうかを決める —— **通さないと世代が進まないだけで無害だが、
@@ -1667,7 +1684,7 @@ extension MCPServer {
     static func waitFor(_ selector: String, driver: AppDriver, first: SnapshotResponse,
                         seconds: Double, elementLimit: Int? = nil) async throws
         -> (found: Bool, snapshot: SnapshotResponse, partialSeenAfter: Double?, partialHint: String,
-            refetched: Bool) {
+            refetched: Bool, quietStopAfter: Double?) {
         var partialSeenAfter: Double?
         var partialHint = ""
         func notePartial(_ snapshot: SnapshotResponse, elapsed: Double) {
@@ -1677,24 +1694,35 @@ extension MCPServer {
             partialSeenAfter = elapsed
             partialHint = hint
         }
-        if matches(selector, in: first) { return (true, first, nil, "", false) }
+        if matches(selector, in: first) { return (true, first, nil, "", false, nil) }
+        SlowCallWatchdog.mark("waiting for \(selector) (cap \(Int(seconds))s)")
         notePartial(first, elapsed: 0)
         let start = Date()
         let deadline = start.addingTimeInterval(seconds)
         var latest = first
         var refetched = false
+        var lastChange = start
         while Date() < deadline {
             try await Task.sleep(for: .seconds(waitPollSeconds))
             // **キャッシュを捨てて撮る**: 同じ木を読み続けると、出ていても永遠に出ない
             if let elementLimit { driver.raiseElementLimitOnNextSnapshot(elementLimit) }
+            let previous = latest
             latest = driver.supportsCacheBypass
                 ? try await driver.snapshot(bypassingCache: true) : try await driver.snapshot()
             refetched = true
-            if matches(selector, in: latest) { return (true, latest, nil, "", true) }
+            if matches(selector, in: latest) { return (true, latest, nil, "", true, nil) }
             notePartial(latest, elapsed: Date().timeIntervalSince(start))
+            if !looksUnchanged(previous, latest) { lastChange = Date() }
+            // **上限の後の読みでは切り上げと言わない**(最後の読みが上限を跨ぐと「上限より前に止めた」と言いながら
+            // 上限を超えた秒数を出していた = 計測で指摘: "stopped after 5.1s instead of running to the 5s cap")
+            if Date() < deadline,
+               quietCutoffApplies(cap: seconds, partialSeen: partialSeenAfter != nil, latest: latest),
+               Date().timeIntervalSince(lastChange) >= waitForQuietCutoffSeconds {
+                return (false, latest, nil, "", true, Date().timeIntervalSince(start))
+            }
         }
         // ループが1周も回らなかった(seconds <= 0 等)ときは latest === first のまま = 未撃ち直し
-        return (false, latest, partialSeenAfter, partialHint, refetched)
+        return (false, latest, partialSeenAfter, partialHint, refetched, nil)
     }
 
     /// セレクタ式(`#id` / ラベル / `.type` / `||` 等)がこの画面に1つでも当たるか。

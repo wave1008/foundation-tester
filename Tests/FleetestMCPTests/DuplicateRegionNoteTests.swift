@@ -59,6 +59,17 @@ final class DuplicateRegionNoteTests: XCTestCase {
         XCTAssertTrue(note.contains("ft_screenshot"), "確かめる手段まで書くこと: \(note)")
     }
 
+    /// **2回目からは短縮形**(同じ画面を読み直すたびに長文が出ていた)。対の ref は毎回言う(読みごとに変わる)
+    func testTheRepeatNameTheRefsButDropTheLongExplanation() {
+        let elements = duplicatedRow(count: 6, firstRef: 1, secondRef: 101)
+        let short = MCPServer.duplicateRegionNote(tree(elements), abbreviated: true)
+        XCTAssertTrue(short.contains("[1]") && short.contains("[101]"), short)
+        XCTAssertFalse(short.contains("ft_screenshot"), short)
+        XCTAssertLessThan(short.count, MCPServer.duplicateRegionNote(tree(elements)).count / 2, short)
+        XCTAssertEqual(MCPServer.duplicateRegionNote(tree(duplicatedRow(count: 5, firstRef: 1, secondRef: 101)),
+                                                     abbreviated: true), "", "発火の判定は短縮形でも同じ")
+    }
+
     // MARK: - duplicateRegionNote: 発火しない形
 
     /// 境界のもう片側: 5要素では届かない(duplicateRegionMinimumRun 未満)

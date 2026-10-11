@@ -10,12 +10,10 @@ import FTCore
 extension MCPServer {
 
     func ftSnapshot(_ args: [String: Any]) async throws -> [[String: Any]] {
-        // **明示分だけ・丸ごと置き換え**(snapshotAfterBody が読む記憶)。省略したキーは
-        // ここで記憶から消える — 次の snapshotAfter は「今の申告」だけを見て継承の可否を決める
-        var explicitFilters: [String: Bool] = [:]
-        if let v = args["interactiveOnly"] as? Bool { explicitFilters["interactiveOnly"] = v }
-        if let v = args["expandBulk"] as? Bool { explicitFilters["expandBulk"] = v }
-        rememberedSnapshotFilters[Self.engineKey(args)] = explicitFilters
+        // **木を返す他のツールと同じく継承する**(省略したキーは記憶の値・明示した値は記憶を上書き)。
+        // 省略を「記憶を消す」にしていたら、継承を「以後は黙って引き継ぐ」と宣言した後の素の ft_snapshot が
+        // 全行の木を返し、宣言が嘘になった(計測のエージェントが指摘)
+        let (args, inheritedNote) = inheritingSnapshotFilters(args)
         let snapshotDriver = try await driver(args)
         var snapshot: SnapshotResponse
         do {
@@ -43,8 +41,7 @@ extension MCPServer {
             // (base 込みの ref を native ref と取り違えて比較するため)
             snapshot = waited.refetched ? adoptSnapshot(waited.snapshot, args: args) : waited.snapshot
             if !waited.found {
-                waitNote = "waitFor \"\(waitFor)\" did not appear within"
-                    + " \(Self.secondsText(seconds))\(Self.waitTimeoutRemedy)"
+                waitNote = Self.waitMissHeadline(waitFor, seconds: seconds, quietStopAfter: waited.quietStopAfter)
                     + " — this is the screen as it is now\(Self.truncationHint(snapshot))"
                     + (waited.partialSeenAfter.map { seenAfter in
                         // **完全一致でなく部分一致が先に出た形を名指しする**: 満額待った理由
@@ -67,7 +64,7 @@ extension MCPServer {
         recordSnapshot(snapshot, snapshotDriver is AndroidDriver ? "android" : "ios", args)
         return text(withPendingWarnings(
             await snapshotBody(snapshot, driver: snapshotDriver, args: args,
-                               extraNote: waitNote),
+                               extraNote: inheritedNote + waitNote),
             args: args))
     }
 

@@ -94,11 +94,15 @@ def new_tests_in(files):
 
 
 def mutation_problems(json_path, classes):
+    # **読めなければ断る**(通さない)。フックはシェルを通る前の文字列を見るので、`$S/mut.json` のような変数のパスは
+    # 開けない —— 「読めなければ判定しない」にしていた間、変数で書いた変異テストは1度も検査されなかった(2026-10-11)
+    if "$" in json_path:
+        return [f"変異の JSON のパスにシェル変数がある({json_path})。フックは展開前の文字列しか見られないので、絶対パスで直接書く"]
     path = json_path if os.path.isabs(json_path) else os.path.join(os.getcwd(), json_path)
     try:
         mutations = json.load(open(path, encoding="utf-8"))
-    except (OSError, ValueError):
-        return []  # 読めなければ判定しない(スクリプト自身が落とす)
+    except (OSError, ValueError) as error:
+        return [f"変異の JSON を読めない({json_path}: {error})。範囲を検査できないので撃たない"]
     problems, groups = [], {}
     for m in mutations:
         value = m.get("filter", "")
@@ -130,6 +134,10 @@ def check(command):
     reasons = []
     for tokens in segs:
         words = [t for t in tokens if not re.match(r"^\w+=", t)]  # 先頭の VAR=value を飛ばす
+        # **`bash -c '<コマンド>'` の中も検査する**(引用の中は1つの語に見えるので、そのままだと素通りする)
+        for i, tok in enumerate(words[:-1]):
+            if os.path.basename(tok) in ("bash", "sh", "zsh") and words[i + 1] == "-c" and i + 2 < len(words):
+                reasons.extend(check(words[i + 2] + (" FT_FULL_TEST=1" if full_ok else "")))
         if len(words) >= 2 and os.path.basename(words[0]) == "swift" and words[1] == "test":
             if "--help" in words or "-h" in words:
                 continue

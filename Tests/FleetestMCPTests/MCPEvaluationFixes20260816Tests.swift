@@ -155,7 +155,7 @@ final class MCPScrollToFilterInheritanceTests: XCTestCase {
         let text = body(try await server.call(tool: "ft_scroll_to", args: ["selector": "#login_btn"]))
         XCTAssertFalse(text.contains("id=spacer"), text)
         XCTAssertTrue(
-            text.contains("interactiveOnly: true inherited from your last ft_snapshot"), text)
+            text.contains("interactiveOnly: true inherited from an earlier call"), text)
     }
 
     /// 明示した値が常に優先(snapshotAfter 側と同じ規則)
@@ -164,13 +164,13 @@ final class MCPScrollToFilterInheritanceTests: XCTestCase {
         let text = body(try await server.call(
             tool: "ft_scroll_to", args: ["selector": "#login_btn", "interactiveOnly": false]))
         XCTAssertTrue(text.contains("id=spacer"), text)
-        XCTAssertFalse(text.contains("inherited from your last ft_snapshot"), text)
+        XCTAssertFalse(text.contains("inherited from an earlier call"), text)
     }
 
     /// 記憶が無ければ黙る(継承の宣言が常時出る = 雑音になるのを防ぐ陰性対照)
     func testNoMemoryMeansNoNoteAndNoFiltering() async throws {
         let text = body(try await server.call(tool: "ft_scroll_to", args: ["selector": "#login_btn"]))
         XCTAssertTrue(text.contains("id=spacer"), text)
-        XCTAssertFalse(text.contains("inherited from your last ft_snapshot"), text)
+        XCTAssertFalse(text.contains("inherited from an earlier call"), text)
     }
 }

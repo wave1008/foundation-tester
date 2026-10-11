@@ -248,8 +248,10 @@ final class SweepHarnessTests: XCTestCase {
         // その collectionView)。中のセルは「自分の横カルーセルの中」に居るので印が付かず、
         // 代わりに offscreen(中心が画面の外)で拾われる —— 両者は排他ではなく、重い方を先に言う。
         // offscreen 13 と warnedTappable 6 は既存検知の素の結果で、全件が画面外の実座標。
-        // misses 1: `#DayRow` / `#HoursSummary`(曜日・状態と時刻の間)は文字だけの塊の隙間なので言わない
-        "ios-place_guides_scrolled": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 1,
+        // misses 1: `#DayRow` / `#HoursSummary`(曜日・状態と時刻の間)は文字だけの塊の隙間なので言わない。
+        // overlay 0: 以前の1件(カードのつまみ ← 上へ送られた見出し「他にも」)は誤検知 —— 容器の上端に載った中身でない
+        // 要素の下を中身がくぐる形(`OcclusionGeometry.scrollContentUnderOverlay`)
+        "ios-place_guides_scrolled": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 1,
                                             disabled: 0, offscreen: 13, warnedTappable: 6,
                                             keyboard: 0, sliver: 0, nested: 0, scrolledOut: 3),
         "ios-profile": Counts(),

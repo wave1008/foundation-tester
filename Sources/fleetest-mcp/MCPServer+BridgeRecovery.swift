@@ -92,6 +92,7 @@ extension MCPServer {
             }
             return false
         }
+        SlowCallWatchdog.mark("rebuilding the xcuitest bridge on port \(port)")
         Self.logStderr("bridge recovery: port \(port) refused the connection — rebuilding the"
             + " xcuitest bridge for \(udid) and retrying the call once")
         let spec = DeviceSpec(name: udid, udid: udid, port: port, engine: "xcuitest")
@@ -146,6 +147,7 @@ extension MCPServer {
             }
             return
         }
+        SlowCallWatchdog.mark("rechecking the slow xcuitest runner on port \(port)")
         let result = await BridgeProvisioner(repoRoot: repoRoot).recheckRunner(
             name: udid, udid: udid, port: port, injected: injected, log: Self.logStderr)
         switch result.outcome {

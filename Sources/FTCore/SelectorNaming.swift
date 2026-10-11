@@ -28,16 +28,17 @@ public enum Durability {
     /// 一覧に添える印。安定側は無印(印が付くのは注意が要るものだけ、が読みやすい)
     public var mark: String { isPositional ? "~" : "" }
 
-    /// 1つだけ返すとき(ft_tap の戻り値)の但し書き
+    /// 1つだけ返すとき(ft_tap の戻り値)の但し書き。**id を足せとは命じない**(相手は手を入れられない
+    /// アプリのことがある = Apple マップに「id を足せ」と勧めて的外れと指摘された)
     public var caution: String {
         switch self {
         case .stable: return ""
         case .indexed:
             return " — index-based, so it breaks if the number of same-type siblings changes;"
-                + " prefer having the app expose an id"
+                + " if you can change the app, an id would make it stable"
         case .relative:
             return " — relative to a nearby element, so it breaks if the layout around it changes;"
-                + " prefer having the app expose an id"
+                + " if you can change the app, an id would make it stable"
         }
     }
 }

@@ -164,8 +164,8 @@ extension MCPServer {
         guarantees it is there. Both waits run to waitSeconds (default \(number(defaultWaitSeconds))s; the same name as the DSL's \
         waitSeconds:) when they miss — pass a smaller waitSeconds on a wait you expect to miss, a larger \
         one for a slow load. \
-        snapshotAfter and ft_scroll_to inherit interactiveOnly/expandBulk from your last \
-        ft_snapshot call unless passed explicitly, and say so when they do.
+        Every tree-returning call (ft_snapshot, snapshotAfter, ft_scroll_to) inherits interactiveOnly/expandBulk from \
+        the last call that passed them unless passed explicitly; the first response that inherits a value says so.
 
         Once you can name the next few steps by selector — typically right after reading a tree \
         — ft_batch runs them in one call and one approval, and a batch that passes converts 1:1 \
