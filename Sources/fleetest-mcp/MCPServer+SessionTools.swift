@@ -186,6 +186,7 @@ extension MCPServer {
         let bundleID = try Self.requiredStringArgument(args, "bundleId")
         let launchKey = Self.engineKey(args)
         let launchDriver = try await driver(args)
+        let springBoardNote = await recheckXCUITestRunnerBeforeLaunch(args: args)
         let resumes = args["resume"] as? Bool == true
         // **撃つ前に弾く**(ランナー死の予防。installedVerdict/launchGuardDecision のコメント参照)
         let installVerdict = await installedVerdict(bundleID: bundleID, driver: launchDriver, args: args)
@@ -227,7 +228,7 @@ extension MCPServer {
             summary: resumes ? "activate \(bundleID) (resumed, not relaunched)"
                               : "launch \(bundleID)"), args: args)
         // snapshotAfter の読みは system alert の予約(上)を消費するので、立てた後に読む
-        return text((resumes ? "Activated: \(bundleID) (resumed without relaunching)"
+        return text(springBoardNote + (resumes ? "Activated: \(bundleID) (resumed without relaunching)"
                              : "Launched: \(bundleID)")
             + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))
     }
@@ -311,6 +312,7 @@ extension MCPServer {
         resetOnceNotes(forScope: noteScope)
         let bundleID = try Self.requiredStringArgument(args, "bundleId")
         let clearAppDataDriver = try await driver(args)
+        let springBoardNote = await recheckXCUITestRunnerBeforeLaunch(args: args)
         let clearAppDataKey = Self.engineKey(args)
         do {
             try await clearAppDataDriver.clearAppData(bundleID: bundleID)
@@ -349,7 +351,7 @@ extension MCPServer {
         // 次の ft_launch は「初回起動」ではなく「再起動」)。switchedAppNote がこれを見て
         // 「クラッシュしたかも」ではなく「この操作で止めた」と言う
         toolStoppedBundleIDs[clearAppDataKey] = "ft_clear_app_data"
-        return text("Cleared the data of \(bundleID). The app is stopped — ft_launch to continue")
+        return text(springBoardNote + "Cleared the data of \(bundleID). The app is stopped — ft_launch to continue")
     }
 
     func ftTerminate(_ args: [String: Any]) async throws -> [[String: Any]] {

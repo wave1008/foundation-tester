@@ -291,12 +291,10 @@ public enum ProfileWorkerFactory {
                                    repoRoot: URL) async -> String {
         let clock = ContinuousClock()
         let start = clock.now
-        let respring = try? Shell.run(["xcrun", "simctl", "spawn", udid, "launchctl", "kickstart", "-k",
-                                       "system/com.apple.SpringBoard"], timeout: 30)
-        guard respring?.status == 0 else {
+        let respring = SimulatorSpringBoard.restart(udid: udid)
+        guard respring.ok else {
             return ResidualSystemAlertClearing.failedMessage(
-                label: worker.label, alert: alert,
-                reason: "restarting SpringBoard failed (\(respring?.tail ?? "simctl did not run"))")
+                label: worker.label, alert: alert, reason: "restarting SpringBoard failed (\(respring.detail))")
         }
         // `api restart-bridge` と同じ手順(止めてから同じデバイスへ供給し直す)。同じポートで戻らないと
         // ワーカーのドライバが別の宛先を指したままになるので確かめる

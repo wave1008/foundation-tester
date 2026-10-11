@@ -37,7 +37,7 @@ final class BridgeRecoveryWiringTests: XCTestCase {
         XCTAssertTrue(code.contains("Self.shouldAttemptXCUITestBridgeRecovery("),
                       "attemptXCUITestBridgeRecovery は shouldAttemptXCUITestBridgeRecovery を通すこと")
         XCTAssertTrue(code.contains("Self.shouldAttemptXCUITestRunnerRecheck("),
-                      "recheckXCUITestRunnerIfSlow は shouldAttemptXCUITestRunnerRecheck を通すこと")
+                      "recheckXCUITestRunnerBeforeLaunch は shouldAttemptXCUITestRunnerRecheck を通すこと")
     }
 
     /// 起動し直しは BridgeProvisioner.provision の1箇所(bridge up / run の供給と同じ経路)。
@@ -96,7 +96,7 @@ final class BridgeRecoveryWiringTests: XCTestCase {
         let code = try source()
         XCTAssertTrue(code.contains("RunnerAccessibilityHealth.hasForeignLease("),
                       "heldByAnotherSession は供給の門(hasForeignLease)を使うこと")
-        for function in ["func attemptXCUITestBridgeRecovery(", "func recheckXCUITestRunnerIfSlow("] {
+        for function in ["func attemptXCUITestBridgeRecovery(", "func recheckXCUITestRunnerBeforeLaunch("] {
             guard let range = code.range(of: function) else { return XCTFail("\(function) が見当たらない") }
             let rest = code[range.upperBound...]
             let end = [rest.range(of: "\n    func ")?.lowerBound, rest.range(of: "\n    static func ")?.lowerBound]
@@ -107,5 +107,20 @@ final class BridgeRecoveryWiringTests: XCTestCase {
             XCTAssertTrue(body.contains("heldByAnotherSession: heldByAnotherSession)"),
                           "\(function) が読んだ持ち主の印を判定へ渡していない")
         }
+    }
+
+    /// **劣化の回復は起動の入口だけで撃つ**(ユーザー決定: SpringBoard の起こし直しは前面のアプリも落とすので、探索の途中 =
+    /// 遅い呼び出しの直後に撃つと探っていた画面が消える)。ft_launch と ft_clear_app_data の入口で呼び、呼び出しの後では呼ばない
+    func testTheRecheckRunsOnlyAtTheLaunchEntries() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/fleetest-mcp")
+        let session = try String(contentsOf: root.appendingPathComponent("MCPServer+SessionTools.swift"), encoding: .utf8)
+        for function in ["func ftLaunch(", "func ftClearAppData("] {
+            let start = try XCTUnwrap(session.range(of: function))
+            let body = String(session[start.upperBound...].prefix(900))
+            XCTAssertTrue(body.contains("await recheckXCUITestRunnerBeforeLaunch(args: args)"), "\(function) の入口で測っていない")
+        }
+        let dispatch = try String(contentsOf: root.appendingPathComponent("MCPServer+Dispatch.swift"), encoding: .utf8)
+        XCTAssertFalse(dispatch.contains("recheckXCUITestRunner"), "呼び出しの後で測り直している(探索の途中でアプリを落とす)")
     }
 }

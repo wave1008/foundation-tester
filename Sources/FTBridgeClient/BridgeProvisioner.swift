@@ -1063,6 +1063,14 @@ public struct BridgeProvisioner: Sendable {
         let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
                                       physical: sim.physical)
         try? await launcher.stopAndWait()
+        // **シミュレータは SpringBoard を先に起こし直す**: 劣化の物差し(`/systemalert` = SpringBoard への1問)が遅いのは
+        // SpringBoard の側で、ランナーの起動し直しだけでは直らなかった(実測 3.5s のまま)。起こし直すと 0.11〜0.18s。
+        // ランナーと前面のアプリも落ちるが、ランナーはこの直後に作り直し、呼び手はアプリを起動し直す時点でだけ撃つ
+        if !sim.physical {
+            let respring = SimulatorSpringBoard.restart(udid: sim.udid)
+            log(respring.ok ? "→ \(name): restarted SpringBoard before restarting the xcuitest bridge"
+                : "⚠️ \(name): restarting SpringBoard failed (\(respring.detail)) — restarting the xcuitest bridge only")
+        }
         let restarted = try await executeBridge(
             engine: "xcuitest",
             plan: .launch(port: port, needsInstall: false, stopStalePort: nil, reclaimInApp: false),

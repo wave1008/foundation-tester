@@ -46,31 +46,25 @@ final class BridgeRecoveryDecisionTests: XCTestCase {
 
     // MARK: - shouldAttemptXCUITestRunnerRecheck
 
-    func testRechecksASlowCallOnASimulatorXCUITestEngine() {
+    /// **起動の入口で撃つので所要の門は無い**: シミュレータの XCUITest なら常に1問測る(健全なら測るだけ)
+    func testRechecksASimulatorXCUITestEngineAtLaunch() {
         XCTAssertTrue(MCPServer.shouldAttemptXCUITestRunnerRecheck(
-            engine: "xcuitest", isPhysical: false, maxStepSnapshotMs: 2000, injected: false, heldByAnotherSession: false))
-    }
-
-    /// 閾値未満(RunnerAccessibilityHealth.shouldRecheck が持つ、2,000ms)は測り直さない——
-    /// 新しい時間の定数はここに置かない(既存の門をそのまま共有する)
-    func testDoesNotRecheckAFastCall() {
-        XCTAssertFalse(MCPServer.shouldAttemptXCUITestRunnerRecheck(
-            engine: "xcuitest", isPhysical: false, maxStepSnapshotMs: 1999, injected: false, heldByAnotherSession: false))
+            engine: "xcuitest", isPhysical: false, injected: false, heldByAnotherSession: false))
     }
 
     func testDoesNotRecheckHybridInAppOrPhysicalEngines() {
         XCTAssertFalse(MCPServer.shouldAttemptXCUITestRunnerRecheck(
-            engine: "hybrid", isPhysical: false, maxStepSnapshotMs: 5000, injected: false, heldByAnotherSession: false))
+            engine: "hybrid", isPhysical: false, injected: false, heldByAnotherSession: false))
         XCTAssertFalse(MCPServer.shouldAttemptXCUITestRunnerRecheck(
-            engine: "inapp", isPhysical: false, maxStepSnapshotMs: 5000, injected: false, heldByAnotherSession: false))
+            engine: "inapp", isPhysical: false, injected: false, heldByAnotherSession: false))
         XCTAssertFalse(MCPServer.shouldAttemptXCUITestRunnerRecheck(
-            engine: "xcuitest", isPhysical: true, maxStepSnapshotMs: 5000, injected: false, heldByAnotherSession: false))
+            engine: "xcuitest", isPhysical: true, injected: false, heldByAnotherSession: false))
     }
 
-    /// 注入口(FT_FAKE_SLOW_RUNNER_PORTS)は所要に関わらず測り直す(陽性対照)
+    /// 注入口(FT_FAKE_SLOW_RUNNER_PORTS)も同じ門を通る(陽性対照)
     func testInjectedAlwaysRechecksRegardlessOfElapsed() {
         XCTAssertTrue(MCPServer.shouldAttemptXCUITestRunnerRecheck(
-            engine: "xcuitest", isPhysical: false, maxStepSnapshotMs: nil, injected: true, heldByAnotherSession: false))
+            engine: "xcuitest", isPhysical: false, injected: true, heldByAnotherSession: false))
     }
 
     // MARK: - 他のセッション(run・別の MCP)が使っているデバイス
@@ -86,8 +80,8 @@ final class BridgeRecoveryDecisionTests: XCTestCase {
 
     func testDoesNotRecheckADeviceHeldByAnotherSession() {
         XCTAssertFalse(MCPServer.shouldAttemptXCUITestRunnerRecheck(
-            engine: "xcuitest", isPhysical: false, maxStepSnapshotMs: 5000, injected: false, heldByAnotherSession: true))
+            engine: "xcuitest", isPhysical: false, injected: false, heldByAnotherSession: true))
         XCTAssertFalse(MCPServer.shouldAttemptXCUITestRunnerRecheck(
-            engine: "xcuitest", isPhysical: false, maxStepSnapshotMs: nil, injected: true, heldByAnotherSession: true))
+            engine: "xcuitest", isPhysical: false, injected: true, heldByAnotherSession: true))
     }
 }

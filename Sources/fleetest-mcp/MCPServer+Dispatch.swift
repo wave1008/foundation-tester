@@ -553,10 +553,6 @@ extension MCPServer {
             if let note = takeUIFrameworkUnknownNote(args: resolved) {
                 content = [["type": "text", "text": note]] + content
             }
-            let elapsedMs = Int(((clock.now - start) / .milliseconds(1)).rounded())
-            if Self.toolAcceptsDeviceTarget(tool) {
-                await recheckXCUITestRunnerIfSlow(args: resolved, elapsedMs: elapsedMs)
-            }
             return Self.withElapsed(content, since: start, clock: clock,
                                     breakdown: SlowCallWatchdog.breakdown())
         }

@@ -109,58 +109,56 @@ extension MCPServer {
         }
     }
 
-    /// **純粋関数**: xcuitest ランナーの測り直しを撃つかの判定材料。閾値・材料の是非は
-    /// `RunnerAccessibilityHealth.shouldRecheck` に委ね(新しい時間の定数を置かない)、
-    /// ここで足すのはエンジン・実機の絞り込みだけ(RunnerMidRunRecheck.target と同じ絞り込み)と、
-    /// **他のセッションが使っているデバイスを除くこと**(`heldByAnotherSession`。起動し直すのは
-    /// そのセッションのランナー。run 自身は RunnerMidRunRecheck で自分のレーンを測り直す)
+    /// **純粋関数**: xcuitest ランナーの測り直しを撃つかの判定材料(エンジン・実機の絞り込みは RunnerMidRunRecheck.target と同じ)と、
+    /// **他のセッションが使っているデバイスを除くこと**(`heldByAnotherSession`。起動し直すのはそのセッションのランナー。
+    /// run 自身は RunnerMidRunRecheck で自分のレーンを測り直す)。**所要の門は持たない** —— 撃つのは起動の入口だけで、
+    /// そこでは常に1問(健全なら 0.1〜0.2s)測る
     static func shouldAttemptXCUITestRunnerRecheck(
-        engine: String?, isPhysical: Bool?, maxStepSnapshotMs: Int?, injected: Bool, heldByAnotherSession: Bool
+        engine: String?, isPhysical: Bool?, injected: Bool, heldByAnotherSession: Bool
     ) -> Bool {
         guard engine == "xcuitest", isPhysical == false, !heldByAnotherSession else { return false }
-        return RunnerAccessibilityHealth.shouldRecheck(maxStepSnapshotMs: maxStepSnapshotMs, injected: injected)
+        return true
     }
 
-    /// 呼び出し1回の所要が劣化の閾値を跨いだときだけ、そのデバイスのランナーを1問測り直して劣化していれば
-    /// 起動し直す(`RunnerAccessibilityHealth.probe`/`BridgeProvisioner.recheckRunner`。run 側の
-    /// `RunnerMidRunRecheck` と同じ材料・同じ閾値を共有する)。起動し直しても直らなかったデバイスを覚えて
-    /// 空振りを繰り返さないのは `RunnerRestartFutility`(プロセス共有の帳簿。recheckRunner の内側で
-    /// 参照する——ここでは何も持たない)
-    func recheckXCUITestRunnerIfSlow(args: [String: Any], elapsedMs: Int) async {
-        guard makeDriver == nil else { return }
+    /// **ft_launch / ft_clear_app_data の入口で**、そのデバイスのランナーを1問測り、劣化していれば SpringBoard とランナーを
+    /// 起こし直す(`BridgeProvisioner.recheckRunner` = run の RunnerMidRunRecheck と同じ経路)。
+    /// **入口だけで撃つ**(ユーザー決定): 起こし直しは前面のアプリも落とすので、探索の途中(遅い呼び出しの直後)に撃つと
+    /// 探っていた画面が消える。起動の入口ならどうせアプリを起動し直す。戻り値は応答に添える1行(何もしなければ空)
+    func recheckXCUITestRunnerBeforeLaunch(args: [String: Any]) async -> String {
+        guard makeDriver == nil else { return "" }
         let key = Self.engineKey(args)
-        guard let port = connectedPorts[key], let udid = udids[key] ?? nil else { return }
+        guard let port = connectedPorts[key], let udid = udids[key] ?? nil,
+              let repoRoot = try? RepoRoot.find() else { return "" }
         let injected = RunnerAccessibilityHealth.injectedSlowPorts().contains(port)
-        // **`SimulatorCatalog.isPhysical` は shouldRecheck が通ってから引く**: これはほぼ全ての
-        // 成功呼び出しの後に走るので、遅かった回(稀)だけに絞ってから simctl/devicectl を撃つ
-        // (先に引くと健全な呼び出しのたびに一覧照会を払うことになる)
-        guard RunnerAccessibilityHealth.shouldRecheck(maxStepSnapshotMs: elapsedMs, injected: injected),
-              let repoRoot = try? RepoRoot.find() else { return }
         let heldByAnotherSession = Self.heldByAnotherSession(udid: udid, repoRoot: repoRoot)
         guard Self.shouldAttemptXCUITestRunnerRecheck(
                   engine: engines[key], isPhysical: SimulatorCatalog.isPhysical(udid: udid),
-                  maxStepSnapshotMs: elapsedMs, injected: injected, heldByAnotherSession: heldByAnotherSession)
+                  injected: injected, heldByAnotherSession: heldByAnotherSession)
         else {
             if heldByAnotherSession {
                 Self.logStderr(Self.skippedForAnotherSessionMessage(
                     action: "rechecking/restarting", udid: udid, port: port))
             }
-            return
+            return ""
         }
-        SlowCallWatchdog.mark("rechecking the slow xcuitest runner on port \(port)")
+        SlowCallWatchdog.mark("checking the simulator's SpringBoard before launching")
         let result = await BridgeProvisioner(repoRoot: repoRoot).recheckRunner(
             name: udid, udid: udid, port: port, injected: injected, log: Self.logStderr)
         switch result.outcome {
-        case .healthy, .unmeasured:
-            Self.logStderr(RunnerAccessibilityHealth.leftRunningMessage(
-                name: udid, port: port, maxStepSnapshotMs: elapsedMs, probeSeconds: result.probeSeconds))
+        case .healthy, .unmeasured, .skipped:
+            return ""
         case .restarted(let afterSeconds):
-            let now = afterSeconds.map { "; a one-element query now takes \(String(format: "%.2f", $0))s" } ?? ""
-            Self.logStderr("✅ \(udid): restarted the xcuitest bridge on port \(port)\(now)")
-        case .restartDidNotHelp, .skipped:
-            break  // restartRunner/recheckRunner が既に1行出し済み
+            let before = result.probeSeconds.map { String(format: "%.1fs", $0) } ?? "slow"
+            let now = afterSeconds.map { String(format: "%.2fs", $0) } ?? "not measured"
+            return "note: this simulator's SpringBoard was slow (a system-alert query took \(before); normal is under"
+                + " 0.3s, and every tap pays it), so SpringBoard and the XCUITest bridge were restarted before"
+                + " continuing (now \(now)).\n"
+        case .restartDidNotHelp:
+            return "note: this simulator's SpringBoard is slow (a system-alert query takes over 2s; every tap pays it)"
+                + " and restarting SpringBoard did not help — rebooting the simulator is the next thing to try.\n"
         case .restartFailed(let reason):
-            Self.logStderr("⚠️ \(udid): could not restart the xcuitest bridge on port \(port) (\(reason))")
+            Self.logStderr("⚠️ \(udid): could not restart SpringBoard / the xcuitest bridge on port \(port) (\(reason))")
+            return ""
         }
     }
 }

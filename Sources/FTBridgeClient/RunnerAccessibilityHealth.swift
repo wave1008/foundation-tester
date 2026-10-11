@@ -81,10 +81,9 @@ public enum RunnerAccessibilityHealth {
     /// 次の手としてシミュレータの再起動を挙げる根拠: -01 は起動し直しでは 2.7〜3.0 秒のまま、
     /// 再起動で 0.03 秒に戻った(同じ 3 シナリオの合計 42.3s → 22.1s)
     public static func restartDidNotHelpMessage(name: String, port: UInt16, afterSeconds: TimeInterval) -> String {
-        "⚠️ \(name): the restarted xcuitest bridge on port \(port) still took"
+        "⚠️ \(name): after restarting SpringBoard (on a simulator) and the xcuitest bridge on port \(port), it still took"
             + " \(String(format: "%.1f", afterSeconds))s for a one-element accessibility query"
-            + " (normal is under 0.3s), so the slowness is not in the runner process"
-            + " — it is not restarted again in this run; rebooting the simulator is the next thing to try"
+            + " (normal is under 0.3s) — it is not restarted again in this run; rebooting the simulator is the next thing to try"
     }
 
     /// 以前に起動し直しても直らなかったデバイスを、測り直さずにそのまま使うときの 1 行
@@ -135,7 +134,7 @@ public enum RunnerAccessibilityHealth {
             : "answered a one-element accessibility query in \(String(format: "%.1f", probeSeconds ?? 0))s"
         return "⚠️ \(name): the xcuitest bridge on port \(port) \(measured); normal is under 0.3s"
             + " (a stale remote element after a system daemon restart makes every query wait"
-            + " ~\(Int(slowProbeSeconds * 2))s) — restarting it"
+            + " ~\(Int(slowProbeSeconds * 2))s) — restarting it (SpringBoard first on a simulator)"
     }
 
     // MARK: - 印を run をまたいで持ち越す(RunnerSlownessStore)

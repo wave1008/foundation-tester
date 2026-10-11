@@ -1712,7 +1712,7 @@ test time だけ +28〜44%** に膨らんだ(E2E-CMP/ios-xcuitest 71.2→91.2s)�
 | ft_scroll_to のシート展開の /drag の後に 60s 停止 → ホストがランナーを起動し直した | /drag・/systemui/* は `settle: false` 以外で待ちを素のまま呼んでいた(上限なし) | v176: ジェスチャ全部に上限 6s(`gestureQuiescence`)。`RunnerQuiescenceCapCoverageTests` が外を落とす | 展開 1.9〜2.0s |
 | ft_type 1回が 14〜24s(ホストの上限 20s を超えて失敗を返したのに、文字は打たれていた) | 焦点のタップの前後と打鍵の前後で 6s × 4 | v176: 打鍵の前のタップは待ちを飛ばす(`tapBeforeTyping`) | 7.8〜12.9s |
 | ft_type がまだ 7.8〜12.9s | 打鍵の後の待ち(isPreEvent == false)。完了は読み返しが値で確かめるので二重 | v177: /type の中だけ後の待ちを飛ばす。陽性対照はランナーのログの `skipped N post-event wait(s)` | 0.9〜1.8s。4 SUT の打鍵の E2E(XCUITest)で緑 |
-| タップのたびに 3.6〜12s 上乗せ | SpringBoard の劣化(シミュレータ 8 台中 3 台)。`springboard.alerts.firstMatch.exists` が遅い。健全なら 0.04〜0.2s | **未対処**。SpringBoard の起こし直しで約 10s → 0.1s に戻る(マシンの再起動でも戻った) | 検知して起こし直す案は §8 の候補 |
+| タップのたびに 3.6〜12s 上乗せ | SpringBoard の劣化(シミュレータ 8 台中 3 台)。`springboard.alerts.firstMatch.exists` が遅い。健全なら 0.04〜0.2s | 劣化の回復(`BridgeProvisioner.restartRunner`。run の途中の再確認と MCP が共有)で、シミュレータはランナーの前に SpringBoard を起こし直す(`SimulatorSpringBoard`)。MCP は遅い呼び出しの直後ではなく `ft_launch`・`ft_clear_app_data` の入口で測る(起こし直しは前面のアプリも落とすため。ユーザー決定) | 起こし直し約 8s + ランナー 29s で 3.5s → 0.11〜0.18s(手動の陽性対照)。ランナーの起動し直しだけでは 3.5s のままだった |
 
 **run の開始時の `compile-ocr` は run の設定を見る**(同日): `ScenarioHost.listForRun(compilesOCR:)`。それまでプロファイルや `--set` で
 OCR の段も FM のテキストの視覚検証も切った run でも起こしていた。陽性対照(E2E-iOS・1本・`pgrep` を 0.02s おき): 既定 2 回観測 /
@@ -2186,9 +2186,8 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 候補ではない(in-app 常駐ブリッジ・hybrid は既定で動いている)。候補として読むのは各行の
 ✅/❌/不採用の印が無いものだけ。
 
-- **SpringBoard の劣化を検知して起こし直す**(§3.36)。MCP の `ft_launch`・`ft_clear_app_data` の入口で `/systemalert` の
-  所要を測り、閾値(健全 0.04〜0.2s・劣化 3.6〜12s なので約 1s)を超えたら SpringBoard とランナーを起こし直して直後に測り直す。
-  起こし直しの部品は残ったシステムアラートを消す仕組みの3段目にある。DSL の run の前にも同じ処置が効くかは未確認
+- ✅ **SpringBoard の劣化を検知して起こし直す**(§3.36 で実装)。効果がどれだけ続くか(再劣化までの時間)は未計測 ——
+  再劣化が早いならシミュレータの再起動へ切り替える(既に供給の経路は「起動し直しで直らなかった」印でシミュレータを再起動する)
 - **iOS 並列度の上限設定(実行プロファイル)** → **2026-07-29 ユーザー決定で不採用**(§6)。
   同時実行数は実行プロファイルに載せるデバイス台数で手動管理する。ただし
   「ブリッジウェッジの根本原因は 10台同時の AX スパイク(シナリオ第一波で健全ブリッジも無応答化)」
