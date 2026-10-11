@@ -144,4 +144,13 @@ final class LinkTextLocatorTests: XCTestCase {
         withLink.linkText = "利用規約"
         XCTAssertEqual(ScenarioCodeGen.command(for: withLink), "tap(\"#a\", linkText: \"利用規約\")")
     }
+
+    /// 割り込みの宣言(ft_batch の `irregularHandler`)。dismiss が detect と同じなら省いた形(DSL の既定)、
+    /// 違えば `dismiss:` 付き(書いたままの代替 `||` も落とさない)
+    func testIrregularHandlerDeclarationRendersAsTheDSLLine() {
+        let same = FlowStep(action: "irregularHandler", locator: FlowLocator(label: "閉じる"), text: "閉じる")
+        XCTAssertEqual(ScenarioCodeGen.command(for: same), "irregularHandler(\"閉じる\")")
+        let other = FlowStep(action: "irregularHandler", locator: FlowLocator(label: "お知らせ"), text: "OK||閉じる")
+        XCTAssertEqual(ScenarioCodeGen.command(for: other), "irregularHandler(\"お知らせ\", dismiss: \"OK||閉じる\")")
+    }
 }

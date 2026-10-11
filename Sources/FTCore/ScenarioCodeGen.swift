@@ -268,6 +268,11 @@ public enum ScenarioCodeGen {
                     args.append("waitSeconds: \(FTSeconds.format(wait))")
                 }
                 return "swipeBy(\(args.joined(separator: ", ")))"
+            case "irregularHandler":
+                // dismiss は書いたままの文字列(`text`)。detect と同じなら DSL の既定(dismiss 省略)に任せる
+                guard let dismiss = step.text else { return nil }
+                return dismiss == selector ? "irregularHandler(\(literal(selector)))"
+                    : "irregularHandler(\(literal(selector)), dismiss: \(literal(dismiss)))"
             case "swipeElementToElement":
                 guard let endLocator = step.endLocator else { return nil }
                 var args = [literal(selector), literal(FTSelector.serialize(primary: endLocator, fallbacks: []))]

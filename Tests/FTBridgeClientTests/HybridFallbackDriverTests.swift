@@ -141,6 +141,25 @@ final class HybridAttachRoutingTests: XCTestCase {
         _ = try await driver.snapshot()
         XCTAssertEqual(log.entries, ["inapp.snapshot"], "読みは in-app のまま: \(log.entries)")
     }
+
+    /// **別アプリへ委譲した後に自アプリへ attach できたら、in-app から読み直す**(attach が通った = 自アプリが前面)。
+    /// 解かないと、システムアラートを SpringBoard で押して戻った後も SpringBoard の木を読み続ける
+    func testAttachToTheOwnAppAfterDelegatingReadsTheInAppTreeAgain() async throws {
+        try await driver.launch(bundleID: "com.apple.springboard")
+        try await driver.attach(bundleID: "com.example.app")
+        log.entries.removeAll()
+        _ = try await driver.snapshot()
+        XCTAssertEqual(log.entries, ["inapp.snapshot"], "\(log.entries)")
+    }
+
+    /// 別アプリへの attach は委譲を続ける(読みは foreignApp のまま)
+    func testAttachToAnotherAppKeepsReadingTheForeignSession() async throws {
+        try await driver.launch(bundleID: "com.apple.Maps")
+        try await driver.attach(bundleID: "com.apple.Maps")
+        log.entries.removeAll()
+        _ = try await driver.snapshot()
+        XCTAssertEqual(log.entries, ["foreign.snapshot"], "\(log.entries)")
+    }
 }
 
 final class HybridFallbackDriverTests: XCTestCase {

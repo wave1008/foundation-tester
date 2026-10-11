@@ -381,7 +381,7 @@ extension MCPServer {
     /// チェック軸がありうる = ft_drag の from 側と to 側)。**片方だけの指定(x のみ等)は対象外**
     /// (「ref or x/y is required」が別途断る)
     static let exclusiveArgumentGroups: [String: [[[String]]]] = [
-        "ft_tap": [[["ref"], ["x", "y"]]],
+        "ft_tap": [[["ref"], ["x", "y"], ["alertButton"]]],
         "ft_double_tap": [[["ref"], ["x", "y"]]],
         "ft_long_press": [[["ref"], ["x", "y"]]],
         "ft_pinch": [[["ref"], ["x", "y"]]],
@@ -400,7 +400,8 @@ extension MCPServer {
         for groups in checks {
             let populated = groups.filter { keys in keys.contains { args[$0] != nil } }
             guard populated.count > 1 else { continue }
-            let phrase = groups.map { $0.joined(separator: "/") }.joined(separator: " or ")
+            // 名指しするのは**実際に併用された組だけ**(ft_tap は3組あり、全部並べると読めない)
+            let phrase = populated.map { $0.joined(separator: "/") }.joined(separator: " or ")
             return "\(tool) takes either \(phrase), not both"
         }
         return nil

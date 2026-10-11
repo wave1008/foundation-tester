@@ -51,26 +51,23 @@ final class MCPLaunchResumeTests: XCTestCase {
         do {
             _ = try await server.call(
                 tool: "ft_launch", args: ["bundleId": "com.example.app", "resume": true])
-            XCTFail("inapp では resume を断るはず")
+            XCTFail("inapp だけのときは resume を断るはず")
         } catch {
-            XCTAssertTrue(error.localizedDescription.contains("xcuitest"),
+            XCTAssertTrue(error.localizedDescription.contains("in-app bridge alone"),
                           error.localizedDescription)
         }
         XCTAssertEqual(driver.calls, [])
     }
 
-    /// hybrid も同じ(既定プロファイルのエンジン)
-    func testResumeIsRefusedOnHybridEngine() async {
+    /// **hybrid では断らない**(MCP は常に hybrid = エンジンを意識させない)。in-app の外のアプリは XCUITest で
+    /// 前面へ出す(自アプリを XCUITest で出して in-app が答えるか確かめる経路は実ブリッジが要るのでデバイスで確かめた)
+    func testResumeIsNotRefusedOnHybridEngine() async throws {
         server.engines[key] = "hybrid"
-        do {
-            _ = try await server.call(
-                tool: "ft_launch", args: ["bundleId": "com.example.app", "resume": true])
-            XCTFail("hybrid では resume を断るはず")
-        } catch {
-            XCTAssertTrue(error.localizedDescription.contains("xcuitest"),
-                          error.localizedDescription)
-        }
-        XCTAssertEqual(driver.calls, [])
+        let result = try await server.call(
+            tool: "ft_launch", args: ["bundleId": "com.example.app", "resume": true])
+        let text = result.compactMap { $0["text"] as? String }.joined()
+        XCTAssertTrue(text.contains("resumed without relaunching"), text)
+        XCTAssertEqual(driver.calls, ["activate(com.example.app)"])
     }
 
     /// **springboard の扱いは resume でも変わらない** —— アラートを読みに行く正規の経路なので

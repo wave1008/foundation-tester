@@ -48,6 +48,11 @@ public enum InAppBridgeState {
                 parts.count == 3 ? String(parts[2]) : nil)
     }
 
+    /// 指定ポートの udid と bundleID(無ければ nil)。MCP が「この端末のこのアプリへ注入したポート」を使い回すのに使う
+    public static func record(stateDir: URL, port: UInt16) -> (udid: String, bundleID: String)? {
+        read(at: url(stateDir: stateDir, port: port)).map { ($0.udid, $0.bundleID) }
+    }
+
     /// 指定ポートの記録(無ければ nil)。BridgeProvisioner の再利用判定が使う
     public static func sourceDigest(stateDir: URL, port: UInt16) -> String? {
         read(at: url(stateDir: stateDir, port: port))?.sourceDigest

@@ -247,8 +247,14 @@ extension MCPServer {
     static func screenChangedUnderRefNote(ref: Int, takenFrom: SnapshotResponse?,
                                           fresh: SnapshotResponse, isStale: Bool,
                                           matched: ElementInfo, actedSinceTakenFrom: Bool) -> String {
+        // **畳まれる飾りの葉(地図の地点)は比べない**: 地図は利用者が何もしなくても地点を出し入れするので、
+        // 含めると地図の画面では毎回「このセッションは何もしていないのに変わった」と言う(Apple マップの経路画面で
+        // `#VKPointFeature` 133件の増減だけで発火)。**撃つ相手がその群の一員なら比べる**(地点そのものを撃つ形)
+        let ignoresBulk = !SnapshotRenderer.foldedGroups(fresh, flagging: [:], collapsingBulk: true)
+            .values.contains { $0.contains(matched.ref) }
         guard !isStale, let taken = takenFrom,
-              Self.treeIdentity(taken) != Self.treeIdentity(fresh) else { return "" }
+              Self.treeIdentity(taken, ignoringBulk: ignoresBulk)
+                != Self.treeIdentity(fresh, ignoringBulk: ignoresBulk) else { return "" }
         let cause = actedSinceTakenFrom
             ? "this session's own actions since that snapshot are the likely cause"
             : "nothing this session did changed it — the app itself, another process or a"
@@ -260,8 +266,12 @@ extension MCPServer {
 
     /// 木の同一性(型 + identifier + ラベルの集合)。`identity` と違い **ref を含めない** ——
     /// あちらは世代の据え置き判定用で、こちらは**別の木どうし**を比べる
-    private static func treeIdentity(_ snapshot: SnapshotResponse) -> Set<String> {
-        Set(snapshot.elements.map {
+    private static func treeIdentity(_ snapshot: SnapshotResponse, ignoringBulk: Bool) -> Set<String> {
+        let bulk = ignoringBulk
+            ? Set(SnapshotRenderer.foldedGroups(snapshot, flagging: [:], collapsingBulk: true)
+                .values.joined())
+            : []
+        return Set(snapshot.elements.filter { !bulk.contains($0.ref) }.map {
             "\($0.type)\u{1}\($0.identifier ?? "")\u{1}\($0.label ?? "")"
         })
     }
@@ -873,9 +883,8 @@ extension MCPServer {
             + " so a finger would land on the alert — \(consequence). \(handleAlertFirst).")
     }
 
-    private static let handleAlertFirst = "Handle the alert first: read it with"
-        + " `ft_launch bundleId: com.apple.springboard`, tap its button by ref,"
-        + " then `ft_launch` your app again"
+    private static let handleAlertFirst = "Handle the alert first: `ft_tap alertButton: \"<button>\"`"
+        + " presses one of its buttons and returns to your app"
 
     // **internal**(MCPServer+ScreenTools.swift の ft_type ref なし失敗経路も使う。他ファイルの
     // 拡張から呼ぶので private のままにできない)。一発物の照会 = target 無しで前面のアラートだけ聞く

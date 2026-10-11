@@ -3074,6 +3074,17 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     (`ExploreDriverResolver`。2026-08-05)。接続先が in-app なら同じデバイスの XCUITest ブリッジを
     フォールバックに合成して hybrid を組み、合成できないとき(実機・同名デバイス複数・
     XCUITest ブリッジを用意できない)だけ振り替え/素通しへ落とす
+  - **シミュレータは常に hybrid**(ユーザー決定。MCP ではエンジンを意識させない)。
+    ①udid だけの呼び出しは応答している in-app のポートを先に採る(`MCPServer.explorationOrder`)
+    ②`ft_launch` は起動するアプリへ in-app を注入して hybrid を組み替える(`MCPServer+AlwaysHybrid.swift`。
+    Apple のシステムアプリも注入できる)。鍵は主(in-app)のポート・記憶は移さずに捨てる(ref はエンジンを
+    またがない)・同じ端末の古いポートは名指しの記憶から外す。台帳のポートは「誰も待ち受けていない」か
+    「同じ端末・同じアプリの in-app が答える」ときだけ使い回し、起動待ち(`InAppLauncher.waitUntilReady`)も
+    答えた相手の udid を見る(ポートは端末をまたいで使い回されるため)。注入した起動に失敗したら組み替える前へ
+    戻して XCUITest で起動する ③`resume: true` は XCUITest で前面へ出してから in-app へ向け直す
+    ④システムアラートは `ft_tap alertButton:`(SpringBoard へ向けて押し、`attach` で戻る。hybrid の
+    `attach` は自アプリへ向け直せたら委譲を解く)。**profile を渡したときはプロファイルのエンジンに従う**
+    (ユーザー決定)・実機は注入できないので XCUITest
   - **宛先そのものも探す**(`BridgeDiscovery`。2026-08-06)。`port` 未指定で既定 8123 が無応答なら
     範囲(8123〜8154)を走査し、**生きているブリッジが1本だけなら自動採用**(採用理由を stderr へ)・
     **複数ならデバイス名付きで列挙してエラー**(別デバイスを黙って操作させない)・0本なら

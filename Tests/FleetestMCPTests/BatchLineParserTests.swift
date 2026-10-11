@@ -476,6 +476,8 @@ final class BatchLineParserTests: XCTestCase {
             FlowStep(action: "scrollToEdge", direction: "down"),
             FlowStep(action: "scrollToEdge", direction: "left"),
             FlowStep(action: "scrollToEdge", direction: "right"),
+            FlowStep(action: "irregularHandler", locator: selA.primary, fallbacks: fallbacks(selA),
+                     text: "OK||閉じる"),
             FlowStep(action: "waitForSettle"),
             FlowStep(action: "waitForSettle", locator: selA.primary, fallbacks: fallbacks(selA),
                      timeout: 5, quietSeconds: 1.2, throwsException: false),

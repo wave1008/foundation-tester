@@ -114,3 +114,43 @@ final class MCPBatchUnchangedNoteTests: XCTestCase {
         XCTAssertFalse(note.contains("no element in the tree at all"), note)
     }
 }
+
+/// バッチの間にアプリ内の alert が出たことの注記(`MCPServer.batchAlertAppearedNote`)。
+/// 実測(Apple マップ): 出発地を選んだ直後に「安全に目的地に到達するために」が出て、次の手の
+/// 「交通機関」のタップは ok と返ったまま吸われた
+final class MCPBatchAlertAppearedNoteTests: XCTestCase {
+
+    private func alert(_ ref: Int, _ title: String) -> ElementInfo {
+        ElementInfo(ref: ref, type: "alert", identifier: nil, label: title, value: nil,
+                    placeholder: nil, enabled: true,
+                    frame: FTRect(x: 41, y: 355, width: 320, height: 192), depth: 2)
+    }
+
+    func testNotesAnAlertThatWasNotThereBeforeTheBatch() {
+        let before = batchSnapshot([batchElement(ref: 1)], marker: 0)
+        let final = batchSnapshot([batchElement(ref: 1), alert(2, "安全に目的地に到達するために")], marker: 1)
+        let note = MCPServer.batchAlertAppearedNote(beforeBatch: before, final: final)
+        XCTAssertTrue(note.contains("appeared during this batch"), note)
+        XCTAssertTrue(note.contains("安全に目的地に到達するために"), "どの alert かを名指しすること: \(note)")
+        XCTAssertTrue(note.contains("nothing was re-sent"), note)
+    }
+
+    /// 開始前から出ていた alert は「途中で出た」ではない
+    func testStaysSilentWhenTheSameAlertWasAlreadyThere() {
+        let before = batchSnapshot([alert(2, "安全に目的地に到達するために")], marker: 0)
+        let final = batchSnapshot([alert(7, "安全に目的地に到達するために")], marker: 1)
+        XCTAssertEqual(MCPServer.batchAlertAppearedNote(beforeBatch: before, final: final), "")
+    }
+
+    func testStaysSilentWithoutAnAlert() {
+        let before = batchSnapshot([batchElement(ref: 1)], marker: 0)
+        let final = batchSnapshot([batchElement(ref: 3)], marker: 1)
+        XCTAssertEqual(MCPServer.batchAlertAppearedNote(beforeBatch: before, final: final), "")
+    }
+
+    /// 開始前の木を知らなければ比べられない
+    func testStaysSilentWhenTheTreeBeforeTheBatchIsUnknown() {
+        let final = batchSnapshot([alert(2, "OK?")], marker: 1)
+        XCTAssertEqual(MCPServer.batchAlertAppearedNote(beforeBatch: nil, final: final), "")
+    }
+}

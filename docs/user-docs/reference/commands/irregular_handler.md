@@ -63,5 +63,22 @@ Recovering from this is the scenario's job — check whether the intended state 
 A navigation tap is safe; a confirm/submit/pay action is not, since only the scenario's author
 knows which is which.
 
+### Using it from MCP's `ft_batch`
+
+The same declaration can be written as one line in `ft_batch`'s `steps` (quoted, space-separated arguments,
+like the other steps).
+
+```
+irregularHandler 'Stay safe on your route' dismiss: 'OK'; tap '#station_row'; tap '#route_card'
+```
+
+- It applies **only to the later steps of that call**. It is not carried over to the next call — write it in
+  each call that needs it.
+- The declaration does not touch the device (it closes the interruption only when one is showing before a later
+  step sends its interaction — at the start, while it re-reads the screen to find its target, or while it waits for
+  the target to become enabled).
+- `ft_draft_scenario` writes it once as an `irregularHandler(...)` line, even if several calls declared it.
+- `ft_batch` does not take `maxDismissals:` (the default limit applies).
+
 ### Link
 - [index](../../index.md)

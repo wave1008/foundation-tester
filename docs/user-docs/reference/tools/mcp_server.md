@@ -87,19 +87,26 @@ Screen-operation tools work the same way on a physical iPhone or Android device.
 emulator-only operations are routed automatically: `ft_install` uses `devicectl` instead of
 `simctl` on a physical iOS device, and `ft_clear_app_data` wipes the data by uninstall + install
 (using the path from the last `ft_install`, or `packagePath:`) on a physical iOS device (Android's
-`pm clear` still works on a physical device). After dismissing a system alert on SpringBoard,
-`ft_launch bundleId: <app> resume: true` returns to the app without terminating it (xcuitest
-engine / Android). The in-app iOS engine cannot be
-injected into a physical device, so it is never selected there.
+`pm clear` still works on a physical device). An iOS system alert (a location permission prompt, for
+example) can be answered in one call with `ft_tap alertButton: "Don't Allow"` — it presses that button and
+returns to the app (the alert note lists the button names). After dismissing a system alert on SpringBoard,
+`ft_launch bundleId: <app> resume: true` returns to the app without terminating it.
 
 ## iOS Engine Selection
 
-Passing `profile` makes a tool follow that run profile's engine (matching what a real run would
-use). Without `profile`, tools follow whichever bridge is already connected on the target port —
-if the in-app bridge is running, tools use it hybrid-style (in-app first, falling back to
-XCUITest for operations the in-app engine can't perform: Home/app switcher/drag/coordinate long
-press); with only the XCUITest bridge running, tools use that directly. A physical device always
-uses the XCUITest engine.
+**You never need to choose an engine with MCP.** Name the device with `udid` and leave `port` out —
+the server picks the bridge and the engine.
+
+- Passing `profile` makes a tool follow that run profile's engine (matching what a real run would use).
+- Without `profile`, a simulator **always runs hybrid** (the run's default engine). `ft_launch` injects the in-app
+  bridge into the app it launches (system apps such as Maps included), and operations the in-app engine cannot
+  perform (Home/app switcher/drag/coordinate long press), SpringBoard and system alerts go to XCUITest
+  automatically. When you read an app that is already running without the in-app bridge and do not launch
+  it, nothing can be injected, so the tree is read through XCUITest.
+- `resume: true` brings the app to the front through XCUITest and then points the session back at the in-app
+  bridge (the app's state is kept). If the process had no in-app bridge in it, the reply says it was launched
+  instead.
+- A physical device cannot take the in-app bridge, so it always uses the XCUITest engine.
 
 ## Role Split
 

@@ -211,6 +211,47 @@ final class MCPProductionAppShapesTests: XCTestCase {
         XCTAssertNotNil(RefGuard.missesItsOwnContent(target, in: elements, screen: screen))
     }
 
+    // MARK: - スクロール容器の中の無名の全画面要素
+
+    /// Google マップ Android の経路・運転モード(実測。ref/depth/z/矩形は生ツリーのまま)。全画面の
+    /// `#expandingscrollview_container`(z 110)の子に無名の全画面 clickable(z 8)があり、交通機関タブ
+    /// 「46 分」(z 86)を覆っていると警告したが、タブは正しく切り替わった
+    private func directionsDriveMode(extraInSheet: [ElementInfo] = []) -> [ElementInfo] {
+        var container = element(1, "expandingscrollview_container", depth: 9, type: "scrollView",
+                                0, 0, 1080, 2424, z: 110)
+        container.scrollable = true
+        var tabs = element(35, "directions_mode_tabs", depth: 16, type: "scrollView",
+                           0, 416, 1080, 136, z: 78)
+        tabs.scrollable = true
+        return [container,
+                ElementInfo(ref: 20, type: "clickable", identifier: nil, label: nil, value: nil,
+                            placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 0, width: 1080, height: 2424), depth: 10, z: 8)]
+            + extraInSheet
+            + [element(2, "header_container", depth: 8, type: "other", 0, 0, 1080, 560, z: 36),
+               tabs,
+               element(42, "tab_transit", depth: 18, type: "clickable", 302, 416, 217, 136,
+                       label: "46 分", z: 86)]
+    }
+
+    func testBlankScreenScaleChildDoesNotCountAsContentOfAScrollContainer() {
+        let screen1080 = FTRect(x: 0, y: 0, width: 1080, height: 2424)
+        let elements = directionsDriveMode()
+        let tab = elements.first { $0.ref == 42 }!
+        XCTAssertNil(RefGuard.overlayCovering(tab, in: elements, screen: screen1080))
+    }
+
+    /// **容器の中身が実際にその点にあるなら言う**(除外が「スクロール容器は常に覆わない」に広がらないこと)
+    func testScrollContainerWithRealContentAtThePointStillCovers() {
+        let screen1080 = FTRect(x: 0, y: 0, width: 1080, height: 2424)
+        let elements = directionsDriveMode(extraInSheet: [
+            element(21, "sheet_title", depth: 10, type: "staticText", 300, 440, 300, 80,
+                    label: "1 時間 32 分", z: 112),
+        ])
+        let tab = elements.first { $0.ref == 42 }!
+        XCTAssertNotNil(RefGuard.overlayCovering(tab, in: elements, screen: screen1080))
+    }
+
     /// 中心が子の上にあるふつうの容器では黙る
     func testContainerWhoseCenterIsOverItsContentIsNotFlagged() {
         let elements = [

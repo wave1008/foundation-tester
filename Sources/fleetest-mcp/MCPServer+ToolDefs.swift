@@ -125,10 +125,9 @@ extension MCPServer {
         profile (profiles/runs/<name>; same device and engine as ft_run_scenario) / \
         udid (iOS simulator or physical device, as printed by ft_list_devices — resolved to the bridge running on \
         it; a device with no bridge cannot be driven and says so; if port is also given the two \
-        must agree) / serial (Android device) / port (iOS bridge port; default: the running \
-        bridge. An in-app bridge answers only while the app it is injected into is frontmost — \
-        driving another app, or a system app such as Maps, needs the device's xcuitest bridge \
-        port) / allowVersionSkew (off by default: a stale bridge answers with its own \
+        must agree) / serial (Android device) / port (iOS bridge port — normally leave it out and \
+        pass udid: the server picks the bridge and engine, and other apps such as Maps and system \
+        alerts work on any device) / allowVersionSkew (off by default: a stale bridge answers with its own \
         version's behaviour and notes, so selectors written from them are silently wrong; every \
         skewed response carries a warning). Once a call explicitly gives udid/port (iOS) or \
         serial (Android), this server process remembers it for its lifetime: a later call that \
@@ -259,7 +258,7 @@ extension MCPServer {
             + "launching — use it to read the home screen or a system dialog", [
             "bundleId": bundleIdProperty,
             "resume": ["type": "boolean", "description": "Bring it to front WITHOUT terminating (state "
-                + "kept). xcuitest engine or Android only — refused on inapp/hybrid, which would relaunch"],
+                + "kept). If the app was not running with the in-app bridge, it is launched instead and the reply says so"],
         ], extra: afterActionProperties(waitForChange: false), required: ["bundleId"]),
         tool("ft_open_url", "Deliver a URL/deep link WITHOUT restarting the app (unlike ft_launch); the "
             + "destination is pushed over the current screen. Delivery is async, so snapshotAfter waits "
@@ -279,6 +278,9 @@ extension MCPServer {
         tool("ft_tap", "Tap an element (ref) or a point (x,y). A ref is re-checked against a fresh tree: "
             + "moved → retargeted, gone → refused, scroll leftover → tapped with a warning. " + coordinateCaveat, [
             "ref": refProperty, "x": pointXProperty, "y": pointYProperty,
+            "alertButton": ["type": "string", "description": "iOS: press this button of the system "
+                + "alert (SpringBoard) in front of the app, then return to the app — the alert note names "
+                + "its buttons"],
         ], extra: afterActionProperties()),
         tool("ft_type", "Type text; with ref it taps the field and waits for focus. APPENDS by default — "
             + "replace: true (or ft_clear_input) to replace. Typing never closes the keyboard; Enter "
@@ -327,6 +329,8 @@ extension MCPServer {
             + "space-separated, no parentheses or commas: type '#field' 'abc'; scrollTo '#item' "
             + "direction: .down (argument names as ft_dsl_commands prints). A passing batch converts "
             + "1:1 into scenario lines. Lifecycle/data-wiping commands and assertions are rejected. "
+            + "irregularHandler '<interruption>' dismiss: '<button>' declares a dialog that may pop up: a later "
+            + "step of this call closes it if it is showing before that step acts (not carried over to the next call). "
             + "Only the FIRST step may use ref: N (re-checked, then converted to its selector; refused "
             + "when no unique selector exists — ft_tap it instead); later steps need selectors, since "
             + "an earlier step can make a ref stale", [

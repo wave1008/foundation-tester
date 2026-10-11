@@ -93,7 +93,7 @@ public enum ArgumentBounds {
     /// ここで断るのは「明示したのに空」だけ
     public static let mustNotBeEmpty: Set<String> = [
         "bundleId", "bundle", "launch", "url", "packagePath", "path", "id", "selector", "steps",
-        "label", "classifier", "name", "profile", "runner", "query", "since", "runId",
+        "label", "classifier", "name", "profile", "runner", "query", "since", "runId", "alertButton",
     ]
 
     /// 違反なら文言、範囲内(または値域を持たない引数)なら nil

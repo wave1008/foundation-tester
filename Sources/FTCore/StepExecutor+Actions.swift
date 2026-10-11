@@ -243,6 +243,10 @@ extension StepExecutor {
                         // 返るので、素取得だと**再試行の予算をまるごと空振りに使う**
                         snapshot = try await freshSnapshot(.repoll(afterSearchSwiped: searchSwiped))
                         phase.snapshotMs += Self.ms(clock.now - start)
+                        // **探し直している間に湧いた割り込みも閉じる**(まだ撃つ前なので撃ち直しの問題は無い。
+                        // 責務表の「操作可能になるのを待っている間」と同じ扱い)。実測(Apple マップ): 出発地を選んだ
+                        // 後の「安全に目的地に到達するために」が、次の手の経路カードを探す間に出て、閉じないまま時間切れ
+                        try await dismissInterruption(in: &snapshot, phase: &phase)
                         let previous = resolved
                         resolved = LocatorResolver.resolve(step: step, in: snapshot)
                         if previous != nil { ghostRetries += 1 }
@@ -280,6 +284,7 @@ extension StepExecutor {
                             start = clock.now
                             snapshot = try await freshSnapshot(.repoll(afterSearchSwiped: searchSwiped))
                             phase.snapshotMs += Self.ms(clock.now - start)
+                            try await dismissInterruption(in: &snapshot, phase: &phase)  // 再試行の読みと同じ
                             let previous = resolved
                             resolved = LocatorResolver.resolve(step: step, in: snapshot)
                             if previous != nil { ghostRetries += 1 }
@@ -304,6 +309,7 @@ extension StepExecutor {
                     start = clock.now
                     snapshot = try await freshSnapshot(.repoll(afterSearchSwiped: searchSwiped))
                     phase.snapshotMs += Self.ms(clock.now - start)
+                    try await dismissInterruption(in: &snapshot, phase: &phase)  // 上の timeout 付きの再試行と同じ
                     let previous = resolved
                     resolved = LocatorResolver.resolve(step: step, in: snapshot)
                     if previous != nil { ghostRetries += 1 }

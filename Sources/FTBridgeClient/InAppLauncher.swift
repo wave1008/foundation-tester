@@ -188,12 +188,25 @@ public struct InAppLauncher: Sendable {
         var lastError: Error?
         while Date() < deadline {
             do {
-                if try await client.status().ready { return }
+                // **答えた相手が自分の注入先かも見る**: ポートが別の端末のブリッジに使われていると、その `ready` で
+                // 起動できたと読み、以後の操作が別の端末へ届く(MCP の hybrid が台帳のポートを使い回す経路で塞いだ形)。
+                // udid を申告しない旧ブリッジは従来どおり ready だけで判断する
+                let status = try await client.status()
+                if status.ready, Self.isOwnBridge(reportedUDID: status.udid, udid: udid) { return }
+                if status.ready { lastError = InAppLauncherError.notReady("port \(port) is answered by another device (\(status.udid ?? "?"))") }
             } catch { lastError = error }
             // 80ms 間隔(ready 検知の遅れは平均でこの半分。300ms だと最大 +300ms 遅れる)
             try await Task.sleep(nanoseconds: 80_000_000)
         }
         throw InAppLauncherError.notReady(lastError.map(BridgeClient.readinessDetail) ?? "no response")
+    }
+}
+
+extension InAppLauncher {
+    /// 起動待ちで答えた相手が、注入した端末のブリッジか(udid の申告が無ければ判断しない = true)
+    static func isOwnBridge(reportedUDID: String?, udid: String) -> Bool {
+        guard let reportedUDID else { return true }
+        return reportedUDID.caseInsensitiveCompare(udid) == .orderedSame
     }
 }
 

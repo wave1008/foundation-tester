@@ -42,7 +42,7 @@ public enum OcclusionGeometry {
             // (実測・ios-news_feed: 中身が無い座標での誤警告7件)。**中身の有無で見る**のが要点 ——
             // 容器そのものを弾くと真陽性を落とす(背後の本文リンクを実際に覆う容器もある)
             if other.scrollable == true,
-               !hasDescendantCovering(x: cx, y: cy, of: other, in: elements) { return false }
+               !hasDescendantCovering(x: cx, y: cy, of: other, in: elements, screen: screen) { return false }
             // **矩形がぴったり同じ相手は遮蔽と言わない**。同寸同位置は「上に載った物」ではなく
             // ラッパーか、同じ枠を奪い合う入れ替わり(実測・Apple マップ: 出ていない方が出ている方を
             // 覆っていることになっていた)。**本物の積み重なりは `stackedRefs` が別に見ている**
@@ -186,17 +186,25 @@ public enum OcclusionGeometry {
     }
 
     /// 容器の**子孫**がその点を覆っているか(= その位置に実際に中身が描かれているか)。
-    /// スナップショットは preorder + depth なので、容器の直後から depth が戻るまでが子孫
+    /// スナップショットは preorder + depth なので、容器の直後から depth が戻るまでが子孫。
+    /// **ラベルも値も無い画面規模の子孫は中身に数えない**(`fullScreenContainerAreaRatio` = 受け止め手の
+    /// 判定と同じ「画面規模は面」)。実測(Google マップ Android の経路・運転モード): 全画面の
+    /// `#expandingscrollview_container` の子に無名の全画面 clickable があり、交通機関タブを「覆っている」と
+    /// 警告したが、タブは正しく切り替わった
     private static func hasDescendantCovering(x: Double, y: Double, of container: ElementInfo,
-                                              in elements: [ElementInfo]) -> Bool {
+                                              in elements: [ElementInfo], screen: FTRect) -> Bool {
         guard let start = elements.firstIndex(where: { $0.ref == container.ref })
         else { return false }
+        let screenScale = screen.width * screen.height * TapTargetGeometry.fullScreenContainerAreaRatio
         var index = elements.index(after: start)
         while index < elements.endIndex, elements[index].depth > container.depth {
-            let frame = elements[index].frame
+            let element = elements[index]
+            let frame = element.frame
+            index = elements.index(after: index)
+            if (element.label ?? "").isEmpty, (element.value ?? "").isEmpty, screenScale > 0,
+               frame.width * frame.height >= screenScale { continue }
             if frame.x <= x, x <= frame.x + frame.width,
                frame.y <= y, y <= frame.y + frame.height { return true }
-            index = elements.index(after: index)
         }
         return false
     }

@@ -779,10 +779,9 @@ extension MCPServer {
             // /status に答えず走査から消える(実測: Maps を launch した後の RN の in-app)
             throw MCPError("port \(port) is not a bridge answering on udid \(udid)"
                 + " — it is another device's bridge, or a bridge that stopped answering"
-                + " (an in-app bridge suspends when its app leaves the foreground, so it cannot"
-                + " drive other apps — use the device's xcuitest port for those)."
+                + " (an in-app bridge suspends when its app leaves the foreground)."
                 + " Answering bridge(s) on that udid:"
-                + " port \(list). Pass only one of port/udid, or use one of those ports")
+                + " port \(list). Pass only udid — the server picks the bridge and engine itself")
         }
         return port
     }
@@ -912,8 +911,16 @@ extension MCPServer {
     /// **scan の応答をそのまま濾すだけ**: scan は全ポートへ並列 timeout 2s で
     /// 既に status を撃っており、その StatusResponse は udid を含む(BridgeDTO.swift)
     static func bridgePorts(forUDID udid: String) async -> [UInt16] {
-        await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
-            .filter { $0.udid == udid }.map(\.port)
+        explorationOrder(await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
+            .filter { $0.udid == udid })
+    }
+
+    /// udid だけの呼び出しが使うポートの順(先頭が採られる)。**応答している in-app を先に置く** —— in-app が
+    /// 居れば ExploreDriverResolver が実行の既定と同じ hybrid を組み、別アプリ・システムアラートは hybrid が
+    /// XCUITest 側へ寄せる。並びを走査の順に任せると、同じ端末でも XCUITest だけで組まれる回が混じり、
+    /// 利用者がポート(= エンジン)を選ぶ羽目になる(ユーザー決定: MCP ではエンジンを意識させない)
+    static func explorationOrder(_ found: [BridgeDiscovery.Found]) -> [UInt16] {
+        found.filter { $0.engine == "inapp" }.map(\.port) + found.filter { $0.engine != "inapp" }.map(\.port)
     }
 
     /// **iOS の明示ターゲット述語**。args に有効な udid(非空文字列)または port(Int)があるか。

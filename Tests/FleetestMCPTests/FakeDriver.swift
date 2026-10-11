@@ -108,6 +108,11 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         try record("activate(\(bundleID))", "activate")
     }
 
+    /// 既定実装は 501(向け直せない)。記録だけして通す
+    func attach(bundleID: String) async throws {
+        try record("attach(\(bundleID))", "attach")
+    }
+
     func snapshot() async throws -> SnapshotResponse {
         try record("snapshot", "snapshot")
         // 待ちの検証用: 台本があれば呼ばれた順に返し、尽きたら最後の1枚を返し続ける

@@ -62,5 +62,18 @@ may have been swallowed by it (nothing was re-sent: repeating it could double-fi
 画面遷移のタップは安全ですが、確定・送信・支払いの操作は安全かどうかを書き手だけが判断
 できるため、そのままでは行いません。
 
+### MCP の `ft_batch` で使う
+
+`ft_batch` の `steps` にも同じ宣言を1行で書けます(引数は他の手と同じく引用符で囲み、空白で区切ります)。
+
+```
+irregularHandler '安全に目的地に到達するために' dismiss: 'OK'; tap '赤羽駅、北区'; tap '#TitleLabel-SubtitleLabel'
+```
+
+- 効くのは**その呼び出しの中の後続の手だけ**です。次の呼び出しへは持ち越さないので、必要なら呼び出しごとに書きます。
+- 宣言はデバイスに触りません(閉じるのは、後続の手が操作を送る前 —— 開始時・対象を探し直している間・操作可能になるのを待っている間 —— に出ていたときだけです)。
+- `ft_draft_scenario` の下書きには `irregularHandler(...)` の行として1回だけ出ます(呼び出しごとに書いても重複しません)。
+- `maxDismissals:` は `ft_batch` では受けません(既定の上限で動きます)。
+
 ### Link
 - [index](../../index_ja.md)

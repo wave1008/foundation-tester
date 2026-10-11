@@ -42,6 +42,9 @@ public final class HybridFallbackDriver: AppDriver {
     /// 直前の swipe を実際に受けたドライバ(reachedEdgeOnLastSwipe の読み先)
     private var lastSwipeDriver: AppDriver?
 
+    /// in-app ブリッジが住んでいるアプリ(MCP が「このアプリへ注入済みか」を見るのに使う)
+    public var ownBundleID: String? { primaryBundleID }
+
     /// primary を使えない状態か(背面化 or primary が抱えられない対象)
     private var delegating: Bool { appBackgrounded || delegatedApp }
 
@@ -318,11 +321,15 @@ public final class HybridFallbackDriver: AppDriver {
     }
 
     /// **自アプリでも XCUITest 側へ向ける** —— 向け直す先の「セッション」を持つのは XCUITest だけで、
-    /// in-app に回すと既定実装から launch = 注入付きの再起動へ落ちる。画面は動かないので
-    /// 委譲状態(どちらの木を読むか)には触らない
+    /// in-app に回すと既定実装から launch = 注入付きの再起動へ落ちる。
+    /// **自アプリへ向け直せたら委譲を解く**: attach は前面でなければ失敗するので、通った = 自アプリが前面 =
+    /// in-app が読める。解かないと、別アプリ(SpringBoard のアラート等)へ委譲した後に自アプリへ戻っても
+    /// 以後の木を foreignApp(別アプリのセッション)から読み続ける(MCP の `ft_tap alertButton:` で踏む形)
     public func attach(bundleID: String) async throws {
         if try await delegateForeignApp(bundleID, { try await $0.attach(bundleID: bundleID) }) { return }
         try await fallback.attach(bundleID: bundleID)
+        appBackgrounded = false
+        delegatedApp = false
     }
 
     /// **自分の中に居ないアプリは XCUITest 側で開く**。in-app ブリッジは対象アプリの

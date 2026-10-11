@@ -73,6 +73,9 @@ extension MCPServer {
 
     func ftTap(_ args: [String: Any]) async throws -> [[String: Any]] {
         let d = try await driver(args)
+        if let button = try Self.stringArgument(args, "alertButton") {
+            return try await tapSystemAlertButton(button, driver: d, args: args)
+        }
         if let ref = try Self.intArgument(args, "ref") {
             let target = try await verifiedRef(ref, driver: d, args: args)
             // **target.ref はセッション ref**。ブリッジは native の番号しか知らないので、

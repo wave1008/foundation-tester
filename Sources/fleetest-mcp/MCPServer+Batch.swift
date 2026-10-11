@@ -18,6 +18,9 @@ extension MCPServer {
     /// **DSLCommandIndex から導出する** —— 索引にカテゴリが増減しても、この集合を手で
     /// 追随させる必要はない(名前の一覧をここへハードコードしない)
     private static let batchAllowedCategories: Set<String> = ["operation", "scroll"]
+    /// 区分は structure だが**デバイスに触らない宣言**なので通すもの。実行器へ登録するだけで
+    /// `StepExecutor.execute` には渡さない(効くのはその呼び出しの後続の手だけ = 呼び出しを跨がない)
+    static let batchDeclarationCommands: Set<String> = ["irregularHandler"]
 
     /// app カテゴリ(ライフサイクル・破壊的)を弾いたときの具体的な代替。
     /// 「なぜ弾いたか + 代わりに何を呼ぶか」(CLAUDE.md の例: launchApp → ft_launch)
@@ -189,6 +192,20 @@ extension MCPServer {
                                 dxRatio: dxRatio, dyRatio: dyRatio)
             let target = selector.map { " \"\($0.text)\"" } ?? ""
             return (step, "swipeBy\(target) (\(dxRatio), \(dyRatio))")
+        },
+        // 割り込みの宣言(DSL の `irregularHandler`)。dismiss のセレクタは**書いたまま** `text` に持つ
+        // (`OK||閉じる` の代替を下書きと実行の両方で落とさないため。locator は detect)。
+        // `maxDismissals:` は受けない(既定 = StepExecutor.maxInterruptDismissalsPerStep。FlowStep に欄を足さない)
+        "irregularHandler": BatchStepBuilder(keys: ["detect", "dismiss"]) { raw in
+            guard let detectText = raw["detect"] as? String, !detectText.isEmpty else {
+                throw MCPError("irregularHandler requires the selector of the interruption to watch for")
+            }
+            let detect = try MCPServer.parseSelectorArgument(detectText, argument: "detect")
+            let dismissText = (raw["dismiss"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? detectText
+            let dismiss = try MCPServer.parseSelectorArgument(dismissText, argument: "dismiss")
+            let step = FlowStep(action: "irregularHandler", locator: detect.primary,
+                                fallbacks: batchFallbacks(detect), text: dismiss.text)
+            return (step, "irregularHandler \"\(detect.text)\" → dismiss \"\(dismiss.text)\"")
         },
         "swipeElementToElement": BatchStepBuilder(
             keys: ["selector", "to", "durationSeconds", "maxGestureSeconds", "settle"]
@@ -445,7 +462,7 @@ extension MCPServer {
             throw MCPError("\"\(command)\" is not a DSL command — call ft_dsl_commands to see the"
                 + " valid names (a name not in that index does not exist)")
         }
-        guard batchAllowedCategories.contains(info.category) else {
+        guard batchAllowedCategories.contains(info.category) || batchDeclarationCommands.contains(command) else {
             if info.category == "app", let alternative = batchAppCommandAlternatives[command] {
                 throw MCPError("\"\(command)\" changes the app's lifecycle or its data, which ft_batch"
                     + " does not run (one approval should not be able to reach data-wiping commands)"
@@ -644,6 +661,19 @@ extension MCPServer {
         }
 
         for (index, plan) in plans.enumerated() {
+            if plan.step.action == "irregularHandler" {
+                executor.interruptHandlers.append(try Self.interruptHandler(from: plan.step))
+                // 同じ宣言は記録を1つにする(1回ごとの宣言なので、呼び出しのたびに書かれる。
+                // 下書きでは冒頭に1回あれば足りる)。**recordAction を通さない** —— 画面を変えない宣言を操作回数に
+                // 数えると、古い ref の注記が「このセッション自身の操作が原因」と誤って言う
+                if !interactions.sinceLastLaunch.contains(where: {
+                    $0.step?.action == "irregularHandler" && $0.summary == plan.summary }) {
+                    interactions.record(InteractionLog.Entry(step: plan.step, unresolved: nil, summary: plan.summary))
+                }
+                lines.append("\(index + 1). \(plan.summary) — declared (a later step of this call closes it"
+                    + " if it is showing before that step acts; not carried over to the next call)")
+                continue
+            }
             let start = clock.now
             let outcome = await executor.execute(plan.step)
             let ms = Int((clock.now - start) / .milliseconds(1))
@@ -709,6 +739,7 @@ extension MCPServer {
                     + Self.truncationHint(final) + Self.notationHint(waitFor, in: final)
                     + Self.similarLabelsHint(waitFor, in: final) + "\n"
             return text(lines.joined(separator: "\n") + "\n\nAll \(plans.count) step(s) passed.\n\n"
+                + Self.batchAlertAppearedNote(beforeBatch: beforeBatch, final: final)
                 + waitNote + (await snapshotBody(final, driver: batchDriver, args: args)))
         }
         let (unchangedNote, final) = try await Self.batchUnchangedNote(
@@ -721,7 +752,41 @@ extension MCPServer {
         }
         recordSnapshot(final, batchDriver is AndroidDriver ? "android" : "ios", args)
         return text(lines.joined(separator: "\n") + "\n\nAll \(plans.count) step(s) passed.\n\n"
+            + Self.batchAlertAppearedNote(beforeBatch: beforeBatch, final: final)
             + unchangedNote + (await snapshotBody(final, driver: batchDriver, args: args)))
+    }
+
+    /// 宣言の手(`irregularHandler`)から実行器の割り込みハンドラを作る。DSL の `FTRuntime.addInterruptHandler`
+    /// と同じ写像(セレクタ丸ごと = `||` の代替も渡す)
+    static func interruptHandler(from step: FlowStep) throws -> StepExecutor.InterruptHandler {
+        guard let detect = step.locator, let dismissText = step.text else {
+            throw MCPError("irregularHandler step is missing its detect/dismiss selectors")
+        }
+        let dismiss = try parseSelectorArgument(dismissText, argument: "dismiss")
+        return StepExecutor.InterruptHandler(detect: detect, dismiss: dismiss.primary,
+                                             detectFallbacks: step.fallbacks ?? [],
+                                             dismissFallbacks: dismiss.fallbacks)
+    }
+
+    /// **バッチの間にアプリ内の alert が出た**ことの注記(事実だけ。撃ち直さない = docs/commands.md
+    /// §割り込みが「操作を吸った」ときの扱い と同じ方針)。実測(Apple マップ): 出発地を選んだ直後に
+    /// 「安全に目的地に到達するために」が出て、次の手の「交通機関」のタップは ok と返ったまま吸われ、
+    /// 後続の waitFor が上限まで空振りした。各手が ok でも alert が手を吸ったかは木から言えないので
+    /// 「吸われたかもしれない」に留める。**開始前の木に同じ alert が居たら言わない**(元からあった)・
+    /// 開始前の木が無ければ比べられないので言わない
+    static func batchAlertAppearedNote(beforeBatch: SnapshotResponse?,
+                                       final: SnapshotResponse) -> String {
+        guard let before = beforeBatch else { return "" }
+        func alerts(_ snapshot: SnapshotResponse) -> [ElementInfo] {
+            snapshot.elements.filter { ElementInfo.normalizedType($0.type) == "alert" }
+        }
+        let earlier = Set(alerts(before).map { $0.label ?? "" })
+        guard let appeared = alerts(final).first(where: { !earlier.contains($0.label ?? "") })
+        else { return "" }
+        return "note: an alert (\(RefGuard.describe(appeared))) appeared during this batch — a step sent"
+            + " just before it may have been swallowed by it even though it reported ok (nothing was"
+            + " re-sent: repeating it could double-fire). Close the alert, check the screen, and repeat"
+            + " that step only if it is safe to run twice.\n"
     }
 
     /// バッチ開始前の木(`beforeBatch`)と、全手が通った後の木(`final`)が見分けが付かないときの

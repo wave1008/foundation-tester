@@ -121,6 +121,44 @@ final class RefScreenProvenanceTests: XCTestCase {
         XCTAssertTrue(message.contains("nothing this session did"), message)
     }
 
+    // MARK: - 地図の地点(畳まれる飾りの葉)
+
+    /// 地図の地点 `#VKPointFeature`(畳まれる群 = bulkGroupMinimum 件以上の飾りの葉)
+    private func pins(_ labels: [String], firstRef: Int) -> [ElementInfo] {
+        labels.enumerated().map { offset, label in
+            ElementInfo(ref: firstRef + offset, type: "other", identifier: "VKPointFeature",
+                        label: label, value: nil, placeholder: nil, enabled: true,
+                        frame: FTRect(x: Double(offset * 10), y: 300, width: 30, height: 30), depth: 3)
+        }
+    }
+
+    /// **地点の出し入れだけでは言わない**。実測(Apple マップの経路画面): `#VKPointFeature` 133件の増減だけで
+    /// 「このセッションは何もしていないのに画面が変わった」と毎回言っていた
+    func testStaysSilentWhenOnlyTheMapPinsChanged() {
+        let count = SnapshotRenderer.bulkGroupMinimum + 5
+        let taken = tree(selector.elements + pins((0..<count).map { "地点\($0)" }, firstRef: 500))
+        let fresh = tree(selector.elements + pins((0..<count).map { "別の地点\($0)" }, firstRef: 500))
+        XCTAssertEqual(note(taken, fresh), "")
+    }
+
+    /// 地点を除いた残りが変わっていれば従来どおり言う
+    func testStillFiresWhenTheRestOfTheTreeChangedOnAMapScreen() {
+        let count = SnapshotRenderer.bulkGroupMinimum + 5
+        let mapPins = pins((0..<count).map { "地点\($0)" }, firstRef: 500)
+        XCTAssertFalse(note(tree(selector.elements + mapPins), tree(lifecycle.elements + mapPins)).isEmpty)
+    }
+
+    /// **撃つ相手が地点そのものなら、地点の変化も比べる**(別の地点を同じ番号で掴んだ形を黙らせない)
+    func testStillComparesThePinsWhenTheRefIsAPin() {
+        let count = SnapshotRenderer.bulkGroupMinimum + 5
+        let taken = tree(selector.elements + pins((0..<count).map { "地点\($0)" }, firstRef: 500))
+        let fresh = tree(selector.elements + pins((0..<count).map { "別の地点\($0)" }, firstRef: 500))
+        let message = MCPServer.screenChangedUnderRefNote(
+            ref: 500, takenFrom: taken, fresh: fresh, isStale: false,
+            matched: fresh.elements.first { $0.ref == 500 }!, actedSinceTakenFrom: false)
+        XCTAssertFalse(message.isEmpty)
+    }
+
     // MARK: - 配線(純粋関数が正しくても応答に載らなければ意味が無い)
     //
     // **この形は本プロジェクトで何度も踏んでいる**(AppDriver の既定ディスパッチ・

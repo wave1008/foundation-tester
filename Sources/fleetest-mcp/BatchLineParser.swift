@@ -310,8 +310,9 @@ enum BatchArgSpecTable {
         for rawToken in splitTopLevel(inner, separator: ",") {
             let token = rawToken.trimmingCharacters(in: .whitespaces)
             guard !token.isEmpty else { return nil }
-            if token.hasSuffix(":") {
-                let name = String(token.dropLast())
+            // `name:?` = 省略できるラベル付き引数(`irregularHandler(detect, dismiss:, maxDismissals:?)`)
+            if token.hasSuffix(":") || token.hasSuffix(":?") {
+                let name = String(token.hasSuffix(":?") ? token.dropLast(2) : token.dropLast())
                 guard isIdentifier(name) else { return nil }
                 labels.append(name)
             } else {
@@ -472,7 +473,7 @@ enum BatchStepResolver {
     /// ビルダが宣言するキーは必ずこの4表のどれか1つに載る(載せ忘れると、その引数を書いた行が
     /// 「does not accept」で弾かれる。`BatchKeyTypeCoverageTests` が漏れを検出する)
     static let stringKeys: Set<String> = ["selector", "text", "linkText", "direction", "to", "scrollFrame",
-                                          "orientation", "scroll"]
+                                          "orientation", "scroll", "detect", "dismiss"]
     static let intKeys: Set<String> = ["maxSwipes", "repeat", "ref"]
     static let doubleKeys: Set<String> = [
         // x/y は座標タップ(`tap x: 120 y: 640`)。単位は snapshot の screen と同じ

@@ -464,4 +464,65 @@ final class MCPBatchTests: XCTestCase {
         }
         XCTAssertEqual(driver.calls, [])
     }
+
+    // MARK: - 割り込みの宣言(irregularHandler)
+
+    /// 「安全に目的地に到達するために」+ OK が前面にある木(Apple マップの実測の形)
+    private func treeWithAlert() -> SnapshotResponse {
+        var tree = driver.snapshotResponse
+        tree.elements.append(contentsOf: [
+            ElementInfo(ref: 4, type: "alert", identifier: nil, label: "安全に目的地に到達するために",
+                        value: nil, placeholder: nil, enabled: true,
+                        frame: FTRect(x: 41, y: 355, width: 320, height: 192), depth: 1),
+            ElementInfo(ref: 5, type: "button", identifier: nil, label: "OK", value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 57, y: 483, width: 288, height: 48), depth: 2),
+        ])
+        return tree
+    }
+
+    /// **宣言した割り込みは、後続の手の開始時に閉じてから撃つ**
+    func testDeclaredInterruptionIsClosedBeforeTheNextStep() async throws {
+        driver.scriptedSnapshots = [treeWithAlert()]
+        let text = body(try await server.call(tool: "ft_batch", args: steps(
+            "irregularHandler '安全に目的地に到達するために' dismiss: 'OK'; tap '#login_btn'")))
+        XCTAssertTrue(text.contains("declared"), text)
+        XCTAssertFalse(text.contains("FAILED"), text)
+        let closeAt = try XCTUnwrap(driver.calls.firstIndex(of: "tap(ref:5)"), "OK が押されていない: \(driver.calls)")
+        let tapAt = try XCTUnwrap(driver.calls.firstIndex(of: "tap(ref:1)"), "\(driver.calls)")
+        XCTAssertLessThan(closeAt, tapAt, "\(driver.calls)")
+    }
+
+    /// **陰性対照**: 宣言が無ければ閉じない(ツールが勝手に押さない)
+    func testUndeclaredInterruptionIsNotClosed() async throws {
+        driver.scriptedSnapshots = [treeWithAlert()]
+        _ = try? await server.call(tool: "ft_batch", args: steps("tap '#login_btn'"))
+        XCTAssertFalse(driver.calls.contains("tap(ref:5)"), "\(driver.calls)")
+    }
+
+    /// **呼び出しごとに書いた同じ宣言は、下書きでは1行**。宣言は DSL の行として書き出す
+    func testRepeatedDeclarationAppearsOnceInTheDraft() async throws {
+        for _ in 0..<2 {
+            _ = try await server.call(tool: "ft_batch", args: steps(
+                "irregularHandler '安全に目的地に到達するために' dismiss: 'OK'; tap '#login_btn'"))
+        }
+        let draft = body(try await server.call(tool: "ft_draft_scenario", args: [:]))
+        let line = "irregularHandler(\"安全に目的地に到達するために\", dismiss: \"OK\")"
+        XCTAssertEqual(draft.components(separatedBy: line).count - 1, 1, draft)
+    }
+
+    /// **宣言は操作として数えない**(画面を変えないので、古い ref の注記の「このセッションの操作が原因」を誤らせない)
+    func testDeclarationDoesNotCountAsASessionAction() async throws {
+        _ = try await server.call(tool: "ft_batch", args: steps("irregularHandler 'お知らせ' dismiss: '閉じる'"))
+        XCTAssertEqual(server.sessionActionCounts[MCPServer.engineKey([:])] ?? 0, 0)
+    }
+
+    /// **宣言は呼び出しを跨がない**: 前の呼び出しで宣言しても、次の呼び出しでは閉じない
+    func testDeclarationIsNotCarriedOverToTheNextCall() async throws {
+        _ = try await server.call(tool: "ft_batch", args: steps(
+            "irregularHandler '安全に目的地に到達するために' dismiss: 'OK'; tap '#login_btn'"))
+        driver.scriptedSnapshots = [treeWithAlert()]
+        _ = try? await server.call(tool: "ft_batch", args: steps("tap '#login_btn'"))
+        XCTAssertFalse(driver.calls.contains("tap(ref:5)"), "\(driver.calls)")
+    }
 }

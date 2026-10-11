@@ -605,6 +605,25 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertEqual(driver.tapped, [8, 1])
     }
 
+    /// **探し直している間に湧いた割り込みも閉じる**(1枚目には対象も割り込みも無く、再試行の読みで割り込みが出る)。
+    /// 実測(Apple マップ): 出発地を選んだ後の「安全に目的地に到達するために」が、次の手の経路カードを探す間に出た
+    func testInterruptHandlerClosesAnInterruptionThatAppearsWhileRetryingResolution() async {
+        for timeout: Double? in [nil, 2] {
+            let modal = node(9, id: "promo_modal", label: "お知らせ")
+            let close = node(8, id: "btn_promo_close", label: "閉じる")
+            let target = node(1, id: "btn_submit", label: "送信")
+            let driver = TapRecordingDriver(frames: [[], [modal, close], [target]])
+            let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
+            executor.interruptHandlers = [
+                .init(detect: FlowLocator(id: "promo_modal"), dismiss: FlowLocator(id: "btn_promo_close")),
+            ]
+            let outcome = await executor.execute(
+                FlowStep(action: "tap", locator: FlowLocator(id: "btn_submit"), timeout: timeout))
+            XCTAssertTrue(isPassed(outcome.status), "timeout=\(String(describing: timeout))")
+            XCTAssertEqual(driver.tapped, [8, 1], "timeout=\(String(describing: timeout))")
+        }
+    }
+
     /// 否定・空判定の失敗にも覆いのヒントを添える(textEquals 系と同じ契約)
     func testNegativeAssertFailureMentionsCoveringElement() async {
         let target = ElementInfo(ref: 1, type: "staticText", identifier: "txt_status",
