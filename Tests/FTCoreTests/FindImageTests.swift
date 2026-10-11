@@ -595,13 +595,37 @@ extension FindImageTests {
         XCTAssertEqual(FindImage.prewarmRequestCount, before + 1)
     }
 
+    /// **`FT_FIND_IMAGE_PREWARM=off` なら見本があっても頼まない**(MCP の ft_start_run が起こす run の子へ環境で届く口)
+    func testPrewarmIsNotRequestedWhenTurnedOffByTheEnvironment() throws {
+        let root = try makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let before = FindImage.prewarmRequestCount
+        FindImage.prewarmIfNeeded(projectRoot: root, isAndroid: false, environment: ["FT_FIND_IMAGE_PREWARM": "off"])
+        XCTAssertEqual(FindImage.prewarmRequestCount, before)
+    }
+
+    /// 呼び出しごとに切る口(`ScenarioExecutionSettings.findImagePrewarm`)が子のランナーまで届く(型の効かない継ぎ目)
+    func testThePrewarmSettingReachesTheScenarioRunner() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+        func source(_ path: String) throws -> String {
+            try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+        }
+        XCTAssertTrue(try source("Sources/FTCore/ScenarioHost.swift")
+            .contains("if !findImagePrewarm { args.append(\"--no-find-image-prewarm\") }"))
+        let runner = try source("Sources/FTScenarioRunner/ScenarioRunnerMain.swift")
+        XCTAssertTrue(runner.contains("customLong(\"no-find-image-prewarm\")"))
+        XCTAssertTrue(runner.contains("findImagePrewarm: !noFindImagePrewarm"))
+    }
+
     /// シナリオ開始時(FTRuntime の init)に、見本の置き場のプロジェクトで暖機を頼む(dry-run では頼まない)
     func testScenarioStartRequestsThePrewarm() throws {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("Sources/FTDSL/FTRuntime.swift")
         let source = try String(contentsOf: url, encoding: .utf8)
         let call = try XCTUnwrap(source.range(of: "FindImage.prewarmIfNeeded(projectRoot: visionClassifierProjectRoot,"))
-        let guardRange = try XCTUnwrap(source.range(of: "if !dryRun {", options: .backwards, range: source.startIndex..<call.lowerBound))
+        let guardRange = try XCTUnwrap(source.range(of: "if !dryRun, findImagePrewarm {", options: .backwards,
+                                                    range: source.startIndex..<call.lowerBound))
         XCTAssertLessThan(source.distance(from: guardRange.upperBound, to: call.lowerBound), 40, "dry-run の門の直下で頼む")
     }
 

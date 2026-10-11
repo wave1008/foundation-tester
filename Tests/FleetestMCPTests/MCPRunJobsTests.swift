@@ -26,7 +26,7 @@ final class MCPRunJobsTests: XCTestCase {
     func testArgumentsWithEveryOption() {
         let args = MCPRunJobs.arguments(
             profile: "smoke", project: "Shop", runner: "M1Max", scenarios: ["Login", "Cart.add"],
-            folders: ["checkout"], failed: true, broadcast: true)
+            folders: ["checkout"], failed: true, broadcast: true, fmAndVision: true)
         XCTAssertEqual(args, [
             "swift", "run", "fleetest", "run", "--project", "Shop", "--profile", "smoke", "--runner", "M1Max",
             "--scenario", "Login", "Cart.add", "--folder", "checkout", "--failed", "--broadcast",
@@ -35,8 +35,19 @@ final class MCPRunJobsTests: XCTestCase {
 
     func testArgumentsOmitUnsetOptionals() {
         let args = MCPRunJobs.arguments(
-            profile: "smoke", project: nil, runner: nil, scenarios: [], folders: [], failed: false, broadcast: false)
+            profile: "smoke", project: nil, runner: nil, scenarios: [], folders: [], failed: false, broadcast: false,
+            fmAndVision: true)
         XCTAssertEqual(args, ["swift", "run", "fleetest", "run", "--profile", "smoke"])
+    }
+
+    /// **MCP の run は既定で FM と Vision を使わない**: 4つのキーを `--set` で切り、run の開始時の OCR のコンパイルも止める
+    func testArgumentsTurnFMAndVisionOffByDefault() {
+        let args = MCPRunJobs.arguments(
+            profile: "smoke", project: nil, runner: nil, scenarios: [], folders: [], failed: false, broadcast: false,
+            fmAndVision: false)
+        XCTAssertEqual(args, ["FT_OCCLUSION_OCR=off", "FT_FIND_IMAGE_PREWARM=off", "swift", "run", "fleetest", "run", "--profile", "smoke",
+                              "--set", "fmTextOcclusionCheck=false", "--set", "screenLooksLike=false",
+                              "--set", "ocrTextOcclusionCheck=false", "--set", "preferCheckStateClassifier=false"])
     }
 
     /// MCP は承認なしで呼ばれうるので、登録していない宛先へは送らない(local と登録名だけ)

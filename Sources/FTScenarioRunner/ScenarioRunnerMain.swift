@@ -197,6 +197,10 @@ struct RunScenario: AsyncParsableCommand {
           help: "Use CheckStateClassifier only for elements whose accessibility reports no check state")
     var noPreferCheckStateClassifier = false
 
+    @Flag(name: .customLong("no-find-image-prewarm"),
+          help: "Do not prepare the findImage templates at scenario start (they are prepared on first use)")
+    var noFindImagePrewarm = false
+
     @Option(name: .customLong("report-dir"), help: "Directory to write reports to")
     var reportDir: String = "reports"
 
@@ -567,6 +571,7 @@ struct RunScenario: AsyncParsableCommand {
                                occlusionOCREnabled: !noOcclusionOCR,
                                visionClassifierProjectRoot: projectDir.map { URL(fileURLWithPath: $0) },
                                preferCheckStateClassifier: !noPreferCheckStateClassifier,
+                               findImagePrewarm: !noFindImagePrewarm,
                                dryRun: dryRun,
                                fingerprintCacheURL: fingerprintCacheURL,
                                selectorInventoryURL: selectorInventoryURL,

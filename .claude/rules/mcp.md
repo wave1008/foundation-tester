@@ -172,3 +172,10 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   登録する(等号照合なので新しい死に注記は落ちる)。
   **1つのアーキタイプがコーパスの 60% を超えないこと**(`testNoArchetypeDominatesTheCorpus`)——
   深く掘るほど1アプリが増え、**掘るほど汎用性の判定が悪くなる**逆向きの力が働くので機械で止める
+- **MCP は既定で FM と Vision を使わない**(ユーザー決定 2026-10-12。Vision のコンパイルも起こさない)。`ft_run_scenario` は
+  `MCPServer.withoutFMAndVision` で、`ft_start_run` は `--set` の4キー(`fmAndVisionProfileKeys`)で切る(run の開始時の
+  `compile-ocr` も `ScenarioHost.ocrCompileNeeded` で止まり、別の機械へも届く)。手元の子へは `FT_OCCLUSION_OCR=off`・
+  `FT_FIND_IMAGE_PREWARM=off` も渡す。findImage の見本の暖機も切る(`findImagePrewarm`)。`ft_doctor` は既定で撃たない。
+  使うのは呼び手が `fmAndVision: true` を渡したときだけ。切った run の応答には `fmAndVisionOffNote` を必ず添える
+  (黙ると、見えていない文字の緑を検証済みと読まれる)。**MCP の注記・判定に OCR/FM を足すときもこの既定に従う**
+  (`MCPFMAndVisionOffTests`)

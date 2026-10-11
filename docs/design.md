@@ -92,7 +92,8 @@ ID に LC_UUID が入るので、`ScenarioHost.build` が ID を製品名に揃�
 **コンパイル(コールド 20〜45 秒 × 言語集合 2)がそのプロセスの生存中に終わったときだけコミット**される。
 1 シナリオ = 1 プロセスの実行バイナリは終わる前に死んで `.tmp` を残すだけなので、
 **run の開始時に同じプロセス名の待てる子 `fleetest-scenarios-<project> compile-ocr` を背景で 1 本起こす**
-(`ScenarioHost.listForRun`。dry-run / MCP / codegen の一覧取得 `list` では起こさない・機械で同時に 1 本
+(`ScenarioHost.listForRun`。**その run で OCR の段か FM のテキストの視覚検証が有効なときだけ** = `ScenarioHost.ocrCompileNeeded`
+(プロファイル・`--set` で両方を切った run では起こさない。機械分担の親は起こさず機械ごとの run が決める)。dry-run / MCP / codegen の一覧取得 `list` では起こさない・機械で同時に 1 本
 = `OCRModelCompileLock`・**親の死を生き延びる** = `FT_PARENT_PID` を渡さない唯一の例外)。シナリオ側の探りは
 同じロックを**待ってから**読む(8 レーンが同じモデルを同時に焼かない)。認識器は **ANE を避けて CPU/GPU**
 に載せる(定常の所要は同じ 100〜160ms。判定の近道を FM フラップと同じ部品に依存させない。装置で読みが
@@ -4144,7 +4145,7 @@ Android 実機はグローバル設定が**永続的に**書き換わるので�
 `captureSettled`。ユーザー決定。4 SUT の A/B で退行無し)。**スワイプ(スクロールを含む)は待ちを残す**(慣性の終わりを木では
 見届けられない = E2E-RN S0090 が 6 回中 4 回落ちた)が、操作の間は待ちの上限を 6 秒に縮める(`QuiescenceWait.quiescenceCapSeconds`)。
 **DSL の `settle: false`(コマンド1回だけ、操作後の整定をすべて飛ばす)**: スワイプ(スクロールを含む)・/drag・/pinch・/rotate・/systemui/*・アプリスイッチャー・ホームの XCTest の待ちは
-`settle: false` のときだけ飛ばし、それ以外は上限 6s に縮める(v176 から。それまで /drag と /systemui/* は縮めず、知らせを返さないアプリで 60s 止まってランナーが起動し直された。走査 `RunnerQuiescenceCapCoverageTests` が上限の外の操作を落とす。/type・/clear の中の焦点のタップは待ちを飛ばす = 直後の打鍵の前の待ちと二重になり、/type 1回が 24s でホストの上限 20s を超えていた)(/type・/clear・/pressEnter は飛ばさないが、v175 から待ちの上限だけ 6s に縮める = `QuiescenceWait.capping`。キーボード出現待ちを quiescence に頼るため飛ばせないが、落ち着かないアプリでは打鍵ごとに XCTest 既定の 60s を待っていた)。契約:
+`settle: false` のときだけ飛ばし、それ以外は上限 6s に縮める(v176 から。それまで /drag と /systemui/* は縮めず、知らせを返さないアプリで 60s 止まってランナーが起動し直された。走査 `RunnerQuiescenceCapCoverageTests` が上限の外の操作を落とす。/type・/clear の中の焦点のタップは待ちを飛ばす = 直後の打鍵の前の待ちと二重になり、/type 1回が 24s でホストの上限 20s を超えていた。v177 から /type の中だけ操作の**後**の待ち(isPreEvent == false)も飛ばす = `QuiescenceWait.capping(skipPostEvent:)`。完了は読み返しが値で確かめるので二重で、知らせを返さないアプリで /type が 7.8〜12.9s → 0.9〜1.8s)(/type・/clear・/pressEnter は前の待ちを飛ばさないが、v175 から待ちの上限だけ 6s に縮める = `QuiescenceWait.capping`。キーボード出現待ちを quiescence に頼るため飛ばせないが、落ち着かないアプリでは打鍵ごとに XCTest 既定の 60s を待っていた)。契約:
 - **ワイヤ**: ホストが該当ステップの実行中、ブリッジへの HTTP リクエストに `X-FT-Settle: 0` を付ける(`BridgeAPI.settleHeader`)。
   ホスト側は `FlowStep.settle` → `StepExecutor.execute` が TaskLocal `SettleOverride.skip` に載せ、ブリッジクライアントが読む。
   ブリッジの版は iOS `bridgeProtocolVersion` 165・Android `VERSION_CODE` 89。
@@ -4308,6 +4309,12 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
 - MCP: `ft_list_scenarios` / `ft_run_scenario` に `project` / `profile` 引数、`ft_list_projects` 追加。
   ft_run_scenario は 1 シナリオ実行なので profile からはシナリオの platform に合う先頭デバイス・
   heal・reportDir のみ利用(シナリオを書いている途中の確認用。results/・録画・setup/teardown は持たない)
+- **MCP は既定で FM と Vision を使わない**(ユーザー決定。Vision のコンパイルも起こさない)。`ft_run_scenario` は
+  `MCPServer.withoutFMAndVision`(FM 全体・OCR の段・checkIsON の分類器の優先を切る)、`ft_start_run` は
+  `--set` の4キー(run の開始時の `compile-ocr` もこれで起きない。別の機械へも `--set` が届く)と、手元の子へ効く
+  `FT_OCCLUSION_OCR=off`・`FT_FIND_IMAGE_PREWARM=off`、`ft_doctor` は実呼び出しを撃たない。findImage の見本の暖機も切る
+  (`ScenarioExecutionSettings.findImagePrewarm` → 子へ `--no-find-image-prewarm`)。使うのは `fmAndVision: true` のときだけ。
+  切った run の応答には `fmAndVisionOffNote` を添える。`findImage` そのものは切らない(シナリオが明示的に求める。初回に払う)
 - MCP の本番の実行: `ft_start_run` / `ft_run_status` / `ft_stop_run`(MCPServer+RunJobs.swift)。
   **エージェントに頼まれた実行の正規の経路**(受け手の AGENTS.md・手引き・スキルが案内する)。理由は
   Codex 等のシェルのサンドボックスで `fleetest run` が通らない(SwiftPM の入れ子の sandbox-exec・

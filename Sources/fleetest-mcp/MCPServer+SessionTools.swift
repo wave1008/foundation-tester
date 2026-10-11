@@ -397,6 +397,11 @@ extension MCPServer {
     }
 
     func ftDoctor(_ args: [String: Any]) async throws -> [[String: Any]] {
+        // **既定では撃たない**: 実呼び出しは Vision のモデルを読み(初回 25〜47s)、FM を起こす
+        guard args["fmAndVision"] as? Bool == true else {
+            return text("Not checked: MCP does not use Foundation Models or Vision by default (ft_run_scenario and"
+                + " ft_start_run run without them). Pass fmAndVision: true to check them, or to use them in a run.")
+        }
         let fm = await FMDoctor.checkLive()
         // **視覚系も実呼び出しで確かめる**(能力判定では足りない。text と vision は独立に死ぬ)
         let vision = await FMDoctor.visionCheckLive()

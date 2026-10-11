@@ -99,6 +99,10 @@ extension MCPServer {
         "type": "string", "description": "Test project name (default: the default project)",
     ]
     nonisolated(unsafe) static let skipBuildProperty: [String: Any] = ["type": "boolean", "description": "Skip the swift build"]
+    /// **MCP は既定で FM と Vision を使わない**(ユーザー決定)。切り方は `MCPServer.withoutFMAndVision`・応答の文言は `MCPServer.fmAndVisionOffNote`
+    nonisolated(unsafe) static let fmAndVisionProperty: [String: Any] = ["type": "boolean", "description":
+        "Use Foundation Models and Vision (text visual verification, screenLooksLike, the checkIsON classifier, "
+        + "OCR) — off by default in MCP"]
     nonisolated(unsafe) static let runPidProperty: [String: Any] = [
         "type": "integer", "description": "pid from ft_start_run (default: the latest)",
     ]
@@ -521,6 +525,7 @@ extension MCPServer {
             "heal": ["type": "boolean", "description": "Override fingerprint-based locator self-healing "
                 + "(default: the profile's setting, else false)"],
             "skipBuild": skipBuildProperty,
+            "fmAndVision": fmAndVisionProperty,
         ], required: ["id"]),
         tool("ft_start_run", "Start a full test run (= fleetest run --profile) in the background and "
             + "return at once; records history, reports and recordings. Poll with ft_run_status, stop "
@@ -536,6 +541,7 @@ extension MCPServer {
             "failed": ["type": "boolean", "description": "Only the scenarios that failed last time"],
             "broadcast": ["type": "boolean", "description": "Run each selected scenario on every device "
                 + "instead of splitting them"],
+            "fmAndVision": fmAndVisionProperty,
         ], required: ["profile"], scope: .project),
         tool("ft_run_status", "State of an ft_start_run run: progress while running; exit code, totals, "
             + "failed scenarios with report paths and the results directory once finished; plus the log tail", [
@@ -558,7 +564,8 @@ extension MCPServer {
         ], required: ["query"], scope: .project),
         tool("ft_list_projects", "List the test projects (TestProjects/) and their run profiles", [:],
              scope: .none),
-        tool("ft_doctor", "Check Foundation Models availability", [:], scope: .none),
+        tool("ft_doctor", "Check Foundation Models, Vision and OCR availability (only with fmAndVision: true — "
+            + "MCP does not use them by default)", ["fmAndVision": fmAndVisionProperty], scope: .none),
     ]
 
     /// ツールがどの引数群を要るか。**デバイスに触らないツールへ5つ足さない**のが要点 ——

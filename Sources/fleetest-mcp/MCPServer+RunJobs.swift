@@ -103,9 +103,13 @@ enum MCPRunJobs {
 
     /// `/usr/bin/env` へ渡す引数。**`--scenario` / `--folder` は1回のフラグに値を並べる**
     /// (`FleetRunner.buildArgs` と同じ形。両方 upToNextOption)
+    /// `fmAndVision`: false(MCP の既定)なら FM と Vision を使う4つのキーを `--set` で切り、run の開始時の
+    /// OCR のコンパイルも止める(`FT_OCCLUSION_OCR=off`。`ScenarioHost.startOCRModelCompile` はプロファイルを見ない)
     static func arguments(profile: String, project: String?, runner: String?, scenarios: [String],
-                          folders: [String], failed: Bool, broadcast: Bool) -> [String] {
-        var args = ["swift", "run", "fleetest", "run"]
+                          folders: [String], failed: Bool, broadcast: Bool, fmAndVision: Bool) -> [String] {
+        // 環境変数は手元の run とその子にだけ効く(別の機械へは `--set` だけが届き、OCR のコンパイルはそれで止まる)
+        var args = fmAndVision ? [] : ["FT_OCCLUSION_OCR=off", "FT_FIND_IMAGE_PREWARM=off"]
+        args += ["swift", "run", "fleetest", "run"]
         if let project { args += ["--project", project] }
         args += ["--profile", profile]
         if let runner { args += ["--runner", runner] }
@@ -113,6 +117,9 @@ enum MCPRunJobs {
         if !folders.isEmpty { args += ["--folder"] + folders }
         if failed { args.append("--failed") }
         if broadcast { args.append("--broadcast") }
+        if !fmAndVision {
+            for key in MCPServer.fmAndVisionProfileKeys { args += ["--set", "\(key)=false"] }
+        }
         return args
     }
 
@@ -416,7 +423,7 @@ extension MCPServer {
         let project = try ScenarioHost.project(named: args["project"] as? String)
         let arguments = MCPRunJobs.arguments(
             profile: profile, project: project.name, runner: runner, scenarios: scenarios, folders: folders,
-            failed: failed, broadcast: broadcast)
+            failed: failed, broadcast: broadcast, fmAndVision: args["fmAndVision"] as? Bool == true)
 
         let logDir = packageRoot.appendingPathComponent(".fleetest").appendingPathComponent("mcp-runs")
         try FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
@@ -461,7 +468,8 @@ extension MCPServer {
         return text("Started a run in the background (pid \(job.pid)).\n"
             + "Command: \(MCPRunJobs.commandLine(arguments))\n"
             + "Log: \(logURL.path)\n"
-            + "Poll ft_run_status (pid: \(job.pid)); stop it with ft_stop_run (pid: \(job.pid)).")
+            + "Poll ft_run_status (pid: \(job.pid)); stop it with ft_stop_run (pid: \(job.pid))."
+            + (args["fmAndVision"] as? Bool == true ? "" : "\n" + Self.fmAndVisionOffNote))
     }
 
     /// 省略時は最後に起こした run。**この server が起こしていない pid は断る**(他人の run を読まない・止めない)

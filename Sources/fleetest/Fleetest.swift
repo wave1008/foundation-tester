@@ -545,8 +545,10 @@ struct RunScenarios: AsyncParsableCommand {
     /// 雛形・供給)はここに含めず、ロックの後で `ProfileRunner.run` が同じ resolve をもう一度行う ——
     /// 読むだけなので二重に払っても正しさに影響しない(プロファイルのファイルがロック待ち〜ビルドの
     /// 間に書き換わる可能性は無視する。次の run で気づく程度の実害しかない)
-    private func validateProfileDevicesBeforeLock() throws {
-        guard let profile else { return }
+    /// 戻り値は解決したプロファイル(`--set` 適用済み。OCR のコンパイルの要否に使う)。`--profile` 無しは nil
+    @discardableResult
+    private func validateProfileDevicesBeforeLock() throws -> ResolvedProfile? {
+        guard let profile else { return nil }
         let testProject = try ScenarioHost.project(named: project)
         let resolvedAll = try ProfileResolver.resolve(
             project: testProject, runName: profile,
@@ -563,7 +565,7 @@ struct RunScenarios: AsyncParsableCommand {
         let full = resolvedAll.filteringDevices(names: effectiveDeviceFilter, deviceMachine: effectiveDeviceHost)
         // 絞り込みを指定したときだけ「合致0」を言う(指定なしで0台はプロファイル自体の誤りで、
         // resolve / ProfileRunner.run が自分の言葉で報告する)。文言は ProfileRunner.run と同じ形
-        guard full.devices.isEmpty, !effectiveDeviceFilter.isEmpty || effectiveDeviceHost != nil else { return }
+        guard full.devices.isEmpty, !effectiveDeviceFilter.isEmpty || effectiveDeviceHost != nil else { return resolvedAll }
         let scope = [devices.isEmpty ? nil : "--device \(devices.joined(separator: ", "))",
                      deviceMachine.map { "--device-machine \($0)" }]
             .compactMap { $0 }.joined(separator: " ")
@@ -637,7 +639,7 @@ struct RunScenarios: AsyncParsableCommand {
         // `--device-machine` を素通しする既存の挙動(下の `if dryRun` 分岐。`--profile` の実在
         // だけ確かめて devices は見ない)のままにする。ロックを取らない dry-run はそもそも
         // 待たせる問題が起きない経路なので、ここで新しい検証を割り込ませない
-        if !dryRun { try validateProfileDevicesBeforeLock() }
+        let earlyResolved = dryRun ? nil : try validateProfileDevicesBeforeLock()
         // **この Mac のロックを、デバイスにもビルドにも触る前に取る**(ユーザー決定
         // 「1つのマシンで同時に複数の run は走らせない」)。リモートへのディスパッチが
         // dispatch.lock で守っていた不変条件を、手元で直接打った run にも同じロックで掛ける。
@@ -725,7 +727,11 @@ struct RunScenarios: AsyncParsableCommand {
             throw RunInterruptedBeforeStartError(phase: "after the scenario build")
         }
         PhaseLog.mark("build")
-        let all = try ScenarioHost.listForRun(project: testProject, dryRun: dryRun)
+        let all = try ScenarioHost.listForRun(
+            project: testProject, dryRun: dryRun,
+            compilesOCR: ScenarioHost.ocrCompileNeeded(
+                fmTextOcclusionCheck: earlyResolved?.fm.fmTextOcclusionCheck ?? noProfileSettings.fm.fmTextOcclusionCheck,
+                ocrTextOcclusionCheck: earlyResolved?.ocrTextOcclusionCheck ?? noProfileSettings.ocrTextOcclusionCheck))
         PhaseLog.mark("scenario-list")
         guard !all.isEmpty else {
             throw ValidationError(

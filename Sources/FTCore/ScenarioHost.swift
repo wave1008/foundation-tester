@@ -385,10 +385,18 @@ public enum ScenarioHost {
     /// `dryRun` の run では起こさない —— ステップを実行しないので OCR も走らず、しかもコンパイルは親の死を
     /// 生き延びる子(下の doc)なので、dry-run を使う終了テスト(`CrossLayerTerminationTests`)が
     /// 「子孫が残った」と正しく落とす
-    public static func listForRun(project: TestProject, dryRun: Bool) throws -> [ScenarioInfo] {
+    /// `compilesOCR`: その run でテキストの視覚検証(FM の段か OCR の段)が有効か(`ocrCompileNeeded`。既定値を置かない =
+    /// 呼び手が run の設定から決める)。**切った run でコンパイルを起こさない** —— プロファイルで OCR を切っても、MCP が `--set` で
+    /// 切っても、ここが設定を見ずに 20〜45 秒 × 2 のコンパイルを起こしていた
+    public static func listForRun(project: TestProject, dryRun: Bool, compilesOCR: Bool) throws -> [ScenarioInfo] {
         let all = try list(project: project)
-        if !dryRun { startOCRModelCompile(project: project) }
+        if !dryRun, compilesOCR { startOCRModelCompile(project: project) }
         return all
+    }
+
+    /// 子の `FTRuntime` がコンパイルを頼む条件と同じ(fmTextOcclusionCheck || ocrTextOcclusionCheck)。2箇所で別に書かない
+    public static func ocrCompileNeeded(fmTextOcclusionCheck: Bool, ocrTextOcclusionCheck: Bool) -> Bool {
+        fmTextOcclusionCheck || ocrTextOcclusionCheck
     }
 
     private static let ocrCompileStarted = Mutex(false)
@@ -488,6 +496,7 @@ public enum ScenarioHost {
         let containerInference = settings.containerInference
         let occlusionOCR = settings.occlusionOCR
         let preferCheckStateClassifier = settings.preferCheckStateClassifier
+        let findImagePrewarm = settings.findImagePrewarm
         let tunables = settings.tunables
         let scenarioTimeout = settings.scenarioTimeout
         let startedAt = Date()
@@ -605,6 +614,7 @@ public enum ScenarioHost {
         // 走らないためこの値は無意味 —— 別ゲートは追加しない)
         if !occlusionOCR { args.append("--no-occlusion-ocr") }
         if !preferCheckStateClassifier { args.append("--no-prefer-check-state-classifier") }
+        if !findImagePrewarm { args.append("--no-find-image-prewarm") }
         if let debug {
             args.append("--debug")
             if debug.pauseOnStart { args.append("--pause-on-start") }

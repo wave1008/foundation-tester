@@ -11,6 +11,9 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     public var occlusionOCR: Bool
     /// checkIsON / checkIsOFF で CheckStateClassifier を優先するか(プロファイルの `preferCheckStateClassifier`)
     public var preferCheckStateClassifier: Bool
+    /// シナリオの開始時に findImage の見本の特徴量を前もって作るか(Vision を読む)。MCP は既定で切る
+    /// (`MCPServer.withoutFMAndVision`)。切っても findImage を使うシナリオは初回に払うだけ
+    public var findImagePrewarm: Bool
     public var containerInference: Bool
     /// 環境で正解が変わる既定の束(`defaultTimeout` 含む)。子プロセスへは `--tunables` で運ぶ
     public var tunables: RunTunables
@@ -25,13 +28,14 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     /// 既定値はこの1箇所だけに置く。他の層(ScenarioHost/RunOrchestrator/CLI)に既定を書かない。
     /// `homeOnStart` はデバイスに触る工程の設定なのでここには入れない
     public init(fm: FMConfig = FMConfig(), heal: Bool = false, occlusionOCR: Bool = true,
-                preferCheckStateClassifier: Bool = true,
+                preferCheckStateClassifier: Bool = true, findImagePrewarm: Bool = true,
                 containerInference: Bool = true, tunables: RunTunables = RunTunables(),
                 scenarioTimeout: Int? = nil, profileName: String? = nil) {
         self.fm = fm
         self.heal = heal
         self.occlusionOCR = occlusionOCR
         self.preferCheckStateClassifier = preferCheckStateClassifier
+        self.findImagePrewarm = findImagePrewarm
         self.containerInference = containerInference
         self.tunables = tunables
         self.scenarioTimeout = scenarioTimeout

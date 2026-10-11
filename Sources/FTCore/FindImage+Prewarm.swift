@@ -21,8 +21,11 @@ extension FindImage {
 
     /// 画像の見本(DefaultClassifier)を持つプロジェクトのプロセスでだけ暖機を始める(プロセスに1回)。
     /// 見本が無ければ撃たない(画像照合を使わないプロセスに ANE の負荷を足さない)
-    public static func prewarmIfNeeded(projectRoot: URL?, isAndroid: Bool) {
-        guard let projectRoot else { return }
+    /// `FT_FIND_IMAGE_PREWARM=off` でも撃たない(プロセスとして起こす run = MCP の ft_start_run の子へ環境で届く口。
+    /// 呼び出しごとに設定で切るのは `ScenarioExecutionSettings.findImagePrewarm`)
+    public static func prewarmIfNeeded(projectRoot: URL?, isAndroid: Bool,
+                                       environment: [String: String] = ProcessInfo.processInfo.environment) {
+        guard environment["FT_FIND_IMAGE_PREWARM"] != "off", let projectRoot else { return }
         let directory = VisionClassifier.directory(projectRoot: projectRoot, name: DefaultClassifier.name)
         // label "" = 全ラベルの見本(自 OS の印を先に)。最初の1枚で機械の状態を見る(異常は見本を選ばない)
         guard let template = templateFiles(label: "", classifierDirectory: directory, isAndroid: isAndroid).first

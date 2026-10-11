@@ -9,6 +9,32 @@ import FTCore
 
 extension MCPServer {
 
+    /// プロファイルのキーのうち FM と Vision を使うもの(`ft_start_run` が `--set <key>=false` で切る)。
+    /// `withoutFMAndVision` と同じ4つ(片方だけ足さない。`MCPFMAndVisionOffTests` が両方を突き合わせる)
+    static let fmAndVisionProfileKeys = ["fmTextOcclusionCheck", "screenLooksLike", "ocrTextOcclusionCheck",
+                                         "preferCheckStateClassifier"]
+
+    /// **MCP の run は既定で FM と Vision を使わない**(ユーザー決定)。子は OCR のコンパイルも起こさない
+    /// (`ScenarioHost.ocrCompileNeeded`)。findImage の見本の暖機も切る。`findImage` そのものは切らない(シナリオが明示的に求める)
+    static func withoutFMAndVision(_ settings: ScenarioExecutionSettings) -> ScenarioExecutionSettings {
+        var out = settings
+        out.fm.enabled = false
+        out.fm.fmTextOcclusionCheck = false
+        out.fm.screenLooksLike = false
+        out.occlusionOCR = false
+        out.preferCheckStateClassifier = false
+        out.findImagePrewarm = false
+        return out
+    }
+
+    /// 切った run の応答に必ず添える(黙ると、見えていない文字の緑を検証済みと読まれる)
+    static let fmAndVisionOffNote = "ℹ️ ran without Foundation Models and Vision (MCP default): no text visual"
+        + " verification, screenLooksLike steps are skipped, checkIsON reads the tree only. Pass fmAndVision: true"
+        + " to use them"
+}
+
+extension MCPServer {
+
     /// シナリオ一覧(自動ビルド込み。コンパイルエラーはそのまま返す=エージェントが直せる)
     func listScenarios(_ args: [String: Any]) throws -> [[String: Any]] {
         let project = try ScenarioHost.project(named: args["project"] as? String)
@@ -268,6 +294,10 @@ extension MCPServer {
             }
         }
 
+        if args["fmAndVision"] as? Bool != true {
+            exec = Self.withoutFMAndVision(exec)
+            prologue.append(Self.fmAndVisionOffNote)
+        }
         var lines: [String] = prologue
         var passedCount = 0
         var failedCount = 0

@@ -477,6 +477,8 @@ public final class FTDriveCore {
                 // vision/classifiers/CheckStateClassifier/。nil なら使わない
                 visionClassifierProjectRoot: URL? = nil,
                 preferCheckStateClassifier: Bool = true,
+                // findImage の見本の暖機(ScenarioExecutionSettings.findImagePrewarm)
+                findImagePrewarm: Bool = true,
                 dryRun: Bool = false,
                 fingerprintCacheURL: URL? = nil,
                 selectorInventoryURL: URL? = nil,
@@ -550,11 +552,12 @@ public final class FTDriveCore {
         // ここで実行プロファイルのマスタースイッチだけを見て頼む。off のときは compileModelIfNeeded
         // 自身が no-op(occlusionOCRResolvedMode の doc)。**dry-run では頼まない**(ガードを撃たない。
         // 短命なので途中で捨てた上にキャッシュの 1 モデルを上書きし、次の run に払い直させる = performance-tuning §3.33)
-        if !dryRun, fmTextOcclusionCheckEnabled || occlusionOCREnabled {
+        if !dryRun, ScenarioHost.ocrCompileNeeded(fmTextOcclusionCheck: fmTextOcclusionCheckEnabled,
+                                                  ocrTextOcclusionCheck: occlusionOCREnabled) {
             RegionText.compileModelIfNeeded(mode: occlusionOCRResolvedMode)
         }
         // 画像照合の特徴量も同じくシナリオ開始時に(見本を持つプロジェクトだけ。FindImage+Prewarm.swift)
-        if !dryRun {
+        if !dryRun, findImagePrewarm {
             FindImage.prewarmIfNeeded(projectRoot: visionClassifierProjectRoot, isAndroid: platform == "android")
         }
         // コンパイル待ち(RegionText.awaitModelCompile)が締め切りから差し引かれるよう、子→親へ知らせる。
