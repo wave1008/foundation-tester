@@ -155,7 +155,8 @@ extension MCPServer {
                 // 操作より前の値のまま = 「このスナップショットが撮られた時点」の定義を保つ)
                 let remapped = Self.remapped(native, base: last.base)
                 generations[generations.count - 1] = (base: last.base, snapshot: remapped,
-                                                       actionCount: last.actionCount)
+                                                       actionCount: last.actionCount,
+                                                       followsOwnAction: last.followsOwnAction)
                 refGenerations[key] = generations
                 lastSnapshots[key] = remapped
                 return remapped
@@ -165,7 +166,9 @@ extension MCPServer {
         let remapped = Self.remapped(native, base: base)
         var generations = refGenerations[key] ?? []
         generations.append((base: base, snapshot: remapped,
-                            actionCount: sessionActionCounts[key] ?? 0))
+                            actionCount: sessionActionCounts[key] ?? 0,
+                            followsOwnAction: Self.currentCallID != 0
+                                && lastActionCallIDs[key] == Self.currentCallID))
         if generations.count > Self.maxRefGenerations {
             generations.removeFirst(generations.count - Self.maxRefGenerations)
         }
@@ -244,9 +247,15 @@ extension MCPServer {
     /// この engineKey へ何か(tap/type/swipe/…)を撃っていれば true。**「他プロセス/人が動かした」と
     /// 誤って名指ししない** —— 実測(5/5): 直前の自分の ft_tap で遷移した画面に対して
     /// このセッションの ref を撃つと、木が変わった原因を持たない外部要因のせいにしていた
+    ///
+    /// **`takenRightAfterOwnAction`**: その世代を、このセッションの操作と同じ呼び出しの中で操作の後に読んだなら true
+    /// (snapshotAfter・waitFor)。操作の結果がまだ届き切っていない木(検索候補の読み込み中)から ref を採ると、
+    /// 以後何もしていなくても木は変わる —— 実測(Apple マップ・Google マップ): ft_type の snapshotAfter の
+    /// 候補を押すと「アプリ・他プロセス・人が動かした」と言っていた
     static func screenChangedUnderRefNote(ref: Int, takenFrom: SnapshotResponse?,
                                           fresh: SnapshotResponse, isStale: Bool,
-                                          matched: ElementInfo, actedSinceTakenFrom: Bool) -> String {
+                                          matched: ElementInfo, actedSinceTakenFrom: Bool,
+                                          takenRightAfterOwnAction: Bool) -> String {
         // **畳まれる飾りの葉(地図の地点)は比べない**: 地図は利用者が何もしなくても地点を出し入れするので、
         // 含めると地図の画面では毎回「このセッションは何もしていないのに変わった」と言う(Apple マップの経路画面で
         // `#VKPointFeature` 133件の増減だけで発火)。**撃つ相手がその群の一員なら比べる**(地点そのものを撃つ形)
@@ -257,6 +266,10 @@ extension MCPServer {
                 != Self.treeIdentity(fresh, ignoringBulk: ignoresBulk) else { return "" }
         let cause = actedSinceTakenFrom
             ? "this session's own actions since that snapshot are the likely cause"
+            : takenRightAfterOwnAction
+            ? "this session did nothing since, but that snapshot was the first read after this"
+                + " session's own last action — the screen may still have been updating from it"
+                + " (results loading, an animation)"
             : "nothing this session did changed it — the app itself, another process or a"
                 + " person moved the screen on"
         return " note: [\(ref)] came from a snapshot whose tree no longer matches the current one,"
@@ -318,6 +331,12 @@ extension MCPServer {
     func generationActionCount(containing ref: Int, args: [String: Any]) -> Int? {
         refGenerations[Self.engineKey(args)]?.reversed()
             .first { $0.snapshot.elements.contains { $0.ref == ref } }?.actionCount
+    }
+
+    /// この ref の世代が、このセッションの操作と同じ呼び出しの中で操作の後に読んだ木か(snapshotAfter・waitFor の読み)
+    func generationFollowsOwnAction(containing ref: Int, args: [String: Any]) -> Bool {
+        refGenerations[Self.engineKey(args)]?.reversed()
+            .first { $0.snapshot.elements.contains { $0.ref == ref } }?.followsOwnAction ?? false
     }
 
     /// セッション ref → native ref(ブリッジへ渡す番号)。**最新世代の base を引くことでしか
@@ -1014,7 +1033,8 @@ extension MCPServer {
             > (generationActionCount(containing: ref, args: args) ?? 0)
         let originNote = staleNote + probeNote + Self.screenChangedUnderRefNote(
             ref: ref, takenFrom: takenFrom, fresh: fresh,
-            isStale: resolved.isStale, matched: target, actedSinceTakenFrom: actedSinceTakenFrom)
+            isStale: resolved.isStale, matched: target, actedSinceTakenFrom: actedSinceTakenFrom,
+            takenRightAfterOwnAction: generationFollowsOwnAction(containing: ref, args: args))
         // **申告 keyboardFrame はキー面だけ**(サジェストバー・地球儀/Dictate 行を含まない)。
         // 木の chrome で広げ、chrome 自身とその部分木は除外する(KeyboardOcclusion の doc)。
         // DSL 側(StepExecutor+Actions.swift)も同じ型で揃える —— 片方だけ広げると

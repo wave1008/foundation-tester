@@ -41,11 +41,13 @@ final class RefScreenProvenanceTests: XCTestCase {
     }
 
     private func note(_ takenFrom: SnapshotResponse?, _ fresh: SnapshotResponse,
-                      isStale: Bool = false, actedSinceTakenFrom: Bool = false) -> String {
+                      isStale: Bool = false, actedSinceTakenFrom: Bool = false,
+                      takenRightAfterOwnAction: Bool = false) -> String {
         MCPServer.screenChangedUnderRefNote(
             ref: 350, takenFrom: takenFrom, fresh: fresh, isStale: isStale,
             matched: element(350, id: "btn_back", label: "戻る"),
-            actedSinceTakenFrom: actedSinceTakenFrom)
+            actedSinceTakenFrom: actedSinceTakenFrom,
+            takenRightAfterOwnAction: takenRightAfterOwnAction)
     }
 
     /// **本命**: 木が別物になっていたら言う
@@ -121,6 +123,13 @@ final class RefScreenProvenanceTests: XCTestCase {
         XCTAssertTrue(message.contains("nothing this session did"), message)
     }
 
+    /// **その木が自分の操作の直後の読みなら、外部要因を名指ししない**(読み込みの途中だった可能性を言う)
+    func testDoesNotBlameExternalActorsWhenTheRefCameFromTheReadRightAfterOwnAction() {
+        let message = note(selector, lifecycle, takenRightAfterOwnAction: true)
+        XCTAssertTrue(message.contains("first read after this session's own last action"), message)
+        XCTAssertFalse(message.contains("another process or a person"), message)
+    }
+
     // MARK: - 地図の地点(畳まれる飾りの葉)
 
     /// 地図の地点 `#VKPointFeature`(畳まれる群 = bulkGroupMinimum 件以上の飾りの葉)
@@ -155,7 +164,8 @@ final class RefScreenProvenanceTests: XCTestCase {
         let fresh = tree(selector.elements + pins((0..<count).map { "別の地点\($0)" }, firstRef: 500))
         let message = MCPServer.screenChangedUnderRefNote(
             ref: 500, takenFrom: taken, fresh: fresh, isStale: false,
-            matched: fresh.elements.first { $0.ref == 500 }!, actedSinceTakenFrom: false)
+            matched: fresh.elements.first { $0.ref == 500 }!, actedSinceTakenFrom: false,
+            takenRightAfterOwnAction: false)
         XCTAssertFalse(message.isEmpty)
     }
 
@@ -218,5 +228,58 @@ final class RefScreenProvenanceTests: XCTestCase {
         let text = try XCTUnwrap(result.first?["text"] as? String)
         XCTAssertTrue(text.contains("this session's own actions"), text)
         XCTAssertFalse(text.contains("nothing this session did"), text)
+    }
+
+    /// **配線**: 自分の ft_tap の snapshotAfter で読んだ木から ref を採り、その後で木が変わった(読み込みの続き)
+    /// 状態で撃つと、外部要因ではなく「操作の直後の読みだった」と言う。実測(Apple マップ・Google マップ):
+    /// ft_type の snapshotAfter の候補を押すと「アプリ・他プロセス・人が動かした」と言っていた
+    func testTheResponseSaysTheRefCameFromTheReadRightAfterThisSessionsAction() async throws {
+        let driver = FakeDriver()
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver },
+                               recordSnapshot: { _, _, _ in })
+        driver.snapshotResponse = selector
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+
+        // 撃つ直前の木は selector のまま、撃った後の読みは lifecycle(このセッションの操作の結果)
+        driver.scriptedSnapshots = [selector, lifecycle]
+        let after = try await server.call(tool: "ft_tap", args: ["ref": 354, "snapshotAfter": true])
+        let afterText = after.compactMap { $0["text"] as? String }.joined()
+        let match = try XCTUnwrap(afterText.firstMatch(of: /\[(\d+)\] button "セッション\+1"/),
+                                  afterText)
+        let ref = try XCTUnwrap(Int(match.1))
+
+        // 何もしていないのに読み込みの続きで木が変わる
+        let settled = tree(lifecycle.elements + [element(305, id: "txt_result", label: "読み込み完了",
+                                                         y: 300, type: "staticText")])
+        driver.scriptedSnapshots = [settled, settled]
+        let result = try await server.call(tool: "ft_tap", args: ["ref": ref])
+        let text = try XCTUnwrap(result.first?["text"] as? String)
+        XCTAssertTrue(text.contains("first read after this session's own last action"), text)
+        XCTAssertFalse(text.contains("another process or a person"), text)
+    }
+
+    /// **陰性対照**: 素の ft_snapshot で読んだ木(操作を伴わない呼び出し)なら、従来どおり外部要因の可能性を言う
+    func testAPlainSnapshotAfterAnActionIsNotMarkedAsTheReadRightAfterIt() async throws {
+        let driver = FakeDriver()
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver },
+                               recordSnapshot: { _, _, _ in })
+        driver.snapshotResponse = selector
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        driver.scriptedSnapshots = [selector]
+        _ = try await server.call(tool: "ft_tap", args: ["ref": 354])
+        driver.scriptedSnapshots = []
+        driver.snapshotResponse = lifecycle
+        let plain = try await server.call(tool: "ft_snapshot", args: [:])
+        let plainText = plain.compactMap { $0["text"] as? String }.joined()
+        let match = try XCTUnwrap(plainText.firstMatch(of: /\[(\d+)\] button "セッション\+1"/),
+                                  plainText)
+        let ref = try XCTUnwrap(Int(match.1))
+
+        let settled = tree(lifecycle.elements + [element(305, id: "txt_result", label: "読み込み完了",
+                                                         y: 300, type: "staticText")])
+        driver.scriptedSnapshots = [settled, settled]
+        let result = try await server.call(tool: "ft_tap", args: ["ref": ref])
+        let text = try XCTUnwrap(result.first?["text"] as? String)
+        XCTAssertTrue(text.contains("nothing this session did"), text)
     }
 }

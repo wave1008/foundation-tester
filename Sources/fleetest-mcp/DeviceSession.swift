@@ -25,14 +25,17 @@ struct DeviceSession {
     /// 旧 ref [42](戻るボタン)を叩いたら新しい木の [42](静的テキスト「料金:」)に当たった)。
     /// MCP 層で ref にオフセット(`base`)を掛け、セッション内で全世代の ref を一意にする ——
     /// ブリッジには一切触らない。古い順に並び、**直近5世代だけ**保持する(adoptSnapshot 参照)。
-    /// `actionCount` は各世代を採った時点の `sessionActionCount`(出自判定用)
-    var refGenerations: [(base: Int, snapshot: SnapshotResponse, actionCount: Int)]?
+    /// `actionCount` は各世代を採った時点の `sessionActionCount`、`followsOwnAction` は
+    /// このセッションの操作と同じ呼び出しの中で、操作の後に読んだ世代か(どちらも出自判定用)
+    var refGenerations: [(base: Int, snapshot: SnapshotResponse, actionCount: Int, followsOwnAction: Bool)]?
     /// このセッションが撃った操作(tap/type/swipe/… — `recordAction` を通った回数)。
     /// **「このセッションは変えていない」と言ってよいかの唯一の判定材料**:
     /// `screenChangedUnderRefNote` は木の変化を「アプリ自身・他プロセス・人」のせいだと名指しするが、
     /// ref を採った世代からこの回数が増えていれば、変化はこのセッション自身の直前の操作で
     /// 説明がつく可能性が高く、外部要因のせいにしてはいけない
     var sessionActionCount: Int?
+    /// 最後に `recordAction` を通った呼び出しの番号(`MCPServer.currentCallID`)
+    var lastActionCallID: Int?
     /// **直前の `ft_tap` が叩いた要素**。ref なし `ft_type` が「叩いた欄へ焦点が
     /// 立たなかった」形を救うための材料(DSL の `StepExecutor.lastTapTarget` と同じ役)。
     /// tap / type 以外の操作(`recordInteraction`)で消える —— 間に別の操作を挟んだ type は

@@ -38,6 +38,19 @@ final class SimilarLabelsTests: XCTestCase {
         XCTAssertFalse(SimilarLabels.isSimilarText("経路", "経路"))
     }
 
+    /// **1文字の語は編集距離で近いとしない**(含む関係だけ)。実測: waitFor `*円*` に
+    /// 「定刻」「各停」「戻る」を挙げた —— 距離2以内なら3文字以下のラベルすべてに当たる
+    func testSingleCharacterTargetsOnlyMatchByContainment() {
+        XCTAssertFalse(SimilarLabels.isSimilarText("円", "定刻"))
+        XCTAssertFalse(SimilarLabels.isSimilarText("戻る", "1"))
+        XCTAssertTrue(SimilarLabels.isSimilarText("円", "715円"))
+        let tree = snapshot([node(1, type: "staticText", label: "定刻"),
+                             node(2, type: "button", label: "戻る"),
+                             node(3, type: "staticText", label: "715円")])
+        XCTAssertEqual(SimilarLabels.candidates(labelTarget: "円", idTarget: nil, in: tree)
+            .map(\.matchedText), ["715円"])
+    }
+
     func testEditDistanceIsClassicLevenshtein() {
         XCTAssertEqual(SimilarLabels.editDistance("kitten", "sitting"), 3)
         XCTAssertEqual(SimilarLabels.editDistance("", "abc"), 3)

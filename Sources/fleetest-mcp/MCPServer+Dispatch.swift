@@ -523,7 +523,11 @@ extension MCPServer {
             // **失敗したら1回だけブリッジを起動し直して撃ち直す**(MCPServer+BridgeRecovery.swift)。
             // 起動し直せなければ元のエラーがそのまま catch へ落ち、connectionLostHint 等はそのまま効く
             // (MCPToolFailure は接続拒否ではないので撃ち直しの対象にならない = シナリオを二重に走らせない)
-            return await decorated(try await dispatchRetryingAfterBridgeRecovery(tool: tool, args: resolved))
+            let callID = nextCallID
+            nextCallID += 1
+            return await decorated(try await Self.$currentCallID.withValue(callID) {
+                try await dispatchRetryingAfterBridgeRecovery(tool: tool, args: resolved)
+            })
         } catch let failure as MCPToolFailure {
             // 中身は呼び手が組み上げた報告そのもの。接続断の診断(デバイス走査)は足さない
             throw MCPToolFailure(content: await decorated(failure.content))

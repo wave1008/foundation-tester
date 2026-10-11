@@ -30,8 +30,12 @@ final class MCPServer {
     var drivers: SessionMap<AppDriver> { SessionMap(server: self, path: \.driver) }
     var engines: SessionMap<String> { SessionMap(server: self, path: \.engine) }
     var lastSnapshots: SessionMap<SnapshotResponse> { SessionMap(server: self, path: \.lastSnapshot) }
-    var refGenerations: SessionMap<[(base: Int, snapshot: SnapshotResponse, actionCount: Int)]> { SessionMap(server: self, path: \.refGenerations) }
+    var refGenerations: SessionMap<[(base: Int, snapshot: SnapshotResponse, actionCount: Int, followsOwnAction: Bool)]> { SessionMap(server: self, path: \.refGenerations) }
     var sessionActionCounts: SessionMap<Int> { SessionMap(server: self, path: \.sessionActionCount) }
+    var lastActionCallIDs: SessionMap<Int> { SessionMap(server: self, path: \.lastActionCallID) }
+    /// いま処理中のツール呼び出しの番号(0 = 呼び出しの外)。TaskLocal なので、並行する呼び出しが互いの番号を見ない
+    @TaskLocal static var currentCallID = 0
+    var nextCallID = 1
     var lastTapTargets: SessionMap<ElementInfo> { SessionMap(server: self, path: \.lastTapTarget) }
     var knownScreens: SessionMap<FTRect> { SessionMap(server: self, path: \.knownScreen) }
     var uiFrameworkHints: SessionMap<AppUIFramework> { SessionMap(server: self, path: \.uiFrameworkHint) }

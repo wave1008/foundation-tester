@@ -12,14 +12,16 @@ import Foundation
 public enum SimilarLabels {
 
     /// 「近い」の強さ。**部分文字列関係(どちらかがどちらかを含む・大文字小文字無視)が強、
-    /// 編集距離だけの一致(短い語同士・6文字以下・距離2以下)が弱**。
+    /// 編集距離だけの一致(短い語同士・2〜6文字・距離2以下)が弱**。
     public enum Strength { case strong, weak }
 
     public static func similarityStrength(_ a: String, _ b: String) -> Strength? {
         let la = a.lowercased(), lb = b.lowercased()
         guard la != lb else { return nil }
         if la.contains(lb) || lb.contains(la) { return .strong }
-        guard la.count <= 6, lb.count <= 6 else { return nil }
+        // **1文字の語は編集距離で比べない**: 距離2以内なら3文字以下のラベルすべてに当たる
+        // (実測: waitFor `*円*` に「定刻」「各停」「戻る」を挙げた)
+        guard la.count >= 2, lb.count >= 2, la.count <= 6, lb.count <= 6 else { return nil }
         return Self.editDistance(la, lb) <= 2 ? .weak : nil
     }
 

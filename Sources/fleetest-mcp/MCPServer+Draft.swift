@@ -168,6 +168,7 @@ extension MCPServer {
     /// `screenChangedUnderRefNote` の出自判定から抜け、木の変化を誤って外部要因のせいにする
     func recordAction(_ entry: InteractionLog.Entry, args: [String: Any]) {
         sessionActionCounts[Self.engineKey(args), default: 0] += 1
+        lastActionCallIDs[Self.engineKey(args)] = Self.currentCallID
         interactions.record(entry)
     }
 

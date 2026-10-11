@@ -34,7 +34,7 @@ final class DeviceStateInvalidationTests: XCTestCase {
         server.udids[key] = "AAA"
         server.versionSkew[key] = "mismatch"
         server.lastSnapshots[key] = snapshot
-        server.refGenerations[key] = [(base: 100, snapshot: snapshot, actionCount: 0)]
+        server.refGenerations[key] = [(base: 100, snapshot: snapshot, actionCount: 0, followsOwnAction: false)]
         server.sessionActionCounts[key] = 3
         server.nextRefBase = 200
         server.launchedBundleIDs[key] = "com.example.old"
