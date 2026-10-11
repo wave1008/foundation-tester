@@ -338,4 +338,34 @@ final class MCPWaitMissPromptNoteTests: XCTestCase {
         XCTAssertTrue(added.contains("#Share"), added)
     }
 
+
+    /// **救済の探し直しは、容器の id が一意なら矩形でなく `#id` で渡す**(矩形はシートが畳まれても追従せず、地図をドラッグし続けた)
+    func testTheRescueRetryNamesTheContainerByAUniqueID() throws {
+        let list = el(5, "scrollView", nil, id: "TransitDirectionsListView", y: 120)
+        let unique = tree([list, el(6, "cell", "立川で降車", y: 300)])
+        let locator = try XCTUnwrap(MCPServer.scrollFrameLocator(for: list, in: unique))
+        XCTAssertEqual(LocatorResolver.match(locator, in: unique)?.ref, 5)
+        let duplicated = tree([list, el(7, "scrollView", nil, id: "TransitDirectionsListView", y: 500)])
+        XCTAssertNil(MCPServer.scrollFrameLocator(for: list, in: duplicated), "id が重複するなら矩形のまま")
+        XCTAssertNil(MCPServer.scrollFrameLocator(for: el(8, "scrollView", nil), in: unique), "id が無いなら矩形のまま")
+    }
+
+    /// **ref で渡された容器は、id が一意なら最初から `#id` で渡す**(DSL のシナリオと同じ = 1本ごとに引き直し・消えれば止まる)。
+    /// id が重複していれば従来どおり矩形
+    func testARefScrollFrameWithAUniqueIDIsPassedAsASelector() async throws {
+        let driver = FakeDriver()
+        let unique = el(5, "scrollView", nil, id: "TransitDirectionsListView", y: 140)
+        driver.snapshotResponse = tree([unique, el(6, "cell", "立川で降車", depth: 2, y: 300)])
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver }, recordSnapshot: { _, _, _ in })
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let arg = try await server.resolveScrollFrameArg(["scrollFrame": 5], driver: driver)
+        XCTAssertNotNil(arg.locator)
+        XCTAssertNil(arg.rect)
+
+        driver.snapshotResponse = tree([unique, el(7, "scrollView", nil, id: "TransitDirectionsListView", y: 500)])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let duplicated = try await server.resolveScrollFrameArg(["scrollFrame": 5], driver: driver)
+        XCTAssertNil(duplicated.locator)
+        XCTAssertNotNil(duplicated.rect)
+    }
 }

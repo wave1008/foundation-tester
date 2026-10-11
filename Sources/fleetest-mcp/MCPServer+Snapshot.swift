@@ -1325,6 +1325,11 @@ extension MCPServer {
                 if found.scrollable != true {
                     note += Self.scrollFrameNotDeclaredScrollableNote(found)
                 }
+                // **id が一意なら矩形でなく `#id` で渡す**(DSL のシナリオと同じ形 = 1本ごとに今の木で引き直し、消えれば止まる)。
+                // 矩形は探索の途中で容器が動いても追従しない(scrollFrameLocator の doc)。一意でなければ従来の矩形
+                if let locator = Self.scrollFrameLocator(for: found, in: fresh) {
+                    return ScrollFrameArg(locator: locator, original: target, note: note)
+                }
                 return ScrollFrameArg(rect: found.frame, original: target, note: note)
             }
         }
@@ -1348,6 +1353,19 @@ extension MCPServer {
     /// シート展開救済の高さ計測(sheetExpansionGrew / sheetShrunkAfterRetry の入力)。
     /// ref 形式は同じ要素を再照合、セレクタ形式は DSL と同じ照合の先頭一致で測る。
     /// scrollFrame 未指定なら nil = 判定は黙る(sheetExpansionGrew 側の宣言参照)
+    /// ref で渡された容器を**矩形ではなく `#id` で渡す**(id がその画面で一意で、作ったセレクタが同じ要素に当たるときだけ。
+    /// 無ければ nil = 矩形のまま)。矩形は探索の途中で容器が動いても追従せず、消えても止まらない(`scrollFrameUnresolved` は
+    /// セレクタにしか効かない)= DSL のシナリオ(容器はセレクタでしか書けない)と挙動が割れていた。
+    /// 実測(Apple マップの乗換案内): 救済の探し直しの途中でシートが畳まれ、全開のときの矩形の上端 y=131 から地図を4本
+    /// ゆっくりドラッグし続けた(約 16s。地図も動かした)。最初の探索・ft_swipe と救済の探し直しが共有する
+    static func scrollFrameLocator(for container: ElementInfo, in snapshot: SnapshotResponse) -> FlowLocator? {
+        guard let id = container.identifier, !id.isEmpty,
+              snapshot.elements.filter({ $0.identifier == id }).count == 1,
+              let locator = (try? parseSelectorArgument("#\(id)", argument: "scrollFrame"))?.primary,
+              LocatorResolver.match(locator, in: snapshot)?.ref == container.ref else { return nil }
+        return locator
+    }
+
     private static func scrollFrameHeight(_ arg: ScrollFrameArg, step: FlowStep,
                                           in snapshot: SnapshotResponse) -> Double? {
         if let original = arg.original {
@@ -1542,7 +1560,12 @@ extension MCPServer {
             if let original = scrollFrameArg.original,
                case .found(let found, _) = RefGuard.relocate(
                    original, in: expanded.elements, screen: expanded.screen) {
-                step.scrollFrameRect = found.frame
+                if let locator = Self.scrollFrameLocator(for: found, in: expanded) {
+                    step.scrollFrame = locator
+                    step.scrollFrameRect = nil
+                } else {
+                    step.scrollFrameRect = found.frame
+                }
             }
             let expandedHeight = Self.scrollFrameHeight(scrollFrameArg, step: step, in: expanded)
             // 伸びなかったら再試行しない(判定は sheetExpansionGrew の宣言参照)
