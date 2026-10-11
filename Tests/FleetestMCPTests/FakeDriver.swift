@@ -116,8 +116,12 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
     /// snapshot 1回の所要(秒)。読みが上限を跨ぐ形の検証用(0 = 待たない)
     var snapshotDelaySeconds: Double = 0
 
+    /// snapshot() を撃った瞬間に呼ぶ(段階の内訳の検証用)
+    var onSnapshot: (() -> Void)?
+
     func snapshot() async throws -> SnapshotResponse {
         try record("snapshot", "snapshot")
+        onSnapshot?()
         if snapshotDelaySeconds > 0 { try await Task.sleep(for: .seconds(snapshotDelaySeconds)) }
         // 待ちの検証用: 台本があれば呼ばれた順に返し、尽きたら最後の1枚を返し続ける
         if !scriptedSnapshots.isEmpty {

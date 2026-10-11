@@ -635,7 +635,7 @@ extension MCPServer {
             effective[filterKey] = remembered
             if remembered, announcedInheritedFilters[key, default: []].insert(filterKey).inserted {
                 note += "(\(filterKey): true inherited from an earlier call —"
-                    + " pass \(filterKey): false to override; later responses inherit it without saying so)\n"
+                    + " pass \(filterKey): false to override; it is inherited silently until you pass a different value)\n"
             }
         }
         return (effective, note)
@@ -718,12 +718,15 @@ extension MCPServer {
                              + dialogHint
                            : "") + "\n"
             } else if args["waitForChange"] as? Bool == true {
+                SlowCallWatchdog.mark("waiting for the screen to change")
                 let result = try await waitForChangeBody(beforeAction: beforeAction,
                                                          snapshot: snapshot,
                                                          driver: snapshotDriver, args: args)
                 snapshot = result.snapshot
                 settleNote = result.note
             } else if let beforeAction, Self.looksUnchanged(beforeAction, snapshot) {
+                // 撮り直しの段は分ける(「操作の後の読み」が平均 0.94s で、待ちと読みのどちらか分からなかった = 計測)
+                SlowCallWatchdog.mark("re-reading: the tree looked unchanged")
                 try await Task.sleep(nanoseconds: UInt64(max(0, settleWaitSeconds) * 1_000_000_000))
                 let reread = try await freshSnapshot(snapshotDriver, args: args)
                 if Self.looksUnchanged(snapshot, reread) {
@@ -738,6 +741,7 @@ extension MCPServer {
                 }
                 snapshot = reread
             } else if let empty = Self.emptyLoadingScroller(in: snapshot) {
+                SlowCallWatchdog.mark("re-reading: a list was still empty")
                 // **木は変わったのに中身がまだ来ていない**形(emptyLoadingScroller 参照)。
                 // 待ちも回数も settle-lite と同じ = 1回きりの短い猶予しか払わない
                 try await Task.sleep(nanoseconds: UInt64(max(0, settleWaitSeconds) * 1_000_000_000))
@@ -756,6 +760,7 @@ extension MCPServer {
                     snapshot = reread
                 }
             } else if Self.looksBlank(snapshot) {
+                SlowCallWatchdog.mark("re-reading: nothing readable yet")
                 // **何も読めない木**(全要素がレイアウト専用 = 遷移の途中)。黙って返すと読み手は空の木から次の一手を
                 // 探す(実測: Apple マップで全画面シートを閉じた直後の木が layout-only の1行だけ)。猶予は settle-lite と同じ1回
                 try await Task.sleep(nanoseconds: UInt64(max(0, settleWaitSeconds) * 1_000_000_000))
@@ -771,6 +776,7 @@ extension MCPServer {
             // waitFor / waitForChange / 撮り直し(settleNote)の後の木は「待たずに読んだ」のではないので immediateReadNote を
             // 出さない(計測で指摘: waitForChange が成立した応答に「操作の直後に読んだ」と付いていた)
             let readNote = waitNote.isEmpty && settleNote.isEmpty ? immediateReadNote() : ""
+            SlowCallWatchdog.mark("composing the tree and notes")
             let body = "\n\n" + inheritedNote + waitNote + settleNote + readNote
                 + (await snapshotBody(snapshot, driver: snapshotDriver, args: effectiveArgs,
                                       foldsSelectorTables: true))
@@ -791,7 +797,8 @@ extension MCPServer {
                                     after: SnapshotResponse) -> SnapshotResponse {
         guard let before else { return after }
         guard let frame = args["scrollFrame"] as? String else { return before }
-        let locator = FTSelector.parse(frame).primary
+        // 構文が誤りなら前の木(探索は門 validateScrollFrameArg で既に断っている)
+        guard let locator = (try? Self.parseSelectorArgument(frame, argument: "scrollFrame"))?.primary else { return before }
         let inAfter = !(LocatorResolver.candidates(locator, elements: after.elements) ?? []).isEmpty
         return inAfter ? after : before
     }
@@ -849,6 +856,8 @@ extension MCPServer {
         // (settle-lite と同じく操作後の固定小コストであって、待ち時間の指定ではない)
         var churn = 0
         var stable = false
+        // 変化を待った時間と、変わった後の安定確認の時間を分ける(waitForChange が平均約 1s で、どちらが主か分からなかった)
+        SlowCallWatchdog.mark("confirming the change has settled")
         for _ in 0..<Self.changeSettleRereads {
             try await Task.sleep(nanoseconds: UInt64(max(0, settleWaitSeconds) * 1_000_000_000))
             let reread = try await freshSnapshot(driver, args: args)
@@ -876,14 +885,10 @@ extension MCPServer {
             note += once("waitForChangeFirstReadNote",
                 // 「遷移は観測されなかった」と書くと、遷移が確かに起きた場面で誤読される(計測で指摘)。
                 // 言いたいのは「読む前に終わっていた」
-                full: "note: the change had already completed by the first"
-                    + " read (the difference was there from the start), so there was no transition to watch. The tree was still"
-                    + " re-read until it stopped changing, so reading it again"
-                    + " now returns the same thing — another ft_snapshot will not"
-                    + " tell you more. What this cannot rule out is a screen that"
-                    + " settles into a loading or empty state; if you are waiting"
-                    + " for specific content, ask for it directly with"
-                    + " ft_snapshot waitFor: <selector>.\n",
+                // 4文あり長いと計測で繰り返し指摘された。残すのは「済んでいる・撮り直しても同じ」と、唯一の疑い(静止した読み込み中)に効く手
+                full: "note: the change had already completed by the first read and the tree has stopped changing —"
+                    + " another ft_snapshot returns the same tree. A loading or empty state can be stable too, so if you"
+                    + " expect specific content, wait for it with ft_snapshot waitFor: <selector>.\n",
                 // 短縮形も出さない: 画面遷移のタップでは「初回で差があった」のが当然で、7回の tap 全部に付いていた(計測で指摘)
                 short: "")
         }

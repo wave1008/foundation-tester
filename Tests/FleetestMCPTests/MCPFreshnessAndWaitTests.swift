@@ -259,8 +259,17 @@ final class MCPSimilarLabelsHintTests: XCTestCase {
     func testSimilarLabelsHintNamesANearbyLabel() {
         let snapshot = testSnapshot([testElement(identifier: nil, label: "計画")])
         let hint = MCPServer.similarLabelsHint("経路", in: snapshot)
-        XCTAssertTrue(hint.contains("similar labels on screen"), hint)
+        // 部分一致は無い(短い語同士の編集距離だけ)ので「似ている」とは言わず、根拠をそのまま言う
+        XCTAssertTrue(hint.contains("no label contains it; short labels on screen"), hint)
         XCTAssertTrue(hint.contains("\"計画\""), hint)
+    }
+
+    /// 部分一致の候補があるときは「似たラベル」と言う
+    func testSimilarLabelsHintSaysSimilarWhenALabelContainsTheTarget() {
+        let snapshot = testSnapshot([testElement(identifier: nil, label: "経路を検索")])
+        let hint = MCPServer.similarLabelsHint("経路", in: snapshot)
+        XCTAssertTrue(hint.contains("similar labels on screen"), hint)
+        XCTAssertTrue(hint.contains("\"経路を検索\""), hint)
     }
 
     /// 部分文字列関係(大文字小文字無視)でも拾う

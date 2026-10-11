@@ -222,11 +222,12 @@ extension MCPServer {
                 ? onceNonEmpty(entry.key) { entry.render(input, $0) }
                 : entry.render(input, false)
             // **重複の表は操作の応答でだけ繰り返さない**(ft_snapshot は毎回満額 = セレクタを書く場面。落とすと
-            // ft_* が 17→28 に増えた実測がある)。比べるのは短縮形から ref を除いた形(読み直すたびに ref が変わる)
+            // ft_* が 17→28 に増えた実測がある)。比べるのは**行の名前の集合**: 今回の名前がすべて直前に出した表に
+            // 含まれていれば黙る(全文で比べていた頃は、画面が少しずつ変わるたびに件数・行が変わって毎回出ていた = 計測4本で指摘)
             if Self.repeatableInActionResponses.contains(entry.key) {
-                let comparable = rendered.isEmpty ? "" : Self.withoutRefs(entry.render(input, true))
-                let unrepeated = unlessRepeated(rendered, key: entry.key, comparable: comparable)
-                out += input.actionResponse ? unrepeated : rendered
+                let names = rendered.isEmpty ? [] : Self.tableRowNames(rendered)
+                // ft_snapshot の満額は覚えない(その直後の操作の応答でも事実 ×N は残す = 既存の契約)
+                out += input.actionResponse ? unlessCovered(rendered, key: entry.key, names: names) : rendered
                 return
             }
             out += rendered
@@ -235,8 +236,26 @@ extension MCPServer {
 
     static let repeatableInActionResponses: Set<String> = ["ambiguousLabelsNote", "duplicateIDsNote"]
 
-    static func withoutRefs(_ note: String) -> String {
-        note.replacingOccurrences(of: #"\[\d+\]"#, with: "[]", options: .regularExpression)
+    /// 表の行(`  "経路" ×9: [12] …` / `  #StepsLabel ×8: …`)の名前の部分(件数・ref は含めない)
+    static func tableRowNames(_ note: String) -> Set<String> {
+        Set(note.split(separator: "\n").compactMap { line -> String? in
+            guard line.hasPrefix("  "), let mark = line.range(of: " ×") else { return nil }
+            return String(line[line.index(line.startIndex, offsetBy: 2)..<mark.lowerBound])
+        })
+    }
+
+    /// 名前がすべて直前に出した表に含まれていれば出さない。出したら覚える。空の表は記憶を消す
+    func unlessCovered(_ note: String, key: String, names: Set<String>) -> String {
+        var seen = lastRepeatedNotes[noteScope] ?? [:]
+        guard !note.isEmpty else {
+            if seen.removeValue(forKey: key) != nil { lastRepeatedNotes[noteScope] = seen }
+            return ""
+        }
+        let shown = Set((seen[key] ?? "").split(separator: "\n").map(String.init))
+        guard names.isEmpty || !names.isSubset(of: shown) else { return "" }
+        seen[key] = names.sorted().joined(separator: "\n")
+        lastRepeatedNotes[noteScope] = seen
+        return note
     }
 
     /// 同じデバイスで直前に出したその種類の注記と `comparable` が同じなら出さない(`DeviceSession.lastRepeatedNotes`)。

@@ -2,6 +2,7 @@
 // 下限は `MCPServer.elapsedBreakdownSeconds`、段階の積算は `SlowCallWatchdog`
 
 import XCTest
+import FTCore
 @testable import fleetest_mcp
 
 final class MCPElapsedBreakdownTests: XCTestCase {
@@ -48,5 +49,42 @@ final class MCPElapsedBreakdownTests: XCTestCase {
         _ = try await server.call(tool: "ft_snapshot", args: [:])
         _ = try await server.call(tool: "ft_tap", args: ["ref": 1])
         XCTAssertEqual(phaseAtTap, "performing the action")
+    }
+
+    /// **操作の後の撮り直しは自分の段に積む**(「操作の後の読み」の中で、待ちと読みのどちらに時間を使ったか分からなかった)
+    func testTheSettleReReadHasItsOwnPhase() async throws {
+        let driver = FakeDriver()
+        var phases: [String] = []
+        driver.onSnapshot = {
+            let previous = SlowCallWatchdog.mark("probe")
+            SlowCallWatchdog.restore(previous)
+            if let phase = previous?.phase { phases.append(phase) }
+        }
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver }, recordSnapshot: { _, _, _ in })
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        // 操作の前後で木が同じ = 木が変わって見えない → 短い待ちの後に1回撮り直す
+        _ = try await server.call(tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true])
+        XCTAssertTrue(phases.contains("re-reading: the tree looked unchanged"), "\(phases)")
+    }
+
+    /// **waitForChange の安定確認は自分の段に積む**(変化を待った時間と分ける)
+    func testTheChangeSettleConfirmationHasItsOwnPhase() async throws {
+        let driver = FakeDriver()
+        var phases: [String] = []
+        driver.onSnapshot = {
+            let previous = SlowCallWatchdog.mark("probe")
+            SlowCallWatchdog.restore(previous)
+            if let phase = previous?.phase { phases.append(phase) }
+        }
+        let a = driver.snapshotResponse
+        var b = a
+        b.elements.append(ElementInfo(ref: 99, type: "staticText", identifier: nil, label: "next", value: nil,
+                                      placeholder: nil, enabled: true,
+                                      frame: FTRect(x: 0, y: 700, width: 100, height: 20), depth: 1))
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver }, recordSnapshot: { _, _, _ in })
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        driver.scriptedSnapshots = [a, b, b]   // ref の確かめ → 操作の後(変わった)→ 安定確認(同じ)
+        _ = try await server.call(tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true, "waitForChange": true])
+        XCTAssertTrue(phases.contains("confirming the change has settled"), "\(phases)")
     }
 }

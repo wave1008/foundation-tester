@@ -1687,10 +1687,14 @@ extension MCPServer {
             refetched: Bool, quietStopAfter: Double?) {
         var partialSeenAfter: Double?
         var partialHint = ""
+        // 構文は呼び手が待つ前に門(parseSelectorArgument)で確かめ済み。ここで弾かれたら通貨の除外を掛けない側に倒す
+        let selectorLabel = (try? parseSelectorArgument(selector, argument: "waitFor"))?.primary.label ?? ""
         func notePartial(_ snapshot: SnapshotResponse, elapsed: Double) {
             guard partialSeenAfter == nil else { return }
             let hint = notationHint(selector, in: snapshot)
-            guard !hint.isEmpty else { return }
+            // **通貨の表記の違いだけなら満額待ちの理由にしない**: 「待てば本物が来る」合図ではない(`*円*` を待っても画面は
+            // `¥715` のまま)。数えると止まった画面を上限まで待っていた(計測: 8s の上限で 8.7s)。注記は外れた応答に今までどおり出る
+            guard !hint.isEmpty, hint != currencyNotationHint(selectorLabel, in: snapshot) else { return }
             partialSeenAfter = elapsed
             partialHint = hint
         }

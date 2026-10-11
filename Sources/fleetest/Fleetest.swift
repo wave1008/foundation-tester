@@ -639,7 +639,8 @@ struct RunScenarios: AsyncParsableCommand {
         // `--device-machine` を素通しする既存の挙動(下の `if dryRun` 分岐。`--profile` の実在
         // だけ確かめて devices は見ない)のままにする。ロックを取らない dry-run はそもそも
         // 待たせる問題が起きない経路なので、ここで新しい検証を割り込ませない
-        let earlyResolved = dryRun ? nil : try validateProfileDevicesBeforeLock()
+        var earlyResolved: ResolvedProfile?
+        if !dryRun { earlyResolved = try validateProfileDevicesBeforeLock() }
         // **この Mac のロックを、デバイスにもビルドにも触る前に取る**(ユーザー決定
         // 「1つのマシンで同時に複数の run は走らせない」)。リモートへのディスパッチが
         // dispatch.lock で守っていた不変条件を、手元で直接打った run にも同じロックで掛ける。

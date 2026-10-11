@@ -16,7 +16,7 @@ final class MCPWaitForChangeStabilizationTests: XCTestCase {
         let text = try await runWaitForChange(
             script: [Self.screen("base"), Self.screen("empty-intermediate")])
         XCTAssertTrue(text.contains("waitForChange: the tree differs"), text)
-        XCTAssertTrue(text.contains("already present on the first read"), text)
+        XCTAssertTrue(text.contains("had already completed by the first read"), text)
     }
 
     /// **この注記で ft_snapshot を撃たせない**(AI が「未確認」の合図と
@@ -26,9 +26,9 @@ final class MCPWaitForChangeStabilizationTests: XCTestCase {
     func testChangedOnFirstReadDoesNotInviteAPlainReSnapshot() async throws {
         let text = try await runWaitForChange(
             script: [Self.screen("base"), Self.screen("empty-intermediate")])
-        XCTAssertTrue(text.contains("re-read until it stopped changing"),
+        XCTAssertTrue(text.contains("the tree has stopped changing"),
                       "済んでいる確認を言っていない: \(text)")
-        XCTAssertTrue(text.contains("another ft_snapshot will not tell you more"),
+        XCTAssertTrue(text.contains("another ft_snapshot returns the same tree"),
                       "素の読み直しが無駄だと言っていない: \(text)")
         XCTAssertTrue(text.contains("ft_snapshot waitFor:"),
                       "残る疑いに効く手を名指ししていない: \(text)")

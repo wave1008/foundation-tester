@@ -292,4 +292,50 @@ final class MCPWaitMissPromptNoteTests: XCTestCase {
         let snapshot = try await text("ft_snapshot", [:])
         XCTAssertTrue(snapshot.contains("duplicate"), snapshot)
     }
+
+    /// **通貨の表記の違いだけでは満額待たない**: `*円*` を待っても画面が `¥715` のまま止まっていれば切り上げる
+    /// (計測: 止まった画面を 8s の上限まで待っていた)。注記は外れた応答に出る
+    func testACurrencyNotationDifferenceDoesNotForceAFullWait() async throws {
+        let driver = FakeDriver()
+        let screen = tree([el(1, "staticText", "¥715 IC料金")])
+        driver.snapshotResponse = screen
+        let waited = try await MCPServer.waitFor("*円*", driver: driver, first: screen, seconds: 8)
+        XCTAssertFalse(waited.found)
+        XCTAssertNotNil(waited.quietStopAfter, "止まった画面を上限まで待った")
+        XCTAssertTrue(MCPServer.notationHint("*円*", in: screen).contains("written with \"¥\""))
+    }
+
+    /// **通貨の注記は「この画面では」と限る**(計測: 運転の画面の「*￥* で待て」を次の交通機関の画面(円表記)に持ち越して外した)
+    func testTheCurrencyNoteIsScopedToThisScreen() {
+        let note = MCPServer.currencyNotationHint("*円*", in: tree([el(1, "staticText", "￥1350")]))
+        XCTAssertTrue(note.contains("on this screen, wait for *￥* instead"), note)
+        XCTAssertTrue(note.contains("other screens of the same app may use \"円\""), note)
+    }
+
+    /// **件数や行が少し変わっても、名前が前に出した表に含まれていれば繰り返さない**。新しい名前が加われば出す
+    /// (全文で比べていた頃は、画面が少しずつ変わるたびに毎回出ていた = 計測4本で指摘)
+    func testDuplicateTablesAreComparedByRowNames() async throws {
+        let driver = FakeDriver()
+        func screen(_ steps: Int, close: Bool, share: Bool = false) -> SnapshotResponse {
+            var elements = (0..<steps).map { el(1 + $0, "button", "経路", id: "StepsLabel", y: Double(100 + 60 * $0)) }
+            if close { elements += [el(50, "button", "閉じる", id: "Close", y: 700), el(51, "button", "閉じる", id: "Close", y: 760)] }
+            if share { elements += [el(60, "button", "共有", id: "Share", y: 800), el(61, "button", "共有", id: "Share", y: 840)] }
+            return tree(elements)
+        }
+        driver.snapshotResponse = screen(4, close: true)
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver }, recordSnapshot: { _, _, _ in })
+        func text(_ tool: String, _ args: [String: Any]) async throws -> String {
+            try await server.call(tool: tool, args: args).compactMap { $0["text"] as? String }.joined()
+        }
+        _ = try await text("ft_snapshot", [:])
+        let first = try await text("ft_tap", ["ref": 1, "snapshotAfter": true])
+        XCTAssertTrue(first.contains("#StepsLabel ×") && first.contains("#Close ×"), first)
+        driver.snapshotResponse = screen(3, close: false)   // 名前が前の表の一部・件数も変わる
+        let subset = try await text("ft_tap", ["ref": 1, "snapshotAfter": true])
+        XCTAssertFalse(subset.contains("#StepsLabel ×"), "名前が前の表に含まれるのに繰り返した: \(subset)")
+        driver.snapshotResponse = screen(3, close: false, share: true)   // 新しい名前が加わる
+        let added = try await text("ft_tap", ["ref": 1, "snapshotAfter": true])
+        XCTAssertTrue(added.contains("#Share"), added)
+    }
+
 }

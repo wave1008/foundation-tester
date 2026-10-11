@@ -761,7 +761,7 @@ final class MCPRefGuardTests: XCTestCase {
         let text = Self.text(try await server.call(
             tool: "ft_snapshot", args: ["waitFor": "経路", "waitSeconds": 0.3]))
         XCTAssertTrue(text.contains("did not appear"), text)
-        XCTAssertTrue(text.contains("similar labels on screen"), text)
+        XCTAssertTrue(text.contains("short labels on screen"), text)
         XCTAssertTrue(text.contains("計画"), text)
     }
 

@@ -720,6 +720,11 @@ extension MCPServer {
         let top = SimilarLabels.candidates(labelTarget: target, idTarget: target, in: snapshot)
         guard !top.isEmpty else { return "" }
         let display = top.map { $0.field == .label ? "\"\($0.matchedText)\"" : "#\($0.matchedText)" }
+        // **部分一致が1つも無いなら「似ている」と言わない**: 短い語同士は編集距離で拾うが、2文字の語は互いに必ず距離2以下で
+        // 何でも当たる(計測: `*経路*` に「共有」「計画」「追加」を挙げ、根拠が分からないと指摘された。正解の「計画」は残したい)
+        guard top.contains(where: { $0.strength == .strong }) else {
+            return " note: no label contains it; short labels on screen: \(display.joined(separator: ", "))."
+        }
         return " note: similar labels on screen: \(display.joined(separator: ", "))."
     }
 
@@ -752,7 +757,8 @@ extension MCPServer {
     /// 金額の表記が待った語と違うときの一言(`*円*` で待ったのに画面は `¥715`、またはその逆)。
     /// 実測(地図の運賃調べ・計測4回で計7回): waitFor `*円*` が外れ、画面は `¥715 IC料金` / `￥1020` だった。
     /// 同じ金額の書き方の違いだけを言う(何の金額かは言わない = 画面の意味は読み手が決める)
-    static let currencyMarks = ["円", "¥", "￥"]
+    /// "\u{5186}" = 円(CLI の文字列は英語だけ = CLIEnglishStringsScanTests。これは画面の文字と照合する記号の表で表示ではない)
+    static let currencyMarks = ["\u{5186}", "¥", "￥"]
 
     static func currencyNotationHint(_ selectorLabel: String, in snapshot: SnapshotResponse) -> String {
         guard let asked = currencyMarks.first(where: { selectorLabel.contains($0) }) else { return "" }
@@ -763,7 +769,9 @@ extension MCPServer {
         let shown = Array(Set(examples)).sorted().prefix(2).map { "\"\($0.prefix(30))\"" }.joined(separator: ", ")
         let mark = others.first { first.contains($0) } ?? others[0]
         return " note: amounts on this screen are written with \"\(mark)\", not \"\(asked)\" (e.g. \(shown))"
-            + " — wait for *\(mark)* instead."
+            // **「この画面では」と限る**: 同じアプリでも画面ごとに表記が違う(計測: 運転の画面は「￥1350」、次の交通機関の画面は
+            // 「720円」。「*￥* で待て」を次の画面にも持ち越して外した)
+            + " — on this screen, wait for *\(mark)* instead; other screens of the same app may use \"\(asked)\"."
     }
 
     /// 逆向きの content direction(注記で「戻れ」と言うときの語彙)。
