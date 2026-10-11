@@ -168,6 +168,7 @@ final class MCPBatchTests: XCTestCase {
 
     /// **waitFor: は最後の画面を読む前に待ち、出たか出なかったかを言う**(出なくても失敗にはしない = 他のツールの waitFor と同じ)
     func testWaitForReportsWhetherTheSelectorAppeared() async throws {
+        driver.changeTreeOnEveryTap()
         let found = body(try await server.call(tool: "ft_batch",
                                                args: ["steps": "tap '#login_btn'", "waitFor": "#login_btn"]))
         XCTAssertTrue(found.contains("waitFor \"#login_btn\" appeared: matched ["), found)
@@ -294,6 +295,50 @@ final class MCPBatchTests: XCTestCase {
         XCTAssertTrue(body(result).contains("matched 2 elements"), body(result))
         // 同名の2件はラベルでは区別できないので、撃った方を位置で名指しする
         XCTAssertTrue(body(result).contains("the first one was used (button \"OK\" at 10,100 100x40)"), body(result))
+    }
+
+    /// **ok でも画面が変わらなかった tap は結論で「passed」と言わない**(実測: シートが出てくる途中の tap が飲まれ、
+    /// "All 4 step(s) passed")。中間の手は次の tap の撃つ前の木、最後の手は最後の木と比べる
+    func testATapThatLeftTheScreenUnchangedIsNamedInTheVerdict() async throws {
+        coverTheScreen()
+        let result = body(try await server.call(tool: "ft_batch", args: steps("tap '#login_btn'; tap '#login_btn'")))
+        XCTAssertTrue(result.contains("step(s) 1, 2 may have done nothing"), result)
+        XCTAssertFalse(result.contains("step(s) passed"), result)
+        XCTAssertTrue(result.contains("the screen did not change after this tap"), result)
+    }
+
+    /// **木が空同然の画面では「変化なし」が常に真**なので名指さない(batchUnchangedNote と同じ但し書きの閾値)
+    func testAnUnrepresentedScreenDoesNotNameUnchangedTaps() async throws {
+        let result = body(try await server.call(tool: "ft_batch", args: steps("tap '#login_btn'; tap '#login_btn'")))
+        XCTAssertFalse(result.contains("may have done nothing"), result)
+    }
+
+    /// 画面全体を覆う容器を足す(既定の木は小さな要素だけで、画面の大半が木に載っていない形になる)
+    private func coverTheScreen() {
+        driver.snapshotResponse.elements.insert(ElementInfo(
+            ref: 500, type: "other", identifier: "root", label: nil, value: nil, placeholder: nil, enabled: true,
+            frame: driver.snapshotResponse.screen, depth: 0), at: 0)
+    }
+
+    func testTapsThatChangedTheScreenStillPass() async throws {
+        driver.changeTreeOnEveryTap()
+        let result = body(try await server.call(tool: "ft_batch", args: steps("tap '#login_btn'; tap '#login_btn'")))
+        XCTAssertTrue(result.contains("All 2 step(s) passed."), result)
+    }
+
+    /// **無効な要素への tap は撃った上で ok(DSL と同じ)だが、結論で名指す**。launch: の行があっても手の番号はずれない
+    func testATapOnADisabledTargetIsNamedInTheVerdict() async throws {
+        driver.changeTreeOnEveryTap()
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app", screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [ElementInfo(ref: 1, type: "button", identifier: "next", label: "Next", value: nil, placeholder: nil,
+                                   enabled: true, frame: FTRect(x: 10, y: 100, width: 100, height: 40), depth: 1),
+                       ElementInfo(ref: 2, type: "button", identifier: "done", label: "Done", value: nil, placeholder: nil,
+                                   enabled: false, frame: FTRect(x: 10, y: 300, width: 100, height: 40), depth: 1)],
+            truncatedCount: 0)
+        let result = body(try await server.call(tool: "ft_batch",
+                                                args: ["steps": "tap '#next'; tap '#done'", "launch": "com.example.app"]))
+        XCTAssertTrue(result.contains("step(s) 2 may have done nothing"), result)
     }
 
     // MARK: - (d) 成功時にツリーが1回だけ返る

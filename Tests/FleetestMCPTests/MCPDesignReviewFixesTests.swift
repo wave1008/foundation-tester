@@ -47,6 +47,7 @@ final class MCPDesignReviewFixesTests: XCTestCase {
     // MARK: - ft_batch の scroll: / swipePointToPoint
 
     func testBatchTapWithScrollSearchesAndDraftsTheSameLine() async throws {
+        driver.changeTreeOnEveryTap()
         let text = body(try await server.call(
             tool: "ft_batch", args: ["steps": "tap '#login_btn' scroll: .down maxSwipes: 3"]))
         XCTAssertTrue(text.contains("All 1 step(s) passed"), text)

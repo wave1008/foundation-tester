@@ -187,8 +187,19 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         onLifecycle?()
     }
 
-    /// tap(ref:) を撃った瞬間に呼ぶ(段階の内訳の検証用)
+    /// tap(ref:) / tap(x:y:) を撃った瞬間に呼ぶ(段階の内訳の検証用)
     var onTap: (() -> Void)?
+
+    /// tap のたびに木へ1行足す(ft_batch は tap の前後で木が同じなら「飲まれたかも」と結論を変える。
+    /// その判定が主題でないテストで、実機のように tap が画面を変えた形にする)
+    func changeTreeOnEveryTap() {
+        onTap = { [unowned self] in
+            snapshotResponse.elements.append(ElementInfo(
+                ref: 9_000 + snapshotResponse.elements.count, type: "staticText", identifier: nil,
+                label: "tapped \(snapshotResponse.elements.count)", value: nil, placeholder: nil, enabled: true,
+                frame: FTRect(x: 0, y: 800, width: 10, height: 10), depth: 1))
+        }
+    }
 
     func tap(ref: Int) async throws {
         lastActionNote = nil
@@ -201,6 +212,7 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
 
     func tap(x: Double, y: Double) async throws {
         try record("tap(x:\(x),y:\(y))", "tap")
+        onTap?()
     }
 
     /// true = ブリッジ側が打鍵を自分で検証すると名乗る(XCUITest ランナーと同じ立場)。ホストの読み返しを通さずに

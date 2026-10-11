@@ -1174,7 +1174,7 @@ public final class StepExecutor {
 
     /// **指で触る操作か**(縁にまたがった要素を寄せてから撃つ対象)。`select` は掴むだけ、
     /// `type` は入力欄が動くと厄介なので含めない
-    static func interactsByTouch(_ action: String) -> Bool {
+    public static func interactsByTouch(_ action: String) -> Bool {
         // holdStart は指を下ろす操作(press と同じ)。holdEnd は何も送らないので含めない
         action == "tap" || action == "press" || action == "doubleTap" || action == "holdStart"
     }
@@ -1199,6 +1199,15 @@ public final class StepExecutor {
                 x: element.frame.centerX, y: element.frame.centerY,
                 of: element, in: snapshot.elements),
             target: element)
+    }
+
+    /// 直前の tap が解決に使った木(撃つ前)。tap 以外の操作の後は nil。ft_batch が手ごとに「画面が変わったか」を
+    /// 次の手の木・最後の木と比べる材料(判定は `sameContent` = 飲まれたタップの診断と同じ署名)
+    public var lastTapTreeBefore: [ElementInfo]? { lastInteraction?.before }
+
+    /// 2つの木の内容が同じか(`contentSignature`)
+    public static func sameContent(_ a: [ElementInfo], _ b: [ElementInfo]) -> Bool {
+        contentSignature(a) == contentSignature(b)
     }
 
     /// 木の内容署名(**位置だけでなくラベル・値も含む**)。

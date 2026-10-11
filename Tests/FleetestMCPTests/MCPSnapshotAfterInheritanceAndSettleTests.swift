@@ -73,6 +73,7 @@ final class MCPSnapshotAfterFilterInheritanceTests: XCTestCase {
 
     /// **ft_batch の最後の木も継承する**(ft_batch だけ全行の木を返していた = 計測で指摘)
     func testTheBatchTreeInheritsInteractiveOnly() async throws {
+        driver.changeTreeOnEveryTap()
         _ = try await server.call(tool: "ft_snapshot", args: ["interactiveOnly": true])
         let text = bodyText(try await server.call(tool: "ft_batch", args: ["steps": "tap '#login_btn'"]))
         XCTAssertTrue(text.contains("All 1 step(s) passed"), text)

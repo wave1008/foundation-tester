@@ -663,6 +663,29 @@ extension MCPServer {
             refResolutionNote = resolved.note
         }
 
+        // **ok でも何も起きていないかもしれない手**(行番号)。結論を「passed」と言わない材料
+        // (実測: オプションのシートが出てくる途中の tap が飲まれ、disabled の「完了」も ok で "All 4 step(s) passed")
+        var suspectSteps: [Int] = []
+        // 直前の tap の撃つ前の木。次の tap の撃つ前の木・最後の木と比べて「画面が変わらなかった」を言う
+        // (飲まれたタップの診断と同じ署名 = StepExecutor.sameContent。tap 以外の手を挟んだら比べない)。
+        // line は lines の添字(launch: の行がある分だけ手の番号とずれる)、step は手の番号
+        var pendingTap: (line: Int, step: Int, before: [ElementInfo])?
+        var unchangedTaps: [(line: Int, step: Int)] = []
+        func flagUnchangedTap(now: [ElementInfo]) {
+            guard let pending = pendingTap else { return }
+            pendingTap = nil
+            guard StepExecutor.sameContent(pending.before, now) else { return }
+            unchangedTaps.append((pending.line, pending.step))
+        }
+        // 言うのは最後の木を見てから: **木が空同然の画面では「変化なし」が常に真**(batchUnchangedNote と同じ但し書きの閾値)
+        // なので、そのときは手ごとに名指さない
+        func applyUnchangedTaps(final: SnapshotResponse) {
+            guard Self.unrepresentedScreenFraction(final) < Self.unrepresentedScreenCaveatThreshold else { return }
+            for tap in unchangedTaps {
+                lines[tap.line] += Self.batchUnchangedTapWarning(isAndroid: isAndroid)
+                if !suspectSteps.contains(tap.step) { suspectSteps.append(tap.step) }
+            }
+        }
         for (index, plan) in plans.enumerated() {
             if plan.step.action == "irregularHandler" {
                 executor.interruptHandlers.append(try Self.interruptHandler(from: plan.step))
@@ -732,6 +755,16 @@ extension MCPServer {
             }
             okLine += refNote
             lines.append(okLine)
+            // 無効な要素への touch は撃った上で ok(DSL と同じ = 失敗にはしない)。結論で名指す
+            if StepExecutor.interactsByTouch(plan.step.action ?? ""), outcome.resolvedElement?.enabled == false {
+                suspectSteps.append(index + 1)
+            }
+            if let before = executor.lastTapTreeBefore {
+                flagUnchangedTap(now: before)
+                pendingTap = (lines.count - 1, index + 1, before)
+            } else {
+                pendingTap = nil
+            }
         }
         // **waitFor は「変化なし」の撮り直しの代わり**(snapshotAfter と同じ = 待つ理由が同じなので両方は二重に待つだけ)
         if let waitFor = args["waitFor"] as? String {
@@ -741,6 +774,8 @@ extension MCPServer {
                                                 elementLimit: try pollElementLimit(args))
             let final = waited.refetched ? adoptSnapshot(waited.snapshot, args: args) : waited.snapshot
             recordSnapshot(final, batchDriver is AndroidDriver ? "android" : "ios", args)
+            flagUnchangedTap(now: final.elements)
+            applyUnchangedTaps(final: final)
             let explainMiss = waited.found ? false : firstTime("waitMissExplained")
             let waitNote = waited.found
                 ? Self.waitForAppearedNote(waitFor, in: final,
@@ -753,7 +788,7 @@ extension MCPServer {
                     + " — this is the screen as it is now"
                     + Self.truncationHint(final) + Self.notationHint(waitFor, in: final)
                     + Self.similarLabelsHint(waitFor, in: final) + "\n"
-            return text(lines.joined(separator: "\n") + "\n\nAll \(plans.count) step(s) passed.\n\n"
+            return text(lines.joined(separator: "\n") + Self.batchVerdict(stepCount: plans.count, suspects: suspectSteps)
                 + Self.batchAlertAppearedNote(beforeBatch: beforeBatch, final: final)
                 + waitNote + inheritedNote + (await snapshotBody(final, driver: batchDriver, args: treeArgs, foldsSelectorTables: true)))
         }
@@ -766,9 +801,28 @@ extension MCPServer {
             return try await self.freshSnapshot(batchDriver, args: args)
         }
         recordSnapshot(final, batchDriver is AndroidDriver ? "android" : "ios", args)
-        return text(lines.joined(separator: "\n") + "\n\nAll \(plans.count) step(s) passed.\n\n"
+        flagUnchangedTap(now: final.elements)
+        applyUnchangedTaps(final: final)
+        return text(lines.joined(separator: "\n") + Self.batchVerdict(stepCount: plans.count, suspects: suspectSteps)
             + Self.batchAlertAppearedNote(beforeBatch: beforeBatch, final: final)
             + unchangedNote + inheritedNote + (await snapshotBody(final, driver: batchDriver, args: treeArgs, foldsSelectorTables: true)))
+    }
+
+    /// ok の手の後で画面(木の内容)が1つも変わっていなかった tap の行に添える。iOS の木はアプリの外(システムのアラート)を
+    /// 持たないので、そちらの可能性も言う(`StepExecutor.outOfAppCaveat` と同じ理由)
+    static func batchUnchangedTapWarning(isAndroid: Bool) -> String {
+        " (warning: the screen did not change after this tap — it may have been swallowed, e.g. it landed while a"
+            + " sheet or transition was still animating in"
+            + (isAndroid ? "" : ", or it raised a system alert, which is drawn outside the app's tree") + ")"
+    }
+
+    /// 結論の行。ok でも何も起きていないかもしれない手(`suspects` = 手の番号)があれば「passed」と言わない
+    static func batchVerdict(stepCount: Int, suspects: [Int]) -> String {
+        guard !suspects.isEmpty else { return "\n\nAll \(stepCount) step(s) passed.\n\n" }
+        let numbers = suspects.sorted().map(String.init).joined(separator: ", ")
+        return "\n\nAll \(stepCount) step(s) ran, but step(s) \(numbers) may have done nothing (see the warning on"
+            + " each) — check the screen below before relying on this sequence. As scenario lines they would pass"
+            + " the same way unless an assertion follows.\n\n"
     }
 
     /// 宣言の手(`irregularHandler`)から実行器の割り込みハンドラを作る。DSL の `FTRuntime.addInterruptHandler`
