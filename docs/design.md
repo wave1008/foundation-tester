@@ -346,7 +346,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   **同じ最小再現で見つかった第2の穴**: 見切れ回復の `slowDrag` とヒント跳躍の `hintDrag` が
   `driver.drag` を直に呼んでいて、in-app エンジンは drag を実装しない(501)ので失敗扱い → 全画面
   スワイプに落ちていた = **利用者の既定 hybrid では見切れ回復のドラッグが一度も出ていなかった**
-  (MCP は `HybridFallbackDriver` が drag を転送するので `ft_scroll_to` は同じ画面で通った。
+  (当時の MCP は hybrid で `HybridFallbackDriver` が drag を転送していたので `ft_scroll_to` は同じ画面で通った。
   run と MCP で結果が割れたらドライバ合成の差を疑う)。座標ドラッグは
   `StepExecutor.dragWithFallback` が唯一の入口(501 → typeDriver へ latch。空打ち emptyDrag と同じ規律)
 - **起動前にポートの LISTEN 実体を確かめる(2026-08-23)**: `scanRunningBridges` は /status 応答で
@@ -3051,40 +3051,21 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
   **入力系(`pressEnter` / `type(ref: nil)` / `clearInput(ref: nil)`)だけは別の判定で 409 も回す**
   (`DriverError.isTextInputFallback` = 409 / `isClearInputFallback` = 409 + 422 + isEngineIncapable。
   422 は XCUITest ランナーが同じ事情に使う status —— あちらは 409 を使えない(§4.3))。
-  **DSL(`StepExecutor`)と `HybridFallbackDriver`(MCP・ライブ操作)が同じ判定を通る** ——
+  **DSL(`StepExecutor`)と `HybridFallbackDriver`(ライブ操作。MCP は iOS を XCUITest だけで動かすので通らない)が同じ判定を通る** ——
   2026-09-23 まで DSL 側だけがインラインで持っていたため、**同じ hybrid 構成の同じ操作が
   シナリオでは通るのに `ft_type`(`pressEnter`)/ `ft_clear_input` では 409 で落ちた**
   (maintainer-notes §45.1)。**`withFallback` の既定は変えない** —— あれは tap/swipe/hideKeyboard を
   含む 14 操作と共有で、409 を既定に入れると全部を巻き込む(hideKeyboard は「409 では回さない」と
   決めている)。**`ref` ありは回さない** —— ref はブリッジごとに別名前空間で、この層には
   取り直す手段が無い(DSL は `typeViaTypeDriver` が typeDriver 側の snapshot で取り直す)
-- **MCP(`ft_*`)は実行プロファイルのエンジンに追従する**(2026-08-04 ユーザー決定。
-  それ以前は「live / MCP は in-app を使わない」= 常に XCUITest だった)。
-  **揃える理由は探索と実行で見えるものを一致させること**: snapshot の内容もジェスチャの成否も
-  エンジンで変わるため、揃えないと「MCP では動いたのにシナリオでは落ちる」(およびその逆)が起きる。
-  - 旧決定の根拠だった「`StepExecutor` を通らないので `home`/`drag`/座標 `press` が素の 501 になる」は
-    **`HybridFallbackDriver` が埋めた**: in-app が原理的に不可な操作(501 / ルート不明 404)だけを
-    attach 済み XCUITest へ回す(**入力系の 409 だけは別判定で回す**。前の節の
-    `DriverError.isTextInputFallback`)。**ref を使う操作は回さない**(ref はブリッジごとに別名前空間で、
-    渡すと無関係な要素を操作する)。唯一 `press(ref:)` だけは primary の snapshot で
-    **座標へ畳んでから**回す
-  - 合成は実行側(`ScenarioRunnerMain`)と同じ形:
-    in-app(注入)→ WebView 画面だけ XCUITest へ委譲 → 不可な操作だけ XCUITest へ回す
-  - **`profile` を渡さない直接指定(`port`/`platform`)は稼働中ブリッジに追従する**
-    (`ExploreDriverResolver`。2026-08-05)。接続先が in-app なら同じデバイスの XCUITest ブリッジを
-    フォールバックに合成して hybrid を組み、合成できないとき(実機・同名デバイス複数・
-    XCUITest ブリッジを用意できない)だけ振り替え/素通しへ落とす
-  - **シミュレータは常に hybrid**(ユーザー決定。MCP ではエンジンを意識させない)。
-    ①udid だけの呼び出しは応答している in-app のポートを先に採る(`MCPServer.explorationOrder`)
-    ②`ft_launch` は起動するアプリへ in-app を注入して hybrid を組み替える(`MCPServer+AlwaysHybrid.swift`。
-    Apple のシステムアプリも注入できる)。鍵は主(in-app)のポート・記憶は移さずに捨てる(ref はエンジンを
-    またがない)・同じ端末の古いポートは名指しの記憶から外す。台帳のポートは「誰も待ち受けていない」か
-    「同じ端末・同じアプリの in-app が答える」ときだけ使い回し、起動待ち(`InAppLauncher.waitUntilReady`)も
-    答えた相手の udid を見る(ポートは端末をまたいで使い回されるため)。注入した起動に失敗したら組み替える前へ
-    戻して XCUITest で起動する ③`resume: true` は XCUITest で前面へ出してから in-app へ向け直す
-    ④システムアラートは `ft_tap alertButton:`(SpringBoard へ向けて押し、`attach` で戻る。hybrid の
-    `attach` は自アプリへ向け直せたら委譲を解く)。**profile を渡したときはプロファイルのエンジンに従う**
-    (ユーザー決定)・実機は注入できないので XCUITest
+- **MCP(`ft_*`)の iOS のエンジン**(経緯: 2026-08-04 に「実行プロファイルのエンジンに追従する」= in-app / hybrid も
+  使う形にしたが、利用者の決定で取り消した。in-app を主にした合成 `HybridFallbackDriver` は今はライブ操作だけが使う)
+  - **MCP の iOS は常に XCUITest**(ユーザー決定。in-app は使わない)。profile 無しで in-app のポートに繋いでも
+    `ExploreDriverResolver` が同じデバイスの XCUITest へ振り替え(用意できなければ in-app へは落とさず断る)、
+    udid だけの呼び出しは XCUITest のポートを先に採る(`MCPServer.explorationOrder`)。profile ありもエンジンを
+    xcuitest に差し替えて供給する(`resolveProfileTarget`)。理由: in-app の合成タッチは注入される前提で作られて
+    いないアプリ(Apple マップの経路カード)で効かないまま ok を返し、別アプリ・システムアラートの扱いでも
+    エンジンを意識させた。システムアラートは `ft_tap alertButton:`(SpringBoard へ向けて押し、`attach` で戻る)
   - **宛先そのものも探す**(`BridgeDiscovery`。2026-08-06)。`port` 未指定で既定 8123 が無応答なら
     範囲(8123〜8154)を走査し、**生きているブリッジが1本だけなら自動採用**(採用理由を stderr へ)・
     **複数ならデバイス名付きで列挙してエラー**(別デバイスを黙って操作させない)・0本なら

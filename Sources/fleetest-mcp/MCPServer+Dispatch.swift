@@ -204,8 +204,12 @@ extension MCPServer {
             let iosApp = resolved.apps["ios"]
             // provision の進捗クロージャは @escaping のため inout の prologue を直接キャプチャできない
             var provisionLog: [String] = []
+            // **MCP の iOS は常に XCUITest**(ユーザー決定)。プロファイルが in-app / hybrid でも XCUITest で供給する
+            // (in-app で供給すると、使わない注入付きの起動し直しが走る)
+            var spec = device.spec
+            spec.engine = "xcuitest"
             let provisioned = try await provisioner.provision(
-                devices: [(device.name, device.spec)],
+                devices: [(device.name, spec)],
                 bundleID: iosApp?.bundleID,
                 preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil) { provisionLog.append($0) }
             prologue.append(contentsOf: provisionLog)

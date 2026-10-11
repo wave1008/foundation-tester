@@ -454,15 +454,16 @@ final class MCPGuidanceTests: XCTestCase {
         XCTAssertNil(unknown)
     }
 
-    /// エンジン切替の案内には**アプリが起動し直る**ことまで書く。書かないと、案内に従った
-    /// 瞬間に探索中の画面が消え、ホーム画面へ同じ座標のジェスチャが撃たれる
-    func testEngineHintWarnsThatSwitchingRelaunchesTheApp() {
+    /// **in-app へ切り替える手を勧めない**(MCP の iOS は常に XCUITest = profile を渡しても変わらないので、
+    /// 従っても何も起きない助言になる)。確かめる場はシナリオだと言う
+    func testEngineHintPointsAtScenarioRunsInsteadOfSwitchingEngines() {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() },
                                recordSnapshot: { _, _, _ in })
         server.engines[MCPServer.engineKey([:])] = "xcuitest"
         let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: .compose,
                                         "double tap", args: [:])
-        XCTAssertTrue(hint.contains("relaunches the app"), hint)
+        XCTAssertTrue(hint.contains("verify the gesture there"), hint)
+        XCTAssertFalse(hint.contains("in-app/hybrid run profile"), "profile で in-app が立つと言っている: \(hint)")
     }
 
     /// **フレームワークが判明していて食い違うなら黙る**(§19.3 M9): この助言は `framework`

@@ -261,8 +261,9 @@ final class DeviceStateInvalidationTests: XCTestCase {
                        + "ガードが別の機を読む")
         XCTAssertTrue(source.contains("udids[key] = provisioned.udid"),
                       "profile 経路が udid を記録していない")
-        XCTAssertTrue(source.contains("connectedPorts[key] = port"),
-                      "直接ポート経路が connectedPorts を記録していない")
+        // 直接ポート経路は**実際に繋いだポート**(in-app から XCUITest へ振り替えたときはそちら)を記録する
+        XCTAssertTrue(source.contains("connectedPorts[key] = resolved.port"),
+                      "直接ポート経路が実際に繋いだポートを connectedPorts に記録していない")
     }
 
     /// 材料が欠けているときは**何もしない**(誤って毎回記憶を捨てない)。

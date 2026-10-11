@@ -189,7 +189,7 @@ public struct InAppLauncher: Sendable {
         while Date() < deadline {
             do {
                 // **答えた相手が自分の注入先かも見る**: ポートが別の端末のブリッジに使われていると、その `ready` で
-                // 起動できたと読み、以後の操作が別の端末へ届く(MCP の hybrid が台帳のポートを使い回す経路で塞いだ形)。
+                // 起動できたと読み、以後の操作が別の端末へ届く(ポートは端末をまたいで使い回され、台帳は古いまま残る)。
                 // udid を申告しない旧ブリッジは従来どおり ready だけで判断する
                 let status = try await client.status()
                 if status.ready, Self.isOwnBridge(reportedUDID: status.udid, udid: udid) { return }

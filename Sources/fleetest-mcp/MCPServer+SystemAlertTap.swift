@@ -7,18 +7,13 @@ import FTCore
 extension MCPServer {
 
     /// **押すのはエージェントが名指ししたボタンだけ**(自動では押さない。ツールが自分で閉じる範囲 =
-    /// 何も決めないボタンと権限の拒否側は広げない)。**xcuitest と hybrid**(hybrid は SpringBoard を XCUITest 側へ
-    /// 寄せ、自アプリへの attach で委譲を解く)。in-app だけのときは SpringBoard を掴めない。順序: 照会(`/systemalert`)でボタンの実在を確かめる →
+    /// 何も決めないボタンと権限の拒否側は広げない)。MCP の iOS は常に XCUITest なので SpringBoard を掴める。
+    /// 順序: 照会(`/systemalert`)でボタンの実在を確かめる →
     /// SpringBoard へ向ける(ft_launch の springboard と同じ非破壊の経路)→ 同じラベルの button を押す →
     /// **元のアプリへ attach で向け直す**(activate は使わない = 前面確認だけ。CLAUDE.md の attach の規律)
     func tapSystemAlertButton(_ label: String, driver d: AppDriver,
                               args: [String: Any]) async throws -> [[String: Any]] {
         let key = Self.engineKey(args)
-        guard engines[key] == "xcuitest" || engines[key] == "hybrid" else {
-            throw MCPError("alertButton: this device is driven through an in-app bridge alone (no XCUITest"
-                + " bridge could be prepared), which sees only its own app, not SpringBoard. Read the alert"
-                + " with `ft_launch bundleId: com.apple.springboard` and tap its button by ref instead")
-        }
         let probe: SystemAlertProbeResponse?
         do {
             probe = try await d.systemAlert()

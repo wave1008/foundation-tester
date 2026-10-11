@@ -185,35 +185,7 @@ extension MCPServer {
         let bundleID = try Self.requiredStringArgument(args, "bundleId")
         let launchKey = Self.engineKey(args)
         let launchDriver = try await driver(args)
-        var resumes = args["resume"] as? Bool == true
-        // **常に hybrid**(MCP+AlwaysHybrid.swift): 起動するアプリへ注入した hybrid へ組み替えたら、その宛先で
-        // 起動し直す。**udid は渡さない** —— 新しい in-app のポートはまだ待ち受けておらず、udid との照合で断られる。
-        // **注入した起動に失敗したら組み替える前へ戻し、XCUITest のまま起動する**(`skipsHybridUpgrade` で再び組み替えない)
-        if !resumes, args[Self.skipsHybridUpgrade] == nil,
-           let upgrade = try await hybridUpgradeArgs(bundleID: bundleID, args: args, current: launchDriver) {
-            var upgraded = upgrade.args
-            upgraded["udid"] = nil
-            do {
-                return try await ftLaunch(upgraded)
-            } catch {
-                // **起動そのものが通っていたら巻き戻さない**(後段の snapshotAfter 等の失敗。巻き戻すと注入済みの
-                // アプリを XCUITest でもう一度起動する)。注入した in-app が答えるかで分ける
-                if await injectedBridgeAnswers(upgrade.previous, bundleID: bundleID) { throw error }
-                rollBackHybridUpgrade(upgrade.previous)
-                var fallback = args
-                fallback[Self.skipsHybridUpgrade] = true
-                let result = try await ftLaunch(fallback)
-                return Self.prependingText("Could not launch \(bundleID) with the in-app bridge"
-                    + " (\(error.localizedDescription)) — launched it through XCUITest instead.\n", to: result)
-            }
-        }
-        // **in-app だけのときは activate が launch へ落ちる**(AppDriver の既定実装。InAppDriver は独自の
-        // activate を持たない)ので、resume: true を撃っても実際には終了→起動が走る —— 嘘の「resumed」を返さない。
-        // hybrid は XCUITest で前面へ出してから向け直す(resumeOnHybrid)
-        if resumes, engines[launchKey] == "inapp" {
-            throw MCPError("resume is not available on an in-app bridge alone (no XCUITest bridge could be"
-                + " prepared) — it would relaunch the app. Drop resume: true.")
-        }
+        let resumes = args["resume"] as? Bool == true
         // **撃つ前に弾く**(ランナー死の予防。installedVerdict/launchGuardDecision のコメント参照)
         let installVerdict = await installedVerdict(bundleID: bundleID, driver: launchDriver, args: args)
         if let refusal = Self.launchGuardDecision(
@@ -225,15 +197,7 @@ extension MCPServer {
         if case .unknown(let reason) = installVerdict {
             Self.logStderr(Self.uncheckedNote(bundleID: bundleID, reason: reason))
         }
-        var resumeFellBack = false
-        if resumes, engines[launchKey] == "hybrid" {
-            if try await !resumeOnHybrid(bundleID: bundleID, driver: launchDriver, key: launchKey) {
-                // 前面へ出しても in-app が答えない = 注入の無いプロセス。普通の起動(注入)へ落ちる
-                resumes = false
-                resumeFellBack = true
-                try await launchDriver.launch(bundleID: bundleID)
-            }
-        } else if resumes {
+        if resumes {
             try await launchDriver.activate(bundleID: bundleID)
         } else {
             try await launchDriver.launch(bundleID: bundleID)
@@ -263,8 +227,6 @@ extension MCPServer {
                               : "launch \(bundleID)"), args: args)
         // snapshotAfter の読みは system alert の予約(上)を消費するので、立てた後に読む
         return text((resumes ? "Activated: \(bundleID) (resumed without relaunching)"
-                             : resumeFellBack ? "Launched: \(bundleID) (it was not running with the in-app"
-                                + " bridge, so it was launched instead of resumed)"
                              : "Launched: \(bundleID)")
             + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
     }

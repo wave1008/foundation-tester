@@ -94,19 +94,14 @@ returns to the app (the alert note lists the button names). After dismissing a s
 
 ## iOS Engine Selection
 
-**You never need to choose an engine with MCP.** Name the device with `udid` and leave `port` out —
-the server picks the bridge and the engine.
+**MCP always drives iOS through the XCUITest engine.** You never need to choose an engine. Name the device with
+`udid` and leave `port` out — the server uses that device's XCUITest bridge.
 
-- Passing `profile` makes a tool follow that run profile's engine (matching what a real run would use).
-- Without `profile`, a simulator **always runs hybrid** (the run's default engine). `ft_launch` injects the in-app
-  bridge into the app it launches (system apps such as Maps included), and operations the in-app engine cannot
-  perform (Home/app switcher/drag/coordinate long press), SpringBoard and system alerts go to XCUITest
-  automatically. When you read an app that is already running without the in-app bridge and do not launch
-  it, nothing can be injected, so the tree is read through XCUITest.
-- `resume: true` brings the app to the front through XCUITest and then points the session back at the in-app
-  bridge (the app's state is kept). If the process had no in-app bridge in it, the reply says it was launched
-  instead.
-- A physical device cannot take the in-app bridge, so it always uses the XCUITest engine.
+- Passing `profile` still drives iOS through XCUITest (an in-app / hybrid profile engine is not used by MCP); the
+  profile still decides which device is used.
+- If you connect to an in-app bridge's port, the server switches to the XCUITest bridge of the same device. When no
+  XCUITest bridge can be prepared, it reports an error instead of falling back to in-app.
+- Other apps (Maps, for example), SpringBoard and system alerts can be driven as they are.
 
 ## Role Split
 

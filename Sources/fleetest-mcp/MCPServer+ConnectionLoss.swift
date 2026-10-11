@@ -193,7 +193,8 @@ extension MCPServer {
     /// 前面のときしか応答しない(kernel が handshake を返すので isBound は true のまま)ので、
     /// XCUITest 向けの「busy・リトライせよ」は永遠に的外れな助言になる。
     /// **engine が不明なら呼び手が `resolvedEngine` でディスクの台帳を見てから渡す契約**
-    /// (この関数自身はディスクを見ない)
+    /// (この関数自身はディスクを見ない)。**MCP の iOS は常に XCUITest なので、in-app / hybrid の分岐には今は到達しない**
+    /// (判定は残す = 台帳から in-app と分かった相手に XCUITest 向けの「リトライせよ」を言わない砦は、仕様が戻っても要る)
     static func bridgeBusyHint(connection: String, engine: String?) -> String {
         guard engine == "inapp" || engine == "hybrid" else {
             return "\nThe XCUITest runner behind \(connection) did not answer in time, but the"

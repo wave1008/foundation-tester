@@ -122,12 +122,11 @@ extension MCPServer {
     /// 毎セッションのコンテキスト費用になる)
     static let serverInstructions = """
         Common arguments accepted by every ft_* device tool: platform (default ios) / project / \
-        profile (profiles/runs/<name>; same device and engine as ft_run_scenario) / \
+        profile (profiles/runs/<name>; same device as ft_run_scenario — iOS is always driven through XCUITest) / \
         udid (iOS simulator or physical device, as printed by ft_list_devices — resolved to the bridge running on \
         it; a device with no bridge cannot be driven and says so; if port is also given the two \
         must agree) / serial (Android device) / port (iOS bridge port — normally leave it out and \
-        pass udid: the server picks the bridge and engine, and other apps such as Maps and system \
-        alerts work on any device) / allowVersionSkew (off by default: a stale bridge answers with its own \
+        pass udid: the server picks the device's XCUITest bridge) / allowVersionSkew (off by default: a stale bridge answers with its own \
         version's behaviour and notes, so selectors written from them are silently wrong; every \
         skewed response carries a warning). Once a call explicitly gives udid/port (iOS) or \
         serial (Android), this server process remembers it for its lifetime: a later call that \
@@ -258,7 +257,7 @@ extension MCPServer {
             + "launching — use it to read the home screen or a system dialog", [
             "bundleId": bundleIdProperty,
             "resume": ["type": "boolean", "description": "Bring it to front WITHOUT terminating (state "
-                + "kept). If the app was not running with the in-app bridge, it is launched instead and the reply says so"],
+                + "kept)"],
         ], extra: afterActionProperties(waitForChange: false), required: ["bundleId"]),
         tool("ft_open_url", "Deliver a URL/deep link WITHOUT restarting the app (unlike ft_launch); the "
             + "destination is pushed over the current screen. Delivery is async, so snapshotAfter waits "

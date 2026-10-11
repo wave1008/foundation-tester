@@ -50,10 +50,9 @@ extension MCPServer {
         await AndroidPhysicalDevice.prepareForRun(serial: serial, log: Self.logStderr)
     }
 
-    // **実行と同じエンジンで探索する**のが原則(揃えないと snapshot もジェスチャの成否も食い違う)。
-    // profile 指定時は resolveProfileTarget が ft_run_scenario と同じデバイスを解決し、iosDriver が
-    // プロファイルのエンジンに追従する。profile 無しの iOS は ExploreDriverResolver が
-    // 稼働中ブリッジを見て決める(in-app が居れば hybrid を組む・居なければ XCUITest)
+    // **MCP の iOS は常に XCUITest**(ユーザー決定。in-app は使わない)。profile 指定時は resolveProfileTarget が
+    // ft_run_scenario と同じデバイスを XCUITest で供給し、profile 無しは ExploreDriverResolver が in-app のポートでも
+    // 同じデバイスの XCUITest へ振り替える
     func resolveDriver(_ args: [String: Any]) async throws -> AppDriver {
         if let makeDriver {
             // 差し替えドライバのエンジンは分からない。**助言が出る側(xcuitest)を既定**にする
@@ -132,22 +131,18 @@ extension MCPServer {
             pendingWarnings[key] = prologue.filter { $0.hasPrefix("⚠️") }
             let created: AppDriver
             var probePort: UInt16?
-            var xcuiFallbackPort: UInt16?
             switch target {
             case .ios(let provisioned, let iosApp):
-                (created, probePort, xcuiFallbackPort) = try await Self.iosDriver(
-                    provisioned: provisioned, bundleID: iosApp?.bundleID)
+                (created, probePort) = try await Self.iosDriver(provisioned: provisioned)
             case .android(let serial, _):
                 created = try AndroidDriver(serial: serial)
             }
             drivers[key] = created
             engines[key] = {
-                if case .ios(let provisioned, _) = target { provisioned.physical ? "xcuitest" : provisioned.engine }
+                if case .ios = target { "xcuitest" }   // MCP の iOS は常に XCUITest(iosDriver)
                 else { "android" }
             }()
-            // **hybrid のときだけ fallback ポートを覚える**(それ以外は前の機の値が残らないよう nil)。
-            // 主(connectedPorts)とは別枠 —— `hybridFallbackDrifted` が次回のキャッシュ命中で読む
-            hybridFallbackPorts[key] = engines[key] == "hybrid" ? xcuiFallbackPort : nil
+            hybridFallbackPorts[key] = nil   // MCP の iOS は XCUITest だけ(前の機の予備ポートを残さない)
             // **udid と port を両方記録する**。`deviceIdentityChanged`
             // はこの2つが揃っているときだけ動くので、**port を書かないとガードが黙って no-op になる**
             // (直接ポート経路で実際に踏んだ形。DeviceStateInvalidationTests が両方を守る)。
@@ -218,6 +213,16 @@ extension MCPServer {
             // 再利用可否を決めるので普段はここで落ちないが、**落ちないことと検査しないことは別**
             // —— 供給の判断とホストの期待がズレた回に、黙って旧ブリッジを操作させない
             try await enforceVersion(driver: created, key: key, args: args)
+            // **プロファイルの autoInstall は MCP でも効かせる**: 供給がアプリを先に入れるのは in-app のときだけで、
+            // MCP は XCUITest で供給する(resolveProfileTarget)ので、ここで入れないと hybrid / in-app のプロファイルで
+            // 「入っていない」と ft_launch が断る。**入っていないときだけ**入れる(入れ直しは動いているアプリを
+            // 終了させる = 探索中の画面を失う。差分の入れ直しは run の installIfNeeded の役目)
+            if case .ios(let provisioned, let iosApp) = target, let iosApp, iosApp.autoInstall,
+               let packagePath = iosApp.packagePath(physical: provisioned.physical),
+               await installedVerdict(bundleID: iosApp.bundleID, driver: created, args: args) == .notInstalled {
+                try await created.install(packagePath: packagePath)
+                Self.logStderr("installed \(iosApp.bundleID) from \(packagePath) (the profile's autoInstall)")
+            }
             return created
         }
 
@@ -278,7 +283,7 @@ extension MCPServer {
             // ここに来る時点で args は明示指定と区別が付かない。ここでは解決後の値を
             // 「記録」するだけにする(rememberResolvedTarget) —— 適用と記録を二重に持たない
             let port = try await Self.resolveIOSPort(explicit: explicitPort)
-            let resolved = await ExploreDriverResolver.resolve(
+            let resolved = try await ExploreDriverResolver.resolve(
                 preferred: port, repoRoot: try? RepoRoot.find(),
                 logger: { Self.logStderr($0) })
             // **このキーが前と別の機を指し始めていたら、キーの記憶を全部捨てる**。
@@ -298,16 +303,19 @@ extension MCPServer {
             created = resolved.driver
             engines[key] = resolved.engine
             udids[key] = resolved.udid
-            // **hybrid のときだけ fallback ポートを覚える**(profile 経路と同じ理由・同じ枠)
-            hybridFallbackPorts[key] = resolved.engine == "hybrid" ? resolved.xcuiPort : nil
+            hybridFallbackPorts[key] = nil   // MCP の iOS は XCUITest だけ(hybrid の予備ポートは無い)
             // **宛先は port だけでなく udid まで書く**(実アプリ監査): ブリッジは
             // 落ちても monitor が別ポートで起動し直すので、**同じセッション中にポートが動く**
             // (実測: -03 が 8128→8126、-07 が 8136→8147)。port だけを覚えて使い回す読み手は、
             // その port が今どの機かを確かめる手段が無かった
-            connections[key] = Self.connectionLabel(port: port, udid: resolved.udid)
-            connectedPorts[key] = port
+            // **繋いだ先も記憶する宛先も実際のポート**(in-app から XCUITest へ振り替えたときはそちら)。
+            // 照合(primaryEngineDrift・deviceIdentityChanged)・表示・接続断の片付け(forgetConnection)が同じ相手を見る。
+            // 呼び手のポートを覚えると、同じ端末のポートが名指しの記憶に2つ並び、宛先を書かない呼び出しが
+            // 「2台を触った」で断られる(実地で踏んだ: port 8123 の後に udid → 8137)
+            connections[key] = Self.connectionLabel(port: resolved.port, udid: resolved.udid)
+            connectedPorts[key] = resolved.port
             rememberResolvedTarget(platform: "ios", args: args,
-                                   iosPort: port, iosUDID: resolved.udid, androidSerial: nil)
+                                   iosPort: resolved.port, iosUDID: resolved.udid, androidSerial: nil)
             // **稼働中のブリッジが古いままではないか**を1度だけ確かめる(踏んだ実例)。
             // profile 経由は BridgeProvisioner が版で再利用可否を決めるが、**この経路は
             // 生きているポートへ素で繋ぐだけ**なので、版を上げても旧ランナーが使われ続ける。
@@ -915,12 +923,11 @@ extension MCPServer {
             .filter { $0.udid == udid })
     }
 
-    /// udid だけの呼び出しが使うポートの順(先頭が採られる)。**応答している in-app を先に置く** —— in-app が
-    /// 居れば ExploreDriverResolver が実行の既定と同じ hybrid を組み、別アプリ・システムアラートは hybrid が
-    /// XCUITest 側へ寄せる。並びを走査の順に任せると、同じ端末でも XCUITest だけで組まれる回が混じり、
-    /// 利用者がポート(= エンジン)を選ぶ羽目になる(ユーザー決定: MCP ではエンジンを意識させない)
+    /// udid だけの呼び出しが使うポートの順(先頭が採られる)。**XCUITest を先に置く**(MCP の iOS は常に XCUITest =
+    /// ユーザー決定)。in-app のポートを採っても ExploreDriverResolver が同じデバイスの XCUITest へ振り替えるが、
+    /// 先に XCUITest を採れば振り替えの走査(XCUIBridgeResolver)を払わずに済む
     static func explorationOrder(_ found: [BridgeDiscovery.Found]) -> [UInt16] {
-        found.filter { $0.engine == "inapp" }.map(\.port) + found.filter { $0.engine != "inapp" }.map(\.port)
+        found.filter { $0.engine != "inapp" }.map(\.port) + found.filter { $0.engine == "inapp" }.map(\.port)
     }
 
     /// **iOS の明示ターゲット述語**。args に有効な udid(非空文字列)または port(Int)があるか。
@@ -1363,58 +1370,38 @@ extension MCPServer {
     /// `connectedPorts` に記録すると、`deviceIdentityChanged` が**無関係な機のブリッジを読んで
     /// 正しい呼び出しを拒否し、記憶まで捨てる**(穴を塞ぐより悪い)。
     /// **確かめられないときは nil**(ガードは何もしない)
-    static func iosDriver(provisioned: ProvisionedIOSDevice, bundleID: String?) async throws
-        -> (driver: AppDriver, probePort: UInt16?, xcuiPort: UInt16?) {
-        guard !provisioned.physical, provisioned.engine == "inapp" || provisioned.engine == "hybrid" else {
-            // xcuitest(と実機)は in-app を合成しない。resolve は接続先が in-app だったときの振り替えも担う
-            let resolution = await XCUIBridgeResolver.resolve(
-                preferred: provisioned.port, repoRoot: try? RepoRoot.find(),
-                logger: { Self.logStderr($0) })
-            // **実機は UDID を渡す**: install/uninstall は simctl ではなく devicectl が要り、
-            // clearAppData は「実機では不可」と即答できる(渡さないとデバイス名で simctl を
-            // 撃つことになり、的外れな失敗になる)
-            let client = BridgeClient(
-                port: resolution.endpoint.port, host: resolution.endpoint.host,
-                physicalUDID: provisioned.physical ? provisioned.udid : nil)
-            // **launch はシナリオ実行と同じく FastLaunchDriver**(素の XCUIApplication.launch() は実測 6.6s)
-            let driver = SessionRecoveryDriver(
-                base: FastLaunchDriver.wrapping(client, simulatorUDID: provisioned.physical ? nil : provisioned.udid))
-            // **実際に繋いだポート**を返す(preferred ではない)。実機は loopback ではないので nil
-            let probe = (provisioned.physical || resolution.endpoint.host != BridgeEndpoint.loopbackHost)
-                ? nil : resolution.endpoint.port
-            return (driver, probe, nil)
-        }
-        let inapp = InAppDriver(repoRoot: try RepoRoot.find(), udid: provisioned.udid,
-                                port: provisioned.port)
-        guard provisioned.engine == "hybrid", let xcuiPort = provisioned.xcuiPort,
-              let bundleID else {
-            return (inapp, provisioned.port, nil)
-        }
-        // attach は**同じインスタンス**を委譲とフォールバックの両方に使う(実行側と同じ理由:
-        // activate/attached 状態を1本にしないと余計な activate が挟まる)
-        let attach = AppAttachDriver(port: xcuiPort, host: provisioned.host, bundleID: bundleID,
-                                     physicalUDID: provisioned.physical ? provisioned.udid : nil)
-        // hybrid の主は in-app(provisioned.port)。同一性はそちらへ問う。
-        // **合成は HybridDriverComposition の1箇所**(ライブ操作・シナリオ実行と同じ形にする)
-        return (HybridDriverComposition.inAppFirst(
-                    inApp: inapp, attach: attach,
-                    foreignApp: SessionRecoveryDriver(base: BridgeClient(
-                        port: xcuiPort, host: provisioned.host,
-                        physicalUDID: provisioned.physical ? provisioned.udid : nil)),
-                    bundleID: bundleID),
-                provisioned.port, xcuiPort)
+    static func iosDriver(provisioned: ProvisionedIOSDevice) async throws
+        -> (driver: AppDriver, probePort: UInt16?) {
+        // **MCP の iOS は常に XCUITest**(ユーザー決定。in-app は使わない)。供給は resolveProfileTarget が
+        // engine を xcuitest に差し替えてから行う。resolve は接続先が in-app だったときの振り替えも担う
+        let resolution = await XCUIBridgeResolver.resolve(
+            preferred: provisioned.xcuiPort ?? provisioned.port, repoRoot: try? RepoRoot.find(),
+            logger: { Self.logStderr($0) })
+        // **実機は UDID を渡す**: install/uninstall は simctl ではなく devicectl が要り、
+        // clearAppData は「実機では不可」と即答できる(渡さないとデバイス名で simctl を
+        // 撃つことになり、的外れな失敗になる)
+        let client = BridgeClient(
+            port: resolution.endpoint.port, host: resolution.endpoint.host,
+            physicalUDID: provisioned.physical ? provisioned.udid : nil)
+        // **launch はシナリオ実行と同じく FastLaunchDriver**(素の XCUIApplication.launch() は実測 6.6s)
+        let driver = SessionRecoveryDriver(
+            base: FastLaunchDriver.wrapping(client, simulatorUDID: provisioned.physical ? nil : provisioned.udid))
+        return (driver, probePort(physical: provisioned.physical, endpoint: resolution.endpoint))
     }
 
-    /// **実際に主となったエンジンが XCUITest のときだけ**添える切り分け。XCUITest では
-    /// 成立しないジェスチャがあり(表と実測は docs/commands.md)、何も起きなかったときに
-    /// 原因が分からないと詰む。**Android と in-app/hybrid には付けない**(前者はこの制限が
-    /// 無く、後者は成立する。無関係な助言は誤誘導になる)。
-    /// エンジンは driver(_:) が記録する = **推測しない**(profile 無しでも稼働中の in-app
-    /// ブリッジを掴めば hybrid になるため、引数だけからは決まらない)
-    /// **1文に圧縮**: UIKit アプリでも xcuitest エンジンなら毎回この助言が出ており、
-    /// 長文の苦情があった。「in-app は起動し直る」制約(dylib は起動時にしか差し込めない。
-    /// 実際に踏んだ: マップ画面で double tap → ホームから `#nav_scroll` が開いた)
-    /// は末尾に畳み込む。
+    /// 同一性を確かめに行ってよい loopback のポート(**実際に繋いだポート**。preferred ではない)。
+    /// **実機には出さない**: 実機のブリッジは loopback ではないので、ポート番号だけで 127.0.0.1 を叩くと
+    /// 無関係なシミュレータのブリッジを読み、`deviceIdentityChanged` が正しい呼び出しを拒否し記憶まで捨てる
+    static func probePort(physical: Bool, endpoint: BridgeEndpoint) -> UInt16? {
+        (physical || endpoint.host != BridgeEndpoint.loopbackHost) ? nil : endpoint.port
+    }
+
+    /// **iOS(= XCUITest)のときだけ**添える切り分け。XCUITest では成立しないジェスチャがあり
+    /// (表と実測は docs/commands.md)、何も起きなかったときに原因が分からないと詰む。
+    /// **Android には付けない**(この制限が無い。無関係な助言は誤誘導になる)。
+    /// **MCP の iOS は常に XCUITest なので、in-app へ切り替える手は勧めない**(profile を渡しても XCUITest のまま =
+    /// 従っても何も変わらない助言になる)。確かめる場はシナリオ(実行の既定 hybrid はこのジェスチャを届ける)。
+    /// **1文に圧縮**: UIKit アプリでも xcuitest エンジンなら毎回この助言が出ており、長文の苦情があった。
     /// **`frameworkKey` が判明していて一致しなければ黙る**(この助言は `framework` 1つに
     /// 固有の欠陥で、他のフレームワーク(判明した uikit や、もう一方の compose/flutter)には
     /// 効かない誤誘導になる)。**不明なら出すが「もしこのフレームワークなら」に弱める**
@@ -1422,10 +1409,8 @@ extension MCPServer {
     func iosEngineHint(_ framework: String, frameworkKey: AppUIFramework, _ gesture: String,
                       args: [String: Any]) -> String {
         guard engines[Self.engineKey(args)] == "xcuitest" else { return "" }
-        // `fleetest bridge up --engine inapp` と案内しない —— そのフラグは存在しない
-        // (in-app ブリッジは in-app/hybrid の実行プロファイル経由でだけ立つ。確認済み)
-        let advice = " pass profile: naming an in-app/hybrid run profile, which starts"
-            + " an in-app bridge (this relaunches the app — re-navigate before retrying)."
+        let advice = " MCP drives iOS through XCUITest only, so this is not something to retry here;"
+            + " a scenario run on the default (hybrid) engine delivers it — verify the gesture there."
         switch uiFrameworkHints[Self.engineKey(args)] {
         case .some(let known) where known != frameworkKey:
             return ""
@@ -1641,7 +1626,7 @@ extension MCPServer {
     /// **in-app 経路で背面化すると、以降は XCUITest ブリッジ側が受ける**
     /// (in-app ブリッジはアプリのプロセス内に住み、suspend されると応答しない。
     /// 寄せ替えは HybridFallbackDriver が持つ)。XCUITest は外側のプロセスなので関係なく、
-    /// back は前面のままなので関係ない
+    /// back は前面のままなので関係ない。**MCP の iOS は常に XCUITest なので今は到達しない**(判定は残す)
     static func backgroundedAppNote(target: String, engine: String?) -> String {
         guard target != "back", engine == "inapp" || engine == "hybrid" else { return "" }
         return ". The app is in the background now, so the tools run through the XCUITest bridge"

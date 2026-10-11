@@ -547,12 +547,12 @@ extension MCPServer {
                 + " was used — add [n] to pick another: \(listed)."
         }
         // **スクロール容器が1つも申告されない木**では、案内が出せない理由ごと言う(
-        // 監査)。in-app は版57から Compose/Flutter でも申告できるが、XCUITest エンジンの木では
-        // 依然として出ない。黙ると「scrollFrame を渡せ」というツール説明だけが残り、
-        // 渡す候補が無いことに気づけない
+        // 監査)。XCUITest エンジンの木には Compose/Flutter のスクロール容器が出ない(MCP の iOS は常に XCUITest
+        // なので、in-app を勧めない = エージェントが選べない手を示さない)。黙ると「scrollFrame を渡せ」という
+        // ツール説明だけが残り、渡す候補が無いことに気づけない
         if !snapshot.elements.contains(where: { $0.scrollable == true }) {
-            let engineCaveat = isAndroid ? "" : " (with Compose/Flutter, only the in-app engine"
-                + " can see scroll containers)"
+            let engineCaveat = isAndroid ? "" : " (the XCUITest tree does not show Compose/Flutter"
+                + " scroll containers)"
             return " No element in this tree declares itself scrollable\(engineCaveat), so the"
                 + " search swiped the whole screen. If the target sits in a horizontal row, scroll"
                 + " the row with ft_drag inside its bounds; a container that has a #id (testTag)"
@@ -1054,9 +1054,7 @@ extension MCPServer {
     ///
     /// **縁は外**(`<`): 幅 1080 の画面で x=1080 は画素の外(0…1079)。iOS の pt も同じ。
     /// 含み側にすると `(1080, 2220)` が done になる(§19 M4・担当)
-    /// `engine`: "in-app ブリッジは frame だけを見る" という理由づけは in-app/hybrid だけの実態
-    /// (InAppBridge.swift)なので、他のエンジン(xcuitest/android/不明)にそのまま言うと
-    /// 存在しない仕組みの説明になる。理由は畳んでも警告そのものは残す(木は画面外にも要素を持つ
+    /// MCP の iOS は常に XCUITest なので、in-app の当たり判定を理由に挙げない(木は画面外にも要素を持つ
     /// ことがある、という事実は engine を問わず有効)
     static func offscreenCoordinateError(x: Double, y: Double, screen: FTRect?,
                                          engine: String?) -> MCPError? {
@@ -1066,14 +1064,7 @@ extension MCPServer {
         guard let screen, !TapTargetGeometry.isPointOnScreen(x: x, y: y, screen: screen) else {
             return nil
         }
-        let reason: String
-        switch engine {
-        case "inapp", "hybrid":
-            reason = "The in-app engine hit-tests only \"does some frame contain this point\","
-                + " not \"is this point on screen\", so"
-        default:
-            reason = "The tree can include elements that are off-screen, so"
-        }
+        let reason = "The tree can include elements that are off-screen, so"
         return MCPError("(\(x), \(y)) is outside the screen (\(FTSeconds.format(screen.width))"
             + "x\(FTSeconds.format(screen.height)), origin \(FTSeconds.format(screen.x)),"
             + "\(FTSeconds.format(screen.y))) — refusing to fire. \(reason) an offscreen"

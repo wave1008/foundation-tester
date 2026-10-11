@@ -92,6 +92,8 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **ライブ操作の文言は人間向け**(拡張の UI を触っている人が読む)なので、MCP のエージェント向けの
   文言をそのまま写さない。**CLI 側だけ直しても受け手には届かない** —— 観測に注記を足したら
   `notes` 欄と ProtocolVersion、拡張の表示まで通す
+- **MCP の iOS は常に XCUITest**(ユーザー決定。in-app / hybrid を組まない = `MCPEngineFollowingTests` がソースで固定)。
+  下の hybrid の規律は**ライブ操作の話**(MCP の経路にも照合の呼び出しは残るが、予備ポートを持たないので働かない)。
 - **hybrid の予備(XCUITest)ポートも使うたびに本人確認する**(`FTBridgeClient.HybridFallbackIdentity` を
   MCP のキャッシュ命中とライブ操作の命令ごとが共有。主の udid だけ見ると、起動し直しで予備ポートが別のデバイス・
   in-app に化けても home/drag を撃ち続ける。**`BridgeIdentityCheck.verdict` は udid が両側にあるとエンジンを
@@ -132,7 +134,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   `ft_launch` の門(`MCPServer.launchGuardDecision`)は DSL の `LaunchPreflightDriver` と同じく
   **「確かめられないなら撃たない」**側に倒す(在否は udid で引く =
   `InstalledAppCheck.simulatorInstallVerdict(udid:)`。**素通しでよいのは Android と in-app
-  エンジンだけ** = ランナーが死なない経路。`com.apple.springboard` は launch しないので門の外)。
+  エンジンだけ** = ランナーが死なない経路(MCP の iOS は XCUITest だけなので、MCP で素通しになるのは Android だけ)。`com.apple.springboard` は launch しないので門の外)。
   **判定は `InstalledAppCheck.launchGuard` の1箇所で、MCP の `ft_launch` と
   ライブ操作(`api live serve` の `launch` / `activate`)が共有する** —— ライブ操作に門が無かったため、
   空文字列や端末に無い bundleID を渡すと**そのコマンドが 30 秒刺さって watchdog が serve を

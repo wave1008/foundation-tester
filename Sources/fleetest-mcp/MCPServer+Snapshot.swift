@@ -869,10 +869,7 @@ extension MCPServer {
         }
         guard let what = Self.describeFrontSystemAlert(probe) else { return .proceed(note: "") }
         let consequence: String
-        switch engine {
-        case "inapp", "hybrid":
-            consequence = "the in-app engine acts inside the app's own process, so it would still reach"
-                + " the app behind the alert, which no user could do"
+        switch engine {   // MCP の iOS は常に XCUITest(in-app / hybrid の帰結は起きない)
         case "xcuitest":
             consequence = "XCTest would handle the alert on its own first and can press one of its"
                 + " buttons (observed: the deny button), silently changing the permission"

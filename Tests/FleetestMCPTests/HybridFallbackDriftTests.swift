@@ -174,10 +174,11 @@ final class HybridFallbackDriftTests: XCTestCase {
     /// と同じ理由): 記録し忘れると `hybridFallbackDrifted` が材料無しで常に no-op になる
     func testBothPathsRecordTheHybridFallbackPort() throws {
         let source = try String(contentsOf: Self.driverSourceURL(), encoding: .utf8)
-        XCTAssertTrue(source.contains("hybridFallbackPorts[key] = engines[key] == \"hybrid\" ? xcuiFallbackPort : nil"),
-                      "profile 経路が hybrid の fallback ポートを記録していない")
-        XCTAssertTrue(source.contains("hybridFallbackPorts[key] = resolved.engine == \"hybrid\" ? resolved.xcuiPort : nil"),
-                      "直接ポート経路が hybrid の fallback ポートを記録していない")
+        // MCP の iOS は XCUITest だけなので、両経路とも予備ポートを消す(前の機の値を残さない)
+        XCTAssertTrue(source.contains("hybridFallbackPorts[key] = nil   // MCP の iOS は XCUITest だけ(前の機の予備ポートを残さない)"),
+                      "profile 経路が hybrid の予備ポートを消していない")
+        XCTAssertTrue(source.contains("hybridFallbackPorts[key] = nil   // MCP の iOS は XCUITest だけ(hybrid の予備ポートは無い)"),
+                      "直接ポート経路が hybrid の予備ポートを消していない")
     }
 
     private static func driverSourceURL() -> URL {

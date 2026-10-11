@@ -90,38 +90,16 @@ final class SystemAlertButtonTapTests: XCTestCase {
         XCTAssertFalse(driver.calls.contains { $0.hasPrefix("tap(") }, "\(driver.calls)")
     }
 
-    /// **hybrid でも押せる**(エンジンを意識させない。SpringBoard は hybrid が XCUITest 側へ寄せる)
-    func testWorksOnTheHybridEngine() async throws {
-        _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.apple.Maps"])
-        server.engines[MCPServer.engineKey([:])] = "hybrid"
-        arrangeLocationAlert()
-        _ = try await server.call(tool: "ft_tap", args: ["alertButton": "許可しない"])
-        XCTAssertTrue(driver.calls.contains("tap(ref:4)"), "\(driver.calls)")
-    }
-
-    /// in-app だけ(XCUITest を用意できなかった)のときは SpringBoard を掴めないので断る
-    func testRefusesOnAnInAppOnlyBridge() async throws {
-        _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.apple.Maps"])
-        server.engines[MCPServer.engineKey([:])] = "inapp"
-        arrangeLocationAlert()
-        do {
-            _ = try await server.call(tool: "ft_tap", args: ["alertButton": "許可しない"])
-            XCTFail("in-app だけで通った")
-        } catch {
-            XCTAssertTrue(error.localizedDescription.contains("in-app bridge alone"), error.localizedDescription)
-        }
-        XCTAssertFalse(driver.calls.contains { $0.hasPrefix("tap(") }, "\(driver.calls)")
-    }
-
-    /// udid だけの呼び出しは、応答している in-app のポートを先に採る(hybrid で組まれる)。走査の順に依らない
-    func testUDIDOnlyCallsPreferTheInAppBridge() {
+    /// udid だけの呼び出しは XCUITest のポートを先に採る(MCP の iOS は常に XCUITest)。走査の順に依らない
+    func testUDIDOnlyCallsPreferTheXCUITestBridge() {
         let found = [
             BridgeDiscovery.Found(port: 8137, device: "iPhone", engine: "xcuitest", udid: "U1"),
             BridgeDiscovery.Found(port: 8136, device: "iPhone", engine: "inapp", udid: "U1"),
         ]
-        XCTAssertEqual(MCPServer.explorationOrder(found), [8136, 8137])
-        XCTAssertEqual(MCPServer.explorationOrder(Array(found.reversed())), [8136, 8137])
-        XCTAssertEqual(MCPServer.explorationOrder([found[0]]), [8137], "in-app が無ければ XCUITest")
+        XCTAssertEqual(MCPServer.explorationOrder(found), [8137, 8136])
+        XCTAssertEqual(MCPServer.explorationOrder(Array(found.reversed())), [8137, 8136])
+        XCTAssertEqual(MCPServer.explorationOrder([found[1]]), [8136],
+                       "in-app しか無ければそれを採る(ExploreDriverResolver が XCUITest へ振り替える)")
     }
 
     /// ref と併用させない(どちらを押したのか読み手が決められない)

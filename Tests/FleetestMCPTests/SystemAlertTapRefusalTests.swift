@@ -57,17 +57,6 @@ final class SystemAlertTapRefusalTests: XCTestCase {
         XCTAssertEqual(taps.count, 1, "2回目は撃たない: \(driver.calls)")
     }
 
-    /// **in-app(hybrid)**: 断り、背面のアプリへ届いてしまうことを理由に言う
-    func testInAppRefusalSaysItWouldReachTheAppBehindTheAlert() async throws {
-        server.engines[MCPServer.engineKey([:])] = "hybrid"
-        driver.scriptedSystemAlert = Self.photosAlert
-        _ = try await server.call(tool: "ft_snapshot", args: [:])
-        let text = await refusal() ?? "not refused"
-        XCTAssertTrue(text.contains("refusing to act on #btn_request_photos"), text)
-        XCTAssertTrue(text.contains("it would still reach the app behind the alert"), text)
-        XCTAssertTrue(taps.isEmpty, "\(driver.calls)")
-    }
-
     /// **XCUITest**: XCTest がアラートのボタンを押しうることを理由に言う
     func testXCUITestRefusalSaysXCTestCanPressAnAlertButton() async throws {
         server.engines[MCPServer.engineKey([:])] = "xcuitest"
