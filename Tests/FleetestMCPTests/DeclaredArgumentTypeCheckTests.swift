@@ -100,6 +100,19 @@ final class DeclaredArgumentTypeCheckTests: XCTestCase {
         try MCPServer.checkDeclaredArgumentTypes(tool: "ft_status", args: jsonArgs(#"{"thisArgumentDoesNotExist": "surprise"}"#))
     }
 
+    /// 値域も宣言した欄だけを見る —— 宣言していない欄(読まれず注記されるだけ)の値で呼び出しを断らない。
+    /// 断ると、同じ呼び出しが無視される欄の値しだいで通ったり断られたりする(負荷テストで ft_status / ft_doctor が
+    /// lines: -1 で断られていた)
+    func testUndeclaredArgumentsValueDoesNotRefuseTheCall() async throws {
+        let content = try await server.call(tool: "ft_dsl_commands",
+                                            args: jsonArgs(#"{"lines": -1, "holdSeconds": 99, "name": "pinchOut"}"#))
+        let text = content.compactMap { $0["text"] as? String }.joined()
+        XCTAssertTrue(text.contains("ignored unknown argument"), text)
+        // 宣言している欄の値域は従来どおり断る(ft_logs は lines を宣言している)
+        XCTAssertThrowsError(try MCPServer.checkArgumentBounds(
+            MCPServer.declaredArgumentsOnly(tool: "ft_logs", args: jsonArgs(#"{"lines": -1}"#))))
+    }
+
     /// array/object 型(fingers/drop/scenes)は対象外 —— 各ツールが個別に検査する
     func testArrayAndObjectPropertiesAreSkipped() throws {
         try MCPServer.checkDeclaredArgumentTypes(tool: "ft_draft_scenario", args: jsonArgs(#"{"drop": "not-an-array"}"#))

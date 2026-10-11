@@ -257,7 +257,8 @@ public struct FlowStep: Codable, Sendable {
         let argument = action == "tap" || action == "press" || action == "holdStart"
             ? "holdSeconds" : "durationSeconds"
         let displayAction = action == "holdStart" ? "hold" : action
-        return BridgeAPI.gestureSecondsViolation(subject: "\(argument) of \(displayAction)", seconds: duration, cap: cap)
+        return ArgumentBounds.hostGestureSecondsViolation(subject: "\(argument) of \(displayAction)", seconds: duration,
+                                                          cap: cap, overridden: maxGestureSeconds != nil)
     }
 }
 

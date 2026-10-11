@@ -132,7 +132,7 @@ final class TypeReadbackTargetTests: XCTestCase {
         guard case .failed(let message) = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertEqual(driver.typedTexts, ["hello"], "確かめられないまま追送してはいけない")
         XCTAssertTrue(message.contains("not re-sent"), message)
-        XCTAssertTrue(message.contains("OCR is not working on this machine"), message)
+        XCTAssertTrue(message.contains("OCR read nothing from a built-in image with known text"), message)
     }
 
     /// 画面を見て読めなかった内訳は失敗の文言に出る(描かれていないのか、読みが成立しなかったのか)

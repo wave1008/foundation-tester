@@ -122,6 +122,28 @@ public enum IOSDeviceTransport {
         BridgeEndpoint(port: port, token: token)
     }
 
+    /// **生きている実機のランナーの USB トンネル(iproxy)だけが消えたとき**、ランナーを作り直さずに
+    /// トンネルだけ張り直す(iproxy の異常終了・USB の抜き差し)。張り直したら true —— 呼び手は
+    /// 起動した側が記録した `.endpoint`(token 入り)で応答を確かめ、答えなければ従来どおり作り直す。
+    /// **establish を呼ばない**(launcher.bridgeToken で `.endpoint` を上書きすると、生きたランナーへ
+    /// 別の token で繋いで 401 になる)。usb でない・トンネルが生きている・張れないときは false。
+    /// 呼び手は供給の引き取り(BridgeProvisioner の .adopt)とライブ操作の自動起動の2つ
+    public static func restoreMissingTunnel(port: UInt16, deviceUDID: String, wired: Bool, repoRoot: URL,
+                                            log: (String) -> Void) -> Bool {
+        guard kind(wired: wired) == .usb,
+              !isIproxyRunning(hostPort: port, deviceUDID: deviceUDID, repoRoot: repoRoot) else { return false }
+        do {
+            try startIproxy(hostPort: port, devicePort: port, deviceUDID: deviceUDID, repoRoot: repoRoot)
+        } catch {
+            log("the USB tunnel (iproxy) to the bridge on port \(port) is gone and could not be"
+                + " re-established (\(error.localizedDescription))")
+            return false
+        }
+        log("the USB tunnel (iproxy) to the bridge on port \(port) was gone — re-established it;"
+            + " checking whether the running bridge answers before restarting anything")
+        return true
+    }
+
     /// 実機ブリッジの後始末(usb のトンネル停止+endpoint/udid 記録の破棄)。lan は何も残さない
     public static func teardown(port: UInt16, repoRoot: URL) {
         stopIproxy(hostPort: port, repoRoot: repoRoot)

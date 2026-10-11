@@ -377,8 +377,16 @@ extension MCPServer {
         let fm = await FMDoctor.checkLive()
         // **視覚系も実呼び出しで確かめる**(能力判定では足りない。text と vision は独立に死ぬ)
         let vision = await FMDoctor.visionCheckLive()
+        // OCR も実呼び出しで(FM と独立に死ぬ。判定は RegionText.readerIsAlive の1箇所・CLI の doctor と共有)
+        let ocrAlive = await RegionText.readerIsAlive()
         return text((fm.available ? "✅ " : "❌ ") + fm.detail
             + (fm.available ? "" : "\n   " + FMDoctor.unavailableImpact)
-            + "\n" + (vision.available ? "✅ " : FMVisionSupport.isSupported ? "❌ " : "⚠️ ") + vision.detail)
+            + "\n" + (vision.available ? "✅ " : FMVisionSupport.isSupported ? "❌ " : "⚠️ ") + vision.detail
+            + "\n" + (ocrAlive
+                ? "✅ On-device OCR (Vision text recognition) read the built-in test image"
+                : "❌ On-device OCR (Vision text recognition) read nothing from the built-in test image (an image"
+                    + " with known text) — while it stays so, link-text taps fail, typed text cannot be read back from the"
+                    + " screen, and the OCR stage of the text visual verification cannot read text (rebooting this"
+                    + " Mac has cleared this state before)"))
     }
 }

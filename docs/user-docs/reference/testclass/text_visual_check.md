@@ -120,6 +120,8 @@ left. FM judges those. Where FM is unavailable, they pass unverified.
   without any element in the tree is not caught in this case.
 - Where FM is unavailable, shapes OCR cannot judge (the "FM decides" shape above) are not verified.
   `fleetest doctor --fm-only` tells you whether FM is available.
+- The `On-device OCR` line of `fleetest doctor` tells you whether OCR works (it reads an image with known text).
+  While OCR reads nothing, no OCR-based judgement can be relied on (rebooting the Mac has cleared this state before).
 
 ### Link
 - [index](../../index.md)

@@ -89,7 +89,7 @@ final class StepExecutorLinkTextTests: XCTestCase {
         let (outcome, _) = await run(screenshots: [try shot("Please accept the Terms of Service")],
                                      linkText: "Terms of Service")
         guard case .failed(let message) = outcome.status else { XCTFail("実際は \(outcome.status)"); return }
-        XCTAssertTrue(message.contains("OCR is not working on this machine right now"), message)
+        XCTAssertTrue(message.contains("OCR read nothing from a built-in image with known text either, just now"), message)
         XCTAssertFalse(message.contains("single colour"), message)
     }
 

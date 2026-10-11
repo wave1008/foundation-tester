@@ -186,6 +186,27 @@ actor LiveBridgeAutoStarter {
         repoRoot: URL, udid: String, port: UInt16, physical: Bool, wired: Bool, stopFirst: Bool = false
     ) async -> Result<Void, Error> {
         let launcher = BridgeLauncher(repoRoot: repoRoot, device: udid, port: port, physical: physical)
+        // **実機の USB トンネル(iproxy)だけが消えた生きたランナーは作り直さない** —— 下の startDetached は
+        // 同じポートのランナーを止めて起動し直す(端末で UI 自動化の承認を求めうる)。そのポートにこの実機の
+        // ランナーが居るときだけ張り直し、答えればそれで復帰とする(答えなければ従来どおり作り直す)。
+        // **他のセッションの印より前に置く**: 張り直しは相手のブリッジを止めない(相手も同じトンネルで復帰する)。
+        // 張り直しだけを ProvisionLock で囲む(同じポートへ iproxy を2本起こさない)
+        if physical, !stopFirst, let ps = try? Shell.run(["ps", "-axo", "pid=,command="]), ps.status == 0,
+           BridgeLauncher.runnersOnDevice(psOutput: ps.output, device: udid, excludingPort: 0)
+               .contains(where: { $0.port == port }) {
+            let tunnelLock = try? ProvisionLock(stateDir: repoRoot.appendingPathComponent(".fleetest"))
+            await tunnelLock?.acquire()
+            let restored = IOSDeviceTransport.restoreMissingTunnel(
+                port: port, deviceUDID: udid, wired: wired, repoRoot: repoRoot,
+                log: { ConsoleOut.err("[live serve] \($0)") })
+            tunnelLock?.release()
+            if restored, (try? await launcher.waitUntilReady(
+                timeout: BridgeLivenessBudget.logSilenceSeconds,
+                endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot),
+                log: { ConsoleOut.err("[live serve] \($0)") })) != nil {
+                return .success(())
+            }
+        }
         // **他のセッション(run・MCP)が使っているデバイスにはランナーを起動しない**: 同じシミュレータの
         // 2本目のランナーは1本目を追い出す(run は別ポートでこのデバイスを持っていることがある)。
         // 旧ビルドの起動し直し(stopFirst)も同じく相手のブリッジを止めるので、ここで両方を断る。

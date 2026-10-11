@@ -1344,6 +1344,12 @@ public struct BridgeProvisioner: Sendable {
                     + " runner cannot be starting — stopping and restarting it (the boot is waited for first)")
                 return try await stopAndRelaunch()
             }
+            // **実機の USB トンネル(iproxy)だけが消えたランナーは、張り直して答えるかを先に見る**。
+            // 下の判定はこの無応答を起動の失敗と読み、生きた実機のランナーを作り直していた(端末で UI 自動化の
+            // 承認を求めうる)
+            let tunnelRestored = sim.physical && IOSDeviceTransport.restoreMissingTunnel(
+                port: port, deviceUDID: sim.udid, wired: sim.wired, repoRoot: repoRoot,
+                log: { log("→ \(name): \($0)") })
             // **起動中の最大寿命(startupTimeoutSeconds)を超えた pid は「起動中」ではあり得ない**
             // (StartingBridgeAge)。すぐ下の decide の quietFor(起動ログの mtime)は、複数 run に
             // またがって生き続けた長寿ランナーが直前の run でもログへ出力するため「最近書かれた」と
@@ -1352,7 +1358,10 @@ public struct BridgeProvisioner: Sendable {
             // 進行中とみなす(waitUntilReady は無音に対する締切)。予算を起動用の 180 秒から
             // ウェッジ確定の刻み(BridgeLivenessBudget.logSilenceSeconds)へ縮めるだけ
             var readyBudget = BridgeLauncher.startupTimeoutSeconds
-            if let pidFileModified = launcher.pidFileModified(),
+            if tunnelRestored {
+                // 生きたランナーはトンネルが通れば即座に答える。答えなければ下の catch で作り直す
+                readyBudget = BridgeLivenessBudget.logSilenceSeconds
+            } else if let pidFileModified = launcher.pidFileModified(),
                !StartingBridgeAge.isStillStarting(pidFileModified: pidFileModified,
                                                   startupTimeout: BridgeLauncher.startupTimeoutSeconds) {
                 readyBudget = BridgeLivenessBudget.logSilenceSeconds
@@ -1363,7 +1372,8 @@ public struct BridgeProvisioner: Sendable {
             let elapsed = launcher.runnerElapsed()
             // .restart は elapsed != nil のときしか返らない(decide 参照)ので force unwrap は安全。
             // ログが伸びている間は起動側もまだ待っている(BridgeStartupWait)ので引き取る側も待つ
-            if StartingRunnerVerdict.decide(elapsed: elapsed, quietFor: launcher.logQuietFor(),
+            if !tunnelRestored,
+               StartingRunnerVerdict.decide(elapsed: elapsed, quietFor: launcher.logQuietFor(),
                                             simulatorBooted: simulatorBooted,
                                             budget: BridgeLauncher.startupTimeoutSeconds) == .restart {
                 log("⚠️ \(name): the bridge on port \(port) has been alive for \(Int(elapsed!))s"

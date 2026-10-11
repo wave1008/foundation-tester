@@ -24,12 +24,12 @@ final class DoctorExitCodeTests: XCTestCase {
         return String(text[start.upperBound..<end])
     }
 
-    /// レポート経路の ❌ はすべて集計に載る(FM text / FM vision / tool root / xcodebuild /
-    /// simctl list / xcodegen / adb devices / Bridge APK の8つ)
+    /// レポート経路の ❌ はすべて集計に載る(FM text / FM vision / OCR / tool root / xcodebuild /
+    /// simctl list / xcodegen / adb devices / Bridge APK の9つ)
     func testEveryFailureLineIsCounted() throws {
         let body = try doctorBody()
-        XCTAssertEqual(body.components(separatedBy: "problems += 1").count - 1, 8,
-                       "❌ を出す分岐は8つ(FM text / FM vision / tool root / xcodebuild / simctl list / xcodegen /"
+        XCTAssertEqual(body.components(separatedBy: "problems += 1").count - 1, 9,
+                       "❌ を出す分岐は9つ(FM text / FM vision / OCR / tool root / xcodebuild / simctl list / xcodegen /"
                        + " adb devices / Bridge APK)")
         XCTAssertTrue(body.contains("if !fm.available { problems += 1 }"), "FM text を数える")
         XCTAssertTrue(body.contains("if !vision.available, !visionUnsupported { problems += 1 }"),

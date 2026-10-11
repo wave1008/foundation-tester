@@ -122,7 +122,14 @@ final class GestureDurationViolationTests: XCTestCase {
                         + " pass maxGestureSeconds: (up to 60) to allow longer")
         XCTAssertEqual(FlowStep.gestureDurationViolation(action: "pinchOut", duration: 30, maxGestureSeconds: 20),
                        "durationSeconds of pinchOut must be 20 seconds or less (got 30);"
-                        + " pass maxGestureSeconds: (up to 60) to allow longer")
+                        + " the maxGestureSeconds: passed here (20) sets this limit — raise it (up to 60) to allow longer")
+    }
+
+    /// 既定より小さい上書きで断ったときも「渡せ」と言わない(渡した値が上限を下げている)
+    func testOverrideBelowTheDefaultIsNamedAsTheLimit() {
+        XCTAssertEqual(ArgumentBounds.gestureCapViolation(["holdSeconds": 2.5, "maxGestureSeconds": 0.5]),
+                       "holdSeconds must be 0.5 seconds or less (got 2.5);"
+                        + " the maxGestureSeconds: passed here (0.5) sets this limit — raise it (up to 60) to allow longer")
     }
 
     /// ランナー(操作名を渡す)は従来どおり「press duration」

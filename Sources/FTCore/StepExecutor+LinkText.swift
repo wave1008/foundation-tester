@@ -52,8 +52,7 @@ extension StepExecutor {
                 : "OCR read: " + ocrLines.map { "\"\($0)\"" }.joined(separator: ", "))
                 + (blankShots > 0 ? "; the app area of \(blankShots) of the screenshots given to OCR was a single colour"
                     + " (nothing drawn yet, or the capture failed)" : "")
-                + (readerDead ? "; OCR is not working on this machine right now — it read nothing from a built-in image"
-                    + " with known text either, so this does not show that the link text is missing" : "")
+                + (readerDead ? "; \(Self.ocrDeadFact), so this does not show that the link text is missing" : "")
             return StepOutcome(status: failed(.notFound,
                 "cannot find the link text \"\(linkText)\" inside \(TapTargetGeometry.describe(element)):"
                     + " no descendant in the tree has that label, and the text was not found in the element's pixels"

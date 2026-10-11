@@ -4167,3 +4167,58 @@ in-app ブリッジに一時的な測定口を足した worktree で測った(�
   Mlem は最新の状態でビルドが壊れていて当てられなかった
 - 実アプリのコーパス(Tests/Fixtures/RealAppSnapshots/)は木だけ(活性化の点が無い)なので当てられない。
   **この2つの検知はデバイス実行(自前の SUT と上の外のアプリ)でのみ確かめた**
+
+## 78. 10/11 の3時間負荷テスト(2026-10-11 06:48〜09:51)
+
+手元の Simulator 8 台・Emulator 6〜8 台(E2EY の Android は 07・08 も使う)のフリート run + ファズ用 Simulator 2 台(sim-09・-10)+
+実機 3 台(SE3・Pixel 4a・Pixel 3a)。リモートは使わない(`--runner local`)。モニターの配信は全台に張ったまま。
+フリート run 55 本(うち api run 13)・MCP 約 3.5 万回・ライブ操作 約 9,700 命令・CLI 約 2,500 回・障害注入 13 回。
+fleetest 系のクラッシュ 0・応答の無いまま止まった呼び出し 0・手元で run が同時に走った瞬間 0(待機列の待ち手だけが重なって見えた)。
+この Mac は開始時点で FM が死んでおり、後半に Vision の特徴量(同じ特徴量)・CMP の iOS の文字の描画も劣化した(§75.5 と同じ状態)。
+フリートの赤の大半はこれと、配信下の Emulator の白い絵。
+
+### 78.1 実機の USB トンネル(iproxy)だけが消えると、生きたランナーを作り直していた
+- **観測**: 障害注入で SE3 の iproxy を kill すると、ランナー(xcodebuild)は生きたまま MCP は全部「no running bridge」。案内どおり
+  `bridge up` を撃つと「alive for 3129s without answering or logging」と言ってランナーを止めて作り直した(20 秒。実機の作り直しは端末で
+  UI 自動化の承認を求めうる)。無応答の原因はトンネルだけで、ランナーは答えられた
+- **直し**: `IOSDeviceTransport.restoreMissingTunnel` —— usb の実機で、そのポートの iproxy が居なければ張り直す(`.endpoint` の token は
+  起動した側の記録を使う = `establish` は呼ばない)。供給の引き取り(`.adopt`)は作り直しの判定より前にこれを試し、張り直したら
+  その判定を通さず応答を待つ(答えなければ従来どおり作り直す)。ライブ操作の自動起動も同じ(そのポートにこの実機のランナーが
+  居るときだけ・他のセッションの印より前 = 張り直しは相手のブリッジを止めない)。`PhysicalTunnelRestoreScanTests`
+- **陽性対照**: iproxy を kill した SE3 で `bridge up` → 9 秒で復帰・xcodebuild の pid は 18 分前のまま。ライブ操作も `refresh` の自動起動で
+  張り直してランナーを残した
+
+### 78.2 MCP がツールの宣言していない引数の値で呼び出しを断っていた
+`ft_status` / `ft_list_devices` / `ft_doctor` 等へ `lines: -1` を渡すと「lines must be 1 or more」で断り、`lines: 5` なら注記つきで通った
+(宣言していない欄は読まれず注記するだけ = `unknownArgumentNote`)。値域と秒数の相互検査は宣言した欄だけを見る
+(`MCPServer.declaredArgumentsOnly`。型の検査は元から宣言した欄だけ)。ライブ操作の秒数の相互検査はスキーマを持たないので対象外
+
+### 78.3 doctor が OCR の生死を見ていなかった
+§75 の教訓(「赤が画像系に偏ったら、まず OCR プローブで読み手の生死を見る」)を利用者が打てる口が無かった。CLI の `doctor` と MCP の
+`ft_doctor` に `On-device OCR` の行を足した(判定は `RegionText.readerIsAlive` の1箇所・`--fm-only` には含めない)。注入口
+`FT_FAKE_OCR_DEAD=1` で ❌ の文言を確認
+
+### 78.4 言い回し
+- **OCR の生死の確認が読めなかったとき「OCR is not working on this machine right now」と言っていた**。確かめたのは「このプロセスの OCR が
+  今、既知の文字の絵も読めなかった」だけで、同じ時刻に別のプロセス(iOS の run の OCR 段)は読めていた。機械全体とは言わない
+  (`StepExecutor.ocrDeadFact`。リンク文字の tap も同じ文を使う)
+- 既定より小さい `maxGestureSeconds:` を渡して断られたとき「pass maxGestureSeconds」と言っていた(渡した値が上限を下げている)。
+  文言はホスト側の `ArgumentBounds.hostGestureSecondsViolation` が持つ(BridgeDTO.swift はブリッジの入力 = 触ると版上げになる)
+
+### 78.5 記録だけの観察(直していない)
+- **高負荷の E2EY-CMP の Android のリンク文字の tap(open-issues)を分けられた**: 2 回とも同じ3本が赤で、`#txt_post` は OCR へ渡した絵が
+  一色(Emulator の白い絵)・残り2本は OCR の生死の確認も読めなかった
+- `26_画面の静止を待つ` の S0020(settle: false の flick の直後の 0.6 秒は静止しない)が高負荷の Emulator で1回赤。最初の絵を撮る前に
+  慣性が止まっていた(撮影の時刻の判定は正しい)= 証人が負荷に弱い
+- E2EY-CMP の iOS の隠れるバー(`hara-hiddan`)が2回(open-issues に追記)
+- MCP の `ft_run_scenario`(profile 無し)で `removeApp` → `installApp()` のシナリオ(E2E-iOS の S0030)を撃つと、`installApp()` が
+  パッケージの在処を知らずに落ち、SUT が消えたまま残る。E2E-iOS はアプリプロファイルが同じ bundle ID で2つ(Simulator 用・実機用)
+  あるので profile 無しでは一意に決められない(9/30 の教訓「素の run はプロファイル付きで」と同じ)
+- 中断(SIGTERM)の途中で止まったシナリオはコンソールに理由の無い「❌ failed」だけが出る(結果 JSON は `interrupted: true`・
+  末尾の要約は「the run was interrupted」と言う)
+- CLI の手動操作(`snapshot` / `terminate` / `press --ref`)は XCUITest ランナーの生の文言(「the host re-establishes it with /session」
+  「run GET /snapshot first」)をそのまま出す。直すにはランナーの版上げか CLI のドライバの包み直しが要る
+- sim-10 の `kAXErrorAPIDisabled` の長い継続(§65.7)は、そのデバイスのブリッジを起動し直すと読めるようになった
+- 待機列の先頭のチケットの持ち主を kill -9 すると、次の run は失効(30 秒)まで待つ(設計どおり。docs/remote-runner.md §18.9)
+- **ハーネス側の誤り**: `api run` に `--scenario` を渡していなかった(§73 と同じ)・`xargs printf '%q'` は外部の printf で使えない・
+  ft_batch の steps を配列で渡した・CLI ファズの `screenshot` がリポジトリ直下に screenshot.png を残した

@@ -157,6 +157,17 @@ struct Doctor: AsyncParsableCommand {
         var problems = 0
         if !fm.available { problems += 1 }
         if !vision.available, !visionUnsupported { problems += 1 }
+        // **OCR も実呼び出しで確かめる**(FM と独立に死ぬ。死んでいると OCR を使う判定が誤った理由で落ちる)。
+        // 判定は RegionText.readerIsAlive の1箇所(ft_doctor と共有)。`--fm-only` には含めない(FM の門)
+        if await RegionText.readerIsAlive() {
+            ConsoleOut.out("✅ On-device OCR (Vision text recognition): read the built-in test image")
+        } else {
+            problems += 1
+            ConsoleOut.out("❌ On-device OCR (Vision text recognition): read nothing from the built-in test image"
+                + " (an image with known text)")
+            ConsoleOut.out("   While it stays so, link-text taps fail, typed text cannot be read back from the screen, and the OCR stage of"
+                + " the text visual verification cannot read text. Rebooting this Mac has cleared this state before.")
+        }
 
         if !printRoots() { problems += 1 }
 

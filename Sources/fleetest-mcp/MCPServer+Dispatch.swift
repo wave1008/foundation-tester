@@ -336,6 +336,14 @@ extension MCPServer {
     /// スキーマに無い引数名を、成功・失敗どちらの応答にも1行で警告する(**断らない** = 警告から)。
     /// 黙って無視すると、打ち間違い(holdSecond / scrollframe)が既定値のまま実行される。
     /// `_` 始まりの鍵は対象外。宛先の引数を宣言していないツールへ渡した宛先も同じ扱い
+    /// そのツールのスキーマが宣言した欄だけを残す(入口の値域検査用。スキーマが引けなければそのまま返す)
+    static func declaredArgumentsOnly(tool: String, args: [String: Any]) -> [String: Any] {
+        guard let definition = toolDefinitions.first(where: { $0["name"] as? String == tool }),
+              let schema = definition["inputSchema"] as? [String: Any],
+              let properties = schema["properties"] as? [String: Any] else { return args }
+        return args.filter { properties[$0.key] != nil }
+    }
+
     static func unknownArgumentNote(tool: String, args: [String: Any]) -> String {
         guard let definition = toolDefinitions.first(where: { $0["name"] as? String == tool }),
               let schema = definition["inputSchema"] as? [String: Any],
@@ -415,10 +423,14 @@ extension MCPServer {
         // **値域は入口で1回だけ全数見る**(`intArgument`/`doubleArgument` の門だけでは足りない)
         // —— 条件付きでしか読まれない欄(`waitSeconds` は snapshotAfter のときだけ等)は、
         // 読まれない回に 0/負がそのまま通り、呼び手は「効いた」と誤解する
-        try Self.checkArgumentBounds(args)
+        // **見るのはそのツールが宣言した欄だけ**(型の検査と同じ)。宣言していない欄は読まれず注記するだけ
+        // (unknownArgumentNote)なので、その値で断ると同じ呼び出しが無視される欄の値しだいで通ったり
+        // 断られたりする(ft_status へ lines: -1 を渡すと断られ、lines: 5 なら注記つきで通っていた)
+        let declaredArgs = Self.declaredArgumentsOnly(tool: tool, args: args)
+        try Self.checkArgumentBounds(declaredArgs)
         // **秒数の相互検査は値域の隣**(seconds ≤ maxGestureSeconds(省略時は既定10秒)。
         // 単独の checkArgumentBounds は型/絶対上限(60秒)のスキーマ検査しかできない)
-        if let violation = ArgumentBounds.gestureCapViolation(args) {
+        if let violation = ArgumentBounds.gestureCapViolation(declaredArgs) {
             throw MCPError(violation)
         }
         if let violation = Self.targetExclusivityViolation(tool: tool, args: args) {

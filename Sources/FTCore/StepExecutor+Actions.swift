@@ -1156,8 +1156,10 @@ extension StepExecutor {
         return (folded, waited, folded ? nil : notFound)
     }
 
-    static let ocrDeadFact = "OCR is not working on this machine right now — it read nothing from a built-in image"
-        + " with known text either"
+    /// 確かめたのは「このプロセスの OCR が今、既知の文字の絵も読めなかった」だけ —— 機械全体の死とは言わない
+    /// (同じ時刻に別のプロセスの OCR が読めていた例がある。一時的な失敗のこともある)
+    static let ocrDeadFact = "OCR read nothing from a built-in image with known text either, just now"
+        + " (the reader itself failed at that moment)"
 
     /// テスト用(本番では nil)。OCR を撃たずに「描かれていたか」を差し替える
     nonisolated(unsafe) static var typedTextOnScreenOverrideForTesting:

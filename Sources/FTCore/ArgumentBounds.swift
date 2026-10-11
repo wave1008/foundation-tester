@@ -150,13 +150,30 @@ public enum ArgumentBounds {
            let violation = BridgeAPI.maxGestureSecondsViolation(override) {
             return violation
         }
-        let cap = numeric("maxGestureSeconds") ?? BridgeAPI.defaultMaxGestureSeconds
+        let override = numeric("maxGestureSeconds")
+        let cap = override ?? BridgeAPI.defaultMaxGestureSeconds
         for key in gestureSecondsKeys {
             guard let seconds = numeric(key),
-                  let violation = BridgeAPI.gestureSecondsViolation(subject: key, seconds: seconds, cap: cap) else { continue }
+                  let violation = hostGestureSecondsViolation(subject: key, seconds: seconds, cap: cap,
+                                                              overridden: override != nil) else { continue }
             return violation
         }
         return nil
+    }
+
+    /// ホストの門(MCP・ライブ操作・DSL)の秒数の上限検査。判定は `BridgeAPI.gestureSecondsViolation`
+    /// (唯一の定義元)のまま、**呼び手が渡した `maxGestureSeconds:` が上限を決めている回だけ**対処の文言を
+    /// 「渡せ」から「渡した値を上げよ」へ替える(「渡せ」では渡した値が上限を下げていることに気付けない。
+    /// 文言をここに持つのは BridgeDTO.swift がブリッジの入力 = 触ると版上げとランナーの作り直しになるため)
+    public static func hostGestureSecondsViolation(subject: String, seconds: Double, cap: Double,
+                                                   overridden: Bool) -> String? {
+        guard let violation = BridgeAPI.gestureSecondsViolation(subject: subject, seconds: seconds, cap: cap) else {
+            return nil
+        }
+        guard overridden, seconds.isFinite, seconds >= 0, cap < BridgeAPI.gestureSecondsCeiling else { return violation }
+        return "\(subject) must be \(format(cap)) seconds or less (got \(format(seconds)));"
+            + " the maxGestureSeconds: passed here (\(format(cap))) sets this limit —"
+            + " raise it (up to \(format(BridgeAPI.gestureSecondsCeiling))) to allow longer"
     }
 
     /// 整数値は小数点無しで出す("got 0" であって "got 0.0" ではない)。
