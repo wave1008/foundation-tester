@@ -188,7 +188,9 @@ extension MCPServer {
         let launchDriver = try await driver(args)
         let springBoardNote = await recheckXCUITestRunnerBeforeLaunch(args: args)
         let resumes = args["resume"] as? Bool == true
-        // **撃つ前に弾く**(ランナー死の予防。installedVerdict/launchGuardDecision のコメント参照)
+        // **撃つ前に弾く**(ランナー死の予防。installedVerdict/launchGuardDecision のコメント参照)。
+        // 段を切らないと在否の確認と起動の時間が直前の SpringBoard の確認に積まれる(実測: 確認 0.17s が 4.7s と出た)
+        SlowCallWatchdog.mark("checking the app is installed")
         let installVerdict = await installedVerdict(bundleID: bundleID, driver: launchDriver, args: args)
         if let refusal = Self.launchGuardDecision(
             verdict: installVerdict, isAndroid: launchDriver is AndroidDriver,
@@ -199,6 +201,7 @@ extension MCPServer {
         if case .unknown(let reason) = installVerdict {
             Self.logStderr(Self.uncheckedNote(bundleID: bundleID, reason: reason))
         }
+        SlowCallWatchdog.mark(resumes ? "activating the app" : "launching the app")
         if resumes {
             try await launchDriver.activate(bundleID: bundleID)
         } else {
@@ -314,6 +317,7 @@ extension MCPServer {
         let clearAppDataDriver = try await driver(args)
         let springBoardNote = await recheckXCUITestRunnerBeforeLaunch(args: args)
         let clearAppDataKey = Self.engineKey(args)
+        SlowCallWatchdog.mark("clearing the app's data")
         do {
             try await clearAppDataDriver.clearAppData(bundleID: bundleID)
         } catch let clearError where ReinstallSource.isClearAppDataUnsupported(clearError) {

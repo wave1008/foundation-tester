@@ -91,15 +91,14 @@ final class RunnerAccessibilityHealthTests: XCTestCase {
         XCTAssertFalse(futility.contains(udid: "SIM-1"), "測って健全なら忘れる")
     }
 
-    /// 新しいランナーでも遅かった事実と、そこから言えること(ランナーのプロセスには無い)だけを言う
+    /// SpringBoard とランナーを起こし直しても遅かった事実と、次の一手(シミュレータの再起動)だけを言う
     func testRestartDidNotHelpMessage() {
         XCTAssertEqual(
             RunnerAccessibilityHealth.restartDidNotHelpMessage(
                 name: "iPhone 17 Pro-01", port: 8124, afterSeconds: 2.7),
-            "⚠️ iPhone 17 Pro-01: the restarted xcuitest bridge on port 8124 still took 2.7s for a"
-                + " one-element accessibility query (normal is under 0.3s), so the slowness is not in the"
-                + " runner process — it is not restarted again in this run; rebooting the simulator is the"
-                + " next thing to try")
+            "⚠️ iPhone 17 Pro-01: after restarting SpringBoard (on a simulator) and the xcuitest bridge on"
+                + " port 8124, it still took 2.7s for a one-element accessibility query (normal is under 0.3s)"
+                + " — it is not restarted again in this run; rebooting the simulator is the next thing to try")
     }
 
     func testKeptSlowRunnerMessage() {

@@ -38,6 +38,7 @@ final class MCPServer {
     @TaskLocal static var currentCallID = 0
     var nextCallID = 1
     var lastTapTargets: SessionMap<ElementInfo> { SessionMap(server: self, path: \.lastTapTarget) }
+    var focusedBeforeLastTaps: SessionMap<ElementInfo> { SessionMap(server: self, path: \.focusedBeforeLastTap) }
     var knownScreens: SessionMap<FTRect> { SessionMap(server: self, path: \.knownScreen) }
     var uiFrameworkHints: SessionMap<AppUIFramework> { SessionMap(server: self, path: \.uiFrameworkHint) }
     var udids: SessionMap<String?> { SessionMap(server: self, path: \.udid) }

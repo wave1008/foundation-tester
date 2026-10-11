@@ -51,6 +51,22 @@ final class MCPElapsedBreakdownTests: XCTestCase {
         XCTAssertEqual(phaseAtTap, "performing the action")
     }
 
+    /// **起動・データ消去は自分の段に積む**(実測: SpringBoard の確認 0.17s が、後ろの起動まで積まれて 4.7s と出た)
+    func testLaunchAndClearAppDataHaveTheirOwnPhase() async throws {
+        let driver = FakeDriver()
+        var phases: [String] = []
+        driver.onLifecycle = {
+            let previous = SlowCallWatchdog.mark("probe")
+            SlowCallWatchdog.restore(previous)
+            if let phase = previous?.phase { phases.append(phase) }
+        }
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver }, recordSnapshot: { _, _, _ in })
+        _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.example.app"])
+        _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.example.app", "resume": true])
+        _ = try await server.call(tool: "ft_clear_app_data", args: ["bundleId": "com.example.app"])
+        XCTAssertEqual(phases, ["launching the app", "activating the app", "clearing the app's data"])
+    }
+
     /// **操作の後の撮り直しは自分の段に積む**(「操作の後の読み」の中で、待ちと読みのどちらに時間を使ったか分からなかった)
     func testTheSettleReReadHasItsOwnPhase() async throws {
         let driver = FakeDriver()

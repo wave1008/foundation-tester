@@ -97,6 +97,23 @@ final class MCPTypeFocusRescueTests: XCTestCase {
         XCTAssertTrue(body.contains("no single input field inside the tapped element"), body)
     }
 
+    /// ⑤叩いた操作が焦点を動かした(検索ボタン → 開いた検索欄に焦点)→ 意図どおりなので警告しない。
+    /// 実測: Google マップの「目的地を入力」→ 検索欄へ正しく入ったのに「前の欄へ入ったかも」と警告していた
+    func testFocusMovedByTheTapIsNotWarned() async throws {
+        let button = el(1, "button", id: "destination_button", frame: FTRect(x: 16, y: 400, width: 300, height: 48))
+        driver.snapshotResponse = snapshot([button])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        _ = try await server.call(tool: "ft_tap", args: ["ref": 1])
+        let opened = snapshot([el(1, "textField", id: "search_box", frame: FTRect(x: 16, y: 60, width: 300, height: 40),
+                                  focused: true)])
+        driver.scriptedSnapshots = [opened, opened]
+
+        let result = try await server.call(tool: "ft_type", args: ["text": "W3"])
+
+        XCTAssertEqual(typeCalls(), ["type(ref:nil,text:W3)"], "\(driver.calls)")
+        XCTAssertFalse(text(result).contains("left input focus"), text(result))
+    }
+
     /// ④直前が tap でない(swipe を挟んだ)→ 救済の木を払わず、従来どおり撃つ
     func testNoPrecedingTapPaysNoRescueRead() async throws {
         driver.snapshotResponse = screen(focusOn: 1)

@@ -98,14 +98,19 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         return foregroundBundleID
     }
 
+    /// launch / activate / clearAppData を撃った瞬間に呼ぶ(段階の内訳の検証用)
+    var onLifecycle: (() -> Void)?
+
     func launch(bundleID: String) async throws {
         try record("launch(\(bundleID))", "launch")
+        onLifecycle?()
     }
 
     /// **既定実装(AppDriver extension)は launch へ落ちる**ので、上書きしないと resume(activate)
     /// を撃った呼び出しが "launch(...)" として記録され、activate 固有のテストが書けない
     func activate(bundleID: String) async throws {
         try record("activate(\(bundleID))", "activate")
+        onLifecycle?()
     }
 
     /// 既定実装は 501(向け直せない)。記録だけして通す
@@ -179,6 +184,7 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
             throw clearAppDataError
         }
         try record("clearAppData(\(bundleID))", "clearAppData")
+        onLifecycle?()
     }
 
     /// tap(ref:) を撃った瞬間に呼ぶ(段階の内訳の検証用)

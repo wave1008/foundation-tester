@@ -86,9 +86,10 @@ extension MCPServer {
             // 撃つ直前にだけ nativeRef で戻す(応答・記録には引き続きセッション ref を使う)
             try await d.tap(ref: nativeRef(target.ref, args: args))
             recordInteraction(action: "tap", resolvedRef: target.ref, args: args)
-            // 次の ref なし ft_type の救済材料(verifiedRef が撮り直した木から引く)
-            lastTapTargets[Self.engineKey(args)] = lastSnapshots[Self.engineKey(args)]?
-                .elements.first { $0.ref == target.ref }
+            // 次の ref なし ft_type の救済材料(verifiedRef が撮り直した木 = 叩く前の木から引く)
+            let treeBeforeTap = lastSnapshots[Self.engineKey(args)]?.elements
+            lastTapTargets[Self.engineKey(args)] = treeBeforeTap?.first { $0.ref == target.ref }
+            focusedBeforeLastTaps[Self.engineKey(args)] = treeBeforeTap?.first { $0.focused == true }
             return text("tap [\(ref)] done.\(target.note)"
                 // ブリッジの /tap が返す note(例:
                 // 「activate 不発 → 合成タッチ」— BridgeClient.tap(ref:) の lastActionNote)を
@@ -225,13 +226,18 @@ extension MCPServer {
                let tapped = lastTapTargets[Self.engineKey(args)],
                let fresh = try? await typeDriver.snapshot(bypassingCache: typeDriver.supportsCacheBypass),
                InputFocusRescue.focusIsElsewhere(from: tapped, in: fresh.elements) {
-                let focusedName = fresh.elements.first { $0.focused == true }.map(RefGuard.describe)
+                let focused = fresh.elements.first { $0.focused == true }
+                let focusedName = focused.map(RefGuard.describe)
                 if let field = InputFocusRescue.fieldToType(after: tapped, in: fresh.elements) {
                     rescuedNativeRef = field.ref
                     note += " (tapping \(RefGuard.describe(tapped)) left input focus"
                         + (focusedName.map { " on \($0)" } ?? " nowhere")
                         + ", so the text was sent to the input field inside it,"
                         + " \(RefGuard.describe(field)))"
+                } else if let focused, !InputFocusRescue.focusWasAlreadyThere(
+                              before: focusedBeforeLastTaps[Self.engineKey(args)], after: focused) {
+                    // 焦点は叩いた操作が動かした先(検索ボタンが開いた検索欄など)= 意図どおり。警告しない
+                    // (入った先は下の typedIntoNote が言う。実測: 「目的地を入力」→ 検索欄で誤った警告が出ていた)
                 } else {
                     note += " (warning: tapping \(RefGuard.describe(tapped)) left input focus"
                         + (focusedName.map { " on \($0)" } ?? " nowhere")

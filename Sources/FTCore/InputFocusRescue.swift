@@ -58,6 +58,17 @@ public enum InputFocusRescue {
         return candidates.first
     }
 
+    /// **焦点は叩く前からそこにあったか**(= 叩いても動かなかった残りか)。偽なら焦点は叩いた操作が動かした先
+    /// (検索ボタンが開いた検索欄など)で、そこへ入れるのが意図どおり。真のときだけ「前の欄へ入った」恐れがある。
+    /// 叩く前の木に焦点が無ければ偽。同一かは `focusIsElsewhere` と同じく id + 型、id が無ければ中心の位置で見る
+    public static func focusWasAlreadyThere(before: ElementInfo?, after focused: ElementInfo) -> Bool {
+        guard let before else { return false }
+        if let id = before.identifier, !id.isEmpty {
+            return focused.identifier == id && focused.type == before.type
+        }
+        return contains(before.frame, centreOf: focused.frame)
+    }
+
     private static func contains(_ rect: FTRect, centreOf inner: FTRect) -> Bool {
         let x = inner.x + inner.width / 2
         let y = inner.y + inner.height / 2

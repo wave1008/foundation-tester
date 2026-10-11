@@ -292,6 +292,8 @@ final class MCPBatchTests: XCTestCase {
             elements: [ok(1, 100), ok(2, 300)], truncatedCount: 0)
         let result = try await server.call(tool: "ft_batch", args: steps("tap 'OK'"))
         XCTAssertTrue(body(result).contains("matched 2 elements"), body(result))
+        // 同名の2件はラベルでは区別できないので、撃った方を位置で名指しする
+        XCTAssertTrue(body(result).contains("the first one was used (button \"OK\" at 10,100 100x40)"), body(result))
     }
 
     // MARK: - (d) 成功時にツリーが1回だけ返る

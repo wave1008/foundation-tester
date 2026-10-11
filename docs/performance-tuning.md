@@ -1722,6 +1722,9 @@ OCR の段も FM のテキストの視覚検証も切った run でも起こし�
 それまで操作そのものの時間が `probing for a system alert` に積まれ、アラートの確認の無い Android にもその段が出ていた。
 操作の後の読みからも、撮り直し(`re-reading: …`)・waitForChange の待ち(`waiting for the screen to change`)と
 その安定確認(`confirming the change has settled`)・応答の組み立て(`composing the tree and notes`)を分けた。
+`ft_launch` / `ft_clear_app_data` も起動の入口の SpringBoard の確認と、在否の確認(`checking the app is installed`)・
+起動(`launching the app` / `activating the app`)・消去(`clearing the app's data`)を分けた。分ける前は起動の時間が確認に積まれ、
+「checking the simulator's SpringBoard before launching 4.7s」と出ていた(ランナーのログでは確認の1問は 0.17s)。
 分けた後の計測(Apple マップ・21 手・2分05秒): 操作の後の読み 20 回で 8.3s(平均 0.42s)・waitForChange 7 回で 6.8s・
 撮り直しは 0.1s を超えた回が無い。Android のタップの「操作そのもの」は 0.43〜1.7s とばらつく(内訳は未調査)。
 

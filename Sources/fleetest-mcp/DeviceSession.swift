@@ -44,6 +44,9 @@ struct DeviceSession {
     /// tap / type 以外の操作(`recordInteraction`)で消える —— 間に別の操作を挟んだ type は
     /// 「叩いた欄へ入れる」意図ではない
     var lastTapTarget: ElementInfo?
+    /// `lastTapTarget` を叩く直前の木で焦点のあった要素(無ければ nil)。ref の tap のたびに上書きするので消さなくてよい
+    /// (読むのは `lastTapTarget` がある回だけ)。焦点が叩く前からそこにあったかを見分ける材料
+    var focusedBeforeLastTap: ElementInfo?
     /// 座標の操作が範囲判定に使う画面の大きさ。**直近の木が無いときの控え**
     /// (`coordinateScreen`)—— 生読みで採り、世代(`lastSnapshot` / `refGenerations`)は作らない。
     /// 作ると settle-lite の「操作前の木」がこの読みになり、呼び手が撮っていない木を基準に待つ
