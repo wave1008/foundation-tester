@@ -31,6 +31,15 @@ final class MCPClearAppDataPhysicalTests: XCTestCase {
         appB = tmpDir.appendingPathComponent("B.app").path
         try? FileManager.default.createDirectory(atPath: appA, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(atPath: appB, withIntermediateDirectories: true)
+        // 入れ直しの前にパッケージの bundle ID を確かめる(reinstallPackageRefusal)ので、本物と同じく Info.plist を置く
+        Self.writeInfoPlist(bundleID: "com.example.app", into: appA)
+        Self.writeInfoPlist(bundleID: "com.example.app", into: appB)
+    }
+
+    private static func writeInfoPlist(bundleID: String, into app: String) {
+        let data = try? PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": bundleID], format: .xml, options: 0)
+        FileManager.default.createFile(atPath: app + "/Info.plist", contents: data)
     }
 
     override func tearDown() {
@@ -208,5 +217,33 @@ final class MCPClearAppDataPhysicalTests: XCTestCase {
         guard case .failure(let error) = result else { return XCTFail("成功するはずがない") }
         XCTAssertTrue(error.message.contains("NOT uninstalled"), error.message)
         XCTAssertTrue(error.message.contains("/tmp/gone.app"), error.message)
+    }
+
+    /// **控えが別のアプリのパッケージなら、消す前に断る**。`ft_install A` の後の `ft_clear_app_data bundleId: B` は
+    /// B を消して A を入れていた(控えはデバイスごとに1つで bundle ID と対応しない)
+    func testRememberedPackageOfAnotherAppRefusesWithoutUninstalling() async throws {
+        driver.clearAppDataError = Self.physicalOnly501
+        Self.writeInfoPlist(bundleID: "com.example.other", into: appA)
+        _ = try await server.call(tool: "ft_install", args: ["packagePath": appA!])
+        do {
+            _ = try await server.call(tool: "ft_clear_app_data", args: ["bundleId": "com.example.app"])
+            XCTFail("別のアプリのパッケージで入れ直そうとした")
+        } catch {
+            XCTAssertTrue("\(error)".contains("com.example.other"), "\(error)")
+            XCTAssertTrue("\(error)".contains("NOT uninstalled"), "\(error)")
+        }
+        XCTAssertFalse(driver.calls.contains("uninstall(com.example.app)"), "\(driver.calls)")
+    }
+
+    /// 控えの bundle ID が読めなければ確かめられないので断る / 明示の packagePath なら申告を信じて通す
+    func testUnreadablePackageRefusesOnlyWhenTheSourceIsTheRememberedOne() {
+        XCTAssertNotNil(MCPServer.reinstallPackageRefusal(bundleID: "a", path: "/x", explicit: false,
+                                                          packageBundleID: nil))
+        XCTAssertNil(MCPServer.reinstallPackageRefusal(bundleID: "a", path: "/x", explicit: true,
+                                                       packageBundleID: nil))
+        XCTAssertNotNil(MCPServer.reinstallPackageRefusal(bundleID: "a", path: "/x", explicit: true,
+                                                          packageBundleID: "b"), "明示でも別のアプリなら断る")
+        XCTAssertNil(MCPServer.reinstallPackageRefusal(bundleID: "a", path: "/x", explicit: false,
+                                                       packageBundleID: "a"))
     }
 }

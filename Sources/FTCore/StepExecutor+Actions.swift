@@ -596,8 +596,7 @@ extension StepExecutor {
             // keyboard/disabled が2回付く(発覚したバグ)ので、この2つだけをここで確定する。
             // **申告 keyboardFrame はキー面だけ**なので木の chrome で広げ、chrome 自身とその
             // 部分木(地球儀キー等)は除外して渡す(KeyboardOcclusion の doc。MCP 側も同じ型で揃える)
-            let tapKeyboardOcclusion = KeyboardOcclusion.resolve(
-                reported: snapshot.keyboardFrame, in: snapshot.elements)
+            let tapKeyboardOcclusion = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame, in: snapshot.elements, screen: snapshot.screen)
             adviseTarget(tapKeyboardOcclusion.advisory(for: element))
             // **木に出ないオーバーレイ・ウィンドウ**も同じ理由でここでしか言えない
             // (覆っている実体が elements に1要素も載らない。OverlayWindowOcclusion の doc)。
@@ -889,9 +888,8 @@ extension StepExecutor {
                 ? Self.joinNotes(
                     TapTargetGeometry.advisory(for: element, in: snapshot.elements,
                                                screen: snapshot.screen,
-                                               keyboardOcclusion: KeyboardOcclusion.resolve(
-                                                  reported: snapshot.keyboardFrame,
-                                                  in: snapshot.elements),
+                                               keyboardOcclusion: KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame,
+                                                  in: snapshot.elements, screen: snapshot.screen),
                                                overlayWindows: OverlayWindowOcclusion.resolve(
                                                   reported: snapshot.overlayWindowFrames),
                                                isAndroid: isAndroid),
@@ -1796,13 +1794,15 @@ extension StepExecutor {
                 return retook ? .stillCovered(element: current, snapshot: currentSnapshot) : nil
             }
             let keyboard = KeyboardOcclusion.resolve(reported: currentSnapshot.keyboardFrame,
-                                                     in: currentSnapshot.elements)
+                                                     in: currentSnapshot.elements, screen: currentSnapshot.screen)
             var jump: Double?
             var coverRect: FTRect?
-            // 申告が無い木では chrome から推定する(意味は変えない。理由は keyboardBandFromChrome)
+            // 申告が無い木では chrome から推定する(意味は変えない。理由は keyboardBandFromChrome)。
+            // **申告が画面の外(隠れた)なら推定しない** —— 申告がある以上「無い」ではない
             let keyboardBand = keyboard.frame
-                ?? TapTargetGeometry.keyboardBandFromChrome(in: currentSnapshot.elements,
-                                                            screen: currentSnapshot.screen)
+                ?? (currentSnapshot.keyboardFrame == nil
+                    ? TapTargetGeometry.keyboardBandFromChrome(in: currentSnapshot.elements,
+                                                               screen: currentSnapshot.screen) : nil)
             if let keyboardFrame = keyboardBand,
                TapTargetGeometry.keyboardCoveredAdvisory(current, keyboardFrame: keyboardFrame) != nil {
                 jump = TapTargetGeometry.uncoverScrollJump(target: current, coveredBy: keyboardFrame,
@@ -1858,8 +1858,9 @@ extension StepExecutor {
                 return .lost(snapshot: after)
             }
             let afterBand = KeyboardOcclusion.resolve(reported: after.keyboardFrame,
-                                                      in: after.elements).frame
-                ?? TapTargetGeometry.keyboardBandFromChrome(in: after.elements, screen: after.screen)
+                                                      in: after.elements, screen: after.screen).frame
+                ?? (after.keyboardFrame == nil
+                    ? TapTargetGeometry.keyboardBandFromChrome(in: after.elements, screen: after.screen) : nil)
             let stillCovered = (afterBand.flatMap {
                     TapTargetGeometry.keyboardCoveredAdvisory(moved, keyboardFrame: $0)
                 } != nil)

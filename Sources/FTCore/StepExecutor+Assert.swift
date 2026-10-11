@@ -546,8 +546,7 @@ extension StepExecutor {
     /// —— 覆われているだけなら要素は木にあり resolve が拾うので、この文言の出番はここには来ない
     static func keyboardResizedHint(_ snapshot: SnapshotResponse?) -> String {
         guard let snapshot else { return "" }
-        let occlusion = KeyboardOcclusion.resolve(
-            reported: snapshot.keyboardFrame, in: snapshot.elements)
+        let occlusion = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame, in: snapshot.elements, screen: snapshot.screen)
         guard occlusion.windowResizedAboveKeyboard, let kb = occlusion.frame else { return "" }
         return " (the soft keyboard is up at (\(Int(kb.x)),\(Int(kb.y))"
             + " \(Int(kb.width))x\(Int(kb.height))) and the window has shrunk to fit above it,"
@@ -1528,8 +1527,9 @@ extension StepExecutor {
                 noteCodesThisStep.insert(.slowSnapshot)
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)
-            lastShown = snapshot.keyboardShown
-            if snapshot.keyboardShown == wantShown {
+            // 画面の外の矩形(隠れた・最小化したキーボード)を「出ている」と読まない(KeyboardWait.shownState)
+            lastShown = KeyboardWait.shownState(snapshot)
+            if lastShown == wantShown {
                 // **否定側(keyboardIsNotShown)だけ**通す前に確かめる。閉じたと読めた木が
                 // 古いと、開いたままのキーボードを「閉じている」と通す。肯定側は
                 // 「開くのを待つ」用途なので古い木では一致せずポーリングが続く

@@ -1343,6 +1343,7 @@ final class MCPRefGuardTests: XCTestCase {
         var withKeyboard = screen([
             element(ref: 1, type: "button", id: "btn_save", label: "保存", x: 0, y: 1135, w: 360, h: 132),
         ])
+        withKeyboard.screen = FTRect(x: 0, y: 0, width: 1080, height: 2340)  // Pixel 4a(px)
         withKeyboard.keyboardFrame = FTRect(x: 0, y: 1267, width: 1080, height: 1073)
         let note = MCPServer.keyboardCoverageNote(withKeyboard)
         XCTAssertTrue(note.contains("the window has shrunk"), "脱落を疑う文言であること: \(note)")
@@ -1355,6 +1356,7 @@ final class MCPRefGuardTests: XCTestCase {
         var withKeyboard = screen([
             element(ref: 1, type: "other", id: "deco", x: 0, y: 1300, w: 100, h: 50),
         ])
+        withKeyboard.screen = FTRect(x: 0, y: 0, width: 1080, height: 2340)  // Pixel 4a(px)
         withKeyboard.keyboardFrame = FTRect(x: 0, y: 1267, width: 1080, height: 1073)
         let note = MCPServer.keyboardCoverageNote(withKeyboard)
         XCTAssertTrue(note.contains("nothing tappable is beneath it"), "従来文言のままであること: \(note)")

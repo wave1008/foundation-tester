@@ -493,7 +493,7 @@ final class SweepHarnessTests: XCTestCase {
         // (MCPServer+Snapshot.swift)と同じ型で広げ、chrome 自身とその部分木を除外してから
         // 数える —— 生の申告のまま数えると、この砦がキーボード遮蔽の取りこぼしを永久に検出できない
         let keyboardOcclusion = KeyboardOcclusion.resolve(
-            reported: snap.keyboardFrame, in: els)
+            reported: snap.keyboardFrame, in: els, screen: snap.screen)
         var c = Counts()
         for e in els {
             let ghost = RefGuard.isUntappableGhost(e, in: els, screen: snap.screen)
@@ -635,7 +635,7 @@ final class SweepHarnessTests: XCTestCase {
                 + " scrolledOut: \(c.scrolledOut), clippedByContainer: \(c.clippedByContainer)),")
             let els = snap.elements
             let keyboardOcclusion = KeyboardOcclusion.resolve(
-                reported: snap.keyboardFrame, in: els)
+                reported: snap.keyboardFrame, in: els, screen: snap.screen)
             for e in els {
                 let who = RefGuard.describe(e)
                 if let hit = RefGuard.overlayCovering(e, in: els, screen: snap.screen) {

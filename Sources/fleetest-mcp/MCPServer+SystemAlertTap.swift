@@ -60,7 +60,7 @@ extension MCPServer {
             }
         }
         return text("Pressed \"\(label)\" on the system alert \(title).\(back)"
-            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
+            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: true)))
     }
 
     static let springboardBundleID = "com.apple.springboard"

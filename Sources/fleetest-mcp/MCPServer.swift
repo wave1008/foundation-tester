@@ -33,6 +33,7 @@ final class MCPServer {
     var refGenerations: SessionMap<[(base: Int, snapshot: SnapshotResponse, actionCount: Int, followsOwnAction: Bool)]> { SessionMap(server: self, path: \.refGenerations) }
     var sessionActionCounts: SessionMap<Int> { SessionMap(server: self, path: \.sessionActionCount) }
     var lastActionCallIDs: SessionMap<Int> { SessionMap(server: self, path: \.lastActionCallID) }
+    var pendingTypeKeyboardChecks: SessionMap<PendingTypeKeyboardCheck> { SessionMap(server: self, path: \.pendingTypeKeyboardCheck) }
     /// いま処理中のツール呼び出しの番号(0 = 呼び出しの外)。TaskLocal なので、並行する呼び出しが互いの番号を見ない
     @TaskLocal static var currentCallID = 0
     var nextCallID = 1

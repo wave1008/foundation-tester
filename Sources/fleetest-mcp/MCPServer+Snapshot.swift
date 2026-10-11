@@ -333,6 +333,27 @@ extension MCPServer {
             .first { $0.snapshot.elements.contains { $0.ref == ref } }?.actionCount
     }
 
+    /// **直前の ft_type の後、キーボードが上がりきるのを待つ**(DSL の consumePendingTypeKeyboardCheck と同じ判定
+    /// `KeyboardWait.shouldAwaitAppearance`)。type はキーボードの表示を待たずに返るので、待たずに撃つと、まだ画面の外にある
+    /// キーボードが後から上がり、下端のボタンへのタップがキーボードに当たる(DSL で実測: E2EY-Flutter の反転チャット)。
+    /// **読みを足さない**: 判定には verifiedRef がどうせ撮る木を使い、待つときだけ撮り直す。出なければそのまま返す
+    func consumePendingTypeKeyboardCheck(_ fresh: SnapshotResponse, driver: AppDriver,
+                                         args: [String: Any]) async throws -> SnapshotResponse {
+        let key = Self.engineKey(args)
+        guard let pending = pendingTypeKeyboardChecks[key] else { return fresh }
+        pendingTypeKeyboardChecks[key] = nil
+        guard KeyboardWait.shouldAwaitAppearance(
+            isAndroid: driver is AndroidDriver, before: pending.before?.keyboardFrame,
+            after: fresh.keyboardFrame, screen: fresh.screen, typedNewline: pending.typedNewline) else { return fresh }
+        var read = fresh
+        let deadline = ContinuousClock.now + .milliseconds(Int(KeyboardWait.appearSeconds * 1000))
+        while ContinuousClock.now < deadline, !KeyboardWait.onScreen(read.keyboardFrame, screen: read.screen) {
+            try await Task.sleep(for: .milliseconds(Int(KeyboardWait.pollSeconds * 1000)))
+            read = try await freshSnapshot(driver, args: args)
+        }
+        return read
+    }
+
     /// この ref の世代が、このセッションの操作と同じ呼び出しの中で操作の後に読んだ木か(snapshotAfter・waitFor の読み)
     func generationFollowsOwnAction(containing ref: Int, args: [String: Any]) -> Bool {
         refGenerations[Self.engineKey(args)]?.reversed()
@@ -463,8 +484,11 @@ extension MCPServer {
     /// **bulkExemptCount は見ない**: bulk 群(BridgeSnapshotThinning)は cap の外でも常に
     /// `elements` へ送られる(捨てられない)ので、その増減は既に `elements` の差分に現れており、
     /// 二重に見る意味が無い
+    /// **キーボードの出入りも変化に数える**(`KeyboardWait.isShown`。キーボードはアプリの木の外で、窓が縮まない画面では
+    /// ft_hide_keyboard・改行だけの ft_type の後も木は同一 = 閉じたのに「効かなかったかも」と言っていた)
     static func looksUnchanged(_ before: SnapshotResponse, _ after: SnapshotResponse) -> Bool {
-        guard before.elements.count == after.elements.count,
+        guard KeyboardWait.isShown(before) == KeyboardWait.isShown(after),
+              before.elements.count == after.elements.count,
               before.truncatedCount == after.truncatedCount else { return false }
         return zip(before.elements, after.elements).allSatisfy { a, b in
             a.ref == b.ref && a.type == b.type && a.identifier == b.identifier
@@ -582,8 +606,11 @@ extension MCPServer {
     /// **失敗しても throw しない**: 操作自体は成功しているので、ここで throw すると
     /// 「タップは効いたのにエラーが返る」になり、読み手が操作を撃ち直して二重操作になる。
     /// **waitFor があれば settle-lite の代わりにそちらを使う**(両方は走らせない)
-    func snapshotAfterBody(_ args: [String: Any]) async -> String {
-        await snapshotAfterBodyWithStatus(args).text
+    /// `outsideTheAppTree`: 操作の相手がアプリの木に出ない(SpringBoard のアラート・ホーム画面・別のアプリ)。閉じても
+    /// アプリの木は変わらないのが正常なので、操作前の木との比較(「効かなかったかも」)をしない。
+    /// **既定値を置かない** —— 新しい呼び手に「相手はアプリの木の中か」を決めさせる(書き忘れをコンパイルで止める)
+    func snapshotAfterBody(_ args: [String: Any], outsideTheAppTree: Bool) async -> String {
+        await snapshotAfterBodyWithStatus(args, outsideTheAppTree: outsideTheAppTree).text
     }
 
     /// `snapshotAfterBody` 本体。**back の無効判定(ft_navigate)が succeeded を見る**
@@ -591,12 +618,13 @@ extension MCPServer {
     /// 残るため、`succeeded` を返さずに「今の lastSnapshots」だけを見ると back 前の木と
     /// 指紋が自明に一致し、謝罪文の横に「back は効かなかった」という偽の注記が並ぶ
     /// (実測)。他の呼び出し口は text だけを使い、この差は見ない
-    func snapshotAfterBodyWithStatus(_ args: [String: Any]) async -> (text: String, succeeded: Bool) {
+    func snapshotAfterBodyWithStatus(_ args: [String: Any],
+                                     outsideTheAppTree: Bool) async -> (text: String, succeeded: Bool) {
         guard args["snapshotAfter"] as? Bool == true else { return ("", false) }
         do {
             let snapshotDriver = try await driver(args)
             let key = Self.engineKey(args)
-            let beforeAction = lastSnapshots[key]
+            let beforeAction = outsideTheAppTree ? nil : lastSnapshots[key]
 
             let (effectiveArgs, inheritedNote) = inheritingSnapshotFilters(args)
 
@@ -1016,7 +1044,8 @@ extension MCPServer {
             : ""
         let takenFrom = generationSnapshot(containing: ref, args: args)
         let lastRendered = takenFrom?.elements ?? []
-        let fresh = try await freshSnapshot(driver, args: args)
+        var fresh = try await freshSnapshot(driver, args: args)
+        fresh = try await consumePendingTypeKeyboardCheck(fresh, driver: driver, args: args)
         if let message = Self.refFromAnotherAppMessage(
             ref: ref, takenFrom: takenFrom, fresh: fresh) { throw MCPError(message) }
         let key = Self.engineKey(args)
@@ -1039,8 +1068,7 @@ extension MCPServer {
         // 木の chrome で広げ、chrome 自身とその部分木は除外する(KeyboardOcclusion の doc)。
         // DSL 側(StepExecutor+Actions.swift)も同じ型で揃える —— 片方だけ広げると
         // MCP と DSL が同じ画面で違う判断をする
-        let keyboardOcclusion = KeyboardOcclusion.resolve(
-            reported: fresh.keyboardFrame, in: fresh.elements)
+        let keyboardOcclusion = KeyboardOcclusion.resolve(reported: fresh.keyboardFrame, in: fresh.elements, screen: fresh.screen)
         // **木に出ないオーバーレイ・ウィンドウ**(Android のポップアップ)。keyboardFrame と
         // 同じく申告からしか言えない —— 覆っている実体が fresh.elements に1要素も載らない
         let overlayWindows = OverlayWindowOcclusion.resolve(reported: fresh.overlayWindowFrames)
@@ -1048,7 +1076,7 @@ extension MCPServer {
         case .gone:
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
                                                 truncatedCount: fresh.truncatedCount,
-                                                keyboardShown: fresh.keyboardFrame != nil || fresh.keyboardShown == true))
+                                                keyboardShown: KeyboardWait.isShown(fresh)))
         case .ghost(let found):
             // **拒否せず警告して撃つ**(方針を後退させた。理由は RefGuard の宣言)。
             // **キーボード被覆だけは断る**(`keyboardRefusal` の doc)
@@ -1159,7 +1187,7 @@ extension MCPServer {
             case .gone:
                 throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
                                                     truncatedCount: fresh.truncatedCount,
-                                                keyboardShown: fresh.keyboardFrame != nil || fresh.keyboardShown == true))
+                                                keyboardShown: KeyboardWait.isShown(fresh)))
             case .ghost(let found), .found(let found, _):
                 // **rect にできない容器を黙って渡さない**: 幅か高さが0だと、これを起点にした
                 // ジェスチャは1px も動かせる場所を持たない

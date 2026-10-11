@@ -20,7 +20,7 @@ extension StepExecutor {
         let settledBefore = try await settledSignature(phase: &phase)
         if settledBefore.changed { noteCodesThisStep.insert(.settledBeforeGesture) }
         let snapshot = settledBefore.snapshot
-        let hasKeyboard = snapshot.keyboardFrame != nil || snapshot.keyboardShown == true
+        let hasKeyboard = KeyboardWait.isShown(snapshot)
         let path = hasKeyboard ? scrollPath(step: step, intent: .gesture, in: snapshot) : nil
         let viaXCUITest = try await swipeWithFallback(direction, path: path, phase: &phase)
         // 慣性が止まるまで待つ。ランナー側は /swipe を整定対象から外している(そこで待っても
@@ -604,7 +604,7 @@ extension StepExecutor {
             let snapshot = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
             phase.snapshotMs += Self.ms(clock.now - start)
             if snapshot.elements.contains(where: { $0.focused == true })
-                || snapshot.keyboardShown == true { return nil }
+                || KeyboardWait.isShown(snapshot) { return nil }
             guard Date() < deadline else {
                 return "no field ever took focus within \(FocusWait.waitSeconds)s before \(operation)"
                     + " — the keys may have gone to whichever field still had it"

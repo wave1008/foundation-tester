@@ -36,6 +36,9 @@ struct DeviceSession {
     var sessionActionCount: Int?
     /// 最後に `recordAction` を通った呼び出しの番号(`MCPServer.currentCallID`)
     var lastActionCallID: Int?
+    /// 直前の ft_type の後にキーボードの出現を待つ印(次の ref 操作の `verifiedRef` が消化する。
+    /// type 以外の操作を挟んだら `recordInteraction` が捨てる = `lastTapTarget` と同じ寿命)
+    var pendingTypeKeyboardCheck: PendingTypeKeyboardCheck?
     /// **直前の `ft_tap` が叩いた要素**。ref なし `ft_type` が「叩いた欄へ焦点が
     /// 立たなかった」形を救うための材料(DSL の `StepExecutor.lastTapTarget` と同じ役)。
     /// tap / type 以外の操作(`recordInteraction`)で消える —— 間に別の操作を挟んだ type は
@@ -215,4 +218,10 @@ struct SessionFlags {
     }
 
     var isEmpty: Bool { !server.sessions.values.contains { $0[keyPath: path] } }
+}
+
+/// ft_type の時点の材料(`KeyboardWait.shouldAwaitAppearance` に渡す)。打つ前の木と、改行で終わったか
+struct PendingTypeKeyboardCheck {
+    let before: SnapshotResponse?
+    let typedNewline: Bool
 }

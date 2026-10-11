@@ -201,7 +201,8 @@ public final class BridgeClient: AppDriver, Sendable {
         // **デバイス名は終了より先に採る**: 終了するとブリッジが応答しなくなる経路がある
         // (in-app ブリッジは対象アプリのプロセス内に住む)
         let device = try await simulatorTarget()
-        // 起動中に消すとプロセスが保持している状態が書き戻る
+        // 起動中に消すとプロセスが保持している状態が書き戻る。ランナーのセッションを閉じる(セッションの外で
+        // 起動したアプリには効かないので、確実な終了は clearAppDataOnSimulator が持つ)
         try? await terminate()
         try clearAppDataOnSimulator(bundleID: bundleID, target: device)
     }
@@ -321,9 +322,26 @@ public final class BridgeClient: AppDriver, Sendable {
         return try await resolveTargetFromBridge()
     }
 
-    /// データコンテナの**中身**を消す(コンテナ自体は残す)。対象の特定と終了は呼び出し側の責務
-    /// (in-app は終了するとブリッジが死ぬため、順序を呼び出し側で決める必要がある)
+    /// シミュレータでアプリが止まっていることを `simctl terminate` で確かめる(動いていれば止める)。
+    /// ランナーの terminate はランナーのセッションが起動したアプリにしか効かないので、止まったと言う前に通す。
+    /// 終了コード 0 = 止めた / 3(ESRCH)= 動いていなかった。それ以外は止められなかったとして投げる(文言を見ない)
+    public static func stopOnSimulator(bundleID: String, target: String, purpose: String) throws {
+        let stop = try Shell.run(["xcrun", "simctl", "terminate", target, bundleID], timeout: 15)
+        guard stop.status == 0 || stop.status == 3 else {
+            throw DriverError.badResponse(status: Int(stop.status),
+                body: "could not stop \(bundleID) \(purpose): \(stop.tail)")
+        }
+    }
+
+    /// データコンテナの**中身**を消す(コンテナ自体は残す)。対象の特定は呼び出し側の責務
+    /// (in-app は終了するとブリッジが死ぬため、対象を採ってから呼ぶ)
     public func clearAppDataOnSimulator(bundleID: String, target: String) throws {
+        // **消す直前に simctl で終了を確かめる**: 呼び手の終了(ランナーの terminate)はランナーのセッションが
+        // 起動したアプリにしか効かず、失敗は try? で飲まれる。別の経路で起動したアプリ(他ツール・ホーム画面から)は
+        // 動いたまま残り、その下でファイルだけ消えて状態が書き戻る —— 実測(Apple マップ): 消した後も同じ pid のまま動き、
+        // 次の起動で前回の経路画面が出た
+        try Self.stopOnSimulator(bundleID: bundleID, target: target,
+                                 purpose: "before clearing its data (clearing under a running app lets it write its state back)")
         let container = try Shell.run(
             ["xcrun", "simctl", "get_app_container", target, bundleID, "data"])
         guard container.status == 0 else {
@@ -425,6 +443,7 @@ public final class BridgeClient: AppDriver, Sendable {
     /// iOS シミュレータでも初回確認アラートの自動了承(下記)の対象アプリ特定に使う
     /// (実機の devicectl 経路・bundleID なしの呼び出しでは同意ステップを行わない)
     public func openURL(_ url: String, bundleID: String?) async throws {
+        lastActionNote = nil   // 下の同意ステップが戻せなかったときだけ立てる(前の操作の note を残さない)
         if case .physical(let udid) = try await installTarget() {
             let result = try Shell.run(
                 ["xcrun", "devicectl", "device", "process", "openURL", "--device", udid, url])
@@ -502,8 +521,16 @@ public final class BridgeClient: AppDriver, Sendable {
             try? await tap(ref: ref)   // 押せなくても致命的ではない(同意されないだけ)
             break
         }
-        // 対象アプリへ戻す(このステップが springboard へ張り替えたセッションを元に戻す)
-        try? await activate(bundleID: bundleID)
+        // 対象アプリへ戻す(このステップが springboard へ張り替えたセッションを元に戻す)。**戻せなければ黙らない** ——
+        // セッションが SpringBoard に向いたまま残り、以後の木・ref の前提がずれる。
+        // 上の同意ボタンの tap が残した note(ランナーの打ち方の注記)は openURL の注記ではないので、ここで捨てる
+        lastActionNote = nil
+        do {
+            try await activate(bundleID: bundleID)
+        } catch {
+            lastActionNote = "the session could not be pointed back at \(bundleID) after checking for the"
+                + " open-URL confirmation (\(error.localizedDescription)) — it may still be on SpringBoard"
+        }
     }
 
     /// AppDriver 要件。外部(WebViewDelegatingDriver/AppAttachDriver)から呼ばれたときは

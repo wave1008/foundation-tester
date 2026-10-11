@@ -540,7 +540,7 @@ extension StepExecutor {
             // **キーボードの実効矩形は周回ごとに引き直す**(整定待ち中に閉じることがある)。
             // hintDrag/slowDrag の viewport クリップと、末尾の keyboardFrame 注記の両方で使う
             let effectiveKeyboard = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame,
-                                                              in: snapshot.elements).frame
+                                                              in: snapshot.elements, screen: snapshot.screen).frame
             // **周回ごとに記録する**(最終木では消えている情報。ScrollSearchResult の宣言参照)
             truncatedDuringSearch = max(truncatedDuringSearch, snapshot.truncatedCount)
             if let previousSnapshot {
@@ -796,9 +796,8 @@ extension StepExecutor {
                         }
                         // 打ち切り確定時点(confirmed)で引き直す —— ループ先頭の effectiveKeyboard は
                         // この settledSignature 呼び出しより前の木の情報なので使い回さない
-                        let stoppedKeyboard = KeyboardOcclusion.resolve(
-                            reported: confirmed.snapshot.keyboardFrame,
-                            in: confirmed.snapshot.elements).frame
+                        let stoppedKeyboard = KeyboardOcclusion.resolve(reported: confirmed.snapshot.keyboardFrame,
+                            in: confirmed.snapshot.elements, screen: confirmed.snapshot.screen).frame
                         var result = ScrollSearchResult(found: false, fallback: nil,
                                                         viaXCUITest: viaXCUITest,
                                                         hintJumps: hintJumps,

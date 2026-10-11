@@ -50,6 +50,11 @@ struct VisionCapture: AsyncParsableCommand {
             throw ValidationError("no element matches \(selector) on the current screen")
         }
         let png = try await driver.screenshot()
+        // 一色の絵は見本にしない(MCP の ft_capture_element と同じ判定。理由はそちら)
+        if BlankFrameDetector.isUnjudgeable(pngData: png) {
+            throw ValidationError("nothing was saved: the app area of the screenshot is a single colour (nothing is"
+                + " drawn there yet, or the capture failed). Wait for the screen to draw, then capture again")
+        }
         guard let image = VisionClassifier.crop(png: png, frame: element.frame, screen: snapshot.screen) else {
             throw ValidationError("could not crop \(selector) from the screenshot (is it inside the screen?)")
         }

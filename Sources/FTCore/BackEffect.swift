@@ -26,12 +26,20 @@ public enum BackEffect {
         StaleFrameDetector.treeFingerprint(of: before) == StaleFrameDetector.treeFingerprint(of: after)
     }
 
+    /// back が何も変えなかったか。**キーボードの出入りも「効いた」と数える**(`KeyboardWait.isShown`)——
+    /// Android の back は最初にキーボードだけを閉じ、キーボードはアプリの木の外なので、窓が縮まない画面では
+    /// 木が同一のまま。数えないと「効かなかった・もう一度 back を」と言い、従うと2回目で画面まで戻る
+    public static func hadNoEffect(before: SnapshotResponse, after: SnapshotResponse) -> Bool {
+        treesAreIdentical(before: before.elements, after: after.elements)
+            && KeyboardWait.isShown(before) == KeyboardWait.isShown(after)
+    }
+
     /// 注記を出すべきか。observations が空(=1度も撮り直せなかった)なら「変わっていない」と
-    /// 断言する材料が無いので false(黙る)。1件でも before と異なる木があれば back は効いたので
-    /// false。1件以上あり**すべてが before と同一**なら true
-    public static func shouldWarn(before: [ElementInfo], afterObservations: [[ElementInfo]]) -> Bool {
+    /// 断言する材料が無いので false(黙る)。1件でも back が効いた観測があれば false。
+    /// 1件以上あり**すべてで何も変わっていない**なら true
+    public static func shouldWarn(before: SnapshotResponse, afterObservations: [SnapshotResponse]) -> Bool {
         guard !afterObservations.isEmpty else { return false }
-        return afterObservations.allSatisfy { treesAreIdentical(before: before, after: $0) }
+        return afterObservations.allSatisfy { hadNoEffect(before: before, after: $0) }
     }
 
     /// 注記の中核文。呼び手ごとに末尾(advice)だけ変える —— MCP はツール呼び出しとして

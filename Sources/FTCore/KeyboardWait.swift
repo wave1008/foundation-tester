@@ -18,6 +18,21 @@ public enum KeyboardWait {
         return frame.y < screen.y + screen.height
     }
 
+    /// そのスナップショットでキーボードが出ているか。**矩形の申告があればそれだけで決める**
+    /// (`keyboardShown` は iOS の XCUITest が画面の外の `.keyboard` ノードでも true にする)。
+    /// 矩形が無いときだけ `keyboardShown`(Android は dumpsys の算出で矩形を持たない回がある)。
+    /// `keyboardFrame != nil || keyboardShown == true` と書かない —— 隠れた・最小化したキーボードを「出ている」と読む
+    public static func isShown(_ snapshot: SnapshotResponse) -> Bool {
+        shownState(snapshot) == true
+    }
+
+    /// `isShown` の3値版。nil = 分からない(矩形も `keyboardShown` も無い)。**nil を非表示と読まない**
+    /// 呼び手(`keyboardIsNotShown` の検証)が使う
+    public static func shownState(_ snapshot: SnapshotResponse) -> Bool? {
+        if let frame = snapshot.keyboardFrame { return onScreen(frame, screen: snapshot.screen) }
+        return snapshot.keyboardShown
+    }
+
     /// type の後にキーボードの出現を待つか(純粋関数)。
     /// **Android**: type が焦点を要求して書き込むとすぐ返り、IME の表示を待たないので、次の解決の木には
     /// まだ無く後から出てダイアログが動く。
@@ -27,7 +42,7 @@ public enum KeyboardWait {
     /// 申告が無い(nil)= ハードウェアキーボード等でそもそも出ない形は待たない(毎回上限まで待つことになる)。
     /// 打つ前に出ていた(= 出現待ちでなく隠れ待ちの領分)・既に次の木に出ている・改行で終わる
     /// (Enter で閉じうる)ときは待たない
-    static func shouldAwaitAppearance(isAndroid: Bool, before: FTRect?, after: FTRect?,
+    public static func shouldAwaitAppearance(isAndroid: Bool, before: FTRect?, after: FTRect?,
                                       screen: FTRect, typedNewline: Bool) -> Bool {
         guard !typedNewline, !onScreen(before, screen: screen), !onScreen(after, screen: screen) else { return false }
         return isAndroid || after != nil

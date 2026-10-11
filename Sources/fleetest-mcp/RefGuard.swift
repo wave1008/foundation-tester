@@ -163,7 +163,7 @@ enum RefGuard {
     /// 要素上限に押し出され、画面には出ているのに木から落ちる。原因を「画面が変わった」と
     /// 断定すると、そこで探索が止まる
     /// **キーボードが出ているなら、消えた原因の第一候補はキーボード**(木はキーボードの裏の要素を
-    /// 落とすことがある)。`keyboardShown` は直近の木の keyboardFrame の有無。「画面が変わった」と
+    /// 落とすことがある)。`keyboardShown` は直近の木の `KeyboardWait.isShown`。「画面が変わった」と
     /// 断定すると、キーボードを閉じれば戻る場面で探索が止まる
     static func goneMessage(ref: Int, target: ElementInfo, truncatedCount: Int = 0,
                             keyboardShown: Bool = false) -> String {

@@ -95,7 +95,7 @@ extension MCPServer {
         case .gone:
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
                                                 truncatedCount: fresh.truncatedCount,
-                                                keyboardShown: fresh.keyboardFrame != nil || fresh.keyboardShown == true))
+                                                keyboardShown: KeyboardWait.isShown(fresh)))
         case .ghost(let found):
             return (found, gateNote)
         case .found(let found, _):
@@ -959,6 +959,23 @@ extension MCPServer {
                 + " no longer exists (a rebuild or clearing DerivedData can move or remove it) —"
                 + " pass packagePath: <path to the current .app/.ipa>, or run ft_install first."))
         }
+    }
+
+    /// 入れ直しのパッケージが、消そうとしているアプリのものか。**消す前に断る**(uninstall の後では戻せない)。
+    /// 控え(`installedPackagePaths`)はデバイスごとに「最後に ft_install したもの」で bundle ID と対応しないので、
+    /// `ft_install A.ipa` の後の `ft_clear_app_data bundleId: B` は B を消して A を入れていた。
+    /// 読めないとき: 控えなら断る(確かめられないなら撃たない)/ 明示の packagePath なら呼び手の申告を信じる
+    static func reinstallPackageRefusal(bundleID: String, path: String, explicit: Bool,
+                                        packageBundleID: String?) -> String? {
+        if let packageBundleID {
+            guard packageBundleID != bundleID else { return nil }
+            return "The app was NOT uninstalled. The reinstall source \(path) is \(packageBundleID), not"
+                + " \(bundleID) — wiping \(bundleID) would leave a different app installed in its place."
+                + " Pass packagePath: <the .app/.ipa of \(bundleID)>."
+        }
+        guard !explicit else { return nil }
+        return "The app was NOT uninstalled. Could not read the bundle ID of the remembered reinstall source"
+            + " \(path), so it is not known to be \(bundleID). Pass packagePath: <the .app/.ipa of \(bundleID)>."
     }
 
     /// 操作した要素を**シナリオで再現するためのセレクタ**(E)。

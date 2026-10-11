@@ -78,6 +78,6 @@ final class MCPProfilePlatformTests: XCTestCase {
         XCTAssertTrue(code.contains("platform: launchDriver is AndroidDriver ? \"android\" : \"ios\""), "ft_launch")
         XCTAssertTrue(code.contains("recordSnapshot(rotated, rotateDriver is AndroidDriver ? \"android\" : \"ios\", args)"),
                       "ft_rotate")
-        XCTAssertTrue(code.contains("isAndroid: doubleTapDriver is AndroidDriver)"), "ft_double_tap")
+        XCTAssertTrue(code.contains("isAndroid: doubleTapDriver is AndroidDriver, args: args)"), "ft_double_tap")
     }
 }

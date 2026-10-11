@@ -29,7 +29,7 @@ final class ClearAppDataContractTests: XCTestCase {
         }
         // **コメントを落としてから見る**: 理由書きに cfprefsd と書いてあるので、
         // そのまま走査すると**手順を消してもコメントだけで緑になる**(実際に一度そうなった)
-        let body = String(bridgeClient[range.lowerBound...].prefix(3_000))
+        let body = String(bridgeClient[range.lowerBound...].prefix(5_000))
             .split(separator: "\n", omittingEmptySubsequences: false)
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
             .joined(separator: "\n")
@@ -41,5 +41,24 @@ final class ClearAppDataContractTests: XCTestCase {
                       + "(消去は成功を返すので黙って通る)")
         XCTAssertTrue(body.contains("resetPrivacyOnSimulator"),
                       "権限リセットが落ちている(権限はコンテナの外にある)")
+        // **消す前に simctl で終了する**: ランナーの terminate はセッションの外で起動したアプリに効かず、
+        // 動いたままのアプリの下で消すと状態が書き戻る(実測: Apple マップが同じ pid のまま残り、前回の経路が出た)
+        let stop = body.range(of: "stopOnSimulator(")
+        let remove = body.range(of: "removeItem")
+        XCTAssertNotNil(stop, "消す前の simctl terminate が落ちている = 動いているアプリの下でファイルを消す")
+        if let stop, let remove {
+            XCTAssertLessThan(stop.lowerBound, remove.lowerBound, "終了より先に消している")
+        }
+    }
+
+    /// `stopOnSimulator` 自身が simctl terminate を撃ち、終了コードで分ける(0 = 止めた / 3 = 動いていなかった)
+    func testStopOnSimulatorUsesSimctlTerminateAndTheExitCode() throws {
+        let bridgeClient = try source("Sources/FTBridgeClient/BridgeClient.swift")
+        guard let range = bridgeClient.range(of: "public static func stopOnSimulator") else {
+            return XCTFail("stopOnSimulator が見つからない(改名したらこのテストも直す)")
+        }
+        let body = String(bridgeClient[range.lowerBound...].prefix(600))
+        XCTAssertTrue(body.contains("\"simctl\", \"terminate\""), body)
+        XCTAssertTrue(body.contains("stop.status == 0 || stop.status == 3"), body)
     }
 }

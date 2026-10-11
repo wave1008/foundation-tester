@@ -24,7 +24,7 @@ extension MCPServer {
         // 判定するので path は結局 nil(黙って全画面固定に戻るだけで誤動作しない)
         guard args["scrollFrame"] != nil else {
             let cached = lastSnapshots[Self.engineKey(args)]
-            let keyboardUp = cached?.keyboardFrame != nil || cached?.keyboardShown == true
+            let keyboardUp = cached.map(KeyboardWait.isShown) == true
             guard keyboardUp else {
                 let frontWarning = await coordinateFrontAppWarning(swipeDriver, args: args)
                 try await swipeDriver.swipe(direction)
@@ -35,7 +35,7 @@ extension MCPServer {
                 return text("swipe \(direction.rawValue) sent." + frontWarning
                     + Self.changedHint(args, otherwise: " If anything moved, the old refs are stale"
                         + " — take a fresh ft_snapshot before using any ref")
-                    + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
+                    + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))
             }
             let step = FlowStep(action: "swipe", direction: direction.rawValue)
             let (isAndroid, uiFrameworkHint) = await resolveExecutorHints(swipeDriver, args: args)
@@ -58,7 +58,7 @@ extension MCPServer {
                 + " (the soft keyboard was up — swiped in the area above it)."
                 + Self.changedHint(args, otherwise: " If anything moved, the old refs are stale"
                     + " — take a fresh ft_snapshot before using any ref")
-                + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
+                + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))
         }
 
         // **探索(ft_scroll_to)と同じ StepExecutor に委ねる**(DSL の
@@ -117,7 +117,7 @@ extension MCPServer {
             + fallbackNote
             + Self.changedHint(args, otherwise: " If anything moved, the old refs are stale"
                 + " — take a fresh ft_snapshot before using any ref")
-            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
+            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))
     }
 
     func ftRotate(_ args: [String: Any]) async throws -> [[String: Any]] {
@@ -222,7 +222,7 @@ extension MCPServer {
         var note = outcome.driverFallback.map { " (\($0))" } ?? ""
         if isAndroid { note += await awaitKeyboardLeftTree(hideDriver) }
         return text("hideKeyboard sent.\(note)" + waitForWithoutSnapshotAfterNote(args)
-            + (await snapshotAfterBody(args)))
+            + (await snapshotAfterBody(args, outsideTheAppTree: false)))
     }
 
     /// 木がキーボードを申告しなくなるまで待つ(上限 `FlowStep.defaultWaitSeconds` = DSL の
@@ -253,8 +253,7 @@ extension MCPServer {
         // 覚えている木が無ければチェック自体をしない(照合の起点が無いのに撃つのは
         // 余計な往復を増やすだけ)。指紋は記憶から読むだけなので往復は増えない
         let wantsSnapshotAfter = args["snapshotAfter"] as? Bool == true
-        let beforeBackElements = target == "back"
-            ? lastSnapshots[Self.engineKey(args)]?.elements : nil
+        let beforeBack = target == "back" ? lastSnapshots[Self.engineKey(args)] : nil
         switch target {
         case "back": try await navigation.back()
         case "home": try await navigation.home()
@@ -275,32 +274,32 @@ extension MCPServer {
         var afterBody = ""
         var snapshotAfterSucceeded = false
         if wantsSnapshotAfter {
-            let result = await snapshotAfterBodyWithStatus(args)
+            let result = await snapshotAfterBodyWithStatus(args, outsideTheAppTree: target != "back")
             afterBody = result.text
             snapshotAfterSucceeded = result.succeeded
         }
         var backIneffectiveNote = ""
-        if let before = beforeBackElements {
+        if let before = beforeBack {
             // 判定そのものは FTCore.BackEffect(DSL の back() と共有・2つ目の指紋実装を作らない)。
             // **1回の撮り直しでは判定しない**(ポーリング): アニメーション途中の木を
             // 「変わっていない」と誤読しないため。取得に失敗したら黙って諦める
             // (成功した観測が1つも無ければ「変わっていない」と断言する材料が無い =
             // BackEffect.shouldWarn は observations が空なら false を返す)
-            var observations: [[ElementInfo]] = []
+            var observations: [SnapshotResponse] = []
             if wantsSnapshotAfter {
                 // **撮り直しに成功した回だけ判定する**: snapshotAfterBody が
                 // 読みに失敗すると lastSnapshots は back 前の木のまま残り、succeeded を見ずに
                 // 読むと指紋が自明に一致して「back は効かなかった」と誤読する(catch した回の
                 // 謝罪文の横に、矛盾する偽の注記が並ぶ)
                 if snapshotAfterSucceeded, let after = lastSnapshots[Self.engineKey(args)] {
-                    observations = [after.elements]
+                    observations = [after]
                 }
             } else {
                 for _ in 0..<BackEffect.pollCount {
                     try? await Task.sleep(for: .seconds(BackEffect.pollIntervalSeconds))
                     guard let after = try? await freshSnapshot(navigation, args: args) else { continue }
-                    observations.append(after.elements)
-                    if !BackEffect.treesAreIdentical(before: before, after: after.elements) { break }
+                    observations.append(after)
+                    if !BackEffect.hadNoEffect(before: before, after: after) { break }
                 }
             }
             if BackEffect.shouldWarn(before: before, afterObservations: observations) {
@@ -336,27 +335,8 @@ extension MCPServer {
             doubleTapPoint = (element.frame.centerX, element.frame.centerY)
             doubleTapWhat = "[\(ref)]"
             doubleTapResolvedRef = element.ref
-            // **ft_tap と同じ被覆にする**(ft_tap は verifiedRef 経由で遮蔽・残像・
-            // 中身外し・キーボード被覆も見ている)。ここだけ見落とすと、同じ要素に対して
-            // ツールごとに言うことが変わる(レビューで発覚)。
-            // keyboardFrame は verifiedElement が撮り直した木(lastSnapshots に反映済み)から
-            // 作る(木の chrome で広げ、chrome 自身とその部分木は除外する)
-            let doubleTapSnapshot = lastSnapshots[Self.engineKey(args)]
-            let doubleTapKeyboard = KeyboardOcclusion.resolve(
-                reported: doubleTapSnapshot?.keyboardFrame,
-                in: doubleTapSnapshot?.elements ?? [])
-            // ref 形は verifiedRef と同じく断る(keyboardRefusal の doc)
-            if let refusal = Self.keyboardRefusal(element, keyboardOcclusion: doubleTapKeyboard) {
-                throw MCPError(refusal)
-            }
-            doubleTapNote = RefGuard.preTapWarnings(
-                element, keyboardOcclusion: doubleTapKeyboard,
-                overlayWindows: OverlayWindowOcclusion.resolve(
-                    reported: doubleTapSnapshot?.overlayWindowFrames))
-                + RefGuard.overlapWarning(found: element, in: doubleTapSnapshot?
-                    .elements ?? [], screen: doubleTapSnapshot?.screen
-                    ?? FTRect(x: 0, y: 0, width: 0, height: 0),
-                    isAndroid: doubleTapDriver is AndroidDriver) + labelNote
+            doubleTapNote = try refGestureGuard(element, isAndroid: doubleTapDriver is AndroidDriver, args: args)
+                + labelNote
             doubleTapSelector = reproductionNote(resolvedRef: element.ref, args: args)
         } else if let x = try Self.doubleArgument(args, "x"), let y = try Self.doubleArgument(args, "y") {
             if let offscreen = Self.offscreenCoordinateError(
@@ -378,7 +358,7 @@ extension MCPServer {
         return text("double tap \(doubleTapWhat) done.\(doubleTapNote)\(doubleTapSelector)"
             + Self.changedHint(args)
             + iosEngineHint("Compose Multiplatform", frameworkKey: .compose, "double tap", args: args)
-            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
+            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))
     }
 
     func ftDrag(_ args: [String: Any]) async throws -> [[String: Any]] {
@@ -397,6 +377,7 @@ extension MCPServer {
             let (element, labelNote) = try await verifiedElement(ref, driver: dragDriver, args: args)
             fromPoint = (element.frame.centerX, element.frame.centerY)
             dragSelector = reproductionNote(resolvedRef: element.ref, args: args) + labelNote
+                + (try refGestureGuard(element, isAndroid: dragDriver is AndroidDriver, args: args))
         } else if let x = try Self.doubleArgument(args, "fromX"), let y = try Self.doubleArgument(args, "fromY") {
             // 宛先の無い呼び出しは木を読む前に断る(引数の検査はデバイスに触らない)
             guard args["toX"] != nil || args["toY"] != nil || args["dx"] != nil || args["dy"] != nil else {
@@ -406,7 +387,8 @@ extension MCPServer {
                 x: x, y: y, screen: await coordinateScreen(dragDriver, args: args),
                 engine: engines[Self.engineKey(args)]) { throw offscreen }
             fromPoint = (x, y)
-            dragSelector = (await coordinateFrontAppWarning(dragDriver, args: args))
+            dragSelector = keyboardCoordinateWarning(x: x, y: y, args: args)
+                + (await coordinateFrontAppWarning(dragDriver, args: args))
                 + once("dragCoordinateNote",
                        full: Self.dragCoordinateNote,
                        short: Self.dragCoordinateNoteShort)
@@ -451,7 +433,7 @@ extension MCPServer {
                  + " it moved what you meant."
                : " Nothing about the result is checked — if it should have moved something,"
                  + " confirm with ft_snapshot/ft_screenshot")
-            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
+            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))
     }
 
     func ftPinch(_ args: [String: Any]) async throws -> [[String: Any]] {
@@ -474,6 +456,7 @@ extension MCPServer {
             identifier = element.identifier
             pinchResolvedRef = element.ref
             pinchSelector = reproductionNote(resolvedRef: element.ref, args: args) + labelNote
+                + (try refGestureGuard(element, isAndroid: pinchDriver is AndroidDriver, args: args))
         } else if let x = try Self.doubleArgument(args, "x"), let y = try Self.doubleArgument(args, "y") {
             // **地図・キャンバスには ref が無い**(実測): Apple マップの場所カードを
             // 半分出したまま ref 無しで撃つと、指が画面全体に開くのでシートが掴まれ、
@@ -484,7 +467,8 @@ extension MCPServer {
             if let offscreen = Self.offscreenCoordinateError(
                 x: x, y: y, screen: pinchScreen, engine: engines[Self.engineKey(args)]) { throw offscreen }
             pinchCoordinate = (x, y)
-            pinchSelector += await coordinateFrontAppWarning(pinchDriver, args: args)
+            pinchSelector += keyboardCoordinateWarning(x: x, y: y, args: args)
+                + (await coordinateFrontAppWarning(pinchDriver, args: args))
             var pinchRadius = try Self.doubleArgument(args, "radius")
             // Android は最小スケール距離(27 mm)に届く半径まで既定を広げる(pinchRadiusHonouringMinimumSpan の doc)
             if pinchRadius == nil, let android = pinchDriver as? AndroidDriver,
@@ -551,7 +535,7 @@ extension MCPServer {
                 + " pass x/y to pinch a specific spot." : "")
             // エンジンの助言(iosEngineHint)は付けない —— ピンチは全フレームワークとも両エンジンで
             // 届く(docs/commands.md の表。Flutter も ios-xcuitest で実測済み)
-            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
+            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))
     }
 
     func ftGesture(_ args: [String: Any]) async throws -> [[String: Any]] {
@@ -576,7 +560,11 @@ extension MCPServer {
         case .failure(let rejection): throw MCPError(rejection.message)
         case .success(let ok): validatedGesture = ok
         }
-        let gestureFrontWarning = await coordinateFrontAppWarning(gestureDriver, args: args)
+        // 指の始点がキーボードの上なら言う(ft_tap / ft_drag の座標形と同じ警告。1指につき1回まで)
+        let gestureKeyboardWarning = validatedGesture.fingers.compactMap(\.points.first)
+            .map { keyboardCoordinateWarning(x: $0.x, y: $0.y, args: args) }.first { !$0.isEmpty } ?? ""
+        let gestureFrontWarning = gestureKeyboardWarning
+            + (await coordinateFrontAppWarning(gestureDriver, args: args))
         try await gestureDriver.gesture(validatedGesture)
         // **座標(絶対)→ 比率へ割り戻して記録する**(DSL の gesture は FTFinger の比率で書く。
         // FlowStep.gesture がその置き場)。対象は常に画面全体(ft_gesture にセレクタは無い)ので
@@ -592,7 +580,7 @@ extension MCPServer {
             + " \(FTSeconds.format((validatedGesture.totalSeconds * 100).rounded() / 100))s)."
             + " Nothing about the result is checked — if it should have moved something,"
             + " confirm with ft_snapshot/ft_screenshot." + gestureFrontWarning
-            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
+            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))
     }
 
     func ftLongPress(_ args: [String: Any]) async throws -> [[String: Any]] {
@@ -617,7 +605,7 @@ extension MCPServer {
             return text("press [\(ref)] done.\(pressTarget.note)"
                 + reproductionNote(resolvedRef: pressTarget.ref, args: args)
                 + Self.changedHint(args)
-                + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
+                + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))
         }
         // **座標形は ft_tap と揃える**: ドライバは press(x:y:duration:) を要件として持つのに
         // MCP からは ref でしか呼べなかった。地図・キャンバスのように a11y 要素が無い点を
@@ -639,8 +627,27 @@ extension MCPServer {
                 short: Self.coordinateHoldReproductionNoteShort(
                     holdSeconds: pressDuration, maxGestureSeconds: pressCap))
                 + Self.changedHint(args)
-                + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
+                + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))
         }
         throw MCPError("ref or x/y is required")
+    }
+
+    /// **ref で始点を指すジェスチャ(ft_double_tap / ft_drag の fromRef / ft_pinch の ref)は ft_tap と同じ被覆にする**
+    /// (ft_tap は verifiedRef 経由で遮蔽・残像・中身外し・キーボード被覆も見ている)。ツールごとに見る範囲が違うと、
+    /// 同じ要素に対して言うことが変わる。キーボード被覆だけは断り(keyboardRefusal の doc)、残りは警告して撃つ。
+    /// 木は verifiedElement が撮り直したもの(lastSnapshots に反映済み)
+    func refGestureGuard(_ element: ElementInfo, isAndroid: Bool, args: [String: Any]) throws -> String {
+        let snapshot = lastSnapshots[Self.engineKey(args)]
+        let keyboard = KeyboardOcclusion.resolve(
+            reported: snapshot?.keyboardFrame, in: snapshot?.elements ?? [], screen: snapshot?.screen)
+        if let refusal = Self.keyboardRefusal(element, keyboardOcclusion: keyboard) {
+            throw MCPError(refusal)
+        }
+        return RefGuard.preTapWarnings(
+            element, keyboardOcclusion: keyboard,
+            overlayWindows: OverlayWindowOcclusion.resolve(reported: snapshot?.overlayWindowFrames))
+            + RefGuard.overlapWarning(found: element, in: snapshot?.elements ?? [],
+                                      screen: snapshot?.screen ?? FTRect(x: 0, y: 0, width: 0, height: 0),
+                                      isAndroid: isAndroid)
     }
 }

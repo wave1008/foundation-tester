@@ -955,8 +955,7 @@ extension MCPServer {
     /// `covered.isEmpty` を「下に何も無い」と読むと誤った安心になる ——
     /// `windowResizedAboveKeyboard` で分岐する
     static func keyboardCoverageNote(_ snapshot: SnapshotResponse) -> String {
-        let occlusion = KeyboardOcclusion.resolve(
-            reported: snapshot.keyboardFrame, in: snapshot.elements)
+        let occlusion = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame, in: snapshot.elements, screen: snapshot.screen)
         guard let kb = occlusion.frame else { return "" }
         let header = "the soft keyboard covers"
             + " (\(Int(kb.x)),\(Int(kb.y)) \(Int(kb.width))x\(Int(kb.height)))"
@@ -1079,7 +1078,7 @@ extension MCPServer {
     /// 判定は直近の木の申告(`KeyboardOcclusion` = ref 形・DSL と同じ型)。木が無ければ黙る
     func keyboardCoordinateWarning(x: Double, y: Double, args: [String: Any]) -> String {
         guard let snapshot = lastSnapshots[Self.engineKey(args)] else { return "" }
-        let occlusion = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame, in: snapshot.elements)
+        let occlusion = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame, in: snapshot.elements, screen: snapshot.screen)
         guard let frame = occlusion.frame,
               x >= frame.x, x < frame.x + frame.width, y >= frame.y, y < frame.y + frame.height
         else { return "" }

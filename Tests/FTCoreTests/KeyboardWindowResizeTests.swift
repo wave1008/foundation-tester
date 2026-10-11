@@ -25,7 +25,7 @@ final class KeyboardWindowResizeTests: XCTestCase {
             element(ref: 3, type: "other", id: "tab_bar", x: 0, y: 1135, w: 360, h: 132),
         ]
         let occlusion = KeyboardOcclusion.resolve(
-            reported: FTRect(x: 0, y: 1267, width: 1080, height: 1073), in: elements)
+            reported: FTRect(x: 0, y: 1267, width: 1080, height: 1073), in: elements, screen: nil)
         XCTAssertTrue(occlusion.windowResizedAboveKeyboard,
                       "根の下端がキーボード上端に一致するのに resized と判定されなかった")
     }
@@ -40,7 +40,7 @@ final class KeyboardWindowResizeTests: XCTestCase {
             element(ref: 4, type: "button", id: "btn_submit", x: 0, y: 1400, w: 360, h: 132),
         ]
         let occlusion = KeyboardOcclusion.resolve(
-            reported: FTRect(x: 0, y: 1267, width: 1080, height: 1073), in: elements)
+            reported: FTRect(x: 0, y: 1267, width: 1080, height: 1073), in: elements, screen: nil)
         XCTAssertFalse(occlusion.windowResizedAboveKeyboard,
                        "はみ出す要素があるのに resized と判定された")
     }
@@ -50,7 +50,7 @@ final class KeyboardWindowResizeTests: XCTestCase {
         let elements = [
             element(ref: 1, type: "other", id: "root", x: 0, y: 136, w: 1080, h: 1131),
         ]
-        let occlusion = KeyboardOcclusion.resolve(reported: nil, in: elements)
+        let occlusion = KeyboardOcclusion.resolve(reported: nil, in: elements, screen: nil)
         XCTAssertFalse(occlusion.windowResizedAboveKeyboard)
         XCTAssertEqual(occlusion.frame, KeyboardOcclusion.none.frame)
     }
@@ -67,7 +67,7 @@ final class KeyboardWindowResizeTests: XCTestCase {
         XCTAssertFalse(withKeyboardFrame.isEmpty, "keyboardFrame 持ちのフィクスチャが1件も無い")
         let resized = Set(withKeyboardFrame.filter {
             KeyboardOcclusion.resolve(reported: $0.snapshot.keyboardFrame,
-                                      in: $0.snapshot.elements).windowResizedAboveKeyboard
+                                      in: $0.snapshot.elements, screen: $0.snapshot.screen).windowResizedAboveKeyboard
         }.map(\.name))
         XCTAssertEqual(resized, ["and-e2e_input_keyboard_resized", "and-form_keyboard"],
                        "窓の縮みで resized と判定される画面の集合が変わった。増分を1件ずつ検分すること")

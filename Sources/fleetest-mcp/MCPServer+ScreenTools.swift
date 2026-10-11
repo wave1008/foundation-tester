@@ -94,13 +94,20 @@ extension MCPServer {
                 + Self.tapHitAreaMissNote(d)
                 + reproductionNote(resolvedRef: target.ref, args: args)
                 + Self.changedHint(args) + waitForWithoutSnapshotAfterNote(args)
-                + (await snapshotAfterBody(args)))
+                + (await snapshotAfterBody(args, outsideTheAppTree: false)))
         }
         if let x = try Self.doubleArgument(args, "x"), let y = try Self.doubleArgument(args, "y") {
             if let offscreen = Self.offscreenCoordinateError(
                 x: x, y: y, screen: await coordinateScreen(d, args: args),
                 engine: engines[Self.engineKey(args)]) { throw offscreen }
             let frontWarning = await coordinateFrontAppWarning(d, args: args)
+            // **座標でシステムアラートを押すのは正規の操作**(systemAlertGate の doc)。アラートはアプリの木の外なので、
+            // 押す前に出ていたなら snapshotAfter は操作前の木と比べない(閉じてもアプリの木は変わらないのが正常)。
+            // 聞くのは snapshotAfter のときだけ(照会は約 73ms。Android は既定実装が投げる = 聞かない)
+            var alertWasInFront = false
+            if args["snapshotAfter"] as? Bool == true {
+                alertWasInFront = (try? await d.systemAlert())??.present == true
+            }
             try await d.tap(x: x, y: y)
             recordInteraction(action: "tap", resolvedRef: nil, args: args, coordinate: (x, y))
             lastTapTargets[Self.engineKey(args)] = nil
@@ -110,7 +117,7 @@ extension MCPServer {
                 full: Self.coordinateReproductionNote,
                 short: Self.coordinateReproductionNoteShort)
                 + waitForWithoutSnapshotAfterNote(args)
-                + (await snapshotAfterBody(args)))
+                + (await snapshotAfterBody(args, outsideTheAppTree: alertWasInFront)))
         }
         throw MCPError("ref or x/y is required")
     }
@@ -190,7 +197,7 @@ extension MCPServer {
             guard mergesSnapshotAfterIntoVerification else {
                 return try? await typeDriver.snapshot(bypassingCache: typeDriver.supportsCacheBypass)
             }
-            let result = await snapshotAfterBodyWithStatus(args)
+            let result = await snapshotAfterBodyWithStatus(args, outsideTheAppTree: false)
             precomputedAfterBody = result.text
             guard result.succeeded else {
                 return try? await typeDriver.snapshot(bypassingCache: typeDriver.supportsCacheBypass)
@@ -230,10 +237,14 @@ extension MCPServer {
             }
             // targetRef はセッション ref。ブリッジへ渡す直前にだけ native へ戻す
             let resolvedTypeRef = rescuedNativeRef ?? nativeTargetRef
+            let keyboardBeforeType = lastSnapshots[Self.engineKey(args)]
             do {
                 try await typeDriver.type(ref: resolvedTypeRef, text: content)
                 // XCUITest ランナーが打ち直した事実(OKResponse.note)を返答に載せる
                 note += Self.driverFallbackNote(typeDriver)
+                // 出現待ちは次の ref 操作の撮り直しで払う(verifiedRef。DSL の pendingTypeKeyboardCheck と同じ = 読みを足さない)
+                pendingTypeKeyboardChecks[Self.engineKey(args)] = PendingTypeKeyboardCheck(
+                    before: keyboardBeforeType, typedNewline: content.hasSuffix("\n"))
             } catch {
                 // **ref なしで撃った失敗だけ**、前面の SpringBoard アラートを名指しする
                 // 一発物の照会を添える(SystemUIGate の申告は木に載らないので、素の失敗は
@@ -311,7 +322,7 @@ extension MCPServer {
             if let precomputedAfterBody {
                 afterBody = precomputedAfterBody
             } else {
-                afterBody = await snapshotAfterBody(args)
+                afterBody = await snapshotAfterBody(args, outsideTheAppTree: false)
             }
             return text("Typed: \"\(content ?? "")\"\(note)\(typedSelector)"
                 + waitForWithoutSnapshotAfterNote(args)
@@ -320,7 +331,7 @@ extension MCPServer {
         try await typeDriver.pressEnter()
         return text((content.map { "Typed: \"\($0)\" and pressed Enter" } ?? "Pressed Enter")
             + note + typedSelector + waitForWithoutSnapshotAfterNote(args)
-            + (await snapshotAfterBody(args)))
+            + (await snapshotAfterBody(args, outsideTheAppTree: false)))
     }
 
     func ftClearInput(_ args: [String: Any]) async throws -> [[String: Any]] {
@@ -366,7 +377,7 @@ extension MCPServer {
         var afterBody = ""
         var verification: SnapshotResponse?
         if args["snapshotAfter"] as? Bool == true {
-            let result = await snapshotAfterBodyWithStatus(args)
+            let result = await snapshotAfterBodyWithStatus(args, outsideTheAppTree: false)
             afterBody = result.text
             if result.succeeded { verification = lastSnapshots[Self.engineKey(args)] }
         }
@@ -457,6 +468,12 @@ extension MCPServer {
             throw MCPError("ref or selector is required")
         }
         let png = try await d.screenshot()
+        // **一色の絵は見本にしない**(判定は DSL の分類と同じ BlankFrameDetector.isUnjudgeable)。撮れていない・何も
+        // 描かれていない絵の切り出しは OFF に似ていて、見本に入ると分類器が以後ずっと誤る(保存は永続)
+        if BlankFrameDetector.isUnjudgeable(pngData: png) {
+            throw MCPError("nothing was saved: the app area of the screenshot is a single colour (nothing is drawn"
+                + " there yet, or the capture failed). Wait for the screen to draw, then capture again")
+        }
         guard let image = VisionClassifier.crop(png: png, frame: element.frame, screen: screen) else {
             throw MCPError("could not crop the element from the screenshot (is it inside the screen?)")
         }

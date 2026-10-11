@@ -228,7 +228,7 @@ extension MCPServer {
         // snapshotAfter の読みは system alert の予約(上)を消費するので、立てた後に読む
         return text((resumes ? "Activated: \(bundleID) (resumed without relaunching)"
                              : "Launched: \(bundleID)")
-            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
+            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))
     }
 
     func ftOpenUrl(_ args: [String: Any]) async throws -> [[String: Any]] {
@@ -258,6 +258,7 @@ extension MCPServer {
             }
             openURLArgs["waitForChange"] = true
         }
+        let treeBeforeDelivery = lastSnapshots[Self.engineKey(args)]
         try await openURLDriver.openURL(url, bundleID: openURLBundleID)
         // ディープリンクが未起動のアプリを新規に立ち上げることがある(systemAlertProbePending 参照)
         systemAlertProbePending.insert(Self.engineKey(args))
@@ -276,8 +277,23 @@ extension MCPServer {
                                         snapshotAfter: args["snapshotAfter"] as? Bool == true,
                                         waitFor: args["waitFor"] as? String,
                                         waitForChangeExplicit: args["waitForChange"] as? Bool)
-            + consentDialogNote
-            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(openURLArgs)))
+            + consentDialogNote + (openURLDriver is AndroidDriver ? "" : Self.driverFallbackNote(openURLDriver))
+            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(openURLArgs, outsideTheAppTree: false))
+            + Self.openURLOtherAppCaveat(routedByScheme: !(openURLDriver is AndroidDriver),
+                                         before: treeBeforeDelivery,
+                                         after: args["snapshotAfter"] as? Bool == true
+                                            ? lastSnapshots[Self.engineKey(args)] : nil))
+    }
+
+    /// **iOS の URL は OS が受け手を選ぶ**(Web の URL は Safari・他アプリのスキームはそのアプリ)。受け手が別のアプリなら
+    /// このセッションの木(アプリ)は変わらないので、「効かなかったかも」とだけ読ませない。言うのは木が配送の前後で同一だった
+    /// 事実と、その可能性だけ(前面のアプリは iOS では照会しない = 断定しない)
+    static func openURLOtherAppCaveat(routedByScheme: Bool, before: SnapshotResponse?,
+                                      after: SnapshotResponse?) -> String {
+        guard routedByScheme, let before, let after, looksUnchanged(before, after) else { return "" }
+        return "note: the tree is still the one from before the URL was delivered. If another app handles this URL"
+            + " (a web URL opens in Safari, another app's scheme opens that app), it opened there and its screen is"
+            + " not in this session's tree — ft_screenshot shows what is in front.\n"
     }
 
     /// 配送後に前面のシステムアラートが観測できたときだけ言う(観測できない経路では黙る =
@@ -308,6 +324,11 @@ extension MCPServer {
                                         exists: { FileManager.default.fileExists(atPath: $0) }) {
             case .success(let resolved): path = resolved
             case .failure(let error): throw error
+            }
+            if let refusal = Self.reinstallPackageRefusal(
+                bundleID: bundleID, path: path, explicit: args["packagePath"] is String,
+                packageBundleID: AppPackageReader.open(path: path)?.infoPlist?["CFBundleIdentifier"] as? String) {
+                throw MCPError(refusal)
             }
             try await clearAppDataDriver.uninstall(bundleID: bundleID)
             try await clearAppDataDriver.install(packagePath: path)
@@ -350,7 +371,15 @@ extension MCPServer {
                 + " app it is attached to — omit bundleId (or pass \(launched)) to stop that app")
         }
         let terminateUnverified = explicitBundleID != nil && launchedBundleIDs[terminateKey] == nil
-        try await driver(args).terminate()
+        let terminateDriver = try await driver(args)
+        try await terminateDriver.terminate()
+        // **シミュレータでは止まったことを simctl で確かめる**(ランナーの terminate はランナーのセッションが起動したアプリに
+        // しか効かない = 止まっていないのに「Terminated」と言いうる。clearAppDataOnSimulator と同じ理由・同じ判定)
+        // 宛先はセッションが特定した udid がシミュレータのときだけ(ドライバは包まれうるので型で見ない。実機は対象外)
+        if !(terminateDriver is AndroidDriver), let udid = udids[terminateKey] ?? nil,
+           ((try? SimulatorCatalog.devices()) ?? []).contains(where: { $0.udid == udid && !$0.physical }) {
+            try BridgeClient.stopOnSimulator(bundleID: terminateBundleID, target: udid, purpose: "on the simulator")
+        }
         // 意図して落としたので、以後の別アプリの木は「すり替わり」ではない
         launchedBundleIDs[terminateKey] = nil
         launchTimestamps[terminateKey] = nil

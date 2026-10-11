@@ -355,7 +355,7 @@ public enum TreeCoverage {
     /// `missingPageContentNote` の百分率表示(判定が真になった後の説明用)だけ
     public static func unrepresentedFractionExcludingKeyboard(_ snapshot: SnapshotResponse) -> Double {
         let keyboard = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame,
-                                                 in: snapshot.elements).frame
+                                                 in: snapshot.elements, screen: snapshot.screen).frame
         let viewport = ScrollGeometry.viewport(snapshot.screen, excludingKeyboard: keyboard)
         guard viewport.height > 0 else { return 0 }
         var clipped = snapshot
@@ -370,7 +370,7 @@ public enum TreeCoverage {
     /// 要素が1つも無ければ 1(全面が端)
     public static func edgeUnrepresentedFractionExcludingKeyboard(_ snapshot: SnapshotResponse) -> Double {
         let keyboard = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame,
-                                                 in: snapshot.elements).frame
+                                                 in: snapshot.elements, screen: snapshot.screen).frame
         let viewport = ScrollGeometry.viewport(snapshot.screen, excludingKeyboard: keyboard)
         guard viewport.height > 0 else { return 0 }
         let top = viewport.y, bottom = viewport.y + viewport.height

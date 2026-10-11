@@ -140,6 +140,9 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
 - シナリオ実行バイナリを起こす経路・子が書く場所・子からの `simctl` / `devicectl` / `adb` の呼び出しを足す → サンドボックスの
   入口(`ScenarioHost.sandboxedLaunch`)・`ScenarioSandbox.writablePaths`・`SimctlPolicy` / `DevicectlPolicy` / `AdbPolicy` にも足す
   (executor.md。常に有効なので漏れはデバイス実行で赤になるか、黙って効かなくなる)
+- 「キーボードが出ているか」を読む → `KeyboardWait.isShown` / `shownState`(`keyboardFrame != nil` と書かない = 隠れたキーボードは
+  画面の外の矩形で来る。`KeyboardShownJudgmentTests`)/ シミュレータのアプリを「止めた」と言う・止めてから壊す →
+  `BridgeClient.stopOnSimulator`(ランナーの terminate はセッションが起動したアプリにしか効かない。`ClearAppDataContractTests`)
 - iOS Simulator を起動する経路を足す → 起動の**前に** `SimulatorBootCleanup.beforeBoot(udid:)`
   (`SimulatorPosterCachePurgeWiringTests`。docs/design.md §12.4.2・§12.4.3)
 - モニターの周期に計測を足す → 周期の中で待たない(裏で回して控えを読むだけ。`DeviceStorageSampler`)
@@ -162,6 +165,10 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
   **5 SUT のシナリオも `swift test` で型チェックされる**ので、DSL の改名・シグネチャ変更の
   追随漏れもこれで捕まる。別途ビルドが要るのは変異テストの直後に製品バイナリを作り直すときだけ
   (`swift build --product <名>`)
+- **テストの範囲は PreToolUse フック `Scripts/test-scope-guard.py` が撃つ前に検査する**(`.claude/settings.json` に登録。
+  このファイルは git 管理外なので**クローンごとに登録する**。
+  `--filter` 無しの `swift test`・部分一致の語・素の `npm test`・`swift build --build-tests`・新しいテストの数を超える変異を断る)。
+  全体テストは作業の区切りにユーザーが回す運用 —— 頼まれたときだけコマンドに `FT_FULL_TEST=1` を書く
 - **合否は exit code で見る**(パイプすると grep 等の exit code に化けて失敗を握りつぶす)
 - **並列はテストプロセスを分けるので、ホストの共有資源に触るテストは自分で隔離する**
   → maintainer-notes §4.9。**隔離できないホストの実体**(simctl/adb・起動中の Simulator/Emulator・

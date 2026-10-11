@@ -92,6 +92,14 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **ライブ操作の文言は人間向け**(拡張の UI を触っている人が読む)なので、MCP のエージェント向けの
   文言をそのまま写さない。**CLI 側だけ直しても受け手には届かない** —— 観測に注記を足したら
   `notes` 欄と ProtocolVersion、拡張の表示まで通す
+- **ツールを足す・経路を足すときは、同じ種類の操作が通る共有の門を通す**(2026-10-11 の掃討で、通っていない経路が10件出た。
+  どれもビルドもテストも緑のまま)。①**ref で始点を指すジェスチャ**は `refGestureGuard`(ft_tap と同じ被覆。`verifiedRef` は中で通す)/
+  ②**座標で撃つ経路**は `keyboardCoordinateWarning` と `coordinateFrontAppWarning` / ③**分類器の見本を保存する経路**は
+  `BlankFrameDetector.isUnjudgeable` —— この3つは `MCPSharedGuardParityTests` がソース走査で落とす(通さないのが正しいなら理由を書いて表へ)。
+  ④**snapshotAfter の前後比較**は、操作の相手がアプリの木の外(SpringBoard のアラート・ホーム画面・別のアプリ)なら
+  `outsideTheAppTree: true`(既定値を置かない = 呼び手に決めさせる)。`looksUnchanged` はキーボードの出入りも変化に数える
+  (キーボードもアプリの木の外)。⑤**DSL が操作の前後で待っているもの**(type の後のキーボードの出現 = `KeyboardWait.shouldAwaitAppearance`
+  等)は、MCP では次の ref 操作の撮り直し(`verifiedRef`)で払う(読みを足さない)
 - **MCP の iOS は常に XCUITest**(ユーザー決定。in-app / hybrid を組まない = `MCPEngineFollowingTests` がソースで固定)。
   下の hybrid の規律は**ライブ操作の話**(MCP の経路にも照合の呼び出しは残るが、予備ポートを持たないので働かない)。
 - **hybrid の予備(XCUITest)ポートも使うたびに本人確認する**(`FTBridgeClient.HybridFallbackIdentity` を

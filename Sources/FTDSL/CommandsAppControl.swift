@@ -261,7 +261,7 @@ public func back(settle: Bool = true, file: StaticString = #filePath, line: UInt
         // performCustom は FlowStep を通らないので、ドライバへ届く TaskLocal はここで入れる(`settle:` は tap を参照)
         try await SettleOverride.$skip.withValue(!settle) { try await driver.back() }
         guard let before, let after = try? await observer.snapshot() else { return }
-        if BackEffect.shouldWarn(before: before.elements, afterObservations: [after.elements]) {
+        if BackEffect.shouldWarn(before: before, afterObservations: [after]) {
             observedNote = .backIneffective
         }
     }

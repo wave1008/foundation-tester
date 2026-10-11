@@ -180,6 +180,9 @@ extension MCPServer {
                            replace: Bool = false) {
         // tap → type の間に別の操作が入ったら「叩いた欄へ入れる」意図ではない(DSL と同じ規律)
         if action != "tap", action != "type" { lastTapTargets[Self.engineKey(args)] = nil }
+        // type の後のキーボードの出現待ち(pendingTypeKeyboardCheck)は、間に別の操作を挟んだら捨てる —— 打つ前の木が古くなり、
+        // Android では「出ていない → 出るはず」と読んで、閉じた後の ref 操作でも上限(1.5 秒)まで待つ
+        if action != "type" { pendingTypeKeyboardChecks[Self.engineKey(args)] = nil }
         var selector: String?
         var durability: Durability = .stable
         var described = "\(action)"

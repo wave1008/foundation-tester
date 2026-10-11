@@ -201,7 +201,7 @@ extension StepExecutor {
         // キーボード矩形(chrome 込み)で削る。キーボードが無ければ excludingKeyboard: nil で
         // screen がそのまま返るので、無キーボード時は1バイトも変わらない
         let keyboard = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame,
-                                                 in: snapshot.elements).frame
+                                                 in: snapshot.elements, screen: snapshot.screen).frame
         let screen = snapshot.screen
         let viewport = ScrollGeometry.viewport(screen, excludingKeyboard: keyboard)
         // **キーボードで実際に削られたときだけ**キーボード側のマージンを詰める(iPhone 13
@@ -280,7 +280,7 @@ extension StepExecutor {
         // (キーボードは常にタッチを飲む)。ここで screen を返すだけで、scrollPath 側の
         // viewport クリップ(ScrollGeometry.viewport)がキーボードを避けた始点を作るようになる。
         // キーボードが無ければ nil のまま(3度目の暗黙座標化にはしない)
-        if snapshot.keyboardFrame != nil || snapshot.keyboardShown == true {
+        if KeyboardWait.isShown(snapshot) {
             return snapshot.screen
         }
         return nil

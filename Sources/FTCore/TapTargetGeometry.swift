@@ -601,7 +601,8 @@ public enum TapTargetGeometry {
         let maxY = chrome.reduce(first.frame.y + first.frame.height) {
             max($0, $1.frame.y + $1.frame.height)
         }
-        guard maxY >= screen.y + screen.height - tolerance else { return nil }
+        // 上端が画面の下端より下 = 画面の外へ隠れたキーボードの chrome(KeyboardWait.onScreen と同じ線)
+        guard maxY >= screen.y + screen.height - tolerance, minY < screen.y + screen.height else { return nil }
         return FTRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 
@@ -1002,10 +1003,10 @@ public enum TapTargetGeometry {
     /// 対象にする(無条件に identifier で拾うと、画面の別の場所にある同名要素で矩形が暴発する)
     public static let keyboardChromeIdentifiers: Set<String> = ["inputView", "SystemInputAssistantView"]
 
-    /// `KeyboardOcclusion.resolve(reported:in:).frame` の薄いラッパー(既存呼び出し・単体テスト互換用)
-    public static func effectiveKeyboardFrame(reported: FTRect?,
-                                              in elements: [ElementInfo]) -> FTRect? {
-        KeyboardOcclusion.resolve(reported: reported, in: elements).frame
+    /// `KeyboardOcclusion.resolve(reported:in:screen:).frame` の薄いラッパー(既存呼び出し・単体テスト互換用)
+    public static func effectiveKeyboardFrame(reported: FTRect?, in elements: [ElementInfo],
+                                              screen: FTRect?) -> FTRect? {
+        KeyboardOcclusion.resolve(reported: reported, in: elements, screen: screen).frame
     }
 
     /// 「中心がソフトキーボードの下」の**中心点だけの判定**。木からは判定できない
@@ -1092,9 +1093,14 @@ public struct KeyboardOcclusion: Sendable {
     public static let none = KeyboardOcclusion(frame: nil, excluded: [], windowResizedAboveKeyboard: false)
 
     /// chrome が木に無ければ申告どおり・除外なし(旧ブリッジ・空葉除外で消えた場合の
-    /// 後退防止。`ios-browser_startpage` と Android 全機種がこのケース)
-    public static func resolve(reported: FTRect?, in elements: [ElementInfo]) -> KeyboardOcclusion {
+    /// 後退防止。`ios-browser_startpage` と Android 全機種がこのケース)。
+    /// **画面の外の申告はキーボード無し**(`KeyboardWait.onScreen`。隠れた・最小化したキーボードは nil ではなく
+    /// 画面の下端より下の矩形で来る。実測: 画面高 874pt で (0,891 402x233) を「覆っている」と言っていた)。
+    /// `screen` が nil(分からない)なら申告どおり
+    public static func resolve(reported: FTRect?, in elements: [ElementInfo],
+                               screen: FTRect?) -> KeyboardOcclusion {
         guard let reported else { return .none }
+        if let screen, !KeyboardWait.onScreen(reported, screen: screen) { return .none }
         let seeds = chromeElements(intersecting: reported, in: elements)
         guard !seeds.isEmpty else {
             return KeyboardOcclusion(frame: reported, excluded: [],

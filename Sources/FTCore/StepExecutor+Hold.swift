@@ -37,8 +37,7 @@ extension StepExecutor {
             }
             driverFallback = Self.joinNotes(driverFallback, advisory)
         }
-        let keyboardOcclusion = KeyboardOcclusion.resolve(
-            reported: snapshot.keyboardFrame, in: snapshot.elements)
+        let keyboardOcclusion = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame, in: snapshot.elements, screen: snapshot.screen)
         adviseTarget(keyboardOcclusion.advisory(for: element))
         adviseTarget(OverlayWindowOcclusion.resolve(
             reported: snapshot.overlayWindowFrames).advisory(for: element))

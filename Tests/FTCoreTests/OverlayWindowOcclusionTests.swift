@@ -135,7 +135,7 @@ final class OverlayWindowOcclusionTests: XCTestCase {
         let para = element(1, "content", 22, 136, 1036, 266)
         let note = TapTargetGeometry.advisory(
             for: para, in: [para], screen: screen,
-            keyboardOcclusion: KeyboardOcclusion.resolve(reported: toolbar, in: [para]),
+            keyboardOcclusion: KeyboardOcclusion.resolve(reported: toolbar, in: [para], screen: nil),
             overlayWindows: OverlayWindowOcclusion.resolve(reported: [toolbar]), isAndroid: false)
         XCTAssertTrue(note?.contains("soft keyboard") == true, note ?? "")
     }

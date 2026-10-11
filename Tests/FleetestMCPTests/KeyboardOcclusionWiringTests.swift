@@ -5,6 +5,8 @@
 // `KeyboardOcclusion.resolve(reported:` が実際にそのスナップショットから作られていることまで見る。
 
 import XCTest
+import FTCore
+@testable import fleetest_mcp
 
 final class KeyboardOcclusionWiringTests: XCTestCase {
 
@@ -62,5 +64,21 @@ final class KeyboardOcclusionWiringTests: XCTestCase {
                       "TapTargetGeometry.advisory が KeyboardOcclusion を取っていない")
         XCTAssertFalse(text.contains(compact("keyboardOcclusion: KeyboardOcclusion = .none")),
                        "既定引数が復活している(呼び忘れがコンパイルで止まらなくなる)")
+    }
+
+    /// **画面の外のキーボードを「覆っている」と言わない**(MCP の注記まで通す)。
+    /// 実測(Apple マップ・画面高 874pt): `the soft keyboard covers (0,891 402x233)` と出ていた
+    func testKeyboardCoverageNoteIsSilentForAKeyboardBelowTheScreen() {
+        let row = ElementInfo(ref: 1, type: "button", identifier: "row", label: "行", value: nil,
+                              placeholder: nil, enabled: true,
+                              frame: FTRect(x: 16, y: 820, width: 370, height: 40), depth: 2)
+        func snapshot(_ keyboard: FTRect) -> SnapshotResponse {
+            SnapshotResponse(sessionBundleID: "com.apple.Maps",
+                             screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                             elements: [row], truncatedCount: 0, keyboardFrame: keyboard)
+        }
+        XCTAssertEqual(MCPServer.keyboardCoverageNote(snapshot(FTRect(x: 0, y: 891, width: 402, height: 233))), "")
+        XCTAssertTrue(MCPServer.keyboardCoverageNote(snapshot(FTRect(x: 0, y: 600, width: 402, height: 274)))
+            .contains("the soft keyboard covers"), "画面に掛かっているキーボードは従来どおり言う")
     }
 }

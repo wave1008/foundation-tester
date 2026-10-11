@@ -56,6 +56,49 @@ final class SystemAlertButtonTapTests: XCTestCase {
         XCTAssertFalse(calls.contains("activate(com.apple.Maps)"), "向け直しに activate を使った: \(calls)")
     }
 
+    /// **アラートはアプリの木に出ない**ので、閉じてもアプリの木は変わらないのが正常 —— snapshotAfter で
+    /// 「効かなかったかも」と言わない。実測(Apple マップ): 同じ応答で「マップに戻った」と言いながら
+    /// `the tree still looked unchanged … the action may not have changed the screen` を並べていた
+    func testSnapshotAfterDoesNotSayThePressHadNoEffectBecauseTheAppTreeIsUnchanged() async throws {
+        let app = SnapshotResponse(
+            sessionBundleID: "com.apple.Maps", screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+            elements: [element(1, "searchField", "マップで検索", depth: 2)], truncatedCount: 0)
+        _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.apple.Maps"])
+        driver.snapshotResponse = app
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        arrangeLocationAlert()
+        let board = driver.snapshotResponse
+        driver.scriptedSnapshots = [board, app, app]
+        driver.snapshotResponse = app
+        server.settleWaitSeconds = 0
+        let result = try await server.call(tool: "ft_tap",
+                                           args: ["alertButton": "許可しない", "snapshotAfter": true])
+        let text = result.compactMap { $0["text"] as? String }.joined()
+        XCTAssertTrue(text.contains("back on com.apple.Maps"), text)
+        XCTAssertTrue(text.contains("マップで検索"), "押した後のアプリの木を返していない: \(text)")
+        XCTAssertFalse(text.contains("may not have changed the screen"), text)
+        XCTAssertFalse(text.contains("looked unchanged"), text)
+    }
+
+    /// **home / appSwitcher も相手はアプリの木の外**(XCUITest は背面化してもアプリの木を返し続ける)。
+    /// 同じ応答で「背面へ送った」と言いながら「効かなかったかも」を並べない。back は従来どおり比べる
+    func testNavigateHomeDoesNotSayItHadNoEffectButBackStillCompares() async throws {
+        let app = SnapshotResponse(
+            sessionBundleID: "com.apple.Maps", screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+            elements: [element(1, "searchField", "マップで検索", depth: 2)], truncatedCount: 0)
+        _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.apple.Maps"])
+        driver.snapshotResponse = app
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        server.settleWaitSeconds = 0
+        let home = try await server.call(tool: "ft_navigate", args: ["target": "home", "snapshotAfter": true])
+        let homeText = home.compactMap { $0["text"] as? String }.joined()
+        XCTAssertFalse(homeText.contains("may not have changed the screen"), homeText)
+        let back = try await server.call(tool: "ft_navigate", args: ["target": "back", "snapshotAfter": true])
+        let backText = back.compactMap { $0["text"] as? String }.joined()
+        XCTAssertTrue(backText.contains("may not have changed the screen"),
+                      "back は snapshotAfter の木の比較を続けること: \(backText)")
+    }
+
     /// 戻る先が分からない(起動もしておらず木も読んでいない)ときは、SpringBoard に向いたままだと言う
     func testSaysTheSessionStaysOnSpringBoardWhenThereIsNoAppToReturnTo() async throws {
         arrangeLocationAlert()
