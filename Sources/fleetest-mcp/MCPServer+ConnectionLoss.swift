@@ -18,13 +18,14 @@ extension MCPServer {
     /// ("<device name> port/serial <値>")は "port"/"serial " のどちらの接頭辞にも一致しない ——
     /// 直接指定と profile とで判別条件を分けると、profile 経由はどちらの回復ハンドラにも
     /// 一度も入らず、死んだブリッジへ永久に再ダイヤルし続ける(実機の陽性対照で確認)
-    func connectionLostHint(_ error: Error, args: [String: Any]) async -> String {
+    func connectionLostHint(_ error: Error, args: [String: Any], tool: String) async -> String {
         // 差し替えドライバ(テスト)では走査しない = 実ポートを叩かない
         guard makeDriver == nil else { return "" }
         let key = Self.engineKey(args)
         guard let connection = connections[key] else { return "" }
         if connectedPorts[key] != nil {
-            return await iosConnectionLostHint(error, key: key, connection: connection)
+            return await iosConnectionLostHint(error, key: key, connection: connection,
+                                               mayHaveTakenEffect: Self.mayHaveTakenEffect(tool: tool))
         }
         if let serial = connectedAndroidSerials[key] {
             return await androidConnectionLostHint(error, key: key, connection: connection, serial: serial)
@@ -34,7 +35,8 @@ extension MCPServer {
 
     /// iOS(port 経由のブリッジ)の死活。Android には無い判定材料(BridgeDiscovery.isBound/scan)を
     /// 使うので、判定そのものを共有しない(androidConnectionLostHint 参照)
-    func iosConnectionLostHint(_ error: Error, key: String, connection: String) async -> String {
+    func iosConnectionLostHint(_ error: Error, key: String, connection: String,
+                               mayHaveTakenEffect: Bool) async -> String {
         switch error {
         case DriverError.bridgeConnectionRefused:
             // 接続拒否は「誰も待受していない」が確定しているので、走査は今の状況を添えるだけ
@@ -82,7 +84,8 @@ extension MCPServer {
                 if probe == .transportFailed, engine != "inapp", engine != "hybrid" {
                     return Self.bridgeWedgedHint(connection: connection)
                 }
-                return Self.bridgeBusyHint(connection: connection, engine: engine)
+                return Self.bridgeBusyHint(connection: connection, engine: engine,
+                                           mayHaveTakenEffect: mayHaveTakenEffect)
             case .stillUnclear:
                 return ""
             case .vanished:
@@ -195,16 +198,29 @@ extension MCPServer {
     /// **engine が不明なら呼び手が `resolvedEngine` でディスクの台帳を見てから渡す契約**
     /// (この関数自身はディスクを見ない)。**MCP の iOS は常に XCUITest なので、in-app / hybrid の分岐には今は到達しない**
     /// (判定は残す = 台帳から in-app と分かった相手に XCUITest 向けの「リトライせよ」を言わない砦は、仕様が戻っても要る)
-    static func bridgeBusyHint(connection: String, engine: String?) -> String {
+    /// **操作のツールに「Retry the call」と言わない**: タイムアウトは応答が来なかっただけで、要求は
+    /// ランナーに届いて実行済みのことがある(ft_type が実際に打たれていた)。撃ち直すと二重に打つ・二重に押す
+    static func bridgeBusyHint(connection: String, engine: String?, mayHaveTakenEffect: Bool) -> String {
         guard engine == "inapp" || engine == "hybrid" else {
-            return "\nThe XCUITest runner behind \(connection) did not answer in time, but the"
+            let busy = "\nThe XCUITest runner behind \(connection) did not answer in time, but the"
                 + " port is still bound — likely busy (a long-running operation, such as waiting"
-                + " for the screen to settle, can block the bridge for tens of seconds). Retry the"
-                + " call; the connection was not dropped."
+                + " for the screen to settle, can block the bridge for tens of seconds); the"
+                + " connection was not dropped."
+            guard mayHaveTakenEffect else { return busy + " Retry the call." }
+            return busy + " The action may already have been performed — take an ft_snapshot and"
+                + " check before repeating it (repeating ft_type would type the text twice)."
         }
         return "\nThe in-app bridge behind \(connection) is not answering — it only answers while"
             + " the app it is injected into is in the foreground. Bring it back with ft_launch,"
             + " or use this device's xcuitest bridge port instead."
+    }
+
+    /// 端末やアプリの状態を変えるツールか(表に無いツールは変える側 = 撃ち直しを勧めない側に倒す)
+    static func mayHaveTakenEffect(tool: String) -> Bool {
+        switch toolEffects[tool] {
+        case .readOnly?: return false
+        default: return true
+        }
     }
 
     /// LISTEN しているが `/status` への接続が早期に(タイムアウトよりはるかに早く)切れたときの

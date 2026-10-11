@@ -170,7 +170,7 @@ final class MCPBatchTests: XCTestCase {
     func testWaitForReportsWhetherTheSelectorAppeared() async throws {
         let found = body(try await server.call(tool: "ft_batch",
                                                args: ["steps": "tap '#login_btn'", "waitFor": "#login_btn"]))
-        XCTAssertTrue(found.contains("waitFor \"#login_btn\" appeared."), found)
+        XCTAssertTrue(found.contains("waitFor \"#login_btn\" appeared: matched ["), found)
         let missing = body(try await server.call(tool: "ft_batch",
                                                  args: ["steps": "tap '#login_btn'", "waitFor": "#no_such_id",
                                                         "waitSeconds": 0.2]))

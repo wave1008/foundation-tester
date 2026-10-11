@@ -10,7 +10,9 @@
 //   キーボード出現待ちを quiescence に依存しているので飛ばすと入力欠落の実害が出るが、縮めないと落ち着かないアプリで
 //   打鍵1回ごとに XCTest の既定 60s を待つ(実測・Apple マップの経路画面: `Type` の後の "Wait for … to idle" が 60s ×2 で、
 //   その間ランナーは他の要求に答えられず、読み手は再試行を繰り返した)。キーボードの出現は 1s 以内(上限 6s はその数倍)。
-// - **タップ・ダブルタップ・長押しは既定で待ちを飛ばす**(QuiescenceWait.around の skipByDefault)。/drag と /systemui/* は `X-FT-Settle: 0` のときだけ通る(skippingQuiescenceIfRequested)
+// - **タップ・ダブルタップ・長押し・打鍵の直前のタップは既定で待ちを飛ばす**(QuiescenceWait.around の skipByDefault)。
+//   /drag・/pinch・/rotate・/systemui/*・アプリスイッチャー・ホームのジェスチャは /swipe と同じ扱い(gestureQuiescence)
+// - **操作の待ちを around / capping の外で呼ばない**(縮まらず XCTest 既定の 60s になる)。外してよいのは起動・前面化だけ
 // - **飛ばさない回(スワイプ = スクロールを含む)も、操作(QuiescenceWait.around の中)の間だけ待ちの上限を
 //   `quiescenceCapSeconds` に縮める**(cappedWait)。起動・前面化・入力の中の待ちは縮めない —— activate の中の待ちを
 //   切ると前面化そのものが完了せずホストが 45s で時間切れになった(実測)。XCTest の上限は

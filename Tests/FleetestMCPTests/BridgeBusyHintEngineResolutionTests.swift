@@ -57,7 +57,7 @@ final class BridgeBusyHintEngineResolutionTests: XCTestCase {
             stateDir: stateDir, port: 8139, udid: "ABCD-1234", bundleID: "com.example.app")
 
         let resolved = MCPServer.resolvedEngine(known: nil, port: 8139, repoRoot: repoRoot)
-        let hint = MCPServer.bridgeBusyHint(connection: "port 8139", engine: resolved)
+        let hint = MCPServer.bridgeBusyHint(connection: "port 8139", engine: resolved, mayHaveTakenEffect: false)
 
         XCTAssertTrue(hint.contains("foreground"), hint)
         XCTAssertTrue(hint.contains("ft_launch"), hint)
@@ -74,7 +74,7 @@ final class BridgeBusyHintEngineResolutionTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: repoRoot) }
 
         let resolved = MCPServer.resolvedEngine(known: nil, port: 8139, repoRoot: repoRoot)
-        let hint = MCPServer.bridgeBusyHint(connection: "port 8139", engine: resolved)
+        let hint = MCPServer.bridgeBusyHint(connection: "port 8139", engine: resolved, mayHaveTakenEffect: false)
 
         XCTAssertTrue(hint.contains("still bound"), hint)
         XCTAssertTrue(hint.contains("Retry the call"), hint)

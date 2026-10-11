@@ -39,6 +39,13 @@ extension BridgeRouter {
     /// `typeText` はイベント合成の失敗が XCTest の失敗になり**ランナーごと落ちる**
     /// (実測1件: 高負荷で `Type '...' into "field_single" TextView` の Synthesize event を
     /// 最後にランナーが死んだ)。
+    /// 打鍵の直前のタップは XCTest の待ちを飛ばす(/tap と同じ)。直後の typeText の前の待ちと連続して二重になり、
+    /// 知らせを返さないアプリでは /type 1回に上限 6s × 4(タップの前後・打鍵の前後)= 24s かかって、ホストの
+    /// 操作の上限 20s(BridgeClient.Timeout.interaction)を超えた —— 応答は失敗なのに文字は打たれていた(実測・Apple マップ)
+    static func tapBeforeTyping(_ point: XCUICoordinate) {
+        QuiescenceWait.around(skip: false, skipByDefault: true) { point.tap() }
+    }
+
     func handleType(_ body: Data) throws -> BridgeHTTPServer.Response {
         _ = QuiescenceWait.takeCapNote()  // 前の操作の数え残しを捨てる(応答の注記はこの操作の分だけ)
         // **待ちの上限を縮めて打つ**(QuiescenceWait の冒頭)。上限まで待った回は注記に残す(読み手が遅さの理由を読める)
@@ -54,10 +61,10 @@ extension BridgeRouter {
         let focusBefore = focusBeforeTappingNonInput(app, ref: req.ref)
         var tapped: CGPoint?
         if let ref = req.ref {
-            // tap() が quiescence まで待つため追加待ちは不要(旧: 固定400ms・keyboards クエリは
+            // キーボードの出現は直後の typeText の前の待ち(上限つき)が待つ(keyboards クエリは
             // キーボードが別プロセス扱いのため常にタイムアウトし逆効果だった。2026-07-12実測)
             let point = try resolvePoint(ref: ref, x: nil, y: nil)
-            coordinate(app, point).tap()
+            Self.tapBeforeTyping(coordinate(app, point))
             tapped = point
         }
         // 末尾の改行1つは本文と分けて送る(改行は Return キー相当で、値には残らない=検証対象外)。
@@ -365,7 +372,7 @@ extension BridgeRouter {
         if let ref = req.ref {
             let point = try resolvePoint(ref: ref, x: nil, y: nil)
             let focusBefore = Self.focusMark(app)
-            coordinate(app, point).tap()
+            Self.tapBeforeTyping(coordinate(app, point))
             let refIsTextInput = refElements[ref].map(TypeReadback.isTextInput) ?? false
             focused = try Self.awaitClearFocusTarget(app, tapped: point, focusBefore: focusBefore,
                                                      refIsTextInput: refIsTextInput)
@@ -393,7 +400,7 @@ extension BridgeRouter {
             // 読み返し不一致が唯一の合図になる(2026-08-31・実機実測)
             try Self.requirePresent(focused)
             let frame = focused.frame
-            coordinate(app, CGPoint(x: frame.maxX - 4, y: frame.midY)).tap()
+            Self.tapBeforeTyping(coordinate(app, CGPoint(x: frame.maxX - 4, y: frame.midY)))
             app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue,
                                  count: Self.invisibleContentDeleteBurst))
         }
@@ -409,7 +416,7 @@ extension BridgeRouter {
             rounds += 1
             try Self.requirePresent(focused)
             let frame = focused.frame
-            coordinate(app, CGPoint(x: frame.maxX - 4, y: frame.midY)).tap()
+            Self.tapBeforeTyping(coordinate(app, CGPoint(x: frame.maxX - 4, y: frame.midY)))
             // 打鍵は app 全体へ(要素へ向けると、叩いた後に焦点が動いたとき要素スコープの失敗でランナーを落とし得る。
             // 入力先は叩いた欄 = 最前のレスポンダ。下の木で読み返す経路と同じ)
             app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
@@ -440,7 +447,7 @@ extension BridgeRouter {
                     }
                     return current.frame == target.frame
                 }?.frame ?? target.frame
-                coordinate(app, CGPoint(x: now.x + now.width - 4, y: now.y + now.height / 2)).tap()
+                Self.tapBeforeTyping(coordinate(app, CGPoint(x: now.x + now.width - 4, y: now.y + now.height / 2)))
                 app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: left.count))
             }
         }

@@ -165,12 +165,20 @@ enum RefGuard {
     /// **キーボードが出ているなら、消えた原因の第一候補はキーボード**(木はキーボードの裏の要素を
     /// 落とすことがある)。`keyboardShown` は直近の木の `KeyboardWait.isShown`。「画面が変わった」と
     /// 断定すると、キーボードを閉じれば戻る場面で探索が止まる
+    /// **アプリ内のアラートが前面に出ているならそれを名指しする**(`inAppAlert` = 読み直した木の
+    /// `AlertTreeScope.frontInAppAlert`。既定値を置かない = 呼び手に決めさせる)。アラートの間は木がその中身だけになるので
+    /// 的は「消えた」ように見えるが、閉じれば戻る —— 「画面が変わった」と言うと読み手は撮り直しを1回払ってから気づく(計測)
     static func goneMessage(ref: Int, target: ElementInfo, truncatedCount: Int = 0,
-                            keyboardShown: Bool = false) -> String {
+                            keyboardShown: Bool = false, inAppAlert: (alert: ElementInfo, buttons: [String])?) -> String {
         let truncated = truncatedCount > 0
             ? " (or it was pushed out of the tree: \(truncatedCount) element(s) were omitted"
                 + " by the snapshot limit)"
             : ""
+        if let (alert, buttons) = inAppAlert {
+            let named = buttons.isEmpty ? "" : " (buttons: " + buttons.map { "\"\($0)\"" }.joined(separator: " / ") + ")"
+            return "[\(ref)] \(describe(target)) is not reachable right now — \(describe(alert))\(named) is in front"
+                + " of the app. Handle it first (ft_tap one of its buttons), then take a fresh ft_snapshot."
+        }
         if keyboardShown {
             return "[\(ref)] \(describe(target)) is no longer in the tree — the on-screen keyboard"
                 + " is up and may be covering it (or the screen changed after that ft_snapshot)\(truncated)."

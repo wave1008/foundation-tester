@@ -334,28 +334,44 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
     }
 
     func testBridgeBusyHintDoesNotClaimTheRunnerExited() {
-        let hint = MCPServer.bridgeBusyHint(connection: "port 8124", engine: "xcuitest")
+        let hint = MCPServer.bridgeBusyHint(connection: "port 8124", engine: "xcuitest", mayHaveTakenEffect: false)
         XCTAssertTrue(hint.contains("port 8124"), hint)
         XCTAssertTrue(hint.contains("still bound"), hint)
         XCTAssertFalse(hint.contains("exited"), hint)
     }
 
+    /// **操作のツールのタイムアウトに「Retry the call」と言わない**(実測: ft_type が実際には打たれていた。
+    /// 撃ち直すと二重に打つ)。観測だけのツールは撃ち直してよい
+    func testBridgeBusyHintDoesNotTellDeviceDrivingToolsToRetry() {
+        let typing = MCPServer.bridgeBusyHint(
+            connection: "port 8124", engine: "xcuitest",
+            mayHaveTakenEffect: MCPServer.mayHaveTakenEffect(tool: "ft_type"))
+        XCTAssertFalse(typing.contains("Retry the call"), typing)
+        XCTAssertTrue(typing.contains("ft_snapshot"), typing)
+        let reading = MCPServer.bridgeBusyHint(
+            connection: "port 8124", engine: "xcuitest",
+            mayHaveTakenEffect: MCPServer.mayHaveTakenEffect(tool: "ft_snapshot"))
+        XCTAssertTrue(reading.contains("Retry the call"), reading)
+        XCTAssertTrue(MCPServer.mayHaveTakenEffect(tool: "ft_clear_app_data"))
+        XCTAssertTrue(MCPServer.mayHaveTakenEffect(tool: "ft_no_such_tool"))
+    }
+
     /// engine が nil(判定できない)でも xcuitest 相当の busy 文言のまま(誤誘導しない側の既定)
     func testBridgeBusyHintDefaultsToXCUITestWordingWhenEngineIsUnknown() {
-        let hint = MCPServer.bridgeBusyHint(connection: "port 8124", engine: nil)
+        let hint = MCPServer.bridgeBusyHint(connection: "port 8124", engine: nil, mayHaveTakenEffect: false)
         XCTAssertTrue(hint.contains("still bound"), hint)
     }
 
     /// **C: suspend された in-app ブリッジへ「busy・リトライせよ」と言わない**。
     /// in-app/hybrid はエンジンが分かればそちらの文言(前面に戻すか xcuitest ポートを使う)に切り替わる
     func testBridgeBusyHintSwitchesToInAppWordingWhenEngineIsInApp() {
-        let hint = MCPServer.bridgeBusyHint(connection: "port 8125", engine: "inapp")
+        let hint = MCPServer.bridgeBusyHint(connection: "port 8125", engine: "inapp", mayHaveTakenEffect: false)
         XCTAssertTrue(hint.contains("port 8125"), hint)
         XCTAssertTrue(hint.contains("foreground"), hint)
         XCTAssertTrue(hint.contains("ft_launch"), hint)
         XCTAssertFalse(hint.contains("still bound"), hint)
 
-        let hybridHint = MCPServer.bridgeBusyHint(connection: "port 8125", engine: "hybrid")
+        let hybridHint = MCPServer.bridgeBusyHint(connection: "port 8125", engine: "hybrid", mayHaveTakenEffect: false)
         XCTAssertTrue(hybridHint.contains("foreground"), hybridHint)
     }
 
@@ -382,7 +398,7 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
         server.connections["direct:android:0:emulator-5554"] = "serial emulator-5554"
         let hint = await server.connectionLostHint(
             DriverError.badResponse(status: 500, body: "boom"),
-            args: ["platform": "android", "serial": "emulator-5554"])
+            args: ["platform": "android", "serial": "emulator-5554"], tool: "ft_tap")
         XCTAssertEqual(hint, "")
     }
 

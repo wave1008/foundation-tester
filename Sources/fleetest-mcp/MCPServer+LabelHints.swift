@@ -144,7 +144,8 @@ extension MCPServer {
                     + " \(overflowNoun)(s) not shown — ft_snapshot again after narrowing the"
                     + " screen to see them)")
             }
-            if foldedAny {
+            // **定型のフッターは初出(凡例と同じ回)だけ**(ref で打つ探索中は毎回読まない = 計測で指摘)
+            if foldedAny, !abbreviated {
                 lines.append("  Tap these by ref. To get a selector for one of them,"
                     + " ft_tap prints the selector it recommends for the element it hit.")
             }
@@ -186,7 +187,7 @@ extension MCPServer {
             lines.append("  (+\(sortedGroups.count - ambiguousLabelsShown) more \(overflowNoun)(s)"
                 + " not shown — ft_snapshot again after narrowing the screen to see them)")
         }
-        if !anyStable, !allCompact {
+        if !anyStable, !allCompact, !abbreviated {
             lines.append("  none of the above have a stable selector on this screen —"
                 + " prefer tapping by ref for these.")
         }

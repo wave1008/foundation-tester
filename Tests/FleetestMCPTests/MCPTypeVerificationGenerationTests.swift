@@ -50,9 +50,9 @@ final class MCPGoneUnderKeyboardTests: XCTestCase {
 
     func testGoneMessageNamesTheKeyboardOnlyWhenItIsShown() {
         let target = field(id: "submit_btn")
-        let withKeyboard = RefGuard.goneMessage(ref: 3, target: target, keyboardShown: true)
+        let withKeyboard = RefGuard.goneMessage(ref: 3, target: target, keyboardShown: true, inAppAlert: nil)
         XCTAssertTrue(withKeyboard.contains("keyboard"), withKeyboard)
-        let without = RefGuard.goneMessage(ref: 3, target: target)
+        let without = RefGuard.goneMessage(ref: 3, target: target, inAppAlert: nil)
         XCTAssertFalse(without.contains("keyboard"), without)
         XCTAssertTrue(without.contains("the screen changed"), without)
     }

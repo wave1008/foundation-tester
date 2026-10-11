@@ -63,6 +63,7 @@ final class MCPServer {
     var preparedPhysicalAndroid: SessionFlags { SessionFlags(server: self, path: \.preparedPhysicalAndroid) }
     var bridgeRecoveryFailed: SessionFlags { SessionFlags(server: self, path: \.bridgeRecoveryFailed) }
     var loadingRefNoteShown: SessionFlags { SessionFlags(server: self, path: \.loadingRefNoteShown) }
+    var lastRepeatedNotes: SessionMap<[String: String]> { SessionMap(server: self, path: \.lastRepeatedNotes) }
 
     /// ft_start_run が起こした run の台帳(MCPServer+RunJobs.swift)。stored property なのでここに置く
     let runJobs = MCPRunJobRegistry()

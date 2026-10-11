@@ -97,7 +97,7 @@ extension MCPServer {
                                       otherPlatform: Self.platformWasInferred(args)
                                           && !seenExplicitAndroidSerials.isEmpty ? "Android" : nil,
                                       noteKey: "rememberedDevice:ios:\(remembered.port)",
-                                      firstTime: firstTime)
+                                      firstTime: firstTimeInSession)
             if case .applied = iosFold {
                 Self.logStderr("no udid/port given — reusing this session's earlier target"
                     + " (port \(remembered.port), udid \(remembered.udid ?? "unknown"))")
@@ -130,7 +130,7 @@ extension MCPServer {
                                       otherPlatform: Self.platformWasInferred(args)
                                           && !seenExplicitIOSPorts.isEmpty ? "iOS" : nil,
                                       noteKey: "rememberedDevice:android:\(remembered)",
-                                      firstTime: firstTime)
+                                      firstTime: firstTimeInSession)
             if case .applied = androidFold {
                 Self.logStderr("no serial given — reusing this session's earlier Android target"
                     + " (serial \(remembered))")
@@ -170,7 +170,7 @@ extension MCPServer {
                                   allSeenLabels: survivors, deviceNoun: deviceNoun,
                                   unitNoun: unitNoun, otherPlatform: otherPlatform,
                                   noteKey: "lostTarget:\(deviceNoun):\(survivor)",
-                                  firstTime: firstTime)
+                                  firstTime: firstTimeInSession)
     }
 
     /// `lostTargetFold` が断るときの文。**探索へ落ちない理由を言う** —— 「見つからない」とだけ

@@ -41,7 +41,10 @@ extension MCPServer {
             // native 前提の adoptSnapshot に通すと同じ木を「別世代」と誤認する
             // (base 込みの ref を native ref と取り違えて比較するため)
             snapshot = waited.refetched ? adoptSnapshot(waited.snapshot, args: args) : waited.snapshot
-            if !waited.found {
+            if waited.found {
+                waitNote = Self.waitForAppearedNote(waitFor, in: snapshot,
+                                                    collapsingBulk: args["expandBulk"] as? Bool != true)
+            } else {
                 let explain = firstTime("waitMissExplained")
                 waitNote = Self.waitMissHeadline(waitFor, seconds: seconds, quietStopAfter: waited.quietStopAfter,
                                                  explain: explain)
@@ -94,7 +97,7 @@ extension MCPServer {
                 + Self.driverFallbackNote(d)
                 + Self.tapHitAreaMissNote(d)
                 + reproductionNote(resolvedRef: target.ref, args: args)
-                + Self.changedHint(args) + waitForWithoutSnapshotAfterNote(args)
+                + changedHintOnce(args) + waitForWithoutSnapshotAfterNote(args)
                 + (await snapshotAfterBody(args, outsideTheAppTree: false)))
         }
         if let x = try Self.doubleArgument(args, "x"), let y = try Self.doubleArgument(args, "y") {

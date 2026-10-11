@@ -122,9 +122,10 @@ final class BridgeRouterStatusContractTests: XCTestCase {
     /// 消える(2026-09-19: WebView の中身を消去の途中で止めると毎回再現)。`exists` は失敗を記録しない
     func testClearChecksTheFieldStillExistsBeforeTouchingIt() throws {
         let source = try routerSource
-        let clear = try XCTUnwrap(handlerBody("handleClear", in: source))
+        // 本体は handleClear が上限つきで呼ぶ clearFocusedInput にある
+        let clear = try XCTUnwrap(handlerBody("clearFocusedInput", in: source))
         XCTAssertFalse(clear.contains("Self.remainingText(of: focused)"),
-                       "handleClear の読み取りは presentRemainingText を通すこと(素の remainingText は在るかを見ない)")
+                       "clearFocusedInput の読み取りは presentRemainingText を通すこと(素の remainingText は在るかを見ない)")
         var searchFrom = clear.startIndex
         var frames = 0
         while let read = clear.range(of: "let frame = focused.frame", range: searchFrom..<clear.endIndex) {

@@ -3706,7 +3706,9 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     (`NoteCatalog.Input.actionResponse`。レイアウト容器だけの群は撃つ相手にならない)。満額は `ft_snapshot` だけ = セレクタを書くために読む口。
     **ベンチ(`Scripts/mcp-bench.sh`)での手数の確認は未実施**(計測4回続けて全エージェントが冗長と指摘した量の削減)。
     **初出だけ満額の注記(`once` / `onceNonEmpty`)の鍵はデバイス(engineKey)ごと**(`MCPServer.noteScope`)——
-    1つのサーバを2つのエージェントが別のデバイスで共有すると、2人目は初出を見ていないのに「初出の注記を見よ」と言われた
+    1つのサーバを2つのエージェントが別のデバイスで共有すると、2人目は初出を見ていないのに「初出の注記を見よ」と言われた。
+    **ft_launch / ft_clear_app_data でそのデバイスの鍵を忘れる**(`resetOnceNotes`)—— サーバはプロセスの寿命で鍵を持つので、
+    前の呼び手が初出を見ていると次の呼び手は最初の操作から短縮形を受け取った。表の定型フッター(「Tap these by ref…」)も初出だけ
     **⑶ シート展開救済の名乗り**(`MCPServer.sheetRescueMarker`)—— 散文は出ていたが、所要時間の
     内訳(`sheet-expand rescue +1.4s`)と語が違い、**1つの文字列では拾えなかった**。
     構造化フラグの要望だったが、**この応答の宛先はエージェントの本文1本**なので機械可読チャネルは
@@ -4141,8 +4143,8 @@ Android 実機はグローバル設定が**永続的に**書き換わるので�
 **XCUITest ランナーはタップ・ダブルタップ・長押しの前の quiescence 待ちを既定で飛ばし、整定は木の観察で行う**(操作後の
 `captureSettled`。ユーザー決定。4 SUT の A/B で退行無し)。**スワイプ(スクロールを含む)は待ちを残す**(慣性の終わりを木では
 見届けられない = E2E-RN S0090 が 6 回中 4 回落ちた)が、操作の間は待ちの上限を 6 秒に縮める(`QuiescenceWait.quiescenceCapSeconds`)。
-**DSL の `settle: false`(コマンド1回だけ、操作後の整定をすべて飛ばす)**: スワイプ(スクロールを含む)・/drag・/systemui/* の XCTest の待ちは
-`settle: false` のときだけ飛ばす(/type・/clear・/pressEnter は飛ばさないが、v175 から待ちの上限だけ 6s に縮める = `QuiescenceWait.capping`。キーボード出現待ちを quiescence に頼るため飛ばせないが、落ち着かないアプリでは打鍵ごとに XCTest 既定の 60s を待っていた)。契約:
+**DSL の `settle: false`(コマンド1回だけ、操作後の整定をすべて飛ばす)**: スワイプ(スクロールを含む)・/drag・/pinch・/rotate・/systemui/*・アプリスイッチャー・ホームの XCTest の待ちは
+`settle: false` のときだけ飛ばし、それ以外は上限 6s に縮める(v176 から。それまで /drag と /systemui/* は縮めず、知らせを返さないアプリで 60s 止まってランナーが起動し直された。走査 `RunnerQuiescenceCapCoverageTests` が上限の外の操作を落とす。/type・/clear の中の焦点のタップは待ちを飛ばす = 直後の打鍵の前の待ちと二重になり、/type 1回が 24s でホストの上限 20s を超えていた)(/type・/clear・/pressEnter は飛ばさないが、v175 から待ちの上限だけ 6s に縮める = `QuiescenceWait.capping`。キーボード出現待ちを quiescence に頼るため飛ばせないが、落ち着かないアプリでは打鍵ごとに XCTest 既定の 60s を待っていた)。契約:
 - **ワイヤ**: ホストが該当ステップの実行中、ブリッジへの HTTP リクエストに `X-FT-Settle: 0` を付ける(`BridgeAPI.settleHeader`)。
   ホスト側は `FlowStep.settle` → `StepExecutor.execute` が TaskLocal `SettleOverride.skip` に載せ、ブリッジクライアントが読む。
   ブリッジの版は iOS `bridgeProtocolVersion` 165・Android `VERSION_CODE` 89。

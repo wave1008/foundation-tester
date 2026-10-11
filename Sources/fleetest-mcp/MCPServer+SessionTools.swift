@@ -182,6 +182,7 @@ extension MCPServer {
     }
 
     func ftLaunch(_ args: [String: Any]) async throws -> [[String: Any]] {
+        resetOnceNotes(forScope: noteScope)   // 新しい探索の始まり = 初出の注記を数え直す(resetOnceNotes の doc)
         let bundleID = try Self.requiredStringArgument(args, "bundleId")
         let launchKey = Self.engineKey(args)
         let launchDriver = try await driver(args)
@@ -307,6 +308,7 @@ extension MCPServer {
     }
 
     func ftClearAppData(_ args: [String: Any]) async throws -> [[String: Any]] {
+        resetOnceNotes(forScope: noteScope)
         let bundleID = try Self.requiredStringArgument(args, "bundleId")
         let clearAppDataDriver = try await driver(args)
         let clearAppDataKey = Self.engineKey(args)

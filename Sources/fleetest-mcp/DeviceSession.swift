@@ -115,6 +115,9 @@ struct DeviceSession {
     /// 「その ref は操作の直後の読み(読み込みの途中)から採った」注記を言ったか。**1セッション1回**
     /// (害の無い事実で、地図の検索では ref を撃つたびに出ていた = 計測で指摘)
     var loadingRefNoteShown = false
+    /// 注記の種類 → 直前に出したその注記(比べる形 = `MCPServer.unlessRepeated`)。同じ画面を読み直すたびに
+    /// 同じ数行が出ていた(計測で指摘: スクロール領域・重複ラベル/重複 id)。同じなら出さない・変われば出す
+    var lastRepeatedNotes: [String: String]?
     /// **切り詰められた web ページを見たデバイス**。以後の読みは最初から要素上限の
     /// 天井で撮る(`needsWebPageCeiling`)。2枚払うのはラッチした1回だけ ——
     /// 毎回「撮る→切り詰めを見て撮り直す」だと、waitFor のポーリングで読みが倍になる

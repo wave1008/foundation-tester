@@ -233,8 +233,14 @@ final class MCPRepeatedSnapshotAfterNoteTests: XCTestCase {
         XCTAssertTrue(firstText.contains("read immediately after the action"), firstText)
         XCTAssertTrue(firstText.contains("ft_snapshot waitFor"), firstText)
 
+        // 2回目は木を変える(同じ木だと撮り直しの注記が出て、この注記は出さない = 撮り直した木は「直後」ではない)
+        var changed = driver.snapshotResponse
+        changed.elements.append(ElementInfo(ref: 99, type: "staticText", identifier: nil, label: "next",
+                                            value: nil, placeholder: nil, enabled: true,
+                                            frame: FTRect(x: 0, y: 700, width: 100, height: 20), depth: 1))
+        driver.scriptedSnapshots = [driver.snapshotResponse, changed]   // ref の確かめ → 操作の後
         let second = try await server.call(tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true])
-        let secondText = try XCTUnwrap(second.first?["text"] as? String)
+        let secondText = second.compactMap { $0["text"] as? String }.joined()
         XCTAssertFalse(secondText.contains("read immediately after the action"), secondText)
         XCTAssertTrue(secondText.contains("see the first snapshotAfter note"), secondText)
     }

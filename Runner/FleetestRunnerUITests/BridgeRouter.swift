@@ -503,7 +503,7 @@ final class BridgeRouter {
                                              isLandscape: XCUIDevice.shared.orientation.isLandscape) {
             throw refuseLandscapeSpringBoardTap()
         }
-        skippingQuiescenceIfRequested {
+        gestureQuiescence {
             coordinate(systemUIAnchor(), CGPoint(x: frame.midX, y: frame.midY)).tap()
         }
         return .json(OKResponse())
@@ -547,7 +547,7 @@ final class BridgeRouter {
     private func handleSystemUISwipe(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
         let app = systemUIAnchor()
-        skippingQuiescenceIfRequested {
+        gestureQuiescence {
             switch req.direction {
             case .up: app.swipeUp()
             case .down: app.swipeDown()
@@ -762,10 +762,11 @@ final class BridgeRouter {
                status: 501)
     }
 
-    /// `X-FT-Settle: 0` のときだけ XCTest の待ちを飛ばす(それ以外は何も変えない = 待ちの上限を縮める cap も掛けない)。
-    /// /drag・/systemui/* 用。/type・/clear・/pressEnter はこれを使わず `QuiescenceWait.capping`(飛ばさず上限だけ縮める)
-    private func skippingQuiescenceIfRequested<T>(_ body: () throws -> T) rethrows -> T {
-        try skipSettle ? QuiescenceWait.around(skip: true, body) : body()
+    /// ジェスチャの XCTest の待ち: `X-FT-Settle: 0` なら飛ばし、それ以外は上限を `quiescenceCapSeconds` に縮める(/swipe と同じ)。
+    /// **素の body() を呼ばない** —— 縮めないと知らせを返さないアプリ(Apple マップ)で XCTest 既定の 60s 止まり、
+    /// ホストは応答なしとしてランナーを起動し直した(実測: シートを広げる /drag の後の "Wait for … to idle" が 60s)
+    func gestureQuiescence<T>(_ body: () throws -> T) rethrows -> T {
+        try QuiescenceWait.around(skip: skipSettle, body)
     }
 
     private func handleSwipe(_ body: Data) throws -> BridgeHTTPServer.Response {
@@ -903,7 +904,7 @@ final class BridgeRouter {
             throw BridgeError(400, violation)
         }
         guard let requestedDuration = req.duration else {
-            skippingQuiescenceIfRequested { from.press(forDuration: press, thenDragTo: to) }
+            gestureQuiescence { from.press(forDuration: press, thenDragTo: to) }
             return .json(OKResponse())
         }
         let distance = hypot(req.toX - req.fromX, req.toY - req.fromY)
@@ -918,7 +919,7 @@ final class BridgeRouter {
         }
         // **thenHoldForDuration に正の値を渡しても慣性は消えない**(2026-08-02 実測。
         // 指を保持するだけでイベントが出ず velocity 計算が更新されない)。0 のままにすること
-        skippingQuiescenceIfRequested {
+        gestureQuiescence {
             from.press(forDuration: press, thenDragTo: to,
                        withVelocity: XCUIGestureVelocity(velocity), thenHoldForDuration: 0)
         }
@@ -1054,8 +1055,10 @@ final class BridgeRouter {
                                                                cap: BridgeAPI.gestureSecondsCeiling) {
             throw BridgeError(400, violation)
         }
-        target.pinch(withScale: CGFloat(req.scale),
-                     velocity: req.scale > 1 ? magnitude : -magnitude)
+        gestureQuiescence {
+            target.pinch(withScale: CGFloat(req.scale),
+                         velocity: req.scale > 1 ? magnitude : -magnitude)
+        }
         return .json(OKResponse(note: note))
     }
 
@@ -1105,7 +1108,7 @@ final class BridgeRouter {
         case .portrait: target = .portrait
         case .landscape: target = .landscapeLeft
         }
-        XCUIDevice.shared.orientation = target
+        gestureQuiescence { XCUIDevice.shared.orientation = target }
         // **アプリの窓で判定する**(デバイスの向きではない)。契約は「アプリの UI がその向きに
         // なること」で、**縦向き専用のアプリはデバイスを回しても縦のまま** —— XCUIDevice の
         // 向きだけを見ると、そういうアプリで**成功を返してしまう**
@@ -1347,8 +1350,10 @@ final class BridgeRouter {
         }
         let start = sb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.999))
         let end = sb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.48))
-        start.press(forDuration: 0.1, thenDragTo: end,
-                    withVelocity: XCUIGestureVelocity(500), thenHoldForDuration: 1.0)
+        gestureQuiescence {
+            start.press(forDuration: 0.1, thenDragTo: end,
+                        withVelocity: XCUIGestureVelocity(500), thenHoldForDuration: 1.0)
+        }
         return .json(OKResponse())
     }
 
@@ -1393,6 +1398,10 @@ final class BridgeRouter {
     }
 
     private func sendHome(_ sb: XCUIApplication) {
+        gestureQuiescence { sendHomeGesture(sb) }
+    }
+
+    private func sendHomeGesture(_ sb: XCUIApplication) {
         #if targetEnvironment(simulator)
         XCUIDevice.shared.press(.home)
         #else

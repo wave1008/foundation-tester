@@ -331,9 +331,8 @@ final class MCPAuditFixes20260812Round19Tests: XCTestCase {
         let short = MCPServer.bulkExemptNote(tree, abbreviated: true)
         XCTAssertTrue(full.contains("91"), full)
         XCTAssertTrue(full.contains("expandBulk"), full)
-        XCTAssertTrue(short.contains("91"), short)
-        XCTAssertFalse(short.contains("expandBulk"), short)
-        XCTAssertLessThan(short.count, full.count / 2)
+        // 2回目以降は出さない(畳んだ見出しの行そのものが件数を言うので重複だった = 計測で指摘)
+        XCTAssertEqual(short, "")
     }
 
     /// 申告の無いブリッジでは黙る(短縮形でも嘘の安心を出さない)

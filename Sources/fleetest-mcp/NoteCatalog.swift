@@ -39,15 +39,19 @@ enum NoteCatalog {
         /// 操作の応答(snapshotAfter・ft_scroll_to・ft_batch)か。曖昧ラベル・重複 id の表を**操作できる要素を含む群だけ**に
         /// 絞る(レイアウト容器だけの群は撃つ相手にならない。計測5回続けて「毎回 5〜10 行」と指摘された)。ft_snapshot は満額
         let actionResponse: Bool
+        /// ft_scroll_to の応答か(残像の対処文を「先に ft_scroll_to で出せ」にしない。`MCPServer.leftoverRemedy`)
+        let afterScrollSearch: Bool
 
         init(snapshot: SnapshotResponse, collapsingBulk: Bool = true,
              cache: MCPServer.SnapshotAnnotationCache? = nil,
-             brief: Set<String> = NoteCatalog.brief, actionResponse: Bool = false) {
+             brief: Set<String> = NoteCatalog.brief, actionResponse: Bool = false,
+             afterScrollSearch: Bool = false) {
             self.snapshot = snapshot
             self.collapsingBulk = collapsingBulk
             self.cache = cache ?? MCPServer.SnapshotAnnotationCache()
             self.brief = brief
             self.actionResponse = actionResponse
+            self.afterScrollSearch = afterScrollSearch
         }
     }
 
@@ -81,7 +85,7 @@ enum NoteCatalog {
         // 遮蔽・ghost は「下の一覧をそのまま信じてよいか」なので最初に置く
         Entry(key: "ghostNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
             MCPServer.ghostNote(input.snapshot, collapsingBulk: input.collapsingBulk,
-                                cache: input.cache)
+                                afterScrollSearch: input.afterScrollSearch, cache: input.cache)
         },
         // ghostNote と同じ「一覧の中の ref が信用できるか」の系統なので直後に置く
         // (こちらは残像ではなく重複コピー —— 横スクロールで前のコピーが残る形)
@@ -209,9 +213,43 @@ extension MCPServer {
                       disabled: Set<String> = NoteCatalog.disabled) -> String {
         NoteCatalog.entries(for: context).reduce(into: "") { out, entry in
             guard !disabled.contains(entry.key) else { return }
-            out += entry.abbreviates
+            if entry.key == "scrollFrameCandidates" {
+                let note = entry.render(input, false)
+                out += unlessRepeated(note, key: entry.key, comparable: note)
+                return
+            }
+            let rendered = entry.abbreviates
                 ? onceNonEmpty(entry.key) { entry.render(input, $0) }
                 : entry.render(input, false)
+            // **重複の表は操作の応答でだけ繰り返さない**(ft_snapshot は毎回満額 = セレクタを書く場面。落とすと
+            // ft_* が 17→28 に増えた実測がある)。比べるのは短縮形から ref を除いた形(読み直すたびに ref が変わる)
+            if Self.repeatableInActionResponses.contains(entry.key) {
+                let comparable = rendered.isEmpty ? "" : Self.withoutRefs(entry.render(input, true))
+                let unrepeated = unlessRepeated(rendered, key: entry.key, comparable: comparable)
+                out += input.actionResponse ? unrepeated : rendered
+                return
+            }
+            out += rendered
         }
+    }
+
+    static let repeatableInActionResponses: Set<String> = ["ambiguousLabelsNote", "duplicateIDsNote"]
+
+    static func withoutRefs(_ note: String) -> String {
+        note.replacingOccurrences(of: #"\[\d+\]"#, with: "[]", options: .regularExpression)
+    }
+
+    /// 同じデバイスで直前に出したその種類の注記と `comparable` が同じなら出さない(`DeviceSession.lastRepeatedNotes`)。
+    /// 空の文は記憶を消す(その注記の無い画面を挟んで同じ画面へ戻ったら、もう一度言う)
+    func unlessRepeated(_ note: String, key: String, comparable: String) -> String {
+        var seen = lastRepeatedNotes[noteScope] ?? [:]
+        guard !note.isEmpty else {
+            if seen.removeValue(forKey: key) != nil { lastRepeatedNotes[noteScope] = seen }
+            return ""
+        }
+        guard seen[key] != comparable else { return "" }
+        seen[key] = comparable
+        lastRepeatedNotes[noteScope] = seen
+        return note
     }
 }

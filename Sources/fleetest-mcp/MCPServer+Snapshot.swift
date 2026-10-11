@@ -694,7 +694,9 @@ extension MCPServer {
                 let dialogHint = unchangedSinceAction
                     ? await Self.systemDialogHint(engine: engines[Self.engineKey(args)], driver: snapshotDriver) : ""
                 let explainMiss = waited.found ? false : firstTime("waitMissExplained")
-                waitNote = waited.found ? "waitFor \"\(waitFor)\" appeared.\n"
+                waitNote = waited.found
+                    ? Self.waitForAppearedNote(waitFor, in: snapshot,
+                                               collapsingBulk: effectiveArgs["expandBulk"] as? Bool != true)
                     : Self.waitMissHeadline(waitFor, seconds: seconds, quietStopAfter: waited.quietStopAfter,
                                             explain: explainMiss)
                         + Self.appearedPromptNote(before: beforeAction, now: snapshot)
@@ -779,6 +781,19 @@ extension MCPServer {
                 + " take an ft_snapshot yourself)"
             return (body, false)
         }
+    }
+
+    /// scrollFrame の注記を計算する木。**探索の後の木にその容器があるなら後の木**、無ければ探索前の木
+    /// (探索がシートを畳んで容器が消えた形では、前の木のほうが正しい)。前の木はセッションが最後に覚えた木で、
+    /// `snapshotAfter: false` の操作の後は**古い画面のまま**のことがある(実測: 閉じた詳細画面の木で「今の画面にある
+    /// 容器が無い」と言い、閉じた画面の容器を候補に挙げた)
+    static func scrollFrameHintTree(_ args: [String: Any], before: SnapshotResponse?,
+                                    after: SnapshotResponse) -> SnapshotResponse {
+        guard let before else { return after }
+        guard let frame = args["scrollFrame"] as? String else { return before }
+        let locator = FTSelector.parse(frame).primary
+        let inAfter = !(LocatorResolver.candidates(locator, elements: after.elements) ?? []).isEmpty
+        return inAfter ? after : before
     }
 
     /// アプリ内のアラートの注記(木はアラートの部分木だけ = `AlertTreeScope`)
@@ -869,8 +884,8 @@ extension MCPServer {
                     + " settles into a loading or empty state; if you are waiting"
                     + " for specific content, ask for it directly with"
                     + " ft_snapshot waitFor: <selector>.\n",
-                short: "(already differed on the first read — see the earlier"
-                    + " waitForChange note)\n")
+                // 短縮形も出さない: 画面遷移のタップでは「初回で差があった」のが当然で、7回の tap 全部に付いていた(計測で指摘)
+                short: "")
         }
         return (snapshot, note)
     }
@@ -1171,7 +1186,8 @@ extension MCPServer {
         case .gone:
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
                                                 truncatedCount: fresh.truncatedCount,
-                                                keyboardShown: KeyboardWait.isShown(fresh)))
+                                                keyboardShown: KeyboardWait.isShown(fresh),
+                                                inAppAlert: Self.frontInAppAlertWithButtons(fresh)))
         case .ghost(let found):
             // **拒否せず警告して撃つ**(方針を後退させた。理由は RefGuard の宣言)。
             // **キーボード被覆だけは断る**(`keyboardRefusal` の doc)
@@ -1282,7 +1298,8 @@ extension MCPServer {
             case .gone:
                 throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
                                                     truncatedCount: fresh.truncatedCount,
-                                                keyboardShown: KeyboardWait.isShown(fresh)))
+                                                keyboardShown: KeyboardWait.isShown(fresh),
+                                                inAppAlert: Self.frontInAppAlertWithButtons(fresh)))
             case .ghost(let found), .found(let found, _):
                 // **rect にできない容器を黙って渡さない**: 幅か高さが0だと、これを起点にした
                 // ジェスチャは1px も動かせる場所を持たない
@@ -1446,6 +1463,9 @@ extension MCPServer {
         // (driver 解決・scrollFrame 解決は上ですでに終わっている)。成功応答だけに載せる
         let timingClock = ContinuousClock()
         let timingStart = timingClock.now
+        // 段階の印(`.fleetest/mcp-rpc.log` の phases)。救済が入った回の時間が、最初の探索・シートを広げる・探し直すの
+        // どれに使われたかを分ける(16.5 秒の呼び出しの内訳が読めなかった)
+        SlowCallWatchdog.mark("scroll search")
         var outcome = await executor.execute(step)
         // **必ず撮り直す**(0スワイプで見つかった回も)。executor が解決に使った木を再利用して
         // 1枚ぶん(iOS 実測 2.0s)節約する案は実装して**撤回**した ——
@@ -1496,6 +1516,7 @@ extension MCPServer {
         } else if outcome.notes.contains(.sheetCollapsed),
            let grabber = Self.sheetGrabber(in: after) {
             let rescueStart = timingClock.now
+            SlowCallWatchdog.mark("sheet rescue: expanding the sheet")
             let beforeExpansion = after
             let beforeHeight = Self.scrollFrameHeight(scrollFrameArg, step: step,
                                                       in: beforeExpansion)
@@ -1546,6 +1567,7 @@ extension MCPServer {
                     + "— the list had stopped moving inside a partially open sheet, so"
                     + " [\(grabber.ref)] \(RefGuard.describe(grabber)) was dragged up to expand it,"
                     + " which revealed the target — the search was NOT retried."
+                    + Self.matchOutsideScrollFrameNote(alreadyThere, step: step, in: expanded)
                     + Self.sheetExpansionLayoutNote(before: beforeExpansion, after: after) + "\n"
             } else {
                 // **再試行は逆走査つき**(defers... を外した別 executor)。展開後も稀に部分高の
@@ -1553,6 +1575,7 @@ extension MCPServer {
                 let retryExecutor = StepExecutor(driver: scrollDriver,
                                                  releasesScrollTouch: !isAndroid, isAndroid: isAndroid, tunables: RunTunables(),
                                                  uiFramework: uiFrameworkHint)
+                SlowCallWatchdog.mark("sheet rescue: searching again")
                 outcome = await retryExecutor.execute(step)
                 after = try await freshSnapshot(scrollDriver, args: args)
                 rescueMs = Int((timingClock.now - rescueStart) / .milliseconds(1))
@@ -1621,7 +1644,8 @@ extension MCPServer {
             // そのままでは誤解を招く(StepNote.scrollFrameMissing = DSL と共有した判定)
             if outcome.notes.contains(.scrollFrameMissing) {
                 throw MCPError(scrollFrameLabelNote + "scrollTo \"\(selectorText)\": \(reason)"
-                    + Self.scrollAlternativesHint(beforeScroll ?? after))
+                    // fail-fast はスワイプを撃たない = 読み直した木が今の画面(覚えていた木は古いことがある)
+                    + Self.scrollAlternativesHint(after))
             }
             // **渡された scrollFrame 容器が最終木から消えていたら名指しする**(実測:
             // Apple マップの乗換案内は探索スワイプがシートごと畳み、最終画面が地図だけになる。
@@ -1675,7 +1699,7 @@ extension MCPServer {
                 + Self.scrollNotationHint(selectorText, after: after, beforeScroll: beforeScroll,
                                           backDirection: Self.reversedDirection(direction))
                 + Self.similarLabelsHint(selectorText, in: after)
-                + Self.scrollAreaHint(beforeScroll ?? after, args: args, isAndroid: isAndroid))
+                + Self.scrollAreaHint(Self.scrollFrameHintTree(args, before: beforeScroll, after: after), args: args, isAndroid: isAndroid))
         }
         // **成功と言う前に、返す木にそれが居ることを確かめる**(探索で外した)。
         // 探索のスワイプは**ボタンを発火させることがある**(SwiftUI の SUT で実測)。
@@ -1710,7 +1734,7 @@ extension MCPServer {
                 + "\(Self.truncationHint(after)). \(Self.visibleLabelsHint(after))"
                 + " Pass scrollFrame: <container> to keep the swipes inside the right scroll area"
                 + " instead of falling back to a whole-screen swipe."
-                + Self.scrollAreaHint(beforeScroll ?? after, args: args, isAndroid: isAndroid))
+                + Self.scrollAreaHint(Self.scrollFrameHintTree(args, before: beforeScroll, after: after), args: args, isAndroid: isAndroid))
         }
         // fallback 一致は成功だが、利用者が書いた式では見つからなかったことを伝える
         // (primary が空振りする式は将来また空振りしうる)
@@ -1746,7 +1770,8 @@ extension MCPServer {
             stoppedByTool: toolStoppedBundleIDs[Self.engineKey(args)])
         // scrollFrame を渡すべき当人なので、複数領域の注記もここに出す(欠陥⑪)
         let scrollAreaNote = args["scrollFrame"] == nil ? (ScrollFrameCandidates.note(after) ?? "")
-            : Self.lineNote(Self.scrollAreaHint(beforeScroll ?? after, args: args, isAndroid: isAndroid))
+            : Self.lineNote(Self.scrollAreaHint(Self.scrollFrameHintTree(args, before: beforeScroll, after: after),
+                                                args: args, isAndroid: isAndroid))
         // **利用者が渡した式をそのまま残す**(F): 探索はセレクタで書くのが DSL の形なので、
         // ここだけは解決後の要素ではなく渡された式が正しい下書きになる
         var scrollStep = FlowStep(action: "scrollTo", locator: selector.primary)
@@ -1783,7 +1808,7 @@ extension MCPServer {
             // NoteCatalog の contexts が持つ = 2箇所の並びを読み比べる必要はない
             + catalogNotes(NoteCatalog.Input(snapshot: after, collapsingBulk: collapsingBulk,
                                              cache: cache, brief: Self.briefKeys(foldsSelectorTables: true),
-                                             actionResponse: true),
+                                             actionResponse: true, afterScrollSearch: true),
                            context: .scrollTo)
             // **既定で畳む**(expandBulk で戻せる): ft_scroll_to の答えは「探した1つがどこに居るか」
             // なので、地図のピンが数十行並ぶ意味は薄い。ft_snapshot と同じ規則にする

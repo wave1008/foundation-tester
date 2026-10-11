@@ -95,7 +95,8 @@ extension MCPServer {
         case .gone:
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
                                                 truncatedCount: fresh.truncatedCount,
-                                                keyboardShown: KeyboardWait.isShown(fresh)))
+                                                keyboardShown: KeyboardWait.isShown(fresh),
+                                                inAppAlert: Self.frontInAppAlertWithButtons(fresh)))
         case .ghost(let found):
             return (found, gateNote)
         case .found(let found, _):
@@ -341,6 +342,17 @@ extension MCPServer {
     /// 黙って無視すると、打ち間違い(holdSecond / scrollframe)が既定値のまま実行される。
     /// `_` 始まりの鍵は対象外。宛先の引数を宣言していないツールへ渡した宛先も同じ扱い
     /// そのツールのスキーマが宣言した欄だけを残す(入口の値域検査用。スキーマが引けなければそのまま返す)
+    /// 改名した引数(ツール → 旧名 → 断る文)。**旧名は黙って既定値に落とさない**: ft_long_press の `duration` が
+    /// 1.0 秒の長押しに化けると沈黙した誤りになる。宣言していない欄は本体に届かないので、ここ(入口)で断る
+    static let renamedArguments: [String: [String: String]] = [
+        "ft_long_press": ["duration": "duration was renamed to holdSeconds (same vocabulary as the"
+            + " DSL's tap(holdSeconds:)) — pass holdSeconds instead"],
+    ]
+
+    static func renamedArgumentRefusal(tool: String, args: [String: Any]) -> String? {
+        renamedArguments[tool]?.first { args[$0.key] != nil }?.value
+    }
+
     static func declaredArgumentsOnly(tool: String, args: [String: Any]) -> [String: Any] {
         guard let definition = toolDefinitions.first(where: { $0["name"] as? String == tool }),
               let schema = definition["inputSchema"] as? [String: Any],
@@ -443,21 +455,25 @@ extension MCPServer {
             throw MCPError("unknown tool: \(tool)")
         }
         // JSON null の欄は「省略」に畳む(droppingNullArguments 参照)。foldingUDIDIntoPort より前
-        let args = Self.droppingNullArguments(args)
+        let cleaned = Self.droppingNullArguments(args)
         // 投げるより前に確定させ、成功(decorated)・失敗(下の catch)の両方へ同じ注記を乗せる
-        let unknownArgumentNote = Self.unknownArgumentNote(tool: tool, args: args)
-        try Self.checkDeclaredArgumentTypes(tool: tool, args: args)
+        // **改名した引数は、宣言していない欄を落とす前に断る**(落とした後では本体に届かない)
+        if let refusal = Self.renamedArgumentRefusal(tool: tool, args: cleaned) { throw MCPError(refusal) }
+        let unknownArgumentNote = Self.unknownArgumentNote(tool: tool, args: cleaned)
+        try Self.checkDeclaredArgumentTypes(tool: tool, args: cleaned)
         // **値域は入口で1回だけ全数見る**(`intArgument`/`doubleArgument` の門だけでは足りない)
         // —— 条件付きでしか読まれない欄(`waitSeconds` は snapshotAfter のときだけ等)は、
         // 読まれない回に 0/負がそのまま通り、呼び手は「効いた」と誤解する
         // **見るのはそのツールが宣言した欄だけ**(型の検査と同じ)。宣言していない欄は読まれず注記するだけ
         // (unknownArgumentNote)なので、その値で断ると同じ呼び出しが無視される欄の値しだいで通ったり
         // 断られたりする(ft_status へ lines: -1 を渡すと断られ、lines: 5 なら注記つきで通っていた)
-        let declaredArgs = Self.declaredArgumentsOnly(tool: tool, args: args)
-        try Self.checkArgumentBounds(declaredArgs)
+        // **以後はスキーマに宣言した欄だけを渡す**(「無視した」と注記した欄を本体が読んで型で断っていた: ft_tap に
+        // `maxElements: "250"` を渡すと snapshotAfter の読みが intArgument で断り、「ignored」と「must be an integer」が同居した)
+        let args = Self.declaredArgumentsOnly(tool: tool, args: cleaned)
+        try Self.checkArgumentBounds(args)
         // **秒数の相互検査は値域の隣**(seconds ≤ maxGestureSeconds(省略時は既定10秒)。
         // 単独の checkArgumentBounds は型/絶対上限(60秒)のスキーマ検査しかできない)
-        if let violation = ArgumentBounds.gestureCapViolation(declaredArgs) {
+        if let violation = ArgumentBounds.gestureCapViolation(args) {
             throw MCPError(violation)
         }
         if let violation = Self.targetExclusivityViolation(tool: tool, args: args) {
@@ -498,7 +514,7 @@ extension MCPServer {
                         try await Self.foldingUDIDIntoPort(
                             args, rememberedPort: self.rememberedPort(forUDID: args["udid"] as? String)) } : args)
             } catch {
-                let hint = await connectionLostHint(error, args: args)
+                let hint = await connectionLostHint(error, args: args, tool: tool)
                 throw hint.isEmpty ? error : MCPError(error.localizedDescription + hint)
             }
         } else {
@@ -556,7 +572,7 @@ extension MCPServer {
         } catch {
             // run がデバイスを使っている最中は失敗しやすい(アプリの起こし直し・ブリッジの起動し直し)ので、失敗にも言う
             let runNote = Self.toolAcceptsDeviceTarget(tool) ? markDeviceInUse(args: resolved) : nil
-            let hint = await connectionLostHint(error, args: resolved)
+            let hint = await connectionLostHint(error, args: resolved, tool: tool)
                 + Self.setTextRefusedHint(tool: tool, args: resolved,
                                           message: error.localizedDescription)
                 + Self.noReadableWindowHint(error)
@@ -965,6 +981,12 @@ extension MCPServer {
     /// snapshotAfter で木を返すときは「撮り直せ」を畳む(返した木の直上で撮り直しを勧める矛盾を
     /// 作らない)。文言をツール固有にしたいときも**この関数を通す** —— 条件を手元で再導出すると
     /// 抑止の方針変更が各ハンドラへ散る
+    /// 既定の文の版。**デバイスごとに初回だけ**(木を返さない操作のたびに同じ促しが付いていた = 計測で指摘)
+    func changedHintOnce(_ args: [String: Any]) -> String {
+        let hint = Self.changedHint(args)
+        return hint.isEmpty ? "" : once("changedHint", full: hint, short: "")
+    }
+
     static func changedHint(_ args: [String: Any],
                             otherwise message: String = " The screen may have changed —"
                                 + " take a fresh ft_snapshot") -> String {
@@ -1163,10 +1185,24 @@ extension MCPServer {
     /// 鍵をデバイス(`noteScope`)ごとに分ける(宣言は MCPServer.noteScope)
     private func scopedNoteKey(_ key: String) -> String { noteScope + "|" + key }
 
+    /// そのデバイスの `once` 系の鍵を忘れる(ft_launch / ft_clear_app_data の入口で呼ぶ)。サーバはプロセスの寿命で鍵を
+    /// 持つので、前の呼び手(別のエージェント)が初出を見ていると、次の呼び手は初出を見ないまま「初出の注記を見よ」を受け取る
+    /// (実測: 2回目の計測の最初の操作から短縮形だった)。起動・データ消去は新しい探索の始まりなので、そこで数え直す
+    func resetOnceNotes(forScope scope: String) {
+        explainedNotes = explainedNotes.filter { !$0.hasPrefix(scope + "|") }
+        lastRepeatedNotes[scope] = nil
+    }
+
     /// 「この鍵は初出か」だけを返す `once` の同型。本文の2形を持たない注記
     /// (見出しそのものを短縮する類)が使う。**鍵の名前空間は `once` と共有**
     func firstTime(_ key: String) -> Bool {
         explainedNotes.insert(scopedNoteKey(key)).inserted
+    }
+
+    /// デバイスで分けない版(宛先の記憶の注記。鍵が宛先を含み、`noteScope` が決まる前に呼ばれるので
+    /// scopedNoteKey を通すと直前の呼び出しのデバイスで記録され、同じ注記が2回目にも出る)
+    func firstTimeInSession(_ key: String) -> Bool {
+        explainedNotes.insert(key).inserted
     }
 
     /// `once` を「注記が空のときはキーを消費しない」形にした版。full が空の画面で先に呼ぶと、

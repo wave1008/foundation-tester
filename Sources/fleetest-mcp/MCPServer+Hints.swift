@@ -71,6 +71,23 @@ extension MCPServer {
         return hit
     }
 
+    /// 前面のアプリ内アラートとそのボタン(無ければ nil)。`RefGuard.goneMessage` へ渡す
+    static func frontInAppAlertWithButtons(_ snapshot: SnapshotResponse) -> (alert: ElementInfo, buttons: [String])? {
+        AlertTreeScope.frontInAppAlert(in: snapshot).map { ($0, AlertTreeScope.buttonLabels(of: $0, in: snapshot)) }
+    }
+
+    /// `visibleAfterExpansion` が容器で絞らずに採った一致が、`scrollFrame` の容器の**外**だったときの注記(中・容器が分からないときは空)。
+    /// 黙ると「容器の中の行に届いた」と読まれる(計測: `*立川*` がシートの見出しに当たり、リストの行には届いていなかった)
+    static func matchOutsideScrollFrameNote(_ hit: ElementInfo, step: FlowStep,
+                                            in snapshot: SnapshotResponse) -> String {
+        guard let container = step.scrollFrameRect
+                ?? step.scrollFrame.flatMap({ LocatorResolver.match($0, in: snapshot)?.frame }),
+              !container.contains(hit.frame) else { return "" }
+        return " The match [\(hit.ref)] \(RefGuard.describe(hit)) is OUTSIDE the scrollFrame container, so no row"
+            + " inside the list was reached — if you wanted a row of the list, read the expanded list with ft_snapshot"
+            + " (swiping it again can collapse the sheet)."
+    }
+
     /// **救済が効かないと分かった画面で、手で開く手順を名指しする**(監査)。
     /// 救済が「もう一度やっても同じ」で終わったとき、読み手に残る手は
     /// **グラバーを全開まで引いてから素の ft_snapshot を撮る**(探索が届かなくても、
@@ -139,6 +156,38 @@ extension MCPServer {
     /// **待ちが外れたとき、前面に新しく出たものを名指しする**(待ちは足さない = 外れた応答に事実を足すだけ)。
     /// 実測(Apple マップ): 操作の後に遅れて出た通知の全面シートと「安全に目的地に到達するために」に3回ぶつかり、
     /// 待ちが外れても木を読み直すまで気付かなかった(1回あたり待ち約4秒 + 思考約3秒)。
+    /// waitFor が当たったときの1行。**何に当たったかを名指しする**(計測: `*円*` が畳まれた地図のピンの
+    /// ラベルに当たり、エージェントは運賃が出たと読み違えた)。畳まれた群の中なら下の一覧に行が無いことも言う
+    static func waitForAppearedNote(_ selector: String, in snapshot: SnapshotResponse,
+                                    collapsingBulk: Bool) -> String {
+        let matched = matchedElements(selector, in: snapshot)
+        guard let first = matched.first else { return "waitFor \"\(selector)\" appeared.\n" }
+        let folded = SnapshotRenderer.foldedGroups(snapshot, flagging: [:], collapsingBulk: collapsingBulk)
+            .first(where: { $0.value.contains(first.ref) })?.key
+        // **数えるのは画面に描かれた、他の一致に入れ子でない要素だけ**(セルとその中の文字は1つ。計測で「+23 more」と
+        // 出たが画面の行は十数行だった)
+        let drawn = matched.filter { element -> Bool in
+            element.frame.width > 0 && element.frame.height > 0
+                && TapTargetGeometry.offscreenAdvisory(for: element, screen: snapshot.screen) == nil
+        }
+        func encloses(_ outer: ElementInfo, _ inner: ElementInfo) -> Bool {
+            let outerArea: Double = outer.frame.width * outer.frame.height
+            let innerArea: Double = inner.frame.width * inner.frame.height
+            // 同じ枠なら木の深いほうが内側(行と、その中で行いっぱいの文字)
+            return outer.ref != inner.ref && outer.frame.contains(inner.frame)
+                && (outerArea > innerArea || (outerArea == innerArea && outer.depth < inner.depth))
+        }
+        let outermost = drawn.filter { inner in !drawn.contains { encloses($0, inner) } }
+        let more = outermost.filter { $0.ref != first.ref && !$0.frame.contains(first.frame) }.count
+        let others = more > 0 ? " (+\(more) more)" : ""
+        let where_ = folded.map { " — inside the folded group #\($0) (pass expandBulk to list it)" } ?? ""
+        // **ラベルを必ず出す**(describe は #id を優先するが、畳まれる群は id を共有するので id では区別できない)
+        let described = RefGuard.describe(first)
+        var label = ""
+        if let text = first.label, !described.contains("\"\(text)\"") { label = " \"\(text)\"" }
+        return "waitFor \"\(selector)\" appeared: matched [\(first.ref)] \(described)\(label)\(others)\(where_).\n"
+    }
+
     /// ①操作前に無かった alert → 名前とボタン ②操作前に無かったラベルの操作子だけが `appearedPromptMaxButtons` 個以下
     /// しか無い画面 → そのボタン(型の無い全面シートはこの形でしか見えない)。比べる木(操作前・前回の読み)が無ければ言わない
     static func appearedPromptNote(before: SnapshotResponse?, now: SnapshotResponse) -> String {
@@ -413,7 +462,15 @@ extension MCPServer {
     /// **collapsingBulk は render() と揃える**: 畳まれる ref をここでも個別に
     /// 列挙すると、地図 POI のような大量群で出力の半分がこの注記に化ける。
     /// どの ref が畳まれるかは `SnapshotRenderer.foldedGroups` — render 本体と同じ関数 — で決める
+    /// 残像の行の対処文。**ft_scroll_to の応答では「先に ft_scroll_to で出せ」と言わない**(探索の結果に対して循環する = 計測で指摘)
+    static func leftoverRemedy(afterScrollSearch: Bool) -> String {
+        afterScrollSearch
+            ? " They are rows the search scrolled past; if you need one, verify it with ft_screenshot before tapping"
+            : " Bring them into view with ft_scroll_to first, or verify with ft_screenshot"
+    }
+
     static func ghostNote(_ snapshot: SnapshotResponse, collapsingBulk: Bool = true,
+                          afterScrollSearch: Bool = false,
                           cache: SnapshotAnnotationCache? = nil) -> String {
         let flagged = cache?.ghostFlags(snapshot) ?? ghostFlags(snapshot)
         let folded = cache?.foldedGroups(snapshot, flagging: flagged, collapsingBulk: collapsingBulk)
@@ -427,8 +484,7 @@ extension MCPServer {
                 + " (outside their scroll container, or clamped onto another row's frame),"
                 + " so tapping them may hit something else:"
                 + " \(listRefs(leftovers, folded: folded, in: snapshot.elements))."
-                + " Bring them into view with ft_scroll_to first,"
-                + " or verify with ft_screenshot\n"
+                + leftoverRemedy(afterScrollSearch: afterScrollSearch) + "\n"
         }
         if !offscreens.isEmpty {
             let byDirection = Dictionary(grouping: offscreens) {
@@ -689,7 +745,25 @@ extension MCPServer {
         if let hint = LocatorResolver.splitTextHint(for: locator, in: snapshot.elements) {
             parts.append(" \(hint.prefix(1).uppercased())\(hint.dropFirst()).")
         }
+        parts.append(currencyNotationHint(locator.label ?? "", in: snapshot))
         return parts.joined()
+    }
+
+    /// 金額の表記が待った語と違うときの一言(`*円*` で待ったのに画面は `¥715`、またはその逆)。
+    /// 実測(地図の運賃調べ・計測4回で計7回): waitFor `*円*` が外れ、画面は `¥715 IC料金` / `￥1020` だった。
+    /// 同じ金額の書き方の違いだけを言う(何の金額かは言わない = 画面の意味は読み手が決める)
+    static let currencyMarks = ["円", "¥", "￥"]
+
+    static func currencyNotationHint(_ selectorLabel: String, in snapshot: SnapshotResponse) -> String {
+        guard let asked = currencyMarks.first(where: { selectorLabel.contains($0) }) else { return "" }
+        let others = currencyMarks.filter { $0 != asked }
+        let examples = snapshot.elements.compactMap { $0.label.map(SnapshotRenderer.displayText) }
+            .filter { label in others.contains { label.contains($0) } && label.contains(where: \.isNumber) }
+        guard let first = examples.first else { return "" }
+        let shown = Array(Set(examples)).sorted().prefix(2).map { "\"\($0.prefix(30))\"" }.joined(separator: ", ")
+        let mark = others.first { first.contains($0) } ?? others[0]
+        return " note: amounts on this screen are written with \"\(mark)\", not \"\(asked)\" (e.g. \(shown))"
+            + " — wait for *\(mark)* instead."
     }
 
     /// 逆向きの content direction(注記で「戻れ」と言うときの語彙)。
@@ -991,10 +1065,8 @@ extension MCPServer {
         // **満額は初回だけ**(監査。`abbreviated` は他の注記と同じ F-6 の仕組み):
         // 実体は木の1行に畳まれているのに、注記のほうが長いという逆転が毎回の応答で起きていた。
         // 伝えたい2点(枠を食っていない/出力は食う)は一度読めば足りる
-        guard !abbreviated else {
-            return "note: \(count) element(s) in folded same-id group(s)"
-                + " (see the first snapshot's note).\n"
-        }
+        // **2回目以降は何も言わない**: 木の畳み行(`×N … collapsed`)が同じ事実を毎回言っており、短縮形は重複だった(計測で指摘)
+        guard !abbreviated else { return "" }
         return "note: \(count) element(s) of large same-id group(s) are listed outside the"
             + " element limit — they did not crowd other elements out of the tree, but they do"
             + " add to this output; the rendering folds them (expandBulk lists them in full).\n"

@@ -737,7 +737,9 @@ extension MCPServer {
             let final = waited.refetched ? adoptSnapshot(waited.snapshot, args: args) : waited.snapshot
             recordSnapshot(final, batchDriver is AndroidDriver ? "android" : "ios", args)
             let explainMiss = waited.found ? false : firstTime("waitMissExplained")
-            let waitNote = waited.found ? "waitFor \"\(waitFor)\" appeared.\n"
+            let waitNote = waited.found
+                ? Self.waitForAppearedNote(waitFor, in: final,
+                                           collapsingBulk: treeArgs["expandBulk"] as? Bool != true)
                 : Self.waitMissHeadline(waitFor, seconds: seconds, quietStopAfter: waited.quietStopAfter,
                                         explain: explainMiss)
                     // alert は batchAlertAppearedNote が先に言う(重ねない)

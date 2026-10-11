@@ -356,7 +356,7 @@ extension MCPServer {
         recordInteraction(action: "doubleTap", resolvedRef: doubleTapResolvedRef, args: args,
                           coordinate: doubleTapResolvedRef == nil ? doubleTapPoint : nil)
         return text("double tap \(doubleTapWhat) done.\(doubleTapNote)\(doubleTapSelector)"
-            + Self.changedHint(args)
+            + changedHintOnce(args)
             + iosEngineHint("Compose Multiplatform", frameworkKey: .compose, "double tap", args: args)
             + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))
     }
@@ -584,13 +584,7 @@ extension MCPServer {
     }
 
     func ftLongPress(_ args: [String: Any]) async throws -> [[String: Any]] {
-        // 引数名は DSL の tap(holdSeconds:) と同語彙(語彙統一)。
-        // 旧名は黙って既定値に落とさない(1.0s の長押しに化けて沈黙した誤りになる)。
-        // **引数だけで弾ける検証はドライバ取得より前に**(コールドスタートは分単位かかりうる)
-        guard args["duration"] == nil else {
-            throw MCPError("duration was renamed to holdSeconds (same vocabulary as the"
-                + " DSL's tap(holdSeconds:)) — pass holdSeconds instead")
-        }
+        // 引数名は DSL の tap(holdSeconds:) と同語彙。旧名 duration は入口で断る(`MCPServer.renamedArguments`)
         let pressDriver = try await driver(args)
         let pressDuration = try Self.doubleArgument(args, "holdSeconds") ?? Self.defaultLongPressHoldSeconds
         let pressCap = try Self.doubleArgument(args, "maxGestureSeconds")
@@ -604,7 +598,7 @@ extension MCPServer {
                               maxGestureSeconds: pressCap)
             return text("press [\(ref)] done.\(pressTarget.note)"
                 + reproductionNote(resolvedRef: pressTarget.ref, args: args)
-                + Self.changedHint(args)
+                + changedHintOnce(args)
                 + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))
         }
         // **座標形は ft_tap と揃える**: ドライバは press(x:y:duration:) を要件として持つのに
@@ -626,7 +620,7 @@ extension MCPServer {
                     holdSeconds: pressDuration, maxGestureSeconds: pressCap),
                 short: Self.coordinateHoldReproductionNoteShort(
                     holdSeconds: pressDuration, maxGestureSeconds: pressCap))
-                + Self.changedHint(args)
+                + changedHintOnce(args)
                 + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))
         }
         throw MCPError("ref or x/y is required")

@@ -167,4 +167,15 @@ final class DeclaredArgumentTypeCheckTests: XCTestCase {
         if !types.contains("string") { return "\"not-a-value\"" }
         fatalError("scalar 型を3つとも宣言するプロパティは無いはず: \(types)")
     }
+
+    /// **宣言していない欄は本体に渡さない**(「無視した」と注記した欄を本体が読んで型で断っていた: ft_tap に `maxElements: "250"` を
+    /// 渡すと snapshotAfter の読みが intArgument で断り、「ignored」と「must be an integer」が同居した = 計測で指摘)
+    func testAnUndeclaredArgumentIsIgnoredEvenIfItsValueHasTheWrongType() async throws {
+        let driver = FakeDriver()
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver }, recordSnapshot: { _, _, _ in })
+        let text = try await server.call(tool: "ft_tap", args: ["x": 1.0, "y": 2.0, "snapshotAfter": true, "maxElements": "250"])
+            .compactMap { $0["text"] as? String }.joined()
+        XCTAssertTrue(text.contains("ignored unknown argument"), text)
+        XCTAssertFalse(text.contains("must be an integer"), text)
+    }
 }

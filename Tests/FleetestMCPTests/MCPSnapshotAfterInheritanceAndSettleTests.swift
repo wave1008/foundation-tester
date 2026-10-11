@@ -173,6 +173,19 @@ final class MCPSnapshotAfterSettleLiteTests: XCTestCase {
         XCTAssertTrue(text.contains("id=MapsSearchTextField"), text)
     }
 
+    /// **「初回で差があった」の短縮形は出さない**(画面遷移のタップ7回すべてに付いていた = 計測で指摘)。初回の満額だけ
+    func testTheAlreadyDifferedNoteIsNotRepeatedInShortForm() async throws {
+        let a = settleSnapshot([settleElement(ref: 1, id: "login_btn", label: "ログイン")])
+        let b = settleSnapshot([settleElement(ref: 2, type: "staticText", id: "welcome", label: "ようこそ")])
+        driver.scriptedSnapshots = [a, b, b, a, a]
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let first = bodyText(try await server.call(tool: "ft_tap", args: ["x": 1.0, "y": 2.0, "snapshotAfter": true, "waitForChange": true]))
+        XCTAssertTrue(first.contains("had already completed by the first read"), first)
+        let second = bodyText(try await server.call(tool: "ft_tap", args: ["x": 1.0, "y": 2.0, "snapshotAfter": true, "waitForChange": true]))
+        XCTAssertFalse(second.contains("already differed"), second)
+        XCTAssertFalse(second.contains("had already completed"), second)
+    }
+
     /// **waitForChange・撮り直しの後の木に「操作の直後に読んだ」と言わない**(計測で指摘)。待たずに読んだ回だけ言う
     func testTheImmediateReadNoteIsNotAddedAfterAWait() async throws {
         let before = settleSnapshot([settleElement(ref: 1, id: "login_btn", label: "ログイン")])
