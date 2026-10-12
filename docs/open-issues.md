@@ -18,6 +18,15 @@
 
 ## デバイスで赤のまま・原因未調査
 
+- **E2E-CMP の XCUITest で「テキスト入力が正しくechoされること」S0040 の `type(replace:)` の後の echo が空のまま**(2026-10-12・
+  ios-xcuitest の記録 205 回中 20 回赤)
+  - 症状: `type("#field_single", "abc")` → `type("#field_single", "xyz", replace: true)` がどちらも緑のまま、次の
+    `textIs "#txt_echo_single" == "single=xyz"` が `actual "single="` で赤(撃つ前の警告・撃った後の注記なし)
+  - 確かめた範囲: 10/11 22:03(ブリッジ v178)と 10/12 13:27(v179)に同じ形。ブリッジのホーム操作の変更とは別の経路。
+    同じシナリオの Android の不安定さ(docs/verification.md の表)とは失敗する段が違う(あちらは type が赤)
+  - 次に見るもの: 赤の回の type の読み返し(欄の値)と echo の時刻列 —— 欄には入ったが Compose の echo が再構成されていないのか、
+    欄も空なのか(後者なら読み返しが緑にした誤った緑)
+
 - **E2E-iOS の XCUITest で「WebViewの中身を操作できること」が赤になる(状態に依存)**(2026-10-08)
   - 症状: `type "#wv_input||#WebView 入力"` の後の `tap "送信"` が、キーボードで WebView が中身を 141pt 上へ送る前の座標を撃ち、
     隣のリンクに当たる(`wv_result=link`)。緑の回はキーボードの後の整定の待ち(`settled-after-keyboard`)が働き、赤の回は働かない
