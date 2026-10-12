@@ -47,6 +47,7 @@ final class ScenarioHostRunnerUnavailableTests: XCTestCase {
             project: project, scenarioID: "Login.S0010",
             connection: DriverConnection(platform: "ios"),
             deviceSession: RunDeviceSession(),
+            scenarioTimeoutOverride: nil,
             settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
             reportDir: root.appendingPathComponent("reports").path,
             recording: ScenarioRecording(recorder: recorder, worker: "ios:iPhone", title: "login")) {
@@ -132,6 +133,7 @@ final class ScenarioHostRunnerUnavailableTests: XCTestCase {
             project: project, scenarioID: "Login.S0010",
             connection: DriverConnection(platform: "ios"),
             deviceSession: RunDeviceSession(),
+            scenarioTimeoutOverride: nil,
             settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
             reportDir: root.appendingPathComponent("reports").path,
             dryRun: true,

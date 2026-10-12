@@ -68,7 +68,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     var defaultTimeout: Double?
 
     @Option(name: .customLong("scenario-timeout"),
-            help: "Per-scenario wall-clock timeout in seconds (host-side watchdog; on overrun the child is killed and the scenario fails. Default 90; with --profile the profile scenarioTimeout wins). Cannot combine with --set scenarioTimeout=...")
+            help: "Per-scenario wall-clock timeout in seconds (host-side watchdog; on overrun the child is killed and the scenario fails. Default 600; with --profile the profile scenarioTimeout wins; a scenario's @Test(scenarioTimeout:) wins over both). Cannot combine with --set scenarioTimeout=...")
     var scenarioTimeout: Int?
 
     @Flag(name: .customLong("dry-run"),
@@ -1083,6 +1083,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
                 deviceSession: deviceSessions.session(for: scenarioPlatform),
+                scenarioTimeoutOverride: info.scenarioTimeout,
                 settings: settings, reportDir: reportDirPath,
                 dryRun: dryRun, debug: debugOptions, recording: recording,
                 appBundleID: appID,
@@ -1281,6 +1282,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
                 deviceSession: deviceSessions.session(for: sessionKey),
+                scenarioTimeoutOverride: info.scenarioTimeout,
                 settings: ApiRun.withDryRunFM(ScenarioExecutionSettings(resolved), dryRun: dryRun),
                 reportDir: reportDirPath,
                 dryRun: dryRun,

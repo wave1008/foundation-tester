@@ -89,8 +89,12 @@ extension FTDriveCore {
             return .empty
         }
         let started = ContinuousClock().now
-        let outcome = performHTTP(session: fleetestURLSession, url: url, method: method, headers: headers,
-                                  body: body, timeout: waitSeconds ?? tunables.httpRequestTimeout)
+        let timeout = waitSeconds ?? tunables.httpRequestTimeout
+        // 応答待ちの間は出力が無い。上限(+ セマフォの網 1 秒)を親の idle 打ち切りへ申告する
+        let outcome = IdleAllowance.during(seconds: timeout + 1) {
+            performHTTP(session: fleetestURLSession, url: url, method: method, headers: headers,
+                        body: body, timeout: timeout)
+        }
         let elapsed = ContinuousClock().now - started
         let durationMs = continuousClockMilliseconds(elapsed)
         switch outcome {

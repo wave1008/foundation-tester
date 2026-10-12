@@ -1,7 +1,7 @@
 // ScenarioEvent.swift
 // fleetest-scenarios(サブプロセス)とホスト(CLI/MCP)の間で交わす NDJSON イベントの DTO。
 // Foundation 以外に依存しないこと(ホスト側の軽量パースを保つ)。
-// kind: scenarioStarted / sceneStarted / step / sceneFinished / fixSuggestion / scenarioFinished / log / deviceFrozen / installRequest / deadlineExclusion
+// kind: scenarioStarted / sceneStarted / step / sceneFinished / fixSuggestion / scenarioFinished / log / deviceFrozen / installRequest / deadlineExclusion / idleAllowance
 // step は tap/exist 等 1 操作の結果(既存 StepResult と同語彙)。
 // installRequest は installApp() の子→親 RPC 専用(ScenarioInstall.swift)。ScenarioHost.run が
 // 横取りして stdin へ応答を書き、呼び出し側の emit へは渡さない — **fleetest api の NDJSON 契約には
@@ -10,6 +10,8 @@
 // status に "began"/"ended"、durationMs に began なら上限 ms・ended なら実測 ms を積む。
 // ScenarioHost.run が横取りして watchdog の延長分(WatchdogExtension)へ積み、emit へは渡さない
 // — installRequest と同じく **fleetest api の NDJSON 契約には現れない**。
+// idleAllowance は IdleAllowance(同じく observer で橋渡し)の子→親通知専用。status "began"(durationMs = 上限 ms)/ "ended"。
+// ScenarioHost.run が横取りして idle 打ち切りの許容へ積み(締め切りからは差し引かない)、emit へは渡さない。
 // memoWrite / memoClear / deviceSetUp / deviceTearDown はデバイスセッション(DeviceSessionHandoff.swift)の子→親通知専用。
 // memoWrite は memoKey/memoValue、deviceSetUp は status に "began"/"passed"/"failed"、deviceTearDown は "declared"(クラスが tearDownDevice を持つ)。
 // ScenarioHost.run が横取りして RunDeviceSession へ反映し、emit へは渡さない(同じく api 契約に現れない)。

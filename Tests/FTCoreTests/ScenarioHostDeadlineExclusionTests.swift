@@ -56,6 +56,7 @@ final class ScenarioHostDeadlineExclusionTests: XCTestCase {
             project: project, scenarioID: "Login.S0010",
             connection: DriverConnection(platform: "ios"),
             deviceSession: RunDeviceSession(),
+            scenarioTimeoutOverride: nil,
             settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false),
                                                 scenarioTimeout: scenarioTimeout),
             reportDir: root.appendingPathComponent("reports").path,

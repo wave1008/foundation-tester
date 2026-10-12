@@ -21,19 +21,22 @@ public struct FTScenarioDescriptor: Sendable {
     /// @Test(platform:)。"ios" / "android" / nil(クラスの platform: に従う)。
     /// **実効値はクラス側との合成**なので、読むときは effectivePlatform(classPlatform:) を通す
     public let platform: String?
+    /// @Test(scenarioTimeout:) の秒。nil = 未指定(ScenarioHost.run が プロファイル → 既定の順に解く)
+    public let scenarioTimeout: Int?
     /// テストクラスの新規インスタンスを作ってメソッドを呼ぶクロージャ(マクロ生成)。
     /// @Sendable だが捕捉するのは常にクロージャ内で新規生成したインスタンスだけ
     /// (TestClassMacro.swift 参照)なので、テストクラス自体を Sendable にする必要は無い
     public let run: @Sendable () -> Void
 
     public init(name: String, title: String, deleted: Bool = false, draft: Bool = false,
-                platform: String? = nil,
+                platform: String? = nil, scenarioTimeout: Int? = nil,
                 run: @escaping @Sendable () -> Void) {
         self.name = name
         self.title = title
         self.deleted = deleted
         self.draft = draft
         self.platform = platform
+        self.scenarioTimeout = scenarioTimeout
         self.run = run
     }
 
@@ -65,6 +68,16 @@ public struct FTTestClassDescriptor {
         self.platform = platform
         self.scenarios = scenarios
         self.tearDownDevice = tearDownDevice
+    }
+
+    /// 子の `list --json` が親へ渡す1クラス分の行(親は `ScenarioHost.list` でこれを decode する)
+    public var scenarioInfos: [ScenarioInfo] {
+        scenarios.map { scenario in
+            ScenarioInfo(id: "\(className).\(scenario.name)", title: scenario.title, app: app,
+                         platform: scenario.effectivePlatform(classPlatform: platform),
+                         scenarioTimeout: scenario.scenarioTimeout,
+                         deleted: scenario.deleted, draft: scenario.draft)
+        }
     }
 }
 

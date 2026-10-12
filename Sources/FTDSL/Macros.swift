@@ -41,8 +41,11 @@ public macro TestClass(app: String? = nil, platform: String? = nil) =
 /// `platform:`("ios" / "android")を書くとそのOSでだけ実行され、他方の OS の run では
 /// **skipped(対象外)として記録される**(失敗ではない)。クラス全体に効かせるなら
 /// `@TestClass(platform:)`。両方あるときはメソッド側が勝つ。
+///
+/// `scenarioTimeout:`(秒・メソッドのみ)はこの1シナリオ全体の打ち切り秒。実行プロファイルの
+/// `scenarioTimeout` / `--scenario-timeout` より優先される(短くする向きも効く)。0 以下はコンパイルエラー。
 @attached(peer)
-public macro Test(_ title: String = "", platform: String? = nil) =
+public macro Test(_ title: String = "", platform: String? = nil, scenarioTimeout: Int? = nil) =
     #externalMacro(module: "FTDSLMacros", type: "TestMacro")
 
 /// 論理削除マーカー。テストクラスまたは @Test メソッドに付与する。

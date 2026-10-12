@@ -42,7 +42,7 @@ results/runs/<YYYY-MM>/<runID>/
 
 `fleetest results log <runID>` は、`events/<シナリオID>.ndjson` から組み立て直して、シナリオごとに
 そのシナリオの実行が書いたもの全部 —— `fleetest run` 実行中に流れるのと同じ行(合否の記号付きの
-各ステップ・scene・stdout/stderr への `print()` 出力・watchdog タイムアウトのようなホスト側の通知) ——
+各ステップ・scene・stdout/stderr への `print()` 出力・打ち切り(出力の途切れ・全体の制限時間)のようなホスト側の通知) ——
 を表示します。`<runID>` は `latest` も受け付けます。`--scenario <id>` で1シナリオだけに絞り、
 `--raw` で整形せずに元の NDJSON 行をそのまま出せます(このときシナリオごとの見出しは stderr へ出るので、stdout は NDJSON だけになります)。
 

@@ -1403,7 +1403,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   `ScenarioHost.run` の watchdog kill で `Process.isRunning` を使うと内部の `waitpid` が子を
   **reap** し、直後の `waitUntilExit()` が終了通知を取りこぼして**永久ハング**する(SIGTERM を
   無視した子で実測: ワーカー全体が `waitUntilExit` で停止)。**生存確認は reap しない `kill(pid, 0)`**
-  を使うこと(`process.isRunning` は使わない)。この凍結は 90s watchdog を超えるシナリオでのみ
+  を使うこと(`process.isRunning` は使わない)。この凍結は scenarioTimeout(当時の既定 90s)を超えるシナリオでのみ
   顕在化する潜在バグで、hybrid の suspend 誤ルーティング(performance-tuning §6.4)が引き金だった。
 - **hybrid の in-app suspend**: system-UI シナリオと in-app シナリオを混在実行すると、背面の
   注入先アプリが iOS に suspend され in-app ブリッジが無応答になる。ドライバ選択は provision 時の
@@ -1517,7 +1517,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
 
 ### 記述形式
 
-- `@TestClass(app:platform:)` クラス + `@Test(_:platform:)` メソッド + `scene(n)`(Shirates の case 相当)
+- `@TestClass(app:platform:)` クラス + `@Test(_:platform:scenarioTimeout:)` メソッド + `scene(n)`(Shirates の case 相当)
   + `condition/action/expectation`(CAE)の3層構造
 - **`app:` は通常書かない**(2026-08-19)。既定アプリは
   **実行プロファイル → アプリプロファイル → 実行中 platform の `ios.app` / `android.app`** から
@@ -1530,6 +1530,29 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   どちらからも決まらなければ明示エラー(`fleetest run --app-id <bundleID>` が逃げ道。
   **dry-run だけは代替表記で通す** —— デバイスに触らず bundle ID を使わないので、
   ここで落とすと「実行プロファイル無しでは構文検査もできない」になる)
+- **`@Test(scenarioTimeout:)`**(秒・メソッドのみ)はそのシナリオ全体の watchdog 秒。優先順位は
+  `@Test` > プロファイル `scenarioTimeout` / `--scenario-timeout` > `ScenarioHost.defaultScenarioTimeout`(600)で、
+  解くのは `FTCore.ScenarioTimeoutResolution` の1箇所。シナリオ側が短くても勝つ。マクロは整数リテラル 0 以下をコンパイルエラーにし(式で届いた 0 以下は `ScenarioHost.run` が子を起こさずに赤 = `invalidScenarioValueReason`)、
+  値は `FTScenarioDescriptor` → `ScenarioInfo.scenarioTimeout`(子 → ホストの `list --json`・`fleetest api` 契約には載せない)→
+  `ScenarioHost.run(scenarioTimeoutOverride:)`(既定値なし)で運ぶ。timeout のログ行に出所を括弧で添える。
+  呼び手が info の値を渡していることは `ScenarioTimeoutOverrideWiringTests`(ソース走査)が固定する
+- **シナリオの打ち切りは2系統**(`ScenarioHost.run`。どちらも SIGTERM → 2 秒 → SIGKILL・`timedOut: true`・
+  先に `TimeoutGuard` を取った側だけが打つ。`--debug` では両方とも無効):
+  - **出力の途切れ(idle)**: 子の stdout / stderr の出力の間隔が `ScenarioIdleBudget`(2 × `commandTimeout` =
+    1ステップの上限 + 失敗時の証跡の上限)+ **いま開いている** `deadlineExclusion` の上限 + **子が申告した待ち**
+    (`FTCore.IdleAllowance` → `idleAllowance` イベント。canSelect 系の waitSeconds・httpRequest・doUntilTrue。
+    入れ子は最大を採る。締め切りからは差し引かない)の上限を超えたら止める(`FTCore.ScenarioIdleWatch`)。
+    長さの分からない素の Swift(procedure の中など)は申告しない = 240 秒を超えて黙れば止まる(利用者向けに明記)。行は `⏱ The scenario produced no output for <S>s (allowed <A>s = …) and was killed`。
+    **遅いだけで出力を続ける子は止めない**。出力の到着は**パイプの受け口**(`lineStream(onChunk:)`)で数える ——
+    読み取りループで数えると、ループが installRequest を待つ間と、親が止まっていた直後の未消化の行を「無出力」と
+    見る。打つ直前にパイプの未読(`hasUnreadOutput` = poll)も見る(親の再開と同時に起きた killer が先に走る形)。
+    警告の段を経ずに打ち切りで入れた(ユーザー決定 2026-10-12)。根拠の実測: 過去の全体打ち切り 61件のうち 45件は
+    最後の出力から 30 秒以内 = 進行中の子を切っていた・緑の出力間隔は p99.9 で 57 秒、最長は OCR コンパイル待ちを
+    含む 120 秒台(延長の申告で許される側)。9/17 の緑で最後のステップの後 555 秒・178 秒無出力だった2件は、当時
+    シナリオごとの実行ログが無く原因を判定できていない(同じ形が出れば今は idle で赤になる)
+  - **全体の上限(scenarioTimeout)**: 行は
+    `⏱ The scenario exceeded <N>s (<出所>) and was killed (last output from the scenario <S>s before)` ——
+    `<S>` が小さければ進行中の子を切った(遅いだけ。上限を見直す材料)
 - **`@Test(platform:)`** はメソッド単位の対象 OS 宣言(クラスの `platform:` より優先)。
   宣言した OS を回さない実行プロファイルでは**キュー投入前に外して skipped(対象外)として記録する**
   (`FTCore.PlatformApplicability`)。**複数の機械にまたがる分散(host 混在プロファイル /
@@ -4759,7 +4782,7 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     "Pixel 10…-01"〜"-04")では**どちらの機械の行か判別できなかった**。レーン見出しの hover と
     同じ規則(`machine/name`)を1箇所に置いて両方から呼ぶ
   - **iOS ブリッジの実行前プレフライトは不採用**(ユーザー決定 2026-07-18): ウェッジ機で
-    `scenarioTimeout`(90s)を失うのを実行前の status 確認で回避する試み。①「item を取ってから
+    `scenarioTimeout`(当時の既定 90s)を失うのを実行前の status 確認で回避する試み。①「item を取ってから
     5s×2 判定→振り直し+離脱」は 10台同時の AX スパイク(一過性の遅さ)で9台一斉離脱・freeze-retry
     上限到達の失敗まで発生、②「取る前に 2s 即断・無応答中は取らずに回復待ち(60s)」も負荷時の
     誤判定で品質が安定せず撤去。**ウェッジの検知は失敗後の事後チェック(bridgeUnreachable/

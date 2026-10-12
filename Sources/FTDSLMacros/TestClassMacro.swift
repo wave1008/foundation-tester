@@ -29,6 +29,8 @@ public struct TestClassMacro {
         let titleExpr: String?
         /// @Test(platform:) の引数式(verbatim 転写)。省略時は nil = クラス側に従う
         let platformExpr: String?
+        /// @Test(scenarioTimeout:) の引数式(verbatim 転写)。省略時は nil。整数リテラルの 0 以下は展開前に弾く
+        let scenarioTimeoutExpr: String?
         /// メソッドに @Deleted が付いている(クラス側の @Deleted は展開時に OR する)
         let deleted: Bool
         /// メソッドに @Draft が付いている(クラス側の @Draft は展開時に OR する)
@@ -92,6 +94,7 @@ public struct TestClassMacro {
             guard let fn = member.decl.as(FunctionDeclSyntax.self) else { continue }
             var titleExpr: String?
             var platformExpr: String?
+            var scenarioTimeoutExpr: String?
             var isScenario = false
             for attr in fn.attributes {
                 guard let attrSyntax = attr.as(AttributeSyntax.self) else { continue }
@@ -104,6 +107,15 @@ public struct TestClassMacro {
                     switch arg.label?.text {
                     case nil: titleExpr = arg.expression.trimmedDescription
                     case "platform": platformExpr = arg.expression.trimmedDescription
+                    case "scenarioTimeout":
+                        scenarioTimeoutExpr = arg.expression.trimmedDescription
+                        if let seconds = integerLiteralValue(arg.expression), seconds <= 0 {
+                            context.diagnose(Diagnostic(
+                                node: Syntax(arg.expression),
+                                message: FTDSLDiagnostic(
+                                    "@Test scenarioTimeout must be a positive number of seconds (got \(seconds))",
+                                    id: "scenario-timeout-non-positive")))
+                        }
                     default: break
                     }
                 }
@@ -124,10 +136,24 @@ public struct TestClassMacro {
             }
             result.append(ScenarioMethod(name: fn.name.text, titleExpr: titleExpr,
                                          platformExpr: platformExpr,
+                                         scenarioTimeoutExpr: scenarioTimeoutExpr,
                                          deleted: hasDeleted(fn.attributes),
                                          draft: hasDraft(fn.attributes)))
         }
         return result
+    }
+
+    /// 整数リテラル(`-5` 含む)の値。リテラルでない式は nil(検査しない = verbatim 転写)
+    static func integerLiteralValue(_ expr: ExprSyntax) -> Int? {
+        if let literal = expr.as(IntegerLiteralExprSyntax.self) {
+            return Int(String(literal.literal.text.filter { $0 != "_" }))
+        }
+        if let prefix = expr.as(PrefixOperatorExprSyntax.self), prefix.operator.text == "-",
+           let literal = prefix.expression.as(IntegerLiteralExprSyntax.self),
+           let value = Int(String(literal.literal.text.filter { $0 != "_" })) {
+            return -value
+        }
+        return nil
     }
 
     /// @TestClass(app: "...", platform: "...") の引数式を取り出す(式は verbatim 転写)。
@@ -215,10 +241,11 @@ extension TestClassMacro: ExtensionMacro {
                 if hasAfterEach { body += "; FTDSL.ftRunAfterEach { ftInstance.afterEach() }" }
             }
             let platformArg = m.platformExpr.map { "\n                platform: \($0)," } ?? ""
+            let timeoutArg = m.scenarioTimeoutExpr.map { "\n                scenarioTimeout: \($0)," } ?? ""
             return """
                         FTDSL.FTScenarioDescriptor(
                             name: \(literalString(m.name)),
-                            title: \(m.titleExpr ?? "\"\""),\(deletedArg)\(draftArg)\(platformArg)
+                            title: \(m.titleExpr ?? "\"\""),\(deletedArg)\(draftArg)\(platformArg)\(timeoutArg)
                             run: { \(body) }),
             """
         }.joined(separator: "\n")

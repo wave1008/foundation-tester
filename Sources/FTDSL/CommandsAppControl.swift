@@ -723,33 +723,38 @@ public func doUntilTrue(_ title: String, waitSeconds: Double? = nil, intervalSec
     var deadline = Date().addingTimeInterval(waitSeconds)
     var loops = 0
     var failure: (reason: String, kind: StepFailureKind?)?
-    while true {
-        let pacedBefore = core.pacedMsTotal.value
-        var held = false
-        var thrown: Error?
-        core.runGroup("\(title) #\(loops + 1)") {
-            do { held = try body() } catch { thrown = error }
+    // 本体が DSL を呼ばない素の Swift なら周回の間は出力が無い。期限を越える最後の1周の間隔までを親の idle 打ち切りへ
+    // 申告する(1周の本体そのものの長さは分からない = 本体が長く黙るなら申告の外)
+    IdleAllowance.during(seconds: waitSeconds + (intervalSeconds.isFinite ? max(0, intervalSeconds) : 0)) {
+        while true {
+            let pacedBefore = core.pacedMsTotal.value
+            var held = false
+            var thrown: Error?
+            core.runGroup("\(title) #\(loops + 1)") {
+                do { held = try body() } catch { thrown = error }
+            }
+            loops += 1
+            deadline += Double(core.pacedMsTotal.value - pacedBefore) / 1000
+            if core.scenarioAborted { return }  // 申告を閉じてから下でもう一度見て抜ける
+            if let thrown {
+                failure = (thrown.localizedDescription, StepExecutor.failureKind(thrown: thrown))
+                break
+            }
+            if held || core.isDryRun { break }
+            if loops >= maxLoopCount {
+                failure = ("doUntilTrue \"\(title)\" did not hold within the \(maxLoopCount)-attempt limit", nil)
+                break
+            }
+            if Date() >= deadline {
+                failure = ("doUntilTrue \"\(title)\" did not hold within \(FTSeconds.format(waitSeconds))s"
+                           + " (\(loops) attempt(s))", nil)
+                break
+            }
+            // 負値・NaN は 0 に丸める(UInt64 へ直す経路と同じ規律。trap させない)
+            Thread.sleep(forTimeInterval: intervalSeconds.isFinite ? max(0, intervalSeconds) : 0)
         }
-        loops += 1
-        deadline += Double(core.pacedMsTotal.value - pacedBefore) / 1000
-        if core.scenarioAborted { return }
-        if let thrown {
-            failure = (thrown.localizedDescription, StepExecutor.failureKind(thrown: thrown))
-            break
-        }
-        if held || core.isDryRun { break }
-        if loops >= maxLoopCount {
-            failure = ("doUntilTrue \"\(title)\" did not hold within the \(maxLoopCount)-attempt limit", nil)
-            break
-        }
-        if Date() >= deadline {
-            failure = ("doUntilTrue \"\(title)\" did not hold within \(FTSeconds.format(waitSeconds))s"
-                       + " (\(loops) attempt(s))", nil)
-            break
-        }
-        // 負値・NaN は 0 に丸める(UInt64 へ直す経路と同じ規律。trap させない)
-        Thread.sleep(forTimeInterval: intervalSeconds.isFinite ? max(0, intervalSeconds) : 0)
     }
+    if core.scenarioAborted { return }
     let durationMs = continuousClockMilliseconds(clock.now - start)
     if let failure {
         core.recordStep(description: description, status: .failed(failure.reason), file: "\(file)", line: Int(line),

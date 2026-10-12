@@ -750,6 +750,7 @@ public enum ScenarioRunner {
         let passed = await ScenarioHost.run(
             project: project, scenarioID: item.info.id, connection: worker.connection,
             deviceSession: deviceSession,
+            scenarioTimeoutOverride: item.info.scenarioTimeout,
             settings: settings, reportDir: reportDir.path,
             debug: debug, recording: recording,
             installHandler: installHandler.map { handler in

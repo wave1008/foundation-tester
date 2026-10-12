@@ -70,17 +70,7 @@ struct ListScenarios: AsyncParsableCommand {
     func run() async throws {
         let classes = ScenarioDiscovery.allTestClasses()
         if json {
-            var entries: [ScenarioInfo] = []
-            for testClass in classes {
-                for scenario in testClass.scenarios {
-                    entries.append(ScenarioInfo(
-                        id: "\(testClass.className).\(scenario.name)",
-                        title: scenario.title,
-                        app: testClass.app,
-                        platform: scenario.effectivePlatform(classPlatform: testClass.platform),
-                        deleted: scenario.deleted, draft: scenario.draft))
-                }
-            }
+            let entries = classes.flatMap(\.scenarioInfos)
             struct ListResponse: Codable { let scenarios: [ScenarioInfo] }
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]

@@ -120,6 +120,7 @@ extension MCPServer {
                 project: project, scenarioID: info.id,
                 connection: DriverConnection(platform: info.platform ?? fallbackPlatform),
                 deviceSession: deviceSession,
+                scenarioTimeoutOverride: info.scenarioTimeout,
                 // **`enabled: false`(= 子へ --no-fm)**。dry-run にはデバイスも画面も無いので、
                 // FM を引く経路をまとめて止める(個別に切ると残った経路が FM の直列化待ちを払う)
                 settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
@@ -310,6 +311,7 @@ extension MCPServer {
             let passed = await ScenarioHost.run(project: project, scenarioID: info.id,
                                        connection: connection,
                                        deviceSession: deviceSession,
+                                       scenarioTimeoutOverride: info.scenarioTimeout,
                                        settings: exec, reportDir: reportDir,
                                        appPath: appPath, appName: appName,
                                        appBundleID: appBundleID) { event in

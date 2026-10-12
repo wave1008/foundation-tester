@@ -1228,6 +1228,7 @@ struct RunScenarios: AsyncParsableCommand {
                 project: project, scenarioID: item.info.id,
                 connection: DriverConnection(platform: platform),
                 deviceSession: deviceSession,
+                scenarioTimeoutOverride: item.info.scenarioTimeout,
                 // **`enabled: false`(= 子へ --no-fm)**。デバイスも画面も無いので FM を引く経路を
                 // まとめて止める(個別に切ると残った経路が FM の直列化待ちを払う)
                 settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),

@@ -42,7 +42,7 @@ All of them accept `--project`, and (except `log`) `--since <period>` (a relativ
 
 `fleetest results log <runID>` prints, scenario by scenario, everything that scenario's execution
 wrote — the same lines you'd see scroll by during `fleetest run` (steps with their pass/fail
-symbol, scenes, `print()` output on stdout/stderr, host-side notices such as a watchdog timeout),
+symbol, scenes, `print()` output on stdout/stderr, host-side notices such as a scenario being stopped because its output stopped or it ran past its time limit),
 reconstructed from `events/<scenarioID>.ndjson`. `<runID>` also accepts `latest`. Use `--scenario
 <id>` to show only one scenario, and `--raw` to print the underlying NDJSON lines unformatted (the per-scenario headings then go to stderr, so stdout stays pure NDJSON)
 instead.

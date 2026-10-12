@@ -684,4 +684,239 @@ final class TestClassMacroTests: XCTestCase {
         )
     }
 
+    // @Test(scenarioTimeout:) はメソッド単位の打ち切り秒(式は verbatim 転写)
+
+    func testTestのscenarioTimeout引数が展開される() {
+        assertMacroExpansion(
+            """
+            @TestClass(app: "com.app")
+            class T {
+                @Test("t", scenarioTimeout: 1800)
+                func S0010() {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class T {
+                func S0010() {
+                }
+            }
+
+            final class __FTReg_T: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    T.ftDescriptor
+                }
+            }
+
+            extension T: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "T",
+                        app: "com.app",
+                        platform: nil,
+                        scenarios: [
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0010",
+                            title: "t",
+                            scenarioTimeout: 1800,
+                            run: {
+                                T().S0010()
+                            }),
+                        ])
+                }
+            }
+            """,
+            macroSpecs: macros
+        )
+    }
+
+    func testTestのscenarioTimeout省略時は欄を出さない() {
+        assertMacroExpansion(
+            """
+            @TestClass(app: "com.app")
+            class T {
+                @Test("t")
+                func S0010() {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class T {
+                func S0010() {
+                }
+            }
+
+            final class __FTReg_T: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    T.ftDescriptor
+                }
+            }
+
+            extension T: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "T",
+                        app: "com.app",
+                        platform: nil,
+                        scenarios: [
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0010",
+                            title: "t",
+                            run: {
+                                T().S0010()
+                            }),
+                        ])
+                }
+            }
+            """,
+            macroSpecs: macros
+        )
+    }
+
+    func testTestのscenarioTimeoutリテラル以外の式は転写される() {
+        assertMacroExpansion(
+            """
+            @TestClass(app: "com.app")
+            class T {
+                @Test("t", scenarioTimeout: limits.long)
+                func S0010() {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class T {
+                func S0010() {
+                }
+            }
+
+            final class __FTReg_T: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    T.ftDescriptor
+                }
+            }
+
+            extension T: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "T",
+                        app: "com.app",
+                        platform: nil,
+                        scenarios: [
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0010",
+                            title: "t",
+                            scenarioTimeout: limits.long,
+                            run: {
+                                T().S0010()
+                            }),
+                        ])
+                }
+            }
+            """,
+            macroSpecs: macros
+        )
+    }
+
+    func testTestのscenarioTimeoutが0はエラー() {
+        assertMacroExpansion(
+            """
+            @TestClass(app: "com.app")
+            class T {
+                @Test("t", scenarioTimeout: 0)
+                func S0010() {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class T {
+                func S0010() {
+                }
+            }
+
+            final class __FTReg_T: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    T.ftDescriptor
+                }
+            }
+
+            extension T: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "T",
+                        app: "com.app",
+                        platform: nil,
+                        scenarios: [
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0010",
+                            title: "t",
+                            scenarioTimeout: 0,
+                            run: {
+                                T().S0010()
+                            }),
+                        ])
+                }
+            }
+            """,
+            diagnostics: [
+                DiagnosticSpec(
+                    message: "@Test scenarioTimeout must be a positive number of seconds (got 0)",
+                    line: 3, column: 33),
+            ],
+            macroSpecs: macros
+        )
+    }
+
+    func testTestのscenarioTimeoutが負はエラー() {
+        assertMacroExpansion(
+            """
+            @TestClass(app: "com.app")
+            class T {
+                @Test("t", scenarioTimeout: -5)
+                func S0010() {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class T {
+                func S0010() {
+                }
+            }
+
+            final class __FTReg_T: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    T.ftDescriptor
+                }
+            }
+
+            extension T: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "T",
+                        app: "com.app",
+                        platform: nil,
+                        scenarios: [
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0010",
+                            title: "t",
+                            scenarioTimeout: -5,
+                            run: {
+                                T().S0010()
+                            }),
+                        ])
+                }
+            }
+            """,
+            diagnostics: [
+                DiagnosticSpec(
+                    message: "@Test scenarioTimeout must be a positive number of seconds (got -5)",
+                    line: 3, column: 33),
+            ],
+            macroSpecs: macros
+        )
+    }
 }

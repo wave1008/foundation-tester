@@ -47,8 +47,23 @@ same skip behavior.
 
 Each command (each step) has a **120-second wall-clock cap**. If it doesn't return in time,
 the step fails and the in-flight work is cancelled rather than left running in the
-background. The whole-scenario cap (`scenarioTimeout` in the run profile, 90 seconds by default) applies first,
-so raise `scenarioTimeout` too when you write long waits ([Run profile settings](../project/run_profile.md)).
+background. The whole scenario is capped too (`scenarioTimeout` in the run profile, 600 seconds by default),
+so raise `scenarioTimeout` as well when you chain long waits ([Run profile settings](../project/run_profile.md)).
+To change it for a single scenario, give `@Test` a value in seconds. It wins over the profile value (shorter ones too);
+zero or negative is a compile error
+(when an expression evaluates to zero or less at run time, the scenario fails without being started).
+
+```swift
+@Test("Full sync", scenarioTimeout: 1800)
+func S0010() { scenario { /* … */ } }
+```
+
+A scenario is also stopped **when its output stops**. If no step result or log line appears for longer than twice
+the per-step cap (240 seconds by default), it is treated as stuck and fails. A slow scenario whose steps keep
+progressing is not stopped. Commands where you write how long to wait (`waitSeconds` of `ifCanSelect` /
+`repeatWhileCanSelect`, `httpRequest`, `doUntilTrue`) are not stopped while they wait within that length. If code whose
+length is unknown, such as Swift inside `procedure { }`, stays silent for more than 240 seconds, emit output such as
+`print()` along the way.
 
 ## Structuring and passing values
 

@@ -81,9 +81,10 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **階層をまたぐ保証(起こした側 → `api run` → シナリオ実行バイナリ)は `CrossLayerTerminationTests` が
   実バイナリで固定する**(`--dry-run --debug --pause-on-start --skip-build` = デバイスも入れ子の swift build も
   要らない長生きの孫。親の SIGKILL と子への SIGTERM の両方)
-- **シナリオの watchdog(`ScenarioHost`)は打ち切る前に子の生存を見る・時計は SuspendingClock**
+- **シナリオの watchdog(`ScenarioHost`。全体の上限と出力の途切れ(idle)の2系統)は打ち切る前に子の生存を見る・時計は SuspendingClock**
   (親の一時停止・Mac のスリープからの再開で、終わっていた緑の子を timeout の赤に書き換えていた。
-  `ScenarioHostWatchdogExitedChildTests`)→ maintainer-notes §32
+  `ScenarioHostWatchdogExitedChildTests`)→ maintainer-notes §32。
+  idle の出力の到着はパイプの受け口(`lineStream(onChunk:)`)で数え、打つ直前にパイプの未読も見る(docs/design.md の @Test 節の下)
 - **`Shell.run` は子孫ごと止め、出力の EOF を待ち切らない**(Codex 指摘 2026-09-05): timeout の
   SIGTERM/SIGKILL は `killpg`(Foundation.Process の子はグループリーダー)で孫まで届かせる ——
   `kill(pid,…)` だけだと `trap '' TERM` を継いだ孫がパイプを握り続けて 30 秒返らなかった。

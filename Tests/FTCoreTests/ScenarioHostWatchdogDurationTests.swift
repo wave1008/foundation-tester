@@ -8,6 +8,10 @@ import XCTest
 
 final class ScenarioHostWatchdogDurationTests: XCTestCase {
 
+    func testDefaultScenarioTimeoutIsPinned() {
+        XCTAssertEqual(ScenarioHost.defaultScenarioTimeout, 600)
+    }
+
     func testPositiveValuePassesThrough() {
         XCTAssertEqual(ScenarioHost.watchdogDuration(seconds: 90), .seconds(90))
     }

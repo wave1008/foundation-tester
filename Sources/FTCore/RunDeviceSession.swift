@@ -149,6 +149,7 @@ extension ScenarioHost {
             var failure: String?
             let passed = await run(project: project, scenarioID: "\(className).tearDownDevice",
                                    connection: connection, deviceSession: deviceSession,
+                                   scenarioTimeoutOverride: nil,
                                    settings: settings, reportDir: reportDir, dryRun: dryRun,
                                    appPath: appPath, appName: appName, appBundleID: appBundleID,
                                    registerChildProcess: registerChildProcess,

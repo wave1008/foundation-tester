@@ -17,6 +17,9 @@ public struct ScenarioInfo: Codable, Sendable, Hashable {
     public let app: String?
     /// "ios" / "android" / nil(両OS対応)
     public let platform: String?
+    /// `@Test(scenarioTimeout:)` の秒。nil = 未指定(プロファイル → 既定の順に解く。
+    /// FTCore.ScenarioTimeoutResolution)。子 → ホストの一覧(同一ビルド)だけを通り、`fleetest api` の契約には載せない
+    public let scenarioTimeout: Int?
     /// @Deleted(論理削除)。一覧に残るが一括実行から除外される
     public let deleted: Bool
     /// @Draft(実装中マーク)。一覧に残るが一括実行から除外される
@@ -24,11 +27,12 @@ public struct ScenarioInfo: Codable, Sendable, Hashable {
     public let draft: Bool
 
     public init(id: String, title: String, app: String? = nil, platform: String? = nil,
-                deleted: Bool = false, draft: Bool = false) {
+                scenarioTimeout: Int? = nil, deleted: Bool = false, draft: Bool = false) {
         self.id = id
         self.title = title
         self.app = app
         self.platform = platform
+        self.scenarioTimeout = scenarioTimeout
         self.deleted = deleted
         self.draft = draft
     }
@@ -103,8 +107,10 @@ public enum ScenarioHostError: Error, LocalizedError {
 public enum ScenarioHost {
 
     /// scenarioTimeout(ホスト側 watchdog)の既定秒。profile にも CLI にも未指定なら使う。
-    /// この値は子には渡さない(tunables.defaultTimeout=子内部の検証待ちとは別物)
-    public static let defaultScenarioTimeout = 90
+    /// この値は子には渡さない(tunables.defaultTimeout=子内部の検証待ちとは別物)。
+    /// 600 = 緑のシナリオの実測最長(負荷時の XCUITest 272 秒)の約 2 倍。180・240 では進行中のシナリオを
+    /// 打ち切る誤った赤が出ていた(打ち切り時点の最後の出力が 30 秒以内)。止まった子を早く拾うのは出力の途切れ(idle)の打ち切りの役目
+    public static let defaultScenarioTimeout = 600
 
     /// 子の `--tunables` の値。子側のデコードは FTScenarioRunner の `RunScenario.decodeTunables`
     public static func tunablesArgument(_ tunables: RunTunables) throws -> String {
@@ -461,6 +467,9 @@ public enum ScenarioHost {
                            /// このデバイス × この run(呼び出し)で共有するメモと setUpDevice の済み印。
                            /// 既定値を置かない = 渡し忘れ(デバイスごとに別のセッションを作る誤配線)をコンパイルで止める
                            deviceSession: RunDeviceSession,
+                           /// このシナリオの `@Test(scenarioTimeout:)`(`ScenarioInfo.scenarioTimeout`)。
+                           /// 既定値を置かない = 呼び手が info を持たない経路を明示させる(tearDownDevice 等は nil)
+                           scenarioTimeoutOverride: Int?,
                            settings: ScenarioExecutionSettings = ScenarioExecutionSettings(),
                            reportDir: String,
                            dryRun: Bool = false,
@@ -498,7 +507,8 @@ public enum ScenarioHost {
         let preferCheckStateClassifier = settings.preferCheckStateClassifier
         let findImagePrewarm = settings.findImagePrewarm
         let tunables = settings.tunables
-        let scenarioTimeout = settings.scenarioTimeout
+        let timeoutResolution = ScenarioTimeoutResolution.resolve(
+            scenario: scenarioTimeoutOverride, settings: settings.scenarioTimeout)
         let startedAt = Date()
         let clock = ContinuousClock()
         let clockStart = clock.now
@@ -555,6 +565,9 @@ public enum ScenarioHost {
             return false
         }
 
+        if let reason = ScenarioTimeoutResolution.invalidScenarioValueReason(scenarioTimeoutOverride) {
+            return abortBeforeLaunch(reason)
+        }
         let className = RunDeviceSession.className(ofScenarioID: scenarioID)
         // tearDownDevice は setUpDevice の成否に関わらず走らせる(片付け)。setUpDevice も走らせない
         guard let handoff = deviceTearDownOnly
@@ -703,14 +716,18 @@ public enum ScenarioHost {
         // scenarioTimeout はホスト側の壁時計 watchdog 専用で子には渡さない。debug 中は人間が
         // ブレークで止めるため無効化する。発火時は SIGTERM→2s 猶予→SIGKILL で子を落とし、
         // stdout の EOF で下の for-await が自然終了する経路に合流させる(ループ本体は変えない)。
-        let watchdogSeconds: Int? = (debug == nil)
-            ? (scenarioTimeout ?? defaultScenarioTimeout) : nil
+        let watchdogSeconds: Int? = (debug == nil) ? timeoutResolution.seconds : nil
         let timeoutGuard = TimeoutGuard()
         // 子の deadlineExclusion(OCR コンパイル待ち等)を集計する。watchdog が無い(--debug)ときも
         // 作る ——読み取りループ側は watchdogSeconds の有無を見ずに素通りさせるだけなので、
         // ここで nil 分岐を持たせるより単純
         let extensionTracker = WatchdogExtensionTracker()
         var killer: Task<Void, Never>?
+        let idleClock = SuspendingClock()
+        let idleBudgetSeconds = ScenarioIdleBudget.seconds(commandTimeout: settings.tunables.commandTimeout)
+        let idleTracker: ScenarioIdleWatchTracker? = watchdogSeconds == nil ? nil
+            : ScenarioIdleWatchTracker(budget: .seconds(idleBudgetSeconds), start: idleClock.now)
+        var idleKiller: Task<Void, Never>?
         if let watchdogSeconds {
             killer = Task {
                 // **SuspendingClock**: Mac のスリープ中は子も止まっているので、その時間を締め切りに数えない
@@ -741,12 +758,36 @@ public enum ScenarioHost {
                 // 書き換えていた(負荷テスト実害。ScenarioHostWatchdogExitedChildTests)
                 guard !Task.isCancelled, ProcessLiveness.isAlive(process.processIdentifier),
                       await timeoutGuard.claim() else { return }
-                process.terminate()  // SIGTERM
-                try? await Task.sleep(nanoseconds: UInt64(Shell.killGraceSeconds * 1_000_000_000))  // SIGTERM → SIGKILL の猶予
-                // process.isRunning は内部で waitpid して子を reap してしまい、終了待ち
-                // (processExited)が通知を取りこぼす恐れがある(SIGTERM を無視した子で
-                // 実測: run 全体が凍結)。kill(pid, 0) は reap せず生存確認だけ行う。
-                if kill(process.processIdentifier, 0) == 0 { _ = kill(process.processIdentifier, SIGKILL) }
+                idleTracker?.recordKill(at: clock.now, idle: nil)
+                await Self.terminateWithGrace(process)
+            }
+        }
+        // **出力が途切れた子を打ち切る**(idle)。許す長さは ScenarioIdleWatch(2 × commandTimeout + 開いている除外窓)。
+        // 遅いだけで出力を続けている子は止めない —— 全体の上限(scenarioTimeout)とは別の、止まった子を早く拾う側
+        if let idleTracker, watchdogSeconds != nil {
+            idleKiller = Task {
+                let clock = SuspendingClock()
+                while !Task.isCancelled {
+                    guard let deadline = idleTracker.deadline else { return }
+                    if clock.now < deadline {
+                        try? await Task.sleep(until: deadline, clock: clock)
+                        continue
+                    }
+                    // 親が止まっていた直後は、子が書いた出力をまだ読んでいないだけのことがある(読み手より先に起きた)
+                    if Self.hasUnreadOutput(stdout.fileHandleForReading)
+                        || Self.hasUnreadOutput(stderr.fileHandleForReading) {
+                        idleTracker.activity(at: clock.now)
+                        continue
+                    }
+                    // 起きる間に出力が届いていれば締め切りを引き直す(ここで抜けると以後 idle を見なくなる)
+                    guard let gap = idleTracker.overBudget(at: clock.now) else { continue }
+                    // 子が既に終わっていたら打ち切らない(scenarioTimeout の killer と同じ理由)
+                    guard ProcessLiveness.isAlive(process.processIdentifier),
+                          await timeoutGuard.claim() else { return }
+                    idleTracker.recordKill(at: clock.now, idle: gap)
+                    await Self.terminateWithGrace(process)
+                    return
+                }
             }
         }
 
@@ -755,7 +796,8 @@ public enum ScenarioHost {
         // あちらは ⚠️ を付けて onEvent/builder へ流すための整形済みコピーで、ここは生の到着記録)
         let stderrTask = Task.detached { () -> [String] in
             var lines: [String] = []
-            for await line in lineStream(stderr.fileHandleForReading) {
+            for await line in lineStream(stderr.fileHandleForReading,
+                                         onChunk: { idleTracker?.activity(at: idleClock.now) }) {
                 lines.append(line)
                 if !line.isEmpty { eventLog?.appendStderr(line) }
             }
@@ -771,21 +813,37 @@ public enum ScenarioHost {
         let eventLogEnabled = ProcessInfo.processInfo.environment["FT_EVENT_LOG_PATH"] != nil
 
         var passed: Bool?
-        for await line in lineStream(stdout.fileHandleForReading) {
+        // 出力の到着はパイプの受け口(onChunk)で数える —— 読み取りループで数えると、ループが installRequest を
+        // 待っている間・親が止まっていた直後の未消化の行を「出力が無い」と見る
+        for await line in lineStream(stdout.fileHandleForReading,
+                                     onChunk: { idleTracker?.activity(at: idleClock.now) }) {
             if !line.isEmpty, eventLogEnabled {
                 await EventLogAppender.shared.append(line)
             }
             // 子の stdout の生の1行は、kind 別の分岐(installRequest/deadlineExclusion は
             // onEvent へ出ない)に関わらず必ず記録する —— events/*.ndjson は分岐前の生の到着記録
             if !line.isEmpty { eventLog?.appendStdout(line) }
-            if let event = ScenarioEvent.decode(line: line) {
+            let decoded = ScenarioEvent.decode(line: line)
+            if let event = decoded {
                 if event.kind == "installRequest" {
                     await handleInstallRequest(event, installHandler: installHandler, stdinPipe: stdinPipe)
+                    // インストール(親が代行・最大 110 秒)の待ちは子の無出力に数えない
+                    idleTracker?.activity(at: idleClock.now)
                     continue
                 }
                 if deviceSession.apply(event, className: className) { continue }
+                if event.kind == "idleAllowance" {
+                    if event.status == "began" {
+                        idleTracker?.beginAllowance(.milliseconds(max(0, event.durationMs ?? 0)))
+                    } else {
+                        idleTracker?.endAllowance()
+                    }
+                    continue
+                }
                 if event.kind == "deadlineExclusion" {
                     await extensionTracker.apply(status: event.status, durationMs: event.durationMs)
+                    // 窓の間は無出力を上限ぶん延ばして許す(ended で 0 に戻る)
+                    idleTracker?.setOpenExclusionCap(await extensionTracker.openCap)
                     continue
                 }
                 if event.kind == "scenarioFinished" { passed = event.passed }
@@ -806,9 +864,10 @@ public enum ScenarioHost {
         // 終了待ちの後で行う: SIGTERM を子が無視する場合、killer の 2s 猶予後の SIGKILL が
         // 唯一の脱出路なので、子の死を待つ前に killer を止めてはならない。
         var timedOut = false
-        if let killer {
+        if killer != nil || idleKiller != nil {
             timedOut = !(await timeoutGuard.claim())
-            killer.cancel()
+            killer?.cancel()
+            idleKiller?.cancel()
         }
 
         let errLines = await stderrTask.value
@@ -821,7 +880,18 @@ public enum ScenarioHost {
         // 合成 scenarioFinished(passed:false) を emit で流し、通常失敗と同じ経路で集計・
         // モニタ表示させる(戻り値も false)。レポート(.md)は子専管のため書かない=クラッシュ相当。
         if timedOut, let watchdogSeconds {
-            let logEvent = ScenarioEvent.log("⏱ The scenario exceeded \(watchdogSeconds)s and was killed")
+            let message: String
+            if let gap = idleTracker?.idleKill {
+                message = "⏱ The scenario produced no output for \(idleSeconds(gap.silentFor))s "
+                    + "(allowed \(idleSeconds(gap.allowed))s = 2 × commandTimeout + open waits "
+                    + "\(idleSeconds(gap.allowed - .seconds(idleBudgetSeconds)))s) and was killed"
+            } else {
+                let silenceNote = idleTracker?.silenceAtKill
+                    .map { " (last output from the scenario \(idleSeconds($0))s before)" } ?? ""
+                message = "⏱ The scenario exceeded \(watchdogSeconds)s (\(timeoutResolution.source.rawValue))"
+                    + " and was killed\(silenceNote)"
+            }
+            let logEvent = ScenarioEvent.log(message)
             eventLog?.appendHost(logEvent)
             emit(logEvent)
             var finished = ScenarioEvent(kind: "scenarioFinished")
@@ -890,6 +960,7 @@ public enum ScenarioHost {
         let passed = await run(project: project, scenarioID: scenarioID,
                                connection: DriverConnection(platform: "ios"),
                                deviceSession: RunDeviceSession(),
+                               scenarioTimeoutOverride: nil,
                                // **`enabled: false`**(デバイスも画面も無いので FM を引く経路をまとめて止める。
                                // 個別に切ると残った経路が FM の直列化待ちを払う)
                                settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
@@ -919,7 +990,9 @@ public enum ScenarioHost {
     /// FileHandle を行単位の AsyncStream にする。readabilityHandler ベースで
     /// データ到着ごとに行を切り出して即時配信する(改行が来るまでの端数はバッファ)。
     /// EOF(空 Data)で残りを流して終了する
-    static func lineStream(_ handle: FileHandle) -> AsyncStream<String> {
+    /// `onChunk` = バイトが届くたび(行に揃う前・読み手が消化する前)に呼ぶ。出力の到着の記録用
+    static func lineStream(_ handle: FileHandle,
+                           onChunk: (@Sendable () -> Void)? = nil) -> AsyncStream<String> {
         AsyncStream { continuation in
             // readabilityHandler は FileHandle 内部のキューで直列に呼ばれる(Mutex は Swift 6 の
             // 捕捉検査を通すためで、競合は起きない)
@@ -934,6 +1007,7 @@ public enum ScenarioHost {
                     continuation.finish()
                     return
                 }
+                onChunk?()
                 for line in buffer.append(chunk) { continuation.yield(line) }
             } }
             continuation.onTermination = { _ in
@@ -1061,6 +1135,9 @@ struct WatchdogExtension: Sendable, Equatable {
 
     /// killer タスクが締め切りへ足す時間
     var extra: Duration { .milliseconds(completedMs + pendingCapMs) }
+
+    /// いま開いている窓の上限(ended で 0 に戻る)。idle 打ち切りが許す無出力の長さに足す
+    var openCap: Duration { .milliseconds(pendingCapMs) }
 }
 
 /// `WatchdogExtension` を直列化して持つ。NDJSON 読み取りループ(deadlineExclusion イベントを
@@ -1069,6 +1146,65 @@ private actor WatchdogExtensionTracker {
     private var state = WatchdogExtension()
     func apply(status: String?, durationMs: Int?) { state.apply(status: status, durationMs: durationMs) }
     var extra: Duration { state.extra }
+    var openCap: Duration { state.openCap }
+}
+
+/// idle 打ち切りの状態。パイプの受け口(同期の readabilityHandler)・読み取りループ・2 つの killer から触るので Mutex
+private final class ScenarioIdleWatchTracker: Sendable {
+    private struct State {
+        var watch: ScenarioIdleWatch
+        var silenceAtKill: Duration?
+        var idleKill: IdleGap?
+    }
+    private let state: Mutex<State>
+
+    init(budget: Duration, start: SuspendingClock.Instant) {
+        var watch = ScenarioIdleWatch(budget: budget)
+        watch.start(at: start)
+        state = Mutex(State(watch: watch))
+    }
+
+    func activity(at now: SuspendingClock.Instant) { state.withLock { $0.watch.activity(at: now) } }
+    func setOpenExclusionCap(_ cap: Duration) { state.withLock { $0.watch.setOpenExclusionCap(cap) } }
+    func beginAllowance(_ cap: Duration) { state.withLock { $0.watch.beginAllowance(cap) } }
+    func endAllowance() { state.withLock { $0.watch.endAllowance() } }
+    var deadline: SuspendingClock.Instant? { state.withLock { $0.watch.deadline } }
+    func overBudget(at now: SuspendingClock.Instant) -> IdleGap? { state.withLock { $0.watch.overBudget(at: now) } }
+
+    /// `idle` = 出力の途切れで打ち切った区間。nil = 全体の上限(scenarioTimeout)で打ち切った
+    func recordKill(at now: SuspendingClock.Instant, idle: IdleGap?) {
+        state.withLock {
+            $0.silenceAtKill = $0.watch.silence(at: now)
+            $0.idleKill = idle
+        }
+    }
+    var silenceAtKill: Duration? { state.withLock { $0.silenceAtKill } }
+    var idleKill: IdleGap? { state.withLock { $0.idleKill } }
+}
+
+extension ScenarioHost {
+    /// SIGTERM → `Shell.killGraceSeconds` → まだ生きていれば SIGKILL(子の pid だけ)
+    static func terminateWithGrace(_ process: Process) async {
+        process.terminate()
+        try? await Task.sleep(nanoseconds: UInt64(Shell.killGraceSeconds * 1_000_000_000))
+        // process.isRunning は内部で waitpid して子を reap してしまい、終了待ち
+        // (processExited)が通知を取りこぼす恐れがある(SIGTERM を無視した子で
+        // 実測: run 全体が凍結)。kill(pid, 0) は reap せず生存確認だけ行う。
+        if kill(process.processIdentifier, 0) == 0 { _ = kill(process.processIdentifier, SIGKILL) }
+    }
+
+    /// パイプに未読のバイト(または EOF)があるか。待たない(poll のタイムアウト 0)。
+    /// EOF も「あり」と答える = stdout を自分で閉じて走り続ける子は idle で止めない(全体の上限へ落ちる。
+    /// シナリオ実行バイナリは stdout を閉じないので実質起きない)
+    static func hasUnreadOutput(_ handle: FileHandle) -> Bool {
+        var fds = pollfd(fd: handle.fileDescriptor, events: Int16(POLLIN), revents: 0)
+        return poll(&fds, 1, 0) > 0 && fds.revents != 0
+    }
+}
+
+private func idleSeconds(_ d: Duration) -> String {
+    let c = d.components
+    return String(format: "%.1f", Double(c.seconds) + Double(c.attoseconds) / 1e18)
 }
 
 public extension ScenarioEvent {

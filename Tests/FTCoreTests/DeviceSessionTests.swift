@@ -186,6 +186,7 @@ final class ScenarioHostDeviceSessionTests: XCTestCase {
             project: project, scenarioID: "Login.S0010",
             connection: DriverConnection(platform: "ios"),
             deviceSession: session,
+            scenarioTimeoutOverride: nil,
             settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
             reportDir: root.appendingPathComponent("reports").path) { sink.append($0) }
 
@@ -215,6 +216,7 @@ final class ScenarioHostDeviceSessionTests: XCTestCase {
             project: project, scenarioID: "Login.S0010",
             connection: DriverConnection(platform: "ios"),
             deviceSession: session,
+            scenarioTimeoutOverride: nil,
             settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
             reportDir: root.appendingPathComponent("reports").path) { sink.append($0) }
 

@@ -575,6 +575,19 @@ public final class FTDriveCore {
             }
             emit(event)
         }
+        // 長さの決まった無出力の待ち(canSelect 系・httpRequest・doUntilTrue)を親の idle 打ち切りへ申告する。
+        // deadlineExclusion と同じく ScenarioHost が横取りして emit へ渡さない
+        IdleAllowance.observer = { change in
+            var event = ScenarioEvent(kind: "idleAllowance")
+            switch change {
+            case .began(let capMs):
+                event.status = "began"
+                event.durationMs = capMs
+            case .ended:
+                event.status = "ended"
+            }
+            emit(event)
+        }
         // 自動押下は権限という後に響く状態を変えるので、必ず run ログに残す
         // (installApp の再注入の注記と同じ ℹ️ 経路)
         self.executor.onSystemAlertDismissed = { message in
@@ -1427,30 +1440,34 @@ public final class FTDriveCore {
             CanSelectOutcome(found: found, dismissed: dismissed)
         }
         let deadline = Date().addingTimeInterval(waitSeconds)
-        repeat {
-            let snapshot = FTSync.run { try? await driver.snapshot() } ?? nil
-            if let snapshot,
-               LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true) != nil {
-                return result(true)
-            }
-            // **宣言された割り込みが覆っていたら閉じて見直す**(受け手報告)。
-            // 覆われた要素は木から落ちるので、閉じずに不成立を確定すると**分岐が黙って飛ぶ** ——
-            // 失敗ではなく誤った経路として現れるため、注記が無いと気付けない。
-            // **撮り足さない**: いま撮った木で照合するだけなので、宣言が無ければコストゼロ
-            if let snapshot,
-               let closed = FTSync.run({ await executor.dismissDeclaredInterruption(in: snapshot) }) ?? nil {
-                dismissed = (closed.key, closed.count)
-                if LocatorResolver.resolve(step: step, in: closed.snapshot,
-                                        strictForAssert: true) != nil {
-                    return result(true)
+        let foundWhilePolling: Bool = IdleAllowance.during(seconds: waitSeconds) {
+            repeat {
+                let snapshot = FTSync.run { try? await driver.snapshot() } ?? nil
+                if let snapshot,
+                   LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true) != nil {
+                    return true
                 }
-            }
-            // サブ秒の待ちが 0.5 秒刻みに丸められないよう、残り時間と 0.25 秒の小さい方で待つ
-            let remaining = deadline.timeIntervalSinceNow
-            if remaining > 0 {
-                Thread.sleep(forTimeInterval: min(remaining, 0.25))
-            }
-        } while Date() < deadline
+                // **宣言された割り込みが覆っていたら閉じて見直す**(受け手報告)。
+                // 覆われた要素は木から落ちるので、閉じずに不成立を確定すると**分岐が黙って飛ぶ** ——
+                // 失敗ではなく誤った経路として現れるため、注記が無いと気付けない。
+                // **撮り足さない**: いま撮った木で照合するだけなので、宣言が無ければコストゼロ
+                if let snapshot,
+                   let closed = FTSync.run({ await executor.dismissDeclaredInterruption(in: snapshot) }) ?? nil {
+                    dismissed = (closed.key, closed.count)
+                    if LocatorResolver.resolve(step: step, in: closed.snapshot,
+                                            strictForAssert: true) != nil {
+                        return true
+                    }
+                }
+                // サブ秒の待ちが 0.5 秒刻みに丸められないよう、残り時間と 0.25 秒の小さい方で待つ
+                let remaining = deadline.timeIntervalSinceNow
+                if remaining > 0 {
+                    Thread.sleep(forTimeInterval: min(remaining, 0.25))
+                }
+            } while Date() < deadline
+            return false
+        }
+        if foundWhilePolling { return result(true) }
         // **「無い」を確定する側で fallbackDriver を1回だけ照会する**。
         // hybrid では SpringBoard のダイアログ(位置情報・通知の許可)が primary の snapshot に
         // 映らないので、ここを通さないと `ifCanSelect("許可")` が**原理的に成立しない** ——
