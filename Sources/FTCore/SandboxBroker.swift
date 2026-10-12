@@ -352,16 +352,23 @@ public final class SandboxBroker: @unchecked Sendable {
     private let descriptor: Int32
     private let execute: @Sendable ([String], Double?, Data?) -> (status: Int32, output: Data)
 
+    /// 既定の実行。投げた理由(時間切れ = ShellError.timedOut・起動の失敗)をそのまま子へ返す。一律に「起動できない」と
+    /// 答えると、負荷で simctl が時間切れになった事実が「xcrun が無い」に化けて失敗の記録が事実と食い違う
+    static func runForChild(_ argv: [String], timeout: Double?, stdin: Data?) -> (status: Int32, output: Data) {
+        do {
+            return try Shell.runRaw(argv, timeout: timeout, stdin: stdin)
+        } catch {
+            return (127, Data("\(argv.first ?? "the command") did not complete: \(error.localizedDescription)".utf8))
+        }
+    }
+
     /// 1往復で読む要求の上限(バイト)。`simctl` の引数列と base64 の stdin が収まればよい
     static let maxRequestBytes = 1 << 20
 
     public init(context: SimctlPolicy.Context, directory: String,
                 execute: (@Sendable ([String], Double?, Data?) -> (status: Int32, output: Data))? = nil) throws {
         self.context = context
-        self.execute = execute ?? { argv, timeout, stdin in
-            let result = try? Shell.runRaw(argv, timeout: timeout, stdin: stdin)
-            return (result?.0 ?? 127, result?.1 ?? Data("cannot run \(argv.first ?? "the command")".utf8))
-        }
+        self.execute = execute ?? Self.runForChild
         socketPath = (directory as NSString).appendingPathComponent("ftb-\(UUID().uuidString.prefix(8)).sock")
         descriptor = try UnixSocket.listen(path: socketPath)
         let thread = Thread { [descriptor, weak self] in

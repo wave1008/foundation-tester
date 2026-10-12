@@ -355,4 +355,14 @@ final class DevicectlPolicyTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(found.count, 8, "the scan did not reach the devicectl call sites")
         XCTAssertEqual(found.filter { !known.contains($0) }, [])
     }
+
+    /// 代行した外部コマンドが時間切れになったら、その事実(時間切れ・秒・コマンド)を子へ返す。
+    /// 一律の「起動できない」に置き換えると失敗の記録が事実と食い違う(負荷で simctl terminate が時間切れ → 「cannot run xcrun」)
+    func testTimedOutCommandReportsTheTimeoutToTheChild() {
+        let result = SandboxBroker.runForChild(["/bin/sleep", "5"], timeout: 0.3, stdin: nil)
+        let text = String(decoding: result.output, as: UTF8.self)
+        XCTAssertNotEqual(result.status, 0)
+        XCTAssertTrue(text.contains("timed out"), text)
+        XCTAssertFalse(text.contains("cannot run"), text)
+    }
 }
