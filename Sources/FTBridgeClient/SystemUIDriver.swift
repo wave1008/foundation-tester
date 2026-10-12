@@ -106,6 +106,7 @@ public final class SystemUIDriver: AppDriver {
     public var treeLagsBehindMotion: Bool { client.treeLagsBehindMotion }
     public var pointScale: Double { client.pointScale }
     public var verifiesTypedText: Bool { client.verifiesTypedText }
+    public var tapsWithSystemTouch: Bool { client.tapsWithSystemTouch }
     public func backGestureEdgeWidths() async -> (left: Double, right: Double, bottom: Double)? {
         await client.backGestureEdgeWidths()
     }

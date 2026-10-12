@@ -98,7 +98,9 @@ final class FakeAppDriver: AppDriver {
         snapshotCallCount += 1
         log.entries.append("\(name).snapshot")
         let elements: [ElementInfo]
-        if snapshotElements.isEmpty {
+        if let later = elementsAfter, Date() >= later.at {
+            elements = later.elements
+        } else if snapshotElements.isEmpty {
             elements = []
         } else {
             let index = min(snapshotCallCount - 1, snapshotElements.count - 1)
@@ -138,6 +140,11 @@ final class FakeAppDriver: AppDriver {
     /// **既定 true**(AppDriver の既定 false とは逆)。type 読み返しテスト以外の全既存テストは
     /// 読み返しの発動を意図していないので、明示的に false へ落とすテストだけが対象になる
     var verifiesTypedText = true
+    /// tap が本物の指と同じ経路を通るドライバ(XCUITest)を装う(既定 false = AppDriver の既定と同じ)
+    var systemTouch = false
+    /// この時刻を過ぎた snapshot() はこの木を返す(待った後に読み直したかを、待つ前の読みと区別する検証用)
+    var elementsAfter: (at: Date, elements: [ElementInfo])?
+    var tapsWithSystemTouch: Bool { systemTouch }
     /// type(ref:text:)/clearInput(ref:) が呼ばれるたびに実行するフック。読み返し検証の
     /// resend/deleteExcess 経路で「訂正が実際に効いた」ことを、次の snapshot() 呼び出し以降に
     /// snapshotElements へ追記して表現するために使う(呼び出し時点までの列は変えず追記するだけなので、

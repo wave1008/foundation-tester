@@ -1018,6 +1018,8 @@ public final class StepExecutor {
     /// 本当に効かなかった前者が消える(E2E-iOS S0020 の `#btn_request_photos` →
     /// `#btn_freeze_3s`。この並びでは失敗すれば必ず freeze_3s を名指しし、情報になっていなかった)
     var tapAwaitingNextTree: LastInteraction?
+    /// この tap の手の直前の tap が解決に使った木(撃つ前)。`PresentedOverlayTapWait` が「出てきたばかり」を見る材料
+    var previousTapTree: [ElementInfo]?
     /// 次のタップが解決に使った木と比べて**画面が変わっていなかった**と確定した、それより前のタップ
     /// (古い順の呼び名)。tap / select 以外の操作が走ったら捨てる(`lastInteraction` と同じ「直前」の意味)。
     /// 追加の撮影はしない(比べるのは既に持っている木だけ)

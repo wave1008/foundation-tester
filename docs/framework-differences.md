@@ -116,6 +116,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | SwiftUI(iOS in-app) | 合成タッチでは Button のジェスチャが発火しない | C | activate を最優先。座標指定も「その点を含む最小の要素」を activate する |
 | Compose(iOS) | 画面外の要素の枠がクランプされ、`isHittable` も壊れている | C | 座標タップを維持(`.tap()`・`isHittable` を使わない) |
 | 全部(iOS in-app) | activate も合成タッチ(要素の窓へ直接送る)も、手前の窓・重なった view を素通りして要素に届く(本物の指では押せない要素も押せる) | C | 撃った点で UIView の hitTest を1回行い、別の view が受けるなら注記 `inapp-tap-outside-hit-area`(判定は変えない)。**判定できるのは UIKit と、UIView に辿れる SwiftUI の要素**(重なった view・別の窓)。**SwiftUI の `.contentShape` 抜けは hitTest に出ない**(AX の当たり判定も「届く」)ので、活性化の点が枠の外側 4 分の 1 にあれば別の注記 `inapp-activation-point-off-centre`(SwiftUI / UIKit のアプリだけ。**RN は活性化の点が押せる範囲と無関係なので使わない**)。**Flutter は判定できない**(当たるのは常に FlutterView)(v159・v160。maintainer-notes §77) |
+| React Native(iOS XCUITest・MCP の `ft_batch` を含む) | Modal(`animationType="fade"` = UIKit のクロスディゾルブ。RN は長さを指定しない)が開く 約 0.52 秒の間に届いた tap は UIKit に捨てられ、何も起きない(本物の指と同じ経路。in-app は合成タッチを窓へ直接送るので起きない)。E2E-RN の xcuitest でダイアログの3本が 16 本中 10 本赤 | A | **出てきたばかりのダイアログ・シートの中の要素を押す前だけ** 0.55 秒待つ(`PresentedOverlayTapWait`。条件: RN・XCUITest で押す・前の tap の木に無かった要素・木が画面の 30% 以上を空けている。注記 `waited-for-presented-overlay`)。**打ち直さない**(実験で、画面を変えないのが正しい「交互にダイアログ」を二重に押した)・**画素を撮らない**(負荷)。長さの実測: iOS 27 Simulator の描画プローブで開く 516〜517ms・閉じる 500ms(5 回)。全画面で開く Modal は拾えない |
 
 ### 2.2 スクロール探索の直後のタップ(空打ち)
 
@@ -378,6 +379,7 @@ SwiftUI の pinch(SUT が枠で切り取っていなかった)・inputs S0030/40
 
 | 版・コミット | 内容 |
 |---|---|
+| — | React Native の XCUITest で、出てきたばかりのダイアログ・シートの中の要素を押す前だけ表示の切り替え(0.55 秒)を待つ(`PresentedOverlayTapWait`)。fade の最中の tap が捨てられていた |
 | `9bbf17dd` | 入力系(`type` / `pressEnter` / `clearInput`)の 409 を、MCP・ライブ操作でも XCUITest へ回す(`DriverError.isTextInputFallback` / `isClearInputFallback`)。この表の「→ XCUITest へ」は DSL でしか成り立っておらず、**同じ構成の同じ操作が `ft_type` / `ft_press_enter` / `ft_clear_input` では落ちていた** |
 | v117 | in-app のスクリーンショットは、自前描画(Compose / Flutter)で木が絵より先に進んでいる間は撮らない(`InAppRenderCatchUp`。findImage / imageIs / 分類器 / occlusion-guard が別の画面の画素を切り出していた) |
 | — | チェック状態を見本画像から判定する CheckStateClassifier(Shirates Vision の移植。実行プロファイル `preferCheckStateClassifier`・既定 true) |

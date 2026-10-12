@@ -185,6 +185,7 @@ public final class SessionRecoveryDriver: AppDriver {
     public var treeLagsBehindMotion: Bool { base.treeLagsBehindMotion }
     public var pointScale: Double { base.pointScale }
     public var verifiesTypedText: Bool { base.verifiesTypedText }
+    public var tapsWithSystemTouch: Bool { base.tapsWithSystemTouch }
     public func backGestureEdgeWidths() async -> (left: Double, right: Double, bottom: Double)? {
         await base.backGestureEdgeWidths()
     }

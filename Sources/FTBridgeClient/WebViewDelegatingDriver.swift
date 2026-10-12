@@ -102,6 +102,9 @@ public final class WebViewDelegatingDriver: AppDriver {
     /// ときだけ1回張り直す簡易チェックしか持たず(下の type() 参照)、TypeReadback.plan の
     /// resend/deleteExcess 相当は持たない。StepExecutor の読み返しを重ねても安全側(検証不能なら
     /// 受理するだけ)なので、無理に true を申告しない
+    public var tapsWithSystemTouch: Bool {
+        mode == .delegated ? delegated.tapsWithSystemTouch : primary.tapsWithSystemTouch
+    }
     public var verifiesTypedText: Bool {
         mode == .delegated ? delegated.verifiesTypedText : primary.verifiesTypedText
     }

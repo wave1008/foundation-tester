@@ -36,6 +36,7 @@ extension StepExecutor {
         let grabsOnly = action == "select" || action == "waitForSettle"
             || (Self.isFindImageAction(action) && step.direction == nil)
         if action == "tap" {
+            previousTapTree = lastInteraction?.before
             // 前のタップは、このタップが解決に使う木と比べてから確定する(tapAwaitingNextTree の doc)
             tapAwaitingNextTree = lastInteraction
             lastInteraction = nil
@@ -656,6 +657,28 @@ extension StepExecutor {
                 recordInteraction(step: step, element: liftedElement, in: lifted.snapshot)
                 lastTapTarget = liftedElement
                 driverFallback = Self.joinNotes(driverFallback, lifted.note)
+            }
+            // **出てきたばかりのダイアログ・シートの中を、本物の指と同じ経路で押す前だけ待つ**(切り替えの最中の tap は
+            // UIKit に捨てられる。判定と根拠は PresentedOverlayTapWait)。打ち直さない・画素を撮らない
+            if PresentedOverlayTapWait.shouldWait(framework: uiFramework, tapsWithSystemTouch: actingDriver.tapsWithSystemTouch,
+                                                  target: element, previousTapTree: previousTapTree, current: snapshot) {
+                try await Task.sleep(nanoseconds: UInt64(PresentedOverlayTapWait.transitionSeconds * 1_000_000_000))
+                noteCodesThisStep.insert(.waitedForPresentedOverlay)
+                driverFallback = Self.joinNotes(driverFallback, StepNote.waitedForPresentedOverlay.text)
+                // **待った後の位置で撃つ**(切り替えの途中に読んだ木 = せり上がる slide のシートなら動く前の枠)。
+                // 撮り直しは primary の木なので、fallback へ切り替えたステップでは引き直さない(寄せと同じ規律)。
+                // 引けなければ待つ前の要素のまま撃つ
+                if !switchedToFallbackDriver {
+                    let refreshed = try await freshSnapshot(.afterOwnMove)
+                    if let (moved, _) = LocatorResolver.resolve(step: step, in: refreshed) {
+                        snapshot = refreshed
+                        element = moved
+                        resolvedElementThisStep = element
+                        // 飲まれたタップの基準も撃つ直前の木にする(寄せた後と同じ)
+                        recordInteraction(step: step, element: moved, in: refreshed)
+                        lastTapTarget = moved
+                    }
+                }
             }
             start = clock.now
             // **中心が容器の外に落ちる要素だけ、見えている部分の中心を座標で撃つ**

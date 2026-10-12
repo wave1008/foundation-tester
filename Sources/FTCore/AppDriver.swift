@@ -245,6 +245,10 @@ public protocol AppDriver {
     /// **ラッパードライバは実際に type を実行する側の値へ転送すること**(既定 false に落とすと
     /// 無害だが、既に検証済みの経路にも二重読み返しの固定費が乗る)
     var verifiesTypedText: Bool { get }
+    /// tap が本物の指と同じシステムの経路(XCUITest の合成タッチ)を通るか。true の経路だけ、表示の切り替えの最中の tap を
+    /// UIKit が捨てる(`PresentedOverlayTapWait`)。**プロトコル要件として宣言すること**(verifiesTypedText と同じ理由)。
+    /// **ラッパードライバは実際に tap を撃つ側の値へ転送すること**(既定 false に落とすと待ちが黙って効かなくなる)
+    var tapsWithSystemTouch: Bool { get }
     /// ジェスチャナビゲーションが back として奪う画面物理端からの帯幅(px。左右)。
     /// 既定 nil = 除外なし(iOS・3ボタン navigation)。**プロトコル要件として宣言すること**
     /// (install(packagePath:) と同じ理由)。**ラッパードライバは base の値を透過すること**
@@ -475,6 +479,9 @@ public extension AppDriver {
 
     /// 既定は未検証(false)= StepExecutor 側の読み返しが働く安全側。検証済みドライバだけが true を宣言する
     var verifiesTypedText: Bool { false }
+
+    /// 既定は false(待たない側)。XCUITest ランナーのクライアントだけが true を宣言する
+    var tapsWithSystemTouch: Bool { false }
 
     /// 既定は 1(木が pt = iOS 系)。px で木を返す Android だけが密度を申告する
     var pointScale: Double { 1 }

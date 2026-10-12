@@ -358,6 +358,10 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 判定は変えない。**率が上がったら in-app では緑・XCUITest では赤になる操作が増えている**(maintainer-notes §77)
     case inAppActivationPointOffCentre = "inapp-activation-point-off-centre"
 
+    /// 出てきたばかりのダイアログ・シートの中の要素を本物の指と同じ経路(XCUITest)で押す前に、表示の切り替えが終わる
+    /// 長さだけ待った(`PresentedOverlayTapWait`。React Native だけ)。判定は変えない。数えて払った回数を見る口
+    case waitedForPresentedOverlay = "waited-for-presented-overlay"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -488,6 +492,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .inAppActivationPointOffCentre:
             return "in-app activated the element at its activation point, which is not the centre of its"
                 + " frame that a coordinate tap presses"
+        case .waitedForPresentedOverlay:
+            return "waited for the just-presented dialog or sheet to finish appearing before tapping"
+                + " (a tap during the transition is dropped)"
         case .memoKeyNotFound:
             return "nothing was written under this key on this device in this run (the memo is per device)"
         case .unchangedTapBeforeFailure:

@@ -73,6 +73,8 @@ public final class BridgeClient: AppDriver, Sendable {
     /// **InAppDriver は同じ HTTP プロトコルを in-app ブリッジへ話すのに使うため、この既定 true を
     /// そのまま転送しない**(InAppDriver.verifiesTypedText は固定 false で上書きする)
     public var verifiesTypedText: Bool { true }
+    /// 同じ前提(接続先は XCUITest ランナー)。InAppDriver は false で上書きする
+    public var tapsWithSystemTouch: Bool { true }
     /// XCUITest ランナーの木は慣性の途中を 100〜170ms おきにしか映さない(AppDriver の宣言)。
     /// in-app ブリッジへ向けたときは包む InAppDriver が false を返す
     public var treeLagsBehindMotion: Bool { true }
