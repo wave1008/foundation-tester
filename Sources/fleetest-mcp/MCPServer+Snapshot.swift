@@ -1393,9 +1393,9 @@ extension MCPServer {
         let key = Self.engineKey(args)
         let isAndroid = engines[key] == "android" || driver is AndroidDriver
         guard !isAndroid else { return (true, nil) }
-        if let cached = uiFrameworkHints[key] { return (false, cached) }
         let status = try? await driver.status()
         guard let bundleID = status?.sessionBundleID else { return (false, nil) }
+        if let cached = uiFrameworkHint(key, bundleID: bundleID) { return (false, cached) }
         let physical = connectedPorts[key].flatMap { port in
             (try? RepoRoot.find()).flatMap { BridgeDeviceRecord.load(port: port, repoRoot: $0) }
         } != nil
@@ -1405,7 +1405,7 @@ extension MCPServer {
         if let framework = await AppUIFrameworkQuery.resolve(subject, bridgeReport: {
             AppUIFrameworkQuery.bridgeReport(status, about: bundleID)
         }).framework {
-            uiFrameworkHints[key] = framework
+            uiFrameworkHints[key] = UIFrameworkHint(bundleID: bundleID, framework: framework)
             return (false, framework)
         }
         if physical { uiFrameworkUnknownPending.insert(key) }

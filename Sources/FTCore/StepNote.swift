@@ -135,6 +135,12 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// `#id` が容器を指している(セレクタを取る `type` へ寄せる判断材料になる)
     case typeFocusRecovered = "type-focus-recovered"
 
+    /// ロケータ無しの `clearInput()` / `type(…, replace: true)` で、**消す前の木に焦点のある欄が無かった**ので
+    /// 消えたかを読み返せないまま緑にした。読み返しの材料が無いだけで失敗ではない(in-app は Compose の焦点を
+    /// 申告しない・背の低い端末ではキーボードで欄自身が木から消える)。黙って緑にすると、消えていない欄を
+    /// 消えたと読ませる(実機 iPhone SE3 の CMP: パスワード欄が消えないまま緑)。値は `textIs` で別途確かめる
+    case clearInputUnverified = "clear-input-unverified"
+
     /// 読み返しで**中央の文字が落ちていた**(`TypeReadback.Plan.retype`)ので、消してから全文を打ち直した
     /// (in-app 経路。XCUITest ランナーの打ち直しは OKResponse.note → driverFallback に出る)。
     /// **率を見たい注記**: 緑の run で増えるなら誤検知(本当は加工された入力を打ち直している)を疑う
@@ -438,6 +444,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .launchURLBeforeInteractiveUI:
             return "the URL was delivered before any tappable element appeared, so the app may not"
                 + " have been listening yet"
+        case .clearInputUnverified:
+            return "no field in the tree reported focus, so whether the field was emptied could not be"
+                + " read back — check the value with textIs"
         case .typeFocusRecovered:
             return "the preceding tap did not put a field in focus, so the text went to the"
                 + " field it resolved to"

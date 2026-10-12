@@ -15,7 +15,8 @@ public enum OcclusionCrop {
     /// 対象がクロップの概ね 6 割以上を占めるようにする(大要素では cropPadding で頭打ち)。
     public static func rect(frame: FTRect, screen: FTRect, imageWidth: Int, imageHeight: Int,
                             cropPadding: CGFloat) -> CGRect? {
-        guard imageWidth > 0, imageHeight > 0 else { return nil }
+        guard imageWidth > 0, imageHeight > 0,
+              orientationMatches(imageWidth: imageWidth, imageHeight: imageHeight, screen: screen) else { return nil }
         let scaleX = CGFloat(imageWidth) / CGFloat(screen.width == 0 ? Double(imageWidth) : screen.width)
         let scaleY = CGFloat(imageHeight) / CGFloat(screen.height == 0 ? Double(imageHeight) : screen.height)
         let wpx = CGFloat(frame.width) * scaleX
@@ -30,5 +31,15 @@ public enum OcclusionCrop {
         let clamped = px.intersection(CGRect(x: 0, y: 0, width: imageWidth, height: imageHeight))
         guard !clamped.isNull, clamped.width >= 1, clamped.height >= 1 else { return nil }
         return clamped
+    }
+
+    /// 絵と画面の向き(縦長/横長)が一致するか。一致しない絵は別の向きのまま来た絵で、縦横の倍率が
+    /// 別々になり、要素と無関係な帯を切る(実機の XCUITest で横向きの直後に縦向きの絵が来て、
+    /// 見えている欄を「描かれていない」と誤った赤にした)。切らずに nil = 判定しない側へ倒す。
+    /// 画面の寸法が無い(0)ときは比べない。
+    public static func orientationMatches(imageWidth: Int, imageHeight: Int, screen: FTRect) -> Bool {
+        guard screen.width > 0, screen.height > 0, imageWidth != imageHeight,
+              screen.width != screen.height else { return true }
+        return (imageWidth > imageHeight) == (screen.width > screen.height)
     }
 }

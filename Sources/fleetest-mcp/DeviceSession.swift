@@ -52,8 +52,10 @@ struct DeviceSession {
     /// 作ると settle-lite の「操作前の木」がこの読みになり、呼び手が撮っていない木を基準に待つ
     var knownScreen: FTRect?
     /// scroll_to の空打ちゲート用 uiFramework。**成功だけ**記憶する —
-    /// 失敗(nil)を覚えると、suspend 中の1回のタイムアウトで判定がセッション全体に固定される
-    var uiFrameworkHint: AppUIFramework?
+    /// 失敗(nil)を覚えると、suspend 中の1回のタイムアウトで判定がセッション全体に固定される。
+    /// **判定したアプリの bundleID と組で持つ** —— 同じ端末で別のアプリへ替えた後に前のアプリの判定を使うと、
+    /// RN に Compose の空打ちを撃って行のタップが成立する(実機 SE3: CMP → RN の順に起動して ft_scroll_to が行を開いた)
+    var uiFrameworkHint: UIFrameworkHint?
     /// 実機で uiFramework が不明のまま探索を撃った(次の応答で1回だけ言う。
     /// 不明のとき空打ちは撃たれないので、Compose / Flutter なら吸われた形が赤に出る)
     var uiFrameworkUnknownPending = false
@@ -170,6 +172,12 @@ struct DeviceSession {
 
 /// `sessions` の1欄を「engineKey → 値」の辞書として見る窓。書き込みは `sessions` へ直接届く
 /// (`nonmutating set`。窓自体は何も持たないので、返された窓を保存しても古くならない)
+/// `DeviceSession.uiFrameworkHint` の中身(判定したアプリと組)
+struct UIFrameworkHint {
+    let bundleID: String
+    let framework: AppUIFramework
+}
+
 struct SessionMap<Value> {
     let server: MCPServer
     let path: WritableKeyPath<DeviceSession, Value?>

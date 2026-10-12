@@ -478,7 +478,9 @@ public enum VisionClassifier {
 
     /// 復号済みのスクリーンショットから切る(同じ画面から何枚も切る findImage は復号を1回にする)
     public static func crop(image: CGImage, frame: FTRect, screen: FTRect) -> CGImage? {
-        guard screen.width > 0 else { return nil }
+        guard screen.width > 0,
+              OcclusionCrop.orientationMatches(imageWidth: image.width, imageHeight: image.height,
+                                               screen: screen) else { return nil }
         let scale = Double(image.width) / screen.width
         let rect = CGRect(x: (frame.x - screen.x) * scale, y: (frame.y - screen.y) * scale,
                           width: frame.width * scale, height: frame.height * scale).integral

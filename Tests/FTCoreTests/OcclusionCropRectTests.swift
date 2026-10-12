@@ -63,4 +63,29 @@ final class OcclusionCropRectTests: XCTestCase {
         XCTAssertLessThanOrEqual(rect.maxX, 400)
         XCTAssertLessThanOrEqual(rect.maxY, 800)
     }
+
+    /// 横向きの画面に縦向きのまま来た絵(iPhone SE3 の実測: 画面 667x375pt・絵 750x1334px)は切らない。
+    /// 切ると縦横の倍率が別々になり、見えている欄を「描かれていない」と誤った赤にする
+    func testOrientationMismatchReturnsNil() {
+        let frame = FTRect(x: 16, y: 236, width: 635, height: 48)
+        let landscape = FTRect(x: 0, y: 0, width: 667, height: 375)
+        XCTAssertNil(OcclusionCrop.rect(
+            frame: frame, screen: landscape, imageWidth: 750, imageHeight: 1334, cropPadding: 24))
+        XCTAssertNotNil(OcclusionCrop.rect(
+            frame: frame, screen: landscape, imageWidth: 1334, imageHeight: 750, cropPadding: 24))
+    }
+
+    /// findImage の切り抜き(`VisionClassifier.crop`)も同じ門を通る
+    func testVisionClassifierCropRejectsOrientationMismatch() throws {
+        func image(_ w: Int, _ h: Int) throws -> CGImage {
+            let ctx = try XCTUnwrap(CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpaceCreateDeviceRGB(),
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            return try XCTUnwrap(ctx.makeImage())
+        }
+        let frame = FTRect(x: 16, y: 236, width: 300, height: 48)
+        let landscape = FTRect(x: 0, y: 0, width: 667, height: 375)
+        XCTAssertNil(VisionClassifier.crop(image: try image(750, 1334), frame: frame, screen: landscape))
+        XCTAssertNotNil(VisionClassifier.crop(image: try image(1334, 750), frame: frame, screen: landscape))
+    }
 }

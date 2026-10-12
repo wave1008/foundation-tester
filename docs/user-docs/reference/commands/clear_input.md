@@ -8,7 +8,7 @@ Empties an input field.
 
 | function | description |
 |---|---|
-| `clearInput(settle:)` | Empties the currently focused input field. |
+| `clearInput(settle:)` | Empties the currently focused input field. When no element in the screen's element list reports focus, it cannot check that the field was emptied, so it passes with the note `clear-input-unverified` (check the value with `textIs`). |
 | `clearInput(sel, settle:waitSeconds:scroll:maxSwipes:)` | Empties the specified input field. |
 
 ## Example

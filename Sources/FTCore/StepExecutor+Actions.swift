@@ -1368,8 +1368,9 @@ extension StepExecutor {
             guard DriverError.isClearInputFallback(error), let td = typeDriver else { throw error }
             try await td.clearInput(ref: nil)
             phase.actionMs += Self.ms(clock.now - start)
-            if let focusedBefore,
-               let residual = try await residualClearValue(td, focusedBefore: focusedBefore,
+            // 焦点のある欄が木に無ければ読み返す材料が無い。黙って緑にせず注記で言う
+            guard let focusedBefore else { return .cleared(driverFallback: unverifiedClearNote("fell back to XCUITest")) }
+            if let residual = try await residualClearValue(td, focusedBefore: focusedBefore,
                                                            phase: &phase) {
                 return .failed("clearInput reported success but the value remained: \"\(residual)\"")
             }
@@ -1377,8 +1378,8 @@ extension StepExecutor {
         }
         phase.actionMs += Self.ms(clock.now - start)
 
-        if let focusedBefore,
-           let residual = try await residualClearValue(driver, focusedBefore: focusedBefore,
+        guard let focusedBefore else { return .cleared(driverFallback: unverifiedClearNote(nil)) }
+        if let residual = try await residualClearValue(driver, focusedBefore: focusedBefore,
                                                        phase: &phase) {
             guard let td = typeDriver else {
                 return .failed("clearInput reported success but the value remained: \"\(residual)\"")
@@ -1393,6 +1394,12 @@ extension StepExecutor {
             return .cleared(driverFallback: "fell back to XCUITest")
         }
         return .cleared(driverFallback: nil)
+    }
+
+    /// 焦点のある欄が木に無く読み返せなかったことを注記に立て、括弧書きの文言へ足す(`StepNote.clearInputUnverified`)
+    private func unverifiedClearNote(_ fallback: String?) -> String? {
+        noteCodesThisStep.insert(.clearInputUnverified)
+        return Self.joinNotes(fallback, StepNote.clearInputUnverified.text)
     }
 
     /// clearInput の本体(driver.clearInput → 事後検証 → typeDriver フォールバック → 再検証)。

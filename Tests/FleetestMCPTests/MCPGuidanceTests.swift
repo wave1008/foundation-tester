@@ -473,7 +473,7 @@ final class MCPGuidanceTests: XCTestCase {
                                recordSnapshot: { _, _, _ in })
         let key = MCPServer.engineKey([:])
         server.engines[key] = "xcuitest"
-        server.uiFrameworkHints[key] = .uikit
+        server.uiFrameworkHints[key] = UIFrameworkHint(bundleID: "com.example.app", framework: .uikit)
         let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: .compose,
                                         "double tap", args: [:])
         XCTAssertEqual(hint, "", "uikit と判明しているのに Compose 専用の助言を出した: \(hint)")
@@ -485,7 +485,7 @@ final class MCPGuidanceTests: XCTestCase {
                                recordSnapshot: { _, _, _ in })
         let key = MCPServer.engineKey([:])
         server.engines[key] = "xcuitest"
-        server.uiFrameworkHints[key] = .compose
+        server.uiFrameworkHints[key] = UIFrameworkHint(bundleID: "com.example.app", framework: .compose)
         let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: .compose,
                                         "double tap", args: [:])
         XCTAssertTrue(hint.contains("Compose Multiplatform apps do not receive double tap"), hint)

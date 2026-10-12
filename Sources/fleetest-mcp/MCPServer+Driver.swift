@@ -182,7 +182,7 @@ extension MCPServer {
                    platform: "ios", bundleID: bundleID,
                    appPath: iosApp?.packagePath(physical: provisioned.physical),
                    udid: provisioned.udid, physical: provisioned.physical)).framework {
-                uiFrameworkHints[key] = framework
+                uiFrameworkHints[key] = UIFrameworkHint(bundleID: bundleID, framework: framework)
             }
             // **profile 経由でも宛先を記録する**。ここが空だと ft_status が
             // 「どこに繋がっているか」を出せず、**同名のデバイスが並ぶフリートでどの1台か
@@ -1413,7 +1413,12 @@ extension MCPServer {
         guard engines[Self.engineKey(args)] == "xcuitest" else { return "" }
         let advice = " MCP drives iOS through XCUITest only, so this is not something to retry here;"
             + " a scenario run on the default (hybrid) engine delivers it — verify the gesture there."
-        switch uiFrameworkHints[Self.engineKey(args)] {
+        // 起動したアプリが分かっていて判定と別のアプリなら、判定は不明として扱う
+        let key = Self.engineKey(args)
+        let hint = uiFrameworkHints[key].flatMap { hint in
+            launchedBundleIDs[key].map { $0 == hint.bundleID } ?? true ? hint.framework : nil
+        }
+        switch hint {
         case .some(let known) where known != frameworkKey:
             return ""
         case .some:

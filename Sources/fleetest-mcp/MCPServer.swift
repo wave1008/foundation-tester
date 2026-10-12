@@ -40,7 +40,11 @@ final class MCPServer {
     var lastTapTargets: SessionMap<ElementInfo> { SessionMap(server: self, path: \.lastTapTarget) }
     var focusedBeforeLastTaps: SessionMap<ElementInfo> { SessionMap(server: self, path: \.focusedBeforeLastTap) }
     var knownScreens: SessionMap<FTRect> { SessionMap(server: self, path: \.knownScreen) }
-    var uiFrameworkHints: SessionMap<AppUIFramework> { SessionMap(server: self, path: \.uiFrameworkHint) }
+    var uiFrameworkHints: SessionMap<UIFrameworkHint> { SessionMap(server: self, path: \.uiFrameworkHint) }
+    /// `bundleID` のアプリについて覚えている判定(別のアプリの判定は返さない)
+    func uiFrameworkHint(_ key: String, bundleID: String) -> AppUIFramework? {
+        uiFrameworkHints[key].flatMap { $0.bundleID == bundleID ? $0.framework : nil }
+    }
     var udids: SessionMap<String?> { SessionMap(server: self, path: \.udid) }
     var launchedBundleIDs: SessionMap<String> { SessionMap(server: self, path: \.launchedBundleID) }
     var launchTimestamps: SessionMap<Date> { SessionMap(server: self, path: \.launchTimestamp) }

@@ -485,6 +485,21 @@ extension StepExecutorTests {
                        "ロケータなしの replace も clear → type の順で撃つこと: \(log.entries)")
     }
 
+    /// ロケータなしの replace も、焦点のある欄が木に無ければ消えたかを読み返せないと注記で言う
+    /// (clearInput ロケータなし版と同じヘルパを通る = 片方だけ黙らない)
+    func testTypeWithoutLocatorWithReplaceNotesAnUnverifiedClear() async throws {
+        let primary = FakeAppDriver(name: "primary", log: CallLog())
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
+        let outcome = await executor.execute(FlowStep(action: "type", text: "new", replace: true))
+
+        guard case .passed = outcome.status else {
+            XCTFail("passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertTrue(outcome.notes.contains(.clearInputUnverified), "読み返せなかったことを黙った")
+        XCTAssertTrue(outcome.driverFallback?.contains(StepNote.clearInputUnverified.text) == true,
+                      "\(outcome.driverFallback ?? "nil")")
+    }
+
     /// ロケータなしで replace を指定しなければ clearInput を呼ばないこと(上の裏側)
     func testTypeWithoutLocatorWithoutReplaceNeverClears() async throws {
         let log = CallLog()
@@ -958,7 +973,9 @@ extension StepExecutorTests {
         guard case .passed = outcome.status else {
             XCTFail("409 からの typeDriver 切替による passed を期待したが \(outcome.status) だった"); return
         }
-        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
+        XCTAssertEqual(outcome.driverFallback,
+                       "fell back to XCUITest / " + StepNote.clearInputUnverified.text,
+                       "焦点のある欄が木に無いので、切替後も読み返せなかったと言う")
         XCTAssertEqual(log.entries,
                        ["primary.snapshot", "primary.clearInput(throws)", "typedriver.clearInput(ref:nil)"])
     }
@@ -1056,12 +1073,14 @@ extension StepExecutorTests {
             return
         }
         XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
+        XCTAssertFalse(outcome.notes.contains(.clearInputUnverified), "読み返せたのに検証不能と言った")
         XCTAssertTrue(log.entries.contains("typedriver.clearInput(ref:nil)"),
                       "残存値が消えるまで typeDriver へフォールバックすべき: \(log.entries)")
     }
 
     /// clearInput(ロケータなし)成功時、フォーカス要素が特定できなければ事後検証をスキップし
-    /// 従来どおり成功すること(検証できないことを失敗にしない)
+    /// 成功のまま**読み返せなかったことを注記で言う**(検証できないことを失敗にしない・黙って緑にもしない。
+    /// 実機 iPhone SE3 の CMP: キーボードでパスワード欄が木から消え、消えていない欄が黙って緑になった)
     func testClearInputWithoutLocatorSkipsVerificationWhenNoFocusedElement() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [
@@ -1075,7 +1094,8 @@ extension StepExecutorTests {
         guard case .passed = outcome.status else {
             XCTFail("検証不能時は passed を期待したが \(outcome.status) だった"); return
         }
-        XCTAssertNil(outcome.driverFallback)
+        XCTAssertTrue(outcome.notes.contains(.clearInputUnverified), "読み返せなかったことを黙った")
+        XCTAssertEqual(outcome.driverFallback, StepNote.clearInputUnverified.text)
         XCTAssertEqual(primary.snapshotCallCount, 1,
                        "フォーカス要素が無ければ事後 snapshot は撮らないはず: \(log.entries)")
     }
