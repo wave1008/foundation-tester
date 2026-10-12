@@ -30,6 +30,7 @@
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
 - **UI フレームワーク別の差異の索引**(揃えている / 揃っていない / 経路だけ違う、の3区分で横に並べる):
   docs/framework-differences.md。**フレームワークで挙動が割れる変更を入れたら表に1行足す**
+- SUT の UI フレームワーク(Flutter・RN・CMP)の版を上げる手順と罠: docs/sut-framework-upgrade.md
 - シナリオのサンドボックス(Seatbelt)の知見(実測した性質・要った許可・調べ方・壁の外に残るもの):
   docs/sandbox-seatbelt.md
 - 検証の詳細(flake/性能の判定規律・ベータ整合・全滅時の切り分け・e2e.sh のオプション): docs/verification.md

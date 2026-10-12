@@ -71,3 +71,6 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   かツール。ツールの限界と分かった赤は `@Draft("既知の制約: …")` で外し、docs/framework-differences.md §5.1 の
   「残っている制約」に並べる。委譲するときは指示書にこれと、**ツールの限界の候補の一覧**(シナリオを座標や別の書き方に
   替えて隠さない)を書く → maintainer-notes §69.4
+
+- **SUT の UI フレームワーク(Flutter・RN・Compose Multiplatform)の版を上げるときは docs/sut-framework-upgrade.md の手順で**
+  (最新の安定版の調べ方・SUT をビルドする全機の SDK・3系統そろえて上げる・RN のひな形の差分と Pods の罠・回す範囲)
