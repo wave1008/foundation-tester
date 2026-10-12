@@ -22,7 +22,7 @@ For the supported macOS, Xcode, Android SDK and other requirements, see [Environ
 
 ## 3. Installing fleetest
 
-1. Create a **new, test-only folder** and open it in VSCode
+1. Create a **new, test-only folder** in Finder and open it in VSCode
 
 2. Start your AI assistant and give it this instruction:
 
