@@ -44,14 +44,18 @@ final class MCPStructuredContentTests: XCTestCase {
 
     func testScenarioRunSummaryShape() throws {
         let summary = MCPServer.scenarioRunSummary([
-            (id: "A.S0010", passed: true, reportPath: "/r/a.md"),
-            (id: "A.S0020", passed: false, reportPath: nil),
+            (id: "A.S0010", passed: true, reportPath: "/r/a.md", skipped: false),
+            (id: "A.S0020", passed: false, reportPath: nil, skipped: false),
+            (id: "A.S0030", passed: true, reportPath: nil, skipped: true),
         ])
-        XCTAssertEqual(summary["passed"] as? Int, 1)
+        XCTAssertEqual(summary["passed"] as? Int, 1, "対象外の宣言は passed に数えない")
         XCTAssertEqual(summary["failed"] as? Int, 1)
+        XCTAssertEqual(summary["skipped"] as? Int, 1)
         let rows = try XCTUnwrap(summary["scenarios"] as? [[String: Any]])
         XCTAssertEqual(rows.first?["reportPath"] as? String, "/r/a.md")
         XCTAssertNil(rows.last?["reportPath"])
-        XCTAssertEqual(rows.last?["passed"] as? Bool, false)
+        XCTAssertEqual(rows[1]["passed"] as? Bool, false)
+        XCTAssertEqual(rows.last?["passed"] as? Bool, false, "skipped の行を passed:true で緑に見せない")
+        XCTAssertEqual(rows.last?["skipped"] as? Bool, true)
     }
 }

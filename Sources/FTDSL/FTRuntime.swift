@@ -1097,6 +1097,7 @@ public final class FTDriveCore {
     /// シナリオ終了時に1回だけ呼ぶ(warnAboutNeverResolvedIDs と同じ位置)
     public func warnAboutMissingAssertions() {
         guard scenarioAssertionCount == 0, scenarioUnexecutedBlocks == 0,
+              notApplicableReason == nil,
               withState({ !record.scenes.isEmpty }) else { return }
         let message = "this scenario contains no assertions at all "
             + "(it only operates the app, so it stays green no matter how the app breaks). "
@@ -1410,9 +1411,32 @@ public final class FTDriveCore {
         }
     }
 
-    /// スキップ記録の理由(デバッグの stop による中断は表示を分ける)
+    /// スキップ記録の理由(デバッグの stop による中断・対象外の宣言は表示を分ける)
     var skipReason: String {
-        stoppedByUser ? "aborted by the user" : "not run because of an earlier failure"
+        if stoppedByUser { return "aborted by the user" }
+        if notApplicableReason != nil { return "not run because the scenario was skipped (not applicable)" }
+        return "not run because of an earlier failure"
+    }
+
+    private var _notApplicableReason: String?
+    /// 子が「このシナリオはこの環境では成り立たない」と宣言した理由(scenarioFinished.notApplicableReason へ運ぶ)。
+    /// 失敗ではない: 宣言以降の手順は skipped になり、シナリオの合否は宣言までの手順だけで決まる
+    public var notApplicableReason: String? {
+        stateLock.lock(); defer { stateLock.unlock() }
+        return _notApplicableReason
+    }
+
+    /// 呼び元のコマンドを skipped で記録し、残りの手順を打ち切る(`scenarioAborted`)。
+    /// **失敗ではないので handleFailure(スクショ・失敗の証跡)は呼ばない**。
+    /// 最初の宣言だけが理由になる
+    func skipScenarioNotApplicable(description: String, command: String, reason: String,
+                                   file: StaticString, line: UInt) {
+        stateLock.lock()
+        if _notApplicableReason == nil { _notApplicableReason = reason }
+        stateLock.unlock()
+        recordStep(description: description, status: .skipped(reason),
+                   file: relativePath("\(file)"), line: Int(line), command: command)
+        scenarioAborted = true
     }
 
     /// 分岐評価(記録のみ、実行はしない): セレクタが現在画面で解決できるか。

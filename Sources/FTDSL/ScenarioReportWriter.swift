@@ -10,7 +10,10 @@ public enum ScenarioReportWriter {
     /// 判定はこの関数の外(呼び出し側)で確定させてから渡すこと —— ここでは事実をそのまま載せるだけ。
     /// 既存の呼び手は空のまま(挙動不変)
     @discardableResult
-    public static func write(record: ScenarioRecordData, to dir: URL, notices: [String] = []) throws -> URL {
+    /// notApplicableReason: 子が対象外を宣言した理由(FTDriveCore.notApplicableReason)。非 nil なら
+    /// Result を skipped にして理由を載せる(合否は変えない)
+    public static func write(record: ScenarioRecordData, to dir: URL, notices: [String] = [],
+                             notApplicableReason: String? = nil) throws -> URL {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         let formatter = DateFormatter()
@@ -30,7 +33,11 @@ public enum ScenarioReportWriter {
         if let deviceLine = deviceLine(name: record.deviceName, identifier: record.deviceIdentifier) {
             md += "- Device: \(deviceLine)\n"
         }
-        md += "- Result: \(record.passed ? "✅ passed" : "❌ failed")\n"
+        if let reason = notApplicableReason, record.passed {
+            md += "- Result: ⏭ skipped (not applicable) — \(reason)\n"
+        } else {
+            md += "- Result: \(record.passed ? "✅ passed" : "❌ failed")\n"
+        }
         md += "- Timestamp: \(ISO8601DateFormatter().string(from: Date()))\n"
         for notice in notices {
             md += "\n> ⚠️ \(notice)\n"

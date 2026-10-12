@@ -57,9 +57,11 @@ final class ScenarioTimingTrackerTests: XCTestCase {
         tracker.record(.flowStarted(worker: "ios:2", flowURL: b.url, flowName: b.info.id, isDirty: false))
         Thread.sleep(forTimeInterval: 0.05)
         tracker.record(.flowFinished(worker: "ios:1", flowURL: a.url, passed: true,
-                                     reportURL: nil, fm: nil))
+                                     reportURL: nil, fm: nil,
+                                     notApplicableReason: nil))
         tracker.record(.flowFinished(worker: "ios:2", flowURL: b.url, passed: true,
-                                     reportURL: nil, fm: nil))
+                                     reportURL: nil, fm: nil,
+                                     notApplicableReason: nil))
 
         let wall = try? XCTUnwrap(tracker.testSeconds)
         let total = try? XCTUnwrap(tracker.scenarioTotalSeconds)
@@ -74,7 +76,8 @@ final class ScenarioTimingTrackerTests: XCTestCase {
         var tracker = ScenarioTimingTracker()
         let a = item("A.S0010")
         tracker.record(.flowFinished(worker: "ios:1", flowURL: a.url, passed: false,
-                                     reportURL: nil, fm: nil))
+                                     reportURL: nil, fm: nil,
+                                     notApplicableReason: nil))
         // 開始を観測していないので「1本も計測していない」= nil(0 秒ではない)
         XCTAssertNil(tracker.scenarioTotalSeconds)
         XCTAssertNil(tracker.testSeconds)
@@ -84,7 +87,7 @@ final class ScenarioTimingTrackerTests: XCTestCase {
         var tracker = ScenarioTimingTracker()
         tracker.record(.runStarted(total: 1, workerLabels: ["ios:1"]))
         tracker.record(.workerReady(worker: "ios:1"))
-        tracker.record(.runFinished(passed: 1, failed: 0))
+        tracker.record(.runFinished(passed: 1, failed: 0, skipped: 0))
         XCTAssertNil(tracker.testSeconds, "シナリオが走っていなければ計測なし")
     }
 
@@ -96,7 +99,8 @@ final class ScenarioTimingTrackerTests: XCTestCase {
             tracker.record(.flowStarted(worker: "ios:1", flowURL: a.url,
                                         flowName: a.info.id, isDirty: false))
             tracker.record(.flowFinished(worker: "ios:1", flowURL: a.url, passed: true,
-                                         reportURL: nil, fm: nil))
+                                         reportURL: nil, fm: nil,
+                                     notApplicableReason: nil))
         }
         XCTAssertNotNil(tracker.scenarioTotalSeconds)
     }
@@ -110,7 +114,8 @@ final class ScenarioTimingTrackerTests: XCTestCase {
         tracker.record(.flowStarted(worker: "ios:2", flowURL: b.url, flowName: b.info.id, isDirty: false))
         Thread.sleep(forTimeInterval: 0.08)
         tracker.record(.flowFinished(worker: "ios:2", flowURL: b.url, passed: true,
-                                     reportURL: nil, fm: nil))
+                                     reportURL: nil, fm: nil,
+                                     notApplicableReason: nil))
 
         XCTAssertGreaterThan(tracker.testSeconds ?? 0, 0.14,
                              "1本目の開始から数えること(2本目で上書きすると約半分になる)")
@@ -123,12 +128,14 @@ final class ScenarioTimingTrackerTests: XCTestCase {
         tracker.record(.flowStarted(worker: "ios:1", flowURL: a.url, flowName: a.info.id, isDirty: false))
         Thread.sleep(forTimeInterval: 0.08)
         tracker.record(.flowFinished(worker: "ios:1", flowURL: a.url, passed: true,
-                                     reportURL: nil, fm: nil))
+                                     reportURL: nil, fm: nil,
+                                     notApplicableReason: nil))
         let afterFirst = try? XCTUnwrap(tracker.scenarioTotalSeconds)
 
         Thread.sleep(forTimeInterval: 0.08)
         tracker.record(.flowFinished(worker: "ios:1", flowURL: a.url, passed: true,
-                                     reportURL: nil, fm: nil))
+                                     reportURL: nil, fm: nil,
+                                     notApplicableReason: nil))
 
         XCTAssertEqual(tracker.scenarioTotalSeconds ?? 0, afterFirst ?? 0, accuracy: 0.001,
                        "開始を伴わない2回目の終了は加算しない")

@@ -215,6 +215,23 @@ test("scenarioFinished(passed:true) の行には所要時間が付く", () => {
   assert.match(finishLine.text, /\(500ms\)/);
 });
 
+test("scenarioFinished(notApplicableReason) の行は ⏭ スキップで、成功の行(✅)にならない", () => {
+  const state = createRunLaneState();
+  const actions = feed(state, [
+    { kind: "scenarioStarted", scenario: "S.A", title: "A", worker: "ios:シミュ1" },
+    {
+      kind: "scenarioFinished",
+      scenario: "S.A",
+      passed: true,
+      worker: "ios:シミュ1",
+      notApplicableReason: "no biometrics",
+    },
+  ]);
+  const lines = actions.filter((a) => a.type === "line").map((a) => a.text);
+  assert.ok(lines.some((t) => t.includes("⏭") && t.includes("no biometrics")));
+  assert.ok(!lines.some((t) => t.includes("✅")));
+});
+
 test("runStarted: cleared アクションでレーン・実行中状態・行が全てクリアされる", () => {
   const state = createRunLaneState();
   feed(state, [
@@ -238,7 +255,7 @@ test("runFinished: 実行中のワーカーが全て workerRunning:false にな�
     // scenarioFinished を受信しないまま runFinished が来た(クラッシュ相当)想定
   ]);
 
-  const actions = feed(state, [{ kind: "runFinished", passed: 0, failed: 1 }]);
+  const actions = feed(state, [{ kind: "runFinished", passed: 0, failed: 1, skipped: 0 }]);
   assert.ok(actions.some((a) => a.type === "workerRunning" && a.workerId === "ios:シミュ1" && !a.running));
   // 完了の集計(件数・所要)は運ばない —— 見出しの状況行を空に戻す合図だけ(ユーザー決定)
   const finished = actions.find((a) => a.type === "runFinished");

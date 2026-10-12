@@ -64,6 +64,12 @@ public enum JUnitReportWriter {
     /// 全ステップが inconclusive(verify にアサーション0個等)= 実行はしたが何も検証していない。
     /// JUnit に inconclusive の概念が無いため isSkipped と対称に skipped として出す
     /// (record.passed は inconclusive だけでは false にならないので isSkipped とは別条件)
+    /// 子が「この環境では成り立たない」と宣言したシナリオ(`skipKind: notApplicable` + passed == true)。
+    /// 合成レコード(passed == false)は isSkipped 側
+    static func isDeclaredNotApplicable(_ record: ScenarioRunRecord) -> Bool {
+        record.passed && record.skipKind == .notApplicable
+    }
+
     static func isAllInconclusive(_ record: ScenarioRunRecord) -> Bool {
         record.passed && record.steps.total > 0
             && (record.steps.inconclusive ?? 0) == record.steps.total
@@ -76,6 +82,9 @@ public enum JUnitReportWriter {
         let open = "    <testcase classname=\"\(escape(className))\" name=\"\(escape(method))\""
             + " time=\"\(seconds(record.durationMs))\""
         if record.passed {
+            if isDeclaredNotApplicable(record) {
+                return open + ">\n      <skipped message=\"\(escape(record.skipReason ?? "not applicable"))\"/>\n    </testcase>"
+            }
             if isAllInconclusive(record) {
                 let reason = record.timeline?.first { $0.status == "inconclusive" }?.description
                     ?? "inconclusive"
@@ -127,7 +136,8 @@ public enum JUnitReportWriter {
                 tests += 1
                 totalMs += record.durationMs
                 if record.passed {
-                    if JUnitReportWriter.isAllInconclusive(record) { skipped += 1 }
+                    if JUnitReportWriter.isDeclaredNotApplicable(record)
+                        || JUnitReportWriter.isAllInconclusive(record) { skipped += 1 }
                     continue
                 }
                 if JUnitReportWriter.isSkipped(record) { skipped += 1 } else { failures += 1 }

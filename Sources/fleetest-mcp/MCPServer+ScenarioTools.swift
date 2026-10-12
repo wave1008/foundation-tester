@@ -111,7 +111,7 @@ extension MCPServer {
         var lines: [String] = []
         var passedCount = 0
         var failedCount = 0
-        var outcomes: [(id: String, passed: Bool, reportPath: String?)] = []
+        var outcomes: [(id: String, passed: Bool, reportPath: String?, skipped: Bool)] = []
         // 1回の呼び出し = 1デバイスセッション
         let deviceSession = RunDeviceSession()
         for info in infos {
@@ -129,7 +129,7 @@ extension MCPServer {
                     lines.append(contentsOf: ScenarioLogFormatter.lines(for: event))
                 }
             if passed { passedCount += 1 } else { failedCount += 1 }
-            outcomes.append((info.id, passed, nil))  // レポートは消える一時ディレクトリなので載せない
+            outcomes.append((info.id, passed, nil, false))  // レポートは消える一時ディレクトリなので載せない
         }
         for outcome in await ScenarioHost.runDeviceTearDowns(
             project: project, connection: DriverConnection(platform: fallbackPlatform),
@@ -302,12 +302,14 @@ extension MCPServer {
         var lines: [String] = prologue
         var passedCount = 0
         var failedCount = 0
+        var skippedCount = 0
         // 最初に落ちたシナリオのレポート(証跡の読み先)。scenarioFinished が運ぶ
         var firstFailedReport: String?
-        var outcomes: [(id: String, passed: Bool, reportPath: String?)] = []
+        var outcomes: [(id: String, passed: Bool, reportPath: String?, skipped: Bool)] = []
         // 1回の呼び出し = 1デバイス(connection は1つ)= 1セッション
         let deviceSession = RunDeviceSession()
         for info in infos {
+            var declaredNotApplicable = false
             let passed = await ScenarioHost.run(project: project, scenarioID: info.id,
                                        connection: connection,
                                        deviceSession: deviceSession,
@@ -320,10 +322,13 @@ extension MCPServer {
                     firstFailedReport = event.reportPath
                 }
                 if event.kind == "scenarioFinished" {
-                    outcomes.append((event.scenario ?? info.id, event.passed == true, event.reportPath))
+                    let skipped = event.passed == true && event.notApplicableReason != nil
+                    if skipped { declaredNotApplicable = true }
+                    outcomes.append((event.scenario ?? info.id, event.passed == true, event.reportPath, skipped))
                 }
             }
-            if passed { passedCount += 1 } else { failedCount += 1 }
+            if passed && declaredNotApplicable { skippedCount += 1 }
+            else if passed { passedCount += 1 } else { failedCount += 1 }
         }
         for outcome in await ScenarioHost.runDeviceTearDowns(
             project: project, connection: connection, deviceSession: deviceSession,
@@ -332,7 +337,8 @@ extension MCPServer {
             lines.append(ScenarioHost.describe(outcome))
         }
         if infos.count > 1 {
-            lines.append("\(passedCount) passed / \(failedCount) failed")
+            lines.append("\(passedCount) passed / \(failedCount) failed"
+                + (skippedCount > 0 ? " / \(skippedCount) skipped" : ""))
         }
         // **成功応答に載る警告・prologue も CLI → MCP の言い換えを通す**(forMCP は今まで
         // 投げた Error にしか掛かっておらず、ここに載る FTCore/ScenarioAppResolution 由来の
@@ -353,12 +359,17 @@ extension MCPServer {
     }
 
     /// ft_run_scenario / ft_dry_run の構造化データ(structuredContent。既定では出さない = toolCallResult)
-    static func scenarioRunSummary(_ outcomes: [(id: String, passed: Bool, reportPath: String?)]) -> [String: Any] {
+    /// skipped = 子が対象外を宣言したシナリオ(緑でも赤でもない)。passed / failed のどちらにも数えず、
+    /// 行の `passed` は false・`skipped` は true にする(passed == true を緑と読む呼び手に緑と見せない)
+    static func scenarioRunSummary(
+        _ outcomes: [(id: String, passed: Bool, reportPath: String?, skipped: Bool)]) -> [String: Any] {
         [
-            "passed": outcomes.filter(\.passed).count,
+            "passed": outcomes.filter { $0.passed && !$0.skipped }.count,
             "failed": outcomes.filter { !$0.passed }.count,
+            "skipped": outcomes.filter(\.skipped).count,
             "scenarios": outcomes.map { outcome -> [String: Any] in
-                var row: [String: Any] = ["id": outcome.id, "passed": outcome.passed]
+                var row: [String: Any] = ["id": outcome.id, "passed": outcome.passed && !outcome.skipped]
+                if outcome.skipped { row["skipped"] = true }
                 if let reportPath = outcome.reportPath { row["reportPath"] = reportPath }
                 return row
             },

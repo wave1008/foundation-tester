@@ -258,6 +258,22 @@ final class MCPRunJobsTests: XCTestCase {
         XCTAssertTrue(text.contains("last line"), text)
     }
 
+    /// run.json にキーを足さない: 対象外の宣言は total - passed - failed の差として出る
+    func testFinishedStatusShowsSkippedAsTheDifference() throws {
+        let id = runID(10, suffix: "dddddddd")
+        let runDir = RunResultsStore.runDir(resultsDir: tempDir, runID: id)
+        RunResultsStore.writeMeta(
+            RunMetaRecord(runID: id, project: "Shop", profile: "smoke", host: "h", trigger: "cli",
+                          startedAt: iso(10), finishedAt: iso(60), pid: 100, total: 4, passed: 1, failed: 1),
+            runDir: runDir)
+        let text = MCPRunJobs.statusText(MCPRunStatusInput(
+            pid: 100, state: .exited(1), elapsedSeconds: 75, project: "Shop", profile: "smoke",
+            logPath: "/log", logTail: [], progress: nil,
+            meta: try XCTUnwrap(RunResultsStore.meta(runDir: runDir)), runDirPath: runDir.path,
+            failedScenarios: []))
+        XCTAssertTrue(text.contains("1 passed / 1 failed / 2 skipped / 4 total"), text)
+    }
+
     func testRunningStatusShowsProgressOrSaysItIsNotAvailableYet() {
         func input(_ progress: RunProgressRecord?) -> MCPRunStatusInput {
             MCPRunStatusInput(pid: 7, state: .running, elapsedSeconds: 12, project: "Shop", profile: "smoke",

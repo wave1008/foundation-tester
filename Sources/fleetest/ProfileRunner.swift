@@ -610,10 +610,11 @@ enum ProfileRunner {
                 buffers[url, default: []].append(contentsOf: lines)
             case .step(_, let url, _), .flowRequeued(_, let url, _, _, _):
                 buffers[url, default: []].append(contentsOf: lines)
-            case .flowFinished(_, let url, let passed, _, _, _):
+            case .flowFinished(_, let url, let passed, _, _, _, let notApplicableReason):
                 let all = (buffers.removeValue(forKey: url) ?? []) + lines
                 if quiet {
-                    ConsoleOut.out(passed ? "✅ \(names[url] ?? url.lastPathComponent)"
+                    ConsoleOut.out(notApplicableReason != nil ? "⏭ \(names[url] ?? url.lastPathComponent)"
+                                 : passed ? "✅ \(names[url] ?? url.lastPathComponent)"
                                  : "❌ \(names[url] ?? url.lastPathComponent)\n" + all.joined(separator: "\n"))
                 } else {
                     ConsoleOut.out(all.joined(separator: "\n"))
@@ -665,6 +666,7 @@ enum ProfileRunner {
         // (RunScenarios が recorder.finish で run.json に記録する)
         preRunAnomalies += iosBlankRepairBox.getAnomalies()
         let resultSummary = RunSummary(total: finalSummary.total, failed: finalSummary.failed,
+                                       skipped: finalSummary.skipped,
                                        degradedWorkers: finalSummary.degradedWorkers,
                                  freezeRetries: finalSummary.freezeRetries,
                                  blankRepairs: triage.repaired + iosBlankRepairBox.get(),

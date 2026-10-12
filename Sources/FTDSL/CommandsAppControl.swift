@@ -277,10 +277,28 @@ public func hideKeyboard(settle: Bool = true, file: StaticString = #filePath, li
         .perform(step: step, description: "hideKeyboard", command: "hideKeyboard", file: file, line: line)
 }
 
-/// アプリスイッチャー(タスク一覧)を開く
+/// ホームボタンの iPhone で appSwitcher() をスキップとして記録するときの理由
+/// (結果 JSON の skipReason・docs/commands.md と同文)
+let appSwitcherHomeButtonSkipReason = "appSwitcher is not available on a home-button iPhone"
+    + " (the switcher is a hardware double-press XCUITest cannot send)"
+
+/// アプリスイッチャー(タスク一覧)を開く。
+/// **ホームボタンの iPhone では撃たず、シナリオを「対象外(skipped)」で記録する**(失敗ではない)—— ブリッジが
+/// 設計上 422 で断る操作(下端スワイプ上はコントロールセンター)で、書き手に直せる誤りではない。
+/// 判定は文言ではなく画面の寸法(`BridgeAPI.isHomeButtonPhoneScreen`。iOS だけ・Android は対象外)
 public func appSwitcher(file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "appSwitcher")
     let driver = core.systemDriver
+    if core.platform == "ios", !core.isDryRun, !core.scenarioAborted {
+        // 観測は systemDriver ではなく driver(back() と同じ理由: hybrid の systemDriver は snapshot で対象アプリを前面化する)
+        let observer = core.driver
+        if let screen = FTSync.run({ try? await observer.snapshot().screen }) ?? nil,
+           BridgeAPI.isHomeButtonPhoneScreen(width: screen.width, height: screen.height) {
+            core.skipScenarioNotApplicable(description: "appSwitcher", command: "appSwitcher",
+                                           reason: appSwitcherHomeButtonSkipReason, file: file, line: line)
+            return
+        }
+    }
     core.performCustom(description: "appSwitcher", command: "appSwitcher", file: file, line: line) {
         try await driver.openAppSwitcher()
     }
@@ -292,8 +310,29 @@ private let tapAppIconAndroidMaxFlicks = 8
 /// iOS のページ送り上限。ページインジケータを読めない(Runner が未対応)ため既定値固定
 /// (docs 化していない残課題。ページ数が分かればそちらを使う設計に変更余地あり)
 private let tapAppIconIOSMaxPages = 5
-/// アイコンタップ後の整定待ち(Shirates 準拠。ホーム画面遷移直後の描画完了を待つ)
+/// 対象アプリ以外のアイコンをタップした後の整定待ち(Shirates 準拠)。前面になったかを問える相手
+/// (シナリオの対象アプリ)は `waitForAppForeground` が待つので、これは問えない相手の分だけ
 private let tapAppIconSettleSeconds = 1.5
+
+/// 前面になるまで `waitSeconds`(= `tunables.screenWaitTimeout`)ポーリングする。
+/// 戻り値: true = 前面 / false = 問えて前面でなかった / nil = 一度も問えなかった(判定材料なし)。
+/// **iOS 実機では `isAppForeground` が前面でなくても true を返しうる**(XCUIApplication.state が実機で
+/// 信用できない)—— 検知が弱まるだけで、誤って赤にはならない
+private func waitForAppForeground(driver: AppDriver, bundleID: String,
+                                  waitSeconds: Double) async throws -> Bool? {
+    let deadline = Date().addingTimeInterval(waitSeconds)
+    var backoff = PollBackoff()
+    var answered = false
+    while true {
+        try Task.checkCancellation()
+        if let foreground = try? await driver.isAppForeground(bundleID: bundleID) {
+            answered = true
+            if foreground { return true }
+        }
+        if Date() >= deadline { return answered ? false : nil }
+        try await Task.sleep(for: backoff.nextDelay())
+    }
+}
 
 /// ホーム画面のアプリアイコンをタップする(Shirates tapAppIcon の auto 相当。
 /// tapAppIconMethod・マクロ・カスタム関数は持たない)。
@@ -301,6 +340,10 @@ private let tapAppIconSettleSeconds = 1.5
 /// (Shirates の appIconName 既定=プロファイル、に相当)。
 /// 手順: home()(iOS はもう1回。Shirates 準拠) → 現在の画面で探す → 無ければ
 /// Android はドロワーを開いてスクロール探索、iOS はページ送りしながら探索。
+/// **撃つ前**: 画面を動かした直後のランチャー(ドロワーの慣性・ページ送り)は動いたままタップを
+/// 「流れを止める操作」として飲む —— 目的のアイコンの枠が連続2枚の木で同じになるまで読み直してから撃つ。
+/// **撃った後**: 対象アプリのアイコンなら前面になったかを確かめ、ならなければ失敗にする(**撃ち直さない**:
+/// 届いていた場合の二重実行を避ける)
 public func tapAppIcon(_ appIconName: String? = nil,
                        file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "tapAppIcon")
@@ -316,18 +359,63 @@ public func tapAppIcon(_ appIconName: String? = nil,
                 + "from. Pass the name explicitly (tapAppIcon(\"App Name\")) or set appName in "
                 + "the app profile")
         }
+        let waitSeconds = core.tunables.screenWaitTimeout
 
-        // タップ成功後の共通処理。xcuitest 単独では springboard 参照が**主ドライバと同じランナーの
+        // 枠が連続2枚で同じになるまで読み直す。待ちの上限は screenWaitTimeout(尽きたら最後の枠で撃つ —
+        // 撃った後の前面確認が受ける)。消えたら nil(呼び手は探索を続ける)
+        func settledIcon(from first: ElementInfo) async throws -> (icon: ElementInfo?, snapshot: SnapshotResponse?) {
+            var icon = first
+            var latest: SnapshotResponse?
+            let deadline = Date().addingTimeInterval(waitSeconds)
+            while Date() < deadline {
+                try Task.checkCancellation()
+                let next = try await driver.snapshot()
+                latest = next
+                guard let found = AppIconLocator.findIcon(appIconName, in: next) else { return (nil, next) }
+                if found.frame == icon.frame { return (found, next) }
+                icon = found
+            }
+            return (icon, latest)
+        }
+
+        // タップ後の共通処理。xcuitest 単独では springboard 参照が**主ドライバと同じランナーの
         // セッションを springboard に付け替える**ため、張り直さないと以降の要素コマンドが
         // springboard のツリーを黙って読む(実機で確認)。タップ先がシナリオ対象アプリのときだけ
         // 張り直す(activate は /session の再バインド+前面化で状態を保持する。
         // 対象外アプリを開いた場合はそのまま = xcuitest は対象アプリ以外を駆動しない)
-        func settleAndRestoreSession() async throws {
-            try await Task.sleep(nanoseconds: ftSleepNanoseconds(tapAppIconSettleSeconds))
-            if core.homeScreenSharesRunnerSession,
-               (try? await driver.isAppForeground(bundleID: core.appBundleID)) == true {
+        func afterTap(_ icon: ElementInfo) async throws {
+            guard appIconName == core.appDisplayName else {
+                // 前面かを問える相手がいない(任意の名前のアプリ)ので固定の整定待ちだけ
+                try await Task.sleep(nanoseconds: ftSleepNanoseconds(tapAppIconSettleSeconds))
+                return
+            }
+            let foreground = try await waitForAppForeground(driver: driver, bundleID: core.appBundleID,
+                                                            waitSeconds: waitSeconds)
+            if foreground == nil {
+                // 一度も問えなかった = 判定材料なし。失敗にはせず、従来どおり固定の整定待ち
+                try await Task.sleep(nanoseconds: ftSleepNanoseconds(tapAppIconSettleSeconds))
+                return
+            }
+            guard foreground == true else {
+                let x = icon.frame.x + icon.frame.width / 2
+                let y = icon.frame.y + icon.frame.height / 2
+                throw FTCommandError.message(
+                    "tapAppIcon \"\(appIconName)\": tapped the icon at (\(Int(x)),\(Int(y))) but "
+                    + "\(core.appBundleID) did not come to the foreground within \(FTSeconds.format(waitSeconds))s")
+            }
+            if core.homeScreenSharesRunnerSession {
                 try await core.driver.activate(bundleID: core.appBundleID)
             }
+        }
+
+        // 安定した枠のアイコンを1回だけ撃ち、後始末をする。撃てたら true
+        // (安定待ちの間にアイコンが消えたら撃たず false)
+        func tapSettled(_ first: ElementInfo) async throws -> (tapped: Bool, snapshot: SnapshotResponse?) {
+            let (settled, snapshot) = try await settledIcon(from: first)
+            guard let icon = settled else { return (false, snapshot) }
+            try await driver.tap(ref: icon.ref)
+            try await afterTap(icon)
+            return (true, snapshot)
         }
 
         try await driver.home()
@@ -335,9 +423,9 @@ public func tapAppIcon(_ appIconName: String? = nil,
 
         var last = try await driver.snapshot()
         if let icon = AppIconLocator.findIcon(appIconName, in: last) {
-            try await driver.tap(ref: icon.ref)
-            try await settleAndRestoreSession()
-            return
+            let (tapped, snapshot) = try await tapSettled(icon)
+            if tapped { return }
+            if let snapshot { last = snapshot }
         }
 
         // 画面の矩形はドロワー/ページ送りの間ずっと同じ(内容だけが変わる)ので1回だけ取る
@@ -363,9 +451,9 @@ public func tapAppIcon(_ appIconName: String? = nil,
 
             last = try await driver.snapshot()
             if let icon = AppIconLocator.findIcon(appIconName, in: last) {
-                try await driver.tap(ref: icon.ref)
-                try await settleAndRestoreSession()
-                return
+                let (tapped, snapshot) = try await tapSettled(icon)
+                if tapped { return }
+                if let snapshot { last = snapshot }
             }
 
             let signature = AppIconLocator.signature(of: last)

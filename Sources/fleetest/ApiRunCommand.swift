@@ -929,7 +929,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             logStderr("⏱️❌ Measurement invalid: this run's timing cannot be used for performance"
                 + " comparisons (\(validity.reasons.joined(separator: "; ")))")
         }
-        emitLine(ApiRunFinishedEvent(passed: outcome.passed, failed: outcome.failed,
+        emitLine(ApiRunFinishedEvent(passed: outcome.passed, failed: outcome.failed, skipped: outcome.skipped,
                                      testSeconds: outcome.testSeconds,
                                      scenarioTotalSeconds: outcome.scenarioTotalSeconds,
                                      runID: recorder?.runID))
@@ -1060,6 +1060,7 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         var passedCount = 0
         var failedCount = 0
+        var skippedCount = 0
         var timing = ScenarioTimingTracker()
         // --port 直指定のデバイスは platform ごとに1台(ios = --port・android = --serial)
         let deviceSessions = RunDeviceSessionBook()
@@ -1080,6 +1081,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             let recording = recorder.map { ScenarioRecording(recorder: $0, title: info.title) }
 
             let scenarioStart = Date()
+            var declaredNotApplicable = false
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
                 deviceSession: deviceSessions.session(for: scenarioPlatform),
@@ -1091,11 +1093,15 @@ struct ApiRunCommand: AsyncParsableCommand {
                 // host 発の log イベント等、scenario 未設定のものは現在のシナリオ ID を補う
                 var event = event
                 if event.scenario == nil { event.scenario = info.id }
+                if event.kind == "scenarioFinished", event.notApplicableReason != nil {
+                    declaredNotApplicable = true
+                }
                 writeLine(event.encodedLine())
             }
             let scenarioEnd = Date()
             timing.recordSequential(start: scenarioStart, finish: scenarioEnd)
-            if passed { passedCount += 1 } else { failedCount += 1 }
+            if passed && declaredNotApplicable { skippedCount += 1 }
+            else if passed { passedCount += 1 } else { failedCount += 1 }
         }
         // デバイスの仕事が終わった後の tearDownDevice(結果は NDJSON の契約に載せず stderr へ)
         if !interruptState.isStopped {
@@ -1113,7 +1119,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 }
             }
         }
-        return RunOutcome(passed: passedCount, failed: failedCount,
+        return RunOutcome(passed: passedCount, failed: failedCount, skipped: skippedCount,
                           testSeconds: timing.testSeconds,
                           scenarioTotalSeconds: timing.scenarioTotalSeconds,
                           interrupted: interruptState.isStopped)
@@ -1231,6 +1237,7 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         var passedCount = 0
         var failedCount = 0
+        var skippedCount = 0
         var timing = ScenarioTimingTracker()
         // ワーカー(デバイス)ごとに1つ。dry-run はデバイスが無いので platform ごと
         let deviceSessions = RunDeviceSessionBook()
@@ -1279,6 +1286,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             // この経路(--dry-run/--debug)は installHandler(RPC)を配線しない — dry-run はデバイスに
             // 触らず installApp() 自体を通過しない、debug は人間介入前提の単発実行のため。appPath だけ
             // フォールバックとして渡し、installApp() 引数省略時に子が直接インストールできるようにする
+            var declaredNotApplicable = false
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
                 deviceSession: deviceSessions.session(for: sessionKey),
@@ -1294,11 +1302,15 @@ struct ApiRunCommand: AsyncParsableCommand {
                 registerChildProcess: { interruptState.registerChildProcess($0) }) { event in
                 var event = event
                 if event.scenario == nil { event.scenario = info.id }
+                if event.kind == "scenarioFinished", event.notApplicableReason != nil {
+                    declaredNotApplicable = true
+                }
                 writeLine(event.encodedLine())
             }
             let scenarioEnd = Date()
             timing.recordSequential(start: scenarioStart, finish: scenarioEnd)
-            if passed { passedCount += 1 } else { failedCount += 1 }
+            if passed && declaredNotApplicable { skippedCount += 1 }
+            else if passed { passedCount += 1 } else { failedCount += 1 }
         }
         if !interruptState.isStopped {
             for key in sessionTargets.keys.sorted() {
@@ -1317,7 +1329,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 }
             }
         }
-        return RunOutcome(passed: passedCount, failed: failedCount,
+        return RunOutcome(passed: passedCount, failed: failedCount, skipped: skippedCount,
                           testSeconds: timing.testSeconds,
                           scenarioTotalSeconds: timing.scenarioTotalSeconds,
                           blankRepairs: blankTriage.repaired,
@@ -1434,7 +1446,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
 
         let result = await summary
-        return RunOutcome(passed: result.passed, failed: result.failed,
+        return RunOutcome(passed: result.passed, failed: result.failed, skipped: result.skipped,
                           testSeconds: timing.testSeconds,
                           scenarioTotalSeconds: timing.scenarioTotalSeconds,
                           degradedWorkers: result.degradedWorkers,
@@ -1607,7 +1619,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             suggestion.detail = message
             return [suggestion.encodedLine()]
 
-        case .flowFinished(let worker, let flowURL, let passed, let reportURL, let fm, let appCrash):
+        case .flowFinished(let worker, let flowURL, let passed, let reportURL, let fm, let appCrash,
+                           let notApplicableReason):
             var finished = ScenarioEvent(kind: "scenarioFinished")
             finished.worker = workerID.id(for: worker)
             finished.scenario = itemByURL[flowURL]?.info.id
@@ -1616,6 +1629,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             // 再構築なので明示的に写す(落とすとモニターの FM グラフが 0 のままになる。実害あり)
             finished.fm = fm
             finished.appCrash = appCrash
+            finished.notApplicableReason = notApplicableReason
             return [finished.encodedLine()]
 
         case .flowSkipped(let flowURL, let reason):
@@ -1847,6 +1861,8 @@ struct ApiRunFinishedEvent: Encodable {
     let kind = "runFinished"
     let passed: Int
     let failed: Int
+    /// 子が対象外を宣言したシナリオ数(必須。passed + failed + skipped == 実行本数)
+    let skipped: Int
     let testSeconds: Double?
     let scenarioTotalSeconds: Double?
     /// 結果を書いた run の runID(記録しない dry-run / debug では nil = キー省略)。拡張は run 完了時に
@@ -1887,6 +1903,8 @@ final class WorkerIDMap: @unchecked Sendable {
 struct RunOutcome {
     var passed: Int
     var failed: Int
+    /// 子が対象外を宣言したシナリオ数(passed / failed のどちらにも含めない)
+    var skipped: Int
     var testSeconds: Double?
     var scenarioTotalSeconds: Double?
     /// 実行中に劣化・離脱したワーカー(「label: 理由」)。並列経路のみ発生しうる。
@@ -1971,7 +1989,7 @@ struct ScenarioTimingTracker {
             firstStart = min(firstStart ?? now, now)
             startedAt[flowURL] = (now, worker)
             hasScenario = true
-        case .flowFinished(let worker, let flowURL, _, _, _, _):
+        case .flowFinished(let worker, let flowURL, _, _, _, _, _):
             lastFinish = max(lastFinish ?? now, now)
             let platform = Self.platform(ofWorker: worker)
             lastFinishByPlatform[platform] = max(lastFinishByPlatform[platform] ?? now, now)

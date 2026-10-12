@@ -594,7 +594,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, runID, scenarioID, title, platform, worker, host, profile
         case passed, timedOut, startedAt, durationMs, scenes, steps, reportPath, failedSteps
-        case fixSuggestions, errorLogs, fm, timeline, skipKind, interrupted, appCrash
+        case fixSuggestions, errorLogs, fm, timeline, skipKind, skipReason, interrupted, appCrash
     }
 
     public init(from decoder: Decoder) throws {
@@ -620,6 +620,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
         fm = try c.decodeIfPresent(FMUsageRecord.self, forKey: .fm)
         timeline = try c.decodeIfPresent([TimelineStepRecord].self, forKey: .timeline)
         skipKind = try c.decodeIfPresent(ScenarioSkipKind.self, forKey: .skipKind)
+        skipReason = try c.decodeIfPresent(String.self, forKey: .skipReason)
         interrupted = try c.decodeIfPresent(Bool.self, forKey: .interrupted)
         appCrash = try c.decodeIfPresent(AppCrashRecord.self, forKey: .appCrash)
     }
@@ -647,6 +648,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
         try c.encodeIfPresent(fm, forKey: .fm)
         try c.encodeIfPresent(timeline, forKey: .timeline)
         try c.encodeIfPresent(skipKind, forKey: .skipKind)
+        try c.encodeIfPresent(skipReason, forKey: .skipReason)
         try c.encodeIfPresent(interrupted, forKey: .interrupted)
         try c.encodeIfPresent(appCrash, forKey: .appCrash)
     }
@@ -687,6 +689,10 @@ public struct ScenarioRunRecord: Codable, Sendable {
     public var timeline: [TimelineStepRecord]?
     /// recordSkipped の合成レコードだけが持つ理由の種別(通常実行は nil。旧レコードも nil)
     public var skipKind: ScenarioSkipKind?
+    /// 子(シナリオ実行バイナリ)が実行中に「このシナリオはこの環境では成り立たない」と宣言した理由
+    /// (`skipKind: notApplicable` と対。合成レコードの理由は failedSteps[0].description にあるので持たない)。
+    /// この形の記録は `passed: true`(失敗ではない)・steps は実行済みの分 + skipped
+    public var skipReason: String?
     /// **run が中断(SIGINT/SIGTERM)された後に失敗で終わった**(中断はシナリオ子へ SIGTERM を送るので、
     /// そのとき走っていたシナリオはシナリオ自身の性質と無関係に落ちる)。true のときだけ書く。
     /// insights・flaky はこの記録を履歴から外す(`RunResultsQuery.isInterruptedRecord`)。
@@ -708,9 +714,11 @@ public struct ScenarioRunRecord: Codable, Sendable {
                 fm: FMUsageRecord? = nil,
                 timeline: [TimelineStepRecord]? = nil,
                 skipKind: ScenarioSkipKind? = nil,
+                skipReason: String? = nil,
                 appCrash: AppCrashRecord? = nil) {
         self.fm = fm
         self.skipKind = skipKind
+        self.skipReason = skipReason
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.scenarioID = scenarioID
@@ -750,6 +758,7 @@ public struct ScenarioRecordBuilder {
     private var reportPath: String?
     private var fm: FMUsageRecord?
     private var appCrash: AppCrashRecord?
+    private var notApplicableReason: String?
     /// 全ステップのタイムライン(成否によらず到着順で蓄積。build() で timeline へ)
     private var timeline: [TimelineStepRecord] = []
 
@@ -784,6 +793,7 @@ public struct ScenarioRecordBuilder {
             reportPath = event.reportPath
             fm = event.fm
             appCrash = event.appCrash
+            notApplicableReason = event.notApplicableReason
         case "log":
             if let message = event.message,
                message.hasPrefix("❌") || message.hasPrefix("⚠️") || message.hasPrefix("⏱") {
@@ -893,6 +903,8 @@ public struct ScenarioRecordBuilder {
             fm: fm,
             // timeline も成否によらず残す(録画再生 UI は成功シナリオでもステップツリーを出す)
             timeline: timeline.isEmpty ? nil : timeline,
+            skipKind: notApplicableReason == nil ? nil : .notApplicable,
+            skipReason: notApplicableReason,
             // アプリのクラッシュも成否によらず残す(検出は失敗経路でしか起きないが、fm/timeline と
             // 同じ規律で条件分岐を増やさない)
             appCrash: appCrash)

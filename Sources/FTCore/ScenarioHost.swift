@@ -813,6 +813,7 @@ public enum ScenarioHost {
         let eventLogEnabled = ProcessInfo.processInfo.environment["FT_EVENT_LOG_PATH"] != nil
 
         var passed: Bool?
+        var notApplicable = false
         // 出力の到着はパイプの受け口(onChunk)で数える —— 読み取りループで数えると、ループが installRequest を
         // 待っている間・親が止まっていた直後の未消化の行を「出力が無い」と見る
         for await line in lineStream(stdout.fileHandleForReading,
@@ -846,7 +847,10 @@ public enum ScenarioHost {
                     idleTracker?.setOpenExclusionCap(await extensionTracker.openCap)
                     continue
                 }
-                if event.kind == "scenarioFinished" { passed = event.passed }
+                if event.kind == "scenarioFinished" {
+                    passed = event.passed
+                    notApplicable = event.notApplicableReason != nil
+                }
                 emit(event)
             } else if !line.isEmpty {
                 // ユーザーコードの print 等、JSON でない行はログとして取り込む
@@ -913,8 +917,9 @@ public enum ScenarioHost {
         }
         // scenarioFinished が来なかった場合(クラッシュ等)は exit code で判定
         let result = passed ?? (process.terminationStatus == 0)
-        // dry-run は実機能を動かしていないため直近結果を上書きしない(実失敗を消さない)
-        if !dryRun, !deviceTearDownOnly {
+        // dry-run は実機能を動かしていないため直近結果を上書きしない(実失敗を消さない)。
+        // 対象外の宣言(notApplicable)も同じ —— 走っていないので直近の合否を上書きしない
+        if !dryRun, !deviceTearDownOnly, !notApplicable {
             LastResultsStore.record(project: project, scenarioID: scenarioID, passed: result,
                                     profile: settings.profileName)
         }
@@ -1251,7 +1256,8 @@ public enum ScenarioLogFormatter {
         case "paused":
             return ["    ⏸ Paused before \(event.index ?? 0). \(event.description ?? "")"]
         case "scenarioFinished":
-            var lines = [event.passed == true ? "  → ✅ passed" : "  → ❌ failed"]
+            var lines = [event.notApplicableReason != nil ? "  → ⏭ skipped (not applicable)"
+                         : event.passed == true ? "  → ✅ passed" : "  → ❌ failed"]
             if let report = event.reportPath { lines.append("  → report: \(report)") }
             return lines
         case "log":

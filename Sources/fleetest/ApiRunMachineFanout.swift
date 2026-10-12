@@ -106,7 +106,7 @@ enum ApiRunMachineFanout {
         guard !active.isEmpty else {
             writeLine(encode(ApiRunStartedEvent(total: 0)))
             writeLine(encode(ApiRunFinishedEvent(
-                passed: 0, failed: 0,
+                passed: 0, failed: 0, skipped: 0,
                 testSeconds: nil, scenarioTotalSeconds: nil,
                 runID: nil)))
             return 0
@@ -208,9 +208,9 @@ enum ApiRunMachineFanout {
         // 各子タスクの return を待つので、この時点で runChild は必ず .exited を yield 済み)
         continuation.finish()
 
-        let (totalPassed, totalFailed, runID, testSeconds) = await multiplexed
+        let (totalPassed, totalFailed, totalSkipped, runID, testSeconds) = await multiplexed
         writeLine(encode(ApiRunFinishedEvent(
-            passed: totalPassed, failed: totalFailed,
+            passed: totalPassed, failed: totalFailed, skipped: totalSkipped,
             testSeconds: testSeconds, scenarioTotalSeconds: nil,
             runID: runID)))
 
@@ -377,7 +377,7 @@ enum ApiRunMachineFanout {
     private static func consume(
         stream: AsyncStream<ChildEvent>, groupMachines: [String?], assignedScenarioIDs: [[String]],
         isCancelled: @escaping @Sendable () -> Bool
-    ) async -> (passed: Int, failed: Int, runID: String?, testSeconds: Double?) {
+    ) async -> (passed: Int, failed: Int, skipped: Int, runID: String?, testSeconds: Double?) {
         var multiplexer = MachineFanoutMultiplexer(groupMachines: groupMachines, assignedScenarioIDs: assignedScenarioIDs)
         for await event in stream {
             switch event {
@@ -389,7 +389,8 @@ enum ApiRunMachineFanout {
                 for line in multiplexer.childExited(index, exitCode: status) { writeLine(line) }
             }
         }
-        return (multiplexer.totalPassed, multiplexer.totalFailed, multiplexer.runID, multiplexer.testSeconds)
+        return (multiplexer.totalPassed, multiplexer.totalFailed, multiplexer.totalSkipped,
+                multiplexer.runID, multiplexer.testSeconds)
     }
 
     // MARK: - 出力(FleetRunner.log/logLine と同じ規律。stdout は NDJSON 専用・行単位で lock)
@@ -436,6 +437,7 @@ struct MachineFanoutMultiplexer {
     private var finishedByIndex: [Set<String>]
     private(set) var totalPassed = 0
     private(set) var totalFailed = 0
+    private(set) var totalSkipped = 0
     /// 子の runFinished が運んだ runID のうち最初の1つ。子は同じ runGroup を共有するので
     /// どれでも束ねたセッション全体に届く(ApiRunFinishedEvent.runID の宣言参照)
     private(set) var runID: String?
@@ -473,9 +475,10 @@ struct MachineFanoutMultiplexer {
         switch Self.classify(line, host: groupMachines[childIndex]) {
         case .runStarted:
             return []
-        case .runFinished(let passed, let failed, let childRunID):
+        case .runFinished(let passed, let failed, let skipped, let childRunID):
             totalPassed += passed
             totalFailed += failed
+            totalSkipped += skipped
             if runID == nil { runID = childRunID }
             return []
         case .workersReady(let workers):
@@ -538,7 +541,7 @@ struct MachineFanoutMultiplexer {
 
     private enum ClassifiedLine {
         case runStarted
-        case runFinished(passed: Int, failed: Int, runID: String?)
+        case runFinished(passed: Int, failed: Int, skipped: Int, runID: String?)
         case recordingFinalizing(String)
         case workersReady([ApiWorkerInfo])
         /// finishedScenario: kind == scenarioFinished のときだけシナリオ ID(childExited の
@@ -563,8 +566,13 @@ struct MachineFanoutMultiplexer {
             return .runStarted
         case "runFinished":
             let runID = (obj["runID"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            // skipped は必須(契約 = ProtocolVersion 45)。欠けた runFinished は集計せず素通しする
+            // (0 に倒すと passed + failed + skipped が実行本数に合わない集計を黙って作る)
+            guard let skipped = obj["skipped"] as? Int else {
+                return .other(line, finishedScenario: nil, kind: kind)
+            }
             return .runFinished(passed: obj["passed"] as? Int ?? 0, failed: obj["failed"] as? Int ?? 0,
-                                runID: runID)
+                                skipped: skipped, runID: runID)
         case "recordingFinalizing":
             return .recordingFinalizing(line)
         case "workersReady":

@@ -26,6 +26,12 @@ public enum RunResultsQuery {
         record.steps.total == 1 && record.steps.skipped == 1 && record.durationMs == 0
     }
 
+    /// 子が「この環境では成り立たない」と宣言したシナリオ(`skipKind: notApplicable`。passed の値は問わない)。
+    /// 成功率・所要の統計に入れない —— 走っていないので成功にも失敗にも数えない
+    public static func isDeclaredNotApplicable(_ record: ScenarioRunRecord) -> Bool {
+        record.skipKind == .notApplicable
+    }
+
     /// 中断で始まらなかったシナリオの合成レコード(`ScenarioSkipKind.interrupted`)。シナリオの履歴を
     /// 見る判定(insights・flaky)からは外す —— 失敗として数えると中断のたびに回帰の疑いが並ぶ
     public static func isInterruptedBeforeStart(_ record: ScenarioRunRecord) -> Bool {
@@ -101,7 +107,8 @@ public enum RunResultsQuery {
         _ records: [ScenarioRunRecord], recentRuns: Int
     ) -> [ScenarioSummaryRow] {
         let window = max(1, recentRuns)
-        let grouped = Dictionary(grouping: records, by: \.scenarioID)
+        let grouped = Dictionary(grouping: records.filter { !isDeclaredNotApplicable($0) },
+                                 by: \.scenarioID)
         let rows = grouped.map { scenarioID, allRecords -> ScenarioSummaryRow in
             let group = Array(
                 allRecords.sorted { date(from: $0.startedAt) < date(from: $1.startedAt) }.suffix(window))
@@ -147,7 +154,7 @@ public enum RunResultsQuery {
         _ records: [ScenarioRunRecord], minRuns: Int, recentRuns: Int
     ) -> [FlakyRow] {
         let window = max(1, recentRuns)
-        let grouped = Dictionary(grouping: records.filter { !isInterruptedRecord($0) },
+        let grouped = Dictionary(grouping: records.filter { !isInterruptedRecord($0) && !isDeclaredNotApplicable($0) },
                                  by: \.scenarioID)
         let rows = grouped.compactMap { scenarioID, allRecords -> FlakyRow? in
             let group = Array(
@@ -208,7 +215,8 @@ public enum RunResultsQuery {
 
     private static let unknownWorkerLabel = "(unknown worker)"
 
-    public static func deviceSummary(_ records: [ScenarioRunRecord]) -> DevicesReport {
+    public static func deviceSummary(_ allRecords: [ScenarioRunRecord]) -> DevicesReport {
+        let records = allRecords.filter { !isDeclaredNotApplicable($0) }
         func aggregate<Key: Hashable>(
             _ records: [ScenarioRunRecord], key: (ScenarioRunRecord) -> Key
         ) -> [(Key, Int, Double, Double?)] {
@@ -524,7 +532,8 @@ public enum RunResultsQuery {
         // 削除・_disabled 化されたシナリオの「末尾の失敗」は永久に critical を出し続け、
         // severity 順の先頭を占めて本物を押し下げる(実測: 12 行中 5 行がこれだった)
         let (records, retiredIDs) = partitionRetired(
-            records.filter { !isInterruptedRecord($0) }, definedClasses: definedClasses)
+            records.filter { !isInterruptedRecord($0) && !isDeclaredNotApplicable($0) },
+            definedClasses: definedClasses)
         // **束ねる鍵は (scenarioID, platform)**(ScenarioPlatformKey の doc)。scenarioID だけで
         // 束ねると、同じ scenarioID を複数 platform で回すプロジェクト(E2E-CMP 等)の前後半比較・
         // 連続失敗・偏り判定が platform を混ぜて誤った行を出す

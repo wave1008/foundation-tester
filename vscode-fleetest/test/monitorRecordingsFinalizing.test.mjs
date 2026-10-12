@@ -69,7 +69,7 @@ test("結果の run が無い終わり方(キャンセル・異常終了・dry-r
 test("recordingFinalizing が来ない run(録画しない)では一度も出さない", () => {
   const { panel, finalizingStates } = makePanel();
   panel.handleBusMessage({ type: "runStarted", runId: 1, isDryRun: false, liveFollow: false });
-  panel.handleBusMessage({ type: "event", runId: 1, event: { kind: "runFinished", passed: 1, failed: 0 } });
+  panel.handleBusMessage({ type: "event", runId: 1, event: { kind: "runFinished", passed: 1, failed: 0, skipped: 0 } });
   panel.handleBusMessage({ type: "runEnded", runId: 1 });
   assert.equal(finalizingStates().includes(true), false);
 });

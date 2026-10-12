@@ -17,8 +17,16 @@ export const laneStrings = {
   "lane.pass": { ja: "成功", en: "Passed" },
   "lane.fail": { ja: "失敗", en: "Failed" },
   "lane.skipped": { ja: "スキップ(実行されず)", en: "Skipped (not run)" },
+  "lane.notApplicable": {
+    ja: "  ⏭ スキップ(対象外): {reason}",
+    en: "  ⏭ Skipped (not applicable): {reason}",
+  },
   "lane.fixSuggestion": { ja: "  💡 修正提案: {detail}", en: "  💡 Fix suggestion: {detail}" },
   "lane.paused": { ja: "  ⏸ 一時停止: {description}", en: "  ⏸ Paused: {description}" },
+  "lane.runFinishedWithSkipped": {
+    ja: "■ 完了: 成功 {passed} / 失敗 {failed} / スキップ {skipped}",
+    en: "■ Done: {passed} passed / {failed} failed / {skipped} skipped",
+  },
   "lane.runFinished": {
     ja: "■ 完了: 成功 {passed} / 失敗 {failed}",
     en: "■ Done: {passed} passed / {failed} failed",

@@ -268,7 +268,9 @@ export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: num
       const timing = state.scenarioTimings.get(event.scenario);
       state.scenarioTimings.delete(event.scenario);
       const actions: LaneAction[] = [];
-      if (event.passed) {
+      if (event.passed && event.notApplicableReason !== undefined) {
+        actions.push(...pushLine(state, laneId, tLane("lane.notApplicable", { reason: event.notApplicableReason })));
+      } else if (event.passed) {
         const durationMs = timing ? Math.max(0, nowMs - timing.startedAtMs) : undefined;
         const suffix = durationMs != null ? ` (${String(durationMs)}ms)` : "";
         actions.push(...pushLine(state, laneId, `${tLane("lane.passed")}${suffix}`));

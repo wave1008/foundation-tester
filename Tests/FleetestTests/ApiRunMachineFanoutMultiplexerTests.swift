@@ -26,20 +26,34 @@ final class ApiRunMachineFanoutMultiplexerTests: XCTestCase {
 
     func testRunFinishedIsDroppedAndSummedAcrossHosts() {
         var mux = MachineFanoutMultiplexer(groupMachines: [nil, "M1Max"])
-        XCTAssertEqual(mux.ingest(childIndex: 0, line: #"{"kind":"runFinished","passed":2,"failed":1}"#), [])
-        XCTAssertEqual(mux.ingest(childIndex: 1, line: #"{"kind":"runFinished","passed":5,"failed":0}"#), [])
+        XCTAssertEqual(mux.ingest(childIndex: 0, line: #"{"kind":"runFinished","passed":2,"failed":1,"skipped":0}"#), [])
+        XCTAssertEqual(mux.ingest(childIndex: 1, line: #"{"kind":"runFinished","passed":5,"failed":0,"skipped":0}"#), [])
         XCTAssertEqual(mux.totalPassed, 7)
         XCTAssertEqual(mux.totalFailed, 1)
+        XCTAssertEqual(mux.totalSkipped, 0)
+    }
+
+    func testSkippedIsSummedAcrossHostsAndRequired() {
+        var mux = MachineFanoutMultiplexer(groupMachines: [nil, "M1Max"])
+        XCTAssertEqual(mux.ingest(childIndex: 0, line: #"{"kind":"runFinished","passed":2,"failed":0,"skipped":1}"#), [])
+        XCTAssertEqual(mux.ingest(childIndex: 1, line: #"{"kind":"runFinished","passed":1,"failed":0,"skipped":2}"#), [])
+        XCTAssertEqual(mux.totalSkipped, 3)
+        XCTAssertEqual(mux.totalPassed, 3)
+        // skipped を欠いた runFinished は 0 に倒して集計しない(素通しで集計から外れる)
+        var strict = MachineFanoutMultiplexer(groupMachines: [nil])
+        _ = strict.ingest(childIndex: 0, line: #"{"kind":"runFinished","passed":4,"failed":0}"#)
+        XCTAssertEqual(strict.totalPassed, 0)
+        XCTAssertEqual(strict.totalSkipped, 0)
     }
 
     /// 集計の runFinished が運ぶ runID は子が名乗った最初の1つ(runID を持たない子 = 記録しない run は飛ばす)
     func testRunFinishedKeepsTheFirstChildRunID() {
         var mux = MachineFanoutMultiplexer(groupMachines: [nil, "M1Max", "M2"])
         XCTAssertNil(mux.runID)
-        _ = mux.ingest(childIndex: 0, line: #"{"kind":"runFinished","passed":1,"failed":0}"#)
+        _ = mux.ingest(childIndex: 0, line: #"{"kind":"runFinished","passed":1,"failed":0,"skipped":0}"#)
         XCTAssertNil(mux.runID, "runID の無い子から runID を作らない")
-        _ = mux.ingest(childIndex: 1, line: #"{"kind":"runFinished","passed":1,"failed":0,"runID":"20260911-101010-aaaa"}"#)
-        _ = mux.ingest(childIndex: 2, line: #"{"kind":"runFinished","passed":1,"failed":0,"runID":"20260911-101011-bbbb"}"#)
+        _ = mux.ingest(childIndex: 1, line: #"{"kind":"runFinished","passed":1,"failed":0,"skipped":0,"runID":"20260911-101010-aaaa"}"#)
+        _ = mux.ingest(childIndex: 2, line: #"{"kind":"runFinished","passed":1,"failed":0,"skipped":0,"runID":"20260911-101011-bbbb"}"#)
         XCTAssertEqual(mux.runID, "20260911-101010-aaaa")
     }
 
@@ -80,12 +94,12 @@ final class ApiRunMachineFanoutMultiplexerTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let recorded = try encoder.encode(ApiRunFinishedEvent(
-            passed: 1, failed: 0, testSeconds: nil, scenarioTotalSeconds: nil, runID: "20260911-101010-aaaa"))
+            passed: 1, failed: 0, skipped: 0, testSeconds: nil, scenarioTotalSeconds: nil, runID: "20260911-101010-aaaa"))
         XCTAssertEqual(String(data: recorded, encoding: .utf8),
-                       #"{"failed":0,"kind":"runFinished","passed":1,"runID":"20260911-101010-aaaa"}"#)
+                       #"{"failed":0,"kind":"runFinished","passed":1,"runID":"20260911-101010-aaaa","skipped":0}"#)
         let unrecorded = try encoder.encode(ApiRunFinishedEvent(
-            passed: 1, failed: 0, testSeconds: nil, scenarioTotalSeconds: nil, runID: nil))
-        XCTAssertEqual(String(data: unrecorded, encoding: .utf8), #"{"failed":0,"kind":"runFinished","passed":1}"#)
+            passed: 1, failed: 0, skipped: 0, testSeconds: nil, scenarioTotalSeconds: nil, runID: nil))
+        XCTAssertEqual(String(data: unrecorded, encoding: .utf8), #"{"failed":0,"kind":"runFinished","passed":1,"skipped":0}"#)
     }
 
     // MARK: - workersReady は子ごとに届くたび累積で再送する(バッファしない)

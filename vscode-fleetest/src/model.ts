@@ -228,6 +228,9 @@ export interface ScenarioFinishedEvent {
    *  (host-metrics プロセスの fmCalls/fmFailures/fmTotalMs)から供給される**ので拡張側はこの欄を
    *  読まない —— NDJSON の受け手一般のために欄自体は保つ(protocolVersion.ts と同期)。 */
   fm?: { calls: number; failures: number; totalMs: number };
+  /** 子が「この環境では成り立たない」と宣言した理由(passed は true のまま)。ある = スキップ
+   *  (緑でも赤でもない)。無ければキーごと欠落(Sources/FTCore/ScenarioEvent.swift と同期)。 */
+  notApplicableReason?: string;
 }
 
 /** ScenarioEvent(kind: "log")。ユーザー print の混入行などホスト側の付随情報。 */
@@ -243,6 +246,8 @@ export interface RunFinishedEvent {
   kind: "runFinished";
   passed: number;
   failed: number;
+  /** 子が対象外を宣言したシナリオ数(passed / failed に含まない。ProtocolVersion 45 で必須)。 */
+  skipped: number;
   testSeconds?: number;
   scenarioTotalSeconds?: number;
   /** 結果を書いた run の runID(記録しない dry-run / debug では欠落)。run 完了時に録画タブで

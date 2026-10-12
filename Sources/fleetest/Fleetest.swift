@@ -898,7 +898,7 @@ struct RunScenarios: AsyncParsableCommand {
             // (対象外の件数は ProfileRunner が「Skipped N scenario(s) …」で出している)
             let notApplicable = broadcast ? 0 : items.count - ranCount
             PhaseLog.mark("profile-run-done")
-            let slowWorkers = recorder.finish(total: ranCount, passed: ranCount - failedCount, failed: failedCount,
+            let slowWorkers = recorder.finish(total: ranCount, passed: ranCount - failedCount - runSummary.skipped, failed: failedCount,
                             degradedWorkers: runSummary.degradedWorkers,
                             freezeRetries: runSummary.freezeRetries,
                             blankRepairs: runSummary.blankRepairs,
@@ -914,13 +914,15 @@ struct RunScenarios: AsyncParsableCommand {
             try writeJUnitIfRequested(project: testProject, recorder: recorder)
             // 保持容量の掃除は**結果を書き終えた後に背景の別プロセスで**(テストの実行時間に含めない)
             RunCompletionSweep.spawn(activeRunID: recorder.runID) { ConsoleOut.out($0) }
-            let skippedSuffix = notApplicable > 0
-                ? " (\(notApplicable) skipped: declared for another platform)" : ""
+            let skipNotes = [notApplicable > 0 ? "\(notApplicable) skipped: declared for another platform" : "",
+                             runSummary.skipped > 0 ? "\(runSummary.skipped) skipped: not applicable" : ""]
+                .filter { !$0.isEmpty }
+            let skippedSuffix = skipNotes.isEmpty ? "" : " (\(skipNotes.joined(separator: ", ")))"
             // --broadcast は (シナリオ × デバイス) を数える。単位を言わないと「3本のはずが
             // 24 passed」に見える
             let unit = broadcast ? "scenario run(s) (one per scenario per device)" : "scenario(s)"
             ConsoleOut.out(failedCount == 0
-                  ? "✅ All \(ranCount) \(unit) passed\(skippedSuffix)"
+                  ? "✅ All \(ranCount - runSummary.skipped) \(unit) passed\(skippedSuffix)"
                   : "❌ \(failedCount) of \(ranCount) \(unit) failed\(skippedSuffix)"
                     + (runSummary.interrupted ? Self.interruptedCountNote : ""))
             // **合否は変えず、劣化だけ伝える**。FM(vision 経路)が死んでいると screenLooksLike は素通りし、
@@ -978,16 +980,17 @@ struct RunScenarios: AsyncParsableCommand {
             screenLooksLike: noProfileSettings.fm.screenLooksLike,
             ocrTextOcclusionCheck: noProfileSettings.ocrTextOcclusionCheck)
         let failedCount: Int
+        let skippedCount: Int
         let interrupted: Bool
         do {
             if iosPorts.count <= 1 {
-                (failedCount, interrupted) = try await runSequential(items, project: testProject,
+                (failedCount, skippedCount, interrupted) = try await runSequential(items, project: testProject,
                                                       port: iosPorts[0], reportDir: reportDirPath,
                                                       settings: ScenarioExecutionSettings(noProfileSettings),
                                                       homeOnStart: noProfileSettings.homeOnStart,
                                                       recorder: recorder, interruptState: interruptState)
             } else {
-                (failedCount, interrupted) = await runParallel(items, project: testProject,
+                (failedCount, skippedCount, interrupted) = await runParallel(items, project: testProject,
                                                 iosPorts: iosPorts, reportDir: reportDirPath,
                                                 settings: ScenarioExecutionSettings(noProfileSettings),
                                                 homeOnStart: noProfileSettings.homeOnStart,
@@ -1006,7 +1009,7 @@ struct RunScenarios: AsyncParsableCommand {
         // --profile 無しの経路(runSequential/runParallel)は `--set` の上書きを当てた既定
         // ドキュメントの実効値(noProfileSettings)をそのまま使う(--profile 経路と同じ
         // DeviceIndependentRunSettings を通す。ProfileResolver.resolve の宣言参照)
-        let slowWorkers = recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount,
+        let slowWorkers = recorder.finish(total: items.count, passed: items.count - failedCount - skippedCount, failed: failedCount,
                         // --performance は --profile 専用(ヘルプ参照)。この経路は素通りするので false
                         performanceMode: false,
                         fmSettings: noProfileFMSettings,
@@ -1015,9 +1018,10 @@ struct RunScenarios: AsyncParsableCommand {
         try writeJUnitIfRequested(project: testProject, recorder: recorder)
         RunCompletionSweep.spawn(activeRunID: recorder.runID) { ConsoleOut.out($0) }
 
+        let skippedNote = skippedCount > 0 ? " (\(skippedCount) skipped: not applicable)" : ""
         ConsoleOut.out(failedCount == 0
-              ? "✅ All \(items.count) scenario(s) passed"
-              : "❌ \(failedCount) of \(items.count) scenario(s) failed"
+              ? "✅ All \(items.count - skippedCount) scenario(s) passed\(skippedNote)"
+              : "❌ \(failedCount) of \(items.count) scenario(s) failed\(skippedNote)"
                 + (interrupted ? Self.interruptedCountNote : ""))
         // デバイスそのものが遅いことの観測(SlowWorkerDetector)。自動では何もしない・除外もしない
         for finding in slowWorkers { ConsoleOut.out(finding.consoleWarning) }
@@ -1263,7 +1267,7 @@ struct RunScenarios: AsyncParsableCommand {
                                settings: ScenarioExecutionSettings,
                                homeOnStart: Bool,
                                recorder: RunRecorder?, interruptState: RunInterruptState
-    ) async throws -> (failed: Int, interrupted: Bool) {
+    ) async throws -> (failed: Int, skipped: Int, interrupted: Bool) {
         // 次のシナリオへ進まず、今動いている子(fleetest-scenarios)を SIGTERM してから
         // 普通に return する(呼び出し元の通常の完了経路をそのまま通す。ApiRunCommand.runDirect
         // と同じ形)。**登録は呼び出し元(run())が供給の前に済ませている**
@@ -1289,6 +1293,7 @@ struct RunScenarios: AsyncParsableCommand {
             primingWorkers, homeOnStart: homeOnStart) { ConsoleOut.out($0) }
 
         var failedCount = 0
+        var skippedCount = 0
         // 逐次実行のデバイスは platform ごとに1台(ios = --port・android = --serial)
         var deviceSessions: [String: RunDeviceSession] = [:]
         var sessionConnections: [String: DriverConnection] = [:]
@@ -1337,12 +1342,15 @@ struct RunScenarios: AsyncParsableCommand {
             if quiet {
                 if outcome == .passed {
                     ConsoleOut.out("✅ \(item.info.id)")
+                } else if outcome == .notApplicable {
+                    ConsoleOut.out("⏭ \(item.info.id)")
                 } else {
                     ConsoleOut.out("❌ \(item.info.id)")
                     ConsoleOut.out(buffer.joined(separator: "\n"))
                 }
             }
-            if outcome != .passed { failedCount += 1 }
+            if outcome == .notApplicable { skippedCount += 1 }
+            else if outcome != .passed { failedCount += 1 }
         }
         if !interruptState.isStopped {
             for platform in deviceSessions.keys.sorted() {
@@ -1356,7 +1364,7 @@ struct RunScenarios: AsyncParsableCommand {
                 }
             }
         }
-        return (failedCount, interruptState.isStopped)
+        return (failedCount, skippedCount, interruptState.isStopped)
     }
 
     // MARK: - 並列実行(iOS はポート毎のワーカー、Android は専用ワーカー)
@@ -1367,7 +1375,7 @@ struct RunScenarios: AsyncParsableCommand {
                              homeOnStart: Bool,
                              recordingConfig: VideoRecordingConfig?,
                              recorder: RunRecorder?, interruptState: RunInterruptState
-    ) async -> (failed: Int, interrupted: Bool) {
+    ) async -> (failed: Int, skipped: Int, interrupted: Bool) {
         let defaultPlatform = resolvedPlatform
         let items = LPTOrdering.apply(rawItems, project: project, defaultPlatform: defaultPlatform,
                                       enabled: !noLPT,
@@ -1437,10 +1445,11 @@ struct RunScenarios: AsyncParsableCommand {
                 buffers[url, default: []].append(contentsOf: lines)
             case .step(_, let url, _):
                 buffers[url, default: []].append(contentsOf: lines)
-            case .flowFinished(_, let url, let passed, _, _, _):
+            case .flowFinished(_, let url, let passed, _, _, _, let notApplicableReason):
                 let all = (buffers.removeValue(forKey: url) ?? []) + lines
                 if quiet {
-                    ConsoleOut.out(passed ? "✅ \(names[url] ?? url.lastPathComponent)"
+                    ConsoleOut.out(notApplicableReason != nil ? "⏭ \(names[url] ?? url.lastPathComponent)"
+                                 : passed ? "✅ \(names[url] ?? url.lastPathComponent)"
                                  : "❌ \(names[url] ?? url.lastPathComponent)\n" + all.joined(separator: "\n"))
                 } else {
                     ConsoleOut.out(all.joined(separator: "\n"))
@@ -1450,7 +1459,7 @@ struct RunScenarios: AsyncParsableCommand {
             }
         }
         let result = await summary
-        return (result.failed, result.interrupted)
+        return (result.failed, result.skipped, result.interrupted)
     }
 }
 

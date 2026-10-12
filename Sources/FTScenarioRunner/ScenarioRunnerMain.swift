@@ -733,10 +733,13 @@ struct RunScenario: AsyncParsableCommand {
         }
 
         let reportURL = try? ScenarioReportWriter.write(
-            record: record, to: URL(fileURLWithPath: reportDir), notices: reportNotices)
+            record: record, to: URL(fileURLWithPath: reportDir), notices: reportNotices,
+            notApplicableReason: passed ? core.notApplicableReason : nil)
         var finished = ScenarioEvent(kind: "scenarioFinished")
         finished.scenario = scenarioID
         finished.passed = passed
+        // 失敗していない対象外の宣言だけ運ぶ(失敗したシナリオに「対象外」を重ねない)
+        finished.notApplicableReason = passed ? core.notApplicableReason : nil
         finished.reportPath = reportURL?.path
         // FM 実測を親へ運ぶ(→ ScenarioRecordBuilder → 結果 JSON の fm)。run 全体で合算すると
         // 「FM 直列化による実行時間の下限」が出る。ANE 負荷率では測れない(FMHealth の doc 参照)

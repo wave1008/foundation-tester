@@ -111,6 +111,8 @@ export interface ScenarioFinishedEventBody {
   scenario?: string;
   passed?: boolean;
   reportPath?: string;
+  /** 子が対象外を宣言したときの理由(passed は true のまま)。 */
+  notApplicableReason?: string;
 }
 
 export class FleetestDebugSession extends DebugSession {
@@ -569,6 +571,7 @@ export class FleetestDebugSession extends DebugSession {
         scenario: value.scenario,
         passed: value.passed,
         reportPath: value.reportPath,
+        notApplicableReason: value.notApplicableReason,
       };
       this.sendEvent(new Event("fleetest.scenarioFinished", body));
     }

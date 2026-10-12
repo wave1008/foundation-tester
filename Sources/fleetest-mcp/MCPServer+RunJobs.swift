@@ -353,7 +353,11 @@ enum MCPRunJobs {
         if input.state != .running {
             if let meta = input.meta {
                 var summary = "Run \(meta.runID): \(meta.passed ?? 0) passed / \(meta.failed ?? 0) failed"
-                    + " / \(meta.total ?? 0) total"
+                // run.json にキーを足さない: 子が対象外を宣言した本数は total - passed - failed で出る
+                // (passed は skipped を除いて記録される)
+                let skipped = (meta.total ?? 0) - (meta.passed ?? 0) - (meta.failed ?? 0)
+                if skipped > 0 { summary += " / \(skipped) skipped" }
+                summary += " / \(meta.total ?? 0) total"
                 if meta.interrupted == true { summary += " — interrupted" }
                 lines.append(summary)
                 if let reason = meta.abortReason { lines.append("Aborted: \(reason)") }

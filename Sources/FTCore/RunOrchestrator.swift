@@ -174,15 +174,19 @@ public enum RunEvent: Sendable {
     /// stdout へ出すため、ここで運ばないと拡張(モニターの FM グラフ)まで届かない
     /// (結果 JSON は ScenarioHost 内の builder が別経路で受けるので落ちない)
     /// appCrash: scenarioFinished の同名欄(同じ理由で運ぶ)。
+    /// notApplicableReason: 子が「この環境では成り立たない」と宣言したシナリオ(passed == true と対)。
+    /// 緑でも赤でもない = 表示・集計は skipped に数える。**既定値を置かない**(新しい構築箇所が決める)
     case flowFinished(worker: String, flowURL: URL, passed: Bool,
-                      reportURL: URL?, fm: FMUsageRecord?, appCrash: AppCrashRecord? = nil)
+                      reportURL: URL?, fm: FMUsageRecord?, appCrash: AppCrashRecord? = nil,
+                      notApplicableReason: String?)
     /// 担当ワーカー不在などで実行できなかった(失敗として数える)
     case flowSkipped(flowURL: URL, reason: String)
     /// もうどのワーカーもシナリオを実行しておらず、残りは録画のクリップ切り出しと後始末だけになった
     /// (録画を1本でも開始できた run で1回だけ。判定は TestingSlots)。NDJSON では "recordingFinalizing"。
     /// 拡張はここから録画タブへ移るまで「録画を編集中」を出す(vscode-fleetest/src/model.ts)
     case recordingFinalizing
-    case runFinished(passed: Int, failed: Int)
+    /// passed + failed + skipped == total(skipped = 子が対象外を宣言したシナリオ)
+    case runFinished(passed: Int, failed: Int, skipped: Int)
 }
 
 /// まだシナリオを実行しうるスロット(参加済みワーカー + 参加待ちの枠)の数。0 になった瞬間が
@@ -211,7 +215,9 @@ actor TestingSlots {
 public struct RunSummary: Sendable {
     public let total: Int
     public let failed: Int
-    public var passed: Int { total - failed }
+    /// 子が対象外を宣言したシナリオ数(`total` に含む。緑でも赤でもない)
+    public let skipped: Int
+    public var passed: Int { total - failed - skipped }
     /// 実行中に劣化・離脱したワーカーの記録(「label: 理由」)。凍結/消失/連続失敗/接続不能で離脱した
     /// ワーカーを可視化する(復帰した場合も含む)。連鎖失敗の事後診断・レポート表示用。
     public let degradedWorkers: [String]
@@ -252,7 +258,7 @@ public struct RunSummary: Sendable {
     /// 混同しないため
     public let interrupted: Bool
 
-    public init(total: Int, failed: Int, degradedWorkers: [String] = [],
+    public init(total: Int, failed: Int, skipped: Int = 0, degradedWorkers: [String] = [],
                 freezeRetries: [String] = [],
                 blankRepairs: [String] = [], blankExclusions: [String] = [],
                 measurementInvalid: Bool = false, measurementInvalidReasons: [String] = [],
@@ -263,6 +269,7 @@ public struct RunSummary: Sendable {
                 interrupted: Bool = false) {
         self.total = total
         self.failed = failed
+        self.skipped = skipped
         self.degradedWorkers = degradedWorkers
         self.freezeRetries = freezeRetries
         self.blankRepairs = blankRepairs
@@ -688,6 +695,8 @@ actor ScenarioQueue {
 /// CLI の逐次実行と RunOrchestrator のワーカーの両方がここを通る。
 public enum ScenarioOutcome: Sendable, Equatable {
     case passed, failed, frozen
+    /// 子が対象外を宣言した(passed == true と対)。レーンの健全性は passed と同じ扱いで、数えるときだけ別
+    case notApplicable
     /// **デバイス側の一過性の故障**でテストが落ちた(コードの失敗ではない)。振り直す
     case environmentFault
     /// 失敗ステップの `failureKind` が `driverUnreachable`(ブリッジ不達)だった。
@@ -744,6 +753,7 @@ public enum ScenarioRunner {
         var reportURL: URL?
         var fmUsage: FMUsageRecord?
         var appCrash: AppCrashRecord?
+        var notApplicableReason: String?
         var frozen = false
         var environmentFault = false
         var driverUnreachableFailure = false
@@ -806,6 +816,7 @@ public enum ScenarioRunner {
                 reportURL = event.reportPath.map { URL(fileURLWithPath: $0) }
                 fmUsage = event.fm
                 appCrash = event.appCrash
+                notApplicableReason = event.notApplicableReason
             case "deviceFrozen":
                 frozen = true
             case "log":
@@ -821,9 +832,11 @@ public enum ScenarioRunner {
 
         let outcome = Self.outcome(passed: passed, frozen: frozen,
                                    environmentFault: environmentFault,
-                                   driverUnreachable: driverUnreachableFailure)
+                                   driverUnreachable: driverUnreachableFailure,
+                                   notApplicable: notApplicableReason != nil)
         onEvent(.flowFinished(worker: worker.label, flowURL: item.url, passed: frozen ? false : passed,
-                              reportURL: reportURL, fm: fmUsage, appCrash: appCrash))
+                              reportURL: reportURL, fm: fmUsage, appCrash: appCrash,
+                              notApplicableReason: outcome == .notApplicable ? notApplicableReason : nil))
         return outcome
     }
 
@@ -837,9 +850,9 @@ public enum ScenarioRunner {
     /// ドライバ不達。凍結はワーカーごと使えないので先に判定し、合否は環境エラー/ドライバ不達で
     /// 上書きしない(途中のステップがそれらでも、最終的に通ったならテストとしては合格)
     static func outcome(passed: Bool, frozen: Bool, environmentFault: Bool,
-                        driverUnreachable: Bool) -> ScenarioOutcome {
+                        driverUnreachable: Bool, notApplicable: Bool) -> ScenarioOutcome {
         if frozen { return .frozen }
-        if passed { return .passed }
+        if passed { return notApplicable ? .notApplicable : .passed }
         if environmentFault { return .environmentFault }
         return driverUnreachable ? .driverUnreachable : .failed
     }
@@ -863,7 +876,7 @@ public enum ScenarioRunner {
             return true
         case .driverUnreachable:
             return true
-        case .passed, .failed, .frozen:
+        case .passed, .notApplicable, .failed, .frozen:
             return false
         }
     }
@@ -1054,6 +1067,8 @@ public final class RunOrchestrator: Sendable {
     /// run 全体で通ったシナリオ数(全レーン合計)。ワーカー・サーキットブレーカの「離脱の証拠」
     /// (WorkerCircuitBreaker の冒頭)。自レーンの通過は streak を切るので、streak 中の増分は他レーンの通過
     private let runPasses = Counter()
+    /// 子が対象外を宣言したシナリオ数(summary.skipped)。`runPasses` にも数える(レーンは健全)
+    private let runSkipped = Counter()
     /// 呼び出し側(ローカル `api run`/`run`)が SIGINT/SIGTERM を受けたときに立てる。
     /// 新しいシナリオの配布だけを止める(実行中の子プロセスの SIGTERM は呼び出し側の責務 ——
     /// registerChildProcess 経由でホスト(fleetest ターゲット)が直接持つ登録簿を撃つ。ここに
@@ -1466,13 +1481,14 @@ public final class RunOrchestrator: Sendable {
 
         await progressState?.finish()
 
-        let summary = RunSummary(total: total, failed: failed,
+        let summary = RunSummary(total: total, failed: failed, skipped: await runSkipped.snapshot(),
                                  degradedWorkers: await degraded.snapshot(),
                                  freezeRetries: await retries.snapshot(),
                                  fmUnavailableScenarios: await fmUnavailable.snapshot(),
                                  workerAnomalies: await anomalies.snapshot(),
                                  interrupted: interrupted)
-        continuation.yield(.runFinished(passed: summary.passed, failed: summary.failed))
+        continuation.yield(.runFinished(passed: summary.passed, failed: summary.failed,
+                                        skipped: summary.skipped))
         continuation.finish()
         return summary
     }
@@ -1676,7 +1692,7 @@ public final class RunOrchestrator: Sendable {
                     // **FM 全滅のまま走ったシナリオを数える**(合否は変えない。summary の
                     // fmUnavailableScenarios。ここで数えるのは、実行結果に FM の可否が
                     // 現れないため —— 失敗は各呼び出し箇所が握って素通りさせる契約)
-                    if case .flowFinished(_, _, _, _, let fm, _) = event,
+                    if case .flowFinished(_, _, _, _, let fm, _, _) = event,
                        RunSummary.fmUnavailable(fm) {
                         Task { await fmCounter.increment() }
                     }
@@ -1686,8 +1702,9 @@ public final class RunOrchestrator: Sendable {
                     continuation.yield(event)
                 })
             await videoRecording?.scenarioFinished(
-                workerLabel: worker.label, at: Date(), passed: outcome == .passed)
-            if outcome == .passed {
+                workerLabel: worker.label, at: Date(), passed: outcome == .passed || outcome == .notApplicable)
+            if outcome == .passed || outcome == .notApplicable {
+                if outcome == .notApplicable { await runSkipped.increment() }
                 breaker.recordPass()
                 if let s = laneStreakKey(streakKey) { LaneFailureStreakStore.clear(stateDir: s.dir, key: s.key) }
                 await runPasses.increment()
@@ -1924,9 +1941,11 @@ public enum RunLogFormatter {
             return ["  ⏸ Paused before \(index). \(description)"]
         case .fixSuggestion:
             return []
-        case .flowFinished(_, _, let passed, let reportURL, _, _):
+        case .flowFinished(_, _, let passed, let reportURL, _, _, let notApplicableReason):
             var lines: [String] = []
-            if passed {
+            if let notApplicableReason {
+                lines.append("  → ⏭ skipped (not applicable): \(notApplicableReason)")
+            } else if passed {
                 lines.append("  → ✅ passed")
             } else {
                 if let reportURL {

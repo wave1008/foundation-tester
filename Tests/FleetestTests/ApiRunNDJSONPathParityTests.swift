@@ -25,7 +25,7 @@ final class ApiRunNDJSONPathParityTests: XCTestCase {
     /// 新しい欄を ScenarioEvent に足すと、ここに入れるか fixture へ足すかを選ばされる
     private let nonStepFields: Set<String> = [
         "worker", "title", "file", "line", "oldSelector", "newSelector", "passed", "reportPath",
-        "message", "fm", "requestID", "installPath", "appCrash", "skipped", "memoKey", "memoValue",
+        "message", "fm", "requestID", "installPath", "appCrash", "skipped", "memoKey", "memoValue", "notApplicableReason",
     ]
 
     private func fullStepEvent() -> ScenarioEvent {
@@ -78,7 +78,8 @@ final class ApiRunNDJSONPathParityTests: XCTestCase {
         let url = item.url
         let lines = ApiRunCommand.ndjsonLines(
             for: .flowFinished(worker: workerLabel, flowURL: url, passed: false,
-                               reportURL: URL(fileURLWithPath: "/tmp/r.json"), fm: fm, appCrash: crash),
+                               reportURL: URL(fileURLWithPath: "/tmp/r.json"), fm: fm, appCrash: crash,
+                               notApplicableReason: nil),
             itemByURL: [url: item], workerID: WorkerIDMap([]))
         let parallel = NSMutableDictionary(dictionary: try object(try XCTUnwrap(lines.first)))
         parallel.removeObject(forKey: "worker")
@@ -87,13 +88,40 @@ final class ApiRunNDJSONPathParityTests: XCTestCase {
 
     /// RunOrchestrator が子の scenarioFinished の appCrash を RunEvent へ渡していること
     /// (ScenarioHost 越しなので単体では通せない = 型の効かない継ぎ目のソース走査)
+    /// 並列経路は RunEvent から scenarioFinished を再構築するので、対象外の宣言も明示的に写す
+    /// (落とすと拡張・fan-out には緑に見える)
+    func testParallelScenarioFinishedCarriesNotApplicableReason() throws {
+        var seq = ScenarioEvent(kind: "scenarioFinished")
+        seq.scenario = scenarioID; seq.passed = true
+        seq.notApplicableReason = "no biometrics"
+        let url = item.url
+        let lines = ApiRunCommand.ndjsonLines(
+            for: .flowFinished(worker: workerLabel, flowURL: url, passed: true, reportURL: nil, fm: nil,
+                               appCrash: nil, notApplicableReason: "no biometrics"),
+            itemByURL: [url: item], workerID: WorkerIDMap([]))
+        let parallel = NSMutableDictionary(dictionary: try object(try XCTUnwrap(lines.first)))
+        parallel.removeObject(forKey: "worker")
+        XCTAssertEqual(parallel, try object(seq.encodedLine()))
+    }
+
+    /// 単機の runFinished は skipped を必ず書く(ProtocolVersion 45。fan-out と拡張は必須で読む)
+    func testRunFinishedEventAlwaysCarriesSkipped() throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let line = String(decoding: try encoder.encode(ApiRunFinishedEvent(
+            passed: 2, failed: 1, skipped: 3, testSeconds: nil, scenarioTotalSeconds: nil, runID: nil)),
+            as: UTF8.self)
+        XCTAssertEqual(line, #"{"failed":1,"kind":"runFinished","passed":2,"skipped":3}"#)
+    }
+
     func testRunOrchestratorForwardsAppCrash() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
         let source = try String(contentsOf: root.appendingPathComponent("Sources/FTCore/RunOrchestrator.swift"),
                                 encoding: .utf8)
         XCTAssertTrue(source.contains("appCrash = event.appCrash"))
-        XCTAssertTrue(source.contains("fm: fmUsage, appCrash: appCrash"))
+        XCTAssertTrue(source.contains("fm: fmUsage, appCrash: appCrash,"))
+        XCTAssertTrue(source.contains("notApplicableReason = event.notApplicableReason"))
     }
 
     // MARK: - 機械分担の testSeconds

@@ -28,7 +28,8 @@ export type RunAction =
   | { type: "output"; text: string; scenario?: string; location?: RunLocation; worker?: string }
   | { type: "passed"; scenario: string; durationMs: number }
   | { type: "failed"; scenario: string; messages: RunFailureMessage[]; durationMs: number }
-  | { type: "end"; passed: number; failed: number }
+  | { type: "skipped"; scenario: string; reason: string; durationMs: number }
+  | { type: "end"; passed: number; failed: number; skipped: number }
   /** 振り直し(scenarioRequeued): 項目を「待機中」へ戻す(runHandler が run.enqueued を呼ぶ)。 */
   | { type: "requeued"; scenario: string }
   /** workersReady から発生(--profile 並列実行時のみ)。 */
@@ -173,9 +174,16 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
       return [
         {
           type: "output",
-          text: tLane("lane.runFinished", { passed: event.passed, failed: event.failed }),
+          text:
+            event.skipped > 0
+              ? tLane("lane.runFinishedWithSkipped", {
+                  passed: event.passed,
+                  failed: event.failed,
+                  skipped: event.skipped,
+                })
+              : tLane("lane.runFinished", { passed: event.passed, failed: event.failed }),
         },
-        { type: "end", passed: event.passed, failed: event.failed },
+        { type: "end", passed: event.passed, failed: event.failed, skipped: event.skipped },
       ];
 
     case "wipeStatus":
@@ -273,6 +281,18 @@ function scenarioFinishedActions(
   const progress = state.scenarios.get(event.scenario);
   const durationMs = progress ? Math.max(0, nowMs - progress.startedAtMs) : 0;
   state.scenarios.delete(event.scenario);
+
+  if (event.passed && event.notApplicableReason !== undefined) {
+    return [
+      {
+        type: "output",
+        scenario: event.scenario,
+        text: tLane("lane.notApplicable", { reason: event.notApplicableReason }),
+        worker: event.worker,
+      },
+      { type: "skipped", scenario: event.scenario, reason: event.notApplicableReason, durationMs },
+    ];
+  }
 
   if (event.passed) {
     return [

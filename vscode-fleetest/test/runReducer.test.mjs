@@ -49,7 +49,7 @@ test("全 passed: started → passed → end のアクション列になる", ()
     },
     { kind: "sceneFinished", scenario: "S.T1", scene: 1, sceneTitle: "シーン1", passed: true },
     { kind: "scenarioFinished", scenario: "S.T1", passed: true, reportPath: "/tmp/r.md" },
-    { kind: "runFinished", passed: 1, failed: 0 },
+    { kind: "runFinished", passed: 1, failed: 0, skipped: 0 },
   ];
   const actions = feed(events, { nowMs: (tick) => (tick <= 1 ? 1000 : 1500) });
 
@@ -58,9 +58,41 @@ test("全 passed: started → passed → end のアクション列になる", ()
     [
       { type: "started", scenario: "S.T1" },
       { type: "passed", scenario: "S.T1", durationMs: 500 },
-      { type: "end", passed: 1, failed: 0 },
+      { type: "end", passed: 1, failed: 0, skipped: 0 },
     ],
   );
+});
+
+test("対象外の宣言(notApplicableReason): passed ではなく skipped アクションになり、完了行にスキップ数が出る", () => {
+  const actions = feed(
+    [
+      { kind: "scenarioStarted", scenario: "S.T1", title: "t" },
+      { kind: "scenarioFinished", scenario: "S.T1", passed: true, notApplicableReason: "no biometrics on this device" },
+      { kind: "scenarioStarted", scenario: "S.T2", title: "t" },
+      { kind: "scenarioFinished", scenario: "S.T2", passed: true },
+      { kind: "runFinished", passed: 1, failed: 0, skipped: 1 },
+    ],
+    { nowMs: (tick) => (tick <= 0 ? 1000 : 1500) },
+  );
+  const significant = actions.filter((a) => a.type !== "output");
+  assert.deepEqual(
+    significant.map((a) => a.type),
+    ["started", "skipped", "started", "passed", "end"],
+  );
+  const skipped = significant.find((a) => a.type === "skipped");
+  assert.equal(skipped.scenario, "S.T1");
+  assert.equal(skipped.reason, "no biometrics on this device");
+  assert.ok(!significant.some((a) => a.type === "passed" && a.scenario === "S.T1"));
+  assert.deepEqual(significant.at(-1), { type: "end", passed: 1, failed: 0, skipped: 1 });
+  const lines = actions.filter((a) => a.type === "output").map((a) => a.text);
+  assert.ok(lines.some((t) => t.includes("⏭") && t.includes("no biometrics on this device")));
+  assert.ok(lines.some((t) => t.includes("スキップ 1")));
+});
+
+test("runFinished: skipped が 0 のときの完了行は従来の文言のまま", () => {
+  const actions = feed([{ kind: "runFinished", passed: 2, failed: 0, skipped: 0 }]);
+  const line = actions.find((a) => a.type === "output");
+  assert.equal(line.text, "■ 完了: 成功 2 / 失敗 0");
 });
 
 test("step failed: TestMessage(text+location) が scenarioFinished(passed:false) の failed アクションに蓄積される", () => {
@@ -141,7 +173,7 @@ test("複数シナリオ: それぞれ独立して started/passed/failed が発�
       detail: "NG",
     },
     { kind: "scenarioFinished", scenario: "S.T2", passed: false },
-    { kind: "runFinished", passed: 1, failed: 1 },
+    { kind: "runFinished", passed: 1, failed: 1, skipped: 0 },
   ];
   const actions = feed(events);
 
@@ -196,7 +228,7 @@ test("並列実行: 2シナリオのイベントが交互に混在しても、�
     },
     { kind: "scenarioFinished", scenario: "S.B", passed: false, worker: "ios:シミュ2" },
     { kind: "scenarioFinished", scenario: "S.A", passed: true, worker: "ios:シミュ1" },
-    { kind: "runFinished", passed: 1, failed: 1 },
+    { kind: "runFinished", passed: 1, failed: 1, skipped: 0 },
   ];
   const actions = feed(events);
 
@@ -256,7 +288,7 @@ test("統合: mock-runner.mjs(parallel パターン)の出力から、シナリ�
   assert.equal(failed.scenario, "並列.B");
 
   const end = actions.find((a) => a.type === "end");
-  assert.deepEqual(end, { type: "end", passed: 1, failed: 1 });
+  assert.deepEqual(end, { type: "end", passed: 1, failed: 1, skipped: 0 });
 
   // worker プレフィックスの元になる情報が output に伝播している
   const workerTaggedOutputs = actions.filter((a) => a.type === "output" && a.worker != null);

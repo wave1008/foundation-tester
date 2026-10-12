@@ -205,7 +205,7 @@ function runParallel() {
     }
   }
 
-  emit({ kind: "runFinished", passed: scenarios.length - failedCount, failed: failedCount });
+  emit({ kind: "runFinished", passed: scenarios.length - failedCount, failed: failedCount, skipped: 0 });
   process.exitCode = failedCount > 0 ? 1 : 0;
 }
 
@@ -271,7 +271,7 @@ function runHeal() {
     passed: true,
     reportPath: `/tmp/mock-reports/${encodeURIComponent(id)}.md`,
   });
-  emit({ kind: "runFinished", passed: 1, failed: 0 });
+  emit({ kind: "runFinished", passed: 1, failed: 0, skipped: 0 });
   process.exitCode = 0;
 }
 
@@ -283,7 +283,7 @@ function runAllAndFinish(options) {
       failedCount += 1;
     }
   }
-  emit({ kind: "runFinished", passed: scenarios.length - failedCount, failed: failedCount });
+  emit({ kind: "runFinished", passed: scenarios.length - failedCount, failed: failedCount, skipped: 0 });
   process.exitCode = failedCount > 0 ? 1 : 0;
 }
 
@@ -434,7 +434,7 @@ async function runDebugScenario() {
     passed,
     reportPath: `/tmp/mock-reports/${encodeURIComponent(id)}.md`,
   });
-  emit({ kind: "runFinished", passed: passed ? 1 : 0, failed: passed ? 0 : 1 });
+  emit({ kind: "runFinished", passed: passed ? 1 : 0, failed: passed ? 0 : 1, skipped: 0 });
   channel.close();
   process.exitCode = passed ? 0 : 1;
   process.exit(process.exitCode);
@@ -464,7 +464,7 @@ if (debugMode) {
         for (const id of scenarios) {
           if (runScenario(id, {})) failedCount += 1;
         }
-        emit({ kind: "runFinished", passed: scenarios.length - failedCount, failed: failedCount });
+        emit({ kind: "runFinished", passed: scenarios.length - failedCount, failed: failedCount, skipped: 0 });
       }
       break;
 

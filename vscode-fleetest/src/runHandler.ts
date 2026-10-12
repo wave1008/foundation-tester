@@ -870,6 +870,15 @@ async function executeRun(
         }
         break;
       }
+      case "skipped": {
+        finished.add(action.scenario);
+        const item = targets.get(action.scenario);
+        if (item) {
+          reapplyTerminal.set(action.scenario, () => run.skipped(item));
+          run.skipped(item);
+        }
+        break;
+      }
       case "failed": {
         finished.add(action.scenario);
         const item = targets.get(action.scenario);
@@ -1098,7 +1107,7 @@ async function executeDebugRun(
     candidate.type === "fleetest" && candidate.configuration.scenario === id;
 
   let session: vscode.DebugSession | undefined;
-  let outcome: { passed: boolean; reportPath?: string } | undefined;
+  let outcome: { passed: boolean; reportPath?: string; notApplicable: boolean } | undefined;
 
   const startListener = vscode.debug.onDidStartDebugSession((started) => {
     if (matchesThisRun(started)) {
@@ -1119,7 +1128,11 @@ async function executeDebugRun(
       return;
     }
     const body = e.body as ScenarioFinishedEventBody | undefined;
-    outcome = { passed: body?.passed === true, reportPath: body?.reportPath };
+    outcome = {
+      passed: body?.passed === true,
+      reportPath: body?.reportPath,
+      notApplicable: body?.notApplicableReason !== undefined,
+    };
   });
   const cancelListener = token.onCancellationRequested(() => {
     if (session) {
@@ -1171,7 +1184,9 @@ async function executeDebugRun(
     });
 
     if (outcome) {
-      if (outcome.passed) {
+      if (outcome.passed && outcome.notApplicable) {
+        run.skipped(item);
+      } else if (outcome.passed) {
         run.passed(item);
       } else {
         const message = outcome.reportPath

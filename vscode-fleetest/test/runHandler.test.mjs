@@ -244,3 +244,11 @@ test("formatMachineDetailValue: unreachable は xcodeSelectionError より優先
   };
   assert.equal(formatMachineDetailValue(machine), "ssh connection refused");
 });
+
+// executeRun 本体は vscode.TestRun が要るのでテストできない(冒頭参照)。「対象外の宣言は run.skipped に
+// 繋がる」配線はソース走査で固定する(通常経路の skipped アクションとデバッグ経路の両方)。
+test("runHandler: skipped アクションと debug 経路の対象外宣言は run.skipped に繋がる", () => {
+  const src = fs.readFileSync(path.resolve(process.cwd(), "src", "runHandler.ts"), "utf8");
+  assert.match(src, /case "skipped": \{[\s\S]*?run\.skipped\(item\);[\s\S]*?break;/);
+  assert.match(src, /outcome\.passed && outcome\.notApplicable\) \{\s*run\.skipped\(item\)/);
+});

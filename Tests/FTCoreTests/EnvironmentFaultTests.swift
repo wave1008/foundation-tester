@@ -35,31 +35,51 @@ final class EnvironmentFaultTests: XCTestCase {
     /// **優先順位**: 凍結 > 環境 > 合否。凍結はワーカーごと使えないので先に決まる
     func testFrozenWinsOverEverything() {
         XCTAssertEqual(ScenarioRunner.outcome(passed: false, frozen: true, environmentFault: true,
-                                              driverUnreachable: true),
+                                              driverUnreachable: true,
+                                              notApplicable: false),
                        .frozen)
         XCTAssertEqual(ScenarioRunner.outcome(passed: true, frozen: true, environmentFault: false,
-                                              driverUnreachable: false),
+                                              driverUnreachable: false,
+                                              notApplicable: false),
                        .frozen)
+    }
+
+    /// 対象外の宣言は合格のときだけ .notApplicable になる(不合格・凍結は上書きしない)
+    func testNotApplicableOnlyWhenPassed() {
+        XCTAssertEqual(ScenarioRunner.outcome(passed: true, frozen: false, environmentFault: false,
+                                              driverUnreachable: false, notApplicable: true),
+                       .notApplicable)
+        XCTAssertEqual(ScenarioRunner.outcome(passed: false, frozen: false, environmentFault: false,
+                                              driverUnreachable: false, notApplicable: true),
+                       .failed)
+        XCTAssertEqual(ScenarioRunner.outcome(passed: true, frozen: true, environmentFault: false,
+                                              driverUnreachable: false, notApplicable: true),
+                       .frozen)
+        XCTAssertFalse(ScenarioRunner.requeuesWithoutRetiring(outcome: .notApplicable))
     }
 
     /// **合格は環境エラー/ドライバ不達で上書きしない**。途中のステップがそれらでも、
     /// 最終的に通ったならテストとしては合格(振り直す理由がない)
     func testPassedIsNotDowngradedByATransientFault() {
         XCTAssertEqual(ScenarioRunner.outcome(passed: true, frozen: false, environmentFault: true,
-                                              driverUnreachable: false),
+                                              driverUnreachable: false,
+                                              notApplicable: false),
                        .passed)
         XCTAssertEqual(ScenarioRunner.outcome(passed: true, frozen: false, environmentFault: false,
-                                              driverUnreachable: true),
+                                              driverUnreachable: true,
+                                              notApplicable: false),
                        .passed)
     }
 
     /// 失敗かつ環境エラーのときだけ振り直しの対象になる
     func testFailureWithTheMarkerBecomesAnEnvironmentFault() {
         XCTAssertEqual(ScenarioRunner.outcome(passed: false, frozen: false, environmentFault: true,
-                                              driverUnreachable: false),
+                                              driverUnreachable: false,
+                                              notApplicable: false),
                        .environmentFault)
         XCTAssertEqual(ScenarioRunner.outcome(passed: false, frozen: false, environmentFault: false,
-                                              driverUnreachable: false),
+                                              driverUnreachable: false,
+                                              notApplicable: false),
                        .failed)
     }
 
@@ -68,10 +88,12 @@ final class EnvironmentFaultTests: XCTestCase {
     /// case で仕分ける。ここは失敗ステップの failureKind から立てたフラグを写すだけの純粋関数)
     func testDriverUnreachableMarkerBecomesItsOwnOutcome() {
         XCTAssertEqual(ScenarioRunner.outcome(passed: false, frozen: false, environmentFault: false,
-                                              driverUnreachable: true),
+                                              driverUnreachable: true,
+                                              notApplicable: false),
                        .driverUnreachable)
         XCTAssertEqual(ScenarioRunner.outcome(passed: false, frozen: false, environmentFault: true,
-                                              driverUnreachable: true),
+                                              driverUnreachable: true,
+                                              notApplicable: false),
                        .environmentFault)
     }
 

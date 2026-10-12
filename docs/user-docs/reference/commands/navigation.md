@@ -10,7 +10,7 @@ OS-level navigation: home screen, back, app switcher, home screen icon, and scre
 |---|---|
 | `home()` | Goes to the home screen. |
 | `back(settle:)` | Goes back to the previous screen (Android = back key / iOS = the navigation bar's back button, falling back to a left-edge swipe when there is none). |
-| `appSwitcher()` | Opens the app switcher. |
+| `appSwitcher()` | Opens the app switcher. On a home-button iPhone (e.g. iPhone SE) the switcher is a hardware double-press that cannot be sent, so the scenario is recorded as skipped (not applicable) from that step on instead of failing. |
 | `tapAppIcon(name?)` | Finds and taps the app icon on the home screen. `name` defaults to the app profile's `appName` when omitted. |
 | `rotateTo(.portrait, settle:)` / `rotateTo(.landscape, settle:)` | Rotates the app UI to that orientation. Only these two values exist. |
 
@@ -39,7 +39,10 @@ rotateTo(.portrait)
 - **`tapAppIcon` search order**: current screen first; if not found, Android opens the app
   drawer and scrolls (`flickCenterToTop`, up to 8 times), iOS pages through the home screens
   (`flickRightToLeft`, up to 5 times, stopping after two unchanged pages). Fails with
-  `"App icon not found.(name)"` if never found.
+  `"App icon not found.(name)"` if never found. The icon is tapped only after its position is
+  the same in two consecutive screen reads (a moving drawer or page swallows the tap). When the
+  icon is your app's, the step then waits for the app to come to the foreground and fails (without
+  tapping again) if it does not.
 - **`rotateTo` contracts on the app's UI orientation**, not on how the physical device is
   tilted — the frames a scenario reads are in app-space and behave the same across iOS,
   Android, and every supported UI framework. Only `.portrait` and `.landscape` exist (no

@@ -48,7 +48,7 @@ final class RunEventNDJSONTests: XCTestCase {
         // runStarted/runFinished は呼び出し側が emit 済み。flowPaused は
         // デバッグ専用でこの経路に来ない。ここで行を出すと二重計上になる
         XCTAssertEqual(lines(.runStarted(total: 3, workerLabels: [workerLabel])), [])
-        XCTAssertEqual(lines(.runFinished(passed: 3, failed: 0)), [])
+        XCTAssertEqual(lines(.runFinished(passed: 3, failed: 0, skipped: 0)), [])
         XCTAssertEqual(lines(.workerReady(worker: workerLabel)), [])
         XCTAssertEqual(lines(.flowPaused(worker: workerLabel, flowURL: flowURL, index: 1,
                                          description: "tap", file: nil, line: nil)), [])
@@ -73,7 +73,8 @@ final class RunEventNDJSONTests: XCTestCase {
     func testFlowFinishedCarriesPassedReportPathAndFM() throws {
         let fm = FMUsageRecord(calls: 4, failures: 1, totalMs: 4200, p50Ms: 900, maxMs: 1800, byKind: [:])
         let event = try single(.flowFinished(
-            worker: workerLabel, flowURL: flowURL, passed: true, reportURL: URL(fileURLWithPath: "/tmp/report.json"), fm: fm))
+            worker: workerLabel, flowURL: flowURL, passed: true, reportURL: URL(fileURLWithPath: "/tmp/report.json"), fm: fm,
+            notApplicableReason: nil))
 
         XCTAssertEqual(event["kind"] as? String, "scenarioFinished")
         XCTAssertEqual(event["passed"] as? Bool, true)
@@ -81,6 +82,16 @@ final class RunEventNDJSONTests: XCTestCase {
         // fm を落とすとモニターの FM グラフが 0 のままになる(実害あり)
         let fmObject = try XCTUnwrap(event["fm"] as? [String: Any], "fm が欠けています: \(event)")
         XCTAssertEqual(fmObject["calls"] as? Int, 4)
+        XCTAssertNil(event["notApplicableReason"], "宣言が無ければキーごと省略")
+    }
+
+    /// 対象外の宣言は scenarioFinished に運ぶ(落とすと拡張には緑に見える)
+    func testFlowFinishedCarriesNotApplicableReason() throws {
+        let event = try single(.flowFinished(
+            worker: workerLabel, flowURL: flowURL, passed: true, reportURL: nil, fm: nil,
+            notApplicableReason: "no biometrics"))
+        XCTAssertEqual(event["passed"] as? Bool, true)
+        XCTAssertEqual(event["notApplicableReason"] as? String, "no biometrics")
     }
 
     func testSceneStartedAndFinished() throws {
