@@ -759,10 +759,13 @@ extension MCPServer {
             if StepExecutor.interactsByTouch(plan.step.action ?? ""), outcome.resolvedElement?.enabled == false {
                 suspectSteps.append(index + 1)
             }
-            if let before = executor.lastTapTreeBefore {
+            // **比べるのは tap の手だけ**。select / waitForSettle のような掴むだけの手は executor が直前の tap の記録を残すので、
+            // その手で比べると tap の前の木どうしを比べて「変わらなかった」と誤って言う(実測: tap → waitForSettle で毎回)。
+            // 掴むだけの手は持ち越しも消さない(次の tap が比べる)。それ以外の手は記録が消えるので比べない
+            if plan.step.action == "tap", let before = executor.lastTapTreeBefore {
                 flagUnchangedTap(now: before)
                 pendingTap = (lines.count - 1, index + 1, before)
-            } else {
+            } else if executor.lastTapTreeBefore == nil {
                 pendingTap = nil
             }
         }

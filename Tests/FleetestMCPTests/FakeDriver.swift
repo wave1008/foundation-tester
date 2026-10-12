@@ -190,6 +190,17 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
     /// tap(ref:) / tap(x:y:) を撃った瞬間に呼ぶ(段階の内訳の検証用)
     var onTap: (() -> Void)?
 
+    /// 設定すると waitForSettle がこれを返す(nil = 既定実装と同じ 501。MCPBatchWaitForSettleTests が 501 の形を見る)
+    var waitForSettleResponse: WaitForSettleResponse?
+
+    func waitForSettle(_ request: WaitForSettleRequest, timeoutSeconds: Double) async throws -> WaitForSettleResponse {
+        try record("waitForSettle", "waitForSettle")
+        guard let waitForSettleResponse else {
+            throw DriverError.badResponse(status: 501, body: "This driver cannot capture the whole screen (waitForSettle)")
+        }
+        return waitForSettleResponse
+    }
+
     /// tap のたびに木へ1行足す(ft_batch は tap の前後で木が同じなら「飲まれたかも」と結論を変える。
     /// その判定が主題でないテストで、実機のように tap が画面を変えた形にする)
     func changeTreeOnEveryTap() {

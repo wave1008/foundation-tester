@@ -307,4 +307,40 @@ final class TypeReadbackTests: XCTestCase {
                      element(3, "textField", id: "field_otp", label: nil, value: "12", y: 100)]
         XCTAssertFalse(TypeReadback.screenChangedOutsideField(field, before: before, after: after))
     }
+
+    // MARK: - otherInputThatChanged(全文が欠けたとき、文字が別の欄へ入ったか)
+
+    /// 実測 E2E-CMP S0040: replace の "xyz" がパスワード欄へ入った。欄の外も変わっているが「消費」ではない
+    func testAnotherInputThatChangedIsNamed() {
+        let field = element(11, "textView", id: "field_single", label: "単一行", value: nil, y: 318)
+        let password = element(13, "textView", id: "field_password", label: nil, value: nil, y: 383)
+        let after = [field, element(20, "textView", id: "field_password", label: nil, value: "•••", y: 383)]
+        XCTAssertEqual(TypeReadback.otherInputThatChanged(field, before: [field, password], after: after)?.identifier,
+                       "field_password")
+    }
+
+    /// ランナーの読み返しは「別の欄が変わった」を「消費」より先に見て、断る(追送しない)
+    func testTheRunnerChecksAnotherInputBeforeTreatingItAsConsumed() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let code = try String(contentsOf: root.appendingPathComponent(
+            "Runner/FleetestRunnerUITests/BridgeRouter+TextInput.swift"), encoding: .utf8)
+        let other = try XCTUnwrap(code.range(of: "TypeReadback.otherInputThatChanged("), "別の欄の判定が配線されていない")
+        let consumed = try XCTUnwrap(code.range(of: "TypeReadback.screenChangedOutsideField("))
+        XCTAssertLessThan(other.lowerBound, consumed.lowerBound, "消費と読む前に別の欄を見ること")
+        let between = String(code[other.upperBound..<consumed.lowerBound])
+        XCTAssertTrue(between.contains("throw BridgeError(422"), "別の欄へ入ったときは断ること(追送しない)")
+    }
+
+    /// OTP の消費(欄の外の表示だけが変わった)・欄自身の変化・打つ前に無かった欄は名指さない
+    func testOnlyAnInputThatExistedBeforeAndChangedIsNamed() {
+        let field = element(11, "textField", id: "field_otp", label: nil, value: nil, y: 214)
+        let result = element(1, "staticText", id: "txt_otp_result", label: "otp=none", value: nil, y: 122)
+        let consumed = [element(1, "staticText", id: "txt_otp_result", label: "otp=123456", value: nil, y: 122), field]
+        XCTAssertNil(TypeReadback.otherInputThatChanged(field, before: [result, field], after: consumed))
+        let fieldItself = [result, element(3, "textField", id: "field_otp", label: nil, value: "12", y: 100)]
+        XCTAssertNil(TypeReadback.otherInputThatChanged(field, before: [result, field], after: fieldItself))
+        let newField = [result, field, element(9, "textField", id: "field_new", label: nil, value: "x", y: 300)]
+        XCTAssertNil(TypeReadback.otherInputThatChanged(field, before: [result, field], after: newField))
+    }
 }

@@ -159,11 +159,20 @@ extension BridgeRouter {
             case .resend(let missing):
                 // **全文が欠けた**(欄が打つ前の値のまま)ときは、欄の外の画面がアプリの反応で変わったかを見る。
                 // 変わっていれば届いて消費された(TypeReadback.screenChangedOutsideField)= 追送しない
-                if valueAtLastResend == nil, missing == main,
-                   TypeReadback.screenChangedOutsideField(target, before: elementsBeforeTyping,
-                                                          after: try captureOnce(app).elements) {
-                    consumedByApp = true
-                    break loop
+                // **別の入力欄が変わったなら、打鍵はそちらへ入った**(消費ではない。TypeReadback.otherInputThatChanged)。
+                // 追送すると同じ文字がその欄へもう一度入るので撃たずに断る
+                if valueAtLastResend == nil, missing == main {
+                    let after = try captureOnce(app).elements
+                    if let other = TypeReadback.otherInputThatChanged(target, before: elementsBeforeTyping, after: after) {
+                        let name = other.identifier.map { "#\($0)" } ?? other.label.map { "\"\($0)\"" } ?? other.type
+                        throw BridgeError(422, "the text did not go into the field — another input field (\(name))"
+                            + " changed instead, so the tap meant to focus the field most likely landed on that one;"
+                            + " not re-sent so that field does not receive it twice")
+                    }
+                    if TypeReadback.screenChangedOutsideField(target, before: elementsBeforeTyping, after: after) {
+                        consumedByApp = true
+                        break loop
+                    }
                 }
                 valueAtLastResend = actual
                 pending = missing

@@ -307,6 +307,16 @@ final class MCPBatchTests: XCTestCase {
         XCTAssertTrue(result.contains("the screen did not change after this tap"), result)
     }
 
+    /// **掴むだけの手(waitForSettle)を挟んでも、tap の前の木どうしを比べない**(実測: tap → waitForSettle で効いた tap を毎回名指した)
+    func testAGrabOnlyStepAfterATapDoesNotNameIt() async throws {
+        coverTheScreen()
+        driver.changeTreeOnEveryTap()
+        driver.waitForSettleResponse = WaitForSettleResponse(settled: true, elapsedMs: 400, frames: 3)
+        let result = body(try await server.call(tool: "ft_batch",
+                                                args: steps("tap '#login_btn'; waitForSettle; tap '#login_btn'")))
+        XCTAssertTrue(result.contains("All 3 step(s) passed."), result)
+    }
+
     /// **木が空同然の画面では「変化なし」が常に真**なので名指さない(batchUnchangedNote と同じ但し書きの閾値)
     func testAnUnrepresentedScreenDoesNotNameUnchangedTaps() async throws {
         let result = body(try await server.call(tool: "ft_batch", args: steps("tap '#login_btn'; tap '#login_btn'")))

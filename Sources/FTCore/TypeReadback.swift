@@ -148,6 +148,30 @@ public enum TypeReadback {
         return value
     }
 
+    /// 打った後の欄が**打つ前の値のまま**(全文が欠けた)とき、**別の入力欄の値が変わったか**(変わった欄を返す)。
+    /// 変わっていれば打鍵は別の欄へ入った(打つ前のタップが別の欄に当たった)ので、`screenChangedOutsideField` より先に見る ——
+    /// 入力欄の変化を「アプリが消費した」と読むと、別の欄へ入った文字を受理して緑にする(実測 E2E-CMP S0040 の xcuitest:
+    /// replace の "xyz" がパスワード欄へ入り、置き換えは成功と返った)。突き合わせは identifier、無ければ型 + frame。
+    /// 打つ前の木に無い欄は比べない(新しく出た欄を「変わった」と言わない)
+    public static func otherInputThatChanged(_ field: ElementInfo, before: [ElementInfo],
+                                             after: [ElementInfo]) -> ElementInfo? {
+        func isField(_ element: ElementInfo) -> Bool {
+            if let identifier = field.identifier, !identifier.isEmpty { return element.identifier == identifier }
+            return element.frame == field.frame
+        }
+        func same(_ a: ElementInfo, _ b: ElementInfo) -> Bool {
+            if let identifier = a.identifier, !identifier.isEmpty { return b.identifier == identifier }
+            return (b.identifier ?? "").isEmpty && a.type == b.type && a.frame == b.frame
+        }
+        let inputsBefore = before.filter { isTextInput($0) && !isField($0) }
+        return after.first { now in
+            guard isTextInput(now), !isField(now) else { return false }
+            let earlier = inputsBefore.filter { same($0, now) }
+            guard earlier.count == 1, let was = earlier.first else { return false }
+            return normalizedValue(of: was) != normalizedValue(of: now)
+        }
+    }
+
     /// 打った後の欄が**打つ前の値のまま**(全文が欠けた)とき、**欄の外の画面が変わったか**。
     /// 値だけでは「打鍵が丸ごと落ちた」と「届いてアプリが消費した」(6 桁そろうと送信して欄を空にする
     /// OTP 欄 = E2EY の PIN と OTP)を区別できず、後者で追送すると**アプリへ二度目の入力**になる(送信の二重実行)。
