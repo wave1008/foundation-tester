@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 178
+    public static let bridgeProtocolVersion = 179
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -138,6 +138,26 @@ public enum BridgeAPI {
                                                  windowWidth: Double, windowHeight: Double) -> Bool {
         guard cardWidth > 0, cardHeight > 0 else { return false }
         return cardWidth < windowWidth - 1 || cardHeight < windowHeight - 1
+    }
+
+    /// 下端のホームインジケータの帯(pt)。Face ID iPhone の下端セーフエリアは 34pt。ここを叩くと
+    /// 下端ジェスチャの起点に近く、空き領域のタップにならない
+    public static let appSwitcherHomeIndicatorStrip = 34.0
+    /// 空き領域として使う帯の最小の高さ(pt)。タップ対象の最小サイズの目安(Apple HIG の 44pt)に満たない帯は使わない
+    public static let appSwitcherMinEmptyBand = 44.0
+
+    /// 開いているアプリスイッチャーを閉じるためのタップ点 = カード列の下端とホームインジケータの帯の間の
+    /// 帯の中央(x は画面中央)。カードの下に空きが無い・帯が `appSwitcherMinEmptyBand` 未満なら nil
+    /// (座標を決め打ちで撃たず、呼び手は既存のジェスチャへ倒す)。
+    /// BridgeRouter.handleHome が呼ぶ。スイッチャーの空きを叩くとホームへ戻る(iPhone 13 実機)
+    public static func appSwitcherEmptyTapPoint(cardFrames: [FTRect], screenWidth: Double,
+                                                screenHeight: Double) -> (x: Double, y: Double)? {
+        guard screenWidth > 0, screenHeight > 0, !cardFrames.isEmpty else { return nil }
+        let cardsBottom = cardFrames.map { $0.y + $0.height }.max() ?? 0
+        let bandTop = max(cardsBottom, 0)
+        let bandBottom = screenHeight - appSwitcherHomeIndicatorStrip
+        guard bandBottom - bandTop >= appSwitcherMinEmptyBand else { return nil }
+        return (screenWidth / 2, (bandTop + bandBottom) / 2)
     }
 
     /// XCUITest ランナーが SpringBoard へのタップを撃たずに断るか(当たらないと分かっている)。

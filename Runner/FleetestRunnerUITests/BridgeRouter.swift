@@ -429,6 +429,15 @@ final class BridgeRouter {
     ///
     /// **述語で1回のクエリにまとめる**(目印ごとに `.exists` を撃つと往復が本数分になる)
     private func handleSystemUICovering() -> BridgeHTTPServer.Response {
+        guard let covering = probeSystemUICovering() else {
+            return .json(SystemUICoveringResponse(covering: false))
+        }
+        return .json(SystemUICoveringResponse(covering: true, marker: covering.marker))
+    }
+
+    /// 覆っている面の判定(`/systemui/covering` と handleHome のスイッチャー検出が共有する唯一の実装)。
+    /// `shrunkenCards` はスイッチャーのときだけ入る(縮んだカードの枠)
+    private func probeSystemUICovering() -> (marker: String, shrunkenCards: [CGRect])? {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         // **前方一致**で見る —— 窓の identifier には接尾辞が付く(実測 2026-09-22:
         // アプリスイッチャーは `SBSwitcherWindow:Main`)。完全一致だと取りこぼし、
@@ -440,7 +449,7 @@ final class BridgeRouter {
         // アプリスイッチャーを閉じてホーム画面へ戻っても `SBSwitcherWindow:Main` の exists は
         // true のまま)。**今その面が触れる状態か**で切る
         guard match.exists, match.isHittable else {
-            return .json(SystemUICoveringResponse(covering: false))
+            return nil
         }
         let marker = match.identifier
         // **アプリスイッチャーは「触れる窓」だけでは足りない** —— ホームボタン機(実測 2026-09-24:
@@ -454,16 +463,16 @@ final class BridgeRouter {
             let cards = match.descendants(matching: .any)
                 .matching(NSPredicate(format: "identifier BEGINSWITH %@", BridgeAPI.appSwitcherCardPrefix))
             // 枚数は開いているアプリの数(数枚〜十数枚)。frame の照会は 1 枚ずつ往復するので上限を置く
-            let shrunken = cards.allElementsBoundByIndex.prefix(16).contains { card in
-                let f = card.frame
-                return BridgeAPI.appSwitcherCardIsShrunken(cardWidth: f.width, cardHeight: f.height,
-                                                           windowWidth: window.width, windowHeight: window.height)
+            let shrunken = cards.allElementsBoundByIndex.prefix(16).map { $0.frame }.filter { f in
+                BridgeAPI.appSwitcherCardIsShrunken(cardWidth: f.width, cardHeight: f.height,
+                                                    windowWidth: window.width, windowHeight: window.height)
             }
-            guard shrunken else {
-                return .json(SystemUICoveringResponse(covering: false))
+            guard !shrunken.isEmpty else {
+                return nil
             }
+            return (marker, shrunken)
         }
-        return .json(SystemUICoveringResponse(covering: true, marker: marker))
+        return (marker, [])
     }
 
     private func handleSystemUISnapshot(_ request: BridgeHTTPServer.Request) throws
@@ -1375,6 +1384,30 @@ final class BridgeRouter {
     private static let homeSettleSeconds = 2.0
     private func handleHome() throws -> BridgeHTTPServer.Response {
         let sb = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        #if !targetEnvironment(simulator)
+        // **スイッチャーが開いていると下端フリックはホームへ戻らず、`app.state` も前面のまま**(iPhone 13 実機で
+        // appSwitcher → home が 3/3 失敗)。開いていればカードの外の空きを叩いて閉じ、閉じたかはスイッチャーの
+        // 検出で確かめる(app.state では分からない)。空きが導けなければ従来のジェスチャへ倒す
+        if !isHomeButtonPhone(sb), let cover = probeSystemUICovering(),
+           cover.marker.hasPrefix(BridgeAPI.appSwitcherMarkerPrefix),
+           let point = BridgeAPI.appSwitcherEmptyTapPoint(
+               cardFrames: cover.shrunkenCards.map {
+                   FTRect(x: Double($0.minX), y: Double($0.minY), width: Double($0.width), height: Double($0.height))
+               },
+               screenWidth: Double(sb.frame.width), screenHeight: Double(sb.frame.height)) {
+            gestureQuiescence {
+                sb.coordinate(withNormalizedOffset: CGVector(dx: point.x / Double(sb.frame.width),
+                                                             dy: point.y / Double(sb.frame.height))).tap()
+            }
+            let deadline = Date().addingTimeInterval(Self.homeSettleSeconds)
+            while Date() < deadline {
+                if probeSystemUICovering() == nil { return .json(OKResponse()) }
+                RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+            }
+            throw BridgeError(422, "the app switcher is still open after tapping its empty area"
+                + " (\(Int(point.x)),\(Int(point.y))). Retry, or close it by hand")
+        }
+        #endif
         let verifiable = app.map { $0.state == .runningForeground && sessionBundleID != "com.apple.springboard" } ?? false
         for attempt in 1...Self.homeAttempts {
             sendHome(sb)

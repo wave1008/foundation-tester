@@ -134,6 +134,20 @@ final class TapTargetAdvisoryTests: XCTestCase {
                        "枠の無いカードは根拠にしない")
     }
 
+    /// スイッチャーを閉じるタップ点 = カード列の下端とホームインジケータの帯の間の中央。
+    /// 空きが足りない・カードが無いときは nil(決め打ち座標へ倒さない)
+    func testAppSwitcherEmptyTapPointIsMidBandBelowCards() {
+        let cards = [FTRect(x: 60, y: 130, width: 281, height: 612),
+                     FTRect(x: 360, y: 130, width: 281, height: 612)]
+        let p = BridgeAPI.appSwitcherEmptyTapPoint(cardFrames: cards, screenWidth: 402, screenHeight: 874)
+        XCTAssertEqual(p?.x ?? -1, 201, accuracy: 0.01)
+        XCTAssertEqual(p?.y ?? -1, (742 + (874 - BridgeAPI.appSwitcherHomeIndicatorStrip)) / 2, accuracy: 0.01)
+        XCTAssertNil(BridgeAPI.appSwitcherEmptyTapPoint(
+            cardFrames: [FTRect(x: 0, y: 0, width: 300, height: 820)], screenWidth: 402, screenHeight: 874),
+            "帯が最小の高さ未満")
+        XCTAssertNil(BridgeAPI.appSwitcherEmptyTapPoint(cardFrames: [], screenWidth: 402, screenHeight: 874))
+    }
+
     /// **ホームボタン機の判定**(`ft_navigate appSwitcher` がどのジェスチャを撃つかを決める)。
     /// 実測した実寸で固定する —— ホームボタン機で Face ID のジェスチャを撃つと
     /// **黙ってコントロールセンターが開いたまま ok を返す**(2026-08-28・iPhone SE3)
