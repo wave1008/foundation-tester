@@ -126,7 +126,7 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
   | 承認を求めるツール | 使い勝手 | 人を通るもの |
   |---|---|---|
   | なし | 止まらない | なし(信頼できるリポジトリとアプリが前提) |
-  | `ft_start_run`(おすすめ) | テストの実行を頼んだときに1回 | setup / teardown スクリプト・別の機械への送り出し |
+  | `ft_start_run`(おすすめ) | テストの実行を指示したときに1回 | setup / teardown スクリプト・別の機械への送り出し |
   | `ft_list_scenarios`・`ft_dry_run`・`ft_run_scenario`・`ft_start_run` | シナリオ作成中もコンパイル・確認のたびに聞かれる | シナリオの実行すべて |
 
   Claude Code では、インストーラが作業フォルダの `.claude/settings.json` に「fleetest のツールは許可

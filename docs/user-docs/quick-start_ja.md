@@ -79,7 +79,7 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 ```
 
 作業フォルダに戻って実行します。テストプロジェクトはインストールでは作られないので、最初に作ります
-(AIアシスタントに頼んだときは自動で作られます。VSCode 拡張も Reload Window 後の起動時に作ります)。
+(AIアシスタントへ指示したときは自動で作られます。VSCode 拡張も Reload Window 後の起動時に作ります)。
 
 ```bash
 ../foundation-tester/.build/debug/fleetest project create project1
@@ -131,7 +131,7 @@ AIアシスタントはデバイス上でアプリを起動し、ログイン画
 作成したシナリオを iOS で実行して。
 ```
 
-※Android で作ったシナリオなら「Android で実行して」と頼みます。
+※Android で作ったシナリオなら「Android で実行して」と指示します。
 
 <details>
 <summary><b>手動で実行(クリックで詳細表示)</b></summary>
@@ -170,7 +170,7 @@ VSCode からは **Test Explorer** でシナリオを選び、**実行**をク�
 
 </details>
 
-次へ: [AIアシスタントへの頼み方](tutorial/asking_ai_ja.md)
+次へ: [AIアシスタントへの指示の仕方](tutorial/asking_ai_ja.md)
 
 ### Link
 - [index](index_ja.md)

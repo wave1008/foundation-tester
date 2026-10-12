@@ -18,7 +18,7 @@ fleetest のインストールの手順です。
   - VSCode と、Node.js v24 以降(npm v11 以降)をインストールしておく(VSCode 拡張をビルドして入れるため)
 - **AIアシスタント**
   - MCP に対応した AIアシスタント(Claude Code・Codex・Cline・Cursor・Copilot など)を
-    インストールしておく。どの AIアシスタントでも、インストールは AIアシスタントに頼んで進めます。
+    インストールしておく。どの AIアシスタントでも、インストールは AIアシスタントへ指示して進めます。
 
 ## 3. fleetest のインストール
 
@@ -37,11 +37,11 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 
 4. VSCode の左下のステータスバーに表示される **fleetest mobile** をクリックします。デバイスモニターが開きます
 
-5. **Claude Code 以外の AIアシスタント**を使う場合は、「MCP を登録して」と頼みます。登録したら AIアシスタントを
+5. **Claude Code 以外の AIアシスタント**を使う場合は、「MCP を登録して」と指示します。登録したら AIアシスタントを
    再起動し、このフォルダで新しいセッションを開きます(画面の探索やシナリオの実行に使う `ft_*` ツールが使えるようになります)。
    詳しくは [Claude Code 以外の AIアシスタント](reference/tools/other_agents_ja.md)の「MCP サーバを登録する」を参照してください
 
-6. AIアシスタントに「fleetest doctor を実行して結果を報告して」と頼み、エラーが出ないことを確かめます
+6. AIアシスタントへ「fleetest doctor を実行して結果を報告して」と指示し、エラーが出ないことを確かめます
 
 インストールすると、作業フォルダの隣に `foundation-tester` フォルダができます。このドキュメントで手で打つコマンドの
 `../foundation-tester/.build/debug/fleetest` は、その中の `fleetest` を指します。

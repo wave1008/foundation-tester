@@ -51,7 +51,7 @@
 ## インストール(使う: 自分のアプリのテストを書く)
 
 **AIアシスタントに任せる(推奨。どの AIアシスタントも同じ手順)**: テスト用の新規フォルダを VSCode で開き、
-AIアシスタントを起動して次のように頼む(Claude Code の `claude` CLI が無ければ `brew install claude-code`):
+AIアシスタントを起動して次のように指示する(Claude Code の `claude` CLI が無ければ `brew install claude-code`):
 
 ```text
 https://github.com/wave1008/foundation-tester をこのフォルダの隣に clone して、

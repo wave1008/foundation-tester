@@ -6,7 +6,7 @@ Fleetest のアンインストールの手順です。
 
 ## AIアシスタントに依頼する
 
-AIアシスタントに次のように頼むと、下の手順をまとめて行います。
+AIアシスタントへ次のように指示すると、下の手順をまとめて行います。
 
 ```text
 ../foundation-tester/docs/user-docs/uninstall_ja.md の手順で fleetest をアンインストールして。

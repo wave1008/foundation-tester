@@ -53,6 +53,10 @@ If you are new, install it with [Getting Started](getting-started.md), then go t
 - [Troubleshooting](in_action/troubleshooting.md)
 - [Maintenance for long-term use](in_action/maintenance.md)
 
+## Appendix
+
+- [Quality attributes (non-functional requirements)](overview/quality.md)
+
 ## Developer reference
 
 The specification of scenarios (Swift DSL), the CLI and MCP. Use it when you want to read the
