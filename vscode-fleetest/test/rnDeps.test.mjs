@@ -13,7 +13,7 @@ const ROOT = resolve(import.meta.dirname, '../..')
 
 const lockOf = (packages) => JSON.stringify({ lockfileVersion: 3, packages: { '': { name: 'app' }, ...packages } })
 
-function fixture({ lock, installed, podfileLock = 'PODS: a\n', manifestLock = podfileLock }) {
+function fixture({ lock, installed, podfileLock = 'PODS: a\n', manifestLock = podfileLock, localPodspecs = false }) {
   const dir = mkdtempSync(join(tmpdir(), 'rn-deps-'))
   const app = join(dir, 'App')
   mkdirSync(join(app, 'ios/Pods'), { recursive: true })
@@ -24,11 +24,17 @@ function fixture({ lock, installed, podfileLock = 'PODS: a\n', manifestLock = po
   }
   writeFileSync(join(app, 'ios/Podfile.lock'), podfileLock)
   if (manifestLock !== null) writeFileSync(join(app, 'ios/Pods/Manifest.lock'), manifestLock)
+  if (localPodspecs) {
+    mkdirSync(join(app, 'ios/Pods/Local Podspecs'))
+    writeFileSync(join(app, 'ios/Pods/Local Podspecs/hermes-engine.podspec.json'), '{"version":"old"}')
+  }
   const bin = join(dir, 'bin')
   mkdirSync(bin)
   const calls = join(dir, 'calls')
   for (const tool of ['npm', 'pod']) {
-    writeFileSync(join(bin, tool), `#!/bin/sh\necho "${tool} $* (cwd=$(basename "$PWD"))" >> ${JSON.stringify(calls)}\n`)
+    // pod は呼ばれた時点で Local Podspecs(前回の podspec の写し)が残っているかも記録する
+    const extra = tool === 'pod' ? ' $( [ -e "Pods/Local Podspecs" ] && echo stale-podspecs )' : ''
+    writeFileSync(join(bin, tool), `#!/bin/sh\necho "${tool} $* (cwd=$(basename "$PWD"))${extra}" >> ${JSON.stringify(calls)}\n`)
     chmodSync(join(bin, tool), 0o755)
   }
   return { app, bin, calls }
@@ -69,6 +75,17 @@ test('optional のパッケージ(機種で入らないもの)が無くても入
 test('Pods が Podfile.lock と食い違えば ios で pod install --deployment(lock を書き換えない)', () => {
   assert.deepEqual(sync(fixture({ lock: RN86, installed: RN86, manifestLock: 'PODS: old\n' })), ['pod install --deployment (cwd=ios)'])
   assert.deepEqual(sync(fixture({ lock: RN86, installed: RN86, manifestLock: null })), ['pod install --deployment (cwd=ios)'])
+})
+
+test('Pods を入れ直す前に前回の podspec の写し(Local Podspecs)を消す(古い写しと比べて止まる・前の版を残す)', () => {
+  const calls = sync(fixture({ lock: RN86, installed: RN86, manifestLock: 'PODS: old\n', localPodspecs: true }))
+  assert.deepEqual(calls, ['pod install --deployment (cwd=ios)'])
+})
+
+test('Pods が揃っているときは Local Podspecs に触らない', () => {
+  const fx = fixture({ lock: RN86, installed: RN86, localPodspecs: true })
+  assert.deepEqual(sync(fx), [])
+  assert.ok(existsSync(join(fx.app, 'ios/Pods/Local Podspecs/hermes-engine.podspec.json')))
 })
 
 test('RN のビルドスクリプトは全部、ビルドの前に依存を揃える(iOS は Pods も)', () => {

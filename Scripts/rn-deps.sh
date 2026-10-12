@@ -36,5 +36,9 @@ rn_sync_pods() {
   # Manifest.lock は pod install が Pods/ に書く Podfile.lock の写し(CocoaPods 自身の同期判定と同じ)
   cmp -s ios/Podfile.lock ios/Pods/Manifest.lock && return 0
   echo "→ Pods が Podfile.lock と食い違うので pod install --deployment で入れ直します"
+  # Local Podspecs は外部パスの podspec の前回の写し。RN の版を上げると CocoaPods がこの古い写しと比べ、
+  # hermes-engine で「版が変わった」と止まるか、React-Core-prebuilt を黙って前の版のまま残す
+  # (0.87 で前の版のヘッダの置き方が残り module.modulemap が無いと落ちる)。消せば node_modules から読み直す
+  rm -rf "ios/Pods/Local Podspecs"
   (cd ios && pod install --deployment)
 }
