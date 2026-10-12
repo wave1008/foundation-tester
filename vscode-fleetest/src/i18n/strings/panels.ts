@@ -162,7 +162,7 @@ export const panelsStrings = {
     en: "Recover CPU fallback to GPU at run start (about 1 min per affected device)",
   },
   "panels.runProfile.recordSectionTitle": { ja: "録画", en: "Recording" },
-  "panels.runProfile.miscSectionTitle": { ja: "misc", en: "misc" },
+  "panels.runProfile.miscSectionTitle": { ja: "テスト実行", en: "Test execution" },
   // 一斉 launch 直後の黒画面(描画要求が無いだけ)を避けるための予防措置。既定 ON
   "panels.runProfile.homeOnStartLabel": {
     ja: "テスト開始時にhome()を実行する(デバイス凍結対策)",

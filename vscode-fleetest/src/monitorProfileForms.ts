@@ -126,7 +126,7 @@ export function validateNewProjectName(name: string, existing: readonly string[]
  * (親チェックボックスの状態に関わらず独立して保持・保存する。表示上の非表示切替は
  * runProfilesTab.js の責務)。fmTextOcclusionCheck/screenLooksLike/ocrTextOcclusionCheck は
  * 「Advanced Features」セクションの独立トグル(親チェックボックスは無い。fmTextOcclusionCheck は
- * occlusion guard の FM の段・ocrTextOcclusionCheck は OCR の段で、どちらかが true なら guard は走る)。containerInference は misc セクションの独立トグル。heal はロケータの指紋照合による自己修復の
+ * occlusion guard の FM の段・ocrTextOcclusionCheck は OCR の段で、どちらかが true なら guard は走る)。containerInference は「テスト実行」セクションの独立トグル。heal はロケータの指紋照合による自己修復の
  * トグルで、「Advanced Features」セクションの先頭に並ぶ独立トグル(FM を使わない)。 */
 /** 実行プロファイルの devices[] 1件(プロジェクトのデバイスカタログと同じ形 +
  * `enabled`)。**一意なのは (platform, machine, name)**(machine 省略=手元。
