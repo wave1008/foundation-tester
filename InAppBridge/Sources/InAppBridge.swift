@@ -75,9 +75,9 @@ final class FTInAppBridge {
         }
         // AX ツリーを materialize させる(XCUITest 相当。未活性だと label/frame が取れない)
         DispatchQueue.main.async { FTActivateAccessibility() }
-        // キーボードの実矩形は通知でしか安定して取れない(TextEffects window は全画面、
-        // UIInputSetHostView のクラス名走査は iOS 27 で不発を実測)。ブリッジ起動前に
-        // 開いていたキーボードは最初の変化まで不明のまま = keyboardFrame なし
+        // キーボードの有無と実矩形は通知でしか安定して取れない(TextEffects window は全画面で居残り・
+        // CMP 1.12 ではキーボードが無くても可視、UIInputSetHostView のクラス名走査は iOS 27 で不発を実測)。
+        // 構成子から張るのでアプリの UI より先 = 通知が無ければキーボードは出ていない(keyboardIsVisible)
         DispatchQueue.main.async { Self.observeKeyboardFrame() }
         // 画面が進んでいるかの計器(/status の displayIdleSeconds)。
         // **ホストは凍結判定に使わない** —— 理由は DisplayHeartbeat の説明を参照
@@ -278,12 +278,9 @@ final class FTInAppBridge {
     /// keyboardWillChangeFrame の最新値(画面座標)。nil = 非表示または不明。
     /// メインスレッドでのみ読み書きする(observeKeyboardFrame も snapshot も mainSync 内)
     private static var observedKeyboardFrame: CGRect?
-    /// 通知から得た「今キーボードが出ているか」。nil = まだ1度も通知を受けていない
-    /// (ブリッジ起動前から開いていた等)。**keyboardIsVisible はこれを優先する**。
-    /// 実害: 以前は TextEffects window の frame(下のコメントどおり閉じた後も全画面のまま
-    /// 居残る)だけで判定しており、`pressEnter` でキーボードを閉じても `keyboardShown: true` が
-    /// 固定化していた。show/hide の通知は「今どちらか」を直接言うので、居残る frame に頼らずに
-    /// 閉じたら確実に false へ戻る
+    /// 通知から得た「今キーボードが出ているか」。nil = まだ1度も通知を受けていない(= 一度も出ていない)。
+    /// show/hide の通知は「今どちらか」を直接言うので、閉じたら確実に false へ戻る(TextEffects window の
+    /// frame は閉じた後も全画面のまま居残るので判定に使えない)
     private static var observedKeyboardShown: Bool?
     private static var keyboardObserversInstalled = false
 
@@ -308,18 +305,13 @@ final class FTInAppBridge {
         }
     }
 
-    /// ソフトキーボードが表示中か。**通知由来の状態(`observedKeyboardShown`)を優先する** ——
-    /// キーボードは UITextEffectsWindow(キーウィンドウとは別)に載るが、その window の frame は
-    /// 閉じた後も全画面のまま居残る(keyboardFrameIfVisible のコメント参照)ので、frame の
-    /// 有無では「閉じた」を判定できない。通知をまだ1度も受けていないとき(起動前から開いていた
-    /// 等)だけ、window の可視性(isHidden/alpha)で縮退する
+    /// ソフトキーボードが表示中か。**通知由来の状態(`observedKeyboardShown`)だけで決める**。
+    /// 通知の受け口は dylib の構成子(boot.m)がアプリの UI より先に張るので、通知を1度も受けていない =
+    /// キーボードは一度も出ていない(false)。**UITextEffectsWindow の可視性で縮退しない** —— CMP 1.12 は
+    /// キーボードが無くてもこの窓を可視のまま作り、true を返して scrollToTop が画面全体を容器に取り、
+    /// 始点が一覧の上の外から始まって1ミリも動かないまま端と誤認した(E2EX-CMP のグリッド等)
     private static func keyboardIsVisible() -> Bool {
-        if let shown = observedKeyboardShown { return shown }
-        for window in UIApplication.shared.windows
-        where NSStringFromClass(type(of: window)).contains("TextEffects") {
-            if !window.isHidden, window.alpha > 0.01 { return true }
-        }
-        return false
+        observedKeyboardShown ?? false
     }
 
     /// 可視なソフトキーボードの実矩形(画面座標)。通知の最新値から採る ——
