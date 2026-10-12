@@ -104,7 +104,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
 - **occlusion-guard の OCR 段(`FTCore.RegionText`)の「丸ごと読めた」は素通りの根拠** —— 期待テキストが
   **丸ごと**読めた回は FM を省く(既定 on。**利用者の口は実行プロファイルの
   `ocrTextOcclusionCheck`**(拡張のプロファイルタブ
-  「Advanced Features(Experimental)」)。保守者の口は `FT_OCCLUSION_OCR=0` の
+  「Advanced Features」)。保守者の口は `FT_OCCLUSION_OCR=0` の
   殺しスイッチと `measure` のコーパス採取で、**プロファイルの false が環境変数に勝つ**)。**「丸ごとは読めなかった」だけを反転の根拠にしない** —— 日本語モデルを載せた版では実測で
   29% が可視なテキストの1文字誤読(`swipe=down`→`swipe=aown`)で、反転に使うと誤った赤になる。
   反転するのは下の `OCROnlyVisibility` が言い切れた回か FM だけ。**一致は語境界つきの完全含有**(素の部分一致だと `exist("OK")` が

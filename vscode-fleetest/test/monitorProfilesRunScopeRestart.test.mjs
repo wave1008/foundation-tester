@@ -43,6 +43,7 @@ const FORM_FIELDS = {
   record: false,
   recordFailuresOnly: false,
   recordBitrateKbps: "",
+  scenarioTimeout: "",
   recordFullResolution: false,
   wipeDataThresholdGB: "",
   locale: "",

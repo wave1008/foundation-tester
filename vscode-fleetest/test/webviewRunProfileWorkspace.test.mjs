@@ -119,6 +119,7 @@ const RUN_PROFILE_FIELDS = {
   record: false,
   recordFailuresOnly: false,
   recordBitrateKbps: "",
+  scenarioTimeout: "",
   recordFullResolution: false,
   workspace: "",
 };

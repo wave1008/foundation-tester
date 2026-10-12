@@ -109,6 +109,7 @@ const RUN_PROFILE_DATA = {
     record: false,
     recordFailuresOnly: false,
     recordBitrateKbps: "",
+    scenarioTimeout: "",
     recordFullResolution: false,
     wipeDataThresholdGB: "",
     locale: "",

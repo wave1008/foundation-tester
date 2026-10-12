@@ -57,13 +57,14 @@ const VALID_RUN_PROFILE_SAVE = {
     record: false,
     recordFailuresOnly: false,
     recordBitrateKbps: "",
+    scenarioTimeout: "",
     recordFullResolution: false,
   },
 };
 
-test("isMonitorFromWebviewMessage: runProfileSave は型で必須の playProtectBypass / updateWebView / workspace を欠くと false", () => {
+test("isMonitorFromWebviewMessage: runProfileSave は型で必須の playProtectBypass / updateWebView / workspace / scenarioTimeout を欠くと false", () => {
   // 欠けると updateRunProfileInObject が undefined を代入して ON/OFF が黙って既定へ戻る・workspace.trim() が投げる
-  for (const key of ["playProtectBypass", "updateWebView", "workspace"]) {
+  for (const key of ["playProtectBypass", "updateWebView", "workspace", "scenarioTimeout"]) {
     const fields = { ...VALID_RUN_PROFILE_SAVE.fields };
     delete fields[key];
     assert.equal(isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_SAVE, fields }), false, key);
@@ -115,6 +116,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields22�
         record: true,
         recordFailuresOnly: true,
         recordBitrateKbps: "",
+        scenarioTimeout: "",
         recordFullResolution: true,
       },
     }),
@@ -679,6 +681,7 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
     record: true,
     recordFailuresOnly: true,
     recordBitrateKbps: "2000",
+    scenarioTimeout: "",
     recordFullResolution: true,
     workspace: "../sut-ec-mobile-workspace",
   });
@@ -709,6 +712,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/reco
     record: true,
     recordFailuresOnly: false,
     recordBitrateKbps: "",
+    scenarioTimeout: "",
     recordFullResolution: false,
     workspace: "",
   });
@@ -759,6 +763,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     record: true,
     recordFailuresOnly: false,
     recordBitrateKbps: "",
+    scenarioTimeout: "",
     recordFullResolution: false,
     workspace: "",
   });
@@ -1046,6 +1051,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   record: false,
   recordFailuresOnly: false,
   recordBitrateKbps: "",
+  scenarioTimeout: "",
   recordFullResolution: false,
   workspace: "",
 };
@@ -1147,6 +1153,35 @@ test("updateRunProfileInObject: recordBitrateKbps は空文字でキー削除、
     const result = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, recordBitrateKbps: invalid });
     assert.equal(result.ok, false, `recordBitrateKbps=${invalid} は不正値としてエラーになるべき`);
     assert.match(result.error, /recordBitrateKbps/);
+  }
+});
+
+test("parseRunProfileForForm: scenarioTimeout は number なら String() 化、string ならそのまま、欠落・他の型は空文字", () => {
+  assert.equal(parseRunProfileForForm({ scenarioTimeout: 900 }).scenarioTimeout, "900");
+  assert.equal(parseRunProfileForForm({ scenarioTimeout: "1800" }).scenarioTimeout, "1800");
+  assert.equal(parseRunProfileForForm({}).scenarioTimeout, "");
+  assert.equal(parseRunProfileForForm({ scenarioTimeout: true }).scenarioTimeout, "");
+});
+
+test("updateRunProfileInObject: scenarioTimeout は空文字でキー削除(既定 600 秒)、正の整数で number 化、不正値でエラー", () => {
+  const removed = updateRunProfileInObject(
+    { scenarioTimeout: 240, other: "kept" },
+    { ...BASE_RUN_PROFILE_FIELDS, scenarioTimeout: "" },
+  );
+  assert.equal(removed.ok, true);
+  assert.equal("scenarioTimeout" in removed.object, false);
+  assert.equal(removed.object.other, "kept", "フォームに欄の無いキーは残す");
+
+  const added = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, scenarioTimeout: "900" });
+  assert.equal(added.ok, true);
+  assert.equal(added.object.scenarioTimeout, 900);
+  assert.equal(typeof added.object.scenarioTimeout, "number");
+
+  // Swift 側(RunProfile.swift)は正の整数だけ通す。ここで通すと保存できて run の読み込みで落ちる
+  for (const invalid of ["0", "-1", "1.5", "abc", "1e3", "99999999999999999999"]) {
+    const result = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, scenarioTimeout: invalid });
+    assert.equal(result.ok, false, `scenarioTimeout=${invalid} は不正値としてエラーになるべき`);
+    assert.match(result.error, /scenarioTimeout/);
   }
 });
 

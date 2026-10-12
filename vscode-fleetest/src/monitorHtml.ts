@@ -658,6 +658,11 @@ function renderRunProfileSection(): string {
               <!-- 透かしは未指定時の既定(Sources/FTCore/RunProfile.swift の runDoc.reportDir ?? "reports"。runProfilePlaceholderSync.test.mjs) -->
               <input type="text" id="run-profile-report-dir" placeholder="reports">
             </div>
+            <div class="modal-row">
+              <label for="run-profile-scenario-timeout" title="${t("panels.runProfile.scenarioTimeoutTitle")}">${t("panels.runProfile.scenarioTimeoutLabel")}</label>
+              <!-- 透かしは未指定時の既定(Sources/FTCore/ScenarioHost.swift の defaultScenarioTimeout。runProfilePlaceholderSync.test.mjs) -->
+              <input type="text" id="run-profile-scenario-timeout" class="run-profile-number-input" placeholder="600" title="${t("panels.runProfile.scenarioTimeoutTitle")}">
+            </div>
           </div>
           <div class="run-profile-section-group">
             <div class="run-profile-section-title">${t("panels.runProfile.advancedSectionTitle")}</div>

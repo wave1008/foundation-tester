@@ -80,7 +80,7 @@ function runProfileData(devices) {
       iosInappEngine: true, iosPreActionPing: true, homeOnStart: true,
       playProtectBypass: true, enableAnimations: false, containerInference: true, updateWebView: true,
       wipeDataOnBloat: true, recoverCpuFallbackToGpu: false, record: false, recordFailuresOnly: false,
-      recordBitrateKbps: "", recordFullResolution: false, wipeDataThresholdGB: "",
+      recordBitrateKbps: "", recordFullResolution: false, wipeDataThresholdGB: "", scenarioTimeout: "",
       locale: "", workspace: "", reportDir: "",
     },
   };

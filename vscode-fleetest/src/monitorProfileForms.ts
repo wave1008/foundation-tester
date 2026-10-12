@@ -171,6 +171,9 @@ export interface RunProfileFormFields {
   readonly playProtectBypass: boolean;
   readonly enableAnimations: boolean;
   readonly reportDir: string;
+  /** シナリオ1本の上限秒(空文字 = 未設定 = Sources/FTCore/ScenarioHost.swift の defaultScenarioTimeout)。
+   * 正の整数だけ通す = Swift 側の検査(RunProfile.swift)と同じ条件 */
+  readonly scenarioTimeout: string;
   readonly updateWebView: boolean;
   readonly wipeDataOnBloat: boolean;
   readonly wipeDataThresholdGB: string;
@@ -260,6 +263,10 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const rawThreshold = source.wipeDataThresholdGB;
   const wipeDataThresholdGB =
     typeof rawThreshold === "number" ? String(rawThreshold) : typeof rawThreshold === "string" ? rawThreshold : "";
+  const rawScenarioTimeout = source.scenarioTimeout;
+  const scenarioTimeout =
+    typeof rawScenarioTimeout === "number" ? String(rawScenarioTimeout)
+      : typeof rawScenarioTimeout === "string" ? rawScenarioTimeout : "";
   const rawBitrate = source.recordBitrateKbps;
   const recordBitrateKbps =
     typeof rawBitrate === "number" ? String(rawBitrate) : typeof rawBitrate === "string" ? rawBitrate : "";
@@ -282,6 +289,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     playProtectBypass,
     enableAnimations,
     reportDir,
+    scenarioTimeout,
     updateWebView,
     wipeDataOnBloat,
     wipeDataThresholdGB,
@@ -305,6 +313,7 @@ export type RunProfileUpdateResult =
  * defaultTimeout はフォーム欄を持たない。result は `{ ...source }` から始まるため、
  * 既存 JSON の defaultTimeout はそのまま(未検証で)保たれる。
  * wipeDataThresholdGB は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
+ * scenarioTimeout は空文字ならキー削除(既定 600 秒)、正の整数文字列以外はエラー。
  * recordBitrateKbps は空文字ならキー削除、正の整数文字列以外はエラー。
  * devices は fields.devices の順に並べ直し、既存 devices 配列の同名エントリ(未知キー込み)を
  * 再利用する(新規名は { name } のみ追加。同名重複があれば最初の1件を採用)。
@@ -364,6 +373,16 @@ export function updateRunProfileInObject(
     return { ok: false, error: t("monitor.runProfile.wipeThresholdInvalid") };
   } else {
     result.wipeDataThresholdGB = Number(thresholdTrimmed);
+  }
+
+  const scenarioTimeoutTrimmed = fields.scenarioTimeout.trim();
+  if (scenarioTimeoutTrimmed.length === 0) {
+    delete result.scenarioTimeout;
+  } else if (!/^\d+$/.test(scenarioTimeoutTrimmed) || Number(scenarioTimeoutTrimmed) <= 0
+             || !Number.isSafeInteger(Number(scenarioTimeoutTrimmed))) {
+    return { ok: false, error: t("monitor.runProfile.scenarioTimeoutInvalid") };
+  } else {
+    result.scenarioTimeout = Number(scenarioTimeoutTrimmed);
   }
 
   const bitrateTrimmed = fields.recordBitrateKbps.trim();

@@ -51,6 +51,10 @@ export const monitorStrings = {
     ja: "recordBitrateKbps は正の整数で入力してください。",
     en: "Enter recordBitrateKbps as a positive integer.",
   },
+  "monitor.runProfile.scenarioTimeoutInvalid": {
+    ja: "scenarioTimeout は正の整数(秒)で入力してください。",
+    en: "Enter scenarioTimeout as a positive integer (seconds).",
+  },
   "monitor.runProfile.localeInvalid": {
     ja: "locale は ja_JP のような形式で入力してください。",
     en: "Enter locale in a format like ja_JP.",

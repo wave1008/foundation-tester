@@ -121,14 +121,14 @@ export const panelsStrings = {
   "panels.runProfile.renameTitle": { ja: "実行プロファイル名の変更", en: "Rename run profile" },
   "panels.runProfile.appLabel": { ja: "参照するアプリプロファイル", en: "App profile to reference" },
   "panels.runProfile.healLabel": { ja: "セレクタの自己修復を有効にする(指紋照合方式)", en: "Enable selector self-healing (fingerprint matching)" },
-  "panels.runProfile.advancedSectionTitle": { ja: "Advanced Features(Experimental)", en: "Advanced Features (Experimental)" },
+  "panels.runProfile.advancedSectionTitle": { ja: "Advanced Features", en: "Advanced Features" },
   "panels.runProfile.fmTextOcclusionCheckLabel": {
-    ja: "FMを使用したテキストの視覚検証を有効にする(macOS 27+)",
-    en: "Enable FM-based visual verification for text (macOS 27+)",
+    ja: "FMを使用したテキストの視覚検証を有効にする(Experimental, macOS 27+)",
+    en: "Enable FM-based visual verification for text (Experimental, macOS 27+)",
   },
   "panels.runProfile.screenLooksLikeLabel": {
-    ja: "FMを使用したscreenLooksLikeを有効にする(macOS 27+)",
-    en: "Enable FM-based screenLooksLike (macOS 27+)",
+    ja: "FMを使用したscreenLooksLikeを有効にする(Experimental, macOS 27+)",
+    en: "Enable FM-based screenLooksLike (Experimental, macOS 27+)",
   },
   "panels.runProfile.ocrTextOcclusionCheckLabel": {
     ja: "OCRを使用したテキストの視覚検証を有効にする",
@@ -187,6 +187,11 @@ export const panelsStrings = {
   },
   "panels.runProfile.recordBitrateLabel": { ja: "保存するクリップの目標ビットレート(kbps)", en: "Target bitrate for saved clips (kbps)" },
   "panels.runProfile.reportDirLabel": { ja: "レポートディレクトリ", en: "Report directory" },
+  "panels.runProfile.scenarioTimeoutLabel": { ja: "シナリオの制限時間(秒)", en: "Scenario time limit (seconds)" },
+  "panels.runProfile.scenarioTimeoutTitle": {
+    ja: "シナリオ1本の上限(scenarioTimeout)。空欄なら透かしの既定値。シナリオの @Test(scenarioTimeout:) がこれより優先します。別に、出力が1ステップの上限の2倍を超えて途切れたシナリオは、止まったとみなして打ち切ります",
+    en: "Upper limit for one scenario (scenarioTimeout). Empty uses the default shown in the field. A scenario's @Test(scenarioTimeout:) takes precedence. Separately, a scenario whose output stops for longer than twice the per-step limit is treated as stuck and stopped",
+  },
   "panels.runProfile.recordFullResolutionLabel": {
     ja: "フル解像度で保存する",
     en: "Save at full resolution",

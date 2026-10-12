@@ -134,6 +134,7 @@ function runProfileData(app, devices) {
       record: true,
       recordFailuresOnly: false,
       recordBitrateKbps: "",
+      scenarioTimeout: "",
       recordFullResolution: false,
       workspace: "",
     },

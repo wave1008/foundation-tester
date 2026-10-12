@@ -57,11 +57,12 @@ const runProfileLocale = document.getElementById('run-profile-locale');
 const runProfileWorkspace = document.getElementById('run-profile-workspace');
 const btnRunProfileHookScaffold = document.getElementById('btn-run-profile-hook-scaffold');
 const runProfileReportDir = document.getElementById('run-profile-report-dir');
+const runProfileScenarioTimeout = document.getElementById('run-profile-scenario-timeout');
 const runProfileError = document.getElementById('run-profile-error');
 // 保存時に前後の空白を落として書き戻す欄(送る値と画面の値を一致させ、保存後に dirty が残らないように)
 const runProfileTextInputs = [
   runProfileRecordBitrate, runProfileWipeThreshold, runProfileLocale,
-  runProfileWorkspace, runProfileReportDir,
+  runProfileWorkspace, runProfileReportDir, runProfileScenarioTimeout,
 ];
 
 // 直近受信の一覧(profileInfo 由来)。
@@ -270,6 +271,7 @@ function renderRunProfileEditor(fields) {
   runProfileLocale.value = fields.locale;
   runProfileWorkspace.value = fields.workspace;
   runProfileReportDir.value = fields.reportDir;
+  runProfileScenarioTimeout.value = fields.scenarioTimeout;
 
   runProfilePlaceholder.style.display = 'none';
   runProfileEditor.style.display = '';
@@ -391,7 +393,8 @@ function runProfileValuesEqual(fields) {
     runProfileWipeThreshold.value === fields.wipeDataThresholdGB &&
     runProfileLocale.value === fields.locale &&
     runProfileWorkspace.value === fields.workspace &&
-    runProfileReportDir.value === fields.reportDir
+    runProfileReportDir.value === fields.reportDir &&
+    runProfileScenarioTimeout.value === fields.scenarioTimeout
   );
 }
 
@@ -484,6 +487,7 @@ function collectRunProfileFields() {
     locale: runProfileLocale.value.trim(),
     workspace: runProfileWorkspace.value.trim(),
     reportDir: runProfileReportDir.value.trim(),
+    scenarioTimeout: runProfileScenarioTimeout.value.trim(),
   };
 }
 
