@@ -74,6 +74,8 @@ export const Tags = {
   txtRowSelected: 'txt_row_selected',
   btnScrollTop: 'btn_scroll_top',
   txtScrollTop: 'txt_scroll_top',
+  btnTickerToggle: 'btn_ticker_toggle',
+  txtTicker: 'txt_ticker',
   listRows: 'list_rows',
   txtTagSelected: 'txt_tag_selected',
   carouselTags: 'carousel_tags',

@@ -5,15 +5,27 @@ struct ScrollScreen: View {
     @State private var tagSelected = "-"
     @State private var scrollToken = 0
     @State private var topVisibleRow = 1
+    @State private var tickerRunning = false
+    @State private var ticker = 0
+
+    /// ティッカーの周期(ms)。シナリオの静止の窓 0.5 秒より十分短く、動作中は窓あたり 5 回変わって静止が成立しない
+    private static let tickerIntervalMs: UInt64 = 100
 
     var body: some View {
         // ScreenColumn は使わず自前で組む: UITableView を残り高さいっぱいに伸ばすため。
         VStack(alignment: .leading, spacing: 8) {
-            TaggedText(tag: Tags.txtRowSelected, text: "selected=\(selected)")
+            // #txt_ticker は selected の横に置く(縦に足すとリストが縮む)
+            HStack(spacing: 12) {
+                TaggedText(tag: Tags.txtRowSelected, text: "selected=\(selected)")
+                TaggedText(tag: Tags.txtTicker, text: "ticker=\(ticker)")
+            }
             // #txt_scroll_top はボタンの横に置く(縦に足すとリストが縮み、契約の「#row_06 まで完全に見える」が崩れる)
             HStack(spacing: 12) {
                 TaggedButton(tag: Tags.btnScrollTop, label: "先頭へ") { scrollToken += 1 }
                 TaggedText(tag: Tags.txtScrollTop, text: "top=\(Tags.row(topVisibleRow))")
+                TaggedButton(tag: Tags.btnTickerToggle, label: tickerRunning ? "ティッカー停止" : "ティッカー開始") {
+                    tickerRunning.toggle()
+                }
             }
             RowTableView(selected: $selected, topVisibleRow: $topVisibleRow, scrollToTopToken: scrollToken)
             // 横スクロールの検証材料(scrollFrame)。**リストの下に置く** —— 画面中央に置くと
@@ -35,6 +47,15 @@ struct ScrollScreen: View {
             TaggedText(tag: Tags.txtTagSelected, text: "tag=\(tagSelected)")
         }
         .padding(16)
+        // Timer/Task.sleep で回す(アニメーション API でないので Reduce Motion で止まらない)。
+        // task(id:) は停止・画面を離れたときに取り消される
+        .task(id: tickerRunning) {
+            while tickerRunning {
+                try? await Task.sleep(nanoseconds: Self.tickerIntervalMs * 1_000_000)
+                if Task.isCancelled { break }
+                ticker += 1
+            }
+        }
     }
 }
 

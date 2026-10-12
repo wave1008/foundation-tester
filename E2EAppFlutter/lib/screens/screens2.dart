@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ffi';
+import 'dart:ffi' hide Size; // Size は dart:ui(material)のものを使う
 
 import 'package:flutter/material.dart';
 
@@ -280,6 +280,20 @@ class _ScrollScreenState extends State<ScrollScreen> {
   String _tagSelected = '-';
   // 行の高さは 56 固定(itemBuilder の SizedBox)なので offset から直接割り出せる。
   int _topRowIndex = 0;
+  // ティッカーの周期。シナリオの静止の窓 0.5 秒より十分短く、動作中は窓あたり 5 回変わって静止が成立しない
+  static const _tickerInterval = Duration(milliseconds: 100);
+  // Timer で回す(アニメーション API でないのでアニメ無効設定で止まらない)。停止と dispose で cancel する
+  Timer? _ticker;
+  int _tickerCount = 0;
+
+  void _toggleTicker() {
+    if (_ticker != null) {
+      _ticker!.cancel();
+      setState(() => _ticker = null);
+    } else {
+      setState(() => _ticker = Timer.periodic(_tickerInterval, (_) => setState(() => _tickerCount++)));
+    }
+  }
 
   @override
   void initState() {
@@ -298,6 +312,7 @@ class _ScrollScreenState extends State<ScrollScreen> {
 
   @override
   void dispose() {
+    _ticker?.cancel();
     _controller.removeListener(_updateTopRow);
     _controller.dispose();
     _tagController.dispose();
@@ -310,13 +325,34 @@ class _ScrollScreenState extends State<ScrollScreen> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        TaggedText(Tags.txtRowSelected, 'selected=$_selected'),
+        // #txt_ticker は selected の横に置く(縦に足すとリストが縮む)
+        Row(
+          children: [
+            TaggedText(Tags.txtRowSelected, 'selected=$_selected'),
+            const SizedBox(width: 12),
+            TaggedText(Tags.txtTicker, 'ticker=$_tickerCount'),
+          ],
+        ),
         // #txt_scroll_top はボタンの横に置く(縦に足すとリストが縮み、契約の「#row_06 まで完全に見える」が崩れる)
         Row(
           children: [
             TaggedButton(Tags.btnScrollTop, '先頭へ', onTap: () => _controller.jumpTo(0)),
             const SizedBox(width: 12),
             TaggedText(Tags.txtScrollTop, 'top=${Tags.row(_topRowIndex + 1)}'),
+            const SizedBox(width: 8),
+            // 360dp 幅で 1 行に収めるため横パディングを詰める(TaggedButton は style を持たない)
+            tagged(
+              Tags.btnTickerToggle,
+              button: true,
+              ElevatedButton(
+                onPressed: _toggleTicker,
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(0, 48),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                child: Text(_ticker != null ? 'ティッカー停止' : 'ティッカー開始'),
+              ),
+            ),
           ],
         ),
         Expanded(

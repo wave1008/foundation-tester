@@ -23,7 +23,7 @@ class ディープリンクで画面遷移と受信記録が正しく働くこ�
                 }.expectation {
                     exist("#txt_home_marker")
                 }.action {
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.expectation {
                     select("#txt_last_deeplink").textIs("deeplink=fte2eflutter://screen/selector")
                 }
@@ -59,7 +59,7 @@ class ディープリンクで画面遷移と受信記録が正しく働くこ�
                 condition {
                     launchApp()
                 }.action {
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.expectation {
                     exist("#txt_last_deeplink")
                 }

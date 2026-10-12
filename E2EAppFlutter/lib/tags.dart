@@ -74,6 +74,8 @@ class Tags {
   static const txtRowSelected = 'txt_row_selected';
   static const btnScrollTop = 'btn_scroll_top';
   static const txtScrollTop = 'txt_scroll_top';
+  static const btnTickerToggle = 'btn_ticker_toggle';
+  static const txtTicker = 'txt_ticker';
   static const listRows = 'list_rows';
   static const rowCount = 40;
 

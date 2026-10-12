@@ -20,6 +20,8 @@ class 条件分岐とダイアログ操作が正しく働くこと {
         scenario {
             scene(1, "09.S0010: ダイアログの OK/キャンセルで結果が反映される") {
                 condition {
+                    // 「起動時ダイアログ」(auto_dialog)は永続で、ON が残るとダイアログ画面に入るたび自動で開き下地が木から消える
+                    clearAppData()
                     launchApp()
                 }.action {
                     tap("#nav_dialog")

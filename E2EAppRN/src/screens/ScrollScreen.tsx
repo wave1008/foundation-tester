@@ -1,8 +1,11 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FlatList, StyleSheet, View, ViewToken } from 'react-native';
 
 import { rowCount, tag, tagCount, tagLabel, Tags, row, rowLabel } from '../tags';
 import { EchoText, TaggedButton } from '../ui';
+
+// ティッカーの周期(ms)。シナリオの静止の窓 0.5 秒より十分短く、動作中は窓あたり 5 回変わって静止が成立しない
+const TICKER_INTERVAL_MS = 100;
 
 const ROWS = Array.from({ length: rowCount }, (_, i) => i + 1);
 const CAROUSEL = Array.from({ length: tagCount }, (_, i) => i + 1);
@@ -16,6 +19,17 @@ export function ScrollScreen() {
   const [tagSelected, setTagSelected] = useState('-');
   const [topRow, setTopRow] = useState(1);
   const listRef = useRef<FlatList<number>>(null);
+  const [tickerRunning, setTickerRunning] = useState(false);
+  const [ticker, setTicker] = useState(0);
+
+  // setInterval で回す(アニメーション API でないのでアニメ無効設定で止まらない)。停止・画面を離れると clear される
+  useEffect(() => {
+    if (!tickerRunning) {
+      return undefined;
+    }
+    const id = setInterval(() => setTicker(n => n + 1), TICKER_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [tickerRunning]);
 
   // #txt_scroll_top(先頭に一部でも見えている行。docs/ui-contract.md §スクロール画面)。
   // 行の実効高さが固定でない(minHeight + margin)ので offset からは割らず FlatList の可視判定を使う
@@ -33,7 +47,11 @@ export function ScrollScreen() {
 
   return (
     <View style={styles.container}>
-      <EchoText testID={Tags.txtRowSelected}>{`selected=${selected}`}</EchoText>
+      {/* #txt_ticker は selected の横に置く(縦に足すとリストが縮む) */}
+      <View style={styles.headerRow}>
+        <EchoText testID={Tags.txtRowSelected}>{`selected=${selected}`}</EchoText>
+        <EchoText testID={Tags.txtTicker}>{`ticker=${ticker}`}</EchoText>
+      </View>
       {/* #txt_scroll_top はボタンの横に置く(縦に足すとリストが縮み、契約の「#row_06 まで完全に見える」が崩れる) */}
       <View style={styles.headerRow}>
         <TaggedButton
@@ -42,6 +60,12 @@ export function ScrollScreen() {
           onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: false })}
         />
         <EchoText testID={Tags.txtScrollTop}>{`top=${row(topRow)}`}</EchoText>
+        <TaggedButton
+          testID={Tags.btnTickerToggle}
+          label={tickerRunning ? 'ティッカー停止' : 'ティッカー開始'}
+          style={styles.tickerButton}
+          onPress={() => setTickerRunning(r => !r)}
+        />
       </View>
       <FlatList
         testID={Tags.listRows}
@@ -102,6 +126,10 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
     gap: 8,
+  },
+  // 360 幅で 1 行に収めるため横パディングを詰める
+  tickerButton: {
+    paddingHorizontal: 10,
   },
   list: {
     flex: 1,

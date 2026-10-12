@@ -30,7 +30,7 @@ class ライフサイクルとコントロールが正しく働くこと {
                 condition {
                     launchApp()
                 }.action {
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                     tap("#btn_reset_persisted")
                 }.expectation {
                     select("#txt_launch_count").textIs("launch=1")
@@ -50,7 +50,7 @@ class ライフサイクルとコントロールが正しく働くこと {
                 }.expectation {
                     exist("#txt_home_marker")
                 }.action {
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.expectation {
                     select("#txt_session_count").textIs("session=0")
                     select("#txt_launch_count").textIs("launch=2")
@@ -67,7 +67,7 @@ class ライフサイクルとコントロールが正しく働くこと {
                 action {
                     terminateApp()
                     launchApp()
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.expectation {
                     select("#txt_launch_count").textIs("launch=3")
                     select("#txt_session_count").textIs("session=0")

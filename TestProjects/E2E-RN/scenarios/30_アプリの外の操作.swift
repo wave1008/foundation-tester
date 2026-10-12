@@ -19,7 +19,7 @@ class アプリの外へ出ても戻ってこられること {
                 condition {
                     launchApp()
                     exist("#txt_home_marker", requireVisible: false)
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.action {
                     tap("#btn_session_inc")
                 }.expectation {
@@ -44,7 +44,7 @@ class アプリの外へ出ても戻ってこられること {
                 condition {
                     launchApp()
                     exist("#txt_home_marker", requireVisible: false)
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.action {
                     tap("#btn_session_inc")
                 }.expectation {
@@ -72,7 +72,7 @@ class アプリの外へ出ても戻ってこられること {
                 }.action {
                     restartApp()
                     exist("#txt_home_marker", requireVisible: false)
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.expectation {
                     select("#txt_launch_count").textIsNot("launch=1")
                 }
@@ -83,7 +83,7 @@ class アプリの外へ出ても戻ってこられること {
                     installApp()
                     launchApp()
                     exist("#txt_home_marker", requireVisible: false)
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.expectation {
                     select("#txt_launch_count").textIs("launch=1")
                 }

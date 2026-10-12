@@ -26,6 +26,8 @@ class 条件分岐とダイアログ操作が正しく働くこと {
         scenario {
             scene(1, "09.S0010: ダイアログの OK/キャンセルで結果が反映される") {
                 condition {
+                    // 「起動時ダイアログ」(auto_dialog)は永続で、ON が残るとダイアログ画面に入るたび自動で開き下地が木から消える
+                    clearAppData()
                     launchApp()
                 }.expectation {
                     // 起動直後は a11y ツリー完成後もポインタ入力を一時的に取りこぼす実装が

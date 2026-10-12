@@ -3,8 +3,8 @@
 // flick を settle: false で撃って慣性を残し、waitForSettle で止まりきってから、
 // 1 秒置いても先頭に見えている行が変わらない(= 本当に止まった)ことを確かめる。
 // SwiftUI の慣性は最長 3.7 秒(UIScrollView の減速)。同じ内容の CMP 版(E2E-CMP/26)が最も厳しい条件を受け持つ。
-// 時間切れの対照は慣性で作る: E2E はアプリのアニメーションを止めて回す(Android は animator_duration_scale=0・
-// iOS は Reduce Motion)ので、進捗バーや回転インジケータは動かず対照にならない。スクロールの慣性はこの設定に左右されない
+// 時間切れの対照はティッカー(#txt_ticker。100ms ごとに文言が変わる)で作る: E2E はアプリのアニメーションを止めて回す
+// (Android は animator_duration_scale=0・iOS は Reduce Motion)ので進捗バー等は対照にならず、慣性は長さが保証されない
 
 import FTDSL
 
@@ -49,7 +49,7 @@ class 画面の静止を待てること {
         }
     }
 
-    @Test("慣性の途中で短く打ち切ると時間切れになり、throwsException: false は false を返して先へ進む")
+    @Test("ティッカーが動いている間は静止せず、throwsException: false は false を返して先へ進む。止めれば静止する")
     func S0020() {
         scenario {
             scene(1, "スクロール画面を開く") {
@@ -61,21 +61,21 @@ class 画面の静止を待てること {
                     exist("#row_01")
                 }
             }
-            scene(2, "settle: false の flick の直後に 0.6 秒だけ待つと、慣性が残っていて false が返る") {
+            scene(2, "ティッカーを動かしている間は静止しないので、時間内に止まらず false が返る") {
                 action {
-                    flickBottomToTop(scrollFrame: "#list_rows", settle: false)
-                    // 範囲を指定しない(要素を探す時間で上限を削らない)。窓 0.5 秒・上限 0.6 秒 = 撮り始めから 0.1 秒以内に
-                    // 動きが止まらない限り静止は成立しない(Android の View / Flutter は慣性が 0.6 秒前後で止まる回がある)
-                    writeMemo("early", waitForSettle(quietSeconds: 0.5, throwsException: false, waitSeconds: 0.6) ? "yes" : "no")
+                    tap("#btn_ticker_toggle")
+                    // 窓 0.5 秒・上限 1.5 秒 = 窓 3 回ぶん。ティッカーは 100ms ごとに変わるので静止は成立しない
+                    writeMemo("early", waitForSettle(quietSeconds: 0.5, throwsException: false, waitSeconds: 1.5) ? "yes" : "no")
                 }.expectation {
                     readMemo("early").thisIs("no")
                 }
             }
-            scene(3, "打ち切らずに待てば止まりきる") {
+            scene(3, "止めれば静止する") {
                 action {
-                    waitForSettle("#list_rows")
+                    tap("#btn_ticker_toggle")
+                    waitForSettle()
                 }.expectation {
-                    select("#txt_scroll_top").textIsNot("top=row_01")
+                    select("#txt_ticker").textIsNot("ticker=0")
                 }
             }
         }

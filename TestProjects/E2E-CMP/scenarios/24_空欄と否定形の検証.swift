@@ -26,6 +26,9 @@ class 空欄と否定形の検証 {
                 action {
                     tap("#field_single")
                     type("#field_single", "abc")
+                    // Android: 背の低い実機(Pixel 4a 851dp)ではキーボードで窓が縮み、送信/クリアの Row が木から消える。
+                    // 容器はスクロールしないので scroll: では届かず、閉じてから撃つ(03_テキスト入力 S0010 scene 4 と同じ)
+                    android { hideKeyboard() }
                     tap("#btn_input_clear")
                 }.expectation {
                     select("#txt_echo_single").textIs("single=")

@@ -178,6 +178,9 @@ fun buildMapScreen(activity: Activity, parent: ViewGroup): View {
     return v
 }
 
+// ティッカーの周期(ms)。シナリオの静止の窓 0.5 秒より十分短く、動作中は窓あたり 5 回変わって静止が成立しない
+private const val TICKER_INTERVAL_MS = 100L
+
 fun buildScrollScreen(activity: Activity, parent: ViewGroup): View {
     val v = activity.layoutInflater.inflate(R.layout.screen_scroll, parent, false)
     val selected = v.findViewById<TextView>(R.id.txt_row_selected)
@@ -203,6 +206,30 @@ fun buildScrollScreen(activity: Activity, parent: ViewGroup): View {
         list.scrollToPosition(0)
         list.post { updateTopRow() }
     }
+    // ティッカー: Handler で回す(アニメーション API でないので animator_duration_scale=0 で止まらない)。
+    // 停止と画面を離れる(detach)で postDelayed を取り消す
+    val tickerText = v.findViewById<TextView>(R.id.txt_ticker)
+    val tickerButton = v.findViewById<Button>(R.id.btn_ticker_toggle)
+    val tickerHandler = Handler(Looper.getMainLooper())
+    var tickerCount = 0
+    var tickerRunning = false
+    lateinit var tick: Runnable
+    tick = Runnable {
+        tickerCount++
+        tickerText.text = "ticker=$tickerCount"
+        tickerHandler.postDelayed(tick, TICKER_INTERVAL_MS)
+    }
+    fun setTicker(on: Boolean) {
+        tickerRunning = on
+        tickerHandler.removeCallbacks(tick)
+        if (on) tickerHandler.postDelayed(tick, TICKER_INTERVAL_MS)
+        tickerButton.text = if (on) "ティッカー停止" else "ティッカー開始"
+    }
+    tickerButton.setOnClickListener { setTicker(!tickerRunning) }
+    v.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+        override fun onViewAttachedToWindow(view: View) {}
+        override fun onViewDetachedFromWindow(view: View) { setTicker(false) }
+    })
     // 横スクロールの検証材料(scrollFrame)。縦リストと同居させることで
     // 「指定した領域だけが動く」を検証できる
     val tagSelected = v.findViewById<TextView>(R.id.txt_tag_selected)

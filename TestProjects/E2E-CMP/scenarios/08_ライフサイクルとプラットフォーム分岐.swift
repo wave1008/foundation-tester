@@ -19,7 +19,7 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                 condition {
                     launchApp()
                 }.action {
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                     tap("#btn_reset_persisted")
                 }.expectation {
                     select("#txt_launch_count").textIs("launch=1")
@@ -39,7 +39,7 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                 }.expectation {
                     exist("#txt_home_marker")
                 }.action {
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.expectation {
                     select("#txt_session_count").textIs("session=0")
                     select("#txt_launch_count").textIs("launch=2")
@@ -51,7 +51,7 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                 action {
                     terminateApp()
                     launchApp()
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.expectation {
                     select("#txt_launch_count").textIs("launch=3")
                     select("#txt_session_count").textIs("session=0")
@@ -67,7 +67,7 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                 condition {
                     launchApp()
                 }.action {
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.expectation {
                     exist("#txt_platform")
                 }

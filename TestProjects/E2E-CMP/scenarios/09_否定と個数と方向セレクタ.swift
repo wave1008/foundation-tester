@@ -12,7 +12,7 @@ class 否定と個数と方向セレクタが正しく動くこと {
     // 「本体より前に走った」ことを scene 1 で観測する
     func beforeEach() {
         launchApp()
-        tap("#nav_lifecycle")
+        tap("#nav_lifecycle", scroll: .down)
         tap("#btn_session_inc")
     }
 

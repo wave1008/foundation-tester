@@ -18,7 +18,7 @@ class アプリの外へ出ても戻ってこられること {
             scene(1, "セッションカウンタを上げておく") {
                 condition {
                     launchApp()
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.action {
                     tap("#btn_session_inc")
                 }.expectation {
@@ -42,7 +42,7 @@ class アプリの外へ出ても戻ってこられること {
             scene(1, "セッションカウンタを上げておく") {
                 condition {
                     launchApp()
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.action {
                     tap("#btn_session_inc")
                 }.expectation {
@@ -68,7 +68,7 @@ class アプリの外へ出ても戻ってこられること {
                     launchApp()
                 }.action {
                     restartApp()
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.expectation {
                     select("#txt_launch_count").textIsNot("launch=1")
                 }
@@ -78,7 +78,7 @@ class アプリの外へ出ても戻ってこられること {
                     removeApp()
                     installApp()
                     launchApp()
-                    tap("#nav_lifecycle")
+                    tap("#nav_lifecycle", scroll: .down)
                 }.expectation {
                     select("#txt_launch_count").textIs("launch=1")
                 }

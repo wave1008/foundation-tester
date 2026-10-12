@@ -319,8 +319,14 @@ iOS では XCUITest の2タッチを間欠的に取りこぼす(2026-09-24 実�
 | `#txt_row_selected` | Text | `selected=<v>` 初期 `selected=-` | 固定ヘッダ(スクロールしない) |
 | `#btn_scroll_top` | Button | `先頭へ` | 固定ヘッダ |
 | `#txt_scroll_top` | Text | `top=row_NN` 初期 `top=row_01` | **固定ヘッダ・`#btn_scroll_top` の横(同じ行)**。縦に積むとリストが縮み、下の「`#row_06`(CMP は `#row_08`)まで完全に見える」が崩れる。スクロールしても木から消えない。NN はリストの表示領域に**一部でも見えている最初の行**の番号(2 桁ゼロ埋め)。最小サポート画面でもリストと同時に木に載ること |
+| `#btn_ticker_toggle` | Button | 停止中 `ティッカー開始` / 動作中 `ティッカー停止` | **固定ヘッダ・`#btn_scroll_top` / `#txt_scroll_top` と同じ行**。押すたびに開始/停止。初期は停止。画面を離れると止まる |
+| `#txt_ticker` | Text | `ticker=<n>` 初期 `ticker=0` | **固定ヘッダ・`#txt_row_selected` の横(同じ行)**。動作中は 100ms ごとに n が +1(停止しても n は戻さない)。タイマー/コルーチンで回し、アニメーション API は使わない。リストの高さ・`#row_NN` の見え方を変えない(縦に積まない) |
 | `#list_rows` | (容器) | (ラベルなし) | 行を包むスクロール容器。**スコープセレクタ `#list_rows >> …` の対象** |
 | `#row_01` … `#row_40` | Button | `行 01` … `行 40` | 高さ 56dp 以上・ゼロ詰め・**`#list_rows` の子孫**。**初期表示で `#row_06` までは完全に見える**こと(下の横カルーセルぶんリストが短い。シナリオの `swipeElementToElement` が依存する)。**CMP はさらに `#row_08` まで完全に見えること** — CMP の S0030 は `#row_06` 起点だとドラッグ距離が足りず `#row_01` が消えない(実測)ため `#row_08` 起点で、この保証に乗っている |
+
+ティッカーは `waitForSettle` の時間切れを決定的に作る対照(慣性の長さや、アニメ無効設定
+(Android `animator_duration_scale=0`・iOS Reduce Motion)に依存しない)。周期 100ms は静止の窓 0.5 秒より
+十分短く、動作中は窓の中で必ず画面が変わる。
 
 行タップで `selected=row_NN`。`#row_40` は `scrollTo` の到達目標。**「スクロールした」ことの確認は
 `#txt_scroll_top` で行い、`notExist` で行を追い出して確かめない**(リストの再利用窓・キャッシュ範囲に
