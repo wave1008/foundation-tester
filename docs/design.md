@@ -5355,7 +5355,7 @@ false green になる(以前 install.sh のステップ7.7 が実際に出して
 
 **ブランチの手順書を受け手経路で検証する**: そのブランチをチェックアウトしたクローンの SKILL.md を
 エージェントに読ませ、そのクローンの `Scripts/` を使う(`FLEETEST_REF=<ブランチ>` は未クローンの clone 先を
-そのブランチに揃える保守者の口。受け手には案内しない)。
+そのブランチに揃える保守者の口。受け手には案内しない。指定すると `fleetest.channel` が外れる)。
 以下は外部パッケージ構成(`fleetest init`)の実装詳細。
 
 受け手が foundation-tester を clone せず、**自分の Swift パッケージが fleetest を SPM 依存として引いて**
@@ -5389,12 +5389,14 @@ false green になる(以前 install.sh のステップ7.7 が実際に出して
   ライブラリ化できないため「ソースビルド配布」前提(prebuilt をソースの無い別マシンへ運ぶと Runner/ 解決不能)。
 - **拡張**: `binaryPath` は実在しなければ PATH フォールバック(`binaryPathResolve.ts`)で外部パッケージ構成の
   CLI(自前ビルドの PATH 登録先)を発見する。
-- **版**: git タグ(履歴の目印)/ 拡張 package.json / プロトコル版(compatCheck)は独立。リリースは
-  `Scripts/release.sh`(docs/releasing.md)。**受け手の配布口は `main` の1本**で、版を固定する導線は
-  案内しない —— プラグイン配布を `#<tag>` で固定してもスキルが引く install.sh と初回 clone は `main` のままで、
-  ピンとして機能していなかった(プラグインは廃止済み)。`FLEETEST_REF` は保守者のブランチ検証口として残す(位置づけの
-  書き換えだけで、install.sh の detached ガードと `update-check.sh` の `pinned` verdict は残してある ——
-  受け手が自分で `git checkout <tag>` した clone を勝手に動かさないため)。
+- **版**: git タグ(受け手の配布口)/ 拡張 package.json / プロトコル版(compatCheck)は独立。リリースは
+  `Scripts/release.sh <version> --notes-file <path>`(docs/releasing.md)。**受け手の配布口は最新リリースタグ**
+  (`X.Y.Z` の semver 最大・注釈 = リリースノート)で、`main` は開発線。外部構成のクローンは最新タグに detached で置かれ、
+  `.git/config` の `fleetest.channel=release` で記録される(install.sh / update.sh が毎回揃える)。
+  SKILL.md ステップ0 の最初の `install.sh --align-release-only` が、clone 直後の `main` を最新リリースへ移して
+  手順書を読み直させる(手順書・スクリプト・ビルドを同じリリースに揃える)。clone 構成はブランチ追従・
+  channel 未設定の detached は `pinned` で動かさない(`update-check.sh` の `channel=`)。
+  版を固定する導線は受け手に案内しない。`FLEETEST_REF` は保守者のブランチ検証・退避の口で、指定すると channel は外れる(タグ・SHA を渡したクローンは以後 pinned として留まる。ブランチは外部構成では次の `FLEETEST_REF` 無しの実行で最新リリースへ戻るので、検証中は毎回渡す)。
 
 ## 16. エミュレータ操作の gRPC 制御(2026-07-25)
 

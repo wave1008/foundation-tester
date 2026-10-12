@@ -1,28 +1,35 @@
 # リリース手順(git タグ発行)
 
-**受け手の配布口は `main` の1本だけ**(2026-08-27 決定)。導入はプロンプト(「隣に clone して
-`../foundation-tester/.claude/skills/fleetest-setup/SKILL.md` に従ってセットアップして」)で、
-手順書もスクリプトもクローンから読むので、**版を固定する導線は受け手に案内しない**。
-(プラグインと `install-skill.sh` は廃止した。理由は docs/maintainer-notes.md §2.3。以前は
-案内していたピンが実効していなかった —— プラグインを `#<tag>` で固定してもスキル本文が引く
-install.sh と初回 clone は `main` のままで、*タグのスキル + main のツール* になっていた。)
-既定フローは `fleetest init --fleetest-path`(隣の clone)なので、SPM の
-`from:` を使う版指定もそもそも通らない。
+**受け手の配布口は「最新リリース」**。リリース = `X.Y.Z`(`v` 無しの semver)の git タグ、最新 = semver 最大。
+`main` は開発線で、受け手には直接届かない(壊れた途中状態を受け手が引かないため)。
 
-git タグ(semver)は**履歴の目印**として発行する —— 事故のときに「あの時点」へ戻る手掛かりで、
-受け手向けの導線ではない。配布そのものは git clone + `swift build` / `npm run install-local`
-(docs/user-docs/getting-started_ja.md)。
+- 導入はプロンプト(「隣に clone して `../foundation-tester/.claude/skills/fleetest-setup/SKILL.md` に
+  従ってセットアップして」)。clone 直後は `main` だが、SKILL.md ステップ0 の最初に
+  `install.sh --align-release-only` を実行し、クローンを最新リリースへ移してから**手順書を読み直す**
+  (手順書・スクリプト・ビルドを同じリリースに揃える。`main` の手順書のまま進むと、リリースの
+  スクリプトが知らない引数を渡して落ち得る)。
+- 外部構成(作業フォルダとクローンが別)のクローンは、最新リリースタグに detached で置かれ、
+  `.git/config` の `fleetest.channel=release` で「リリース追従」と記録される(追跡ファイルではないので
+  クローンを汚さない)。`install.sh` / `update.sh` は毎回このクローンを最新リリースへ移す
+  (ローカルの方が新しいタグなら下げない)。`update.sh` は版が変わったら間のリリースノートを
+  「What's new」として表示する。
+- 更新の通知は `Scripts/update-check.sh`(読み取りのみ)。`channel=release|branch|pinned` を出し、
+  release では `local_version` / `latest_version` を比べて新しいリリースがあれば `update-available`。
+  `--notes` でリリースノートを表示する(クローンを触らない)。VSCode 拡張は1日1回これを呼び、
+  「変更内容」ボタンでリリースノートを OUTPUT に出す。
+- clone 構成(保守者がクローンの中で作業)は `channel=branch`(ブランチ追従のまま)。受け手が手で別のタグを
+  checkout したクローン(`fleetest.channel` 未設定の detached)は `pinned` で、動かさない。
+- リモートランナー(`fleetest remote setup` / `Scripts/align.sh`)は手元のコミットへ揃える(リリース追従の対象外)。`remote setup` は手元の install.sh を送るので `--track-branch` を渡してリリースタグへ移さない(移すと「手元のスクリプト + リリースのバイナリ」になり新しい引数が通じない。`RemoteSetupPlan.installArgs`)。
 
-**受け手が自分で `git checkout <tag>` した clone は壊さない**: install.sh の detached ガードと
-`update-check.sh` の `pinned` verdict は残してある(案内しないことと、固定された状態を
-勝手に動かさないことは別)。壊れた `main` を引いた受け手を個別に逃がすときは、保守者が
-`FLEETEST_REF=<1つ前の sha>` を渡す(下記「保守者だけが使う口」)。
+配布そのものは git clone + `swift build` / `npm run install-local`(docs/user-docs/getting-started_ja.md)。
+プラグインと `install-skill.sh` は廃止済み(理由は docs/maintainer-notes.md §2.3)。既定フローは
+`fleetest init --fleetest-path`(隣の clone)なので、SPM の `from:` を使う版指定は通らない。
 
 ## 版は3つ(独立)
 
 | 版 | 置き場所 | いつ上げる | 参照する側 |
 |---|---|---|---|
-| **git タグ**(例 `0.1.0`) | `git tag` | fleetest 本体(CLI/Swift パッケージ)をリリースするたび | 保守者だけ(履歴の目印。受け手向けの導線には出さない) |
+| **git タグ**(例 `0.1.0`) | `git tag` | 受け手へ届けたい変更をまとめてリリースするたび | 受け手の配布口(最新 = semver 最大)。注釈 = リリースノート。`update-check.sh` / `install.sh` / `update.sh` が参照 |
 | **拡張の version** | `vscode-fleetest/package.json` | 拡張の挙動を変えたとき | VSIX(別途 publish。Marketplace 等) |
 | **プロトコル版** | `Sources/FTCore/ProtocolVersion.swift` | 拡張↔CLI の JSON/NDJSON 契約を**後方非互換に**変えたときだけ +1 | 起動時の版照合(compatCheck.ts) |
 
@@ -35,39 +42,47 @@ git タグ(semver)は**履歴の目印**として発行する —— 事故の�
 
 ```bash
 # 1. リリースしたい変更をすべてコミット済みにする(作業ツリーをクリーンに)
-# 2. ヘルパーでビルド+テスト→タグ作成(push はしない)
-Scripts/release.sh 0.1.0
+# 2. リリースノートを書く(Markdown。受け手が読む —— 何が変わったかを平易に)
+# 3. ヘルパーでビルド+テスト→タグ作成(push はしない)
+Scripts/release.sh 0.1.0 --notes-file /path/to/notes.md
 
-# 3. 問題なければ push(= 公開)
+# 4. 問題なければ push(= 公開。受け手の次の更新から届く)
 git push origin 0.1.0
-#   または最初から: Scripts/release.sh 0.1.0 --push
+#   または最初から: Scripts/release.sh 0.1.0 --notes-file /path/to/notes.md --push
 ```
 
-`Scripts/release.sh` がやること: semver 検証 → 作業ツリーがクリーンか確認 → タグ重複チェック →
-`swift build` + `swift test`(合否は exit code) → 注釈付きタグ作成 →(`--push` 時のみ)push。
+`Scripts/release.sh` がやること: semver 検証 → **既存の最新より大きい版かの確認(小さい・同じ版は断る)** →
+作業ツリーがクリーンか確認 → タグ重複チェック → `swift build` + `swift test`(合否は exit code) →
+注釈付きタグ作成(**注釈 = `--notes-file` の中身 = リリースノート**)→(`--push` 時のみ)push。
 
 ## 発行後の確認
 
 ```bash
 git clone https://github.com/wave1008/foundation-tester.git /tmp/fleetest-check
-cd /tmp/fleetest-check && git checkout 0.1.0 && swift build && .build/debug/fleetest --help | head -3
+cd /tmp/fleetest-check && git checkout <version> && swift build && .build/debug/fleetest --help | head -3
+git tag -l --format='%(contents)' <version>   # 注釈がリリースノートとして読めること
+# (update-check.sh --notes はリリース追従のクローン = fleetest.channel=release でしか注釈を出さない)
 ```
 
 受け手の利用フローは docs/user-docs/getting-started_ja.md を参照。
 
 ## 保守者だけが使う口(`FLEETEST_REF`)
 
-`FLEETEST_REF=<tag/branch/sha>` は**未マージのブランチを受け手経路で検証するための口**で、
-受け手向けの版固定手段ではない(README・user-docs には出さない)。ブランチの手順書を検証するには、
+`FLEETEST_REF=<tag/branch/sha>` は**未マージのブランチを受け手経路で検証する・特定版へ退避する保守者の口**で、
+受け手向けの手段ではない(README・user-docs には出さない)。指定すると `fleetest.channel` は外れる(タグ・SHA を渡したクローンは以後 pinned として留まる。ブランチは外部構成では次の `FLEETEST_REF` 無しの実行で最新リリースへ戻るので、検証中は毎回渡す)。ブランチの手順書を検証するには、
 **そのブランチを clone してその SKILL.md を読ませ**、install.sh にも同じ ref を渡す。
-揃えないと **手順書はブランチ・clone は `main`** になり、「直したはずの挙動を確認できない」。
+揃えないと **手順書はブランチ・clone は最新リリース** になり、「直したはずの挙動を確認できない」。
 
 ```bash
 git clone --branch feat/my-branch https://github.com/wave1008/foundation-tester.git ../foundation-tester
 FLEETEST_REF=feat/my-branch bash ../foundation-tester/Scripts/install.sh --work-dir <作業フォルダ>
 ```
 
-壊れた `main` を引いた受け手を個別に逃がすときも同じ口を使う(`FLEETEST_REF=<1つ前の sha>`)。
+## 壊れたリリースを出したとき
+
+**正道は修正版のパッチリリースを打つこと**(例 `0.1.1`)。最新 = semver 最大なので、受け手は次の更新で
+修正版へ移る。タグを消して打ち直さない(すでに取り込んだ受け手のクローンは、ローカルの方が新しいタグなので
+下げられず、修正が届かない)。受け手を個別に逃がす必要があるときだけ、保守者が `FLEETEST_REF=<sha>` を渡す。
 
 ## リポジトリの引っ越し(owner / repo 名を変える)
 

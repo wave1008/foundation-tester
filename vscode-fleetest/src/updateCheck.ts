@@ -38,14 +38,21 @@ const SCRIPT_TIMEOUT_MS = 30_000;
 /** 手動チェックの二重起動ガード(コマンドの連打)。自動チェックは1起動1回なので不要。 */
 let manualCheckInFlight = false;
 
+// localVersion / latestVersion は release チャンネルのときだけ入る(branch は update-check.sh が出さない)。
+// localVersion は空のことがある(版を読めないクローン)。
+export interface VersionFields {
+  readonly localVersion: string;
+  readonly latestVersion: string;
+}
+
 export type UpdateDecision =
   | { readonly kind: "silent"; readonly reason: string }
-  | { readonly kind: "notify"; readonly localHead: string; readonly remoteHead: string };
+  | ({ readonly kind: "notify"; readonly localHead: string; readonly remoteHead: string } & VersionFields);
 
 /** 手動チェックの結果。**黙る選択肢が無い**ので、自動側の silent がここでは4通りに割れる。 */
 export type ManualOutcome =
-  | { readonly kind: "available"; readonly localHead: string; readonly remoteHead: string }
-  | { readonly kind: "upToDate" }
+  | ({ readonly kind: "available"; readonly localHead: string; readonly remoteHead: string } & VersionFields)
+  | { readonly kind: "upToDate"; readonly localVersion: string }
   | { readonly kind: "pinned"; readonly reason: string }
   | { readonly kind: "unknown"; readonly reason: string };
 
@@ -60,6 +67,16 @@ export function parseKeyValues(stdout: string): Record<string, string> {
     fields[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
   }
   return fields;
+}
+
+/** 「現在」の表示。版が読めなければ local_head の先頭8桁。 */
+export function describeCurrent(localVersion: string, localHead: string): string {
+  return localVersion || localHead.slice(0, 8);
+}
+
+/** 「変更内容」ボタンは release チャンネル(latest_version あり)だけ。branch には注釈が無い。 */
+export function showsNotesButton(latestVersion: string): boolean {
+  return latestVersion.length > 0;
 }
 
 /** 前回チェックからの経過で、今回実行するかを決める。未記録なら実行する。 */
@@ -88,7 +105,13 @@ export function decideUpdateNotice(
   if (remoteHead === dismissedHead) {
     return { kind: "silent", reason: "dismissed" };
   }
-  return { kind: "notify", localHead, remoteHead };
+  return {
+    kind: "notify",
+    localHead,
+    remoteHead,
+    localVersion: fields.local_version ?? "",
+    latestVersion: fields.latest_version ?? "",
+  };
 }
 
 /** 手動チェックの出力を解釈する。却下済みの版でも通知する(押した本人に隠す理由が無い)。 */
@@ -97,7 +120,7 @@ export function decideManualOutcome(fields: Record<string, string>): ManualOutco
   const reason = fields.reason ?? "";
   switch (verdict) {
     case "up-to-date":
-      return { kind: "upToDate" };
+      return { kind: "upToDate", localVersion: fields.local_version ?? "" };
     case "pinned":
       return { kind: "pinned", reason };
     case "update-available": {
@@ -105,7 +128,13 @@ export function decideManualOutcome(fields: Record<string, string>): ManualOutco
       if (remoteHead.length === 0) {
         return { kind: "unknown", reason: "remote_head missing" };
       }
-      return { kind: "available", localHead: fields.local_head ?? "", remoteHead };
+      return {
+        kind: "available",
+        localHead: fields.local_head ?? "",
+        remoteHead,
+        localVersion: fields.local_version ?? "",
+        latestVersion: fields.latest_version ?? "",
+      };
     }
     default:
       // unknown(reason 付き)と、そもそも verdict 行が無い場合(スクリプトが古い等)。
@@ -149,7 +178,7 @@ export async function checkFleetestUpdate(deps: UpdateCheckDeps): Promise<void> 
 
   let stdout: string;
   try {
-    stdout = await runScript(script, toolRoot, workspaceRoot, registerChild);
+    stdout = (await runScript(script, ["--tool-root", toolRoot], workspaceRoot, registerChild)).stdout;
   } catch (error) {
     outputChannel.appendLine(
       t("update.check.spawnFailedLog", { error: error instanceof Error ? error.message : String(error) }),
@@ -165,7 +194,7 @@ export async function checkFleetestUpdate(deps: UpdateCheckDeps): Promise<void> 
     return;
   }
 
-  await notifyAvailable(decision, { outputChannel, globalState, dismissedKey });
+  await notifyAvailable(decision, { outputChannel, globalState, dismissedKey, script, toolRoot, workspaceRoot, registerChild });
 }
 
 /**
@@ -192,12 +221,12 @@ export async function checkFleetestUpdateNow(deps: Omit<UpdateCheckDeps, "enable
 
   let stdout: string;
   try {
-    const running = runScript(script, toolRoot, workspaceRoot, registerChild);
+    const running = runScript(script, ["--tool-root", toolRoot], workspaceRoot, registerChild);
     // ls-remote は1秒前後かかる。押した直後に何も起きないと二度押しされるので進行を出す。
     // **失敗を握った Promise を渡す** ―― 生の Promise が reject すると、拒否を拾わない実装では
     // メッセージが消えないまま unhandled rejection になる
     vscode.window.setStatusBarMessage(t("update.manual.checking"), running.catch(() => undefined));
-    stdout = await running;
+    stdout = (await running).stdout;
   } catch (error) {
     void vscode.window.showErrorMessage(
       t("update.check.spawnFailedLog", { error: error instanceof Error ? error.message : String(error) }),
@@ -212,7 +241,11 @@ export async function checkFleetestUpdateNow(deps: Omit<UpdateCheckDeps, "enable
   const outcome = decideManualOutcome(parseKeyValues(stdout));
   switch (outcome.kind) {
     case "upToDate":
-      void vscode.window.showInformationMessage(t("update.manual.upToDate"));
+      void vscode.window.showInformationMessage(
+        outcome.localVersion
+          ? t("update.manual.upToDateVersion", { version: outcome.localVersion })
+          : t("update.manual.upToDate"),
+      );
       return;
     case "pinned":
       void vscode.window.showInformationMessage(t("update.manual.pinned", { reason: outcome.reason }));
@@ -222,8 +255,11 @@ export async function checkFleetestUpdateNow(deps: Omit<UpdateCheckDeps, "enable
       return;
     case "available":
       await notifyAvailable(
-        { kind: "notify", localHead: outcome.localHead, remoteHead: outcome.remoteHead },
-        { outputChannel, globalState, dismissedKey: stateKey(STATE_DISMISSED_HEAD, toolRoot) },
+        { ...outcome, kind: "notify" },
+        {
+          outputChannel, globalState, dismissedKey: stateKey(STATE_DISMISSED_HEAD, toolRoot),
+          script, toolRoot, workspaceRoot, registerChild,
+        },
       );
   }
 }
@@ -235,18 +271,34 @@ async function notifyAvailable(
     outputChannel: vscode.OutputChannel;
     globalState: vscode.Memento;
     dismissedKey: string;
+    script: string;
+    toolRoot: string;
+    workspaceRoot: string;
+    registerChild: (proc: PipeProcess) => void;
   },
 ): Promise<void> {
+  const release = showsNotesButton(decision.latestVersion);
+  const current = describeCurrent(decision.localVersion, decision.localHead);
   ctx.outputChannel.appendLine(
-    t("update.check.availableLog", {
-      local: decision.localHead.slice(0, 8),
-      remote: decision.remoteHead.slice(0, 8),
-    }),
+    release
+      ? t("update.check.availableReleaseLog", { latest: decision.latestVersion, current })
+      : t("update.check.availableLog", {
+          local: decision.localHead.slice(0, 8),
+          remote: decision.remoteHead.slice(0, 8),
+        }),
   );
   const open = t("update.notice.openSettingsButton");
+  const notes = t("update.notice.notesButton");
   const dismiss = t("update.notice.dismissButton");
-  const picked = await vscode.window.showInformationMessage(t("update.notice.message"), open, dismiss);
-  if (picked === open) {
+  const message = release
+    ? t("update.notice.releaseMessage", { latest: decision.latestVersion, current })
+    : t("update.notice.message");
+  const picked = release
+    ? await vscode.window.showInformationMessage(message, open, notes, dismiss)
+    : await vscode.window.showInformationMessage(message, open, dismiss);
+  if (picked === notes) {
+    await showReleaseNotes(ctx);
+  } else if (picked === open) {
     // 更新の実行口は設定タブに1つだけ置く(通知に手順を書くと、実行手段が2箇所に散る)。
     await vscode.commands.executeCommand("fleetest.showDeviceMonitor", "settings");
   } else if (picked === dismiss) {
@@ -254,17 +306,45 @@ async function notifyAvailable(
   }
 }
 
-/** bash で update-check.sh を実行し stdout を返す。終了コードは見ない(判定は verdict= 行)。 */
+/**
+ * `update-check.sh --notes` の結果(人向けテキスト)を OUTPUT に書いて前面に出す。
+ * 実行ログは OUTPUT に置く規則(webview・新しいエディタには出さない)。失敗(終了コード非0)はエラー通知。
+ */
+async function showReleaseNotes(ctx: {
+  outputChannel: vscode.OutputChannel;
+  script: string;
+  toolRoot: string;
+  workspaceRoot: string;
+  registerChild: (proc: PipeProcess) => void;
+}): Promise<void> {
+  try {
+    const result = await runScript(
+      ctx.script, ["--tool-root", ctx.toolRoot, "--notes"], ctx.workspaceRoot, ctx.registerChild);
+    if (result.exitCode !== 0) {
+      void vscode.window.showErrorMessage(t("update.notes.failed"));
+      return;
+    }
+    ctx.outputChannel.appendLine(t("update.notes.header"));
+    ctx.outputChannel.appendLine(result.stdout.trimEnd());
+    ctx.outputChannel.show(true);
+  } catch (error) {
+    void vscode.window.showErrorMessage(
+      t("update.check.spawnFailedLog", { error: error instanceof Error ? error.message : String(error) }),
+    );
+  }
+}
+
+/** bash で update-check.sh を実行する。判定は verdict= 行で見る(--notes だけ終了コードも見る)。 */
 function runScript(
   script: string,
-  toolRoot: string,
+  args: readonly string[],
   cwd: string,
   registerChild: (proc: PipeProcess) => void,
-): Promise<string> {
+): Promise<{ stdout: string; exitCode: number | null }> {
   return new Promise((resolve, reject) => {
     let proc: PipeProcess;
     try {
-      proc = spawn("bash", [script, "--tool-root", toolRoot], {
+      proc = spawn("bash", [script, ...args], {
         cwd,
         shell: false,
         env: childEnv(),
@@ -288,9 +368,9 @@ function runScript(
       clearTimeout(timer);
       reject(error);
     });
-    proc.on("close", () => {
+    proc.on("close", (exitCode) => {
       clearTimeout(timer);
-      resolve(Buffer.concat(chunks).toString("utf8"));
+      resolve({ stdout: Buffer.concat(chunks).toString("utf8"), exitCode });
     });
   });
 }

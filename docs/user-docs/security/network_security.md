@@ -105,8 +105,8 @@ To redirect only the initial clone, `FLEETEST_REPO_URL=<mirror URL>` also works.
 
 ### Pinning a version
 
-There is **no supported way for a user to pin a version** — distribution is a single `main`.
-On a closed network you do not need one: **how often you advance `main` on the mirror is itself
+There is **no supported way for a user to pin a version** — distribution is the latest release tag.
+On a closed network you do not need one: **when you add a new release tag to the mirror is itself
 the internal release gate**, so you control which revision is taken without changing anything the
 user does.
 

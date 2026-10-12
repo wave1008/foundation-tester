@@ -4,8 +4,9 @@
 #   bash <TOOL_ROOT>/Scripts/update.sh(pull 後に自分自身を再 exec するので、古いクローンの版から始めてよい)
 #   bash <TOOL_ROOT>/Scripts/update.sh [--work-dir <dir>] [--tool-root <dir>] [--skip-extension] [--skip-skills]
 #
-# やること: install.sh(pull → swift build → 拡張 → .mcp.json → 検証ゲート)を再実行し、
-#           更新固有の作業を足す: fleetest project sync(スキルのコピーの更新は install.sh のステップ7.8)。
+# やること: install.sh(最新リリースへ移動 → swift build → 拡張 → .mcp.json → 検証ゲート)を再実行し、
+#           更新固有の作業を足す: fleetest project sync(スキルのコピーの更新は install.sh のステップ7.8)・
+#           版が変わったら新しいリリースの注釈(What's new)の表示。
 #           **先に update-check.sh で判定し、up-to-date なら何もせず終える**(全工程は更新が
 #           無くても約30秒かかる。壊れた導入を入れ直すときは --force)。
 # やらないこと: プロファイルの作り直し(既存を尊重)・受け手パッケージの作成(それは install.sh)。
@@ -43,7 +44,7 @@ Usage: update.sh [options]
   --verbose          Also print the raw swift build / npm logs to the screen
   -h, --help         This help
 
-What it does: re-runs install.sh (git pull → swift build → extension → .mcp.json → skill copies → verification gates)
+What it does: re-runs install.sh (move to the latest release, or git pull on a branch → swift build → extension → .mcp.json → skill copies → verification gates)
          + fleetest project sync
          **Exits without doing anything when there is no update** (decided by update-check.sh; use --force to run everything)
 EOF
@@ -92,6 +93,18 @@ if [ -z "$TOOL_ROOT" ]; then
 fi
 
 # 対の実装: Scripts/install.sh(共有する仕組みが無いので同一関数を複製。片方だけ変えない)
+# $1 が $2 より新しいとき 0(semver の数値順。install.sh / update-check.sh と同一本文)
+semver_newer() {
+  [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -t. -k1,1n -k2,2n -k3,3n | awk '{ last = $0 } END { print last }')" = "$1" ]
+}
+
+# いまの HEAD の X.Y.Z タグ(無ければ空)
+current_release_tag() {
+  # describe --match はグロブなので 1.0.0-rc1 も拾う。install.sh の head_release_tag と同じ厳密な X.Y.Z で選ぶ
+  git -C "$TOOL_ROOT" tag --points-at HEAD 2>/dev/null | awk '/^[0-9]+\.[0-9]+\.[0-9]+$/' \
+    | sort -t. -k1,1n -k2,2n -k3,3n | awk '{ last = $0 } END { if (last != "") print last }'
+}
+
 dyld_failure_line() {
   local line
   # 終了コードは「当たった行があるか」で自分で決める(パイプの最後の awk は常に 0 = pipefail の有無に依存させない)
@@ -111,7 +124,14 @@ dyld_failure_message() {
 # 従来どおり進む。取りこぼしを疑うとき(前回が途中で失敗した等)は --force
 # **再 exec された2周目はこの判定を通さない** —— 直前に pull しているので必ず up-to-date になり、
 # ここで抜けると project sync(= update 固有の工程)が丸ごと飛ぶ
-if [ "${FT_UPDATE_REEXEC:-0}" != "1" ] \
+# **外部構成でブランチを追っているクローンも通さない** —— 上流のブランチが動いていなければ up-to-date に
+# なり、install.sh のリリース追従への移行(外部構成は最新リリースへ移す)に永久に届かない
+on_untracked_branch=0
+if [ "$WORK_DIR" != "$TOOL_ROOT" ] && git -C "$TOOL_ROOT" symbolic-ref -q HEAD >/dev/null 2>&1 \
+   && [ "$(git -C "$TOOL_ROOT" config --get fleetest.channel 2>/dev/null || true)" != "release" ]; then
+  on_untracked_branch=1
+fi
+if [ "${FT_UPDATE_REEXEC:-0}" != "1" ] && [ "$on_untracked_branch" = "0" ] \
    && [ "$FORCE" = "0" ] && [ "$ALLOW_PULL" = "1" ] && [ -f "$TOOL_ROOT/Scripts/update-check.sh" ]; then
   check_out="$(bash "$TOOL_ROOT/Scripts/update-check.sh" --tool-root "$TOOL_ROOT" 2>/dev/null || true)"
   case "$check_out" in
@@ -151,10 +171,16 @@ fi
 
 # ---- 1〜2・5: install.sh に委譲(pull・build・拡張・.mcp.json・検証ゲート・ログ) -------
 # --skip-project: 既存の TestProjects/ を触らない(更新でプロジェクトを作り直さない)
-echo "==> Re-running install.sh (pull → build → extension → .mcp.json → verification)"
+echo "==> Re-running install.sh (latest release / pull → build → extension → .mcp.json → verification)"
 # --no-doctor が既定: 結果表に Apple Intelligence の warn 行が出るので情報が重複し、8秒かかる
 [ "$DO_DOCTOR" = "1" ] || PASS_THROUGH+=(--no-doctor)
 HEAD_BEFORE_INSTALL="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)"
+# What's new の基準になる更新前の版。再 exec の2周目は HEAD が既に動いているので1周目の値を引き継ぐ
+if [ "${FT_UPDATE_REEXEC:-0}" = "1" ]; then
+  VERSION_BEFORE="${FT_UPDATE_VERSION_BEFORE:-}"
+else
+  VERSION_BEFORE="$(current_release_tag)"
+fi
 bash "$TOOL_ROOT/Scripts/install.sh" --work-dir "$WORK_DIR" --skip-project --no-next-steps \
   "${PASS_THROUGH[@]+"${PASS_THROUGH[@]}"}"
 INSTALL_STATUS=$?
@@ -175,7 +201,7 @@ if [ "${FT_UPDATE_REEXEC:-0}" != "1" ] && [ -f "$0" ] \
    && [ "$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$(basename "$0")" = "$TOOL_ROOT/Scripts/update.sh" ]; then
   echo ""
   echo "==> The clone moved to a new revision — restarting with the updated update.sh"
-  export FT_UPDATE_REEXEC=1
+  export FT_UPDATE_REEXEC=1 FT_UPDATE_VERSION_BEFORE="$VERSION_BEFORE"
   exec bash "$0" "${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}"
 fi
 
@@ -199,6 +225,32 @@ if [ -x "$FT" ]; then
   else
     printf '%s\n' "$sync_out"
     echo "⚠️ project sync failed (check it by hand)"
+  fi
+fi
+
+# ---- What's new: 版が変わったとき、旧版より新しく新版以下のリリースの注釈をローカルのタグから読む ----
+# install.sh が fetch 済み。再 exec しても1周目の値を引き継ぐので表示は1回だけ。読めなければ黙る
+VERSION_AFTER="$(current_release_tag)"
+if [ -n "$VERSION_AFTER" ] && [ "$VERSION_AFTER" != "$VERSION_BEFORE" ]; then
+  whats_new=""
+  while IFS= read -r t; do
+    [ -n "$t" ] || continue
+    # 旧版が無い(ブランチ追従からの移行)ときは新版の注釈だけ
+    if [ -n "$VERSION_BEFORE" ]; then
+      semver_newer "$t" "$VERSION_BEFORE" || continue
+    elif [ "$t" != "$VERSION_AFTER" ]; then
+      continue
+    fi
+    if semver_newer "$t" "$VERSION_AFTER"; then continue; fi
+    body="$(git -C "$TOOL_ROOT" tag -l --format='%(contents)' "$t" 2>/dev/null)"
+    case "${body%%$'\n'*}" in "fleetest $t") body="${body#*$'\n'}" ;; esac
+    body="${body#"${body%%[![:space:]]*}"}"
+    whats_new="$whats_new## $t"$'\n'"$body"$'\n\n'
+  done <<<"$(git -C "$TOOL_ROOT" tag -l 2>/dev/null | awk '/^[0-9]+\.[0-9]+\.[0-9]+$/' | sort -t. -k1,1n -k2,2n -k3,3n -r)"
+  if [ -n "$whats_new" ]; then
+    echo ""
+    echo "──────── What's new (${VERSION_BEFORE:-branch} → $VERSION_AFTER) ────────"
+    printf '%s' "$whats_new"
   fi
 fi
 

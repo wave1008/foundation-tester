@@ -685,12 +685,12 @@ function applyUpdateStatus(message) {
       updateStatus.textContent = t('wvMonitor2.update.running');
       break;
     case 'up-to-date':
-      updateStatus.textContent = t('wvMonitor2.update.upToDate', { local: shortSha(message.localHead) });
+      updateStatus.textContent = t('wvMonitor2.update.upToDate', { local: message.localVersion || shortSha(message.localHead) });
       break;
     case 'update-available':
       updateStatus.textContent = t('wvMonitor2.update.available', {
-        local: shortSha(message.localHead),
-        remote: shortSha(message.remoteHead),
+        local: message.localVersion || shortSha(message.localHead),
+        remote: message.latestVersion || shortSha(message.remoteHead),
       });
       updateStatus.classList.add('available');
       break;

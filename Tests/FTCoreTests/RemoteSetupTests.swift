@@ -23,6 +23,7 @@ final class RemoteSetupTests: XCTestCase {
                 "--skip-mcp",
                 "--skip-entry-point",
                 "--no-next-steps",
+                "--track-branch",
             ])
     }
 

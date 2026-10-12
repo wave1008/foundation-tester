@@ -1245,6 +1245,8 @@ Scripts/install.sh             **そのまま流用**(外部構成で呼ぶ):
                                `--work-dir <base>/users/<issuer>/work --tool-root <base>/foundation-tester --name <project>`
                                `--skip-extension --skip-mcp --skip-entry-point`
                                `--no-next-steps`(入口ファイルは人が開く機械にだけ要る)
+                               `--track-branch`(送るのは手元の install.sh なので、クローンを
+                               リリースタグへ移さない。直後の align が手元のコミットへ揃える)
                                **--skip-project は使えない**(WORK_DIR に Package.swift が要る。§12)。
                                --tool-root を明示で渡す(既定の <work-dir>/../foundation-tester は
                                work が2階層深いため RemoteLayout.toolRoot と一致しない。§18.2)

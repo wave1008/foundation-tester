@@ -16,7 +16,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { childEnv } from "./childEnv";
 import { t } from "./i18n";
-import { parseKeyValues } from "./updateCheck";
+import { describeCurrent, parseKeyValues } from "./updateCheck";
 import { resolveToolRoot } from "./toolRootResolve";
 
 /** 設定タブに出す更新の状態。`unavailable` はクローンやスクリプトが見つからない場合。 */
@@ -35,6 +35,9 @@ export interface UpdateStatusMessage {
   /** 短縮 sha(表示用)。取得できないときは空。 */
   readonly localHead: string;
   readonly remoteHead: string;
+  /** release チャンネルのときだけ入る版(X.Y.Z)。無ければ空で、表示は sha に落ちる。 */
+  readonly localVersion: string;
+  readonly latestVersion: string;
   /** update-check.sh の reason=(英語。契約はスクリプト冒頭)。 */
   readonly reason: string;
 }
@@ -76,11 +79,13 @@ export class MonitorUpdateController {
         : "unknown";
     const localHead = fields.local_head ?? "";
     const remoteHead = fields.remote_head ?? "";
-    this.postStatus(state, localHead, remoteHead, fields.reason ?? "");
+    const localVersion = fields.local_version ?? "";
+    const latestVersion = fields.latest_version ?? "";
+    this.postStatus(state, localHead, remoteHead, fields.reason ?? "", localVersion, latestVersion);
     if (options?.prompt && state === "update-available") {
       const proceed = t("monitor.update.confirmButton");
       const picked = await vscode.window.showInformationMessage(
-        t("monitor.update.foundMessage", { local: localHead.slice(0, 8), remote: remoteHead.slice(0, 8) }),
+        t("monitor.update.foundMessage", { local: describeCurrent(localVersion, localHead), remote: latestVersion || remoteHead.slice(0, 8) }),
         { modal: true },
         proceed,
       );
@@ -169,8 +174,12 @@ export class MonitorUpdateController {
     return fs.existsSync(script) ? script : undefined;
   }
 
-  private postStatus(state: UpdateState, localHead = "", remoteHead = "", reason = ""): void {
-    const message: UpdateStatusMessage = { type: "updateStatus", state, localHead, remoteHead, reason };
+  private postStatus(
+    state: UpdateState, localHead = "", remoteHead = "", reason = "", localVersion = "", latestVersion = "",
+  ): void {
+    const message: UpdateStatusMessage = {
+      type: "updateStatus", state, localHead, remoteHead, localVersion, latestVersion, reason,
+    };
     this.deps.post(message);
   }
 

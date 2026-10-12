@@ -43,7 +43,7 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 
 6. AIアシスタントへ「fleetest doctor を実行して結果を報告して」と指示し、エラーが出ないことを確かめます
 
-インストールすると、作業フォルダの隣に `foundation-tester` フォルダができます。このドキュメントで手で打つコマンドの
+インストールすると、作業フォルダの隣に `foundation-tester` フォルダができ、**最新のリリース**が入ります。このドキュメントで手で打つコマンドの
 `../foundation-tester/.build/debug/fleetest` は、その中の `fleetest` を指します。
 
 インストールが済んだら、[クイックスタート](quick-start_ja.md)でテストを作って実行してみましょう。

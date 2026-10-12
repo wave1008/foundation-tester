@@ -17,7 +17,7 @@ them through the steps in [Getting Started](../../getting-started.md) (ask your 
 every update refreshes the copies (restart Claude Code after the copies are refreshed). You call
 them by name alone, such as `/fleetest-scenario`.
 
-`main` is the only distribution channel — there is no version-pinning route. Pick up fixes
+The latest release is the only distribution channel — there is no version-pinning route. Pick up fixes
 through [Update](../../update.md) or `/fleetest-update`.
 
 ## Skills
@@ -25,7 +25,7 @@ through [Update](../../update.md) or `/fleetest-update`.
 | Skill | Command | Purpose |
 |---|---|---|
 | `fleetest-setup` | `/fleetest-setup` | Full initial setup: clone if needed, build, verify the environment, and install the VS Code extension (it creates no test project or profiles; use `fleetest-profiles`) |
-| `fleetest-update` | `/fleetest-update` | Pull the latest upstream fixes: git pull, resync `TestProjects/`/`Package.swift`, rebuild, reinstall the VS Code extension, and reload |
+| `fleetest-update` | `/fleetest-update` | Take in the latest release: switch to it, resync `TestProjects/`/`Package.swift`, rebuild, reinstall the VS Code extension, and reload |
 | `fleetest-profiles` | `/fleetest-profiles` | Create app and run profiles together in one pass (asks for iOS/Android and the app's display name/ID, then picks or creates a device) |
 | `fleetest-scenario` | `/fleetest-scenario` | Author one Swift DSL scenario (`.swift`) in an already set-up project, from live exploration through compile verification |
 | `fleetest-mcp` | `/fleetest-mcp` | Register just the MCP server (`fleetest-mcp`) with Claude Code — no VS Code extension, project creation, or profiles |

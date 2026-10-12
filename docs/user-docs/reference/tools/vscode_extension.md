@@ -182,10 +182,12 @@ selector is shown as not applicable.
 
 The Settings tab's **"Updates"** section is the one place updates are checked and applied:
 
-- **"Check for updates"** reports whether the tool is up to date, an update is available, the repo is
-  version-pinned, or the check failed — read-only, no repository changes.
-- **"Update now"** appears next to the tab only when an update is available; it pulls, rebuilds, and
-  reinstalls the extension, then prompts to reload the window.
+- **"Check for updates"** reports whether the tool is up to date, a new release is available, the repo is
+  version-pinned, or the check failed — read-only, no repository changes. When a new release is available it
+  says "A new release X.Y.Z is available (current A.B.C)", and the **"What's changed"** button shows that
+  release's notes in OUTPUT.
+- **"Update now"** appears next to the tab only when an update is available; it switches to the latest
+  release, rebuilds, and reinstalls the extension, then prompts to reload the window.
 - Command **"fleetest: Check for Updates"** (`fleetest.checkForUpdate`) always returns a result even when the
   once-a-day interval, a dismissed version, or `fleetest.updateCheck: off` would otherwise silence
   the automatic check.

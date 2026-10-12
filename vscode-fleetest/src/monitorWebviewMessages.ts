@@ -388,7 +388,8 @@ export type MonitorToWebviewMessage =
   // 判定そのものは Scripts/update-check.sh(拡張は解釈するだけ)。対向: settingsTab.js の applyUpdate。
   // **実行ログは webview に送らない**(VSCode の OUTPUT へ出す。monitorUpdateController.ts 冒頭)。
   | { readonly type: "updateStatus"; readonly state: string; readonly localHead: string;
-      readonly remoteHead: string; readonly reason: string }
+      readonly remoteHead: string; readonly localVersion: string; readonly latestVersion: string;
+      readonly reason: string }
   // 設定タブ「ログ・録画」のクリーンアップ欄。保持ポリシーの正は CLI 側のマシン設定
   // (`fleetest api retention`)で、**拡張は既定値を持たない** —— policy(実効値)・defaults・
   // usage はすべて CLI が返したものをそのまま配る(FM 枠と同じ規律)。ready 直後と

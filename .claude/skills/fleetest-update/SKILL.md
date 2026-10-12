@@ -1,6 +1,6 @@
 ---
 name: fleetest-update
-description: 既に fleetest をセットアップ済みの受け手が、新しい修正版（upstream の更新）を取り込む。git pull → TestProjects/ と Package.swift の再整合 → 再ビルド → VSCode 拡張の再インストール → 反映（Reload Window）までを検証付きで実行する。「更新して」「最新にして」「アップデートして」「新しい版を取り込んで」等の依頼で使う。初回セットアップは /fleetest-setup。
+description: 既に fleetest をセットアップ済みの受け手が、新しいリリース（upstream の更新）を取り込む。最新リリースへ移す → TestProjects/ と Package.swift の再整合 → 再ビルド → VSCode 拡張の再インストール → 反映（Reload Window）までを検証付きで実行する。「更新して」「最新にして」「アップデートして」「新しい版を取り込んで」等の依頼で使う。初回セットアップは /fleetest-setup。
 ---
 
 # fleetest 更新 runbook
@@ -19,7 +19,7 @@ description: 既に fleetest をセットアップ済みの受け手が、新し
 - **外部パッケージ構成(既定)**: 自分のパッケージ(`fleetest init` 済み)が横の `../foundation-tester`
   クローンを SPM 依存として引く。ツール更新は TOOL_ROOT を pull+build し、受け手側は依存を反映して再ビルドする。
 
-用語(setup と共通): **TOOL_ROOT** = foundation-tester クローン(git pull / swift build / 拡張ビルドを
+用語(setup と共通): **TOOL_ROOT** = foundation-tester クローン(最新リリースへ移す(clone 構成は git pull) / swift build / 拡張ビルドを
 行う場所。CLI は `TOOL_ROOT/.build/debug/fleetest`)、**WORK_DIR** = 自分の `TestProjects/` が住むディレクトリ。
 外部構成では TOOL_ROOT = `../foundation-tester`・WORK_DIR = 自分のパッケージ。clone 構成では両者は同一。
 
@@ -51,9 +51,13 @@ description: 既に fleetest をセットアップ済みの受け手が、新し
 bash <TOOL_ROOT>/Scripts/update-check.sh
 ```
 
-読み取りのみ(fetch もしない)。`verdict=` が `update-available`(exit 3)なら 0.7 へ進む。
-`up-to-date`(0)なら**何もせず終える**。`pinned`(0・版固定や git 管理外)と `unknown`(1・オフライン等)は
+読み取りのみ(fetch もしない)。`channel=` が追従先(`release` = 最新リリースタグ / `branch` = ブランチ /
+`pinned` = 受け手が手で固定した版)。release では `local_version` / `latest_version` が出る。
+`verdict=` が `update-available`(exit 3)なら 0.7 へ進む。`up-to-date`(0)なら**何もせず終える**。
+`pinned`(0・版固定や git 管理外)と `unknown`(1・オフライン等)は
 理由(`reason=`。**英語なので日本語で説明する**)を伝え、勝手に取り込まない。
+`--notes` を付けると新しいリリースのリリースノートを表示する(クローンは触らない)。更新を勧めるときは
+その要点を伝える。
 VSCode 拡張も同じスクリプトを使う(起動時に自動 / コマンド「fleetest: 更新を確認」で手動)。
 
 ### 0.7 更新スクリプト(**まずこれを試す**。以降のステップを一括で行う)
@@ -68,7 +72,7 @@ bash <TOOL_ROOT>/Scripts/update.sh
 **更新が無ければ「✅ Up to date」だけ出して即終了する**(全工程は更新が無くても約30秒かかるため。
 判定は update-check.sh)。**前回が途中で失敗した・入れ直したいときだけ `--force`** を付ける。
 
-中で `install.sh` を再実行するので、**git pull・swift build・VSCode 拡張・`.mcp.json` の追従・
+中で `install.sh` を再実行するので、**最新リリースへの移動・swift build・VSCode 拡張・`.mcp.json` の追従・
 検証ゲート・ログ**はそちらの規律がそのまま効く。更新固有の作業として
 **`fleetest project sync`(構成を問わず)** を行う（スキルのコピーの更新は install.sh のステップ7.8）。
 
@@ -94,10 +98,13 @@ vsce)は画面に出ず `<WORK_DIR>/.fleetest/install-*.log` にだけ入り、*
 
 ### 1. 取り込み（TOOL_ROOT）
 
-TOOL_ROOT で `git pull`。衝突が出たら停止して報告する(clone 構成では受け手の `TestProjects/` が
+外部構成の TOOL_ROOT は update.sh(install.sh)が最新リリースタグへ移す。手で行うなら
+`git fetch --tags` のうえ最新の `X.Y.Z` タグを detached で checkout し、`git config fleetest.channel release` を
+書く(ローカルの方が新しいタグなら下げない)。clone 構成はブランチを `git pull` する。
+衝突が出たら停止して報告する(clone 構成では受け手の `TestProjects/` が
 git 管理下にあると衝突しやすい。その場合は TestProjects/ を git 管理外か別リポジトリにするよう案内する)。
 
-**pull が失敗したら「届いていない」を必ず伝える**(0.7 の更新スクリプトは自動で処理する。
+**取り込みが失敗したら「届いていない」を必ず伝える**(0.7 の更新スクリプトは自動で処理する。
 ここは手動で進めたときの判断)。原因で扱いが変わる:
 
 - **上流に届かない(オフライン)** … 手元のクローンのまま作業は続けてよい。警告だけ

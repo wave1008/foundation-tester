@@ -15,8 +15,10 @@ import {
   checkFleetestUpdate,
   decideManualOutcome,
   decideUpdateNotice,
+  describeCurrent,
   isCheckDue,
   parseKeyValues,
+  showsNotesButton,
 } from "../src/updateCheck";
 import { declaredPackagePath, resolveToolRoot } from "../src/toolRootResolve";
 
@@ -72,7 +74,7 @@ test("decideUpdateNotice: remote_head が無ければ通知しない(通知し�
 });
 
 test("decideManualOutcome: 4つの verdict をそのまま返す(黙る選択肢が無い)", () => {
-  assert.deepEqual(decideManualOutcome({ verdict: "up-to-date" }), { kind: "upToDate" });
+  assert.deepEqual(decideManualOutcome({ verdict: "up-to-date" }), { kind: "upToDate", localVersion: "" });
   // reason は update-check.sh 側の契約で ja/en どちらでも英語(通知に素通しするため)。
   assert.deepEqual(decideManualOutcome({ verdict: "pinned", reason: "version pinned" }), {
     kind: "pinned",
@@ -86,7 +88,40 @@ test("decideManualOutcome: 4つの verdict をそのまま返す(黙る選択肢
     kind: "available",
     localHead: "aaaaaaaabbbbbbbb",
     remoteHead: "ccccccccdddddddd",
+    localVersion: "",
+    latestVersion: "",
   });
+});
+
+const RELEASE = [SAMPLE.split("\n").slice(0, 9).join("\n"), "channel=release", "local_version=0.9.0", "latest_version=0.10.0"].join("\n");
+
+test("decideUpdateNotice: release チャンネルの版を通知に通し、無ければ空(従来文言に落ちる)", () => {
+  const release = decideUpdateNotice(parseKeyValues(RELEASE), undefined);
+  assert.equal(release.localVersion, "0.9.0");
+  assert.equal(release.latestVersion, "0.10.0");
+  const branch = decideUpdateNotice(parseKeyValues(SAMPLE), undefined);
+  assert.equal(branch.localVersion, "");
+  assert.equal(branch.latestVersion, "");
+});
+
+test("decideManualOutcome: 版を available / upToDate に通す", () => {
+  const available = decideManualOutcome(parseKeyValues(RELEASE));
+  assert.equal(available.latestVersion, "0.10.0");
+  assert.equal(available.localVersion, "0.9.0");
+  assert.deepEqual(
+    decideManualOutcome({ verdict: "up-to-date", channel: "release", local_version: "0.10.0" }),
+    { kind: "upToDate", localVersion: "0.10.0" },
+  );
+});
+
+test("showsNotesButton: latest_version があるとき(release)だけ", () => {
+  assert.equal(showsNotesButton("0.10.0"), true);
+  assert.equal(showsNotesButton(""), false);
+});
+
+test("describeCurrent: 版が空なら local_head の先頭8桁", () => {
+  assert.equal(describeCurrent("0.9.0", "aaaaaaaabbbbbbbb"), "0.9.0");
+  assert.equal(describeCurrent("", "aaaaaaaabbbbbbbb"), "aaaaaaaa");
 });
 
 test("decideManualOutcome: 却下済みの版でも隠さない(自動チェックとの唯一の差)", () => {

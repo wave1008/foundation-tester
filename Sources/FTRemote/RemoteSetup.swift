@@ -87,6 +87,9 @@ public enum RemoteSetupPlan {
             // AgentIntegration.entryPointFile / claudeImportFile と対)
             "--skip-entry-point",
             "--no-next-steps",
+            // 送るのは手元の install.sh なので、クローンをリリースタグへ移すと「手元のスクリプト + リリースの
+            // バイナリ」になり新しい引数が通じない。ブランチのまま置き、直後の align で手元のコミットへ揃える
+            "--track-branch",
         ]
     }
 

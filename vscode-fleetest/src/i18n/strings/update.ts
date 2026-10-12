@@ -8,6 +8,30 @@ export const updateStrings = {
     ja: "fleetest に更新があります。デバイスモニターの「設定」タブから更新できます。",
     en: "An fleetest update is available. You can apply it from the Settings tab of the device monitor.",
   },
+  "update.notice.releaseMessage": {
+    ja: "新しいリリース {latest} があります(現在 {current})。デバイスモニターの「設定」タブから更新できます。",
+    en: "fleetest {latest} is available (current: {current}). You can apply it from the Settings tab of the device monitor.",
+  },
+  "update.notice.notesButton": {
+    ja: "変更内容",
+    en: "What's new",
+  },
+  "update.notes.header": {
+    ja: "[fleetest] 新しいリリースの変更内容:",
+    en: "[fleetest] What's new in the latest release:",
+  },
+  "update.notes.failed": {
+    ja: "変更内容を取得できませんでした。",
+    en: "Could not fetch the release notes.",
+  },
+  "update.check.availableReleaseLog": {
+    ja: "[fleetest] 新しいリリース {latest} があります(現在 {current})。",
+    en: "[fleetest] Release {latest} is available (current: {current}).",
+  },
+  "update.manual.upToDateVersion": {
+    ja: "fleetest は最新です({version})。",
+    en: "fleetest is up to date ({version}).",
+  },
   "update.notice.openSettingsButton": {
     ja: "設定タブを開く",
     en: "Open Settings tab",

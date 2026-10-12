@@ -189,7 +189,7 @@ fleetest remote setup <ユーザー>@<ホスト> --project <プロジェクト�
 - 撤去は `fleetest remote teardown <ランナー>`(確認あり。`--yes` で無確認)
 
 > 手で入れたい場合は、上の install ステップと同じことを ssh して実行すればよい:
-> `bash install.sh --work-dir ~/fleetest-runner/users/<issuerId>/work --tool-root ~/fleetest-runner/foundation-tester --name <プロジェクト名> --skip-extension --skip-mcp --skip-entry-point`。
+> `bash install.sh --work-dir ~/fleetest-runner/users/<issuerId>/work --tool-root ~/fleetest-runner/foundation-tester --name <プロジェクト名> --skip-extension --skip-mcp --skip-entry-point --no-next-steps --track-branch`(`--track-branch` が無いとクローンが最新リリースタグへ移る。その後 `fleetest remote setup` と同じく手元のコミットへ揃える)。
 > クローン先の**ディレクトリ名 `foundation-tester` は変えない**(SPM がパッケージ名をディレクトリ名から決めるため)。
 
 ## ステップ3: 版を揃える

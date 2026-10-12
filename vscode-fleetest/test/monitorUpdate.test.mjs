@@ -84,3 +84,15 @@ test("check: update-check.sh を持たない古いクローンも unavailable", 
   const statuses = await checkIn(root, "");
   assert.deepEqual(statuses.map((s) => s.state), ["unavailable"]);
 });
+
+test("check: release チャンネルの版を status に通す(無ければ空)", async () => {
+  const release = await checkIn(
+    undefined,
+    "verdict=update-available\nchannel=release\nlocal_head=1111111111\nremote_head=2222222222\nlocal_version=0.9.0\nlatest_version=0.10.0",
+  );
+  assert.equal(release[1].localVersion, "0.9.0");
+  assert.equal(release[1].latestVersion, "0.10.0");
+  const branch = await checkIn(undefined, "verdict=up-to-date\nlocal_head=abcdef1234");
+  assert.equal(branch[1].localVersion, "");
+  assert.equal(branch[1].latestVersion, "");
+});

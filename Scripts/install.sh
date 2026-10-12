@@ -6,7 +6,7 @@
 #   TOOL_ROOT が無ければ clone から丸ごと(既定は隣)。**スキルからは curl | bash で呼ばない**
 #   (エージェントの安全確認に止められる。fleetest-setup SKILL.md ステップ0)
 #
-# やること: clone(既存クローンは git pull --ff-only で更新)/ swift build /
+# やること: clone(外部構成は最新リリースタグへ・clone 構成のブランチは git pull --ff-only で更新)/ swift build /
 #           fleetest init(または project create)/ .gitignore 整備 / VSCode 拡張 /
 #           MCP 登録(.mcp.json)/ エージェントの入口(AGENTS.md + CLAUDE.md)/
 #           スキルのコピー(.claude/skills/)/ 検証ゲート。
@@ -38,9 +38,13 @@ set -euo pipefail
 
 # FLEETEST_REPO_URL はフォーク・ローカル検証用の差し替え口(既定は本家)
 REPO_URL="${FLEETEST_REPO_URL:-https://github.com/wave1008/foundation-tester.git}"
-# FLEETEST_REF は**保守者が未マージのブランチを受け手経路で検証するための口**(タグ・ブランチ・SHA。
-# 既定 = 既定ブランチ)。受け手向けの版固定手段としては案内しない —— 配布口は main の1本
-# (docs/releasing.md)。
+# FLEETEST_REF は**保守者が未マージのブランチを受け手経路で検証するための口**(タグ・ブランチ・SHA)。
+# 受け手向けの版固定手段としては案内しない。与えると clone の fleetest.channel を消す(明示指示が勝つ)。
+# タグ・SHA は以後 pinned(detached + channel 無し)として留まり、ブランチは外部構成なら次の REF 無しの実行で
+# 最新リリースへ戻る(外部構成のブランチ上 = 旧来の main 追従と区別できない)。検証中は毎回渡す。
+# 無いとき、外部構成の受け手は**最新のリリースタグ(X.Y.Z)へ detached で置く**
+# (.git/config の fleetest.channel=release。追跡ファイルではないのでクローンを汚さない)。
+# 未設定のブランチ上 = 従来のブランチ追従・未設定の detached = 版固定(触らない)。docs/releasing.md。
 # **スクリプトの取得元とクローンの ref を必ず揃える**ためにある —— スキルは
 # `.../${FLEETEST_REF:-main}/Scripts/install.sh` を取りに行くので、ここで見ないと
 # 「ブランチのスクリプトが main を clone して main のバイナリに新しい引数を渡す」
@@ -60,6 +64,8 @@ ALLOW_CLONE=1
 ALLOW_PULL=1
 VERBOSE=0
 KEEP_LOCAL=0
+ALIGN_ONLY=0
+TRACK_BRANCH=0
 
 usage() {
   cat <<'EOF'
@@ -78,11 +84,18 @@ Usage: install.sh [options]
   --skip-skills      Do not copy the skills (/fleetest-scenario etc.) into <work-dir>/.claude/skills
   --no-doctor        Skip the final environment report (fleetest doctor)
   --no-next-steps    Do not print "next steps" (when the caller, e.g. update.sh, guides instead)
+  --align-release-only
+                     Only move an uninstalled external-layout clone to the latest release, print
+                     release_align=moved|unchanged|skipped and release_tag=<tag>, then exit (no other step runs;
+                     SKILL.md step 0 uses it so the runbook and scripts match the release before they are re-read)
+  --track-branch     Do not follow release tags: clone/pull the default branch as before (remote runners, which
+                     `fleetest remote setup` then aligns to the caller's commit)
   --keep-local       Do not auto-discard local changes in the clone (auto-discard is the default in the external layout)
   --verbose          Also print the raw swift build / npm logs to the screen (default: log file only)
   -h, --help         This help
 
-What it does: clone (git pull if it exists; in the external layout local changes are auto-discarded) /
+What it does: clone (an existing clone moves to the latest release tag in the external layout, git pull on a branch in the clone layout;
+         local changes are auto-discarded in the external layout) /
          swift build / project creation / .gitignore upkeep / VSCode extension / MCP registration /
          the AGENTS.md / CLAUDE.md entry point / skill copies / verification gates
          (idempotent; finished steps are skipped)
@@ -108,6 +121,8 @@ while [ $# -gt 0 ]; do
     --skip-skills) DO_SKILLS=0; shift ;;
     --no-doctor) DO_DOCTOR=0; shift ;;
     --keep-local) KEEP_LOCAL=1; shift ;;
+    --align-release-only) ALIGN_ONLY=1; shift ;;
+    --track-branch) TRACK_BRANCH=1; shift ;;
     --verbose) VERBOSE=1; shift ;;
     --no-next-steps) DO_NEXT_STEPS=0; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -202,6 +217,61 @@ dyld_failure_message() {
     "$1" "$TOOL_ROOT" "$TOOL_ROOT"
 }
 
+# ---- リリースタグ(X.Y.Z。v 無し)の扱い --------------------------------------------------
+# latest_release_tag / semver_newer は対の実装: Scripts/update-check.sh(install.sh は remote setup で
+# 単体 scp されるので自己完結が必須 = 同一本文を複製。片方だけ変えない。releaseTrack.test.mjs が一致を検査)。
+# 並びは semver の数値順(0.10.0 > 0.9.0。文字列ソートにしない)。
+# latest_release_tag: stdin = `git ls-remote --tags` の出力。最大の X.Y.Z を出す(無ければ空)。^{} 行は読み飛ばす
+latest_release_tag() {
+  awk -F'\t' '$2 ~ /^refs\/tags\/[0-9]+\.[0-9]+\.[0-9]+$/ { sub(/^refs\/tags\//, "", $2); print $2 }' \
+    | sort -t. -k1,1n -k2,2n -k3,3n | awk '{ last = $0 } END { if (last != "") print last }'
+}
+
+# $1 が $2 より新しいとき 0
+semver_newer() {
+  [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -t. -k1,1n -k2,2n -k3,3n | awk '{ last = $0 } END { print last }')" = "$1" ]
+}
+
+# HEAD を指す X.Y.Z タグのうち最大(無ければ空)
+head_release_tag() {
+  git -C "$TOOL_ROOT" tag --points-at HEAD 2>/dev/null | awk '/^[0-9]+\.[0-9]+\.[0-9]+$/' \
+    | sort -t. -k1,1n -k2,2n -k3,3n | awk '{ last = $0 } END { if (last != "") print last }'
+}
+
+# 最新リリースへ detached で置き fleetest.channel=release を立てる。呼ぶ前に settle_local_changes を済ませる。
+# 結果: RELEASE_RESULT=moved|unchanged / RELEASE_TAG。戻り: 0=済 1=上流に届かない(オフライン) 2=リリースタグが無い 3=移動失敗。
+# **ローカルの方が新しいタグにいるときは下げない**(unchanged)
+move_to_release() {
+  local lsout latest here
+  RELEASE_RESULT=""; RELEASE_TAG=""
+  lsout="$(GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=10" \
+    git -C "$TOOL_ROOT" ls-remote --tags origin 2>/dev/null)" || return 1
+  latest="$(printf '%s\n' "$lsout" | latest_release_tag)"
+  [ -n "$latest" ] || return 2
+  RELEASE_TAG="$latest"
+  here="$(head_release_tag)"
+  if [ -n "$here" ] && ! git -C "$TOOL_ROOT" symbolic-ref -q HEAD >/dev/null 2>&1 \
+     && ! semver_newer "$latest" "$here"; then
+    git -C "$TOOL_ROOT" config fleetest.channel release || return 3
+    RELEASE_TAG="$here"; RELEASE_RESULT=unchanged
+    return 0
+  fi
+  # 全タグを取る(最新1本だけだと、間のリリースの注釈が update.sh の What's new から抜ける)
+  GIT_TERMINAL_PROMPT=0 git -C "$TOOL_ROOT" fetch -q --tags origin >>"$RAW_SINK" 2>&1 || return 1
+  git -C "$TOOL_ROOT" checkout -q --detach "refs/tags/$latest" >>"$RAW_SINK" 2>&1 || return 3
+  git -C "$TOOL_ROOT" config fleetest.channel release || return 3
+  RELEASE_RESULT=moved
+  return 0
+}
+
+# リリース追従の対象か: channel=release、または外部構成でブランチ上(旧来の main 追従 = 次の更新で移す)。
+# detached で channel 未設定 = 手で固定したもの(触らない)
+release_track_applies() {
+  [ "$TRACK_BRANCH" = "0" ] || return 1
+  [ "$(git -C "$TOOL_ROOT" config --get fleetest.channel 2>/dev/null || true)" = "release" ] && return 0
+  [ "$WORK_DIR" != "$TOOL_ROOT" ] && git -C "$TOOL_ROOT" symbolic-ref -q HEAD >/dev/null 2>&1
+}
+
 # package-lock.json は package.json の version を内包する。版上げのときに lock を更新し忘れると、
 # 受け手の `npm install` が **version 行だけ**を書き換え、クローンが dirty になって
 # **次の更新が pull ガードで必ず止まる**(実害。2026-07-29)。version 行だけの差分は生成物と
@@ -245,7 +315,7 @@ if [ -n "${FT_INSTALL_LOG:-}" ]; then
   # (tee は同じ pid の子として生き続ける)。2本目の tee を挟むと、その stdout が1本目の
   # パイプなので**2周目の全行がログに2回**書かれる(2026-09-06 バグ出しで実測)
   LOG_FILE="$FT_INSTALL_LOG"
-elif mkdir -p "$WORK_DIR/.fleetest" 2>/dev/null; then
+elif [ "${ALIGN_ONLY:-0}" = "0" ] && mkdir -p "$WORK_DIR/.fleetest" 2>/dev/null; then
   LOG_FILE="$WORK_DIR/.fleetest/install-$(date +%Y%m%d-%H%M%S).log"
   exec > >(tee -a "$LOG_FILE") 2>&1
   echo "==> Log: $LOG_FILE"
@@ -270,8 +340,10 @@ show_log_tail() {
   fi
 }
 
-[ "$(uname -s)" = "Darwin" ] || die "prerequisites" "macOS only (the iOS simulator is required)" 0
 command -v git >/dev/null 2>&1 || die "prerequisites" "git not found" 0
+# --align-release-only は導入前(Xcode 未整備でもありうる)に呼ばれるので、以降の前提検査は通さない
+if [ "$ALIGN_ONLY" = "0" ]; then
+[ "$(uname -s)" = "Darwin" ] || die "prerequisites" "macOS only (the iOS simulator is required)" 0
 command -v swift >/dev/null 2>&1 || die "prerequisites" "swift not found (install Xcode)" 0
 
 if ! xcodebuild -version >/dev/null 2>&1; then
@@ -286,6 +358,7 @@ xcode_version="$(xcodebuild -version 2>/dev/null)"
 # `xcodebuild -version | head -1` はダメ(pipefail 下で SIGPIPE を失敗と誤判定する。preflight.sh の
 # first_line のコメント参照)。パラメータ展開で1行目を取る
 record "prerequisites" ok "macOS $(sw_vers -productVersion) / ${xcode_version%%$'\n'*}"
+fi
 
 # ---- 0.5 TOOL_ROOT(SKILL ステップ0.5) ----------------------------------------
 # クローン内から実行されたならそれが TOOL_ROOT(curl | bash では $0 が読めないので clone へ倒す)。
@@ -386,7 +459,58 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
   }
 
   # ローカル変更は**人に確認してから**破棄する(黙って捨てない)
-  if [ "$ALLOW_PULL" = "0" ]; then
+
+  # --align-release-only: まだ導入していない(.build/debug/fleetest が無い)外部構成のクローンだけ最新リリースへ寄せて終わる。
+  # 他のステップ・ログ・集計は走らせない。最後の2行は機械可読(SKILL.md ステップ0 が読む)
+  if [ "$ALIGN_ONLY" = "1" ]; then
+    align_result=skipped; align_tag=""; align_rc=0
+    if [ -z "$REF" ] && [ "$ALLOW_PULL" = "1" ] && [ -d "$TOOL_ROOT/.git" ] \
+       && [ ! -x "$TOOL_ROOT/.build/debug/fleetest" ] && release_track_applies; then
+      settle_local_changes
+      move_to_release || align_rc=$?
+      case "$align_rc" in
+        0) align_result="$RELEASE_RESULT"; align_tag="$RELEASE_TAG" ;;
+        3) echo "❌ Could not move $TOOL_ROOT to the latest release" >&2
+           printf 'release_align=skipped\nrelease_tag=\n'; exit 1 ;;
+        *) echo "Release alignment skipped (upstream unreachable or no release tags)." ;;
+      esac
+    fi
+    [ "$align_result" != "moved" ] || echo "Re-read SKILL.md: the clone now holds release $align_tag"
+    printf 'release_align=%s\nrelease_tag=%s\n' "$align_result" "$align_tag"
+    exit 0
+  fi
+
+  # リリース追従(外部構成の既定)。上流にリリースタグが無ければ(戻り2)下の従来経路へ落とす
+  RELEASE_HANDLED=0
+  if [ "$ALLOW_PULL" = "1" ] && [ -z "$REF" ] && [ -d "$TOOL_ROOT/.git" ] && release_track_applies; then
+    settle_local_changes
+    echo "==> Moving to the latest release (updating the existing clone $TOOL_ROOT)"
+    step_started=$SECONDS
+    # **再 exec の判定に使うので移動の前に控える**(pull 経路の HEAD_BEFORE_PULL と同じ)
+    HEAD_BEFORE_PULL="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)"
+    release_rc=0
+    move_to_release || release_rc=$?
+    case "$release_rc" in
+      0)
+        RELEASE_HANDLED=1
+        if [ "$RELEASE_RESULT" = "unchanged" ]; then
+          record "clone" skip "already at release $RELEASE_TAG: $TOOL_ROOT"
+        else
+          record "clone" ok "moved the existing clone to release $RELEASE_TAG ($(git -C "$TOOL_ROOT" rev-parse --short HEAD), $(elapsed_since $step_started))"
+        fi ;;
+      1)
+        RELEASE_HANDLED=1
+        soft_fail "clone" "could not reach upstream for release tags (offline?) — continuing with the existing clone $(git -C "$TOOL_ROOT" rev-parse --short HEAD)" 0.5 ;;
+      2) : ;;
+      *)
+        show_log_tail
+        die "clone" "failed to move $TOOL_ROOT to the latest release" 0.5 ;;
+    esac
+  fi
+
+  if [ "$RELEASE_HANDLED" = "1" ]; then
+    :
+  elif [ "$ALLOW_PULL" = "0" ]; then
     record "clone" skip "using the existing clone as-is (--no-pull): $TOOL_ROOT"
   elif [ ! -d "$TOOL_ROOT/.git" ]; then
     record "clone" skip "using the existing directory (not under git): $TOOL_ROOT"
@@ -412,6 +536,8 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
     fi
     if git -C "$TOOL_ROOT" fetch --tags origin "$REF" >>"$RAW_SINK" 2>&1 \
        && git -C "$TOOL_ROOT" "${ref_checkout[@]}" >>"$RAW_SINK" 2>&1; then
+      # 明示指示が勝つ: リリース追従の印を消す(残すと detached のタグ・SHA でも次の REF 無しの実行がリリースへ戻す)
+      git -C "$TOOL_ROOT" config --unset fleetest.channel >/dev/null 2>&1 || true
       record "clone" ok "aligned the existing clone to $REF ($(git -C "$TOOL_ROOT" rev-parse --short HEAD), $(elapsed_since $step_started))"
     else
       show_log_tail
@@ -455,13 +581,30 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
     fi
   fi
 else
+  if [ "$ALIGN_ONLY" = "1" ]; then
+    printf 'release_align=skipped\nrelease_tag=\n'
+    exit 0
+  fi
   [ "$ALLOW_CLONE" = "1" ] || die "clone" "no clone at: $TOOL_ROOT_RAW (--no-clone was given)" 0.5
   echo "==> clone: $REPO_URL → $TOOL_ROOT_RAW"
   step_started=$SECONDS
   git clone ${REF:+--branch "$REF"} "$REPO_URL" "$TOOL_ROOT_RAW" >>"$RAW_SINK" 2>&1 \
     || { show_log_tail; die "clone" "git clone failed${REF:+ (ref: $REF)}" 0.5; }
   TOOL_ROOT="$(abspath "$TOOL_ROOT_RAW")"
-  record "clone" ok "$TOOL_ROOT${REF:+ @ $REF} ($(elapsed_since $step_started))"
+  clone_note="${REF:+ @ $REF}"
+  if [ -z "$REF" ] && [ "$TRACK_BRANCH" = "0" ] && [ "$TOOL_ROOT" != "$WORK_DIR" ]; then
+    # 受け手(外部構成)は最新リリースタグで始める。clone 済みなのでタグはローカルにある
+    latest_tag="$(git -C "$TOOL_ROOT" for-each-ref --format='%(objectname)%09%(refname)' refs/tags | latest_release_tag)"
+    if [ -n "$latest_tag" ]; then
+      git -C "$TOOL_ROOT" checkout -q --detach "refs/tags/$latest_tag" >>"$RAW_SINK" 2>&1 \
+        && git -C "$TOOL_ROOT" config fleetest.channel release \
+        || { show_log_tail; die "clone" "could not check out the latest release $latest_tag" 0.5; }
+      clone_note=" @ $latest_tag"
+    else
+      clone_note=" (no release tags; tracking $(git -C "$TOOL_ROOT" symbolic-ref --short -q HEAD || echo detached))"
+    fi
+  fi
+  record "clone" ok "$TOOL_ROOT$clone_note ($(elapsed_since $step_started))"
 fi
 
 [ -f "$TOOL_ROOT/Package.swift" ] && [ -d "$TOOL_ROOT/Sources/FTScenarioRunner" ] \

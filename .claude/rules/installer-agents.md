@@ -40,6 +40,20 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   仕分けを間違えない** —— install.sh が自動導入するもの(xcodegen 等)を needs-manual にすると、
   `remote setup` が install.sh に到達できず「入れれば直るのに入れる工程まで進めない」で詰まる
 - 受け手の一括導入: `Scripts/install.sh`(clone〜検証ゲートを冪等に実行)。
+  - **受け手の配布口は最新リリースタグ**(`X.Y.Z` の semver 最大。docs/releasing.md)。**外部構成のクローンは
+    最新リリースタグに detached で置き、`.git/config` の `fleetest.channel=release` で記録する**
+    (追跡ファイルではないのでクローンを汚さない)。新規 clone も、`update.sh` 経由の再実行も同じ移動を行う。
+    ローカルの方が新しいタグなら下げない。**clone 構成はブランチ追従のまま・channel 未設定の detached
+    (受け手が手で checkout した版)は触らない・`FLEETEST_REF` 指定は channel を外す**(タグ・SHA を渡したクローンは以後 pinned として留まる。ブランチは外部構成では次の `FLEETEST_REF` 無しの実行で最新リリースへ戻るので、検証中は毎回渡す)。
+    **`--align-release-only`** は SKILL.md ステップ0 の最初に打つ単機能モード(出力 `release_align=moved|unchanged|skipped`。
+    `moved` なら SKILL.md を読み直す = 手順書・スクリプト・ビルドを同じリリースに揃える)。動くのは
+    「外部構成・`FLEETEST_REF` 無し・未ビルドのクローン」のときだけで、それ以外は何もしない。
+    **最新リリースタグを求める `latest_release_tag` は install.sh と update-check.sh に同一本文で複製する**
+    (install.sh は clone 前・ビルド前に走り、update-check.sh は単体で走るので共有できない。片方だけ変えない)
+    **`--track-branch` はリリース追従を切る口で、`fleetest remote setup` が必ず渡す**(送るのは手元の install.sh。
+    ランナーのクローンをリリースへ移すと「手元のスクリプト + リリースのバイナリ」になり新しい引数が通じない。
+    直後の align が手元のコミットへ揃える)。**update.sh は外部構成でブランチ上のクローンに up-to-date の早期終了を
+    通さない**(上流のブランチが動かない限りリリース追従への移行に届かない)
   - **各手順は `.claude/skills/fleetest-setup/SKILL.md` のステップ番号と 1:1**(失敗時に
     「→ SKILL.md ステップ N」を出す)。**片方だけ変えない**
     (`installStepSync.test.mjs` が「install.sh が指すステップが SKILL.md に実在するか」を検出)
@@ -83,7 +97,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
     `--skip-project` の更新で既存の受け手に永久に届かない)。**クローンへの `Read` の allow と `Edit` の
     deny も同じ箇所で書く**(クローン構成では書かない・deny は初回だけ)。**シナリオを実行する ft_* / CLI を
     allow から外す案は実測で守りにならなかったので戻さない** → maintainer-notes §2.5
-- 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + project sync + **Claude Code の
+- 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + **版が変わったら間のリリースノートを「What's new」として表示** + project sync + **Claude Code の
   スキルのコピーの更新(install.sh のステップ7.8 が行う)。
   `.claude/skills/fleetest-update/SKILL.md` と 1:1)。**先に update-check.sh を呼び up-to-date なら
   即終了**(全工程は更新が無くても約30秒。入れ直しは `--force`)。**ログの場所は最後の
@@ -92,7 +106,11 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   (コマンドを打たない = 承認が要らない。無ければ preflight に落ちる)
 - 更新の有無だけ判定: `Scripts/update-check.sh`(読み取りのみ。**fetch せず `git ls-remote`** で
   upstream と比較し up-to-date=0 / update-available=3 / pinned=0 / unknown=1)。
-  VSCode 拡張が起動時に1日1回呼ぶ(`src/updateCheck.ts`・設定 `fleetest.updateCheck`)。
+  **出力に `channel=release|branch|pinned`**(`fleetest.channel` と clone 構成から決まる)。release では
+  `local_version` / `latest_version` を比べ、新しいリリースがあれば update-available。**`--notes` はリリースノート
+  (タグの注釈)を表示するだけでクローンを触らない**。
+  VSCode 拡張が起動時に1日1回呼ぶ(「新しいリリース X.Y.Z があります(現在 A.B.C)」と通知し、「変更内容」で
+  リリースノートを OUTPUT へ出す)(`src/updateCheck.ts`・設定 `fleetest.updateCheck`)。
   **手動コマンド `fleetest.checkForUpdate` は間隔・却下・設定 off を無視して必ず結果を返す**
   (自動は更新があるときだけ喋る。両者の差はここだけ)。
   **更新の実行口はモニターの「設定」タブ1箇所**(`src/monitorUpdateController.ts`。判定も取り込みも

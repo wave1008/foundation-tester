@@ -43,7 +43,7 @@ following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
 
 6. Ask your AI assistant to "run fleetest doctor and report the result", and confirm that no errors are reported
 
-The installation creates a `foundation-tester` folder next to your work folder. In this documentation,
+The installation creates a `foundation-tester` folder next to your work folder, holding the **latest release**. In this documentation,
 `../foundation-tester/.build/debug/fleetest` in the commands you type by hand refers to the `fleetest` inside it.
 
 Once it is installed, create and run a test in the [Quick start](quick-start.md).
