@@ -358,6 +358,5 @@
   ],
   "heal": true,
   "iosInappEngine": false,
-  "scenarioTimeout": 240,
   "wipeDataOnBloat": true
 }

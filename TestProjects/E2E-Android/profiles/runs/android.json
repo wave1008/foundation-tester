@@ -171,7 +171,6 @@
   "homeOnStart": true,
   "iosInappEngine": true,
   "record": true,
-  "scenarioTimeout": 180,
   "screenLooksLike": true,
   "fmTextOcclusionCheck": true,
   "updateWebView": true,

@@ -1,7 +1,6 @@
 {
   "app": "ft_e2ex",
   "heal": true,
-  "scenarioTimeout": 240,
   "iosInappEngine": true,
   "devices": [
     {

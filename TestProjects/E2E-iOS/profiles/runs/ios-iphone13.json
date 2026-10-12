@@ -239,6 +239,5 @@
     }
   ],
   "heal": true,
-  "iosInappEngine": false,
-  "scenarioTimeout": 180
+  "iosInappEngine": false
 }
