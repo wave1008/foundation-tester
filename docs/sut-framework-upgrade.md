@@ -108,6 +108,11 @@ for u in org/jetbrains/compose/compose-gradle-plugin org/jetbrains/kotlin/kotlin
      `pod install` のたびに作業ツリーが汚れる)
 6. ひな形で挙動が変わる設定に注意: 0.87 は `edgeToEdgeEnabled=true`(Android で画面がシステムバーの下まで描かれる)。
    2026-10-13 時点では赤は出ていない
+7. **lock を解き直すと RN 以外も上がる → 上がったライブラリで SUT が壊れていないかを赤から疑う**。2026-10-13: reanimated
+   4.7.0 → 4.7.1 で、RN 0.87.1 と組むと E2EY-RN の react-native-collapsible-tab-view が iOS で動かなくなった(上端まで戻しても
+   ヘッダが開かない・ページを払ってもタブが替わらない。指で直接ドラッグしても動かない = ツールではなくアプリ)。
+   reanimated だけ 4.7.0 に戻すと3本とも緑 → **E2EYAppRN は `react-native-reanimated` を `4.7.0` ちょうどに固定**
+   (`^` に戻すと解き直しでまた 4.7.1 になる)。新しい reanimated / collapsible-tab-view が出たら外せるか試す
 
 ## 5. Compose Multiplatform(2026-10-13 時点で未実施)
 

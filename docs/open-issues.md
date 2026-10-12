@@ -18,16 +18,6 @@
 
 ## デバイスで赤のまま・原因未調査
 
-- **E2EY-RN の iOS で「折りたたみヘッダとタブを操作できること」S0020・S0040・S0090 が毎回赤**(2026-10-13・RN 0.87.1 に上げた直後から)
-  - 症状: 下へ送るとヘッダは `header=collapsed` になるが、`scrollToTop()` の後も `header=expanded` に戻らない(S0020・S0090)/
-    `flickRightToLeft(scrollFrame: "#post_02")` の後もタブが `tab=posts` のまま(S0040)
-  - 確かめた範囲: iOS in-app で5周 15/15 赤・ios-xcuitest で2周 6/6 赤(両エンジンとも = in-app の合成ジェスチャだけの問題ではない)。
-    Android は緑。RN 0.86.2 のときは S0040 が直近9回・S0090 が直近5回すべて緑
-  - 一緒に上がったもの: RN 0.86.2 → 0.87.1 のほか、lock を解き直したので reanimated 4.7.0 → 4.7.1・screens 4.28 → 4.29・
-    react-navigation 7.19 → 7.20 等(react-native-collapsible-tab-view 8.0.1・pager-view 6.9.1 は不変)
-  - 次に見るもの: RN は 0.87.1 のままライブラリだけ前の版に戻した SUT で同じ3本 —— RN 本体とライブラリのどちらが原因かを分ける。
-    その後、操作がアプリに届いていないのか、届いてもアプリが状態を更新しないのか(ft_snapshot で操作の前後の木と表示を比べる)
-
 - **E2E-CMP の XCUITest で「テキスト入力が正しくechoされること」S0040 の `type(replace:)` の後の echo が空のまま**(2026-10-12・
   ios-xcuitest の記録 205 回中 20 回赤)
   - 症状: `type("#field_single", "abc")` → `type("#field_single", "xyz", replace: true)` がどちらも緑のまま、次の

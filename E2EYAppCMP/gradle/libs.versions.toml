@@ -7,7 +7,7 @@ androidTargetSdk = "35"
 androidMinSdk = "24"
 coroutines = "1.10.2"
 androidxActivity = "1.10.1"
-# org.jetbrains.androidx.navigation の KMP 版。compose 1.11.0 / kotlin 2.4.10 で解決確認済み
+# org.jetbrains.androidx.navigation の KMP 版。compose 1.12.1 / kotlin 2.4.21 で解決確認済み
 # (android variant は available-at で androidx.navigation:navigation-compose-android:2.9.1 に解決される)。
 navigationCompose = "2.9.0"
 # BackHandler(commonMain)。compose.ui の別アーティファクトで、版は composeMultiplatform と揃える。
