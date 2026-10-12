@@ -167,8 +167,10 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
   (`swift build --product <名>`)
 - **テストの範囲は PreToolUse フック `Scripts/test-scope-guard.py` が撃つ前に検査する**(`.claude/settings.json` に登録。
   このファイルは git 管理外なので**クローンごとに登録する**。
-  `--filter` 無しの `swift test`・部分一致の語・素の `npm test`・`swift build --build-tests`・新しいテストの数を超える変異を断る)。
-  全体テストは作業の区切りにユーザーが回す運用 —— 頼まれたときだけコマンドに `FT_FULL_TEST=1` を書く
+  `--filter` 無しの `swift test`・部分一致の語・素の `npm test`・`swift build --build-tests`・新しいテストの数を超える変異を断る。
+  **デバイス実行も見る**: `--scenario` / `--folder` / `--failed` の無い `fleetest run`・`e2e.sh` / `e2ex.sh` / `e2ey.sh` /
+  `e2e-devices.sh`・`--project` の無い `e2e-negative.sh`。**起動するスクリプトファイルと heredoc で書いたスクリプトの中身も読む**)。
+  全体テストは作業の区切りにユーザーが回す運用 —— **全実施を頼まれたときだけ**コマンドに `FT_FULL_TEST=1` を書く
 - **合否は exit code で見る**(パイプすると grep 等の exit code に化けて失敗を握りつぶす)
 - **並列はテストプロセスを分けるので、ホストの共有資源に触るテストは自分で隔離する**
   → maintainer-notes §4.9。**隔離できないホストの実体**(simctl/adb・起動中の Simulator/Emulator・

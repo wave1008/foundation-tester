@@ -7,6 +7,14 @@
 #   - 素の `npm test` / `npm run test`(全体)—— 1ファイルなら `node esbuild.mjs --tests && node --test out-test/<名前>.test.mjs`
 #   - `Scripts/mutation-check.sh <json>` の各 filter がクラスの正確な名前でない / 同じ filter に向けた変異の数が、
 #     その filter のテストファイルで新しく足したテスト関数の数を超える(新しいテストが無ければ 1 件まで)
+#   - デバイス実行(E2E)の全体(ユーザー方針 2026-10-13「全実施を指示されたとき以外は範囲を絞る」):
+#     `fleetest run` / `fleetest api run` に --scenario / --folder / --failed のどれも無い(--dry-run・--help は通す)/
+#     `Scripts/e2e.sh` `e2ex.sh` `e2ey.sh` `e2e-devices.sh`(シナリオを絞る引数を持たない = 常に全体)/
+#     `Scripts/e2e-negative.sh` に --project が無い
+#   - **起動するスクリプトファイルの中身も同じ規則で見る**(`bash <file>`・`bash -c "<file> …"`・`nohup <file>`・実行権限の直接起動。
+#     同じコマンドの中で heredoc に書いたスクリプトも本文を見る)。中身を見ないと、実行をファイルに書いて起こすだけで素通りする
+#     (2026-10-13 に3回)。パスの `$VAR` は同じコマンドの `VAR=…` だけで展開し、展開できない `.sh` は断る。
+#     `"$@"` で fleetest run を包む関数は、その関数を呼ぶ行を絞り込みの有無で見る
 # 通す: 全体の実行はコマンドに FT_FULL_TEST=1(ユーザーが全体テストを頼んだときだけ書く)。
 # 使い方: Scripts/test-scope-guard.py --hook(stdin の JSON の tool_input.command を見る)/ --check '<command>'(手で試す)
 import glob, json, os, re, shlex, subprocess, sys
@@ -124,20 +132,162 @@ def mutation_problems(json_path, classes):
     return problems
 
 
-def check(command):
+NARROWING = ("--scenario", "--folder", "--failed")
+FULL_SUITE_SCRIPTS = ("e2e.sh", "e2ex.sh", "e2ey.sh", "e2e-devices.sh")
+SHELLS = ("bash", "sh", "zsh")
+MAX_DEPTH = 3
+
+
+def has_flag(words, names):
+    return any(w == n or w.startswith(n + "=") for w in words for n in names)
+
+
+def expand(text, env):
+    """`$VAR` / `${VAR}` を env(同じコマンドの代入)→ フックの環境変数の順で展開する。知らない名前はそのまま残す"""
+    return re.sub(r"\$\{?(\w+)\}?",
+                  lambda m: env.get(m.group(1), os.environ.get(m.group(1), m.group(0))), text)
+
+
+def assignments(text):
+    """`NAME=value` の代入(行頭・; && の後)。値は引用を外す"""
+    env = {}
+    for m in re.finditer(r"(?:^|[;&|\s])(\w+)=(\"[^\"]*\"|'[^']*'|[^\s;&|]+)", text, re.M):
+        value = m.group(2).strip("\"'")
+        if "$(" in value or "`" in value:
+            env.pop(m.group(1), None)  # コマンド置換は展開できない = 知らない名前として扱う
+            continue
+        env[m.group(1)] = value
+    return env
+
+
+def logical_lines(text):
+    """行末の \\ を繋いだ論理行"""
+    out, cur = [], ""
+    for line in text.splitlines():
+        if line.rstrip().endswith("\\"):
+            cur += line.rstrip()[:-1] + " "
+            continue
+        out.append(cur + line)
+        cur = ""
+    if cur:
+        out.append(cur)
+    return out
+
+
+HEREDOC = re.compile(r"^([^\n]*?)<<-?\s*['\"]?(\w+)['\"]?([^\n]*)\n(.*?)\n\2\s*$", re.S | re.M)
+
+
+def strip_heredocs(command):
+    """heredoc の本文を外したコマンド(本文は別のスクリプト = 外側の変数や区切りに混ぜない)"""
+    return HEREDOC.sub(lambda m: m.group(1) + m.group(3), command)
+
+
+def heredoc_scripts(command):
+    """heredoc でシェルスクリプトとして書かれた本文(`cat > x.sh <<EOF` / `bash <<EOF`)"""
+    out = []
+    for m in HEREDOC.finditer(command):
+        head = m.group(1)
+        if re.search(r"\.sh\b", head) or re.search(r"(^|[\s;&|])(bash|sh|zsh)\s*$", head.rstrip()):
+            out.append(m.group(4))
+    return out
+
+
+def script_text_problems(text, env, full_ok, depth):
+    """スクリプトの本文を論理行ごとに見る。`"$@"` で fleetest run を包む関数は呼び出し行で見る"""
+    env = {**env, **assignments(text)}
+    reasons = []
+    wrappers = set()
+    lines = logical_lines(text)
+    for i, line in enumerate(lines):
+        if re.search(r"fleetest\"?\s+(api\s+)?run\b", expand(line, env)) and re.search(r"\$[@*]", line) \
+                and not has_flag(line.split(), NARROWING + ("--dry-run",)):  # 本体で絞っていれば呼び出し行は見ない
+            for back in reversed(lines[:i + 1]):
+                m = re.match(r"\s*(?:function\s+)?(\w+)\s*\(\)", back)
+                if m:
+                    wrappers.add(m.group(1))
+                    break
+    for line in lines:
+        reasons.extend(check(line, env, full_ok, depth))
+        words = line.split()
+        if words and words[0] in wrappers and not has_flag(words, NARROWING + ("--dry-run", "--help")) and not full_ok:
+            reasons.append(f"fleetest run を包む関数 {words[0]} の呼び出しに --scenario / --folder / --failed が無い: {line.strip()[:120]}")
+    return reasons
+
+
+def file_problems(path_word, env, full_ok, depth):
+    """起動するファイルの中身を見る。リポジトリの Scripts/ は名前の規則で見るので中身は読まない"""
+    path = expand(path_word, env)
+    if "$" in path:
+        # 断るのは利用者が打った一番外のコマンドだけ。スクリプトの中の `$(dirname "$0")` / `$1` は補助スクリプトの普通の書き方
+        if depth == 0 and re.fullmatch(r"\S+\.sh", path):
+            return [f"起動するスクリプトのパスに展開できない変数がある({path_word})。フックは中身を検査できないので、"
+                    "同じコマンドで代入するか絶対パスで書く"]
+        return []
+    full = path if os.path.isabs(path) else os.path.join(os.getcwd(), path)
+    if not os.path.isfile(full) or os.path.commonpath([os.path.realpath(full), os.path.join(ROOT, "Scripts")]) == \
+            os.path.join(ROOT, "Scripts"):
+        return []
+    try:
+        if os.path.getsize(full) > 512 * 1024:
+            return []
+        text = open(full, encoding="utf-8").read()
+    except (OSError, UnicodeDecodeError):
+        return []
+    return script_text_problems(text, env, full_ok, depth + 1)
+
+
+def device_run_problems(words, env, full_ok, depth):
+    """E2E の全体と、起動するスクリプトの中身"""
+    reasons = []
+    words = [expand(w, env) for w in words]
+    while words and (words[0] == "nohup" or re.match(r"^\w+=", words[0])):
+        words = words[1:]
+    if not words:
+        return reasons
+    head = os.path.basename(words[0])
+    # `$@` / `$*` で引数を受け渡すだけの行は判定しない(包む関数の呼び出し行で見る = script_text_problems)
+    passes_args = any(w in ("$@", "$*") for w in words)
+    if not full_ok and not passes_args and not has_flag(words, ("--help", "-h")):
+        if head == "fleetest":
+            rest = words[1:]
+            if rest[:1] == ["api"]:
+                rest = rest[1:]
+            if rest[:1] == ["run"] and not has_flag(rest, NARROWING + ("--dry-run",)):
+                reasons.append("fleetest run に --scenario / --folder / --failed が無い(プロジェクトの全シナリオ)。"
+                               "全実施を指示されたとき以外は、変更が通るシナリオを --scenario で名指しする"
+                               "(全実施を頼まれたときだけ FT_FULL_TEST=1 を書く)")
+        if head in FULL_SUITE_SCRIPTS:
+            reasons.append(f"{head} はシナリオを絞る引数を持たない(常にスイート全体)。全実施を指示されたとき以外は"
+                           " fleetest run --scenario で絞る(全実施を頼まれたときだけ FT_FULL_TEST=1 を書く)")
+        if head == "e2e-negative.sh" and not has_flag(words, ("--project",)):
+            reasons.append("e2e-negative.sh に --project が無い(陽性対照の全体)。--project で絞る"
+                           "(全実施を頼まれたときだけ FT_FULL_TEST=1 を書く)")
+    if depth >= MAX_DEPTH:
+        return reasons
+    if head in SHELLS and len(words) >= 2 and words[1] != "-c" and not words[1].startswith("-"):
+        reasons.extend(file_problems(words[1], env, full_ok, depth))
+    elif "/" in words[0] and head not in SHELLS and head != "fleetest" and head not in FULL_SUITE_SCRIPTS:
+        reasons.extend(file_problems(words[0], env, full_ok, depth))
+    return reasons
+
+
+def check(command, env=None, full_ok=None, depth=0):
     """断る理由の一覧(空 = 通す)"""
-    segs = segments(command)
+    outer = strip_heredocs(command)
+    segs = segments(outer)
     if segs is None:
         return []
-    full_ok = "FT_FULL_TEST=1" in command
+    full_ok = full_ok or "FT_FULL_TEST=1" in outer
+    env = {**(env or {}), **assignments(outer)}
     classes = None
     reasons = []
     for tokens in segs:
         words = [t for t in tokens if not re.match(r"^\w+=", t)]  # 先頭の VAR=value を飛ばす
         # **`bash -c '<コマンド>'` の中も検査する**(引用の中は1つの語に見えるので、そのままだと素通りする)
         for i, tok in enumerate(words[:-1]):
-            if os.path.basename(tok) in ("bash", "sh", "zsh") and words[i + 1] == "-c" and i + 2 < len(words):
-                reasons.extend(check(words[i + 2] + (" FT_FULL_TEST=1" if full_ok else "")))
+            if os.path.basename(tok) in SHELLS and words[i + 1] == "-c" and i + 2 < len(words):
+                reasons.extend(check(words[i + 2], env, full_ok, depth))  # 中身は打ったコマンドそのもの = 同じ深さ
+        reasons.extend(device_run_problems(words, env, full_ok, depth))
         if len(words) >= 2 and os.path.basename(words[0]) == "swift" and words[1] == "test":
             if "--help" in words or "-h" in words:
                 continue
@@ -165,7 +315,10 @@ def check(command):
             if os.path.basename(tok) == "mutation-check.sh" and i + 1 < len(words) and words[i + 1] != "--purge":
                 classes = classes if classes is not None else test_classes()
                 reasons.extend(mutation_problems(words[i + 1], classes))
-    return reasons
+    if depth < MAX_DEPTH:
+        for body in heredoc_scripts(command):
+            reasons.extend(script_text_problems(body, env, full_ok, depth + 1))
+    return list(dict.fromkeys(reasons))
 
 
 if __name__ == "__main__":
