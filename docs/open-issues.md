@@ -83,16 +83,6 @@
     2 件は OCR の生死の確認(既知の文字を描いた絵)も読めなかった(同じ時刻に別プロセスの OCR は読めていた = 機械全体の死ではなく、
     その瞬間の読み手の失敗)。どちらもツールの判定の誤りではなく、高負荷の Emulator の描画と OCR の一時的な失敗
 
-## 未調査
-
-- **`fleetest run` に `--device` だけを渡すと、別の機械に属するデバイスをこの Mac から起こそうとする**(2026-10-13)
-  - 症状: `--device "iPhone 13(実機)"`(実行プロファイルでは `machine: M1Ultra`)を手元で打つと、M1Ultra へ振り分けず、
-    この Mac から Wi-Fi 越しにブリッジを起動しようとして「cannot obtain the LAN address」で失敗し、全シナリオがワーカー0台で赤になった
-  - 場所: `--device` は機械ごとの子 run が `--device-machine` と組で使う口(`Sources/fleetest/Fleetest.swift` の help)。親で単独に使うと
-    行の `machine` が効かない形。黙って別の経路に倒れるので、断るか正しい機械へ振り分けるべき(同名が手元とリモートに並ぶ場合の
-    配り方は `~/.claude/hooks/run-device-span-guard.py` が警告している)
-  - 回避: 機械をまたぐ1台だけの実行は、その1台だけを有効にした一時の実行プロファイルで回す(通常の振り分けで M1Ultra へ行く)
-
 ## 設計判断で据え置いているもの(直さないと決めた。症状が出たら見直す)
 
 - `activateSnapshotNode` の古い木: 撃つ前に `isReachable` で照合するが、UIView まで辿れないノードは許可する

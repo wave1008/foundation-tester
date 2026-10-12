@@ -57,7 +57,12 @@ enum DeviceMachineRunner {
             ConsoleOut.err(MachineEnablement.skippedNotice(excluded))
         }
         let grouped = DeviceMachineGrouping.groups(kept) { $0.machine }
-        guard grouped.count > 1 || !excluded.isEmpty else { return nil }
+        // **`--device` で絞った結果がリモートの1機械だけでも計画を返す**(無効の機械を外した場合と同じ理由)。
+        // nil だと単一経路がその行の machine を見ずに手元で起こそうとする(実機 iPhone 13 = M1Ultra を
+        // `--device` だけで指すと、この Mac から Wi-Fi 越しにブリッジを起こして全シナリオがワーカー0台で赤になった)。
+        // 手元だけに絞れた場合は従来どおり単一経路
+        let narrowedToOneRemote = !deviceFilter.isEmpty && grouped.count == 1 && grouped[0].machine != nil
+        guard grouped.count > 1 || !excluded.isEmpty || narrowedToOneRemote else { return nil }
         return grouped.map { group in
             Group(machine: group.machine,
                   deviceNames: group.devices.map(\.name),

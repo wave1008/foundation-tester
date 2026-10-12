@@ -53,6 +53,23 @@ final class RunProfileMachineDispatchTests: XCTestCase {
             project: project, profileName: "single", explicitHost: nil, deviceFilter: [], disabledMachines: []))
     }
 
+    /// `--device` でリモートの1機械だけに絞れたら、その機械へ配る計画を返す(nil だと単一経路が手元で
+    /// そのデバイスを起こそうとする。実機 iPhone 13 = M1Ultra で全シナリオがワーカー0台になった)
+    func testPlanDispatchesWhenTheDeviceFilterLeavesOnlyARemoteMachine() throws {
+        try writeMixed()
+        let groups = try DeviceMachineRunner.plan(
+            project: project, profileName: "multi", explicitHost: nil, deviceFilter: ["リモート機"], disabledMachines: [])
+        XCTAssertEqual(groups?.map(\.machineLabel), ["runner1"])
+        XCTAssertEqual(groups?.map(\.deviceNames), [["リモート機"]])
+    }
+
+    /// 手元だけに絞れた場合は従来どおり単一経路(nil)
+    func testPlanIsNilWhenTheDeviceFilterLeavesOnlyLocalDevices() throws {
+        try writeMixed()
+        XCTAssertNil(try DeviceMachineRunner.plan(
+            project: project, profileName: "multi", explicitHost: nil, deviceFilter: ["ローカル機"], disabledMachines: []))
+    }
+
     func testPlanIsNilWithAnExplicitRunner() throws {
         try writeMixed()
         XCTAssertNil(try DeviceMachineRunner.plan(
