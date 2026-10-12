@@ -293,7 +293,7 @@ Android の `CoordinatorLayout` + `AppBarLayout` + `ViewPager2`。
 
 ## CMP の実装
 
-CMP 1.11.0 / Kotlin 2.4.10 / Material3(commonMain)。追加の依存は `org.jetbrains.compose.ui:ui-backhandler:1.11.0`
+CMP 1.12.1 / Kotlin 2.4.21 / Material3(commonMain)。追加の依存は `org.jetbrains.compose.ui:ui-backhandler:1.12.1`
 (commonMain の `BackHandler`。navigation-compose が推移的に引くのと同じ版)だけ。ビルド: `scripts/build-ios.sh`(→
 `dist/ios-simulator/FTE2EY.app`)・`scripts/build-android.sh`(→ `dist/android/ft-e2ey-debug.apk`)。
 

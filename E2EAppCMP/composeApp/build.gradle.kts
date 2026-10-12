@@ -14,7 +14,7 @@ kotlin {
         }
     }
 
-    // iosX64(Intel Mac シミュレータ)は Compose Multiplatform 1.11.0 が非配信のため宣言しない。
+    // iosX64(Intel Mac シミュレータ)は Compose Multiplatform 1.12.1 が非配信のため宣言しない。
     listOf(
         iosArm64(),
         iosSimulatorArm64(),
