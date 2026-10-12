@@ -9,7 +9,7 @@
 #     その filter のテストファイルで新しく足したテスト関数の数を超える(新しいテストが無ければ 1 件まで)
 #   - デバイス実行(E2E)の全体(ユーザー方針 2026-10-13「全実施を指示されたとき以外は範囲を絞る」):
 #     `fleetest run` / `fleetest api run` に --scenario / --folder / --failed のどれも無い(--dry-run・--help は通す)/
-#     `Scripts/e2e.sh` `e2ex.sh` `e2ey.sh` `e2e-devices.sh`(シナリオを絞る引数を持たない = 常に全体)/
+#     `Scripts/e2e.sh` `e2ex.sh` `e2ey.sh`(シナリオを絞る引数を持たない = 常に全体)/ `--scenario` の無い `e2e-devices.sh` /
 #     `Scripts/e2e-negative.sh` に --project が無い
 #   - **起動するスクリプトファイルの中身も同じ規則で見る**(`bash <file>`・`bash -c "<file> …"`・`nohup <file>`・実行権限の直接起動。
 #     同じコマンドの中で heredoc に書いたスクリプトも本文を見る)。中身を見ないと、実行をファイルに書いて起こすだけで素通りする
@@ -256,7 +256,10 @@ def device_run_problems(words, env, full_ok, depth):
                 reasons.append("fleetest run に --scenario / --folder / --failed が無い(プロジェクトの全シナリオ)。"
                                "全実施を指示されたとき以外は、変更が通るシナリオを --scenario で名指しする"
                                "(全実施を頼まれたときだけ FT_FULL_TEST=1 を書く)")
-        if head in FULL_SUITE_SCRIPTS:
+        if head == "e2e-devices.sh" and not has_flag(words, ("--scenario",)):
+            reasons.append("e2e-devices.sh に --scenario が無い(実機の全シナリオ)。全実施を指示されたとき以外は"
+                           " --scenario で絞る(全実施を頼まれたときだけ FT_FULL_TEST=1 を書く)")
+        elif head in FULL_SUITE_SCRIPTS and head != "e2e-devices.sh":
             reasons.append(f"{head} はシナリオを絞る引数を持たない(常にスイート全体)。全実施を指示されたとき以外は"
                            " fleetest run --scenario で絞る(全実施を頼まれたときだけ FT_FULL_TEST=1 を書く)")
         if head == "e2e-negative.sh" and not has_flag(words, ("--project",)):

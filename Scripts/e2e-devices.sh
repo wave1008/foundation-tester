@@ -15,6 +15,8 @@
 #   Scripts/e2e-devices.sh --cmp        # SUT を絞る(--ios-native / --android-native / --flutter / --rn も同様。併記可)
 #   Scripts/e2e-devices.sh --local      # この Mac の実機だけ(M1Ultra の iPhone 13 を外す)
 #   Scripts/e2e-devices.sh --rebuild    # 実機用の SUT を必ずビルドし直す
+#   Scripts/e2e-devices.sh --cmp --ios --scenario 画像で要素を探す.S0030   # シナリオを絞る(繰り返し可。Class か Class.method)
+#     **全実施を頼まれたとき以外は --scenario で絞る**(絞らない起動は Scripts/test-scope-guard.py が断る。全実施は FT_FULL_TEST=1)
 #
 # 前提: 実機がつながっていてロックが解除されていること(iOS は「このコンピュータを信頼」・Developer Mode・
 # 証明書の信頼)。iPhone 13 は M1Ultra につながっているので、M1Ultra がこの clone と同じコミットでないと
@@ -32,15 +34,18 @@ RUN_IOS=1
 RUN_ANDROID=1
 LOCAL_ONLY=0
 SUTS=""
-for arg in "$@"; do
-  case "$arg" in
+SCENARIOS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
     --rebuild) FORCE_REBUILD=1 ;;
     --ios) RUN_ANDROID=0 ;;
     --android) RUN_IOS=0 ;;
     --local) LOCAL_ONLY=1 ;;
-    --cmp|--ios-native|--android-native|--flutter|--rn) SUTS="$SUTS ${arg#--}" ;;
-    *) echo "不明な引数: $arg" >&2; exit 2 ;;
+    --cmp|--ios-native|--android-native|--flutter|--rn) SUTS="$SUTS ${1#--}" ;;
+    --scenario) [ $# -ge 2 ] || { echo "--scenario に値がありません" >&2; exit 2; }; SCENARIOS+=(--scenario "$2"); shift ;;
+    *) echo "不明な引数: $1" >&2; exit 2 ;;
   esac
+  shift
 done
 [ -n "$SUTS" ] || SUTS="ios-native android-native cmp flutter rn"
 
@@ -67,7 +72,7 @@ run_devices() {  # $1 = プロジェクト名, $2 = プロファイル名
   echo "═══ $1 / $2(実機・--broadcast)═══"
   local runner_flag=""
   [ "$LOCAL_ONLY" = 1 ] && runner_flag="--runner local"
-  if "$FLEETEST" run --project "$1" --profile "$2" --broadcast $runner_flag; then
+  if "$FLEETEST" run --project "$1" --profile "$2" --broadcast $runner_flag ${SCENARIOS[@]+"${SCENARIOS[@]}"}; then
     echo "✅ $1 / $2"
     SUMMARY="${SUMMARY}✅ $1 / $2
 "

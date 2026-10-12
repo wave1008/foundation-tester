@@ -408,8 +408,7 @@ extension BridgeRouter {
             // no-op なので外れて多く撃っても損は無く、それでも残るほど長ければ次の /type の
             // 読み返し不一致が唯一の合図になる(2026-08-31・実機実測)
             try Self.requirePresent(focused)
-            let frame = focused.frame
-            Self.tapBeforeTyping(coordinate(app, CGPoint(x: frame.maxX - 4, y: frame.midY)))
+            tapFieldEndIfHittable(app, focused)
             app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue,
                                  count: Self.invisibleContentDeleteBurst))
         }
@@ -424,8 +423,7 @@ extension BridgeRouter {
             previous = text
             rounds += 1
             try Self.requirePresent(focused)
-            let frame = focused.frame
-            Self.tapBeforeTyping(coordinate(app, CGPoint(x: frame.maxX - 4, y: frame.midY)))
+            tapFieldEndIfHittable(app, focused)
             // 打鍵は app 全体へ(要素へ向けると、叩いた後に焦点が動いたとき要素スコープの失敗でランナーを落とし得る。
             // 入力先は叩いた欄 = 最前のレスポンダ。下の木で読み返す経路と同じ)
             app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
@@ -464,6 +462,16 @@ extension BridgeRouter {
         // 取るので、clear → type を撮り直さずに続けると clear 前の値を期待に足して再送し、
         // 消したはずの文字列が戻る(実機 iPhone 13・2026-08-31: replace で `   モバイル   `)
         if let ref = req.ref { refElements[ref]?.value = nil }
+    }
+
+    /// 焦点の欄の右端を叩いてカーソルを末尾へ寄せる。**欄がそこで叩けない(他の部品の裏・画面の外)なら叩かない** ——
+    /// 叩くと手前の部品を押す(実機 iPhone SE3 の CMP: キーボード表示中にパスワード欄が下のタブバーの裏へ回り、
+    /// 枠の右端は「情報」タブの上だった)。叩かなくても削除キーは焦点の欄(最前のレスポンダ)へ届き、
+    /// カーソルが末尾でなければ消し残りは読み返しのループが拾う(消せなければ 422)。isHittable は要素ごとに往復する(数十 ms)
+    private func tapFieldEndIfHittable(_ app: XCUIApplication, _ field: XCUIElement) {
+        guard field.isHittable else { return }
+        let frame = field.frame
+        Self.tapBeforeTyping(coordinate(app, CGPoint(x: frame.maxX - 4, y: frame.midY)))
     }
 
     /// ref を渡された clear の焦点待ち(FocusWait.waitSeconds が上限・FocusWait.pollSeconds が刻み。

@@ -18,13 +18,6 @@
 
 ## デバイスで赤のまま・原因未調査
 
-- **XCUITest ランナーのロケータ無しの消去が、画面に描かれていない焦点の欄の枠を叩く**(2026-10-13・iPhone SE3 の E2E-CMP で観測)
-  - 症状: キーボード表示中にパスワード欄が下のタブバーの裏へ回って描かれていない状態で `clearInput()` を撃つと、ランナーは焦点の欄の
-    枠の右端(約 (355,369))を叩いてから削除キーを撃ち、200 を返した。その点に描かれているのはタブバーの「情報」。今回は画面が変わらず
-    欄も消えなかった(ホストは焦点の欄が木に無いので注記 `clear-input-unverified` を出す)
-  - 場所: `Runner/FleetestRunnerUITests/BridgeRouter+TextInput.swift` の `clearFocusedInput`(`tapBeforeTyping` で焦点の欄の枠を叩く)
-  - 実害の向き: 叩いた点にボタンがあれば押す(別の画面へ移る・送信する)。欄が見えているかを叩く前に確かめていない
-
 - **E2E-CMP の XCUITest で「テキスト入力が正しくechoされること」S0040 の `type(replace:)` の後の echo が空のまま**(2026-10-12・
   ios-xcuitest の記録 205 回中 20 回赤)
   - 症状: `type("#field_single", "abc")` → `type("#field_single", "xyz", replace: true)` がどちらも緑のまま、次の
@@ -89,6 +82,16 @@
   - 2026-10-11 の負荷テスト(E2EY-CMP の Android・3 件)で分けられた: 1 件は OCR へ渡した絵 3 枚のアプリ領域が一色(撮った絵が白い)、
     2 件は OCR の生死の確認(既知の文字を描いた絵)も読めなかった(同じ時刻に別プロセスの OCR は読めていた = 機械全体の死ではなく、
     その瞬間の読み手の失敗)。どちらもツールの判定の誤りではなく、高負荷の Emulator の描画と OCR の一時的な失敗
+
+## 未調査
+
+- **`fleetest run` に `--device` だけを渡すと、別の機械に属するデバイスをこの Mac から起こそうとする**(2026-10-13)
+  - 症状: `--device "iPhone 13(実機)"`(実行プロファイルでは `machine: M1Ultra`)を手元で打つと、M1Ultra へ振り分けず、
+    この Mac から Wi-Fi 越しにブリッジを起動しようとして「cannot obtain the LAN address」で失敗し、全シナリオがワーカー0台で赤になった
+  - 場所: `--device` は機械ごとの子 run が `--device-machine` と組で使う口(`Sources/fleetest/Fleetest.swift` の help)。親で単独に使うと
+    行の `machine` が効かない形。黙って別の経路に倒れるので、断るか正しい機械へ振り分けるべき(同名が手元とリモートに並ぶ場合の
+    配り方は `~/.claude/hooks/run-device-span-guard.py` が警告している)
+  - 回避: 機械をまたぐ1台だけの実行は、その1台だけを有効にした一時の実行プロファイルで回す(通常の振り分けで M1Ultra へ行く)
 
 ## 設計判断で据え置いているもの(直さないと決めた。症状が出たら見直す)
 

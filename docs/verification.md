@@ -302,6 +302,9 @@ Flutter と RN の実機用は **Release 構成**(Flutter の Debug は flutter 
   ホームボタン機)。シナリオや SUT の配置を変えたら e2e-sut.md の「両方の画面で」の確かめ方として回す
 - **陽性対照とエンジンの検証済みの印(`.fleetest/*-e2e-verified`)には触らない**(実機は XCUITest だけで、
   利用者の既定エンジンの経路を通らない)
+- **全実施を頼まれたとき以外は `--scenario <Class か Class.method>`(繰り返し可)で絞る**(絞らない起動は
+  `Scripts/test-scope-guard.py` が断る)。直したシナリオの確かめは、SUT と OS も絞って
+  `Scripts/e2e-devices.sh --cmp --ios --scenario 画像で要素を探す.S0030` の形で回す
 - iPhone 13 の分は M1Ultra がこの clone と同じコミットでないと適合チェックで落ちる(`Scripts/align.sh`)。
   手元の実機だけなら `--local`
 - 所要の目安: iOS 56 本 × 2 台で約 21 分(並行)・Android は 1 SUT あたり 15〜17 分(2 台並行)
