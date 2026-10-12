@@ -74,7 +74,7 @@ There is no need to modify fleetest itself ([Adding your own features](../refere
 ## Scalability
 
 - **Add Macs or physical devices to the fleet to increase the devices doing the work.**
-  Even as your tests grow, you can shorten the test time.
+  Even as your tests grow, you can keep the test time from growing with them.
 
 ## Easy to operate
 
