@@ -150,13 +150,8 @@ if [ "$PERFORMANCE" = 1 ]; then
   MONITOR_PAUSED=1
 fi
 
-# ソースが成果物より新しいか(成果物が無い場合も真)
-needs_rebuild() {  # $1 = 成果物パス, $2.. = 監視するソースディレクトリ
-  local artifact="$1"; shift
-  [ "$FORCE_REBUILD" = 1 ] && return 0
-  [ -e "$artifact" ] || return 0
-  [ -n "$(find "$@" -type f -newer "$artifact" 2>/dev/null | head -1)" ]
-}
+# needs_rebuild / record_sdk(SUT を作り直すかの判定。ソースの mtime と外部 SDK の版)
+. "$ROOT/Scripts/sut-rebuild.sh"
 
 # **回さなかった側のエンジン**の入力が、最後にそれを全部通した状態から動いていないか。
 # 1回の実行が見るのは iOS の2エンジンのうち片方だけなので、放っておくともう片方は
@@ -360,19 +355,24 @@ for sut in $SUTS; do
   case "$sut" in
     cmp)
       APP="$ROOT/E2EAppCMP"
-      if [ "$RUN_IOS" = 1 ] && needs_rebuild "$APP/dist/ios-simulator/FTE2E.app" "$APP/composeApp/src" "$APP/iosApp"; then
+      if [ "$RUN_IOS" = 1 ] && needs_rebuild "$APP/dist/ios-simulator/FTE2E.app" "$APP/composeApp/src" "$APP/iosApp" "$APP/gradle/libs.versions.toml" "$APP/composeApp/build.gradle.kts" "$APP/gradle/wrapper/gradle-wrapper.properties" "$APP/settings.gradle.kts" "$APP/build.gradle.kts"; then
         echo "→ SUT cmp(iOS)を再ビルドします..."; "$APP/scripts/build-ios.sh"
+        record_sdk "$APP/dist/ios-simulator/FTE2E.app"
       fi
       # 実機用も揃える(ios-native と同じ扱い: 実機用を一度も作っていない機械では作らない = 署名の Team ID が要る。
       # 失敗は警告だけでスイートの合否は変えない)
       if [ "$RUN_IOS" = 1 ] && [ -e "$APP/dist/ios-device/FTE2E.app" ] \
-          && needs_rebuild "$APP/dist/ios-device/FTE2E.app" "$APP/composeApp/src" "$APP/iosApp/iosApp"; then
+          && needs_rebuild "$APP/dist/ios-device/FTE2E.app" "$APP/composeApp/src" "$APP/iosApp/iosApp" "$APP/gradle/libs.versions.toml" "$APP/composeApp/build.gradle.kts" "$APP/gradle/wrapper/gradle-wrapper.properties" "$APP/settings.gradle.kts" "$APP/build.gradle.kts"; then
         echo "→ SUT cmp(iOS 実機用)を再ビルドします..."
-        "$APP/scripts/build-ios-device.sh" \
-          || echo "⚠️ 実機用の再ビルドに失敗しました(E2EAppCMP/scripts/build-ios-device.sh)。実機では古いアプリのまま走ります"
+        if "$APP/scripts/build-ios-device.sh"; then
+          record_sdk "$APP/dist/ios-device/FTE2E.app"
+        else
+          echo "⚠️ 実機用の再ビルドに失敗しました(E2EAppCMP/scripts/build-ios-device.sh)。実機では古いアプリのまま走ります"
+        fi
       fi
-      if [ "$RUN_ANDROID" = 1 ] && needs_rebuild "$APP/dist/android/ft-e2e-debug.apk" "$APP/composeApp/src"; then
+      if [ "$RUN_ANDROID" = 1 ] && needs_rebuild "$APP/dist/android/ft-e2e-debug.apk" "$APP/composeApp/src" "$APP/gradle/libs.versions.toml" "$APP/composeApp/build.gradle.kts" "$APP/gradle/wrapper/gradle-wrapper.properties" "$APP/settings.gradle.kts" "$APP/build.gradle.kts"; then
         echo "→ SUT cmp(Android)を再ビルドします..."; "$APP/scripts/build-android.sh"
+        record_sdk "$APP/dist/android/ft-e2e-debug.apk"
       fi
       [ "$RUN_IOS" = 1 ] && run_profile E2E-CMP "$IOS_PROFILE"
       [ "$RUN_IOS" = 1 ] && run_inapp_witness E2E-CMP '絵の追いつきを待ってから撮る.S0010'
@@ -381,35 +381,42 @@ for sut in $SUTS; do
     ios-native)
       [ "$RUN_IOS" = 1 ] || continue
       APP="$ROOT/E2EAppIOS"
-      if needs_rebuild "$APP/dist/ios-simulator/FTE2EIOS.app" "$APP/Sources"; then
+      if needs_rebuild "$APP/dist/ios-simulator/FTE2EIOS.app" "$APP/Sources" "$APP/project.yml"; then
         echo "→ SUT ios-native を再ビルドします..."; "$APP/scripts/build-ios.sh"
+        record_sdk "$APP/dist/ios-simulator/FTE2EIOS.app"
       fi
       # **実機用の成果物も揃える**(実機プロファイル ios-iphonese3 / ios-iphone13 が使う。このスイートは
       # 実機を回さないので、ここで作り直さないと古いアプリのまま実機で走り、足したばかりの #id が
       # 「element not found」で赤になる = 2026-09-16 に SE3 で踏んだ)。実機用を一度も作っていない
       # 機械では作らない(署名の Team ID が要る)。失敗は警告だけでスイートの合否は変えない
-      if [ -e "$APP/dist/ios-device/FTE2EIOS.app" ] && needs_rebuild "$APP/dist/ios-device/FTE2EIOS.app" "$APP/Sources"; then
+      if [ -e "$APP/dist/ios-device/FTE2EIOS.app" ] && needs_rebuild "$APP/dist/ios-device/FTE2EIOS.app" "$APP/Sources" "$APP/project.yml"; then
         echo "→ SUT ios-native(実機用)を再ビルドします..."
-        "$APP/scripts/build-ios-device.sh" \
-          || echo "⚠️ 実機用の再ビルドに失敗しました(E2EAppIOS/scripts/build-ios-device.sh)。実機プロファイルは古いアプリのまま走ります"
+        if "$APP/scripts/build-ios-device.sh"; then
+          record_sdk "$APP/dist/ios-device/FTE2EIOS.app"
+        else
+          echo "⚠️ 実機用の再ビルドに失敗しました(E2EAppIOS/scripts/build-ios-device.sh)。実機プロファイルは古いアプリのまま走ります"
+        fi
       fi
       run_profile E2E-iOS "$IOS_PROFILE"
       ;;
     android-native)
       [ "$RUN_ANDROID" = 1 ] || continue
       APP="$ROOT/E2EAppAndroid"
-      if needs_rebuild "$APP/dist/android/ft-e2e-android-debug.apk" "$APP/app/src"; then
+      if needs_rebuild "$APP/dist/android/ft-e2e-android-debug.apk" "$APP/app/src" "$APP/app/build.gradle.kts" "$APP/gradle/libs.versions.toml" "$APP/gradle/wrapper/gradle-wrapper.properties" "$APP/settings.gradle.kts" "$APP/build.gradle.kts"; then
         echo "→ SUT android-native を再ビルドします..."; "$APP/scripts/build-android.sh"
+        record_sdk "$APP/dist/android/ft-e2e-android-debug.apk"
       fi
       run_profile E2E-Android android
       ;;
     flutter)
       APP="$ROOT/E2EAppFlutter"
-      if [ "$RUN_IOS" = 1 ] && needs_rebuild "$APP/dist/ios-simulator/FTE2EFlutter.app" "$APP/lib" "$APP/ios/Runner"; then
+      if [ "$RUN_IOS" = 1 ] && needs_rebuild "$APP/dist/ios-simulator/FTE2EFlutter.app" "$APP/lib" "$APP/ios/Runner" "$APP/pubspec.yaml" "$APP/pubspec.lock"; then
         echo "→ SUT flutter(iOS)を再ビルドします..."; "$APP/scripts/build-ios.sh"
+        record_sdk "$APP/dist/ios-simulator/FTE2EFlutter.app"
       fi
-      if [ "$RUN_ANDROID" = 1 ] && needs_rebuild "$APP/dist/android/ft-e2e-flutter-debug.apk" "$APP/lib" "$APP/android/app"; then
+      if [ "$RUN_ANDROID" = 1 ] && needs_rebuild "$APP/dist/android/ft-e2e-flutter-debug.apk" "$APP/lib" "$APP/android/app" "$APP/pubspec.yaml" "$APP/pubspec.lock" "$APP/android/settings.gradle.kts" "$APP/android/build.gradle.kts" "$APP/android/gradle/wrapper/gradle-wrapper.properties"; then
         echo "→ SUT flutter(Android)を再ビルドします..."; "$APP/scripts/build-android.sh"
+        record_sdk "$APP/dist/android/ft-e2e-flutter-debug.apk"
       fi
       [ "$RUN_IOS" = 1 ] && run_profile E2E-Flutter "$IOS_PROFILE"
       [ "$RUN_ANDROID" = 1 ] && run_profile E2E-Flutter android
@@ -417,11 +424,13 @@ for sut in $SUTS; do
     rn)
       APP="$ROOT/E2EAppRN"
       # 監視対象に android/app や ios/ を丸ごと入れない(ビルド出力・Pods が混ざり毎回再ビルドになる)
-      if [ "$RUN_IOS" = 1 ] && needs_rebuild "$APP/dist/ios-simulator/FTE2ERN.app" "$APP/src" "$APP/App.tsx" "$APP/index.js" "$APP/ios/FTE2ERN"; then
+      if [ "$RUN_IOS" = 1 ] && needs_rebuild "$APP/dist/ios-simulator/FTE2ERN.app" "$APP/src" "$APP/App.tsx" "$APP/index.js" "$APP/ios/FTE2ERN" "$APP/package.json" "$APP/package-lock.json" "$APP/ios/Podfile.lock"; then
         echo "→ SUT rn(iOS)を再ビルドします..."; "$APP/scripts/build-ios.sh"
+        record_sdk "$APP/dist/ios-simulator/FTE2ERN.app"
       fi
-      if [ "$RUN_ANDROID" = 1 ] && needs_rebuild "$APP/dist/android/ft-e2e-rn-release.apk" "$APP/src" "$APP/App.tsx" "$APP/index.js" "$APP/android/app/src"; then
+      if [ "$RUN_ANDROID" = 1 ] && needs_rebuild "$APP/dist/android/ft-e2e-rn-release.apk" "$APP/src" "$APP/App.tsx" "$APP/index.js" "$APP/android/app/src" "$APP/package.json" "$APP/package-lock.json" "$APP/android/app/build.gradle" "$APP/android/build.gradle" "$APP/android/settings.gradle" "$APP/android/gradle/wrapper/gradle-wrapper.properties"; then
         echo "→ SUT rn(Android)を再ビルドします..."; "$APP/scripts/build-android.sh"
+        record_sdk "$APP/dist/android/ft-e2e-rn-release.apk"
       fi
       [ "$RUN_IOS" = 1 ] && run_profile E2E-RN "$IOS_PROFILE"
       [ "$RUN_ANDROID" = 1 ] && run_profile E2E-RN android

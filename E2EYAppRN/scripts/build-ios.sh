@@ -7,6 +7,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# 依存を lock に揃えてからビルドする(Scripts/rn-deps.sh)
+. ../Scripts/rn-deps.sh
+rn_sync_node_modules
+rn_sync_pods
+
 command -v xcodebuild >/dev/null 2>&1 || { echo "xcodebuild 未インストール" >&2; exit 1; }
 # 依存が無い機械(ランナー)でもビルドできるように、無ければここで入れる(npm ci は lock どおり・pod は Podfile.lock どおり)
 [ -d node_modules ] || npm ci

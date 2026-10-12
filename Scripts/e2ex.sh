@@ -113,13 +113,8 @@ if [ "$RUN_IOS" = 1 ] && [ "$RUN_ENGINE" = xcuitest ]; then
 fi
 
 
-# ソースが成果物より新しいか(成果物が無い場合も真)。Scripts/e2e.sh の needs_rebuild と同じ
-needs_rebuild() {  # $1 = 成果物パス, $2.. = 監視するソース
-  local artifact="$1"; shift
-  [ "$FORCE_REBUILD" = 1 ] && return 0
-  [ -e "$artifact" ] || return 0
-  [ -n "$(find "$@" -type f -newer "$artifact" 2>/dev/null | head -1)" ]
-}
+# needs_rebuild / record_sdk(SUT を作り直すかの判定。ソースの mtime と外部 SDK の版)
+. "$ROOT/Scripts/sut-rebuild.sh"
 
 FAILED=0
 # ${RESULTS} と括る: bash 3.2 は $RESULTS の直後の絵文字の先頭バイトを変数名に含めて unbound で落ちる
@@ -148,10 +143,12 @@ run_sut() {
   if [ "$RUN_IOS" = 1 ] && [ -n "$ios_art" ] && needs_rebuild "$app/$ios_art" $ios_src; then
     echo "==> $1(iOS Simulator)を再ビルドします"
     "$app/scripts/build-ios.sh"
+    record_sdk "$app/$ios_art"
   fi
   if [ "$RUN_ANDROID" = 1 ] && [ -n "$android_art" ] && needs_rebuild "$app/$android_art" $android_src; then
     echo "==> $1(Android)を再ビルドします"
     "$app/scripts/build-android.sh"
+    record_sdk "$app/$android_art"
   fi
   if [ "$RUN_IOS" = 1 ] && [ -n "$ios_art" ]; then
     run_profile "$project" "$IOS_PROFILE"
@@ -165,16 +162,16 @@ for sut in $SUTS; do
   case "$sut" in
     cmp)
       run_sut E2EXAppCMP E2EX-CMP dist/ios-simulator/FTE2EX.app dist/android/ft-e2ex-debug.apk \
-        "composeApp/src iosApp/iosApp iosApp/project.yml composeApp/build.gradle.kts" \
-        "composeApp/src composeApp/build.gradle.kts" ;;
+        "composeApp/src iosApp/iosApp iosApp/project.yml composeApp/build.gradle.kts gradle/libs.versions.toml gradle/wrapper/gradle-wrapper.properties settings.gradle.kts build.gradle.kts" \
+        "composeApp/src composeApp/build.gradle.kts gradle/libs.versions.toml gradle/wrapper/gradle-wrapper.properties settings.gradle.kts build.gradle.kts" ;;
     flutter)
       run_sut E2EXAppFlutter E2EX-Flutter dist/ios-simulator/FTE2EXFlutter.app dist/android/ft-e2ex-flutter-debug.apk \
-        "lib ios/Runner pubspec.yaml" "lib android/app pubspec.yaml" ;;
+        "lib ios/Runner pubspec.yaml pubspec.lock" "lib android/app pubspec.yaml pubspec.lock android/settings.gradle.kts android/build.gradle.kts android/gradle/wrapper/gradle-wrapper.properties" ;;
     rn)
       run_sut E2EXAppRN E2EX-RN dist/ios-simulator/FTE2EXRN.app dist/android/ft-e2ex-rn-release.apk \
-        "src App.tsx index.js package.json ios/FTE2EXRN" "src App.tsx index.js package.json android/app/src" ;;
+        "src App.tsx index.js package.json package-lock.json ios/FTE2EXRN ios/Podfile.lock" "src App.tsx index.js package.json package-lock.json android/app/src android/app/build.gradle android/build.gradle android/settings.gradle android/gradle/wrapper/gradle-wrapper.properties" ;;
     android-native)
-      run_sut E2EXAppAndroid E2EX-Android "" dist/android/ft-e2ex-android-debug.apk "" "app/src app/build.gradle.kts" ;;
+      run_sut E2EXAppAndroid E2EX-Android "" dist/android/ft-e2ex-android-debug.apk "" "app/src app/build.gradle.kts gradle/libs.versions.toml gradle/wrapper/gradle-wrapper.properties settings.gradle.kts build.gradle.kts" ;;
     ios-native)
       run_sut E2EXAppIOS E2EX-iOS dist/ios-simulator/FTE2EXIOS.app "" "Sources project.yml" "" ;;
   esac

@@ -6,6 +6,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# 依存を lock に揃えてからビルドする(Scripts/rn-deps.sh)
+. ../Scripts/rn-deps.sh
+rn_sync_node_modules
+
 [ -d node_modules ] || npm ci
 test -x android/gradlew || { echo "android/gradlew が無い(pod install/npm install 未実行?)" >&2; exit 1; }
 

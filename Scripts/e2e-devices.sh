@@ -57,13 +57,8 @@ trap 'crash_dialog_restore' EXIT
 trap 'crash_dialog_restore; exit 130' INT TERM HUP
 crash_dialog_suppress
 
-# ソースが成果物より新しいか(成果物が無い場合も真)。e2e.sh と同じ規則
-needs_rebuild() {  # $1 = 成果物パス, $2.. = 監視するソースディレクトリ
-  local artifact="$1"; shift
-  [ "$FORCE_REBUILD" = 1 ] && return 0
-  [ -e "$artifact" ] || return 0
-  [ -n "$(find "$@" -type f -newer "$artifact" 2>/dev/null | head -1)" ]
-}
+# needs_rebuild / record_sdk(SUT を作り直すかの判定。ソースの mtime と外部 SDK の版)
+. "$ROOT/Scripts/sut-rebuild.sh"
 
 FAILED=0
 SUMMARY=""
@@ -89,59 +84,67 @@ for sut in $SUTS; do
     ios-native)
       [ "$RUN_IOS" = 1 ] || continue
       APP="$ROOT/E2EAppIOS"
-      if needs_rebuild "$APP/dist/ios-device/FTE2EIOS.app" "$APP/Sources"; then
+      if needs_rebuild "$APP/dist/ios-device/FTE2EIOS.app" "$APP/Sources" "$APP/project.yml"; then
         echo "→ SUT ios-native(実機用)をビルドし直します..."; "$APP/scripts/build-ios-device.sh"
+        record_sdk "$APP/dist/ios-device/FTE2EIOS.app"
       fi
       run_devices E2E-iOS ios-device
       ;;
     android-native)
       [ "$RUN_ANDROID" = 1 ] || continue
       APP="$ROOT/E2EAppAndroid"
-      if needs_rebuild "$APP/dist/android/ft-e2e-android-debug.apk" "$APP/app/src"; then
+      if needs_rebuild "$APP/dist/android/ft-e2e-android-debug.apk" "$APP/app/src" "$APP/app/build.gradle.kts" "$APP/gradle/libs.versions.toml" "$APP/gradle/wrapper/gradle-wrapper.properties" "$APP/settings.gradle.kts" "$APP/build.gradle.kts"; then
         echo "→ SUT android-native をビルドし直します..."; "$APP/scripts/build-android.sh"
+        record_sdk "$APP/dist/android/ft-e2e-android-debug.apk"
       fi
       run_devices E2E-Android android-device
       ;;
     cmp)
       APP="$ROOT/E2EAppCMP"
       if [ "$RUN_IOS" = 1 ]; then
-        if needs_rebuild "$APP/dist/ios-device/FTE2E.app" "$APP/composeApp/src" "$APP/iosApp/iosApp"; then
+        if needs_rebuild "$APP/dist/ios-device/FTE2E.app" "$APP/composeApp/src" "$APP/iosApp/iosApp" "$APP/gradle/libs.versions.toml" "$APP/composeApp/build.gradle.kts" "$APP/gradle/wrapper/gradle-wrapper.properties" "$APP/settings.gradle.kts" "$APP/build.gradle.kts"; then
           echo "→ SUT cmp(iOS 実機用)をビルドし直します..."; "$APP/scripts/build-ios-device.sh"
+          record_sdk "$APP/dist/ios-device/FTE2E.app"
         fi
         run_devices E2E-CMP ios-device
       fi
       [ "$RUN_ANDROID" = 1 ] || continue
-      if needs_rebuild "$APP/dist/android/ft-e2e-debug.apk" "$APP/composeApp/src"; then
+      if needs_rebuild "$APP/dist/android/ft-e2e-debug.apk" "$APP/composeApp/src" "$APP/gradle/libs.versions.toml" "$APP/composeApp/build.gradle.kts" "$APP/gradle/wrapper/gradle-wrapper.properties" "$APP/settings.gradle.kts" "$APP/build.gradle.kts"; then
         echo "→ SUT cmp(Android)をビルドし直します..."; "$APP/scripts/build-android.sh"
+        record_sdk "$APP/dist/android/ft-e2e-debug.apk"
       fi
       run_devices E2E-CMP android-device
       ;;
     flutter)
       APP="$ROOT/E2EAppFlutter"
       if [ "$RUN_IOS" = 1 ]; then
-        if needs_rebuild "$APP/dist/ios-device/FTE2EFlutter.app" "$APP/lib" "$APP/ios/Runner"; then
+        if needs_rebuild "$APP/dist/ios-device/FTE2EFlutter.app" "$APP/lib" "$APP/ios/Runner" "$APP/pubspec.yaml" "$APP/pubspec.lock"; then
           echo "→ SUT flutter(iOS 実機用)をビルドし直します..."; "$APP/scripts/build-ios-device.sh"
+          record_sdk "$APP/dist/ios-device/FTE2EFlutter.app"
         fi
         run_devices E2E-Flutter ios-device
       fi
       [ "$RUN_ANDROID" = 1 ] || continue
-      if needs_rebuild "$APP/dist/android/ft-e2e-flutter-debug.apk" "$APP/lib" "$APP/android/app"; then
+      if needs_rebuild "$APP/dist/android/ft-e2e-flutter-debug.apk" "$APP/lib" "$APP/android/app" "$APP/pubspec.yaml" "$APP/pubspec.lock" "$APP/android/settings.gradle.kts" "$APP/android/build.gradle.kts" "$APP/android/gradle/wrapper/gradle-wrapper.properties"; then
         echo "→ SUT flutter(Android)をビルドし直します..."; "$APP/scripts/build-android.sh"
+        record_sdk "$APP/dist/android/ft-e2e-flutter-debug.apk"
       fi
       run_devices E2E-Flutter android-device
       ;;
     rn)
       APP="$ROOT/E2EAppRN"
       if [ "$RUN_IOS" = 1 ]; then
-        if needs_rebuild "$APP/dist/ios-device/FTE2ERN.app" "$APP/src" "$APP/App.tsx" "$APP/index.js" "$APP/ios/FTE2ERN"; then
+        if needs_rebuild "$APP/dist/ios-device/FTE2ERN.app" "$APP/src" "$APP/App.tsx" "$APP/index.js" "$APP/ios/FTE2ERN" "$APP/package.json" "$APP/package-lock.json" "$APP/ios/Podfile.lock"; then
           echo "→ SUT rn(iOS 実機用)をビルドし直します..."; "$APP/scripts/build-ios-device.sh"
+          record_sdk "$APP/dist/ios-device/FTE2ERN.app"
         fi
         run_devices E2E-RN ios-device
       fi
       [ "$RUN_ANDROID" = 1 ] || continue
       # 監視対象に android/app を丸ごと入れない(ビルド出力が混ざり毎回ビルドし直しになる。e2e.sh と同じ)
-      if needs_rebuild "$APP/dist/android/ft-e2e-rn-release.apk" "$APP/src" "$APP/App.tsx" "$APP/index.js" "$APP/android/app/src"; then
+      if needs_rebuild "$APP/dist/android/ft-e2e-rn-release.apk" "$APP/src" "$APP/App.tsx" "$APP/index.js" "$APP/android/app/src" "$APP/package.json" "$APP/package-lock.json" "$APP/android/app/build.gradle" "$APP/android/build.gradle" "$APP/android/settings.gradle" "$APP/android/gradle/wrapper/gradle-wrapper.properties"; then
         echo "→ SUT rn(Android)をビルドし直します..."; "$APP/scripts/build-android.sh"
+        record_sdk "$APP/dist/android/ft-e2e-rn-release.apk"
       fi
       run_devices E2E-RN android-device
       ;;

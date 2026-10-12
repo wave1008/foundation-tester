@@ -7,6 +7,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# 依存を lock に揃えてからビルドする(Scripts/rn-deps.sh)
+. ../Scripts/rn-deps.sh
+rn_sync_node_modules
+rn_sync_pods
+
 command -v xcodebuild >/dev/null 2>&1 || { echo "xcodebuild 未インストール" >&2; exit 1; }
 
 xcodebuild -workspace ios/FTE2ERN.xcworkspace -scheme FTE2ERN -configuration Release \

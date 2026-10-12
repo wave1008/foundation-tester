@@ -21,10 +21,11 @@ function runGate({ profile, failed, markers = {}, digest }) {
     writeFileSync(join(dir, '.fleetest', name), body)
   }
   const detectStart = source.indexOf('engine_digest()')
-  const detect = source.slice(detectStart, source.indexOf('\n# ソースが成果物より新しいか', detectStart))
+  const detectEnd = source.indexOf('\n# needs_rebuild / record_sdk', detectStart)
+  const detect = source.slice(detectStart, detectEnd)
   const recordStart = source.indexOf('# **印を更新するのは全部成功したときだけ**')
   const record = source.slice(recordStart, source.indexOf('\nexit "$FAILED"', recordStart))
-  assert.ok(detectStart >= 0 && recordStart >= 0, 'e2ex.sh からゲートの2ブロックを取り出せない')
+  assert.ok(detectStart >= 0 && detectEnd >= 0 && recordStart >= 0, 'e2ex.sh からゲートの2ブロックを取り出せない')
   const harness = [
     'set -u',
     `ROOT=${JSON.stringify(dir)}`,
