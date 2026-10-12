@@ -113,9 +113,10 @@ class スクロールで折り返し下の要素に到達できること {
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_scroll")
-                    // 始点・終点とも初期画面内で見えている行にする(#row_06 より下へ変えない):
-                    // 画面外要素は frame がクランプされ座標がずれる既知の罠があるため
-                    swipeElementToElement("#row_06", "#row_02", durationSeconds: 0.5)
+                    // 始点・終点とも一覧(#list_rows・高さ 300pt)の中に収まっている行にする(#row_05 より下へ変えない):
+                    // #row_06 は一覧の下端からはみ出し、その中心は下の横カルーセル #carousel_tags の上に乗る
+                    // (iPhone SE3 で実測。縦に払ってもカルーセルが受けて一覧は動かない)
+                    swipeElementToElement("#row_05", "#row_01", durationSeconds: 0.5)
                 }.expectation {
                     // notExist で行を追い出して確かめると FlatList の仮想化範囲に依存し、
                     // 慣性の小さい遅い台で #row_01 が木に残って誤って赤になる(docs/ui-contract.md

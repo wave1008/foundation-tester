@@ -1,0 +1,35 @@
+{
+  "app": "ft_e2e_flutter_device",
+  "devices": [
+    {
+      "platform": "ios",
+      "machine": "local",
+      "name": "iPhone wave(実機)",
+      "enabled": false,
+      "kind": "physical",
+      "model": "iPhone 15 Pro",
+      "osVersion": "iOS 26.5.2",
+      "udid": "00008130-001819863E60001C"
+    },
+    {
+      "platform": "ios",
+      "machine": "M1Ultra",
+      "name": "iPhone 13(実機)",
+      "kind": "physical",
+      "model": "iPhone 13",
+      "osVersion": "iOS 26.6.1",
+      "udid": "00008110-001460910E0A201E"
+    },
+    {
+      "platform": "ios",
+      "machine": "local",
+      "name": "iPhone SE3(実機)",
+      "kind": "physical",
+      "model": "iPhone SE (3rd generation)",
+      "osVersion": "iOS 26.6",
+      "udid": "00008110-000260242EEB801E"
+    }
+  ],
+  "heal": true,
+  "iosInappEngine": false
+}

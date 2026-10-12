@@ -249,6 +249,10 @@ Android は intent に package を明示するので影響しないが、**契�
 3. `複数行` 欄とその echo だけは折り返しの下でよい(シナリオが触らない)。
 4. キーボードに覆われた要素は `exist`/`textIs` の可視性判定(requireVisible 既定 true)で
    誤った緑になり(失敗文言は `false positive (occlusion)`)、検証不能になる。
+5. **背の低い iPhone(SE3・高さ 667)ではこの予算に収まらない**(キーボード表示中に木に載るのは y<302 まで =
+   パスワード欄・送信/クリアが消える)。iOS の Compose は `hideKeyboard` で閉じられないので、**入力欄の外を叩くと
+   フォーカスを外してキーボードを閉じる**(`InputScreen.kt`)。シナリオは Android の `hideKeyboard()` と同じ位置で
+   `ios { tap("#txt_echo_single") }` を撃つ
 
 ## ジェスチャ画面(タイトル `ジェスチャ`)
 

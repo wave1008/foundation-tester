@@ -18,6 +18,13 @@
 
 ## デバイスで赤のまま・原因未調査
 
+- **XCUITest ランナーのロケータ無しの消去が、画面に描かれていない焦点の欄の枠を叩く**(2026-10-13・iPhone SE3 の E2E-CMP で観測)
+  - 症状: キーボード表示中にパスワード欄が下のタブバーの裏へ回って描かれていない状態で `clearInput()` を撃つと、ランナーは焦点の欄の
+    枠の右端(約 (355,369))を叩いてから削除キーを撃ち、200 を返した。その点に描かれているのはタブバーの「情報」。今回は画面が変わらず
+    欄も消えなかった(ホストは焦点の欄が木に無いので注記 `clear-input-unverified` を出す)
+  - 場所: `Runner/FleetestRunnerUITests/BridgeRouter+TextInput.swift` の `clearFocusedInput`(`tapBeforeTyping` で焦点の欄の枠を叩く)
+  - 実害の向き: 叩いた点にボタンがあれば押す(別の画面へ移る・送信する)。欄が見えているかを叩く前に確かめていない
+
 - **E2E-CMP の XCUITest で「テキスト入力が正しくechoされること」S0040 の `type(replace:)` の後の echo が空のまま**(2026-10-12・
   ios-xcuitest の記録 205 回中 20 回赤)
   - 症状: `type("#field_single", "abc")` → `type("#field_single", "xyz", replace: true)` がどちらも緑のまま、次の

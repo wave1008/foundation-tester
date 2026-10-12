@@ -1,0 +1,9 @@
+{
+  "platform": "ios",
+  "autoInstall": true,
+  "ios": {
+    "appName": "FT E2E",
+    "app": "com.ftester.e2e",
+    "appPath": "E2EAppCMP/dist/ios-device/FTE2E.app"
+  }
+}

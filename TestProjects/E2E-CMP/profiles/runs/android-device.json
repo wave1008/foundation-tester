@@ -370,6 +370,15 @@
       "name": "Pixel 9(Android 15)-02",
       "enabled": false,
       "avd": "Pixel_9_Android_15_-02"
+    },
+    {
+      "platform": "android",
+      "machine": "local",
+      "name": "Pixel 3a",
+      "kind": "physical",
+      "model": "Pixel 3a",
+      "osVersion": "Android 12",
+      "serial": "93MAY0CY1M"
     }
   ],
   "heal": true,

@@ -16,7 +16,7 @@ class スクロール探索が要素を飛び越す現象を再現できるこ�
                     clearAppData()
                     launchApp()
                 }.action {
-                    tap("#nav_diagnostics")
+                    tap("#nav_diagnostics", scroll: .down)
                     tap("#btn_open_jump")
                 }.expectation {
                     select("#txt_jump_selected").textIs("jumped=-")
@@ -51,7 +51,7 @@ class スクロール探索が要素を飛び越す現象を再現できるこ�
                     clearAppData()
                     launchApp()
                 }.action {
-                    tap("#nav_diagnostics")
+                    tap("#nav_diagnostics", scroll: .down)
                     tap("#btn_open_jump")
                 }.expectation {
                     select("#txt_jump_selected").textIs("jumped=-")

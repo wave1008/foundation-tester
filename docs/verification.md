@@ -289,9 +289,26 @@ fleetest monitor resume
 これで長らく保留だった「**E2E の再キューは環境か実装か**」も**環境**と確定した
 (xcuitest 実行で観測した19件の再キューも同じ機構と見てよい)。
 
+## 実機の E2E は `Scripts/e2e-devices.sh`(2026-10-13)
+
+E2E(5 SUT の共通契約)を**実機に `--broadcast` で流す**入口。仮想デバイスのスイート(`e2e.sh`)とは別に回す
+—— 実機は機種ごとに同じシナリオを1回ずつ回して差を並べるのが目的で、分配しない。使う実機用プロファイル:
+E2E-iOS・CMP・Flutter・RN の `ios-device`(SE3 = この Mac・iPhone 13 = M1Ultra。iPhone wave は個人の端末なので無効のまま)/
+E2E-Android・CMP・Flutter・RN の `android-device`(Pixel 4a + Pixel 3a)。iOS の実機用アプリは各 SUT の
+`scripts/build-ios-device.sh` が `dist/ios-device/` に作る(ソースが新しければこのスクリプトが作り直す)。
+Flutter と RN の実機用は **Release 構成**(Flutter の Debug は flutter の道具なしでは実機で起動できない・RN の Debug は Metro が前提)。
+- **小さい画面と遅い機種でだけ出る赤を拾う**のが役目(2026-10-12 に 510 回中 14 回の赤 = 6 種を見つけた:
+  折り返しの下の要素・キーボードで縮む窓・動いている一覧へのタップ・慣性の長さの前提・端末に残った永続設定・
+  ホームボタン機)。シナリオや SUT の配置を変えたら e2e-sut.md の「両方の画面で」の確かめ方として回す
+- **陽性対照とエンジンの検証済みの印(`.fleetest/*-e2e-verified`)には触らない**(実機は XCUITest だけで、
+  利用者の既定エンジンの経路を通らない)
+- iPhone 13 の分は M1Ultra がこの clone と同じコミットでないと適合チェックで落ちる(`Scripts/align.sh`)。
+  手元の実機だけなら `--local`
+- 所要の目安: iOS 56 本 × 2 台で約 21 分(並行)・Android は 1 SUT あたり 15〜17 分(2 台並行)
+
 ## クラッシュダイアログは回帰スクリプトが止めて戻す(2026-10-03)
 
-`Scripts/e2e.sh` / `e2ex.sh` / `e2e-negative.sh` は実行中だけ macOS の問題レポーター(Simulator のアプリが
+`Scripts/e2e.sh` / `e2ex.sh` / `e2e-negative.sh` / `e2e-devices.sh` は実行中だけ macOS の問題レポーター(Simulator のアプリが
 落ちるたびに出る。陽性対照のクラッシュ検知が毎回落とす)を止め、終了時に元の値へ戻す(`Scripts/crash-dialog.sh`)。
 `e2ex.sh --on` は向こうの機械で止める。止めても `.ips` は書かれるのでクラッシュ検知は効く(陽性対照で確認済み)。
 

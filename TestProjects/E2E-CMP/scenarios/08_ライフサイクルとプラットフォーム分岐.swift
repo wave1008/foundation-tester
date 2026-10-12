@@ -113,6 +113,7 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     type("#field_single", "persist99")
                     // 小さい実機(Pixel 4a)ではキーボードで窓が縮み送信ボタンが木から消える(03 と同じ規律)
                     android { hideKeyboard() }
+                    ios { tap("#txt_echo_single") }  // iOS の Compose は hideKeyboard できない。欄の外を叩いて閉じる(InputScreen.kt)
                     tap("#btn_input_submit")
                 }.expectation {
                     select("#txt_input_submitted").textIs("submitted=persist99")

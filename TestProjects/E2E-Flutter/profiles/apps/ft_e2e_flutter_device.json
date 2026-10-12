@@ -1,0 +1,9 @@
+{
+  "platform": "ios",
+  "autoInstall": true,
+  "ios": {
+    "appName": "Ft E2e Flutter",
+    "app": "com.ftester.e2e.flutter",
+    "appPath": "E2EAppFlutter/dist/ios-device/FTE2EFlutter.app"
+  }
+}

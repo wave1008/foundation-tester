@@ -29,6 +29,7 @@ class 空欄と否定形の検証 {
                     // Android: 背の低い実機(Pixel 4a 851dp)ではキーボードで窓が縮み、送信/クリアの Row が木から消える。
                     // 容器はスクロールしないので scroll: では届かず、閉じてから撃つ(03_テキスト入力 S0010 scene 4 と同じ)
                     android { hideKeyboard() }
+                    ios { tap("#txt_echo_single") }  // iOS の Compose は hideKeyboard できない。欄の外を叩いて閉じる(InputScreen.kt)
                     tap("#btn_input_clear")
                 }.expectation {
                     select("#txt_echo_single").textIs("single=")

@@ -44,6 +44,7 @@ class EnterキーでIMEアクションが発火すること {
                     // **Android は先にキーボードを閉じる**: 小さい実機(Pixel 4a・851dp)では窓が縮み
                     // `#btn_input_clear` が木から消える(03_テキスト入力 と同じ規律)
                     android { hideKeyboard() }
+                    ios { tap("#txt_echo_single") }  // iOS の Compose は hideKeyboard できない。欄の外を叩いて閉じる(InputScreen.kt)
                     tap("#btn_input_clear")
                 }.action {
                     tap("#field_single")
@@ -57,6 +58,7 @@ class EnterキーでIMEアクションが発火すること {
             scene(4, "ロケータ無しの type でも末尾改行が IME アクションになる") {
                 condition {
                     android { hideKeyboard() }
+                    ios { tap("#txt_echo_single") }  // iOS の Compose は hideKeyboard できない。欄の外を叩いて閉じる(InputScreen.kt)
                     tap("#btn_input_clear")
                 }.action {
                     // ロケータ無し = フォーカス中の要素へ入力。iOS はここも XCUITest 経路へ回る

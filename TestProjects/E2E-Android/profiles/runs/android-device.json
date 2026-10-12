@@ -84,7 +84,6 @@
       "platform": "android",
       "machine": "local",
       "name": "Pixel 3a",
-      "enabled": false,
       "kind": "physical",
       "model": "Pixel 3a",
       "osVersion": "Android 12",

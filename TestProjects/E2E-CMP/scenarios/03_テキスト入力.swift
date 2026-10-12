@@ -48,9 +48,11 @@ class テキスト入力が正しくechoされること {
             }
             scene(3, "パスワード欄も平文で echo される") {
                 action {
+                    ios { tap("#txt_echo_single") }  // iOS の Compose は hideKeyboard できない。欄の外を叩いて閉じる(背の低い iPhone では欄が木に無い。InputScreen.kt)
                     tap("#field_password")
-                    // 掴んだ要素からの入力(type(セレクタ, 文字列) と同じ経路)
-                    select("#field_password").type("secret42")
+                    // 掴んだ要素からの入力(type(セレクタ, 文字列) と同じ経路)。背の低い iPhone では欄を叩くとキーボードで欄自身が木から消えるので、iOS は焦点のある欄へ打つ
+                    android { select("#field_password").type("secret42") }
+                    ios { type("secret42") }
                 }.expectation {
                     select("#txt_echo_password").textIs("password=secret42")
                 }
@@ -61,6 +63,7 @@ class テキスト入力が正しくechoされること {
                     // 2340→1267px に縮め、送信/クリアが木から消える(Pixel 9 の 923dp では消えない)。
                     // 容器はスクロールしないので scroll: では届かず、閉じてから撃つ
                     android { hideKeyboard() }
+                    ios { tap("#txt_echo_single") }  // iOS の Compose は hideKeyboard できない。欄の外を叩いて閉じる(InputScreen.kt)
                     tap("#btn_input_submit")
                 }.expectation {
                     select("#txt_input_submitted").textIs("submitted=hello123")
@@ -99,13 +102,22 @@ class テキスト入力が正しくechoされること {
                     select("#txt_echo_length").textIs("len=0")
                 }
             }
-            scene(3, "無引数の clearInput はフォーカス中の入力欄(パスワード)を空にする") {
+            scene(3, "無引数の clearInput はフォーカス中の入力欄(Android はパスワード・iOS は単一行)を空にする") {
                 action {
-                    tap("#field_password")
-                    type("#field_password", "secret42")
+                    // iOS は単一行の欄で確かめる: 背の低い iPhone(SE3)ではキーボード表示中にパスワード欄が
+                    // 下のタブバーの裏へ回って画面に描かれない(焦点のある欄が見えない = 消えたかを確かめられない)
+                    android {
+                        tap("#field_password")
+                        type("#field_password", "secret42")
+                    }
+                    ios {
+                        tap("#field_single")
+                        type("#field_single", "secret42")
+                    }
                     clearInput()
                 }.expectation {
-                    select("#txt_echo_password").textIs("password=")
+                    android { select("#txt_echo_password").textIs("password=") }
+                    ios { select("#txt_echo_single").textIs("single=") }
                 }
             }
         }
@@ -130,11 +142,17 @@ class テキスト入力が正しくechoされること {
             }
             scene(2, "ロケータなしの type(replace:) はフォーカス中の入力欄を置き換える") {
                 action {
-                    tap("#field_password")
-                    type("#field_password", "secret42")
+                    // iOS は単一行の欄で確かめる: 背の低い iPhone(SE3)ではキーボード表示中にパスワード欄が
+                    // 下のタブバーの裏へ回って画面に描かれない(焦点のある欄が見えない = 消えたかを確かめられない)
+                    android {
+                        tap("#field_password")
+                        type("#field_password", "secret42")
+                    }
+                    ios { tap("#field_single") }  // 単一行には scene 1 の "xyz" が入っている
                     type("plain9", replace: true)
                 }.expectation {
-                    select("#txt_echo_password").textIs("password=plain9")
+                    android { select("#txt_echo_password").textIs("password=plain9") }
+                    ios { select("#txt_echo_single").textIs("single=plain9") }
                 }
             }
         }

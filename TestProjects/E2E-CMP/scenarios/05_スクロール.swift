@@ -67,11 +67,10 @@ class スクロールで折り返し下の要素に到達できること {
                 condition {
                     tap("#tab_home")
                 }.action {
-                    // 始点・終点とも初期画面内で見えている行にする(#row_08 より下へ変えない。
-                    // CMP はリストが 462pt あり #row_08 まで完全に見える。SwiftUI 版は短いので #row_06):
-                    // 画面外要素は frame がクランプされ座標がずれる既知の罠があるため
+                    // 始点・終点とも初期画面内で見えている行にする(#row_06 より下へ変えない。
+                    // 背の低い iPhone SE3 では #row_07 までしか見えず、見えていない始点は先に送り込まれて終点が画面外へ出る)
                     tap("#nav_scroll")
-                    swipeElementToElement("#row_08", "#row_02", durationSeconds: 0.5)
+                    swipeElementToElement("#row_06", "#row_02", durationSeconds: 0.5)
                 }.expectation {
                     // notExist で行を追い出して確かめるとリストの再利用窓・キャッシュ範囲に依存し、
                     // 慣性の小さい遅い台で #row_01 が木に残って誤って赤になる(docs/ui-contract.md
