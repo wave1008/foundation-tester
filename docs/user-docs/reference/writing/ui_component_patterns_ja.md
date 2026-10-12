@@ -7,7 +7,7 @@ Compose Multiplatform・Flutter・React Native・Android(Views/XML)・iOS(SwiftU
 シナリオを書くときの知識として使う**ことを想定しています —— 対象アプリの画面に同じ部品があれば、
 該当する節を読んでから書いてください。
 
-- 確かめた環境: Compose Multiplatform 1.11(Material3 1.4 相当)・Flutter・React Native 0.86.2
+- 確かめた環境: Compose Multiplatform 1.11(Material3 1.4 相当)・Flutter 3.47.7・React Native 0.86.2
   (New Architecture / Fabric)・Android Views + Material Components・SwiftUI。
   iOS 27 Simulator(hybrid エンジン / XCUITest エンジン)・Android 15 Emulator
 - 各節の挙動は fleetest 同梱の検証アプリ群(`E2EXAppCMP/` / `E2EXAppFlutter/` / `E2EXAppRN/` /
