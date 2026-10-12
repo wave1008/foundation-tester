@@ -1287,7 +1287,8 @@ final class CommandDispatchTests: XCTestCase {
         }
         func install(packagePath: String) async throws {}
         func uninstall(bundleID: String) async throws {}
-        func isAppForeground(bundleID: String) async throws -> Bool { false }
+        // アイコンを押したらアプリが前面になる(tapAppIcon は押した後に前面を確かめる)
+        func isAppForeground(bundleID: String) async throws -> Bool { !tappedRefs.isEmpty }
         func foregroundAppID() async throws -> String? { nil }
         func launch(bundleID: String) async throws {}
         func home() async throws { homeCount += 1 }

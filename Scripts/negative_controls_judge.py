@@ -51,6 +51,13 @@ def judge_scenario(spec, result):
     for s in spec.get("detailContains", []):
         if s not in detail:
             problems.append(f"失敗文言に「{s}」が無い: {detail[:200]}")
+    # 打ち切り(watchdog)の赤は失敗ステップを持たない。事実は timedOut と errorLogs の ⏱ 行にある
+    if "timedOut" in spec and bool(result.get("timedOut")) != spec["timedOut"]:
+        problems.append(f"timedOut が {spec['timedOut']} でない: {result.get('timedOut')}")
+    logs = "\n".join(result.get("errorLogs") or [])
+    for s in spec.get("errorLogsContains", []):
+        if s not in logs:
+            problems.append(f"errorLogs に「{s}」が無い: {logs[:300]}")
     notes = _notes(result)
     for n in spec.get("notesContains", []):
         if n not in notes:

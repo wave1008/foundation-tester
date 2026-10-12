@@ -95,6 +95,17 @@ test('緑の対照が赤なら ❌・緑なら ✅', () => {
   assert.equal(judge({ expect: 'green' }, { passed: true }).verdict, 'ok')
 })
 
+test('打ち切りの赤は timedOut と errorLogs の行で判定する(失敗ステップは持たない)', () => {
+  const spec = { expect: 'red', timedOut: true, errorLogsContains: ['produced no output for'] }
+  const killed = { passed: false, timedOut: true, failedSteps: [], timeline: [],
+                   errorLogs: ['⏱ The scenario produced no output for 241.2s (allowed 240.0s = …) and was killed'] }
+  assert.equal(judge(spec, killed).verdict, 'ok')
+  // 全体の上限での打ち切り(別の理由)・打ち切られずに赤・行が無い は ❌
+  assert.equal(judge(spec, { ...killed, errorLogs: ['⏱ The scenario exceeded 600s (default) and was killed'] }).verdict, 'fail')
+  assert.equal(judge(spec, { ...killed, timedOut: false }).verdict, 'fail')
+  assert.equal(judge(spec, { ...killed, errorLogs: [] }).verdict, 'fail')
+})
+
 test('注記の期待が満たされなければ ❌', () => {
   const spec = { expect: 'red', notesContains: ['system-alert-present'] }
   assert.equal(judge(spec, failed(offscreen)).verdict, 'fail')

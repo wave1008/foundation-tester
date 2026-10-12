@@ -126,6 +126,24 @@
       "scenarios": {
         "S0010": { "expect": "red", "appCrash": "nativeSignal" }
       }
+    },
+    {
+      "project": "E2E-iOS", "file": "90_シナリオ全体の打ち切り.swift", "profile": "ios-inapp", "os": "ios",
+      "class": "シナリオ全体の打ち切り",
+      "guards": "@Test(scenarioTimeout:) がプロファイルより優先し、進み続けるシナリオも全体の上限で打ち切る(値の出所と最後の出力からの秒を行に残す)",
+      "scenarios": {
+        "S0010": { "expect": "red", "timedOut": true,
+                   "errorLogsContains": ["exceeded 15s (@Test scenarioTimeout) and was killed", "last output from the scenario"] }
+      }
+    },
+    {
+      "project": "E2E-iOS", "file": "90_出力の途切れの打ち切り.swift", "profile": "ios-inapp", "os": "ios",
+      "class": "出力の途切れの打ち切り", "slow": true,
+      "guards": "出力が 2 × commandTimeout を超えて途切れた子を打ち切り、長さを申告した待ち(ifCanSelect の waitSeconds)は打ち切らない。約 8 分かかるので e2e-negative.sh --with-slow のときだけ",
+      "scenarios": {
+        "S0010": { "expect": "red", "timedOut": true, "errorLogsContains": ["produced no output for", "and was killed"] },
+        "S0020": { "expect": "green" }
+      }
     }
   ],
   "photosAlertCleanup": {
