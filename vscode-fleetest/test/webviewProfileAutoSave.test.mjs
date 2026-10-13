@@ -144,8 +144,8 @@ test("Advanced Features セクションは heal を先頭に5トグルがフラ�
 
   const ids = [
     "run-profile-heal",
-    "run-profile-ocr-text-occlusion-check",
     "run-profile-prefer-check-state-classifier",
+    "run-profile-ocr-text-occlusion-check",
     "run-profile-fm-text-occlusion-check",
     "run-profile-screen-looks-like",
   ];

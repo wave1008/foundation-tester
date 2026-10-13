@@ -184,12 +184,42 @@ test("占有の錠前は行より先に届いても出る(行の生成時に貼�
     "手元の行には出さない",
   );
 
-  assert.equal(chip.querySelector(".hm-lock-issuer").textContent, "bob", "他人の占有は錠前の左に持ち主を出す");
+  assert.equal(chip.querySelector(".hm-lock-issuer").textContent, "bob", "他人の占有は錠前の右に持ち主を出す");
+  // 錠前は機械名とは別の列で、持ち主も同じ列の中・錠前の右(ユーザー決定)
+  assert.equal(chip.previousElementSibling, rowFor(document, "mac2").querySelector(".hm-machine"),
+    "機械名の次の列");
+  assert.equal(chip.contains(rowFor(document, "mac2").querySelector(".hm-machine")), false);
+  assert.deepEqual([...chip.children].map((el) => el.className), ["hm-lock-glyph", "hm-lock-issuer"],
+    "錠前が列の先頭、持ち主はその右");
 
   send(window, { type: "machineLock", machine: "mac2", held: false, mine: false });
   assert.equal(chip.classList.contains("hm-lock-on"), false, "空きは無印");
   assert.equal(chip.querySelector(".hm-lock-issuer").textContent, "", "空きに持ち主を残さない");
   assert.equal(chip.getAttribute("data-hover-tip"), null, "空きの錠前に説明を残さない");
+});
+
+// 錠前の列の幅は全行で同じ(= 錠前の横位置が揃う)。いちばん長い行(錠前 + 持ち主)に合わせる
+test("機械名と錠前の列の幅はいちばん長い行に揃い、持ち主が消えると錠前の列は戻る", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  // jsdom は寸法を持たないので、錠前の列の中身なりの幅 = 16 + 持ち主の字数 × 6 + 端数 0.4 を返す
+  Object.defineProperty(window.HTMLElement.prototype, "getBoundingClientRect", {
+    configurable: true,
+    value() {
+      const width = this.classList.contains("hm-lock")
+        ? 16 + this.querySelector(".hm-lock-issuer").textContent.length * 6 + 0.4
+        : this.classList.contains("hm-machine") ? this.textContent.length * 7 + 0.4 : 0;
+      return { width, height: 0, left: 0, top: 0, right: width, bottom: 0, x: 0, y: 0 };
+    },
+  });
+  const colWidth = () => document.getElementById("host-metrics").style.getPropertyValue("--hm-lock-col");
+  send(window, { type: "hostMetricsMachines", machines: ["mac2", "mac3"] });
+  send(window, { type: "machineLock", machine: "mac2", held: true, issuer: "bob", mine: false });
+  assert.equal(colWidth(), "35px", "16 + 3字 × 6 + 0.4 を切り上げ(持ち主の居ない行もこの幅)");
+  send(window, { type: "machineLock", machine: "mac2", held: false, mine: false });
+  assert.equal(colWidth(), "17px", "持ち主が消えたら錠前だけの幅へ戻る");
+  // 機械名の列もいちばん長い名前に合わせる("local" 5字 / "mac2" 4字 → 5 × 7 + 0.4 を切り上げ)
+  assert.equal(document.getElementById("host-metrics").style.getPropertyValue("--hm-machine-col"), "36px");
 });
 
 // **手元の行にも同じ規則で錠前が出る**(2026-09-21)。dispatch.lock は機械に1本で、
@@ -234,12 +264,15 @@ test("マシン有効が off の機械の行にだけ無効の印が点く(行�
   assert.match(rowFor(document, "mac2").querySelector(".hm-off").getAttribute("data-hover-tip"), /mac2/);
   assert.deepEqual(rows(document).map((row) => row.querySelectorAll(".hm-off").length), [1, 1, 1],
     "枠は全行に1つ(列をずらさない)");
+  const hm = document.getElementById("host-metrics");
+  assert.equal(hm.classList.contains("hm-any-off"), true, "どれかが off の間は全行に枠を取る");
 
   send(window, { type: "remoteConfig", hosts: [{ machine: "mac2", host: "u@mac2", dir: "" }],
     local: { machine: "local", host: "me@localhost", fmConcurrency: 0, enabled: true } });
   assert.equal(isOn("mac2"), false, "enabled 欠落は有効 = 後着の config で外れる");
   assert.equal(isOn(""), false);
   assert.deepEqual([dimmed("mac2"), dimmed("")], [false, false], "有効に戻れば明度も戻る");
+  assert.equal(hm.classList.contains("hm-any-off"), false, "誰も off でなければ枠を畳む(錠前と MEM の間を空けない)");
   assert.equal(rowFor(document, "mac2").querySelector(".hm-off").getAttribute("data-hover-tip"), null);
 });
 

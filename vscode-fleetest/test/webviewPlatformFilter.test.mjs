@@ -94,6 +94,19 @@ const pick = (window, document, value) => {
 const selectedBadges = (document) => ["ios", "android", "all"]
   .filter((value) => badge(document, value).classList.contains("selected"));
 
+test("フィルタはラインビューの見出しで「ライブ更新」のすぐ右に置かれる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  const group = badge(document, "ios").closest(".run-board-platform-filter");
+  assert.equal(group.parentElement, document.getElementById("line-view-header"));
+  assert.equal(
+    group.previousElementSibling,
+    document.getElementById("chk-show-stream-during-run").closest("label"),
+    "すぐ左が「ライブ更新」",
+  );
+  assert.equal(document.querySelectorAll("#run-board-header .run-board-platform-filter").length, 0, "run ボードの見出しには残さない");
+});
+
 test("既定は「すべて」(フィルタを持たない状態と同じ見え方)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
@@ -167,12 +180,13 @@ test("バッジは3つとも同じ幅で、iOS / Android の選択中は白フ�
   const decl = base.slice(0, base.indexOf("}"));
   assert.match(decl, /min-width:\s*8ch/, "文字数で幅が変わらないよう下限を揃える");
   assert.match(decl, /text-align:\s*center/);
-  // 見出し行の中央に置く(ユーザー決定 2026-09-22)。左の項目の幅に依存しない形で
+  // 「ライブ更新」の右へ流れに沿って続く(中央の絶対位置ではない)
   const group = css.slice(css.indexOf(".run-board-platform-filter {"));
   const groupDecl = group.slice(0, group.indexOf("}"));
-  assert.match(groupDecl, /position:\s*absolute/);
-  assert.match(groupDecl, /left:\s*50%/);
-  assert.match(groupDecl, /transform:\s*translateX\(-50%\)/);
+  assert.doesNotMatch(groupDecl, /position:\s*absolute/);
+  // 「ライブ更新」との間はバッジ1つぶん(min-width の 8ch。行の gap 6px を引く)
+  const ios = css.slice(css.indexOf(".platform-badge-ios {"));
+  assert.match(ios.slice(0, ios.indexOf("}")), /margin-left:\s*calc\(8ch - 6px\)/);
   for (const platform of ["ios", "android"]) {
     const rule = css.slice(css.indexOf(`.platform-badge-${platform}.selected {`));
     assert.match(rule.slice(0, rule.indexOf("}")), /color:\s*#ffffff/, platform);

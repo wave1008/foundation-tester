@@ -135,6 +135,14 @@ const hmLocks = new Map();
 /** リモートの行があるときだけ左端の機械名を出す(CSS の .hm-multi)。 */
 function hmSyncMultiClass() {
   hmContainer.classList.toggle('hm-multi', hmRows.size > 1);
+  hmSyncAnyOffClass();
+}
+
+// 「⊘無効」の枠は**どれかの行が off のときだけ**全行に取る(style.css の .hm-any-off)。
+// 常に取ると、誰も off でない間も錠前の列と MEM の間に文言ぶんの空きが残る
+function hmSyncAnyOffClass() {
+  hmContainer.classList.toggle('hm-any-off',
+    [...hmRows.values()].some((row) => row.el.classList.contains('hm-row-disabled')));
 }
 
 /**
@@ -182,52 +190,42 @@ function hmApplyLock(row, machine) {
       ? t('wvMonitor2.hostCharts.lockMine', { machine: label })
       : t('wvMonitor2.hostCharts.lockOther', { machine: label, issuer }))
     : '');
-  // 他人の占有だけ、錠前の左の空き(⊘無効の枠と機械名の余り)に持ち主を出す
+  // 他人の占有だけ、錠前の右(同じ列の中)に持ち主を出す
   const issuerEl = chip.querySelector('.hm-lock-issuer');
   if (issuerEl) {
     issuerEl.textContent = lock && !lock.mine ? issuer : '';
-    hmFitLockIssuer(row);
+    hmFitColumns();
   }
 }
 
 /**
- * 持ち主の文字は錠前の中に絶対配置で重ねる(行の幅を変えない = 列を揃えたまま)。幅の上限は
- * 「機械名の文字の右端(⊘無効が見えていればその右端)から錠前の左端まで」を測って決める ——
- * 固定値だと言語(⊘無効 / ⊘Off)と機械名の長さで機械名に重なる。行が未表示(幅 0)のときは
- * 測れないので、hmLockIssuerObserver が表示された時点で測り直す
+ * 機械名の列と錠前の列の幅を全行で揃える(= 錠前の横位置が揃う)。どちらもいちばん長い行の
+ * 中身なりの幅(機械名は CSS の max-width で 72px まで)。**持ち主が出る/消えると錠前の列の幅が
+ * 変わり、右の MEM/CPU/… も一緒に動く**(持ち主を切らずに出すため。行どうしは常に揃う)。
+ * 測り方は runBoard.js の naturalLeftWidth と同じ(矩形の実寸・最後に切り上げ)。
+ * 行が未表示(幅 0)のときは測れないので、hmLockColumnObserver が表示された時点で測り直す
  */
-function hmFitLockIssuer(row) {
-  const chip = row.el.querySelector('.hm-lock');
-  const issuerEl = chip?.querySelector('.hm-lock-issuer');
-  if (!issuerEl || issuerEl.textContent === '') {
-    return;
+function hmFitColumns() {
+  hmContainer.classList.add('hm-lock-measuring');
+  const widest = (selector) => Math.max(0, ...[...hmContainer.querySelectorAll(selector)]
+    .map((el) => el.getBoundingClientRect().width));
+  const machine = widest('.hm-machine');
+  const lock = widest('.hm-lock');
+  hmContainer.classList.remove('hm-lock-measuring');
+  if (machine > 0) {
+    hmContainer.style.setProperty('--hm-machine-col', Math.ceil(machine) + 'px');
   }
-  const chipLeft = chip.getBoundingClientRect().left;
-  const off = row.el.querySelector('.hm-off');
-  let leftEdge;
-  if (off && off.classList.contains('hm-off-on')) {
-    leftEdge = off.getBoundingClientRect().right;
-  } else {
-    const machine = row.el.querySelector('.hm-machine');
-    const box = machine.getBoundingClientRect();
-    const range = document.createRange();
-    range.selectNodeContents(machine);
-    leftEdge = Math.min(box.left + range.getBoundingClientRect().width, box.right);
+  if (lock > 0) {
+    hmContainer.style.setProperty('--hm-lock-col', Math.ceil(lock) + 'px');
   }
-  const HM_LOCK_ISSUER_GAP_PX = 6; // 機械名との間の余白(px)
-  const room = Math.floor(chipLeft - leftEdge - HM_LOCK_ISSUER_GAP_PX);
-  issuerEl.style.maxWidth = `${Math.max(room, 0)}px`;
 }
 
-// 行が表示される・幅が変わる(パネルを開く・言語の切替・行の追加)たびに測り直す。jsdom には無い
-const hmLockIssuerObserver = typeof ResizeObserver === 'function'
-  ? new ResizeObserver(() => {
-    for (const row of hmRows.values()) {
-      hmFitLockIssuer(row);
-    }
-  })
+// 行が表示される・幅が変わる(パネルを開く・言語の切替・行の追加)たびに測り直す。jsdom には無い。
+// 測り直しで列の幅を書くとまた発火するが、同じ値なので2回目で止まる
+const hmLockColumnObserver = typeof ResizeObserver === 'function'
+  ? new ResizeObserver(() => hmFitColumns())
   : null;
-hmLockIssuerObserver?.observe(hmContainer);
+hmLockColumnObserver?.observe(hmContainer);
 
 /** 「マシン有効」off の印を1行へ反映する(要素は足し引きしない。hmApplyLock と同じ理由) */
 function hmApplyDisabled(row, machine) {
@@ -240,6 +238,7 @@ function hmApplyDisabled(row, machine) {
   // 行ごと明度を下げる(ユーザー決定)—— 使えない機械のグラフが同じ明るさで
   // 並んでいると、動いている機械と見分けが付かない
   row.el.classList.toggle('hm-row-disabled', off);
+  hmSyncAnyOffClass();
   setHoverTip(chip, off
     ? t('wvMonitor2.hostCharts.machineDisabled', { machine: machine === '' ? HM_LOCAL_LABEL : machine })
     : '');
@@ -298,6 +297,7 @@ function hmEnsureRow(machine) {
   hmApplyDisabled(row, machine);   // 複製元(手元の行)の印を引き継がない
   hmSortRows(); // サンプル先着で作られた行も並びは機械名順に保つ
   hmSyncMultiClass();
+  hmFitColumns();   // 機械名が増えたので列の幅を測り直す(hm-multi が付いて見えてから)
   return row;
 }
 
@@ -321,6 +321,7 @@ export function setHostMetricMachines(machines) {
   }
   hmSortRows();
   hmSyncMultiClass();
+  hmFitColumns();   // 最も長い機械名・持ち主の行が消えたら列を詰める
   // 最も広い名札の行が消えたら幅を詰める
   for (const metric of HM_CAPACITY_LABEL_METRICS) {
     hmAlignLabels(metric);

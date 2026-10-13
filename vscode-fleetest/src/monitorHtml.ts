@@ -267,12 +267,14 @@ function renderDevicesPanel(): string {
         <div class="hm-row" data-machine="">
           <!-- リモートの行があるときだけ出す(.host-metrics.hm-multi)。手元は "local" 固定 -->
           <span class="hm-machine">local</span>
-          <!-- 占有(その機械で run が実行中)の錠前。**全行に必ず置く** —— 出る行にだけ足すと
-               その行だけ幅が増えて、MEM/CPU/… の列が行ごとにずれる(実害)。
-               出す/出さないは可視性だけで切り替える(hostCharts.js の hmApplyLock)。 -->
+          <!-- 占有(その機械で run が実行中)の錠前の列。機械名とは別の列で、錠前は列の左端・他人の
+               占有の持ち主は錠前の右に同じ列の中で続く(ユーザー決定)。列の幅は全行で同じ
+               (hostCharts.js の hmFitColumns。機械名の列もいちばん長い名前に合わせる)なので、錠前の横位置が行によらず揃う。
+               **全行に必ず置く** —— 出る行にだけ足すとその行だけ幅が増えて、MEM/CPU/… の列が
+               行ごとにずれる(実害)。出す/出さないは可視性だけで切り替える(hmApplyLock)。 -->
+          <span class="hm-lock"><span class="hm-lock-glyph">🔒</span><span class="hm-lock-issuer"></span></span>
           <!-- 「マシン有効」off の印。錠前と同じく**全行に必ず置き**可視性だけ切り替える(hmApplyDisabled) -->
           <span class="hm-off">${t("panels.hostMetrics.machineDisabled")}</span>
-          <span class="hm-lock">🔒<span class="hm-lock-issuer"></span></span>
           <span class="host-metric" id="hm-mem" data-metric="mem" title="${t("panels.hostMetrics.memTitle")}"><span class="hm-label">MEM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <span class="host-metric" id="hm-cpu" data-metric="cpu" title="${t("panels.hostMetrics.cpuTitle")}"><span class="hm-label">CPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <span class="host-metric" id="hm-gpu" data-metric="gpu" title="${t("panels.hostMetrics.gpuTitle")}"><span class="hm-label">GPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
@@ -302,19 +304,6 @@ function renderDevicesPanel(): string {
         <!-- ツリーを開いた形のアイコン(下向きの三角 + インデントした行。ユーザー決定)。名前は tooltip と aria-label が持つ
              (runBoard.js)。クリックはヘッダ行の開閉へ波及させない(stopPropagation) -->
         <button id="run-board-expand-all" class="icon-button run-board-expand-all" type="button" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1.6 2.9h4.2L3.7 6.6z"/><rect x="7" y="2.9" width="7.4" height="1.5" rx="0.7"/><rect x="9" y="7.2" width="5.4" height="1.5" rx="0.7"/><rect x="9" y="11.5" width="5.4" height="1.5" rx="0.7"/></svg></button>
-        <!-- プラットフォームの表示フィルタ(3択・既定は「すべて」)。選ばれていない側のデバイスは
-             4つのセクション(実行中・デバイス一覧・選択したデバイス・実行ログ)から同時に消える
-             —— deviceTiles.js が applyDevices の入口で落とすため。**ヘッダ行のクリック
-             (ボード全体の開閉)へ波及させない**ので deviceTiles.js が stopPropagation する。
-             **見た目はバッジ**(ユーザー決定): 選んでいるものだけ色付き
-             (iOS / Android はタイルのデバイス名ピルと同じ色・「すべて」は白)で、
-             選んでいないものは灰色。3択なので role は radiogroup/radio のまま持つ。
-             iOS / Android は製品名なので翻訳しない(「すべて」と説明だけ t() を通す) -->
-        <span class="run-board-platform-filter" role="radiogroup" aria-label="${t("panels.runBoard.platformFilterTitle")}" title="${t("panels.runBoard.platformFilterTitle")}">
-          <button type="button" class="badge platform-badge platform-badge-ios" id="rad-platform-ios" data-value="ios" role="radio" aria-checked="false">iOS</button>
-          <button type="button" class="badge platform-badge platform-badge-android" id="rad-platform-android" data-value="android" role="radio" aria-checked="false">Android</button>
-          <button type="button" class="badge platform-badge platform-badge-all" id="rad-platform-all" data-value="all" role="radio" aria-checked="true">${t("panels.runBoard.platformFilterAll")}</button>
-        </span>
       </div>
       <div id="run-board-rows" class="run-board-rows"></div>
       <!-- 2カラムの境目(ユーザー決定)。マウスで幅を変える。**見出し行には掛けない**
@@ -347,6 +336,20 @@ function renderDevicesPanel(): string {
            状態の保存と復元は streamToggle.js ⇄ monitorPanel.ts
            (setShowStreamDuringRun / showStreamDuringRun) -->
       <label class="profile-label header-toggle run-stream-toggle" title="${t("panels.toolbar.showStreamDuringRunTitle")}"><input type="checkbox" class="toggle-switch" role="switch" id="chk-show-stream-during-run" checked>${t("panels.toolbar.showStreamDuringRun")}</label>
+      <!-- プラットフォームの表示フィルタ(3択・既定は「すべて」)。選ばれていない側のデバイスは
+           4つのセクション(実行中・デバイス一覧・選択したデバイス・実行ログ)から同時に消える
+           —— deviceTiles.js が applyDevices の入口で落とすため。**見出し行のクリック
+           (ラインビューの開閉)へ波及させない**ので deviceTiles.js が stopPropagation する。
+           **見た目はバッジ**(ユーザー決定): 選んでいるものだけ色付き
+           (iOS / Android はタイルのデバイス名ピルと同じ色・「すべて」は白)で、
+           選んでいないものは灰色。3択なので role は radiogroup/radio のまま持つ。
+           位置は「ライブ更新」の右(ユーザー決定)。
+           iOS / Android は製品名なので翻訳しない(「すべて」と説明だけ t() を通す) -->
+      <span class="run-board-platform-filter" role="radiogroup" aria-label="${t("panels.runBoard.platformFilterTitle")}" title="${t("panels.runBoard.platformFilterTitle")}">
+        <button type="button" class="badge platform-badge platform-badge-ios" id="rad-platform-ios" data-value="ios" role="radio" aria-checked="false">iOS</button>
+        <button type="button" class="badge platform-badge platform-badge-android" id="rad-platform-android" data-value="android" role="radio" aria-checked="false">Android</button>
+        <button type="button" class="badge platform-badge platform-badge-all" id="rad-platform-all" data-value="all" role="radio" aria-checked="true">${t("panels.runBoard.platformFilterAll")}</button>
+      </span>
     </div>
 
     <div id="tile-pane" class="tile-pane">
@@ -671,12 +674,12 @@ function renderRunProfileSection(): string {
               <label for="run-profile-heal">${t("panels.runProfile.healLabel")}</label>
             </div>
             <div class="modal-row profile-checkbox-row">
-              <input type="checkbox" id="run-profile-ocr-text-occlusion-check">
-              <label for="run-profile-ocr-text-occlusion-check">${t("panels.runProfile.ocrTextOcclusionCheckLabel")}</label>
-            </div>
-            <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-prefer-check-state-classifier">
               <label for="run-profile-prefer-check-state-classifier">${t("panels.runProfile.preferCheckStateClassifierLabel")}</label>
+            </div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-ocr-text-occlusion-check">
+              <label for="run-profile-ocr-text-occlusion-check">${t("panels.runProfile.ocrTextOcclusionCheckLabel")}</label>
             </div>
             <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-fm-text-occlusion-check">

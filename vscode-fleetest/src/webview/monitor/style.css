@@ -321,7 +321,10 @@ button.bulk-cancel:hover:not(:disabled) {
   font-size: 12px;
   font-weight: 600;
   color: var(--vscode-foreground);
-  width: 72px;
+  /* 幅はいちばん長い機械名に合わせる(ユーザー決定。--hm-machine-col = hostCharts.js の
+     hmFitColumns)。上限 72px を超える名前は "…" で切る(右の列を押し出さない) */
+  width: var(--hm-machine-col, 72px);
+  max-width: 72px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -329,40 +332,47 @@ button.bulk-cancel:hover:not(:disabled) {
 .host-metrics.hm-multi .hm-machine {
   display: inline-block;
 }
-/* 占有の錠前(その機械で run が走っている印)。**枠は全行に常にある**(機械名の直後・固定幅)
-   —— 出る行にだけ要素を足すとその行だけ幅が増え、MEM/CPU/… の列が行ごとにずれる
-   (実害あり)。出す/出さないは visibility で切り替える(display を切ると枠ごと
+/* 占有の錠前の列(その機械で run が走っている印 + 他人の占有なら持ち主)。**機械名とは別の列**で、
+   錠前は列の左端・持ち主はその右に続く(ユーザー決定)。**列の幅は全行で同じ**
+   (--hm-lock-col = hostCharts.js の hmFitColumns がいちばん長い行から決める)ので、錠前の横位置が
+   揃う。**枠は全行に常にある** —— 出る行にだけ要素を足すとその行だけ幅が増え、MEM/CPU/… の列が
+   行ごとにずれる(実害あり)。出す/出さないは visibility で切り替える(display を切ると枠ごと
    消えて同じことが起きる)。機械名を出さない単独構成では枠ごと畳む(hm-multi と同じ条件)。
    表示だけ ―― 配信を畳む判断はホスト側(monitorDeviceStreamController.ts)。 */
 .hm-lock {
   display: none;
-  /* 的が小さすぎるとホバーで拾えない(絵文字の実寸ぶん + 左右に少し)。列は全行同じ幅なので
-     広げてもずれない */
-  width: 16px;
-  margin-left: -4px;
-  font-size: 11px;
-  line-height: 1;
-  text-align: center;
+  flex: 0 0 auto;
+  width: var(--hm-lock-col, auto);
+  align-items: center;
+  gap: 2px;
+  /* 錠前が無い間も機械名と MEM の間は**全角6文字ぶん**空ける(ユーザー決定)。前後の行の gap(10px × 2)
+     ぶんを引いて列に持たせる。持ち主が長ければ列はこれより伸びる(hmFitColumns の測りにも効く) */
+  min-width: calc(6em - 20px);
   cursor: default;
-  position: relative;
 }
 .host-metrics.hm-multi .hm-lock {
-  display: inline-block;
+  display: inline-flex;
   visibility: hidden;
 }
 .host-metrics.hm-multi .hm-lock.hm-lock-on {
   visibility: visible;
 }
-/* 他人の占有の持ち主。錠前の左へ絶対配置で重ねる(行の幅を変えない)。上限幅は hmFitLockIssuer が測る */
+/* 列の幅を測る一瞬だけ中身なりの幅にする(hmFitColumns)。width が効いたままだと今の幅しか返らない */
+.host-metrics.hm-lock-measuring .hm-lock,
+.host-metrics.hm-lock-measuring .hm-machine {
+  width: max-content;
+}
+/* 錠前は列の中で左寄せ(ユーザー決定)。幅は絵文字の実寸のまま —— 固定幅 + 中央寄せにすると
+   列の左端から字がずれる。ホバーの的は列全体(.hm-lock)なので、ここで広げなくても拾える */
+.hm-lock-glyph {
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1;
+}
+/* 他人の占有の持ち主。錠前の右・同じ列の中 */
 .hm-lock-issuer {
-  position: absolute;
-  right: 100%;
-  top: 50%;
-  transform: translateY(-50%);
   font-size: 10px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   color: var(--vscode-descriptionForeground, #9d9d9d);
 }
 /* 「マシン有効」off の印(⊘無効)。枠と可視性の規律は .hm-lock と同じ(全行に同じ文言で置く =
@@ -379,7 +389,9 @@ button.bulk-cancel:hover:not(:disabled) {
   color: var(--vscode-descriptionForeground, #9d9d9d);
   cursor: default;
 }
-.host-metrics.hm-multi .hm-off {
+/* 枠を全行に取るのは**どれかの行が off のときだけ**(hm-any-off = hostCharts.js の hmSyncAnyOffClass)。
+   誰も off でないのに取ると、錠前の列と MEM の間に文言ぶんの空きが残る(ユーザー指摘) */
+.host-metrics.hm-multi.hm-any-off .hm-off {
   display: inline-block;
   visibility: hidden;
 }
@@ -459,8 +471,6 @@ button.bulk-cancel:hover:not(:disabled) {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  /* プラットフォームのバッジを見出し行の**中央**へ絶対位置で置くための基準(ユーザー決定) */
-  position: relative;
   gap: 6px;
   padding: 4px 8px;
   /* 4つの見出し行(実行中・ラインビュー・グリッドビュー・実行ログ)は同じ地色
@@ -558,18 +568,12 @@ html[lang="en"] .header-count {
 #run-board-title {
   min-width: 56px;
 }
-/* プラットフォームの表示フィルタは「全て展開」から**5文字ぶん**空ける(ユーザー決定)。
-   ch = 見出しの文字(12px)の "0" の幅なので、字の大きさを変えれば間隔も一緒に動く。
-   **位置が桁で動かない**のは #run-board-title の min-width が効いているため(片方だけ変えない) */
 /* プラットフォームの表示フィルタ(3択)。**見た目はバッジ**(ユーザー決定)——
    選んでいるものだけ色付き、選んでいないものは灰色。押せる面なので cursor は pointer */
 .run-board-platform-filter {
-  /* **見出し行の中央**(ユーザー決定)。左の項目(三角・件数・全て展開)の幅に
-     依存しないよう、flex の流れから外して絶対位置で真ん中に置く —— auto マージンだと
-     「左の項目を除いた残りの中央」になり、左の項目が伸び縮みすると位置が動く */
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  /* ラインビューの見出しで「ライブ更新」の右に続く(ユーザー決定)。離す幅は
+     .platform-badge-ios の margin-left が持つ */
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -598,6 +602,12 @@ html[lang="en"] .header-count {
    変更時は揃えること)。「すべて」は白なので、文字だけ暗い色にする */
 .platform-badge.selected {
   opacity: 1;
+}
+/* 「ライブ更新」との間は**バッジ1つぶんの幅**(ユーザー決定)。バッジの幅は min-width の 8ch
+   (border-box・"iOS" は 8ch に収まる)で、ch はバッジ自身の字(11px・600)で解決されるので
+   ここに書けば一致する。行の gap(6px)は既に空いているぶん引く */
+.platform-badge-ios {
+  margin-left: calc(8ch - 6px);
 }
 .platform-badge-ios.selected {
   background-color: #29b6f6;
@@ -684,6 +694,13 @@ html[lang="en"] .header-count {
 .run-board-row-summary:hover .run-board-chevron {
   background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
   color: var(--vscode-foreground);
+}
+/* マシン名の列。幅は全行で同じ(--rb-machine = runBoard.js の machineColumnWidth)なので、
+   右のプロジェクト / 実行プロファイルの書き出しが行によらず揃う。バッジは列の左詰め */
+.run-board-machine-cell {
+  flex: 0 0 var(--rb-machine, auto);
+  display: flex;
+  align-items: center;
 }
 .run-board-scope {
   flex: 1 1 auto;
@@ -797,6 +814,8 @@ html[lang="en"] .header-count {
   flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  /* 右の経過 / 残りから離す(ユーザー決定)。列の gap(8px)に足して 14px */
+  margin-right: 6px;
 }
 .run-board-counts-failed {
   margin-left: 6px;

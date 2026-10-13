@@ -1445,7 +1445,7 @@ export function applyPlatformFilter(message) {
 
 for (const badge of platformFilterBadges) {
   badge.addEventListener('click', (event) => {
-    // 見出し行(run ボードのヘッダ)のクリックはボードごと畳むので、ここで止める
+    // 見出し行(ラインビューのヘッダ)のクリックはラインビューごと畳むので、ここで止める
     // (streamToggle.js と同じ)
     event.stopPropagation();
     applyPlatformFilterState(badge.dataset.value, true);

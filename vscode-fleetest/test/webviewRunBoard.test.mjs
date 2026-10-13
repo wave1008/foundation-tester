@@ -786,6 +786,28 @@ test("境目の既定はいちばん長いラベル + 100px で、ドラッグ�
     "getState にも入れない");
 });
 
+test("マシン名は独立した列に入り、列の幅はいちばん長いバッジに揃う", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  giveWidth(document);
+  // バッジの幅 = 字数 × 9 + 端数 0.4(列の幅は切り上げる)
+  Object.defineProperty(window.HTMLElement.prototype, "getBoundingClientRect", {
+    configurable: true,
+    value() {
+      const width = this.classList.contains("run-board-machine-badge") ? this.textContent.length * 9 + 0.4 : 0;
+      return { width, height: 0, left: 0, top: 0, right: width, bottom: 0, x: 0, y: 0 };
+    },
+  });
+  sendLocalDevice(window);
+  post(window, monitorRunsMessage());
+  const summary = runRows(document)[0].querySelector(".run-board-row-summary");
+  const cell = summary.querySelector(".run-board-machine-cell");
+  assert.ok(cell.querySelector(".run-board-machine-badge"), "バッジは列の中");
+  assert.equal(cell.nextElementSibling, summary.querySelector(".run-board-scope"), "プロジェクト / 実行プロファイルは列の右");
+  assert.equal(document.getElementById("run-board").style.getPropertyValue("--rb-machine"), "46px",
+    "\"local\"(5字)× 9 + 0.4 を切り上げ");
+});
+
 test("境目は端まで引き切れない(左右どちらも 80px は残す)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());

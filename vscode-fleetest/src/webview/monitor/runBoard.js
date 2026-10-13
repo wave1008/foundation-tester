@@ -172,6 +172,15 @@ function naturalLeftWidth() {
   runBoardRows.classList.remove('run-board-measuring');
   return Math.ceil(width);
 }
+// マシン名の列の幅 = いちばん長いマシン名バッジの幅(ユーザー決定)。プロジェクト / 実行プロファイルの
+// 書き出しを全行で揃えるため。測り方は naturalLeftWidth と同じ(矩形の実寸・最後に切り上げ)
+function machineColumnWidth() {
+  let width = 0;
+  for (const el of runBoardRows.querySelectorAll('.run-board-machine-badge')) {
+    width = Math.max(width, el.getBoundingClientRect().width);
+  }
+  return Math.ceil(width);
+}
 // 既定の幅(ドラッグ前)に足す余白(px。ユーザー決定)。ラベルがちょうど収まる幅では
 // 左カラムが詰まって見えるため。右カラムの 80px は clampSplit が別に守る
 const DEFAULT_SPLIT_EXTRA = 100;
@@ -192,6 +201,8 @@ function renderSplit() {
   if (content <= 0) {
     return;   // 「デバイスモニター」タブが非表示の間は測れない(splitter.js の panelHidden と同じ規律)
   }
+  // マシン名の列は**左カラムを測る前に**決める(列の幅が左カラムの中身なりの幅に入る)
+  runBoard.style.setProperty('--rb-machine', machineColumnWidth() + 'px');
   const left = clampSplit(desiredSplit ?? naturalLeftWidth() + DEFAULT_SPLIT_EXTRA, content);
   runBoard.style.setProperty('--rb-left', left + 'px');
   // 境目は見出し行には掛けない(掴む相手ではないうえ、チェックボックスに重なる)
@@ -431,6 +442,11 @@ function ensureRow(key) {
   const machineBadgeEl = document.createElement('span');
   machineBadgeEl.className = 'badge badge-remote run-board-machine-badge';
 
+  // マシン名の列(幅は --rb-machine = renderSplit が全行のバッジから決める)
+  const machineCellEl = document.createElement('span');
+  machineCellEl.className = 'run-board-machine-cell';
+  machineCellEl.appendChild(machineBadgeEl);
+
   const scopeEl = document.createElement('span');
   scopeEl.className = 'run-board-scope';
 
@@ -463,7 +479,7 @@ function ensureRow(key) {
   // ので、境目(--rb-left)が行の種類によらず1本に見える
   const leftEl = document.createElement('span');
   leftEl.className = 'run-board-col-left';
-  leftEl.append(chevronEl, machineBadgeEl, scopeEl);
+  leftEl.append(chevronEl, machineCellEl, scopeEl);
   const rightEl = document.createElement('span');
   rightEl.className = 'run-board-col-right';
   rightEl.append(progressEl, countsEl, statusEl, notesEl, timeEl);
