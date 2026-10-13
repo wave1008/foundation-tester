@@ -77,10 +77,12 @@ if [[ -n "$LATEST" ]]; then
 fi
 
 # リリースゲート: 配布する Swift パッケージのビルド+テスト(合否は exit code で判定)。
+# テストは --parallel(CLAUDE.md「ビルド・検証」。ホストの共有資源に触るテストは
+# SharedResource.<key>.locked で自分を直列化する契約なので、並列でも答えは変わらない)。
 echo "==> swift build"
 swift build
-echo "==> swift test"
-swift test
+echo "==> swift test --parallel"
+swift test --parallel
 
 MESSAGE_FILE="$(mktemp -t fleetest-release-notes)"
 trap 'rm -f "$MESSAGE_FILE"' EXIT

@@ -52,7 +52,7 @@ git push origin 0.1.0
 ```
 
 `Scripts/release.sh` がやること: semver 検証 → **既存の最新より大きい版かの確認(小さい・同じ版は断る)** →
-作業ツリーがクリーンか確認 → タグ重複チェック → `swift build` + `swift test`(合否は exit code) →
+作業ツリーがクリーンか確認 → タグ重複チェック → `swift build` + `swift test --parallel`(合否は exit code) →
 注釈付きタグ作成(**注釈 = `--notes-file` の中身 = リリースノート**)→(`--push` 時のみ)push。
 
 ## 発行後の確認
