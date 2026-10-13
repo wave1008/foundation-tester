@@ -30,6 +30,54 @@ final class OcclusionPreloadTests: XCTestCase {
         XCTAssertFalse(OcclusionPreload.isHoldingForTesting)
     }
 
+    private final class FakeSession {
+        let instructions: String
+        var warmCount = 0
+        init(instructions: String) { self.instructions = instructions }
+    }
+
+    /// **未使用の同じ instructions のセッションは作り直さず暖め直すだけ**(規律⑤)。ガード評価ごとに作り捨てると
+    /// modelmanagerd が安全判定のモデルを毎回 ANE に載せ、8 並列で ANE が溢れて FM と OCR が死んだ
+    func testRepeatedPreloadReusesTheUnusedSession() {
+        let slot = PreloadSlot<FakeSession>()
+        var made: [FakeSession] = []
+        let make = { (instructions: String) -> FakeSession in
+            let session = FakeSession(instructions: instructions)
+            made.append(session)
+            return session
+        }
+        for _ in 0..<5 { slot.preload(instructions: "a", make: make, warm: { $0.warmCount += 1 }) }
+        XCTAssertEqual(made.count, 1, "同じ instructions の先読みのたびにセッションを作り直している")
+        XCTAssertEqual(made.first?.warmCount, 5, "作り直さない代わりに毎回暖め直していない")
+        XCTAssertTrue(slot.take(matching: "a") === made.first)
+    }
+
+    /// 取り出した後(= 使われて履歴を持ちうる)は使い回さず、次の先読みで作り直す(規律②)
+    func testPreloadAfterTakeMakesAFreshSession() {
+        let slot = PreloadSlot<FakeSession>()
+        var made = 0
+        let make = { (instructions: String) -> FakeSession in made += 1; return FakeSession(instructions: instructions) }
+        slot.preload(instructions: "a", make: make, warm: { _ in })
+        let first = slot.take(matching: "a")
+        XCTAssertNotNil(first)
+        XCTAssertFalse(slot.isHolding)
+        slot.preload(instructions: "a", make: make, warm: { _ in })
+        XCTAssertEqual(made, 2)
+        XCTAssertFalse(slot.take(matching: "a") === first, "使った後のセッションを再び置いている")
+    }
+
+    /// 別の instructions の先読みは置き換える(規律①)。古い instructions では取れない
+    func testDifferentInstructionsReplaceTheSlot() {
+        let slot = PreloadSlot<FakeSession>()
+        var made = 0
+        let make = { (instructions: String) -> FakeSession in made += 1; return FakeSession(instructions: instructions) }
+        slot.preload(instructions: "a", make: make, warm: { _ in })
+        slot.preload(instructions: "b", make: make, warm: { _ in })
+        XCTAssertEqual(made, 2)
+        XCTAssertNil(slot.take(matching: "a"))
+        XCTAssertEqual(slot.take(matching: "b")?.instructions, "b")
+    }
+
     /// **instructions は先読みと本番で同一**でなければ意味が無い(prefill は instructions ごと)。
     /// 1段目がスロットを引く鍵と、先読みが置く鍵が同じ定数であることをソースで固定する
     func testPreloadAndCallUseTheSameInstructions() throws {

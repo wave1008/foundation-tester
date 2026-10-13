@@ -18,22 +18,24 @@
 
 ## デバイスで赤のまま・原因未調査
 
-- **E2E の一式を回すと、再起動から12〜15分で FM(text・vision とも)と OCR が止まり、再起動まで戻らない**(2026-10-13)
+- **E2E の一式を回すと FM(text・vision とも)と OCR が ANE の `no memory` で止まり、再起動まで戻らない**(2026-10-13・
+  **修正を入れて、デバイスでの確認待ち**)
   - 症状: `/usr/bin/log` に `TGOnDeviceInferenceProviderService … Failed to load asset … instruct_300m.safety … appleneuralengine
-    Code=53 … Program load failed — no memory (transient; retry under lower memory pressure)` が1回のまとまりで出て、以後 FM の
-    実呼び出しが失敗し続ける。同時に OCR の生存確認(`RegionText.readerIsAlive`)も読めなくなり、リンク文字の tap 等が赤になる
-    (E2EY-CMP Android「文中のリンクだけを押せること」S0020)。テキストの視覚検証は OCR だけの判定に落ちる
-  - 確かめた範囲: M2Ultra(8並列・E2E 一式)で 09:38 開始 → 09:51 に発生、M1Ultra(8並列・E2EX 一式)で 09:53 に発生。
-    発生までの 14 分に ANE へ接続したのはシナリオ実行プロセス 130 個(E2E-CMP 119・E2E-iOS 11)。
-    **暖機(`OcclusionPreload` の FM セッション作り捨て)は原因ではない**: M1Max(4並列)で E2E-CMP の iOS in-app 一式を、
-    暖機なし(`FT_FM_OCCLUSION_PRELOAD=0`・2周で暖機 81 回)と暖機あり(2周で 2,897 回 = M2Ultra の発生時と同程度)の
-    どちらで回しても FM は止まらず、ANE の失敗は 0 件。暖機1回は modelmanagerd 側で中央値 2ms(読み込み直しではない)
-    **システムのメモリ不足ではない**: 発生した M2Ultra(192GB)は 8 並列の最中も空き 77%・スワップ 0、M1Ultra(128GB)は空き 60%・スワップ 0
-  - 次に見るもの: 同時に ANE を使うシナリオ実行プロセスの数(8並列 vs 4並列)。**M1Max(64GB)は 8 並列にするとシステムのメモリが先に
-    詰まる**(空き 36%・圧縮 33GB・スワップ 3.7GB)ので比較に使えない —— 8 並列は M2Ultra / M1Ultra の上で、並列数だけを変えて分ける。
-    止まるなら、プロセスごとに ANE へ載るもの(OCR の `_e5` 検出器は装置を指定しても aned に読み込まれる = RegionText の doc)の
-    同時の山を下げる手を探す
-
+    Code=53 … Program load failed — no memory` が1回のまとまりで出て、以後 FM の実呼び出しが失敗し続ける。OCR の生存確認
+    (`RegionText.readerIsAlive`)も読めなくなり、リンク文字の tap 等が赤になる。テキストの視覚検証は OCR だけの判定に落ちる
+  - 原因(ログで確定): 先読み(`OcclusionPreload`)がガード評価のたびに**新しい `LanguageModelSession` を作り捨てていた**。
+    セッション1つごとに modelmanagerd が安全判定のモデル(instruct_300m.safety)とサニタイザのセッションを作り、ANE に実体を
+    載せる。M2Ultra の E2E 一式(8 並列)で、平常は常駐の fleetest の 18 セッション/分だったのが、E2E-CMP の iOS in-app に入ると
+    シナリオ実行プロセスから **794 / 592 / 524 セッション/分**(1プロセスで最大 232)になり、ANE の実体の作成が 432 個/分に跳ねた
+    3分目に溢れた。同じ間に FM を実際に呼んだのは数回
+  - 直し: 未使用の同じ instructions のセッションがあれば作り直さず `prewarm()` だけ撃ち直す(`PreloadSlot`)
+  - 確かめた範囲: 単体(`OcclusionPreloadTests`・変異で落ちることを確認)。**デバイス(E2E 一式で FM が止まらないこと・
+    セッション/分が下がること)は未確認**。暖機の有無だけを変えた比較(M1Max の E2E-CMP iOS・M2Ultra の E2E-CMP Android)では
+    差が出なかった —— どちらもセッションの作成の速さが溢れる手前だったと見ている(Android は 1 周で実体 110 個前後)。
+    システムのメモリ不足ではない(M2Ultra 空き 77%・M1Ultra 60%・スワップ 0)
+  - 調べ方: `log stream --predicate 'process == "aned" OR process == "modelmanagerd" OR process == "TGOnDeviceInferenceProviderService"'`
+    を `~/Library/Logs/fleetest/ane-trace/` に流し(`/private/tmp` は再起動で消える)、modelmanagerd の
+    `Created session (…) on behalf of pid N` を分ごと・pid ごとに数える。aned の `ProgramCreateNewInstance` が ANE の実体の作成
 - **E2E-CMP の XCUITest で「テキスト入力が正しくechoされること」S0040 の `type(replace:)` の後の echo が空のまま**(2026-10-12・
   ios-xcuitest の記録 205 回中 20 回赤)
   - 症状: `type("#field_single", "abc")` → `type("#field_single", "xyz", replace: true)` がどちらも緑のまま、次の
