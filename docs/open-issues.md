@@ -18,6 +18,22 @@
 
 ## デバイスで赤のまま・原因未調査
 
+- **E2E の一式を回すと、再起動から12〜15分で FM(text・vision とも)と OCR が止まり、再起動まで戻らない**(2026-10-13)
+  - 症状: `/usr/bin/log` に `TGOnDeviceInferenceProviderService … Failed to load asset … instruct_300m.safety … appleneuralengine
+    Code=53 … Program load failed — no memory (transient; retry under lower memory pressure)` が1回のまとまりで出て、以後 FM の
+    実呼び出しが失敗し続ける。同時に OCR の生存確認(`RegionText.readerIsAlive`)も読めなくなり、リンク文字の tap 等が赤になる
+    (E2EY-CMP Android「文中のリンクだけを押せること」S0020)。テキストの視覚検証は OCR だけの判定に落ちる
+  - 確かめた範囲: M2Ultra(8並列・E2E 一式)で 09:38 開始 → 09:51 に発生、M1Ultra(8並列・E2EX 一式)で 09:53 に発生。
+    発生までの 14 分に ANE へ接続したのはシナリオ実行プロセス 130 個(E2E-CMP 119・E2E-iOS 11)。
+    **暖機(`OcclusionPreload` の FM セッション作り捨て)は原因ではない**: M1Max(4並列)で E2E-CMP の iOS in-app 一式を、
+    暖機なし(`FT_FM_OCCLUSION_PRELOAD=0`・2周で暖機 81 回)と暖機あり(2周で 2,897 回 = M2Ultra の発生時と同程度)の
+    どちらで回しても FM は止まらず、ANE の失敗は 0 件。暖機1回は modelmanagerd 側で中央値 2ms(読み込み直しではない)
+    **システムのメモリ不足ではない**: 発生した M2Ultra(192GB)は 8 並列の最中も空き 77%・スワップ 0、M1Ultra(128GB)は空き 60%・スワップ 0
+  - 次に見るもの: 同時に ANE を使うシナリオ実行プロセスの数(8並列 vs 4並列)。**M1Max(64GB)は 8 並列にするとシステムのメモリが先に
+    詰まる**(空き 36%・圧縮 33GB・スワップ 3.7GB)ので比較に使えない —— 8 並列は M2Ultra / M1Ultra の上で、並列数だけを変えて分ける。
+    止まるなら、プロセスごとに ANE へ載るもの(OCR の `_e5` 検出器は装置を指定しても aned に読み込まれる = RegionText の doc)の
+    同時の山を下げる手を探す
+
 - **E2E-CMP の XCUITest で「テキスト入力が正しくechoされること」S0040 の `type(replace:)` の後の echo が空のまま**(2026-10-12・
   ios-xcuitest の記録 205 回中 20 回赤)
   - 症状: `type("#field_single", "abc")` → `type("#field_single", "xyz", replace: true)` がどちらも緑のまま、次の
