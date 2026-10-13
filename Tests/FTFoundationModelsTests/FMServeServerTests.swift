@@ -52,6 +52,22 @@ final class FMServeServerTests: XCTestCase {
                       "死活の確かめが拒否を死と読む")
     }
 
+    /// 暖機が載せたままにできない機械(呼び出しの中で載せ直す = 遅い回が続く)では暖機をやめる。単発の遅い回ではやめない
+    func testKeepWarmGivesUpOnlyAfterConsecutiveSlowCalls() {
+        XCTAssertEqual(FMServeServer.keepWarmGiveUpAfterSlowCalls, 5)
+        XCTAssertTrue(FMServeServer.keepWarmStillUseful(consecutiveSlowCalls: 0))
+        XCTAssertTrue(FMServeServer.keepWarmStillUseful(consecutiveSlowCalls: 4))
+        XCTAssertFalse(FMServeServer.keepWarmStillUseful(consecutiveSlowCalls: 5))
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let server = (try? String(contentsOf: root.appendingPathComponent("Sources/FTFoundationModels/FMServeServer.swift"),
+                                  encoding: .utf8)) ?? ""
+        let tick = PreloadSlotTests.functionBody(named: "tick", in: server) ?? ""
+        XCTAssertTrue(tick.contains("if keepWarmStillUseful(consecutiveSlowCalls:"), "合間の判断が暖機をやめる判断を通っていない")
+        XCTAssertTrue(tick.contains("count = took > slowKeepAliveSeconds ? count + 1 : 0"),
+                      "遅い回の数え方が「続いた回数」でない(速い回で数え直していない)")
+    }
+
     /// 間隔が過ぎたら撃つ・過ぎる前は撃たない・死んでいると分かっている FM には撃たない
     func testShouldWarm() {
         let now = Date(timeIntervalSince1970: 1_000)

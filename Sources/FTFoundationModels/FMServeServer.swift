@@ -34,6 +34,18 @@ public enum FMServeServer {
     /// 呼び出しの初めに使った部品が降ろされうる
     static let slowKeepAliveSeconds: Double = 4
 
+    /// 遅い暖機(`slowKeepAliveSeconds` 超え)がこの回数続いたら、このプロセスの間は暖機をやめる。**理由**: 呼び出し1回の中で
+    /// 部品を載せ直している = この機械の ANE には全部品が収まらず、暖機は載せたままにできないまま積み下ろしを撃ち続けるだけになる
+    /// (M1mini・メモリ 8GB: 98 回中 97 回が 4.6〜5.4 秒・60 秒で降ろし 137 回)。**根拠**: 遅い回は M2Ultra で 0・M1Max で数分に
+    /// 1回の単発(10.8 秒)・M1mini でほぼ毎回 = 5 回続けば単発の外れ値と区別できる。**尽きたとき**: 暖機をやめるだけ
+    /// (FM の呼び出しは頼まれたときだけ = 常駐プロセスを入れる前と同じ。1行ログへ出す)
+    static let keepWarmGiveUpAfterSlowCalls = 5
+
+    /// 暖機を続けるか(純粋関数)。遅い暖機が `keepWarmGiveUpAfterSlowCalls` 回続いたらやめる
+    static func keepWarmStillUseful(consecutiveSlowCalls: Int) -> Bool {
+        consecutiveSlowCalls < keepWarmGiveUpAfterSlowCalls
+    }
+
     /// 受け付けループが暖機・寿命を判断する刻み[ms]。暖機の間隔より細かければよい
     static let tickMilliseconds: Int32 = 500
 
@@ -77,7 +89,8 @@ public enum FMServeServer {
             stopRequested.withLock { $0 = true }
             return
         }
-        if shouldWarm(lastFMUse: state.lastFMUse, now: now, knownDead: FMLiveness.isKnownDead(.vision)),
+        if keepWarmStillUseful(consecutiveSlowCalls: consecutiveSlowKeepAlives.withLock { $0 }),
+           shouldWarm(lastFMUse: state.lastFMUse, now: now, knownDead: FMLiveness.isKnownDead(.vision)),
            keepAliveInFlight.withLock({ inFlight -> Bool in
                if inFlight { return false }
                inFlight = true
@@ -93,6 +106,14 @@ public enum FMServeServer {
                 if took > slowKeepAliveSeconds || gap > slowKeepAliveSeconds {
                     log(String(format: "slow keep-warm: the call took %.1fs after a %.1fs gap since the last FM use", took, gap))
                 }
+                let slowRun = consecutiveSlowKeepAlives.withLock { count -> Int in
+                    count = took > slowKeepAliveSeconds ? count + 1 : 0
+                    return count
+                }
+                if !keepWarmStillUseful(consecutiveSlowCalls: slowRun), slowRun == keepWarmGiveUpAfterSlowCalls {
+                    log("keep-warm stopped: \(slowRun) calls in a row took over \(Int(slowKeepAliveSeconds))s, so this machine"
+                        + " cannot keep the model loaded; FM is now loaded only when a request comes")
+                }
                 clock.withLock { $0.lastFMUse = Date() }
                 keepAliveInFlight.withLock { $0 = false }
             }
@@ -100,6 +121,7 @@ public enum FMServeServer {
     }
 
     private static let keepAliveInFlight = Mutex(false)
+    private static let consecutiveSlowKeepAlives = Mutex(0)
 
     /// 小さな画像の転写を1回(答えは見ない・記録しない = 規律③)。本番の転写と同じ instructions・prompt で撃ち、同じ部品
     /// (画像トークナイザ・mm_guard・安全判定)を載せたままにする。**毎回新しいセッション**(1 つのセッションで生成を繰り返すと
