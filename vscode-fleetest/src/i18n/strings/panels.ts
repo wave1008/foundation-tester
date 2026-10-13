@@ -140,8 +140,8 @@ export const panelsStrings = {
   },
   "panels.runProfile.iosSectionTitle": { ja: "iOS", en: "iOS" },
   "panels.runProfile.inappEngineLabel": {
-    ja: "高速なinappエンジンを使用する（Simulatorのみ有効）",
-    en: "Use the fast in-app engine (Simulator only)",
+    ja: "Simulatorで高速なinappエンジンを使用する",
+    en: "Use the fast in-app engine on Simulator",
   },
   "panels.runProfile.iosPreActionPingLabel": {
     ja: "WebView画面は直前の接続確認(ランナーへの問い合わせ)を行い安定性を向上させる",
