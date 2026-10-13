@@ -1198,7 +1198,7 @@ public enum RemoteShell {
     /// (CoreSimulator 等)へ到達できる(実測)
     /// `fmConcurrency` は登録簿の欄(`RemoteHostEntry`)。**機械によっては FM を 2 並列以上で
     /// 呼ぶと壊れる**(実測と経緯は docs/remote-runner.md)ので、枠を機械ごとに絞れるようにする。
-    /// nil のときは**1バイトも足さない** —— ランナー側の既定(`FMLock.defaultConcurrency`)に任せる
+    /// nil のときは**1バイトも足さない** —— ランナー側の既定(`FMCallSlots.defaultConcurrency`)に任せる
     /// `developerDir` はディスパッチが選んだ Xcode(`FTRemote.XcodeSelection`。
     /// docs/remote-runner.md §7)。非 nil のときだけ `export DEVELOPER_DIR=` を足す
     /// (nil = ambient のまま、`xcode-select` の機械既定に従う)。**呼び出し側

@@ -135,7 +135,7 @@ final class FMDegradedWarningTests: XCTestCase {
     }
 
     /// **視覚系を使わない run では死活確認そのものを撃たない**(`readLiveness` を呼ばない)。
-    /// 既定の `FMLivenessProbe.refresh` は台帳が古いと FM を実際に呼ぶ(0.7〜4.7 秒・FMLock を取る)ので、
+    /// 既定の `FMLivenessProbe.refresh` は台帳が古いと FM を実際に呼ぶ(0.7〜4.7 秒・FMCallSlots を取る)ので、
     /// 結果を捨てる run で払わせない。FM ごと切った run も同じ
     func testRunsThatDoNotUseVisionNeverReadTheLiveness() async {
         for fm in [FMConfig(enabled: true, fmTextOcclusionCheck: false, screenLooksLike: false),

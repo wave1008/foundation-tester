@@ -292,7 +292,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 最中か古い枠へ指を置いていた)。立たない = 既に静止していた
     case settledBeforeGesture = "settled-before-gesture"
 
-    /// 1番目の occlusion-guard 評価だけで、ガード自身の所要(FM の直列化待ち+推論)が
+    /// 1番目の occlusion-guard 評価だけで、ガード自身の所要(FM の呼び出しの枠の待ち+推論)が
     /// このステップの待ち予算を食い潰し、1回もポーリングできないまま反転が確定しかけたので、
     /// deadline を一度だけ延ばして撮り直したところ通った(実測: guardMs 6.3s >
     /// 既定 timeout 5s で1フレームだけ古い描画を反転として確定させた欠陥)。

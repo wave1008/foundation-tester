@@ -26,7 +26,7 @@ public struct LocalConfig: Codable, Sendable, Equatable {
     /// 自己申告の帰属(認証ではない)。run.json/dispatch.lock に「誰が起動したか」を記す。
     /// 空文字列は未設定と同じ扱い(resolveIssuerId が既定値へフォールバックする)
     public var issuerId: String?
-    /// **この機械**の FM 同時実行枠。nil なら `FMLock.defaultConcurrency`。
+    /// **この機械**の FM 同時実行枠。nil なら `FMCallSlots.defaultConcurrency`。
     /// リモート機のぶんは `remoteHosts[].fmConcurrency` —— **"local" は登録簿の予約名**
     /// (RemoteHostRegistry.validateName)なので、手元だけはここに置く。
     /// 機械によっては FM を2並列以上で呼ぶと壊れる(docs/remote-runner.md §19)
@@ -137,7 +137,7 @@ public struct LocalConfig: Codable, Sendable, Equatable {
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        // **atomic 必須**: 読み手(FMLock.concurrency → load)は別プロセスから随時読む。
+        // **atomic 必須**: 読み手(FMCallSlots.concurrency → load)は別プロセスから随時読む。
         // 素の write は truncate → 書込の2段なので、途中を読むと decode 失敗 = 空設定へ倒れる
         try encoder.encode(self).write(to: url, options: .atomic)
     }

@@ -9,7 +9,7 @@
 // ズレても**両方とも成功する**(描画も run も通る)ので、目視では気付けない。
 //
 // 同期相手:
-//   Sources/FTCore/FMLock.swift                       defaultConcurrency
+//   Sources/FTCore/FMCallSlots.swift                       defaultConcurrency
 //   vscode-fleetest/src/webview/monitor/hostChartScale.js HM_FM_MAX_RATE
 //
 // process.cwd() は npm test 実行時に vscode-fleetest ルート。
@@ -23,16 +23,16 @@ const ROOT = process.cwd();
 const REPO = path.join(ROOT, "..");
 
 test("FM グラフの上限が Swift 側の FM 並列枠の既定と一致する", () => {
-  const swift = readFileSync(path.join(REPO, "Sources/FTCore/FMLock.swift"), "utf8");
+  const swift = readFileSync(path.join(REPO, "Sources/FTCore/FMCallSlots.swift"), "utf8");
   const swiftMatch = swift.match(/defaultConcurrency\s*=\s*(\d+)/);
-  assert.ok(swiftMatch, "FMLock.swift から defaultConcurrency を抽出できません");
+  assert.ok(swiftMatch, "FMCallSlots.swift から defaultConcurrency を抽出できません");
 
   const charts = readFileSync(path.join(ROOT, "src/webview/monitor/hostChartScale.js"), "utf8");
   const chartsMatch = charts.match(/HM_FM_MAX_RATE\s*=\s*(\d+)/);
   assert.ok(chartsMatch, "hostChartScale.js から HM_FM_MAX_RATE を抽出できません");
 
   assert.equal(Number(chartsMatch[1]), Number(swiftMatch[1]),
-    "FM グラフの上限が FMLock.defaultConcurrency とズレています");
+    "FM グラフの上限が FMCallSlots.defaultConcurrency とズレています");
 });
 
 // 縦軸の目盛り。**下限を割らない**ことと**超えたら伸びる**ことの両方を見る ——

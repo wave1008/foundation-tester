@@ -1,4 +1,4 @@
-// FMGate → FMHealth.recordGateWait の**配線**の検証。
+// FMCallAdmission → FMHealth.recordGateWait の**配線**の検証。
 // gateWait の算術は FMHealthTests が見ている。ここが無いと「常に 0 を返す計測器」と
 // 「待ちが無かった run」を区別できない —— 待ちが 0 なら直列化を緩める価値は無い、という
 // 判断をこの数字1つに賭けるので、production の経路を実際に通ることを固定する。
@@ -12,9 +12,9 @@ import FTTestSupport
 import XCTest
 @testable import FTCore
 
-final class FMGateWaitWiringTests: XCTestCase {
+final class FMCallAdmissionWaitWiringTests: XCTestCase {
 
-    /// 待たせる時間。ロックのポーリング間隔(FMLock.acquire の 30ms)より十分に長くとる ——
+    /// 待たせる時間。ロックのポーリング間隔(FMCallSlots.acquire の 30ms)より十分に長くとる ——
     /// 短いと「保持中に2本目が入った」ことを再現できず、待ち 0 で通ってしまう
     private let holdSeconds: TimeInterval = 0.3
 
@@ -22,22 +22,22 @@ final class FMGateWaitWiringTests: XCTestCase {
     private var savedLivenessEnv: String?
     private var usageDir: URL!
     private var savedUsageEnv: String?
-    /// **本番の枠に触らない**(FMLockTests と同じ理由): 枠のロックファイルは機械の全 fleetest
+    /// **本番の枠に触らない**(FMCallSlotsTests と同じ理由): 枠のロックファイルは機械の全 fleetest
     /// プロセスと共有されるので、走っている run から枠を奪う/奪われると検証が負荷で揺れる
     private var lockDir: URL!
 
     override func setUpWithError() throws {
         lockDir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("FMGateWaitWiringTests-lock-\(UUID().uuidString)")
+            .appendingPathComponent("FMCallAdmissionWaitWiringTests-lock-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: lockDir, withIntermediateDirectories: true)
-        FMLock.lockDirectoryForTesting = lockDir
-        FMLock.resetForTesting()
+        FMCallSlots.lockDirectoryForTesting = lockDir
+        FMCallSlots.resetForTesting()
         livenessDir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("FMGateWaitWiringTests-liveness-\(UUID().uuidString)")
+            .appendingPathComponent("FMCallAdmissionWaitWiringTests-liveness-\(UUID().uuidString)")
         savedLivenessEnv = ProcessInfo.processInfo.environment["FT_FM_LIVENESS_DIR"]
         setenv("FT_FM_LIVENESS_DIR", livenessDir.path, 1)
         usageDir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("FMGateWaitWiringTests-usage-\(UUID().uuidString)")
+            .appendingPathComponent("FMCallAdmissionWaitWiringTests-usage-\(UUID().uuidString)")
         savedUsageEnv = ProcessInfo.processInfo.environment["FT_FM_USAGE_DIR"]
         setenv("FT_FM_USAGE_DIR", usageDir.path, 1)
         FMLiveness.resetWriteMemo()
@@ -49,10 +49,10 @@ final class FMGateWaitWiringTests: XCTestCase {
         FMLiveness.resetWriteMemo()
         try? FileManager.default.removeItem(at: livenessDir)
         try? FileManager.default.removeItem(at: usageDir)
-        FMGate.leave()
-        FMLock.concurrencyForTesting = nil
-        FMLock.lockDirectoryForTesting = nil
-        FMLock.resetForTesting()
+        FMCallAdmission.leave()
+        FMCallSlots.concurrencyForTesting = nil
+        FMCallSlots.lockDirectoryForTesting = nil
+        FMCallSlots.resetForTesting()
         if let lockDir { try? FileManager.default.removeItem(at: lockDir) }
     }
 
@@ -60,23 +60,23 @@ final class FMGateWaitWiringTests: XCTestCase {
     /// 枠を1に絞る —— 既定の並列枠(5)のままだと2本目が別の空き枠へ即座に入り、
     /// 待ちが発生せずこの検証が意味を失う
     func testGateRecordsWaitWhileAnotherHoldsIt() async throws {
-        if !FMLock.isEnabled { throw XCTSkip("FT_FM_SERIALIZE=0 では待ちが発生しない") }
-        // FMLock はホスト単位のファイル、FMBreaker もホスト単位の状態なので直列化する
+        if !FMCallSlots.isEnabled { throw XCTSkip("FT_FM_CALL_SLOTS=0 では待ちが発生しない") }
+        // FMCallSlots はホスト単位のファイル、FMBreaker もホスト単位の状態なので直列化する
         try await SharedResource.hostCaches.locked {
-            FMLock.concurrencyForTesting = 1
-            FMLock.resetForTesting()
+            FMCallSlots.concurrencyForTesting = 1
+            FMCallSlots.resetForTesting()
             FMBreaker.reset()   // 開いていると enter が短絡して門に触れない
             FMHealth.reset()
 
-            let first = await FMGate.enter(path: .vision)
+            let first = await FMCallAdmission.enter(path: .vision)
             XCTAssertTrue(first, "1本目は取れるはず")
 
-            async let second = FMGate.enter(path: .vision)
+            async let second = FMCallAdmission.enter(path: .vision)
             try await Task.sleep(nanoseconds: UInt64(holdSeconds * 1_000_000_000))
-            FMGate.leave()
+            FMCallAdmission.leave()
             let secondAcquired = await second
             XCTAssertTrue(secondAcquired, "解放後に2本目が取れるはず")
-            FMGate.leave()
+            FMCallAdmission.leave()
 
             // usage() は FM 呼び出しが1件も無ければ nil を返す契約なので、読むために1件入れる
             FMHealth.record(kind: "test", path: .text, ms: 1, ok: true)
@@ -90,26 +90,26 @@ final class FMGateWaitWiringTests: XCTestCase {
     /// ゲートで待たされた時間は締め切りから差し引かれる(DeadlineExclusion へ計上する)。
     /// 待たなかった回は窓を開けない
     func testGateWaitIsExcludedFromTheDeadline() async throws {
-        if !FMLock.isEnabled { throw XCTSkip("FT_FM_SERIALIZE=0 では待ちが発生しない") }
+        if !FMCallSlots.isEnabled { throw XCTSkip("FT_FM_CALL_SLOTS=0 では待ちが発生しない") }
         try await SharedResource.hostCaches.locked {
-            FMLock.concurrencyForTesting = 1
-            FMLock.resetForTesting()
+            FMCallSlots.concurrencyForTesting = 1
+            FMCallSlots.resetForTesting()
             FMBreaker.reset()
             FMHealth.reset()
 
             let uncontendedSnap = DeadlineExclusion.snapshot()
-            let first = await FMGate.enter(path: .vision)
+            let first = await FMCallAdmission.enter(path: .vision)
             XCTAssertTrue(first)
             XCTAssertEqual(DeadlineExclusion.excluded(since: uncontendedSnap), .zero,
                            "待たなかった回は窓を開けない")
 
             let snap = DeadlineExclusion.snapshot()
-            async let second = FMGate.enter(path: .vision)
+            async let second = FMCallAdmission.enter(path: .vision)
             try await Task.sleep(nanoseconds: UInt64(holdSeconds * 1_000_000_000))
-            FMGate.leave()
+            FMCallAdmission.leave()
             let acquired = await second
             XCTAssertTrue(acquired)
-            FMGate.leave()
+            FMCallAdmission.leave()
             XCTAssertGreaterThanOrEqual(DeadlineExclusion.excluded(since: snap), .milliseconds(200),
                                         "待たされた 300ms 前後が差し引かれていない(配線が死んでいる)")
         }
@@ -121,9 +121,9 @@ final class FMGateWaitWiringTests: XCTestCase {
             FMBreaker.reset()
             FMHealth.reset()
 
-            let acquired = await FMGate.enter(path: .vision)
+            let acquired = await FMCallAdmission.enter(path: .vision)
             XCTAssertTrue(acquired)
-            FMGate.leave()
+            FMCallAdmission.leave()
 
             FMHealth.record(kind: "test", path: .text, ms: 1, ok: true)
             let usage = try XCTUnwrap(FMHealth.usage())
@@ -136,11 +136,11 @@ final class FMGateWaitWiringTests: XCTestCase {
     func testTheGateStaysClosedWhileThePathIsKnownDead() async throws {
         FMLiveness.record(path: .vision, state: .dead, source: .probe, error: "boom")
         FMHealth.reset()
-        let entered = await FMGate.enter(path: .vision)
+        let entered = await FMCallAdmission.enter(path: .vision)
         XCTAssertFalse(entered, "新しい死の経路は呼ばない")
         XCTAssertEqual(FMHealth.snapshot().skipped, 1, "スキップとして数える")
-        let textEntered = await FMGate.enter(path: .text)
+        let textEntered = await FMCallAdmission.enter(path: .text)
         XCTAssertTrue(textEntered, "別の経路は閉じない")
-        FMGate.leave()
+        FMCallAdmission.leave()
     }
 }

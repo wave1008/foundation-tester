@@ -64,8 +64,8 @@ final class LedgerWriteRoleTests: XCTestCase {
 
     /// **ブレーカの置き場も同じ門を通る**。合成値の `FMHealth.record(ok: false)` を叩くテスト
     /// (FMHealthTests)が本番のブレーカを落とすと、**この機械の FM が 10 分止まる**
-    /// (実害2件・2026-09-08: 耐久 run が FM 無しで走った / 同じスイートの FMGateWaitWiringTests が
-    /// `FMGate.enter` を短絡されて落ちた)。判定は I/O 抜きで置き場の決まり方だけを見る ——
+    /// (実害2件・2026-09-08: 耐久 run が FM 無しで走った / 同じスイートの FMCallAdmissionWaitWiringTests が
+    /// `FMCallAdmission.enter` を短絡されて落ちた)。判定は I/O 抜きで置き場の決まり方だけを見る ——
     /// 本番ファイルの有無で見ると、並列の別プロセスや同時に動く production の run と競合する
     func testBreakerStateIsProcessLocalWithoutOptIn() {
         let saved = FMBreaker.stateURLForTesting

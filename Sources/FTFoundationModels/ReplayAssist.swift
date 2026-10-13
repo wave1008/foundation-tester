@@ -1,6 +1,6 @@
 // 再生中に呼ばれる FM フック群(画面検証・occlusion-guard。各セクションは下記 MARK 参照)。
 //
-// **セッションに `model:` を渡さない**(省略 = オンデバイス固定。PCC は禁止。FTCore/FMGate.swift 冒頭)。
+// **セッションに `model:` を渡さない**(省略 = オンデバイス固定。PCC は禁止。FTCore/FMCallAdmission.swift 冒頭)。
 
 import CoreGraphics
 import Foundation
@@ -32,9 +32,9 @@ public final class FMReplayDelegate: ReplayDelegate {
         // 通常は StepExecutor が FMVisionSupport で手前で止めるので、ここは保険
         guard #available(macOS 27, *) else { return nil }
         guard let cgImage = Self.cgImage(fromPNG: screenshotPNG) else { return nil }
-        // FM はホスト全体で直列化される資源(FMLock 参照)
-        guard await FMGate.enter(path: .vision) else { return nil }
-        defer { FMGate.leave() }
+        // FM はホスト全体で直列化される資源(FMCallSlots 参照)
+        guard await FMCallAdmission.enter(path: .vision) else { return nil }
+        defer { FMCallAdmission.leave() }
         let session = LanguageModelSession(instructions: """
         You verify screens for UI tests. Look at the screenshot and judge strictly
         whether it matches the expected state.
@@ -60,7 +60,7 @@ public final class FMReplayDelegate: ReplayDelegate {
     // MARK: Occlusion guard(PoC)
 
     /// FTCore(`StepExecutor.occlusionFlip`)がスクショを撮る前に呼ぶ。**生成は伴わない**ので
-    /// FMGate は通さない(枠を消費しない)が、**死んでいる FM を先読みし続けない**ようブレーカは見る。
+    /// FMCallAdmission は通さない(枠を消費しない)が、**死んでいる FM を先読みし続けない**ようブレーカは見る。
     /// 効き方と置き場の理由は OcclusionPreload.swift の冒頭
     public func preloadVisibilityCheck() {
         guard OcclusionVerifier.preloadEnabled(environment: ProcessInfo.processInfo.environment),

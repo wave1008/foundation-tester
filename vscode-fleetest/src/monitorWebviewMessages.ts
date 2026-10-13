@@ -368,7 +368,7 @@ export type MonitorToWebviewMessage =
   | {
       readonly type: "remoteConfig";
       readonly hosts: readonly RemoteHostEntry[];
-      /** 未設定時の FM 枠(CLI 側 FMLock.defaultConcurrency)。ウォーターマークに出すだけ。
+      /** 未設定時の FM 枠(CLI 側 FMCallSlots.defaultConcurrency)。ウォーターマークに出すだけ。
        *  **拡張はこの数を持たない** —— 二重管理にすると片方だけ変わったときに嘘を表示する */
       readonly defaultFMConcurrency?: number;
       /** この機械の固定行(消せない。FM 枠だけ編集できる)。settingsTab.js が先頭に描く */

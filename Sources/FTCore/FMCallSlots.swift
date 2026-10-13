@@ -23,22 +23,22 @@
 // ロックは**リポジトリ単位ではなくホスト単位**(FM がホスト単位の資源のため、別リポジトリの
 // fleetest プロセスとも枠を共有する必要がある)。ファイルは
 // ~/Library/Caches/fleetest/fm.lock.<slot>(slot は 0..<concurrency)。
-// **旧版(単数の fm.lock)とは枠を共有しない** —— 版混在は直列化の効果を薄めるが、
+// **旧版(単数の fm.lock)とは枠を共有しない** —— 版混在は枠の効果を薄めるが、
 // 混在自体を避けるのが前提(CLAUDE.md の版合わせ)。
 //
 // 取得できないまま timeout したら **FM 呼び出しをスキップする**(呼び出し側は nil を返して
 // ガードを素通りさせる = 失敗時と同じ振る舞い)。全ワーカーが待ち行列に並ぶと最後尾の待ちが
 // 積み上がり、シナリオの壁時計タイムアウトを超えうるため、この安全弁は外せない。
 //
-// FT_FM_SERIALIZE=0 で無効化できる(A/B 計測用の殺しスイッチ。無効時 acquire は常に true)。
+// FT_FM_CALL_SLOTS=0 で無効化できる(A/B 計測用の殺しスイッチ。無効時 acquire は常に true)。
 
 import Foundation
 import Synchronization
 
-public enum FMLock {
-    /// 直列化が有効か。FT_FM_SERIALIZE=0 のときだけ無効
+public enum FMCallSlots {
+    /// 呼び出しの枠が有効か。FT_FM_CALL_SLOTS=0 のときだけ無効
     public static var isEnabled: Bool {
-        ProcessInfo.processInfo.environment["FT_FM_SERIALIZE"] != "0"
+        ProcessInfo.processInfo.environment["FT_FM_CALL_SLOTS"] != "0"
     }
 
     /// 待ち行列の最後尾が待つ上限。超えたら諦めて FM をスキップする。
@@ -89,7 +89,7 @@ public enum FMLock {
 
     /// `heldSlots`: プロセス内で現在保持中の枠番号(0..<concurrency)。**枠は交換可能** —— acquire/leave は
     /// 個数さえ対応していればどれを返しても正しいので、release は先着順を問わず popLast() で
-    /// 1つ返す(呼び出し元の FMGate は取った枠を覚えず defer { leave() } するだけの契約のため)
+    /// 1つ返す(呼び出し元の FMCallAdmission は取った枠を覚えず defer { leave() } するだけの契約のため)
     private struct SlotState {
         var heldSlots: [Int] = []
         var cachedFDs: [Int32]?

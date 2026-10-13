@@ -227,7 +227,7 @@ cores/3 への同時数自動スケールも実装後に撤回(同ユーザー�
 - イベント形は start-all-devices と共通(`isDevicesUpEvent`)。契約同期相手: `ApiStopAllDevicesCommand`(Swift)/
   `monitorDeviceOps.ts` executeBulkJob / `monitorModel.ts` `deviceDownFinished` / `deviceTiles.js`。
 
-### 3.5 FM の許可枠(FMLock)。約1回/秒は FM の天井ではない
+### 3.5 FM の許可枠(FMCallSlots)。約1回/秒は FM の天井ではない
 
 **既定は 1**(ユーザー決定)。この節の実測は「5 まで上げると壊れない機械ではこう効く」の根拠で、
 既定は**2 並列以上で FM が壊れる機械**(docs/remote-runner.md §19)を守る側に置いてある。
@@ -235,12 +235,12 @@ cores/3 への同時数自動スケールも実装後に撤回(同ユーザー�
 `LocalConfig.fmConcurrency`)で 5 に上げる。1 のままだと下の「枠1」の数字(待ち・timeout での
 素通り)がそのまま出るので、`fm.gateWait*` と `fm.skipped` で確認する。
 
-**run 中に見える「FM は約1回/秒」は `FMLock` の枠数が 1 だったことの帰結**であって、FM の
+**run 中に見える「FM は約1回/秒」は `FMCallSlots` の枠数が 1 だったことの帰結**であって、FM の
 能力ではない(2026-09-01 に反証。それまでこの節は「ホスト全体で直列化する」と書いていた)。
-production の FM 呼び出しは全て `FMGate.enter()` → `FMLock.acquire()` を通る。
+production の FM 呼び出しは全て `FMCallAdmission.enter()` → `FMCallSlots.acquire()` を通る。
 
 **測り方**: `fleetest doctor --fm-load [--fm-load-vision] [--fm-load-seconds N]
-[--fm-load-concurrency N]`。**この口は FMGate/FMLock を通さない**ので FM 単体の能力が出る
+[--fm-load-concurrency N]`。**この口は FMCallAdmission/FMCallSlots を通さない**ので FM 単体の能力が出る
 (通すと測っている対象が門になる)。実行中の run と容量を奪い合うので単独で回すこと。
 
 **掃引(2026-09-01・text 経路・各15秒・ピーク比)**:
@@ -280,8 +280,8 @@ M1Max 10コア/16コア ANE が 3.51 で、コア数比にも ANE 比にも対�
 (M1 Ultra で実測。設定は登録簿の `fmConcurrency`・docs/remote-runner.md §19)。既定 5 は
 この機械では使えないが、**機械ごとの設定であって既定を下げる理由にはならない**。
 
-**外すなら多い側に外す**: 枠が少なすぎると待ちが積み上がり、`FMLock` の timeout(20秒)を
-超えた回は `FMGate` が false を返して**occlusion-guard が黙って素通りする**(枠1 の実測で
+**外すなら多い側に外す**: 枠が少なすぎると待ちが積み上がり、`FMCallSlots` の timeout(20秒)を
+超えた回は `FMCallAdmission` が false を返して**occlusion-guard が黙って素通りする**(枠1 の実測で
 最大待ち 19,285ms = timeout まで 0.7 秒)。その回数は `fm.skipped` に出る。多すぎても
 スループットは平らなままレイテンシが伸びるだけ。
 
@@ -374,7 +374,7 @@ screenLooksLike 51 回 / heal 34 回)。**occlusion 一択**。
   run ごとの FM 総時間 58,381 → 49,592ms**(対の差 −458ms・t=−11.3)。
   殺しスイッチは `FT_FM_OCCLUSION_PRELOAD=0`。
   **screenLooksLike には入れていない**(呼び出しが少なく、重ねられる作業も無い)。
-  先読みは**生成を伴わないので FMGate を通さない**(枠を消費しない)が、
+  先読みは**生成を伴わないので FMCallAdmission を通さない**(枠を消費しない)が、
   **ブレーカだけは見る**(死んだ FM を先読みし続けない)/ **FMHealth に記録しない**
   (記録すると fm.calls とレートが実態より多く見える)。
   Tier-1 のインク足切りで FM を省く回は空振りになるが、先読みに生成が無いぶん

@@ -1,4 +1,4 @@
-// FM 呼び出しの入場ゲート。**全ての FM 呼び出しはここを通す**(監査点を1つに保つ)。
+// FM 呼び出しの入場判定。**全ての FM 呼び出しはここを通す**(監査点を1つに保つ)。
 //
 // **使ってよいモデルは `SystemLanguageModel`(オンデバイス)だけ。PCC は禁止**
 // (`PrivateCloudComputeLanguageModel` はアプリの画面情報を Mac の外へ出す。受け手向け
@@ -9,7 +9,7 @@
 //
 // 2つの関門を順に見る:
 //  1. サーキットブレーカ(FMBreaker): FM が死んでいるなら呼ばない
-//  2. 直列化ロック(FMLock): FM はホスト全体で直列化される資源なので待ち行列を作る
+//  2. 呼び出しの枠(FMCallSlots): FM はホスト全体で共有する資源なので、枠の数(既定1)まで通して残りは待たせる
 //
 // ブレーカの根拠(実測): FM は**累積 20〜30 回の呼び出しで死に、以後プロセスを
 // 変えても再起動まで回復しない**。直列化しても崩壊は防げなかった(docs/verification.md)。
@@ -22,11 +22,11 @@
 import Foundation
 import Synchronization
 
-public enum FMGate {
+public enum FMCallAdmission {
     /// FM を 1 回呼んでよいか。true を返したら **`defer { leave() }` で必ず返す**(推奨ではなく必須)。
     /// FTSync のコマンド上限(既定120秒)は超過時に op を cancel するので、**この後の任意の await 点で
-    /// 巻き戻り得る**。素の `leave()` を末尾に置くと巻き戻りで飛ばされ、**ホスト全体で直列化される
-    /// FM ロックを掴んだまま**になる = 他ワーカーの FM が acquire 上限まで待たされる。
+    /// 巻き戻り得る**。素の `leave()` を末尾に置くと巻き戻りで飛ばされ、**ホスト全体で共有する
+    /// FM の呼び出しの枠を掴んだまま**になる = 他ワーカーの FM が acquire 上限まで待たされる。
     /// false のときは呼び出し側が nil を返してガードを素通りさせる(失敗時と同じ振る舞い)
     /// `path` に**既定値は置かない**(経路を言い忘れた新しい呼び出し元をコンパイルで止める。
     /// 経路は独立に死ぬ = FMLiveness.swift 冒頭 ②)
@@ -35,18 +35,18 @@ public enum FMGate {
             FMHealth.recordSkip()
             return false
         }
-        // FT_FM_SERIALIZE=0 でも acquire は即 true を返す(FMLock.swift)。特別扱いせずそのまま
-        // 測ることで、直列化あり/なしで待ちが出る/0になるという対照そのものが計測器の陽性対照になる
+        // FT_FM_CALL_SLOTS=0 でも acquire は即 true を返す(FMCallSlots.swift)。特別扱いせずそのまま
+        // 測ることで、呼び出しの枠あり/なしで待ちが出る/0になるという対照そのものが計測器の陽性対照になる
         let waitStartedAt = Date()
         // **実際に待たされるときだけ**締め切りから差し引く窓を開ける(空いているときに毎回
         // deadlineExclusion を流さない)。待ちは ScenarioHost の watchdog / FTSync の締め切りに
         // 数えない(アプリの応答ではない = OCR のコンパイル待ちと同じ扱い)。上限は acquire が諦める時間
         let acquired: Bool
-        if FMLock.acquireWithoutWaiting() {
+        if FMCallSlots.acquireWithoutWaiting() {
             acquired = true
         } else {
-            let token = DeadlineExclusion.begin(cap: .seconds(FMLock.defaultTimeoutSeconds))
-            acquired = await FMLock.acquire()
+            let token = DeadlineExclusion.begin(cap: .seconds(FMCallSlots.defaultTimeoutSeconds))
+            acquired = await FMCallSlots.acquire()
             DeadlineExclusion.end(token)
         }
         guard acquired else {
@@ -57,7 +57,7 @@ public enum FMGate {
         // **待っている間に死と記録されたら撃たない**: 枠は1つなので、死んだ FM の前に並んだ全員が
         // 順に失敗の所要(実測 16 秒)を払っていた
         if FMLiveness.isKnownDead(path) {
-            FMLock.release()
+            FMCallSlots.release()
             FMHealth.recordSkip()
             return false
         }
@@ -65,7 +65,7 @@ public enum FMGate {
     }
 
     public static func leave() {
-        FMLock.release()
+        FMCallSlots.release()
     }
 }
 
@@ -122,7 +122,7 @@ public enum FMBreaker {
     /// 無効化はしない —— ブレーカの挙動自体を検証するテストがあるので、置き場だけを本番から外す。
     /// これが無いと、合成値で `FMHealth.record(ok: false)` を叩くテスト(FMHealthTests)が
     /// **機械全体の FM を 10 分止める**(cooldownSeconds)。実害2件:
-    /// 耐久 run が FM 無しで走った / 同じスイートの FMGateWaitWiringTests が enter を短絡されて落ちた。
+    /// 耐久 run が FM 無しで走った / 同じスイートの FMCallAdmissionWaitWiringTests が enter を短絡されて落ちた。
     /// 置き場の判定は FMLiveness / FMUsageLedger と同じ門(LedgerWriteRole)を通す
     /// **`private` を外してあるのはテストのため**(置き場の決まり方を I/O 抜きで表明する)
     static var stateURL: URL {

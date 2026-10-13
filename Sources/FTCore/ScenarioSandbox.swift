@@ -392,7 +392,7 @@ public enum ScenarioSandbox {
             // Vision / Core ML のコンパイルキャッシュと、URLSession の既定の保存先
             scope.home + "/Library/Caches/" + scope.runnerName,
             scope.home + "/Library/HTTPStorages/" + scope.runnerName,
-            // FM の直列化ロックとブレーカ(`FMLock`・`FMBreaker`)。**書けないと黙って効かなくなる**
+            // FM の呼び出しの枠とブレーカ(`FMCallSlots`・`FMBreaker`)。**書けないと黙って効かなくなる**
             // (ロックは取れたことになり、ブレーカは落ちた事実を残せない)
             scope.home + "/Library/Caches/fleetest",
         ]
@@ -494,7 +494,7 @@ public enum ScenarioSandbox {
     ]
 
     /// 閉じた場所の中で、子が読む必要のある場所。`~/.config/fleetest/config.json` は子が FM の並列枠
-    /// (`FMLock.concurrency` → `LocalConfig.load`)を読む
+    /// (`FMCallSlots.concurrency` → `LocalConfig.load`)を読む
     static let readReopenedHomeSubpaths = [".config/fleetest"]
 
     /// adb の鍵(Emulator の adbd へ直に繋げば認証が通る)と Emulator のコンソールの鍵。子の adb は親が代行する

@@ -3,7 +3,7 @@
 //
 // 元の門は「XCTestConfigurationFilePath が無ければ書く」(fail-open)だった。だが
 // `swift test --parallel` のワーカープロセスではこの環境変数が立たないことがあり、
-// FMHealth.record を合成値で直接叩く単体テスト(FMGateWaitWiringTests 等)が本番の台帳へ
+// FMHealth.record を合成値で直接叩く単体テスト(FMCallAdmissionWaitWiringTests 等)が本番の台帳へ
 // 偽の「生存」を書いていた(実測)。
 //
 // **向きを反転**: production の実行ファイル(fleetest / fleetest-scenarios-* / fleetest-mcp)が

@@ -9,7 +9,7 @@ paths:
   - "Sources/FTCore/*Occlusion*.swift"
   - "Sources/FTCore/DeadlineExclusion.swift"
   - "Sources/FTCore/FM*.swift"
-  - "Sources/FTCore/FMGate.swift"
+  - "Sources/FTCore/FMCallAdmission.swift"
   - "Sources/FTCore/FMHealth.swift"
   - "Sources/FTCore/FMLiveness.swift"
   - "Sources/FTCore/FMUsageLedger.swift"
@@ -84,7 +84,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   測る対象を自分で消費して見せる)。
   **`api host-metrics --fm-probe` だけが「host-metrics は FM を叩かない」の例外**
   (拡張のモニターだけが渡す。既定 OFF)—— 撃つのは**台帳が古く、かつ誰も FM を使っていない**
-  ときだけ(`FMLivenessProbe.refresh` の門①②③。FMLock は 1 秒で諦める = 実仕事を待たせない)。
+  ときだけ(`FMLivenessProbe.refresh` の門①②③。FMCallSlots は 1 秒で諦める = 実仕事を待たせない)。
   プローブ間隔 60 秒の根拠は `Scripts/fm-flap-monitor.swift` と同じ刻み。
   読み手は4つ: モニターの FM 行(NDJSON の `fmTextState`/`fmVisionState`/`fmDeadReason`/
   `fmCheckedAt`)/ run 開始前の警告(`ProfileRunner.warnIfFMDegraded`。**run の中で FM を使うのは
@@ -92,7 +92,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   run でだけ。**text 経路はシナリオの下書き・命名だけが使う** = text の死で run が失う機能は無い)/
   run.json の `fmDead`・`fmDeadReason` / `ft_status`・`ft_doctor`・`fleetest doctor --fm-only`
   (**doctor は text と vision を両方 実呼び出しで確かめ、どちらが死んでも exit 1**)。
-  **5 つ目の読み手は FM を呼ぶ前の門**(`FMGate.enter(path:)` → `FMLiveness.isKnownDead`): その経路が
+  **5 つ目の読み手は FM を呼ぶ前の門**(`FMCallAdmission.enter(path:)` → `FMLiveness.isKnownDead`): その経路が
   **新しい死**なら呼ばずにスキップ(枠を取る前と取った後の2回見る)。古い・不明・生は呼んで確かめる =
   回復は次の実呼び出しかプローブで拾う。**連続失敗は機械全体で数える**(`FMLiveness.bumpFailureStreak`。
   シナリオは1本ごとに別プロセスで、プロセス内で数えると閾値に届かず死を1度も記録しなかった)

@@ -93,10 +93,10 @@ public struct OcclusionVerifier {
         // 通常は StepExecutor.occlusionFlip が FMVisionSupport で手前で止めるので、ここは保険
         guard #available(macOS 27, *) else { return nil }
         // FM はホスト全体で直列化される資源。並列に投げても速くならず modelmanagerd の
-        // モデル積み降ろしだけが増えるので、呼び出し側で待ち行列を作る(FMLock 参照)。
-        // 等倍と拡大の 2 回は**同じ FMGate の取得の中**で回す(間に他ワーカーを割り込ませない)
-        guard await FMGate.enter(path: .vision) else { return nil }
-        defer { FMGate.leave() }
+        // モデル積み降ろしだけが増えるので、呼び出し側で待ち行列を作る(FMCallSlots 参照)。
+        // 等倍と拡大の 2 回は**同じ FMCallAdmission の取得の中**で回す(間に他ワーカーを割り込ませない)
+        guard await FMCallAdmission.enter(path: .vision) else { return nil }
+        defer { FMCallAdmission.leave() }
 
         guard let first = await Self.transcribe(crop, instructions: Self.instructions, preloaded: true)
         else { return nil }

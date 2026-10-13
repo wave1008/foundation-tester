@@ -4,10 +4,10 @@
 // (1) FM が全滅していても機能が黙って無効化されることの検知。occlusion-guard・screenLooksLike は
 //     いずれも FM 失敗時に nil を返して素通りする契約(呼び出し側が失敗を握りつぶす)なので、
 //     集計しないと実行結果からは正常時と区別できない。
-// (2) FM の実行コストの可視化。**約1回/秒の頭打ちは FMLock の直列化の上限であって FM 自体の
-//     天井ではない**(実測と反証は Sources/FTCore/FMLock.swift 冒頭が正)。ANE 負荷率では測れない
+// (2) FM の実行コストの可視化。**約1回/秒の頭打ちは FMCallSlots の枠(既定1)の上限であって FM 自体の
+//     天井ではない**(実測と反証は Sources/FTCore/FMCallSlots.swift 冒頭が正)。ANE 負荷率では測れない
 //     (DIE_n_ANE0 は電源状態の1ビットで、FM 実行中は 1.00 に張り付く)ため、回数とレイテンシで測る。
-//     gateWait* は FMLock.acquire() で実際に待たされた時間 —— 直列化を緩める判断材料
+//     gateWait* は FMCallSlots.acquire() で実際に待たされた時間 —— 枠を増やす判断材料
 //     (待ちがほぼ0なら緩めても解放されるものが無い)
 //
 // FTCore は FoundationModels に依存しないため、記録は FTFoundationModels の各呼び出し箇所から行う
@@ -48,12 +48,12 @@ public struct FMUsageRecord: Codable, Sendable {
     /// これが無いと `failures` の件数しか残らず、**なぜ落ちたかを事後に特定できない**
     /// (M1Ultra だけ 12% 失敗する調査で、合成負荷では再現せず理由を追えなかった)
     public var firstError: String?
-    /// FMGate が FMLock.acquire() で実際に待たされた合計/p50/max。呼び出しコスト(totalMs 等)とは別物 ——
-    /// 直列化を緩める判断材料(docs/results-json.md)
+    /// FMCallAdmission が FMCallSlots.acquire() で実際に待たされた合計/p50/max。呼び出しコスト(totalMs 等)とは別物 ——
+    /// 枠を増やす判断材料(docs/results-json.md)
     public var gateWaitTotalMs: Int
     public var gateWaitP50Ms: Int
     public var gateWaitMaxMs: Int
-    /// FMGate で止められ FM を呼ばずに諦めた回数(FMHealth.recordSkip)。guard が何回
+    /// FMCallAdmission で止められ FM を呼ばずに諦めた回数(FMHealth.recordSkip)。guard が何回
     /// 静かに無効化されたかを事後に確認する材料(docs/results-json.md)
     public var skipped: Int
 
@@ -79,7 +79,7 @@ public enum FMHealth {
     public struct Snapshot: Sendable {
         public let successes: Int
         public let failures: Int
-        /// ゲート(FMGate)で止められ**呼ばずに諦めた**回数(ブレーカ作動中 or ロック待ち超過)。
+        /// ゲート(FMCallAdmission)で止められ**呼ばずに諦めた**回数(ブレーカ作動中 or ロック待ち超過)。
         /// 失敗(FM が答えを返せなかった)とは別物なので分けて数える
         public let skipped: Int
         /// 最初に観測した失敗の内容(以降は捨てる。同一原因が連続するため)
@@ -170,12 +170,12 @@ public enum FMHealth {
         return parts.joined(separator: " ← ")
     }
 
-    /// FMGate で止められ FM を呼ばずに諦めた 1 件を記録する(失敗にはしない)
+    /// FMCallAdmission で止められ FM を呼ばずに諦めた 1 件を記録する(失敗にはしない)
     public static func recordSkip() {
         state.withLock { $0.skipped += 1 }
     }
 
-    /// FMGate.enter() が FMLock.acquire() で実際に待たされた時間。**取得できた回だけ**呼ぶ
+    /// FMCallAdmission.enter() が FMCallSlots.acquire() で実際に待たされた時間。**取得できた回だけ**呼ぶ
     /// (timeout で諦めた回は recordSkip の役目 —— 待ち時間として混ぜない)
     public static func recordGateWait(ms: Double) {
         state.withLock { $0.gateWaitMs.append(ms) }

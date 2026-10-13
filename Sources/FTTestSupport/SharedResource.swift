@@ -149,7 +149,7 @@ public struct SharedResource: Sendable {
             let deadline = Date().addingTimeInterval(Self.timeoutSeconds)
             while try !Self.tryFlock(fd) {
                 guard Date() < deadline else { throw timeoutError() }
-                // ブロッキング flock の代わりにポーリング(協調スレッドを塞がない。Sources/FTCore/FMLock.swift と同じ作法)
+                // ブロッキング flock の代わりにポーリング(協調スレッドを塞がない。Sources/FTCore/FMCallSlots.swift と同じ作法)
                 try? await Task.sleep(nanoseconds: Self.pollIntervalNanoseconds)
             }
         } catch {

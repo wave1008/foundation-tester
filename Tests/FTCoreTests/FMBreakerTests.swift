@@ -84,16 +84,16 @@ final class FMBreakerTests: XCTestCase {
     /// ゲートはブレーカが落ちていれば FM を呼ばせない
     func testGateRefusesWhileOpen() async {
         for _ in 0..<FMBreaker.threshold { FMBreaker.recordFailure() }
-        let entered = await FMGate.enter(path: .vision)
+        let entered = await FMCallAdmission.enter(path: .vision)
         XCTAssertFalse(entered, "落ちている間は入場させない")
-        if entered { FMGate.leave() }
+        if entered { FMCallAdmission.leave() }
     }
 
     /// 落ちていなければゲートは通る(ロックも取れる)
     func testGateAllowsWhileClosed() async {
-        let entered = await FMGate.enter(path: .vision)
+        let entered = await FMCallAdmission.enter(path: .vision)
         XCTAssertTrue(entered)
-        FMGate.leave()
+        FMCallAdmission.leave()
     }
 
     /// トリップの後にマシンが再起動していたら、そのトリップは前回起動セッションの記録なので無効

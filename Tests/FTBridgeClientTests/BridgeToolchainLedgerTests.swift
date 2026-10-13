@@ -96,7 +96,7 @@ final class BridgeToolchainLedgerTests: XCTestCase {
 
     /// **既定の引数(production が通る形)を1度は通す** —— 他のテストが `current:`/`toolchain:` を
     /// 明示しているので、既定を `nil` 等に変えても全部緑のまま通ってしまう
-    /// (`FMLockTests.testDefaultConcurrencyIsPinned` と同じ型の砦)
+    /// (`FMCallSlotsTests.testDefaultConcurrencyIsPinned` と同じ型の砦)
     func testDefaultsGoThroughTheRealToolchainFingerprint() {
         BridgeToolchainLedger.record(stateDir: stateDir, port: 8130)
         XCTAssertTrue(FileManager.default.fileExists(

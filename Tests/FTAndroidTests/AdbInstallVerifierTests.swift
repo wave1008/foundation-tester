@@ -8,7 +8,7 @@ import XCTest
 final class AdbInstallVerifierTests: XCTestCase {
 
     // 端末単位の錠(withDeviceLock)は既定で `~/.fleetest` を触るため、テストは自分専用の
-    // 一時ディレクトリへ差し替える(FMLock の lockDirectoryForTesting と同じ規律)。
+    // 一時ディレクトリへ差し替える(FMCallSlots の lockDirectoryForTesting と同じ規律)。
     // メソッドはこのクラス内で直列に走る前提(CLAUDE.md: 並列はプロセスを分ける)なので
     // static var の差し替えで足りる
     private var lockDir: URL!

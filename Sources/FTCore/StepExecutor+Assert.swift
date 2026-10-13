@@ -137,7 +137,7 @@ extension StepExecutor {
         // インク判定。**ここより後ろへ動かすと効果が消える**。
         // Tier-1(下のインク足切り)で FM を省く回は空振りになるが、先読みは生成を伴わないので
         // 「効かない回に払う」より「効く回に効かせる」を採る。FM が死んでいるときに先読みしない
-        // ようブレーカだけは delegate 側で見る(FMGate は通らない = 門の外)。
+        // ようブレーカだけは delegate 側で見る(FMCallAdmission は通らない = 門の外)。
         if fmAvailable { delegate?.preloadVisibilityCheck() }
         // 操作を挟まない連続ガードでは直近スクショを再利用(~125ms 削減)。
         let captured = try await guardScreenshot(phase: &phase)
@@ -311,7 +311,7 @@ extension StepExecutor {
             phase.guardMs += Self.ms(clock.now - fmStart)
             guard let fresh = freshVerdict
             else {
-                // **訊いたのに答えが無い**(FM の失敗・ブレーカ開・直列化待ちの期限切れ・画像不正)。
+                // **訊いたのに答えが無い**(FM の失敗・ブレーカ開・呼び出しの枠の待ちの期限切れ・画像不正)。
                 // OCR/インクだけの代替判定へ落ちる(countsAsSkipped: true が visibilityGuardSkipped を立てる)。
                 // **控えない**(次は必ず訊き直す)
                 if occlusionOCRMode == .measure {
@@ -801,7 +801,7 @@ extension StepExecutor {
         var needsCeiling = false
         // launch storyboard 猶予(firstFrameBlankObserved)の deadline 延長は1ステップにつき1回だけ
         var firstFrameExtended = false
-        // [F22] ガード自身の所要(FM の直列化待ち+推論、実測 6s 級)が単独でこのステップの
+        // [F22] ガード自身の所要(FM の呼び出しの枠の待ち+推論、実測 6s 級)が単独でこのステップの
         // 待ち予算を食い潰し、1回もポーリングできないまま「1フレームだけの古い描画」で
         // 反転が確定するのを防ぐ猶予。**ガードの所要はアプリの応答ではなく FM の待ちなので
         // アサーションの待ち予算から引いてはいけない**。効くのは1番目のガード評価だけ

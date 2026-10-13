@@ -135,9 +135,9 @@ M1Max の launch storyboard は min=253 / max=255 = stdDev ≈ 0.1 で猶予が�
 成功を含む run は 582 中 58 しかない。**E2E の「緑」は基本的にツリー一致の緑**であり、
 視覚検証を含むとは限らないことを前提に読むこと(切り分け手順は docs/verification.md)。
 
-**全 FM 呼び出しは `FMGate.enter()` を通す**(Sources/FTCore/FMGate.swift)。
+**全 FM 呼び出しは `FMCallAdmission.enter()` を通す**(Sources/FTCore/FMCallAdmission.swift)。
 ①サーキットブレーカ(FM は累積 20〜30 回で死に再起動まで回復しないので、連続 3 回失敗したら
-以後呼ばない)②ホスト単位の許可枠(`FMLock`。FM はホスト全体で共有される資源で、既定1枠。
+以後呼ばない)②ホスト単位の許可枠(`FMCallSlots`。FM はホスト全体で共有される資源で、既定1枠。
 詳細と実測は performance-tuning.md §3.5)の順に見る。
 **新しい FM 呼び出しを足すときは必ずここを通す**(監査点を 1 つに保つのが目的)。
 なお**ロックの有無自体は全滅の防止には効果が無いことが実測で確認済み**(残しているのは p50 が
@@ -1127,12 +1127,12 @@ Android `VERSION_CODE` 100。XCUITest ランナーと Android ブリッジが持
 | `FMDoctor.swift` | FM 可用性判定。`check()` は同期・可否を保証しない / `checkLive()` は実際に1回推論する(§1.1 の罠) |
 | `ScenarioNamer.swift` | 記録操作(ライブ操作タブ)からのシナリオ名生成 |
 | `TestbaseDrafter.swift` | テスト設計資料 → シナリオ下書き(§17)。FM 不可用時は決定的パーサへ落ちる |
-| `FMLivenessProbe.swift` | FM の死活プローブ(§リモート「FM の「死活」は回数とは別の軸」)。**FMGate を通さない** |
-| `FMLoadGenerator.swift` | `fleetest doctor --fm-load` の負荷測定。**FMGate を通さない**(測っている対象が門になるため) |
-| `OcclusionPreload.swift` | occlusion-guard の先読み。**FMGate を通らない**(生成を伴わないので枠を消費させない) |
+| `FMLivenessProbe.swift` | FM の死活プローブ(§リモート「FM の「死活」は回数とは別の軸」)。**FMCallAdmission を通さない** |
+| `FMLoadGenerator.swift` | `fleetest doctor --fm-load` の負荷測定。**FMCallAdmission を通さない**(測っている対象が門になるため) |
+| `OcclusionPreload.swift` | occlusion-guard の先読み。**FMCallAdmission を通らない**(生成を伴わないので枠を消費させない) |
 
 - 生成を伴う FM 呼び出し(`ReplayAssist` / `OcclusionVerifier` / `ScenarioNamer` / `TestbaseDrafter`)は
-  `FMGate.enter()` を通す(§1.1)。死活プローブ・負荷生成・先読みの3つは意図してこの門を通らない。
+  `FMCallAdmission.enter()` を通す(§1.1)。死活プローブ・負荷生成・先読みの3つは意図してこの門を通らない。
   出力の実例・運用知見は §8.6。
 
 ---
@@ -2835,7 +2835,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   = 原因不明の一発ずれになる。cancel は届く(通信は `URLSession.data(for:)`、待ちは
   `Task.sleep`。どちらも cancel 対応)。cancel を見ない処理(Process 実行等)は走り切るだけで悪化しない。
   **副作用: op は任意の await 点で巻き戻り得る**ので、掴んだ資源の解放は `defer` に置くこと
-  (契約は `FMGate.enter()` のコメント。ここを崩すとホスト全体の FM ロックが漏れる)。
+  (契約は `FMCallAdmission.enter()` のコメント。ここを崩すとホスト全体の FM の呼び出しの枠が漏れる)。
   `procedure` と `doUntilTrue` は中で DSL のコマンドを実行するブロックで、1つのステップではないので
   この上限は掛からない(利用者向けの記述は docs/commands.md)
 - 失敗セマンティクス: コマンド NG → **シナリオ全体を中断**(以降のステップは scene を跨いで
@@ -4460,7 +4460,7 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
   `vision-classifier-unavailable` とシナリオ末尾の警告で表に出し、e2e.sh はその run を赤にする
   (学習の経路は `--retrain-classifiers`。docs/verification.md)親が決めて子に書かせる場所
   (静止画の置き場 `--still-frames-dir`)は `Scope.extraWritable` で渡す(環境変数から作らない)。
-  **書けないと黙って効かなくなる型がある**(`FMLock` は取れたことになる)。拒否は E2E 中の `log stream` で拾う
+  **書けないと黙って効かなくなる型がある**(`FMCallSlots` は取れたことになる)。拒否は E2E 中の `log stream` で拾う
 - **子が繋ぐ unix ソケットは名指しで開ける**(親の broker と画像判定の補助プロセス `VisionHelperHost`。
   `Scope.helperSockets`)。補助プロセスを閉じたままにすると、ANE が壊れた機械で画像照合が落ちる。
   **この拒否は `log stream` に出なかった**(失敗文の `connect: errno 1` で気づいた)

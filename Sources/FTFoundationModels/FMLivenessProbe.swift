@@ -11,10 +11,10 @@
 //  ① 台帳が新しければ撃たない。**鮮度は経路を跨いで見る** —— run が vision しか呼ばない
 //     (occlusion-guard だけの run が普通)と text の控えだけが古くなり、経路ごとに見ると
 //     「誰も使っていない」と誤って 60 秒ごとに text を撃っていた(実測。1回 0.7〜4.7s、
-//     fmConcurrency=1 の機械では FMLock も取る)。**どちらかの経路に新しい実呼び出し(source=call)が
+//     fmConcurrency=1 の機械では FMCallSlots も取る)。**どちらかの経路に新しい実呼び出し(source=call)が
 //     あれば、FM は実仕事に使われている = 撃たない**。その間の他経路は「不明」でよい(不明は死と別)
 //  ② ブレーカが落ちているなら撃たない(死んでいると分かっているものに時間を捨てない)
-//  ③ FMLock を**短い timeout** で取り、取れなければ撃たない —— 死活確認のために
+//  ③ FMCallSlots を**短い timeout** で取り、取れなければ撃たない —— 死活確認のために
 //     実行中の run を待たせない。probeLockTimeoutSeconds の doc 参照
 //
 // **ブレーカ由来(source=.breaker)の dead は代理の値**: ブレーカが閉じた瞬間に無効
@@ -41,7 +41,7 @@ public enum FMLivenessProbe {
     /// 実際に撃つのは「誰も FM を使っていない」ときだけ(refresh の門①③)
     public static let probeIntervalSeconds: TimeInterval = 60
 
-    /// プローブが FMLock を待つ上限。**通常の 20 秒(FMLock.defaultTimeoutSeconds)は使わない** ——
+    /// プローブが FMCallSlots を待つ上限。**通常の 20 秒(FMCallSlots.defaultTimeoutSeconds)は使わない** ——
     /// 死活確認は待ってでも撃つ価値のある仕事ではなく、枠が埋まっている = 実仕事が FM を
     /// 使えている = そちらの成否が台帳を養う、という状況だから。取れなければ黙って諦める
     static let probeLockTimeoutSeconds: TimeInterval = 1
@@ -51,7 +51,7 @@ public enum FMLivenessProbe {
 
     /// 実呼び出し1回を待つ上限(秒)。**根拠**: 生きている FM の1回は 0.7〜4.7 秒(実測。上の probeIntervalSeconds の doc)。
     /// その4倍強。**上限が要る理由**: ANE が「no memory」で死んだ機械では respond が戻らない(実測: MCP の ft_status が
-    /// この呼び出しで2分以上止まり、FMLock も握ったままだった)。**尽きたとき**: 「N 秒応答が無かった」を失敗として記録する
+    /// この呼び出しで2分以上止まり、FMCallSlots も握ったままだった)。**尽きたとき**: 「N 秒応答が無かった」を失敗として記録する
     /// (台帳の扱いは他の失敗と同じ = 連続 FMBreaker.threshold 回で死)。応答しない呼び出しは待たずに放置する(DeadlineRace)
     static let probeCallTimeoutSeconds: TimeInterval = 20
 
@@ -99,10 +99,10 @@ public enum FMLivenessProbe {
             return FMLiveness.current(now: now)
         }
         // ③ 枠が空いているときだけ撃つ。取れたら必ず返す
-        guard await FMLock.acquire(timeoutSeconds: probeLockTimeoutSeconds) else {
+        guard await FMCallSlots.acquire(timeoutSeconds: probeLockTimeoutSeconds) else {
             return FMLiveness.current(now: now)
         }
-        defer { FMLock.release() }
+        defer { FMCallSlots.release() }
         for path in stale {
             _ = await probeOnce(path: path)
         }

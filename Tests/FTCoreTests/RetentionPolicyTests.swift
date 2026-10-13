@@ -1,6 +1,6 @@
 // 保持容量の既定値を**リテラルで固定する**。差し替え口(RetentionPolicy(…) に値を渡す形)
 // だけで検証していると production の既定を1度も通らず、既定を変える変更が緑のまま通る
-// (FMLockTests.testDefaultConcurrencyIsPinned と同じ砦)。
+// (FMCallSlotsTests.testDefaultConcurrencyIsPinned と同じ砦)。
 
 import XCTest
 @testable import FTCore

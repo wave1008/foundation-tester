@@ -2,7 +2,7 @@
 // (hostCharts.js は読み込み時に document を引くため、テストから直接は読めない)。
 
 /** FM スパークラインの縦軸の上限(1 tick あたりの呼び出し回数)。読みやすさのための**固定目盛り**で、
- *  物理的な上限ではない。**FMLock の既定の枠数に合わせてある**が、根拠は次のとおり:
+ *  物理的な上限ではない。**FMCallSlots の既定の枠数に合わせてある**が、根拠は次のとおり:
  *
  *  **枠は「同時に走れる本数」であって「1秒あたりの回数」ではない。** 1 tick に完了する回数は
  *  概ね 枠 ÷ レイテンシで、FM 1回は実測 1.4〜2.1 秒(E2E-CMP 4レーン)なので
@@ -12,7 +12,7 @@
  *  つまりこの値は「まず超えない目安」であって保証ではない。だから**下限**として使い、
  *  超えた窓ではオートスケールする(`hmCountScale`)。枠数の既定を動かすときは目盛りも見直す
  *  (`hostChartsFmMaxSync.test.mjs` がズレを検出する)。
- *  同期相手: Sources/FTCore/FMLock.swift の defaultConcurrency */
+ *  同期相手: Sources/FTCore/FMCallSlots.swift の defaultConcurrency */
 export const HM_FM_MAX_RATE = 1;
 
 /** Vision(Vision / Core ML)スパークラインの縦軸の上限(1 tick あたりの呼び出し回数)。**根拠は FM とは別**:

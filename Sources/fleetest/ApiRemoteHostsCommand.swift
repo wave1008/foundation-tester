@@ -139,7 +139,7 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
         let config = LocalConfig.load()
         let output = ApiRemoteHostsOutput(
             hosts: entries.map(ApiRemoteHostEntry.init),
-            defaultFMConcurrency: FMLock.defaultConcurrency,
+            defaultFMConcurrency: FMCallSlots.defaultConcurrency,
             local: ApiLocalEntry(host: "\(NSUserName())@localhost",
                                  fmConcurrency: config.fmConcurrency ?? 0,
                                  enabled: config.localMachineEnabled != false),
@@ -225,7 +225,7 @@ private struct ApiRemoteHostEntry: Encodable {
 private struct ApiRemoteHostsOutput: Encodable {
     let hosts: [ApiRemoteHostEntry]
     /// 未設定のときに効く枠数。**この値を拡張へ運ぶのは定数の二重管理を避けるため** ——
-    /// 唯一の定義元は `FMLock.defaultConcurrency` で、GUI はウォーターマークに実値を出す
+    /// 唯一の定義元は `FMCallSlots.defaultConcurrency` で、GUI はウォーターマークに実値を出す
     let defaultFMConcurrency: Int
     /// **この機械**の行(設定タブが消せない固定行として出す)。登録簿には入らない ——
     /// "local" は予約名で、値は `LocalConfig.fmConcurrency` に置く。

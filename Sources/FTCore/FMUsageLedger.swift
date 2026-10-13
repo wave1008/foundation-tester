@@ -1,6 +1,6 @@
 // FM(Foundation Models)呼び出しの機械グローバルな控え。
 //
-// FM は CPU/GPU と同じ「ホストの性質」(呼び出しは FMGate/FMLock がホスト全体で直列化する)だが、
+// FM は CPU/GPU と同じ「ホストの性質」(呼び出しは FMCallAdmission/FMCallSlots がホスト全体で枠の数までに絞る)だが、
 // OS に「このホストで今 FM を何回呼んでいるか」を訊く API は無い。host-metrics 自身が FM を
 // 叩いて測ると測定対象を自分で消費してしまうため、FM を実際に呼んでいる各プロセス
 // (FMHealth.record 経由)がここへ書き、host-metrics が毎 tick 読む形にする。NDJSON の

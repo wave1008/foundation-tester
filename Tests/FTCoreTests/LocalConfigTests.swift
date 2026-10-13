@@ -153,7 +153,7 @@ final class LocalConfigIssuerIdTests: XCTestCase {
     }
 }
 
-/// `LocalConfig.save` の原子性。読み手(`FMLock.concurrency` → `load`)は別プロセスから随時読むので、
+/// `LocalConfig.save` の原子性。読み手(`FMCallSlots.concurrency` → `load`)は別プロセスから随時読むので、
 /// truncate → 書込の2段になる素の write では途中の空ファイルを読んで decode 失敗 = 空設定へ倒れる
 /// (fmConcurrency が既定へ戻る)。
 final class LocalConfigSaveAtomicityTests: XCTestCase {

@@ -2244,7 +2244,7 @@ FIFO の待機列を置いた。**ロックの原子性は `mkdir` のまま**�
 **機械によっては FM を 2 並列以上で呼ぶと壊れる。** 登録簿(`~/.config/fleetest/config.json` の
 `RemoteHostEntry`)に `fmConcurrency` を置き、ディスパッチが `FT_FM_CONCURRENCY` として運ぶ
 (`RemoteShell.remoteRunCommand`)。**設定が無ければ何も渡さない** —— ランナー側の既定
-(`FMLock.defaultConcurrency` = 1。壊れる機械を既定で守るためのユーザー決定。5 まで上げたときの
+(`FMCallSlots.defaultConcurrency` = 1。壊れる機械を既定で守るためのユーザー決定。5 まで上げたときの
 効き方は docs/performance-tuning.md §3.5)が効く。
 
 ```
@@ -2277,7 +2277,7 @@ Mac Studio M1 Ultra(Mac13,2 / macOS 26A5425a)で、occlusion guard を有効に�
 クラッシュすること。**Apple へ報告済み(FB23936145)**。詳細と証拠は
 `reports/apple-feedback-fm-flap/REPORT-followup-20260902.md`。
 
-**代償**: 枠を絞ると `FMLock` の待ちが伸び、timeout(20秒)を超えた回は guard が素通りする。
+**代償**: 枠を絞ると `FMCallSlots` の待ちが伸び、timeout(20秒)を超えた回は guard が素通りする。
 上の実測でも skip が 6 件出た(絞る前は 13 件なので改善はしている)。**`fm.skipped` で必ず
 確認すること**(docs/results-json.md)。
 

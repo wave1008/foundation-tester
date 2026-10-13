@@ -1,7 +1,7 @@
 // FMLivenessProbe.refresh の門①「実仕事が台帳を養っている間は撃たない」。
 // 実測(2026-09-04): run が vision しか呼ばないと text の控えだけが古くなり、経路ごとの鮮度で
 // 見ていたプローブが 60 秒ごとに text を撃っていた(1回 0.7〜4.7s。fmConcurrency=1 の機械では
-// FMLock も取る)。判定は純粋関数 realWorkIsFeedingTheLedger に置き、refresh がそれを最初に通る
+// FMCallSlots も取る)。判定は純粋関数 realWorkIsFeedingTheLedger に置き、refresh がそれを最初に通る
 // ことをソース走査で固定する(実呼び出しを伴う refresh 自体は単体では回せない)。
 
 import XCTest

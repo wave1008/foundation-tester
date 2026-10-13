@@ -16,7 +16,7 @@
 // 叩かない —— 呼んだ側のプロセスが `~/.fleetest/fm-usage/<pid>.json` /
 // `~/.fleetest/vision-usage/<pid>.json`(OCR・画像分類器)に置いた控えを、host-metrics が毎 tick 読んで集計する。
 // Sources 側の詳細は関知しない)。run の FM
-// 呼び出しは FTCore の FMGate/FMLock が**ホスト全体で枠の数まで**に絞るので、生の1秒差分は
+// 呼び出しは FTCore の FMCallAdmission/FMCallSlots が**ホスト全体で枠の数まで**に絞るので、生の1秒差分は
 // 小さな整数になって読めない。表示は直近 HM_COUNT_RATE_WINDOW_TICKS tick の移動窓平均(回/秒)。
 // **縦軸の上限は件数系列(FM/Vision)ごとの下限を持つオートスケール**。純粋なオートスケールだと
 // 窓の最大値で毎回伸縮し、「1回」と「5回」が同じ高さに描かれて行同士も時刻同士も比べられない。

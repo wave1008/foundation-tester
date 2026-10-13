@@ -44,7 +44,7 @@ struct Doctor: AsyncParsableCommand {
     @Flag(name: .long, help: "Only check tool-root / scenario-package root resolution and report it via exit code")
     var rootsOnly = false
 
-    // FMGate を通さず素通しで負荷をかける(FMLoadGenerator.run の doc 参照)。実行中の run と
+    // FMCallAdmission を通さず素通しで負荷をかける(FMLoadGenerator.run の doc 参照)。実行中の run と
     // FM の直列化容量を奪い合うので、他に何も走らせていないときに使う
     @Flag(name: .long, help: ArgumentHelp("Load-test Foundation Models (no other checks run). "
         + "FM is a host-wide serialized resource — this competes with any run in progress for it. "
@@ -456,7 +456,7 @@ struct Doctor: AsyncParsableCommand {
     }
 
     /// FMLoadGenerator を回し、実測を出す。他のチェックは行わない(fmLoad の validate() 参照)。
-    /// **この負荷は実行中の run と FM の直列化容量を奪い合う**(FMGate を通さないため)ので、
+    /// **この負荷は実行中の run と FM の直列化容量を奪い合う**(FMCallAdmission を通さないため)ので、
     /// 単独で回すことが前提
     private func runFMLoad() async throws {
         let seconds = fmLoadSeconds ?? 30
@@ -464,7 +464,7 @@ struct Doctor: AsyncParsableCommand {
         if seconds <= 0 { throw ValidationError("--fm-load-seconds must be greater than 0") }
         if concurrency < 1 { throw ValidationError("--fm-load-concurrency must be at least 1") }
 
-        // 安価な availability チェックを先に払う。呼べないと分かっているのに直列化ロックへ
+        // 安価な availability チェックを先に払う。呼べないと分かっているのに呼び出しの枠へ
         // 何十回も並べて投げても、頭打ち実測ではなく可用性の失敗を測るだけになる
         let base = FMDoctor.check()
         guard base.available else {
@@ -502,7 +502,7 @@ struct Doctor: AsyncParsableCommand {
 
         ConsoleOut.out(String(format: "  calls         %5d", summary.calls))
         ConsoleOut.out(String(format: "  failures      %5d", summary.failures))
-        // **「FM の天井」を断定しない**。この数字は FMGate/FMLock を通していないので FM 単体の能力で、
+        // **「FM の天井」を断定しない**。この数字は FMCallAdmission/FMCallSlots を通していないので FM 単体の能力で、
         // production の FM 呼び出しは全部あの門で許可枠(既定5・FT_FM_CONCURRENCY で調整)に絞られる
         // (= run 中に見えるレートとは別物)。天井を文言に焼き付けると、環境が変わったときに
         // 数字と矛盾する断定を並べて出すことになる
@@ -511,7 +511,7 @@ struct Doctor: AsyncParsableCommand {
         if summary.failures > 0, let firstError = summary.firstError {
             ConsoleOut.out("  first error: \(firstError)")
         }
-        ConsoleOut.out("Note: this bypasses FMGate/FMLock, which cap every FM call a run makes to a shared"
+        ConsoleOut.out("Note: this bypasses FMCallAdmission/FMCallSlots, which cap every FM call a run makes to a shared"
             + " concurrency limit, so it measures FM itself — not the rate a run can reach.")
         ConsoleOut.out("This load is visible in the monitor's FM row too "
             + "(FMHealth.record feeds ~/.fleetest/fm-usage/<pid>.json, which `api host-metrics` reads).")

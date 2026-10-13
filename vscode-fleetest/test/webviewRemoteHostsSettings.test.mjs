@@ -246,7 +246,7 @@ test("未設定(0)は空欄で描かれる", (t) => {
 });
 
 // ウォーターマークは **CLI が返す既定値**。拡張側に数字を持たせない(二重管理にすると
-// FMLock.defaultConcurrency を変えたときにウォーターマークだけ嘘になる)
+// FMCallSlots.defaultConcurrency を変えたときにウォーターマークだけ嘘になる)
 test("未設定の FM 並列枠は空欄で、CLI が返した既定値をプレースホルダに出す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());

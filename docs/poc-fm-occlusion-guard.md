@@ -365,7 +365,7 @@ performance-tuning.md §6)。
 ## 5.17 Tier-2: Vision OCR を FM の手前に置く(2026-09-07)
 
 FM(画像添付)は crop 1 枚に p50 1.3〜1.9s(並列時 2.8s)を払い、ホスト単位で直列化される
-(FMLock)。**同じ crop を Vision の `VNRecognizeTextRequest` で読むだけなら p50 33ms**なので、
+(FMCallSlots)。**同じ crop を Vision の `VNRecognizeTextRequest` で読むだけなら p50 33ms**なので、
 「期待テキストが丸ごと読めた回は FM を呼ばずに可視として通す」段を FM の直前に足した
 ([RegionText.swift](../Sources/FTCore/RegionText.swift))。crop 矩形は
 [OcclusionCrop.rect](../Sources/FTCore/OcclusionCrop.swift)(FM から移設)を共有するので、

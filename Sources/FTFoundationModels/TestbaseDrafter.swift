@@ -45,9 +45,9 @@ public enum TestbaseDrafter {
     /// FM 不可用・失敗・空応答では nil(呼び出し側は TestbaseOutline.parse へフォールバックする)
     public static func draft(markdown: String, fallbackTitle: String) async -> ScenarioDraft? {
         guard FMDoctor.check().available else { return nil }
-        // FM はホスト全体で直列化される資源(FMLock 参照)。取れなければ parse へフォールバック
-        guard await FMGate.enter(path: .text) else { return nil }
-        defer { FMGate.leave() }
+        // FM はホスト全体で直列化される資源(FMCallSlots 参照)。取れなければ parse へフォールバック
+        guard await FMCallAdmission.enter(path: .text) else { return nil }
+        defer { FMCallAdmission.leave() }
         let input = String(markdown.prefix(maxInputCharacters))
         do {
             let session = LanguageModelSession(instructions: instructions)

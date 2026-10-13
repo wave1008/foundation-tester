@@ -551,7 +551,7 @@ production とテストの両方が新しいキーになっているか**を見�
   同型の危険は `.fleetest/` の台帳書き込み・`DiagnosticReports` の走査・simctl/adb を呼ぶテスト。
   **並列を初めて通したときは数回まわす**(今回は 6 連続で緑を確認してから既定にした)
 - **共有資源に触るテストの方針は2段**: **①隔離できるなら隔離**(差し替え口を production に
-  持たせ、テストは一時パスを使う。`FMBreaker` と `FMLock` がこの型)/ **②隔離できないホストの実体**
+  持たせ、テストは一時パスを使う。`FMBreaker` と `FMCallSlots` がこの型)/ **②隔離できないホストの実体**
   (simctl・adb・起動中の Simulator/Emulator・固定パス)は `Sources/FTTestSupport/SharedResource.swift`
   の `SharedResource.<key>.locked { }` で資源キーごとにファイルロック(flock)して直列化する
   (①が使えないときの下位の手段。クラス単位の直列化は採らない)。
@@ -561,11 +561,11 @@ production とテストの両方が新しいキーになっているか**を見�
   選んだ理由(存在チェック方式のロックファイルだとテストが落ちた回に残留し、以降が全部止まる)。
   `XCTSkipUnless` によるスキップ判定は必ずロックの外に置く(既定の実行でロックを取らない)
 - **`SharedResource` は「同じ資源に触る他のテスト」しか止められない**(実害 2026-09-10):
-  `FMLock` の枠は `~/Library/Caches/fleetest/fm.lock.<slot>` で**機械の全 fleetest プロセスと
+  `FMCallSlots` の枠は `~/Library/Caches/fleetest/fm.lock.<slot>` で**機械の全 fleetest プロセスと
   共有**するので、`swift test` の最中に**走っている run から枠を奪う/奪われる**。フル
   `swift test --parallel` で `acquire(timeoutSeconds: 1)` が2回落ちた(単独では緑)。
   `SharedResource.hostCaches` は他のテストとの競合しか防げない —— 隔離は①の型(置き場の
-  差し替え口 `FMLock.lockDirectoryForTesting`)で行う。**確かめ方**: 本番の枠5本を flock で
+  差し替え口 `FMCallSlots.lockDirectoryForTesting`)で行う。**確かめ方**: 本番の枠5本を flock で
   掴んだまま該当テストを回す —— 隔離前は 18 件落ち、隔離後は緑(この witness が無いと
   「たまたま通った」と見分けられない)
 - **in-app ブリッジは `simctl launch` で消える**(dylib が注入されない素の起動になる)。
@@ -2989,14 +2989,14 @@ Scripts/heal-verify.sh --profile android-heal
 - 自己修復(`StepExecutor` の解決分岐・`LocatorFingerprint`・`LocatorFingerprintCache`・`heal` の配線)を
   触ったら回す。実測(2026-09-15): iPhone 17 Pro Simulator で約 70 秒(シナリオのビルド込み)・Pixel 9 Emulator(`--profile android-heal`)で約 40 秒。どちらも全段が期待どおり
 
-## FM 呼び出しの許可枠(FMLock)
+## FM 呼び出しの許可枠(FMCallSlots)
 
 FM は**ホスト全体で共有される資源**。2026-07-22 時点の実測ではスループットは並列度によらず
 約1回/秒に見えたが、これは**枠1本(直列化)の上限**であって FM 自体の天井ではなかった
-(2026-09-01 の反証は `Sources/FTCore/FMLock.swift` 冒頭が正 —— `fleetest doctor --fm-load` で
+(2026-09-01 の反証は `Sources/FTCore/FMCallSlots.swift` 冒頭が正 —— `fleetest doctor --fm-load` で
 門を通さず直接叩くと、並列度5で 7.81 回/秒(text)まで伸びる)。並列ワーカーから無制限に同時に
 投げるとやはり modelmanagerd のモデル積み降ろし(`unloadIfNeededToMakeRoom`)が増えるので、
-呼び出し側で**枠(既定1・`FT_FM_CONCURRENCY` で上書き)を作る**(`FMLock`。
+呼び出し側で**枠(既定1・`FT_FM_CONCURRENCY` で上書き)を作る**(`FMCallSlots`。
 ~/Library/Caches/fleetest/fm.lock.<0..<枠数> への flock)。
 
 - **リポジトリ単位ではなくホスト単位**。別リポジトリの fleetest とも枠を共有する
@@ -3008,7 +3008,7 @@ FM は**ホスト全体で共有される資源**。2026-07-22 時点の実測�
   シナリオの壁時計タイムアウトを超えうるため、この安全弁は外せない。スキップは**失敗とは別に
   数える**(`FMHealth.recordSkip`。失敗率の分母を汚さない)
 - **FM に狙って負荷をかけたいだけなら `fleetest doctor --fm-load`**(既定
-  `--fm-load-seconds 30 --fm-load-concurrency 5`。**この口だけは FMGate/FMLock を通さない**
+  `--fm-load-seconds 30 --fm-load-concurrency 5`。**この口だけは FMCallAdmission/FMCallSlots を通さない**
   ので実行中の run と容量を奪い合う点に注意)。経路は2つ: 既定はテキスト経路、
   `--fm-load-vision` は画像入力経路(occlusion-guard 相当)。**自己修復は 2026-09-15 に FM を
   呼ばなくなったため、テキスト経路の実行時利用者はもう無い**(シナリオ下書き・命名コマンドは
@@ -3016,13 +3016,13 @@ FM は**ホスト全体で共有される資源**。2026-07-22 時点の実測�
   `FMHealth.record(kind: "loadtest")` を通るので監視の FM 行にも出る。E2E ではほぼ FM が焚けない
   ため、flake 調査や負荷試験で意図的に FM を鳴らしたいときはこれを使う
   (詳細と実測は performance-tuning.md §3.5)
-- **A/B 計測の殺しスイッチ**: `FT_FM_SERIALIZE=0` で無効化(acquire が常に true = 素通り)
+- **A/B 計測の殺しスイッチ**: `FT_FM_CALL_SLOTS=0` で無効化(acquire が常に true = 素通り)
 - **occlusion の FM 段は転写だけ**(2026-09-15。期待文字列を FM に渡さず `TranscriptMatch` が照合する)。
   2 段化の殺しスイッチ `FT_FM_OCCLUSION_TWO_STAGE` は撤去した。方式と実測は
   docs/poc-fm-occlusion-guard.md §5.18
 
   ```bash
-  FT_FM_SERIALIZE=0 Scripts/e2e.sh   # 直列化なし
+  FT_FM_CALL_SLOTS=0 Scripts/e2e.sh   # 呼び出しの枠なし
   Scripts/e2e.sh                      # 直列化あり(既定)
   ```
 
@@ -3056,9 +3056,9 @@ p50 レイテンシ 2416ms → 1675ms(−31%)/ ロック待ちによる skip は
 FM は死んだら**再起動まで回復しない**ので、死んだ後も呼び続けるのは純粋な浪費
 (実測: 全滅した 1554 シナリオで合計 31 分を捨てていた)。**連続 3 回失敗したら以後は呼ばない**。
 
-- **入場は FMGate に一本化**している。`FMGate.enter()` が ①ブレーカ ②許可枠のロック(FMLock)
+- **入場は FMCallAdmission に一本化**している。`FMCallAdmission.enter()` が ①ブレーカ ②許可枠のロック(FMCallSlots)
   を順に見る。
-  **新しい FM 呼び出しを足すときは必ずここを通す**(監査: `grep -c "FMGate.enter" Sources/FTFoundationModels/*.swift`
+  **新しい FM 呼び出しを足すときは必ずここを通す**(監査: `grep -c "FMCallAdmission.enter" Sources/FTFoundationModels/*.swift`
   と `grep -n "LanguageModelSession" Sources/FTFoundationModels/*.swift` の数を突き合わせる。FMDoctor は
   可用性判定なので対象外)
 - **ホスト単位**(~/Library/Caches/fleetest/fm-breaker.state の mtime)。全滅はホスト全体の事象で

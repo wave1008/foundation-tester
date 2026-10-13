@@ -284,7 +284,7 @@ extension MCPServer {
     /// ここで出さないと、エージェントは「occlusion-guard が効いていない画面」を
     /// **健全な画面と同じ形で受け取る**(FM の失敗は screenLooksLike では素通り・occlusion-guard では OCR だけの判定になる)
     /// **台帳を読むだけ**(FM を呼ばない)。ft_status は接続の状態を手早く見る口で、FM の実呼び出し(1回 1〜5 秒・
-    /// 死んだ ANE では戻らない)を抱えない —— 実測: この呼び出しで ft_status が2分以上止まり、FMLock も握ったままだった。
+    /// 死んだ ANE では戻らない)を抱えない —— 実測: この呼び出しで ft_status が2分以上止まり、FMCallSlots も握ったままだった。
     /// 台帳はモニター(`api host-metrics --fm-probe`)と run の実呼び出しが養う。古ければ「不明」= 何も言わない。
     /// 確かめたいときは ft_doctor(実呼び出しで確かめる)
     static func fmLivenessNote() async -> String {

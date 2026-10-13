@@ -1,6 +1,6 @@
 // FM(Foundation Models)へ意図的に負荷をかけ、直列化の頭打ちを実測する(`fleetest doctor --fm-load`)。
 //
-// **FMGate を通さない**。FMGate は実行中の run が待ち行列で時間を捨てないための門であって、
+// **FMCallAdmission を通さない**。FMCallAdmission は実行中の run が待ち行列で時間を捨てないための門であって、
 // これを通すと測っているのが FM ではなく門になる。負荷生成器は意図的に素通しし、その代わり
 // 実行中の run と FM の直列化容量を奪い合う(単独で回すこと。呼び出し側の doctor がヘルプに明記する)。
 //

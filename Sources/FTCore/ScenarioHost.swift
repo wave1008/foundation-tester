@@ -967,7 +967,7 @@ public enum ScenarioHost {
                                deviceSession: RunDeviceSession(),
                                scenarioTimeoutOverride: nil,
                                // **`enabled: false`**(デバイスも画面も無いので FM を引く経路をまとめて止める。
-                               // 個別に切ると残った経路が FM の直列化待ちを払う)
+                               // 個別に切ると残った経路が FM の呼び出しの枠の待ちを払う)
                                settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
                                reportDir: tempDir.path,
                                dryRun: true) { events.append($0) }

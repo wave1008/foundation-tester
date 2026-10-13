@@ -113,7 +113,7 @@ export function normalizeRemoteHosts(raw: unknown): RemoteHostEntry[] {
  * 形が違えば undefined(呼び出し側は CLI 呼び出し失敗と同じ扱いにする)。
  */
 /**
- * `fleetest api remote-machines` が返す**未設定時の FM 枠**(CLI 側 FMLock.defaultConcurrency)。
+ * `fleetest api remote-machines` が返す**未設定時の FM 枠**(CLI 側 FMCallSlots.defaultConcurrency)。
  * 拡張はこの数を GUI のウォーターマークに出すだけで、値そのものは持たない ——
  * **定数を二重に持つと片方だけ変わったときに嘘を表示する**。読めなければ undefined。
  */

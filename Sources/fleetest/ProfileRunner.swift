@@ -699,7 +699,7 @@ enum ProfileRunner {
     ) async {
         // 視覚系(occlusion-guard / screenLooksLike)を使う run だけが vision の死に影響を受ける。
         // **使わない run では台帳を引く前に返る** —— refresh は台帳が古いと FM を実際に呼ぶ
-        // (0.7〜4.7 秒・FMLock を取る)ので、結果を捨てる run で払わない
+        // (0.7〜4.7 秒・FMCallSlots を取る)ので、結果を捨てる run で払わない
         let usesVision = fm.fmTextOcclusionCheck || fm.screenLooksLike
         guard fm.enabled, usesVision else { return }
         guard FMVisionSupport.isSupported else {

@@ -284,7 +284,7 @@ public enum FMLiveness {
         return Reading(text: fresh(record?.text), vision: fresh(record?.vision))
     }
 
-    /// **FM を呼ぶ前の門が読む判定**(`FMGate.enter(path:)`)。その経路が**新しい死**と記録されていれば
+    /// **FM を呼ぶ前の門が読む判定**(`FMCallAdmission.enter(path:)`)。その経路が**新しい死**と記録されていれば
     /// true = 呼ばない。古い・不明・生は false(呼んで確かめる)。**書き込み先を開けない(テスト・
     /// opt-in していない)プロセスは本番の台帳を読まない** —— 読むと、機械の FM が死んでいる間だけ
     /// 無関係なテストの門が閉じる
