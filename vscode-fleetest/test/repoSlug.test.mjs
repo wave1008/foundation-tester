@@ -41,6 +41,7 @@ const UPSTREAM_SLUGS = new Set([
   "grpc/grpc-swift-protobuf",
   "microsoft/vscode-debugadapter-node",
   "react-native-community/cli",
+  "react-native-community/rn-diff-purge",
   "swiftlang/swift-syntax",
   // クイックスタートのサンプルアプリ(docs/user-docs/quick-start*.md)。本体と一緒に引っ越さない
   "wave1008/sut-ec-mobile",

@@ -126,21 +126,27 @@ final class BridgeRouterStatusContractTests: XCTestCase {
         let clear = try XCTUnwrap(handlerBody("clearFocusedInput", in: source))
         XCTAssertFalse(clear.contains("Self.remainingText(of: focused)"),
                        "clearFocusedInput の読み取りは presentRemainingText を通すこと(素の remainingText は在るかを見ない)")
+        // 欄の枠を読んで右端を叩くのは `tapFieldEndIfHittable` の中(叩けない欄は叩かない)。呼ぶ直前に毎回在るかを確かめる
+        XCTAssertFalse(clear.contains("focused.frame"), "clearFocusedInput が枠を直に読んでいる(tapFieldEndIfHittable を通すこと)")
         var searchFrom = clear.startIndex
         var frames = 0
-        while let read = clear.range(of: "let frame = focused.frame", range: searchFrom..<clear.endIndex) {
+        while let read = clear.range(of: "tapFieldEndIfHittable(app, focused)", range: searchFrom..<clear.endIndex) {
             frames += 1
             let before = clear[clear.startIndex..<read.lowerBound]
             let lastGuard = before.range(of: "try Self.requirePresent(focused)", options: .backwards)
             let lastRead = before.range(of: "presentRemainingText", options: .backwards)
-            XCTAssertNotNil(lastGuard, "focused.frame の前に requirePresent があること")
+            XCTAssertNotNil(lastGuard, "枠を読む前に requirePresent があること")
             if let lastGuard, let lastRead {
                 XCTAssertGreaterThan(lastGuard.lowerBound, lastRead.lowerBound,
-                                     "frame を読む直前(値を読んだ後)に在るかを確かめ直すこと")
+                                     "枠を読む直前(値を読んだ後)に在るかを確かめ直すこと")
             }
             searchFrom = read.upperBound
         }
-        XCTAssertEqual(frames, 2, "focused.frame を読む箇所の数が変わった = この走査を見直すこと")
+        XCTAssertEqual(frames, 2, "焦点の欄の枠を読む箇所の数が変わった = この走査を見直すこと")
+        let helper = try XCTUnwrap(handlerBody("tapFieldEndIfHittable", in: source))
+        let hittable = try XCTUnwrap(helper.range(of: "guard field.isHittable else { return }"), "叩けない欄を叩かない門が無い")
+        let frame = try XCTUnwrap(helper.range(of: "let frame = field.frame"))
+        XCTAssertLessThan(hittable.lowerBound, frame.lowerBound, "叩けるかを見る前に枠を読んでいる")
         let guardStart = try XCTUnwrap(source.range(of: "private static func requirePresent"))
         let guardBody = String(source[guardStart.upperBound...].prefix(600))
         XCTAssertTrue(guardBody.contains("element.exists") && guardBody.contains("BridgeError(422,"),
