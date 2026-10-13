@@ -22,9 +22,17 @@ import Synchronization
 
 public enum FMServeServer {
     /// 暖機の間隔[秒]。最後の FM の利用(暖機を含む)が終わってからこれだけ空いたら次を撃つ。**根拠**: OS は最後の利用から
-    /// 約 4〜5.5 秒で FM の部品を ANE から降ろす(実測 4 回: 4 秒・5 秒・5.3 秒・5.4 秒で `Unloading asset`)。その手前で撃つ。
-    /// **尽きたとき**(撃てなかった間隔が空いた): 降ろされ、次の呼び出しで載せ直す(= このプロセスが防ぎたい瞬間。1 回なら死ぬとは限らない)
-    static let keepWarmIntervalSeconds: Double = 2.5
+    /// 約 4〜5.5 秒で FM の部品を ANE から降ろす(M2Ultra の実測 4 回: 4 秒・5 秒・5.3 秒・5.4 秒で `Unloading asset`)。
+    /// **数えるのは部品ごと** —— 画像エンコーダは1回の呼び出しの初めにしか使われないので、その部品の空きは「呼び出しの残り + 間隔」になる。
+    /// 2.5 秒にしていたとき、1回が遅い M1Ultra では周期が 6〜9 秒に伸びた回に降ろされ、載せ直しの1回で FM が死んだ(M2Ultra は
+    /// 1回が速く降ろしは 0 回だった)。1 秒 = M2Ultra で死ななかった「約 1 秒おきに撃ち続ける」形(528 回)と同じ間隔。
+    /// **尽きたとき**(撃てなかった間隔が空いた): 降ろされ、次の呼び出しで載せ直す(= このプロセスが防ぎたい瞬間)。
+    /// 遅い回は `slowKeepAliveSeconds` を超えたら fm-serve のログへ1行出す(機械ごとの1回の所要を後から切り分ける)
+    static let keepWarmIntervalSeconds: Double = 1.0
+
+    /// 暖機1回の所要がこれを超えたらログへ出す[秒]。OS が降ろすまでの実測の下限(4 秒)= これより遅い回は、その間に
+    /// 呼び出しの初めに使った部品が降ろされうる
+    static let slowKeepAliveSeconds: Double = 4
 
     /// 受け付けループが暖機・寿命を判断する刻み[ms]。暖機の間隔より細かければよい
     static let tickMilliseconds: Int32 = 500
@@ -62,7 +70,7 @@ public enum FMServeServer {
     }
 
     /// 暖機と寿命の判断(受け付けループの合間)
-    static func tick(log: (String) -> Void, now: Date = Date()) {
+    static func tick(log: @escaping @Sendable (String) -> Void, now: Date = Date()) {
         let state = clock.withLock { $0 }
         if now.timeIntervalSince(state.lastRequest) > FMServeWire.idleExitSeconds {
             log("no request for \(Int(FMServeWire.idleExitSeconds))s; exiting")
@@ -76,8 +84,15 @@ public enum FMServeServer {
                return true
            }) {
             // 受け付けのスレッドを塞がない(1回 約 1 秒)。終わった時刻を「最後の利用」にする = 次はそこから間隔を数える
+            // 起動直後(まだ一度も FM を使っていない)は間を数えない
+            let gap = state.lastFMUse == .distantPast ? 0 : now.timeIntervalSince(state.lastFMUse)
             Task.detached {
+                let startedAt = Date()
                 await keepAlive()
+                let took = Date().timeIntervalSince(startedAt)
+                if took > slowKeepAliveSeconds || gap > slowKeepAliveSeconds {
+                    log(String(format: "slow keep-warm: the call took %.1fs after a %.1fs gap since the last FM use", took, gap))
+                }
                 clock.withLock { $0.lastFMUse = Date() }
                 keepAliveInFlight.withLock { $0 = false }
             }

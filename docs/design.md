@@ -1110,7 +1110,7 @@ Android `VERSION_CODE` 100。XCUITest ランナーと Android ブリッジが持
 - **画像を伴う呼び出し(テキストの視覚検証・screenLooksLike・死活の確かめ)は FM の常駐プロセス
   (`fleetest api fm-serve`)だけが撃つ**。シナリオのプロセスは `LanguageModelSession` を持たず、Unix ソケットで要求を送る
   (`FTCore/FMServe.swift`。理由は maintainer-notes §81 = 入れ替わる多数のプロセスが各自セッションを作ると、モデルの載せ直しが
-  絶えず起き、その瞬間に ANE の `no memory` で FM が死んだ)。常駐プロセスは最後の利用から 2.5 秒空くたびに小さな画像の転写(実際の生成)を撃って
+  絶えず起き、その瞬間に ANE の `no memory` で FM が死んだ)。常駐プロセスは最後の利用から 1 秒空くたびに小さな画像の転写(実際の生成)を撃って
   モデル(安全判定のモデルを含む)を ANE に載せたままにし、どこからも要求が無いまま 30 分経つと終わる
 - **1 呼び出し = 1 セッション**。毎回新しい `LanguageModelSession` を作り(常駐プロセスでは暖めておいた予備を使い)、
   会話履歴は持ち回さない。渡すのは instructions(役割定義、~200 トークン)+

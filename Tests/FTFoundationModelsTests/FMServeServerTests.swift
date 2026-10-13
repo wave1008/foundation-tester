@@ -8,7 +8,8 @@ import FTCore
 final class FMServeServerTests: XCTestCase {
 
     func testKeepWarmIntervalIsPinned() {
-        XCTAssertEqual(FMServeServer.keepWarmIntervalSeconds, 2.5)
+        XCTAssertEqual(FMServeServer.keepWarmIntervalSeconds, 1.0)
+        XCTAssertEqual(FMServeServer.slowKeepAliveSeconds, 4)
     }
 
     /// **暖機は実際の生成**(prewarm だけでは安全判定のモデルが約 5 秒で降ろされ、その載せ直しで FM が死んだ)。
@@ -54,8 +55,8 @@ final class FMServeServerTests: XCTestCase {
     /// 間隔が過ぎたら撃つ・過ぎる前は撃たない・死んでいると分かっている FM には撃たない
     func testShouldWarm() {
         let now = Date(timeIntervalSince1970: 1_000)
-        XCTAssertFalse(FMServeServer.shouldWarm(lastFMUse: now.addingTimeInterval(-2.4), now: now, knownDead: false))
-        XCTAssertTrue(FMServeServer.shouldWarm(lastFMUse: now.addingTimeInterval(-2.5), now: now, knownDead: false))
+        XCTAssertFalse(FMServeServer.shouldWarm(lastFMUse: now.addingTimeInterval(-0.9), now: now, knownDead: false))
+        XCTAssertTrue(FMServeServer.shouldWarm(lastFMUse: now.addingTimeInterval(-1.0), now: now, knownDead: false))
         XCTAssertTrue(FMServeServer.shouldWarm(lastFMUse: .distantPast, now: now, knownDead: false))
         XCTAssertFalse(FMServeServer.shouldWarm(lastFMUse: .distantPast, now: now, knownDead: true))
     }
