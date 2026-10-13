@@ -752,6 +752,13 @@ struct ApiRunCommand: AsyncParsableCommand {
             compilesOCR: ScenarioHost.ocrCompileNeeded(
                 fmTextOcclusionCheck: resolvedProfile?.fm.fmTextOcclusionCheck ?? noProfileSettings.fm.fmTextOcclusionCheck,
                 ocrTextOcclusionCheck: resolvedProfile?.ocrTextOcclusionCheck ?? noProfileSettings.ocrTextOcclusionCheck))
+        // FM の常駐プロセス(画像を伴う FM の呼び出しを1つのプロセスに集める。FTCore/FMServe.swift 冒頭)。
+        // シナリオのプロセスを起こす前に用意する(子の環境とサンドボックスの許可がソケットのパスを読む)
+        let fmForServe = resolvedProfile?.fm ?? noProfileSettings.fm
+        if !dryRun, FMServeHost.needed(fmTextOcclusionCheck: fmForServe.fmTextOcclusionCheck,
+                                       screenLooksLike: fmForServe.screenLooksLike) {
+            await FMServeHost.ensureRunning { ConsoleOut.err($0) }
+        }
         guard !all.isEmpty else {
             throw ValidationError(
                 "no scenarios (add a @TestClass under TestProjects/\(testProject.name)/scenarios/)")

@@ -6,8 +6,8 @@
 //    (AppDriver で実際に踏んだ型。AppDriverDefaultDispatchTests と同じ規律)。
 // ② **転送デリゲート(`LazyFMDelegate`)は全要件を転送する**。1つ忘れると、その機能だけが
 //    既定実装(nil / no-op)に落ちて黙って無効になる。ソースにも「転送しないと素通りする」と
-//    書いてあるが、書いてあるだけでは守れない —— 実際 `preloadVisibilityCheck` を足したとき、
-//    転送を書かなければ先読みは1度も FM へ届かなかった。
+//    書いてあるが、書いてあるだけでは守れない —— 実際に要件を足したとき、
+//    転送を書かなければその要件は1度も FM へ届かなかった。
 
 import XCTest
 
@@ -74,23 +74,10 @@ final class ReplayDelegateDispatchTests: XCTestCase {
             in: try XCTUnwrap(block(after: "public protocol ReplayDelegate", in: core)))
         let forwarded = functionNames(
             in: try XCTUnwrap(block(after: "final class LazyFMDelegate", in: runner)))
-        XCTAssertGreaterThanOrEqual(requirements.count, 3,
-                                    "要件が3つ未満しか見えていない = 走査が壊れている")
+        XCTAssertGreaterThanOrEqual(requirements.count, 2,
+                                    "要件が2つ未満しか見えていない = 走査が壊れている")
         XCTAssertTrue(requirements.isSubset(of: forwarded),
                       "LazyFMDelegate が転送していない要件 \(requirements.subtracting(forwarded).sorted()) —— "
                       + "既定実装(nil / no-op)に落ちて、その機能だけが黙って無効になる")
-    }
-
-    /// 先読みは**スクショ往復より前**に撃たないと効かない(直前では ±0。
-    /// docs/performance-tuning.md §3.5.1)。順序はソースでしか固定できない
-    func testPreloadIsIssuedBeforeTheGuardScreenshot() throws {
-        let source = try source("Sources/FTCore/StepExecutor+Assert.swift")
-        let body = try XCTUnwrap(block(after: "func occlusionFlip", in: source))
-        let prewarm = try XCTUnwrap(body.range(of: "delegate?.preloadVisibilityCheck()"),
-                                    "occlusionFlip が先読みを撃っていない")
-        let screenshot = try XCTUnwrap(body.range(of: "try await guardScreenshot("),
-                                       "occlusionFlip がスクショを撮っていない = 走査が壊れている")
-        XCTAssertLessThan(prewarm.lowerBound, screenshot.lowerBound,
-                          "先読みがスクショ往復より後ろにある = 重ねる時間が無くなり効果が消える")
     }
 }

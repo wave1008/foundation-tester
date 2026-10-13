@@ -53,8 +53,8 @@ public struct FMUsageRecord: Codable, Sendable {
     public var gateWaitTotalMs: Int
     public var gateWaitP50Ms: Int
     public var gateWaitMaxMs: Int
-    /// FMCallAdmission で止められ FM を呼ばずに諦めた回数(FMHealth.recordSkip)。guard が何回
-    /// 静かに無効化されたかを事後に確認する材料(docs/results-json.md)
+    /// FM の答えが無かった回数(FMHealth.recordSkip。FMCallAdmission で止められた・常駐プロセスに届かなかった・
+    /// 安全判定で拒まれた)。guard が何回静かに無効化されたかを事後に確認する材料(docs/results-json.md)
     public var skipped: Int
 
     public init(calls: Int, failures: Int, totalMs: Int, p50Ms: Int, maxMs: Int,
@@ -170,7 +170,8 @@ public enum FMHealth {
         return parts.joined(separator: " ← ")
     }
 
-    /// FMCallAdmission で止められ FM を呼ばずに諦めた 1 件を記録する(失敗にはしない)
+    /// FM の答えが無かった 1 件を記録する(失敗にはしない = ブレーカも死活の台帳も動かさない)。FMCallAdmission で止められた・
+    /// FM の常駐プロセスに届かなかった・FM が安全判定で答えを拒んだ回
     public static func recordSkip() {
         state.withLock { $0.skipped += 1 }
     }
@@ -228,7 +229,7 @@ public enum FMHealth {
         var text: String
         if s.failures == 0 {
             return "⚠️ Skipped \(s.skipped) FM call(s)"
-                + " (FM is known to be dead, the circuit breaker is open, or the serialisation wait ran out. "
+                + " (FM is known to be dead, the circuit breaker is open, the serialisation wait ran out, the FM process was unreachable, or FM declined to answer the image. "
                 + "On those steps screenLooksLike passed unchecked and the occlusion-guard judged from OCR alone"
                 + OCROnlyVisibility.fmFallbackCaveat + ")"
         }
@@ -243,7 +244,7 @@ public enum FMHealth {
         }
         if s.skipped > 0 {
             text += ". A further \(s.skipped) were skipped"
-                + " (FM is known to be dead, the circuit breaker is open, or the serialisation wait ran out)"
+                + " (FM is known to be dead, the circuit breaker is open, the serialisation wait ran out, the FM process was unreachable, or FM declined to answer the image)"
         }
         if let e = s.firstError { text += "\n   First error: \(e)" }
         return text

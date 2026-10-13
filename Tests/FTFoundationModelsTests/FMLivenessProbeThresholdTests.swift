@@ -84,8 +84,9 @@ final class FMLivenessProbeThresholdTests: XCTestCase {
                        "probeOnce が閾値を通さず dead を書いている")
         XCTAssertEqual(code.components(separatedBy: "FMLiveness.record(path: path, state: state, source: .probe").count - 1, 1,
                        "台帳への書き込みは settle の1箇所だけ")
-        XCTAssertEqual(code.components(separatedBy: "return settle(path: path").count - 1, 3,
-                       "成功・失敗・期限切れ(DeadlineRace)の3つが settle を通る")
+        // 期限切れは常駐プロセスが failed(「no answer within」)で返すので、失敗の道筋に含まれる
+        XCTAssertEqual(code.components(separatedBy: "return settle(path: path").count - 1, 2,
+                       "成功・失敗の2つが settle を通る")
     }
 }
 

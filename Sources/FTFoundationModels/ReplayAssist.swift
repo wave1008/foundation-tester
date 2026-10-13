@@ -1,14 +1,11 @@
 // 再生中に呼ばれる FM フック群(画面検証・occlusion-guard。各セクションは下記 MARK 参照)。
-//
-// **セッションに `model:` を渡さない**(省略 = オンデバイス固定。PCC は禁止。FTCore/FMCallAdmission.swift 冒頭)。
+// FM の実呼び出しは常駐プロセス(FMServeServer)が撃つ。ここは要求を送って結果を記録するだけ。
 
-import CoreGraphics
 import Foundation
 import FoundationModels
 import FTCore
-import ImageIO
 
-// MARK: - @Generable 型
+// MARK: - @Generable 型(常駐プロセスの screenLooksLike の出力)
 
 @Generable
 struct ScreenVerdict {
@@ -27,46 +24,45 @@ public final class FMReplayDelegate: ReplayDelegate {
 
     // MARK: Verifier(マルチモーダル)
 
+    /// 判定は FM の常駐プロセスが撃つ(このプロセスは LanguageModelSession を持たない。FTCore/FMServe.swift 冒頭)。
+    /// 記録の規律は `OcclusionVerifier.transcribe` と同じ(FM が答えなかった回だけ失敗・届かなかった回は skip)
     public func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? {
         // Attachment(画像入力)は macOS 27+。26 では判定不能(nil)= screenMatches は skip。
         // 通常は StepExecutor が FMVisionSupport で手前で止めるので、ここは保険
         guard #available(macOS 27, *) else { return nil }
-        guard let cgImage = Self.cgImage(fromPNG: screenshotPNG) else { return nil }
-        // FM はホスト全体で直列化される資源(FMCallSlots 参照)
+        // FM はホスト全体で共有する資源(FMCallSlots 参照)
         guard await FMCallAdmission.enter(path: .vision) else { return nil }
         defer { FMCallAdmission.leave() }
-        let session = LanguageModelSession(instructions: """
-        You verify screens for UI tests. Look at the screenshot and judge strictly
-        whether it matches the expected state.
-        """)
-        let screenStartedAt = Date()
-        do {
-            let verdict = try await session.respond(
-                generating: ScreenVerdict.self,
-                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 200)
-            ) {
-                "Expected screen state: \(expected)\nDecide whether the screenshot below matches this state."
-                Attachment(cgImage)
-            }.content
-            FMHealth.record(kind: "screenLooksLike", path: .vision, ms: OcclusionVerifier.elapsedMs(screenStartedAt), ok: true)
-            return (verdict.pass, String(verdict.reason.prefix(200)))
-        } catch {
-            FMHealth.record(kind: "screenLooksLike", path: .vision, ms: OcclusionVerifier.elapsedMs(screenStartedAt),
-                            ok: false, error: "screenLooksLike: \(FMHealth.describe(error))")
+        guard let client = FMServeClient.fromEnvironment() else {
+            FMHealth.recordSkip()
             return nil
         }
+        let startedAt = Date()
+        let response: FMServeWire.Response
+        do {
+            response = try await client.send(FMServeWire.Request(kind: .screen, png: screenshotPNG, expected: expected))
+        } catch {
+            FMHealth.recordSkip()
+            return nil
+        }
+        switch response.status {
+        case .ok:
+            guard let pass = response.pass else { break }
+            FMHealth.record(kind: "screenLooksLike", path: .vision, ms: OcclusionVerifier.elapsedMs(startedAt), ok: true)
+            return (pass, response.reason ?? "")
+        case .failed:
+            FMHealth.record(kind: "screenLooksLike", path: .vision, ms: OcclusionVerifier.elapsedMs(startedAt),
+                            ok: false, error: "screenLooksLike: \(response.error ?? "no detail")")
+            return nil
+        case .refused, .versionMismatch:
+            // 拒否は FM の死ではない(FMServeWire.Response.Status.refused)= 答えが無かった回として数える
+            break
+        }
+        FMHealth.recordSkip()
+        return nil
     }
 
-    // MARK: Occlusion guard(PoC)
-
-    /// FTCore(`StepExecutor.occlusionFlip`)がスクショを撮る前に呼ぶ。**生成は伴わない**ので
-    /// FMCallAdmission は通さない(枠を消費しない)が、**死んでいる FM を先読みし続けない**ようブレーカは見る。
-    /// 効き方と置き場の理由は OcclusionPreload.swift の冒頭
-    public func preloadVisibilityCheck() {
-        guard OcclusionVerifier.preloadEnabled(environment: ProcessInfo.processInfo.environment),
-              !FMBreaker.isOpen else { return }
-        OcclusionPreload.preload(instructions: OcclusionVerifier.instructions)
-    }
+    // MARK: Occlusion guard
 
     public func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
                                      screenshotPNG: Data) async
@@ -77,10 +73,4 @@ public final class FMReplayDelegate: ReplayDelegate {
         return (r.visible, r.state, r.reason, r.observedText)
     }
 
-    // MARK: - Helpers
-
-    static func cgImage(fromPNG data: Data) -> CGImage? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-        return CGImageSourceCreateImageAtIndex(source, 0, nil)
-    }
 }

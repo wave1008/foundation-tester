@@ -26,6 +26,8 @@ paths:
   - "Sources/FTFoundationModels/**"
   - "Sources/FTFoundationModels/FMLivenessProbe.swift"
   - "Sources/fleetest/ProfileRunner.swift"
+  - "Sources/fleetest/ApiFMServeCommand.swift"
+  - "Sources/FTCore/FramedUnixSocket.swift"
   - "Tests/**/*Occlusion*.swift"
   - "Tests/**/FM*.swift"
   - "Tests/FTCoreTests/DeadlineExclusionTests.swift"
@@ -71,6 +73,21 @@ paths:
 
 CLAUDE.md から移した規則(本文は移設前と同一)。この領域のファイルを Read したときに自動で読み込まれる。
 
+- **画像を伴う FM の呼び出し(テキストの視覚検証・screenLooksLike・死活の確かめ)は FM の常駐プロセス
+  (`fleetest api fm-serve` = `FMServeServer`)だけが撃つ**。シナリオのプロセス・host-metrics・doctor は
+  `LanguageModelSession` を持たず、`FMServeClient` で要求を送る(起こすのは `FMServeHost.ensureRunning` = run の2実装・
+  死活の確かめ)。**理由**: FM の死(ANE の `no memory`)は「降ろされたモデルを載せ直す瞬間」に起き、入れ替わる多数のプロセスが
+  各自セッションを作る形はそれを絶えず起こした。1 プロセスが撃ち続けた形はデバイス実行の横でも死ななかった → maintainer-notes §81。
+  守る規律: ①**セッションを作ってよいファイルは4つ**(`FMServeServer` / `ScenarioNamer` / `TestbaseDrafter` / `FMLoadGenerator`。
+  `FMServeTests.testOnlyTheFMProcessAndAuthoringToolsCreateSessions`)②**常駐プロセスに届かなかった回は FM の失敗に数えない**
+  (`FMHealth.recordSkip`。ブレーカ・死活の台帳を落とさない = FM の死ではない)③**記録は頼んだ側が自分の所要で行う**
+  (常駐プロセスは FMHealth に書かない = 結果 JSON はシナリオのプロセスの集計のまま)④**常駐プロセスに `FT_PARENT_PID` を渡さない**
+  (run より長く生きる・拡張の孤児掃除の対象外。無操作 30 分で自分で終わる)⑤**暖機は小さな画像の実際の生成**(`FMServeServer.keepAlive`。`prewarm` だけでは安全判定のモデル
+  instruct_300m.safety が約 5 秒で降ろされ、その載せ直しで FM が死んだ。間隔は OS が降ろすまでの実測 4〜5.5 秒の手前 = 2.5 秒。
+  予備のセッションへの `prewarm` は本番の転写の prefill のために別に残す)⑥要求・応答の欄を変えたら
+  `FMServeWire.protocolVersion` を +1。**止めるのは相手が自分の実行ファイルより古いときだけ**(`FMServeHost.decide`。版の違いだけで
+  止めると、作り直す前から生きている host-metrics が新しい常駐プロセスを毎分止めた)⑦**安全判定による拒否は失敗に数えない**
+  (`refused` → skip。失敗に数えると同じ画面で毎回起きる拒否が「死」を記録して FM を止めた)
 - **FM の「死活」は回数とは別の軸**(`FTCore.FMLiveness` が唯一の定義元。
   `~/.fleetest/fm-liveness.json`)。回数は「使われたか」しか言えないので、**誰も呼んでいない間は
   死んでいても 0 件と同じ絵**になる。守る規律5つ: **①生 / 死 / 不明の3値**(記録が無い・

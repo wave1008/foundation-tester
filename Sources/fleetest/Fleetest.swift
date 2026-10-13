@@ -733,6 +733,13 @@ struct RunScenarios: AsyncParsableCommand {
             compilesOCR: ScenarioHost.ocrCompileNeeded(
                 fmTextOcclusionCheck: earlyResolved?.fm.fmTextOcclusionCheck ?? noProfileSettings.fm.fmTextOcclusionCheck,
                 ocrTextOcclusionCheck: earlyResolved?.ocrTextOcclusionCheck ?? noProfileSettings.ocrTextOcclusionCheck))
+        // FM の常駐プロセス(画像を伴う FM の呼び出しを1つのプロセスに集める。FTCore/FMServe.swift 冒頭)。
+        // シナリオのプロセスを起こす前に用意する(子の環境とサンドボックスの許可がソケットのパスを読む)
+        let fmForServe = earlyResolved?.fm ?? noProfileSettings.fm
+        if !dryRun, FMServeHost.needed(fmTextOcclusionCheck: fmForServe.fmTextOcclusionCheck,
+                                       screenLooksLike: fmForServe.screenLooksLike) {
+            await FMServeHost.ensureRunning { ConsoleOut.err($0) }
+        }
         PhaseLog.mark("scenario-list")
         guard !all.isEmpty else {
             throw ValidationError(

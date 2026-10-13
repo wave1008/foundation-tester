@@ -86,4 +86,26 @@ final class FMLivenessProbeInUseTests: XCTestCase {
             XCTAssertLessThan(gate.lowerBound, stale.lowerBound, "使用中判定が経路ごとの鮮度判定より後ろにある")
         }
     }
+    /// 殺しスイッチ: 環境変数 "0" かファイルの存在のどちらでも止まる。それ以外の値・無しは止めない
+    func testKillSwitchFromEnvironmentOrMarker() {
+        XCTAssertTrue(FMLivenessProbe.isDisabled(environment: ["FT_FM_PROBE": "0"], markerExists: false))
+        XCTAssertTrue(FMLivenessProbe.isDisabled(environment: [:], markerExists: true))
+        XCTAssertFalse(FMLivenessProbe.isDisabled(environment: ["FT_FM_PROBE": "1"], markerExists: false))
+        XCTAssertFalse(FMLivenessProbe.isDisabled(environment: [:], markerExists: false))
+    }
+
+    /// refresh が殺しスイッチを使用中判定より前に見ること(消えるとスイッチを置いても撃ち続ける)
+    func testRefreshConsultsKillSwitchFirst() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let code = try String(contentsOf: root.appendingPathComponent(
+            "Sources/FTFoundationModels/FMLivenessProbe.swift"), encoding: .utf8)
+        let kill = code.range(of: "if isDisabled(environment: ProcessInfo.processInfo.environment,")
+        let inUse = code.range(of: "if realWorkIsFeedingTheLedger(FMLiveness.read(), now: now, maxAge: maxAge) {")
+        XCTAssertNotNil(kill, "refresh が殺しスイッチを見ていない")
+        if let kill, let inUse {
+            XCTAssertLessThan(kill.lowerBound, inUse.lowerBound, "殺しスイッチが使用中判定より後ろにある")
+        }
+        XCTAssertEqual(FMLivenessProbe.disableMarkerURL.lastPathComponent, "fm-probe.off")
+    }
 }

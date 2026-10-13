@@ -127,7 +127,8 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
 - 外部コマンドの出力から値を作る → **終了コードを見る**(`Shell.run` は非ゼロで投げない。
   `Shell.Result.outputIfSucceeded`。失敗の出力から「無い」「止まった」が確定する。`ToolOutputStatusScanTests`)
   → maintainer-notes §56.10
-- FM を呼ぶ → `FMCallAdmission` を通す・オンデバイスだけ(fm-occlusion.md)
+- FM を呼ぶ → `FMCallAdmission` を通す・オンデバイスだけ・**画像を伴う呼び出しは FM の常駐プロセス(`fleetest api fm-serve`)へ頼む**
+  (自分で `LanguageModelSession` を作らない。fm-occlusion.md → maintainer-notes §81)
 - MCP のツール・引数を足す → `ArgumentBounds` に載せる・ツールの集合を固定するテスト
   (`MCPToolCallTests` の driverBackedTools 等)を更新する・DSL と同じ判定は共有する(mcp.md)
 - ブリッジの挙動・エンドポイントを変える → 版を上げる(iOS `bridgeProtocolVersion` / Android

@@ -1107,7 +1107,12 @@ Android `VERSION_CODE` 100。XCUITest ランナーと Android ブリッジが持
 
 ### 5.1 セッション戦略(4K トークン運用)
 
-- **1 呼び出し = 1 セッション**。毎回新しい `LanguageModelSession` を作り、
+- **画像を伴う呼び出し(テキストの視覚検証・screenLooksLike・死活の確かめ)は FM の常駐プロセス
+  (`fleetest api fm-serve`)だけが撃つ**。シナリオのプロセスは `LanguageModelSession` を持たず、Unix ソケットで要求を送る
+  (`FTCore/FMServe.swift`。理由は maintainer-notes §81 = 入れ替わる多数のプロセスが各自セッションを作ると、モデルの載せ直しが
+  絶えず起き、その瞬間に ANE の `no memory` で FM が死んだ)。常駐プロセスは最後の利用から 2.5 秒空くたびに小さな画像の転写(実際の生成)を撃って
+  モデル(安全判定のモデルを含む)を ANE に載せたままにし、どこからも要求が無いまま 30 分経つと終わる
+- **1 呼び出し = 1 セッション**。毎回新しい `LanguageModelSession` を作り(常駐プロセスでは暖めておいた予備を使い)、
   会話履歴は持ち回さない。渡すのは instructions(役割定義、~200 トークン)+
   その場で必要な入力(壊れたロケータ・失敗ステップの差分・現在画面の圧縮スナップショット等)のみ
 - 応答は必ず `@Generable` 型。自由文を返させないことで応答トークンも節約。
@@ -1118,21 +1123,25 @@ Android `VERSION_CODE` 100。XCUITest ランナーと Android ブリッジが持
 (自己修復は指紋照合のみになり FM を呼ばないため。§10「ロケータの指紋」・maintainer-notes §22)。
 残る `@Generable` 型はスクリーンショットの画面検証(`ScreenVerdict`)等、FM を呼ぶ他の機能のもの。
 
-### 5.3 実装(Sources/FTFoundationModels/ の8ファイル)
+### 5.3 実装(Sources/FTFoundationModels/ の9ファイル)
 
 | 実装 | 役割 |
 |---|---|
-| `ReplayAssist.swift`(`FMReplayDelegate`) | 再生失敗時のみ呼ばれるフック群: スクリーンショットの画面検証(`ScreenVerdict`。**マルチモーダル**)。ロケータ自己修復のフック(`LocatorRepairSuggestion`)は 2026-09-15 に撤去(§10・maintainer-notes §22) |
-| `OcclusionVerifier.swift` | アサーションがツリー通過した直後の、遮蔽による誤った緑の排除(マルチモーダル。要素 frame にクロップして渡す) |
+| `ReplayAssist.swift`(`FMReplayDelegate`) | シナリオのプロセスの FM フック: スクリーンショットの画面検証(`ScreenVerdict`。**マルチモーダル**)を常駐プロセスへ頼み、結果を記録する。ロケータ自己修復のフック(`LocatorRepairSuggestion`)は 2026-09-15 に撤去(§10・maintainer-notes §22) |
+| `OcclusionVerifier.swift` | アサーションがツリー通過した直後の、遮蔽による誤った緑の排除(マルチモーダル。要素 frame にクロップし、転写を常駐プロセスへ頼む) |
+| `FMServeServer.swift` | FM の常駐プロセス(`fleetest api fm-serve`)の本体。画像を伴う実呼び出し・載せたままにする暖機・無操作での終了。通信と起動は `FTCore/FMServe.swift` |
+| `PreloadSlot.swift` | 常駐プロセスの予備のセッション 1 つ分の規則(同じ instructions なら作り直さない・使ったら捨てる) |
 | `FMDoctor.swift` | FM 可用性判定。`check()` は同期・可否を保証しない / `checkLive()` は実際に1回推論する(§1.1 の罠) |
 | `ScenarioNamer.swift` | 記録操作(ライブ操作タブ)からのシナリオ名生成 |
 | `TestbaseDrafter.swift` | テスト設計資料 → シナリオ下書き(§17)。FM 不可用時は決定的パーサへ落ちる |
-| `FMLivenessProbe.swift` | FM の死活プローブ(§リモート「FM の「死活」は回数とは別の軸」)。**FMCallAdmission を通さない** |
+| `FMLivenessProbe.swift` | FM の死活プローブ(§リモート「FM の「死活」は回数とは別の軸」)。実呼び出しは常駐プロセスへ頼む。**FMCallAdmission を通さない** |
 | `FMLoadGenerator.swift` | `fleetest doctor --fm-load` の負荷測定。**FMCallAdmission を通さない**(測っている対象が門になるため) |
-| `OcclusionPreload.swift` | occlusion-guard の先読み。**FMCallAdmission を通らない**(生成を伴わないので枠を消費させない) |
 
 - 生成を伴う FM 呼び出し(`ReplayAssist` / `OcclusionVerifier` / `ScenarioNamer` / `TestbaseDrafter`)は
-  `FMCallAdmission.enter()` を通す(§1.1)。死活プローブ・負荷生成・先読みの3つは意図してこの門を通らない。
+  `FMCallAdmission.enter()` を通す(§1.1。常駐プロセスへ頼む2つも、頼む側で通す = 枠の待ちはシナリオの締め切りから
+  差し引かれる)。死活プローブ・負荷生成・常駐プロセスの暖機は意図してこの門を通らない。
+- **`LanguageModelSession` を作ってよいのは `FMServeServer` / `ScenarioNamer` / `TestbaseDrafter` / `FMLoadGenerator` だけ**
+  (`FMServeTests.testOnlyTheFMProcessAndAuthoringToolsCreateSessions` が集合を等号で固定)。
   出力の実例・運用知見は §8.6。
 
 ---

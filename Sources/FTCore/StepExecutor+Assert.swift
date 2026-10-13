@@ -131,14 +131,6 @@ extension StepExecutor {
         // スクショ・ink・OCR 近道までは進み、FM だけを撃たずに OCROnlyVisibility へ落ちる
         // (下の `guard fmAvailable` 参照)。
         let fmAvailable = fmConfigured && FMVisionSupport.isSupported && !FMNoVerdictInjection.isActive(environment: ProcessInfo.processInfo.environment)
-        // **FM に訊くと決まったのでモデルの積み込みを先に始める**。効くのは「重ねられる作業の
-        // 長さ」ぶんだけで(実測: リード 1000ms で −14% / 250ms で −8% / 直前では ±0。
-        // docs/performance-tuning.md §3.5.1)、重ねられるのはこの下のスクショ往復・stale 判定・
-        // インク判定。**ここより後ろへ動かすと効果が消える**。
-        // Tier-1(下のインク足切り)で FM を省く回は空振りになるが、先読みは生成を伴わないので
-        // 「効かない回に払う」より「効く回に効かせる」を採る。FM が死んでいるときに先読みしない
-        // ようブレーカだけは delegate 側で見る(FMCallAdmission は通らない = 門の外)。
-        if fmAvailable { delegate?.preloadVisibilityCheck() }
         // 操作を挟まない連続ガードでは直近スクショを再利用(~125ms 削減)。
         let captured = try await guardScreenshot(phase: &phase)
         var screenshot = captured.data

@@ -63,13 +63,8 @@ public struct OcclusionVerifier {
     /// シナリオで実際に踏んだ。E2E-RN M1Max 実測)。コンパイル済みなら数百 ms で返る
     static let nearMissOCRBudget: Duration = .seconds(60)
 
-    /// 先読み(`preloadVisibilityCheck`)の殺しスイッチ。`FT_FM_OCCLUSION_PRELOAD=0` で撃たない
-    static func preloadEnabled(environment: [String: String]) -> Bool {
-        environment["FT_FM_OCCLUSION_PRELOAD"] != "0"
-    }
-
-    /// 転写の instructions。**先読みしたセッションと本番の呼び出しで同一の文字列**でなければ意味がない
-    /// (instructions が違えば prefill も別物)ので、ここ1箇所に置く
+    /// 転写の instructions。**常駐プロセス(FMServeServer)の予備のセッションと本番の呼び出しで同一の文字列**でなければ
+    /// 暖機が意味を持たない(instructions が違えば prefill も別物)ので、ここ1箇所に置く
     static let instructions = """
     You read text in screenshots of mobile apps for automated tests. The image is a crop around
     one UI element. Transcribe only the text that is actually drawn, exactly as written, in reading
@@ -92,13 +87,13 @@ public struct OcclusionVerifier {
         // Attachment(画像入力)は macOS 27+。26 では判定不能(nil)= ガードは素通り。
         // 通常は StepExecutor.occlusionFlip が FMVisionSupport で手前で止めるので、ここは保険
         guard #available(macOS 27, *) else { return nil }
-        // FM はホスト全体で直列化される資源。並列に投げても速くならず modelmanagerd の
+        // FM はホスト全体で共有する資源。並列に投げても速くならず modelmanagerd の
         // モデル積み降ろしだけが増えるので、呼び出し側で待ち行列を作る(FMCallSlots 参照)。
         // 等倍と拡大の 2 回は**同じ FMCallAdmission の取得の中**で回す(間に他ワーカーを割り込ませない)
         guard await FMCallAdmission.enter(path: .vision) else { return nil }
         defer { FMCallAdmission.leave() }
 
-        guard let first = await Self.transcribe(crop, instructions: Self.instructions, preloaded: true)
+        guard let first = await Self.transcribe(crop)
         else { return nil }
         var verdict = TranscriptMatch.judge(transcript: first, expected: expectedText)
         var observed = first
@@ -107,7 +102,7 @@ public struct OcclusionVerifier {
             // 読めなくても判定は等倍と同じ向き(空・別の文字)なので、reason は拡大側の転写で作る
             let enlarged = RegionText.enlarged(crop, by: Self.enlargedRetryFactor)
             if enlarged !== crop,
-               let second = await Self.transcribe(enlarged, instructions: Self.instructions, preloaded: false) {
+               let second = await Self.transcribe(enlarged) {
                 let retried = TranscriptMatch.judge(transcript: second, expected: expectedText)
                 if retried.visible || second.count > first.count {
                     verdict = retried
@@ -146,31 +141,39 @@ public struct OcclusionVerifier {
 
     // MARK: - FM 呼び出し(転写)
 
-    /// nil = FM の失敗(呼び出し側はガードを素通りさせる。記録しないと「FM 全滅で無効」と
-    /// 「疑わしい要素が無く正常」が区別できないので、成功も失敗も FMHealth へ計上する)
-    @available(macOS 27, *)
-    private static func transcribe(_ image: CGImage, instructions: String, preloaded: Bool) async -> String? {
-        // 先読み済みがあれば使う(無ければその場で作る)。
-        // **取り出したら捨てる** —— respond を通したセッションは会話履歴を持つので使い回せない
-        let session = (preloaded ? OcclusionPreload.take(matching: instructions) : nil)
-            ?? LanguageModelSession(instructions: instructions)
-        let startedAt = Date()
-        do {
-            let transcript = try await session.respond(
-                generating: DrawnTextTranscript.self,
-                options: GenerationOptions(samplingMode: .greedy,
-                                           maximumResponseTokens: Self.transcriptResponseTokens)
-            ) {
-                Self.prompt
-                Attachment(image)
-            }.content
-            FMHealth.record(kind: "occlusion", path: .vision, ms: Self.elapsedMs(startedAt), ok: true)
-            return transcript.text
-        } catch {
-            FMHealth.record(kind: "occlusion", path: .vision, ms: Self.elapsedMs(startedAt), ok: false,
-                            error: "occlusion: \(FMHealth.describe(error))")
+    /// FM の常駐プロセス(`fleetest api fm-serve`)に転写させる。**このプロセスは LanguageModelSession を持たない**
+    /// (理由は FTCore/FMServe.swift 冒頭)。nil = 答えが無い(呼び出し側はガードを素通りさせる)。
+    /// FM が答えなかった回(`failed`)は失敗として FMHealth へ計上する(「FM 全滅で無効」と「疑わしい要素が無く正常」を
+    /// 区別するため)。**常駐プロセスに届かなかった回は FM の失敗に数えない**(FM の死ではない = ブレーカを落とさない)
+    /// —— 呼ばずに諦めた回として skip に数える
+    static func transcribe(_ image: CGImage) async -> String? {
+        guard let client = FMServeClient.fromEnvironment(), let png = FMServeClient.pngData(image) else {
+            FMHealth.recordSkip()
             return nil
         }
+        let startedAt = Date()
+        let response: FMServeWire.Response
+        do {
+            response = try await client.send(FMServeWire.Request(kind: .transcribe, png: png))
+        } catch {
+            FMHealth.recordSkip()
+            return nil
+        }
+        switch response.status {
+        case .ok:
+            guard let text = response.text else { break }
+            FMHealth.record(kind: "occlusion", path: .vision, ms: Self.elapsedMs(startedAt), ok: true)
+            return text
+        case .failed:
+            FMHealth.record(kind: "occlusion", path: .vision, ms: Self.elapsedMs(startedAt), ok: false,
+                            error: "occlusion: \(response.error ?? "no detail")")
+            return nil
+        case .refused, .versionMismatch:
+            // 拒否は FM の死ではない(FMServeWire.Response.Status.refused)= 答えが無かった回として数える
+            break
+        }
+        FMHealth.recordSkip()
+        return nil
     }
 
     static func elapsedMs(_ from: Date) -> Double { Date().timeIntervalSince(from) * 1000 }

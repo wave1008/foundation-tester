@@ -24,9 +24,18 @@ final class OcclusionTranscriptTests: XCTestCase {
                       "prompt が定数でない(補間で期待文字列が入り得る)")
         let instructions = try XCTUnwrap(Self.declarationBody(after: "static let instructions = \"\"\"", in: source))
         XCTAssertFalse(instructions.lowercased().contains("expected"), "instructions が期待文字列に言及している")
-        let transcribe = try XCTUnwrap(Self.functionBody(named: "transcribe", in: source))
-        XCTAssertFalse(transcribe.contains("expectedText"), "転写の呼び出しに期待文字列が渡っている")
-        XCTAssertTrue(transcribe.contains("Self.prompt"), "転写の呼び出しが共有の prompt 定数を使っていない")
+        // 転写の要求(シナリオのプロセス)は画像だけを送り、実呼び出し(常駐プロセス)は共有の定数だけを使う
+        let request = try XCTUnwrap(Self.functionBody(named: "transcribe", in: source))
+        XCTAssertFalse(request.contains("expected"), "転写の要求に期待文字列が載っている")
+        XCTAssertTrue(request.contains("FMServeWire.Request(kind: .transcribe, png: png)"), "転写の要求の形が変わった")
+        let server = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/FTFoundationModels/FMServeServer.swift"), encoding: .utf8)
+        let call = try XCTUnwrap(Self.functionBody(named: "transcribe", in: server))
+        XCTAssertFalse(call.contains("expected"), "転写の実呼び出しに期待文字列が渡っている")
+        XCTAssertTrue(call.contains("OcclusionVerifier.prompt"), "転写の実呼び出しが共有の prompt 定数を使っていない")
+        XCTAssertTrue(call.contains("LanguageModelSession(instructions: OcclusionVerifier.instructions)"),
+                      "転写の実呼び出しが共有の instructions 定数を使っていない")
     }
 
     /// 出力は転写 1 欄だけ。可否・分類の欄を足すと、読む前に結論を書いて転写がそれに合わせて

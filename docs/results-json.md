@@ -265,7 +265,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | fmDead | [String]? | **run を閉じた時点**でこの機械の FM が死んでいた経路(`"text"` / `"vision"`。`FTCore.FMLiveness`)。生きていた・不明なら欄ごと省略 —— **欄が無いことを「生きていた」と読まない**。**run 全体の状態ではない**(途中で死んで戻った run はここに出ない。そちらは `scenarios/*.json` の `fm.failures` / `fm.firstError`)。**緑の run を仕分けるための欄** —— FM が死んだ run の緑は occlusion-guard・screenLooksLike が素通りしただけかもしれない(自己修復は FM を呼ばないため対象外)。2026-09-03 より前の記録には無い。**台帳(FMLiveness)の観測が古い/無い経路は、`FMBreaker.isOpen`(サーキットブレーカが開いている = 直前に連続失敗した既知の事実)が真なら dead として補う**(観測済みの経路は上書きしない。ブレーカは呼ばずに死と言える唯一の根拠 —— run 全体がブレーカ開の間に終わり、台帳が一度も更新されないまま run が閉じるケースを拾う。2026-09-09 より前の記録は台帳の観測だけで、この補いを持たない) |
 | fmDeadReason | String? | `fmDead` の理由(`text: … / vision: …`)。**ブレーカ由来の補いは `"circuit breaker open"` になる**(実呼び出しの失敗理由が無いため)。`fmDead` が無ければ省略 |
 | guarded | Int? | **occlusion-guard(誤った緑の検査)が run 全体で `occlusionFlip` の `visibilityGuardActive` 判定を通ったステップ数**(run 横断合計)。**分母は occlusionFlip に実際に入った回数であって、`visibilityGuardActive` が true になった回数(検査対象の候補数)ではない** —— tap 等のアクションは `occlusionFlip` を通らないのでこの欄には数えない。足切り(型・ラベル・インク)で FM を呼ばずに素通りした回も、`occlusionFlip` の入口ガードは通っているのでここに数える。1度もガードに入らなかった run では省略(0 は書かない) |
-| guardSkipped | Int? | `guarded` のうち、FM が判定を返せず(死活・ブレーカ・直列化待ち)素通りした回(`visibility-guard-skipped`)。**`guarded` が1件以上ある run では、0件でも必ず書く**(欄が無い=観測なし、0=観測したが起きなかった、を混ぜない)。`guarded` が省略された run では同じく省略 |
+| guardSkipped | Int? | `guarded` のうち、FM が判定を返せず(死活・ブレーカ・呼び出しの枠の待ち・常駐プロセスに届かない・安全判定による拒否)素通りした回(`visibility-guard-skipped`)。**`guarded` が1件以上ある run では、0件でも必ず書く**(欄が無い=観測なし、0=観測したが起きなかった、を混ぜない)。`guarded` が省略された run では同じく省略 |
 | guardStaleFrame | Int? | `guarded` のうち、絵が古いまま撮り直しても stale で素通りした回(`stale-screenshot`。古いと判定した絵とバイト同一のままなら、次のステップでも古いと扱う。exists・テキスト比較は古い間は待って撮り直し、締め切りまで古いままだった回だけ素通りする。findImage / findImages / existImage で古い絵を待って撮り直した回にも立つ)。`guardSkipped` と同じ 0/nil の規律 |
 | runGroup | String? | **同じ実行から分かれた run を束ねる鍵**。デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run(別 runID・別 machine・リモートは向こうの時計)になるので、`profile` と開始時刻では同じ実行かどうか決められない。ファンアウトの親が1回だけ発行し、手元の子にもリモートの子にも同じ値が入る。**単機の run と 2026-08-26 より前の記録では欠落**(束ねる相手が居ない) |
 | fmSettings | FMSettingsRecord? | **その run で実際に効いていた FM 設定**(プロファイルの値そのものではなく、`--set heal=…`/`--set fmTextOcclusionCheck=…` 等の CLI 上書きを反映した後の実効値)。下記の4フィールドを常に持つ。**欄が無い = この版より前の記録**であって、FM が無効だった意味ではない(fmDead 等と同じく「無い」と「false」を混ぜない) |
@@ -380,8 +380,9 @@ Android の凍結事後判定(`AndroidHealthProbe.observeBlankAndRepair`)が試�
 (`totalMs` 等)とは別軸で、`FMCallAdmission.enter()` が `FMCallSlots`(ホスト単位の許可枠。既定1)で実際に
 待たされた時間。枠を絞る/広げる判断材料 —— 待ちがほぼ0なら広げても解放されるものが無い。
 
-**`fm` の `skipped`** は `FMCallAdmission` で止められ FM を呼ばずに諦めた回数(ブレーカ作動中 or 枠の
-待ちが timeout 超過)。`calls`/`failures`(呼んで失敗)とは別物 —— occlusion-guard・
+**`fm` の `skipped`** は FM の答えが無かった回数 —— `FMCallAdmission` で止められ FM を呼ばずに諦めた(ブレーカ作動中 or 枠の
+待ちが timeout 超過)・FM の常駐プロセス(`fleetest api fm-serve`)に届かなかった・FM が安全判定で答えを拒んだ
+(`Detected content likely to be unsafe`。FM は生きているので失敗に数えない = 死活の台帳とブレーカを動かさない)。`calls`/`failures`(呼んで失敗)とは別物 —— occlusion-guard・
 screenLooksLike がこの回数ぶん静かに素通りしたことを事後に確認する材料(自己修復は FM を
 呼ばないため対象外)。
 

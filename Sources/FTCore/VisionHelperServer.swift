@@ -71,20 +71,6 @@ public enum VisionHelperServer {
         }
     }
 
-    /// 同期スレッドから async を呼んで待つ(この関数を呼ぶスレッドは 1 本だけ = Vision の計算は直列)。
-    /// `UncheckedTransfer` の根拠: 値は Task の中で作られ、semaphore の後に 1 度だけ読まれる(同時に触る者は居ない)
-    private static func blocking<T>(_ body: @escaping @Sendable () async -> T) -> T {
-        let semaphore = DispatchSemaphore(value: 0)
-        let box = LockedValue<UncheckedTransfer<T>?>(nil)
-        Task.detached {
-            let value = await body()
-            box.withLock { $0 = UncheckedTransfer(value) }
-            semaphore.signal()
-        }
-        semaphore.wait()
-        return box.withLock { $0 }!.value
-    }
-
     /// 同名のソケットが残っていれば、繋がる(= 生きた持ち主が居る)なら false。繋がらなければ古い残骸として消して true。
     /// ほかの `vision-<pid>.sock` も、pid が死んでいれば消す(SIGKILL された補助は自分で消せない)
     static func prepareSocketPath(_ path: String, log: (String) -> Void) -> Bool {
@@ -102,7 +88,7 @@ public enum VisionHelperServer {
         let probe = socket(AF_UNIX, SOCK_STREAM, 0)
         guard probe >= 0 else { return true }
         defer { close(probe) }
-        let connected = VisionHelperWire.withAddress(path: path) { connect(probe, $0, $1) } ?? -1
+        let connected = FramedUnixSocket.withAddress(path: path) { connect(probe, $0, $1) } ?? -1
         if connected == 0 {
             log("a live process already serves \(path)")
             return false
@@ -118,7 +104,7 @@ public enum VisionHelperServer {
         let listener = socket(AF_UNIX, SOCK_STREAM, 0)
         guard listener >= 0 else { log("socket: errno \(errno)"); return 1 }
         defer { close(listener); unlink(socketPath) }
-        let bound = VisionHelperWire.withAddress(path: socketPath) { bind(listener, $0, $1) } ?? -1
+        let bound = FramedUnixSocket.withAddress(path: socketPath) { bind(listener, $0, $1) } ?? -1
         guard bound == 0 else { log("bind \(socketPath): errno \(errno)"); return 1 }
         chmod(socketPath, 0o600)
         guard listen(listener, 16) == 0 else { log("listen: errno \(errno)"); return 1 }
@@ -131,7 +117,7 @@ public enum VisionHelperServer {
         while !shouldStop() {
             if !healthy, warming {
                 autoreleasepool {
-                    if blocking({ await checkHealth() }) {
+                    if FramedUnixSocket.blocking({ await checkHealth() }) {
                         healthy = true
                         warming = false
                         log("Vision is healthy")
@@ -149,11 +135,12 @@ public enum VisionHelperServer {
             autoreleasepool {
                 defer { close(connection) }
                 // 要求ごとの期限(読めない・遅いクライアントに直列の処理を塞がせない)
-                VisionHelperWire.setTimeouts(connection, seconds: VisionHelperWire.requestDeadlineSeconds)
+                FramedUnixSocket.setTimeouts(connection, seconds: VisionHelperWire.requestDeadlineSeconds)
                 let deadline = Date().addingTimeInterval(VisionHelperWire.requestDeadlineSeconds)
-                guard let payload = VisionHelperWire.readPayload(connection, deadline: deadline) else { return }
+                guard let payload = FramedUnixSocket.readPayload(connection, deadline: deadline) else { return }
                 let wasHealthy = healthy
-                let outcome = blocking {
+                // この関数を呼ぶスレッドは 1 本だけ = Vision の計算は直列
+                let outcome = FramedUnixSocket.blocking {
                     await respond(to: payload, healthy: wasHealthy, checkHealth: { await checkHealth() },
                                   computePrint: { try await GenerateImageFeaturePrintRequest().perform(on: $0) })
                 }
@@ -165,7 +152,7 @@ public enum VisionHelperServer {
                     log("Vision degraded; warming up again")
                 }
                 if let frame = try? VisionHelperWire.encode(outcome.response) {
-                    _ = VisionHelperWire.writeAll(connection, frame, deadline: deadline)
+                    _ = FramedUnixSocket.writeAll(connection, frame, deadline: deadline)
                 }
             }
         }

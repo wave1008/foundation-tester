@@ -7,6 +7,7 @@
 // なぜ text と vision を別に撃つか: **独立に死ぬ・戻る**(実測)。text だけ確かめて「生きている」と
 // 配ると、occlusion-guard(視覚系)が全滅した機械で誤った緑を量産する。
 //
+// 殺しスイッチ(`isDisabled`。`FT_FM_PROBE=0` / `~/.fleetest/fm-probe.off`)が最初の門。
 // **実仕事の邪魔をしない**ための門が3つ(`refresh`):
 //  ① 台帳が新しければ撃たない。**鮮度は経路を跨いで見る** —— run が vision しか呼ばない
 //     (occlusion-guard だけの run が普通)と text の控えだけが古くなり、経路ごとに見ると
@@ -46,23 +47,23 @@ public enum FMLivenessProbe {
     /// 使えている = そちらの成否が台帳を養う、という状況だから。取れなければ黙って諦める
     static let probeLockTimeoutSeconds: TimeInterval = 1
 
-    /// 死活確認の実呼び出しに許す出力トークン。**答えの中身は見ない**(呼べたかどうかだけ)
-    private static let maxResponseTokens = 8
+    /// 実呼び出し1回を待つ上限(秒)。値と根拠は `FMServeWire.requestDeadlineSeconds`(実呼び出しを撃つのは
+    /// FM の常駐プロセスで、期限もそちらが切る)。**尽きたとき**: 「N 秒応答が無かった」を失敗として記録する
+    /// (台帳の扱いは他の失敗と同じ = 連続 FMBreaker.threshold 回で死)
+    static let probeCallTimeoutSeconds: TimeInterval = FMServeWire.requestDeadlineSeconds
 
-    /// 実呼び出し1回を待つ上限(秒)。**根拠**: 生きている FM の1回は 0.7〜4.7 秒(実測。上の probeIntervalSeconds の doc)。
-    /// その4倍強。**上限が要る理由**: ANE が「no memory」で死んだ機械では respond が戻らない(実測: MCP の ft_status が
-    /// この呼び出しで2分以上止まり、FMCallSlots も握ったままだった)。**尽きたとき**: 「N 秒応答が無かった」を失敗として記録する
-    /// (台帳の扱いは他の失敗と同じ = 連続 FMBreaker.threshold 回で死)。応答しない呼び出しは待たずに放置する(DeadlineRace)
-    static let probeCallTimeoutSeconds: TimeInterval = 20
-
-    /// 実呼び出し1回の結末。nil(DeadlineRace の期限切れ)と区別するため、失敗の説明はここに入れる
-    private enum CallOutcome: Sendable { case answered, failed(String) }
+    /// 実呼び出し1回の結末。`unreachable` は**常駐プロセスに届かなかった**(FM の死ではない = 台帳もブレーカも触らない)
+    private enum CallOutcome: Sendable { case answered, failed(String), unreachable(String) }
 
     /// 台帳が古い経路だけを実呼び出しで取り直す。返すのは**取り直した後の読み**。
     /// `maxAge` は「これより新しければ撃たない」境目(既定 = プローブ間隔)。
     @discardableResult
     public static func refresh(maxAge: TimeInterval = probeIntervalSeconds,
                               now: Date = Date()) async -> FMLiveness.Reading {
+        if isDisabled(environment: ProcessInfo.processInfo.environment,
+                      markerExists: FileManager.default.fileExists(atPath: disableMarkerURL.path)) {
+            return FMLiveness.current(now: now)
+        }
         // 実仕事が台帳を養っている間は撃たない(経路を跨いだ使用中判定。ファイル冒頭①)
         if realWorkIsFeedingTheLedger(FMLiveness.read(), now: now, maxAge: maxAge) {
             return FMLiveness.current(now: now)
@@ -109,6 +110,17 @@ public enum FMLivenessProbe {
         return FMLiveness.current(now: now)
     }
 
+    /// 殺しスイッチ(切り分け用): `FT_FM_PROBE=0` か、このファイルがあれば refresh は撃たず台帳を読むだけ。
+    /// **ファイルも要る理由**: 撃つのは拡張が起こす host-metrics で、その環境変数は VSCode の起動時に決まる
+    /// (実験のために渡す口が無い)。ファイルは拡張を起動し直さず次の tick から効く。
+    /// `doctor` / `ft_doctor` の `probeOnce` は止めない(明示的に死活を訊く入口)
+    static var disableMarkerURL: URL { FMLiveness.directory.appendingPathComponent("fm-probe.off") }
+
+    /// **純粋関数**(refresh の最初の門)
+    static func isDisabled(environment: [String: String], markerExists: Bool) -> Bool {
+        environment["FT_FM_PROBE"] == "0" || markerExists
+    }
+
     /// **純粋関数**。ブレーカ由来の「死」(source=.breaker)は実観測ではなく代理の値なので、
     /// ブレーカ自体が閉じた瞬間に無効になる —— これが無いと、ブレーカが閉じても直前に書いた
     /// dead(source=.breaker) が freshSeconds(最大120秒)尽きるまで「復活したのに死んだまま」表示される
@@ -141,14 +153,7 @@ public enum FMLivenessProbe {
             return FMLiveness.Verdict(state: .dead, checkedAt: now.timeIntervalSince1970,
                                       source: .availability, error: FMVisionSupport.requirement)
         }
-        let outcome = await DeadlineRace.first(seconds: probeCallTimeoutSeconds) { () -> CallOutcome in
-            do {
-                try await callOnce(path: path)
-                return .answered
-            } catch {
-                return .failed(FMHealth.describe(error))
-            }
-        }
+        let outcome = await callOnce(path: path)
         let ms = Int(Date().timeIntervalSince(startedAt) * 1000)
         switch outcome {
         case .answered:
@@ -157,9 +162,10 @@ public enum FMLivenessProbe {
         case .failed(let description):
             FMBreaker.recordFailure()
             return settle(path: path, error: description, ms: ms)
-        case nil:
-            FMBreaker.recordFailure()
-            return settle(path: path, error: "no answer within \(Int(probeCallTimeoutSeconds))s", ms: ms)
+        case .unreachable(let description):
+            // この回の観測だけ返す(doctor は exit 1 にする)。台帳は「不明」のまま = 次の refresh がまた確かめる
+            return FMLiveness.Verdict(state: .dead, checkedAt: now.timeIntervalSince1970, source: .probe,
+                                      error: description, ms: ms)
         }
     }
 
@@ -168,22 +174,23 @@ public enum FMLivenessProbe {
         return false
     }
 
-    /// 実呼び出し1回(上限は呼び手の probeOnce が DeadlineRace で切る)
-    private static func callOnce(path: FMLiveness.Path) async throws {
-        switch path {
-        case .text:
-            _ = try await LanguageModelSession().respond(
-                to: "Answer with just OK.",
-                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: maxResponseTokens))
-        case .vision:
-            guard #available(macOS 27, *) else { return }   // probeOnce が先に弾く(コンパイラの要求する分岐)
-            _ = try await LanguageModelSession().respond(
-                generating: FMLoadGenerator.LoadVisionVerdict.self,
-                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 16)
-            ) {
-                "Is this image a single solid color?"
-                Attachment(FMLoadGenerator.probeImage)
-            }
+    /// 実呼び出し1回。**撃つのは FM の常駐プロセス**(このプロセスは LanguageModelSession を持たない =
+    /// プローブの度にセッションを作り捨てない。FTCore/FMServe.swift 冒頭)。居なければ起こす。
+    /// 期限はサーバが切る(`failed`「no answer within」で返る)
+    private static func callOnce(path: FMLiveness.Path) async -> CallOutcome {
+        guard let socket = await FMServeHost.ensureRunning(log: { _ in }) else {
+            return .unreachable("the FM process (fleetest api fm-serve) could not be started")
+        }
+        let response: FMServeWire.Response
+        do {
+            response = try await FMServeClient(socketPath: socket).send(FMServeWire.Request(kind: .probe, path: path))
+        } catch {
+            return .unreachable("\(error)")
+        }
+        switch response.status {
+        case .ok, .refused: return .answered   // 拒否も FM が答えた = 生きている
+        case .failed: return .failed(response.error ?? "no detail")
+        case .versionMismatch: return .unreachable(response.error ?? "protocol mismatch")
         }
     }
 

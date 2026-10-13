@@ -172,7 +172,7 @@ public enum FMLiveness {
 
     // MARK: - 置き場
 
-    static var directory: URL {
+    public static var directory: URL {
         if let override = ProcessInfo.processInfo.environment["FT_FM_LIVENESS_DIR"], !override.isEmpty {
             return URL(fileURLWithPath: override)
         }

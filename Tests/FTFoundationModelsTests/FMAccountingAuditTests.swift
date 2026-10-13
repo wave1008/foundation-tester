@@ -28,9 +28,12 @@ final class FMAccountingAuditTests: XCTestCase {
             + " 測る対象を自分で消費して見せる)。ブレーカは probeOnce が直接養う",
         "ScenarioNamer.swift": "シナリオ作成時(explore/gen-scenario)。run の結果に紐づかない",
         "TestbaseDrafter.swift": "テストベース作成時。run の結果に紐づかない",
-        "OcclusionPreload.swift": "先読み(preload)だけで生成を伴わない。記録すると fm.calls と "
-            + "レートが実態より多く見え、ブレーカも「呼べている」と誤認する(FMLivenessProbe と同じ理由)",
+        "FMServeServer.swift": "FM の常駐プロセス。記録は要求した側(シナリオ・プローブ)が自分の所要で行う"
+            + "(ここで記録すると run の結果 JSON = シナリオのプロセスの集計と食い違い、暖機も呼び出しに数えてしまう)",
     ]
+
+    static let fmCallNeedles = ["LanguageModelSession(", "FMServeWire.Request(kind: .transcribe",
+                                "FMServeWire.Request(kind: .screen", "FMServeWire.Request(kind: .probe"]
 
     func testEveryRuntimeFMCallSiteRecordsToFMHealth() throws {
         let files = try FileManager.default.contentsOfDirectory(
@@ -42,7 +45,8 @@ final class FMAccountingAuditTests: XCTestCase {
         for file in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             let name = file.lastPathComponent
             let source = try String(contentsOf: file, encoding: .utf8)
-            let callSites = Self.functionBodies(containing: "LanguageModelSession(", in: source)
+            // FM を呼ぶ形は2つ: 自分でセッションを作る / 常駐プロセスへ実呼び出しを頼む
+            let callSites = Self.fmCallNeedles.flatMap { Self.functionBodies(containing: $0, in: source) }
             if let reason = exempt[name] {
                 // 免除ファイルは「本当に FM を呼んでいる」ことだけ確かめる(誤って残った免除の掃除)
                 XCTAssertFalse(callSites.isEmpty,
@@ -55,7 +59,7 @@ final class FMAccountingAuditTests: XCTestCase {
                 // 書くと、記録の必要性を説明したコメント自身に一致して**変異で落ちない無力な
                 // テスト**になる(実際にそれで一度素通りした)。呼び出しの形まで見る。
                 XCTAssertTrue(Self.strippingComments(body).contains("FMHealth.record(kind:"),
-                              "\(name) の \(funcName) が LanguageModelSession を呼ぶのに "
+                              "\(name) の \(funcName) が FM を呼ぶのに "
                               + "FMHealth.record を呼んでいない(fm フィールドとブレーカに載らない)")
             }
         }
