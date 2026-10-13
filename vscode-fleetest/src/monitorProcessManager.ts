@@ -8,6 +8,7 @@ import type { Readable, Writable } from "node:stream";
 import { childEnv } from "./childEnv";
 import { resolveProjectName } from "./config";
 import { checkForDyldLaunchFailure } from "./dyldLaunchNotice";
+import { issuerDisplayName, readIssuerAliases } from "./issuerLabel";
 import { deviceCommandArgs } from "./remoteRunArgs";
 import { missingProjectMessage } from "./projectResolutionMessages";
 import { t } from "./i18n";
@@ -777,9 +778,15 @@ export class MonitorProcessManager {
   postMachineLocks(): void {
     for (const [machine, lock] of this.machineLocks) {
       this.deps.post({
-        type: "machineLock", machine, held: isConfirmedHeld(lock), issuer: lock.issuer, mine: lock.mine,
+        type: "machineLock", machine, held: isConfirmedHeld(lock), issuer: this.issuerLabel(lock.issuer), mine: lock.mine,
       });
     }
+  }
+
+  /** webview に出す持ち主の名前(`USER@hostname` の hostname をマシン名へ。issuerLabel.ts)。
+   *  表は毎回読み直す —— 設定タブでマシン名を付け替えたら次の占有の変化から効く */
+  private issuerLabel(issuer: string | undefined): string | undefined {
+    return issuer === undefined ? undefined : issuerDisplayName(issuer, readIssuerAliases(this.deps.workspaceRoot));
   }
 
   /** その機械で誰かが run を走らせているか(手元は LOCAL_MACHINE_KEY)。破壊的操作の確認が
@@ -848,7 +855,7 @@ export class MonitorProcessManager {
     // webview の行キーは手元が空文字(hostCharts.js の hmRows)。**そのまま渡す**
     this.deps.post({
       type: "machineLock", machine,
-      held: isConfirmedHeld(after), issuer: after?.issuer, mine: after?.mine ?? false,
+      held: isConfirmedHeld(after), issuer: this.issuerLabel(after?.issuer), mine: after?.mine ?? false,
     });
     this.deps.notifyMachineLocks(this.machineLocks);
   }

@@ -317,6 +317,8 @@ function updateIdleRow(row, entry) {
   row.scopeEl.textContent = '';
   row.progressEl.style.display = 'none';
   row.countsEl.textContent = '';
+  // 空でも箱を残すと列の gap と margin-right ぶん「空き」が右へずれる(ユーザー指摘)ので畳む
+  row.countsEl.style.display = 'none';
   row.notesEl.style.display = 'none';
   row.issuerEl.style.display = 'none';
   row.timeEl.style.display = 'none';
@@ -618,6 +620,7 @@ function updateRow(row, run) {
   row.run = run;
   row.idle = null;
   row.statusEl.style.display = 'none';
+  row.countsEl.style.display = '';
   row.timeEl.style.display = '';
   row.rowEl.classList.toggle('run-board-row-hasFailed', run.failed > 0);
   showMachineBadge(row, run.machine);

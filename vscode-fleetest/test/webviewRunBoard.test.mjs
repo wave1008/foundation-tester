@@ -735,6 +735,9 @@ test("run の無い機械の行も同じ2カラム(名前は左・状態は右)"
   const status = header.querySelector(".run-board-idle-machine-status");
   assert.equal(status.textContent, "空き");
   assert.ok(status.closest(".run-board-col-right"), "状態は右カラムに居る");
+  // 「空き」は右カラムの左端(空の進捗数の箱を残すと gap と margin ぶん右へずれる)
+  assert.equal(header.querySelector(".run-board-counts").style.display, "none");
+  assert.equal(header.querySelector(".run-board-progress").style.display, "none");
 });
 
 /** 左カラムの中身なりの幅(jsdom は寸法を持たないので、字数 × perChar を返す)。
