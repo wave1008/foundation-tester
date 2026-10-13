@@ -52,20 +52,24 @@ final class FMServeServerTests: XCTestCase {
                       "死活の確かめが拒否を死と読む")
     }
 
-    /// 暖機が載せたままにできない機械(呼び出しの中で載せ直す = 遅い回が続く)では暖機をやめる。単発の遅い回ではやめない
-    func testKeepWarmGivesUpOnlyAfterConsecutiveSlowCalls() {
-        XCTAssertEqual(FMServeServer.keepWarmGiveUpAfterSlowCalls, 5)
-        XCTAssertTrue(FMServeServer.keepWarmStillUseful(consecutiveSlowCalls: 0))
-        XCTAssertTrue(FMServeServer.keepWarmStillUseful(consecutiveSlowCalls: 4))
-        XCTAssertFalse(FMServeServer.keepWarmStillUseful(consecutiveSlowCalls: 5))
+    /// 暖機が載せたままにできない機械(呼び出しの中で載せ直す = 遅い回が多い)では暖機をやめる。判断は直近 20 回の割合で、
+    /// 窓が埋まるまでは決めない・遅い回が速い回に挟まっていても数える(M1mini は「続いた回数」では一度も満たさなかった)
+    func testKeepWarmGivesUpOnTheShareOfSlowCalls() {
+        XCTAssertEqual(FMServeServer.keepWarmWindow, 20)
+        XCTAssertEqual(FMServeServer.keepWarmGiveUpSlowCalls, 6)
+        func history(slowAt: Set<Int>, count: Int = 20) -> [Bool] { (0..<count).map { slowAt.contains($0) } }
+        XCTAssertTrue(FMServeServer.keepWarmStillUseful(recent: history(slowAt: [0, 1, 2, 3, 4, 5, 6], count: 19)),
+                      "窓が埋まる前に決めた")
+        XCTAssertTrue(FMServeServer.keepWarmStillUseful(recent: history(slowAt: [3, 4, 10, 15, 19])), "20 回中 5 回でやめた")
+        XCTAssertFalse(FMServeServer.keepWarmStillUseful(recent: history(slowAt: [1, 4, 7, 10, 13, 16])),
+                       "遅い回が速い回に挟まった 20 回中 6 回でやめていない")
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let server = (try? String(contentsOf: root.appendingPathComponent("Sources/FTFoundationModels/FMServeServer.swift"),
                                   encoding: .utf8)) ?? ""
         let tick = PreloadSlotTests.functionBody(named: "tick", in: server) ?? ""
-        XCTAssertTrue(tick.contains("if keepWarmStillUseful(consecutiveSlowCalls:"), "合間の判断が暖機をやめる判断を通っていない")
-        XCTAssertTrue(tick.contains("count = took > slowKeepAliveSeconds ? count + 1 : 0"),
-                      "遅い回の数え方が「続いた回数」でない(速い回で数え直していない)")
+        XCTAssertTrue(tick.contains("if keepWarmStillUseful(recent:"), "合間の判断が暖機をやめる判断を通っていない")
+        XCTAssertTrue(tick.contains("history.append(took > slowKeepAliveSeconds)"), "暖機の所要を記録していない")
     }
 
     /// 間隔が過ぎたら撃つ・過ぎる前は撃たない・死んでいると分かっている FM には撃たない

@@ -34,16 +34,20 @@ public enum FMServeServer {
     /// 呼び出しの初めに使った部品が降ろされうる
     static let slowKeepAliveSeconds: Double = 4
 
-    /// 遅い暖機(`slowKeepAliveSeconds` 超え)がこの回数続いたら、このプロセスの間は暖機をやめる。**理由**: 呼び出し1回の中で
-    /// 部品を載せ直している = この機械の ANE には全部品が収まらず、暖機は載せたままにできないまま積み下ろしを撃ち続けるだけになる
-    /// (M1mini・メモリ 8GB: 98 回中 97 回が 4.6〜5.4 秒・60 秒で降ろし 137 回)。**根拠**: 遅い回は M2Ultra で 0・M1Max で数分に
-    /// 1回の単発(10.8 秒)・M1mini でほぼ毎回 = 5 回続けば単発の外れ値と区別できる。**尽きたとき**: 暖機をやめるだけ
-    /// (FM の呼び出しは頼まれたときだけ = 常駐プロセスを入れる前と同じ。1行ログへ出す)
-    static let keepWarmGiveUpAfterSlowCalls = 5
+    /// 直近 `keepWarmWindow` 回の暖機のうち、遅い回(`slowKeepAliveSeconds` 超え)が `keepWarmGiveUpSlowCalls` 回以上なら、
+    /// このプロセスの間は暖機をやめる。**理由**: この機械の ANE には全部品が収まらず、暖機は載せたままにできないまま積み下ろしを
+    /// 撃ち続けるだけになっている(M1mini・メモリ 8GB: 60 秒で降ろし 129 回・載せ直し 82 回・遅い回はおよそ半分)。**「続いた回数」で
+    /// 見ない** —— M1mini は速い回が間に挟まり、5 回続く条件は一度も満たさなかった。**根拠**: 遅い回は M2Ultra で 0・M1Max で数分に
+    /// 1 回・M1Ultra は E2EX 一式の負荷の下で約 30 分に 6 回(続いても 2 回)= 20 回中 6 回(30%)なら M1mini だけを分けられる。
+    /// **尽きたとき**: 暖機をやめるだけ(FM の呼び出しは頼まれたときだけ = 常駐プロセスを入れる前と同じ。1 行ログへ出す)
+    static let keepWarmWindow = 20
+    static let keepWarmGiveUpSlowCalls = 6
 
-    /// 暖機を続けるか(純粋関数)。遅い暖機が `keepWarmGiveUpAfterSlowCalls` 回続いたらやめる
-    static func keepWarmStillUseful(consecutiveSlowCalls: Int) -> Bool {
-        consecutiveSlowCalls < keepWarmGiveUpAfterSlowCalls
+    /// 暖機を続けるか(純粋関数)。`recent` は直近の暖機が遅かったか(古い順・最大 `keepWarmWindow` 件)。
+    /// 窓が埋まるまでは判断しない(起動直後の載せ込みの遅さで決めない)
+    static func keepWarmStillUseful(recent: [Bool]) -> Bool {
+        guard recent.count >= keepWarmWindow else { return true }
+        return recent.suffix(keepWarmWindow).filter { $0 }.count < keepWarmGiveUpSlowCalls
     }
 
     /// 受け付けループが暖機・寿命を判断する刻み[ms]。暖機の間隔より細かければよい
@@ -89,7 +93,7 @@ public enum FMServeServer {
             stopRequested.withLock { $0 = true }
             return
         }
-        if keepWarmStillUseful(consecutiveSlowCalls: consecutiveSlowKeepAlives.withLock { $0 }),
+        if keepWarmStillUseful(recent: recentKeepAlives.withLock { $0 }),
            shouldWarm(lastFMUse: state.lastFMUse, now: now, knownDead: FMLiveness.isKnownDead(.vision)),
            keepAliveInFlight.withLock({ inFlight -> Bool in
                if inFlight { return false }
@@ -106,13 +110,16 @@ public enum FMServeServer {
                 if took > slowKeepAliveSeconds || gap > slowKeepAliveSeconds {
                     log(String(format: "slow keep-warm: the call took %.1fs after a %.1fs gap since the last FM use", took, gap))
                 }
-                let slowRun = consecutiveSlowKeepAlives.withLock { count -> Int in
-                    count = took > slowKeepAliveSeconds ? count + 1 : 0
-                    return count
+                let recent = recentKeepAlives.withLock { history -> [Bool] in
+                    history.append(took > slowKeepAliveSeconds)
+                    if history.count > keepWarmWindow { history.removeFirst(history.count - keepWarmWindow) }
+                    return history
                 }
-                if !keepWarmStillUseful(consecutiveSlowCalls: slowRun), slowRun == keepWarmGiveUpAfterSlowCalls {
-                    log("keep-warm stopped: \(slowRun) calls in a row took over \(Int(slowKeepAliveSeconds))s, so this machine"
-                        + " cannot keep the model loaded; FM is now loaded only when a request comes")
+                // やめた後は暖機を撃たない = この行は1度しか出ない
+                if !keepWarmStillUseful(recent: recent) {
+                    log("keep-warm stopped: \(recent.filter { $0 }.count) of the last \(recent.count) calls took over"
+                        + " \(Int(slowKeepAliveSeconds))s, so this machine cannot keep the model loaded;"
+                        + " FM is now loaded only when a request comes")
                 }
                 clock.withLock { $0.lastFMUse = Date() }
                 keepAliveInFlight.withLock { $0 = false }
@@ -121,7 +128,7 @@ public enum FMServeServer {
     }
 
     private static let keepAliveInFlight = Mutex(false)
-    private static let consecutiveSlowKeepAlives = Mutex(0)
+    private static let recentKeepAlives = Mutex<[Bool]>([])
 
     /// 小さな画像の転写を1回(答えは見ない・記録しない = 規律③)。本番の転写と同じ instructions・prompt で撃ち、同じ部品
     /// (画像トークナイザ・mm_guard・安全判定)を載せたままにする。**毎回新しいセッション**(1 つのセッションで生成を繰り返すと
