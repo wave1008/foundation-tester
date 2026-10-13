@@ -61,12 +61,12 @@ Element lookups retry until a timeout instead of failing on the first miss:
 Both accept an explicit `waitSeconds:` (fractional seconds allowed, e.g. `waitSeconds: 1.2`) to
 override the default for a single call.
 
-## Visibility and text visual verification
+## Visibility and text visibility check
 
 `requireVisible: false` skips the covered/off-screen check that normally backs `exist`
 (where it flips a match to failure) and `select` (where it returns an empty element). This
-extra visibility pass is on by default (it does not run when both `fmTextOcclusionCheck` and
-`ocrTextOcclusionCheck` are set to `false`, and then the flag has nothing to skip).
+extra visibility pass is on by default (it does not run when both `fmTextVisibilityCheck` and
+`ocrTextVisibilityCheck` are set to `false`, and then the flag has nothing to skip).
 
 ### Link
 - [index](../../index.md)

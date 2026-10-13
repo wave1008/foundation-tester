@@ -49,7 +49,7 @@ function sampleModel() {
       machines: ["mac-1"],
       triggers: ["cli"],
       issuers: ["alice"],
-      fmSettings: { heal: true, fmTextOcclusionCheck: true, screenLooksLike: false, ocrTextOcclusionCheck: true },
+      fmSettings: { heal: true, fmTextVisibilityCheck: true, screenLooksLike: false, ocrTextVisibilityCheck: true },
       scenarioTotal: 2, scenarioPassed: 1, scenarioFailed: 1, scenarioTimedOut: 0, scenarioInterrupted: 0, scenarioSkipped: 0,
       stepTotal: 2, stepPassed: 1, stepHealed: 0, stepPassedViaFallback: 0, stepFailed: 1, stepSkipped: 0, stepInconclusive: 0,
     },

@@ -24,9 +24,9 @@ for how `--profile` selects one.
 | `app` | string | — | Name of the `apps/<name>.json` profile to use. The run profile inherits that app profile's `platform` (target OS); `devices` of other OSes are ignored at run time ([profiles.md](./profiles.md)) |
 | `devices` | array | — | Device entities to run (iOS/Android can mix in the same list). Each entry: `platform` (`"ios"`/`"android"`, required), `machine` (the machine it lives on — `"local"` for this Mac, or a name registered with `fleetest remote machines add`), `name` (required; unique together with `machine`; for an iOS Simulator this is the Simulator's own name), `enabled` (`false` keeps it listed but does not run it; default = run it), plus the device's own body keys (`osVersion`/`udid`/`avd`/`serial`/`kind`/`port`/`engine`/`model` — see [profiles.md](./profiles.md)) |
 | `heal` | bool | `true` for `--profile` runs, `false` for a plain `fleetest run` | Allow selector self-healing (fingerprint matching; see [self_healing.md](../running/self_healing.md)). Independent of the FM- and OCR-based toggles below — self-healing does not use FM |
-| `fmTextOcclusionCheck` | bool | `true` | Use FM (Foundation Models, experimental — see [environments.md](../../overview/environments.md)) for text visual verification. See [Text visual verification](../testclass/text_visual_check.md). FM is called only when this or `screenLooksLike` is `true` |
+| `fmTextVisibilityCheck` | bool | `true` | Use FM (Foundation Models, experimental — see [environments.md](../../overview/environments.md)) for text visibility check. See [Text visibility check](../testclass/text_visibility_check.md). FM is called only when this or `screenLooksLike` is `true` |
 | `screenLooksLike` | bool | `true` | Enable `screenLooksLike` (FM visual verification). When `false`, those steps are skipped rather than failing |
-| `ocrTextOcclusionCheck` | bool | `true` | Use on-device OCR (Vision) for text visual verification. Independent of `fmTextOcclusionCheck`; the verification runs when either is `true` (and not at all when both are `false`). When FM gives no verdict, this reading alone decides. See [Text visual verification](../testclass/text_visual_check.md) |
+| `ocrTextVisibilityCheck` | bool | `true` | Use on-device OCR (Vision) for text visibility check. Independent of `fmTextVisibilityCheck`; the verification runs when either is `true` (and not at all when both are `false`). When FM gives no verdict, this reading alone decides. See [Text visibility check](../testclass/text_visibility_check.md) |
 | `preferCheckStateClassifier` | bool | `true` | For `checkIsON` / `checkIsOFF`, prefer CheckStateClassifier (an image classifier trained from the sample images in the project's `vision/classifiers/CheckStateClassifier/[ON]` and `[OFF]`) over accessibility. When `false`, it is used only for elements whose accessibility reports no check state. It has no effect without sample images |
 | `reportDir` | string | `"reports"` | Where to write Markdown reports (relative to the project root) |
 | `defaultTimeout` | number (seconds) | `5` | Default timeout for DSL commands that take `waitSeconds:` |
@@ -50,15 +50,15 @@ for how `--profile` selects one.
 
 ## FM usage
 
-FM (Foundation Models) is called only when `fmTextOcclusionCheck` or `screenLooksLike` is `true`;
+FM (Foundation Models) is called only when `fmTextVisibilityCheck` or `screenLooksLike` is `true`;
 both default to `true`. When both are
 `false`, FM is never called for that run — set both to `false` to keep a run from calling FM at
-all. With `fmTextOcclusionCheck` set to `false`, the verification still runs on OCR alone while
-`ocrTextOcclusionCheck` is `true` (FM is not called). `heal` does not use FM, so it is governed only by its own key.
+all. With `fmTextVisibilityCheck` set to `false`, the verification still runs on OCR alone while
+`ocrTextVisibilityCheck` is `true` (FM is not called). `heal` does not use FM, so it is governed only by its own key.
 Whether self-healing is on by default depends on how you invoke the run: **a `--profile` run
 defaults `heal` to ON**, while a plain `fleetest run` (no profile) defaults it to OFF.
 `fleetest run --profile <name> --set <key>=<value>` overrides almost any key on this table for one
-run without editing the profile file — e.g. `--set heal=false`, `--set fmTextOcclusionCheck=false`,
+run without editing the profile file — e.g. `--set heal=false`, `--set fmTextVisibilityCheck=false`,
 `--set reportDir=/tmp/out`, `--set defaultTimeout=8` (the value must match the
 key's type shown above; repeatable). It works with or without `--profile` — except the keys that need a run
 profile's device list or supply pipeline (`iosInappEngine`, `updateWebView`, `wipeDataOnBloat`,

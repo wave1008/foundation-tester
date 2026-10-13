@@ -40,7 +40,7 @@
 > **iOS / Android は両方揃える必要はない**。テストする側だけ用意すればよく、少なくとも片方があればよい。
 
 > macOS 26 では FM(Foundation Model) の**視覚検証だけ**が使えない(画像入力 API が macOS 27+)。
-> `screenLooksLike` は自動で無効になり、テキストの視覚検証は FM の段を除いて(OCR の読みで)動く。他は制限なく動く。
+> `screenLooksLike` は自動で無効になり、テキストの可視性検証は FM の段を除いて(OCR の読みで)動く。他は制限なく動く。
 >
 > **FM の機能は experimental**。モデルは日本語にも対応し、システム言語は日本語のままでよい
 > (macOS 27.0 で確認)。日本語 UI に対する判定精度は未計測。`availability` は available を
@@ -224,7 +224,7 @@ TestProjects/SampleApp/
 
 ```jsonc
 // profiles/runs/all.json
-// FM 機能のトグル: fmTextOcclusionCheck(テキストの視覚検証)/ screenLooksLike は
+// FM 機能のトグル: fmTextVisibilityCheck(テキストの可視性検証)/ screenLooksLike は
 // いずれも既定 true(詳細は docs/design.md §11.2)。FM が呼ばれるのはどちらかが true のときだけ。
 // heal(自己修復)はこれらから独立した既定 true
 // avd は AVD の ID と表示名のどちらでも可
@@ -614,7 +614,7 @@ Sources/
   FTScenarioRunner/ fleetest-scenarios-<project> の CLI 実装(list / run・NDJSON イベント)
   FTCore/          ステップモデル / AppDriver / StepExecutor / プロジェクト・プロファイルモデル(FM 非依存・外部依存ゼロ)
   FTCoreSimShim/   CoreSimulator 直叩きシム(Objective-C。dlopen+objc_msgSend で私有 API を叩き、利用不能なら simctl へフォールバックさせる)
-  FTFoundationModels/ FM 呼び出し(テキストの視覚検証・screenLooksLike・下書き生成・命名・FM の死活と診断)
+  FTFoundationModels/ FM 呼び出し(テキストの可視性検証・screenLooksLike・下書き生成・命名・FM の死活と診断)
   FTBridgeClient/  iOS ブリッジの HTTP クライアントと起動管理・SimulatorCatalog・BridgeProvisioner
   FTAndroid/       Android ドライバ(常駐ブリッジ)・AndroidDeviceCatalog・ProfileWorkerFactory
   FTEmulatorGrpc/  Android エミュレータの gRPC(EmulatorController)直叩き。スクリーンショット等を adb より高速に取得し、失敗時は FTAndroid が adb へフォールバックする
@@ -630,7 +630,7 @@ docs/              設計書・実装知見
 
 `fleetest run --profile <名前> --quiet --junit reports/junit.xml` が exit code(0/1)と
 JUnit XML を出す。self-hosted の Mac(Jenkins・AWS EC2 Mac 等)前提・
-Apple Intelligence 不要(無ければ `screenLooksLike` は判定されずに通り、テキストの視覚検証は OCR だけで判定する。GitHub ホストランナーはサポート外)。
+Apple Intelligence 不要(無ければ `screenLooksLike` は判定されずに通り、テキストの可視性検証は OCR だけで判定する。GitHub ホストランナーはサポート外)。
 Jenkins の例と flaky の扱いは [docs/ci.md](docs/ci.md)。
 
 実行結果は `<project>/results/runs/<年月>/<runID>/` に JSON で貯まる。
@@ -651,7 +651,7 @@ Jenkins の例と flaky の扱いは [docs/ci.md](docs/ci.md)。
 
 - `swift run fleetest ...` は毎回 SwiftPM のチェックで **約1.6秒** 上乗せされる。
   連続実行するときは `.build/debug/fleetest ...` を直接叩くと速い(MCP は常駐なので無関係)
-- FM の応答時間: 視覚検証(テキストの視覚検証・screenLooksLike)数秒(すべてオンデバイス・無料)
+- FM の応答時間: 視覚検証(テキストの可視性検証・screenLooksLike)数秒(すべてオンデバイス・無料)
 - 計測手順・調整ノブ・設計原則(不採用の施策含む)は
   [パフォーマンスチューニングガイド](docs/performance-tuning.md)を参照
 

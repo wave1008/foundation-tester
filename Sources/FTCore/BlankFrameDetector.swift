@@ -86,12 +86,12 @@ public enum BlankFrameDetector {
     /// アプリの領域が**一色**(黒でも白でも)。要素の部分に何も描かれていないので、分類も照合も成立しない
     /// (実測: 真っ黒・真っ白の絵を ON のスイッチでも [OFF]・確信度 1.00 と答え、findImage は「見つからない」=
     /// `isEmpty` の誤った緑)。ステータスバーの有無で分けない —— アイコンの数でセルの平均が割れたり割れなかったりする。
-    /// **凍結の確定には使わない**・**テキストの視覚検証には使わない**(あちらは白を「描かれていない」の事実として扱う)
+    /// **凍結の確定には使わない**・**テキストの可視性検証には使わない**(あちらは白を「描かれていない」の事実として扱う)
     public static func isUnjudgeable(pngData: Data) -> Bool {
         isUniform(pngData: pngData, ignoringTopRows: blackFrameIgnoredTopRows)
     }
 
-    /// 上端の帯の行数を呼び手が決める版(32 分割の行数)。**呼ぶのはテキストの視覚検証の失敗文に事実を添える経路だけ**
+    /// 上端の帯の行数を呼び手が決める版(32 分割の行数)。**呼ぶのはテキストの可視性検証の失敗文に事実を添える経路だけ**
     /// (`StepExecutor.blankAppAreaFact`)。行数はその画面の木から導く(いちばん上の要素より上 = ステータスバーの帯)
     public static func isUniform(pngData: Data, ignoringTopRows topRows: Int) -> Bool {
         let grid = blackFrameGrid
@@ -153,7 +153,7 @@ public enum BlankFrameDetector {
     /// セル平均の各チャンネルの上限。実測の黒い絵は 0。暗いテーマの文字入りのセルは 32 x 32 でもこれを超える
     static let blackFrameMaxChannel: UInt8 = 12
 
-    /// テキストの視覚検証の対象が **WebView の内側**にあるなら、その WebView の frame(純粋関数)。
+    /// テキストの可視性検証の対象が **WebView の内側**にあるなら、その WebView の frame(純粋関数)。
     /// 対象が WebView そのもの・中心が WebView の外なら nil
     public static func enclosingWebViewFrame(of element: ElementInfo, in elements: [ElementInfo]) -> FTRect? {
         guard element.type.lowercased() != "webview" else { return nil }

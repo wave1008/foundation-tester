@@ -122,8 +122,8 @@ function fmSettingsText(fm: ResultsExportFmSettings | null): string {
   if (fm === null) return "";
   const parts: readonly [boolean | null, MessageKey][] = [
     [fm.heal, "resultsExport.fm.heal"],
-    [fm.fmTextOcclusionCheck, "resultsExport.fm.fmTextOcclusionCheck"],
-    [fm.ocrTextOcclusionCheck, "resultsExport.fm.ocrTextOcclusionCheck"],
+    [fm.fmTextVisibilityCheck, "resultsExport.fm.fmTextVisibilityCheck"],
+    [fm.ocrTextVisibilityCheck, "resultsExport.fm.ocrTextVisibilityCheck"],
     [fm.screenLooksLike, "resultsExport.fm.screenLooksLike"],
   ];
   return parts

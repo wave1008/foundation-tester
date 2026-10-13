@@ -393,7 +393,7 @@ public enum ScenarioHost {
     /// `dryRun` の run では起こさない —— ステップを実行しないので OCR も走らず、しかもコンパイルは親の死を
     /// 生き延びる子(下の doc)なので、dry-run を使う終了テスト(`CrossLayerTerminationTests`)が
     /// 「子孫が残った」と正しく落とす
-    /// `compilesOCR`: その run でテキストの視覚検証(FM の段か OCR の段)が有効か(`ocrCompileNeeded`。既定値を置かない =
+    /// `compilesOCR`: その run でテキストの可視性検証(FM の段か OCR の段)が有効か(`ocrCompileNeeded`。既定値を置かない =
     /// 呼び手が run の設定から決める)。**切った run でコンパイルを起こさない** —— プロファイルで OCR を切っても、MCP が `--set` で
     /// 切っても、ここが設定を見ずに 20〜45 秒 × 2 のコンパイルを起こしていた
     public static func listForRun(project: TestProject, dryRun: Bool, compilesOCR: Bool) throws -> [ScenarioInfo] {
@@ -402,9 +402,9 @@ public enum ScenarioHost {
         return all
     }
 
-    /// 子の `FTRuntime` がコンパイルを頼む条件と同じ(fmTextOcclusionCheck || ocrTextOcclusionCheck)。2箇所で別に書かない
-    public static func ocrCompileNeeded(fmTextOcclusionCheck: Bool, ocrTextOcclusionCheck: Bool) -> Bool {
-        fmTextOcclusionCheck || ocrTextOcclusionCheck
+    /// 子の `FTRuntime` がコンパイルを頼む条件と同じ(fmTextVisibilityCheck || ocrTextVisibilityCheck)。2箇所で別に書かない
+    public static func ocrCompileNeeded(fmTextVisibilityCheck: Bool, ocrTextVisibilityCheck: Bool) -> Bool {
+        fmTextVisibilityCheck || ocrTextVisibilityCheck
     }
 
     private static let ocrCompileStarted = Mutex(false)
@@ -606,7 +606,7 @@ public enum ScenarioHost {
             }
         }
         if !fm.enabled { args.append("--no-fm") }
-        if !fm.fmTextOcclusionCheck { args.append("--no-fm-text-occlusion-check") }
+        if !fm.fmTextVisibilityCheck { args.append("--no-fm-text-visibility-check") }
         if !fm.screenLooksLike { args.append("--no-screen-looks-like") }
         if dryRun { args.append("--dry-run") }
         if let port = connection.port { args += ["--port", String(port)] }
@@ -625,9 +625,9 @@ public enum ScenarioHost {
         }
         // **FM とは無関係**(幾何ヒューリスティックの既定)なので FMConfig には入れない
         if !containerInference { args.append("--no-container-inference") }
-        // occlusion guard の OCR 事前判定(FMConfig の外。fmTextOcclusionCheck が off なら guard 自体が
+        // occlusion guard の OCR 事前判定(FMConfig の外。fmTextVisibilityCheck が off なら guard 自体が
         // 走らないためこの値は無意味 —— 別ゲートは追加しない)
-        if !occlusionOCR { args.append("--no-occlusion-ocr") }
+        if !occlusionOCR { args.append("--no-ocr-text-visibility-check") }
         if !preferCheckStateClassifier { args.append("--no-prefer-check-state-classifier") }
         if !findImagePrewarm { args.append("--no-find-image-prewarm") }
         if let debug {

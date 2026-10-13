@@ -832,7 +832,7 @@ occlusion-guard の値を得る** —— 落ちずに誤る型。
 直したのは3つ: ①`FTCore.ScenarioExecutionSettings` に束ねて**解かずに運ぶ**(既定値はこの型の
 init 1箇所)②変換 init(`ResolvedProfile` / `DeviceIndependentRunSettings` から)**だけ**を
 写像元にし、`Mirror` で「既定のままの欄が1つも無い」ことを固定 ③`occlusionOCR` へ改名
-(子のフラグも `--no-occlusion-ocr`。旧 `--no-ocr` は `Unknown option` で明示的に落ちるので、
+(子のフラグも `--no-ocr-text-visibility-check`。旧 `--no-ocr` は `Unknown option` で明示的に落ちるので、
 ホストと子がずれても沈黙しない)。
 
 **副産物**: `OCRToggleWiringTests` が6本から3本になった。「値が7層を通っているか」をソース走査で
@@ -1087,6 +1087,10 @@ heal 無効」警告(§21 で heal 有効時だけに絞ったばかりだった
 `falsePositiveCheck` / `ocrFalsePositiveCheck` を `textVisualCheck` / `ocrTextVisualCheck` に改名した
 (`--set`・run.json の `fmSettings`・拡張の欄・実行バイナリのフラグとも)。2026-09-26 に FM の段と OCR の段を
 独立させたのに合わせ、さらに `fmTextOcclusionCheck` / `ocrTextOcclusionCheck` へ改名した(§54)。
+2026-10-14 に利用者向けの名前を「テキストの可視性検証」(en: text visibility check)へ変えた(ユーザー決定。
+「遮蔽判定」案は、覆い以外の見えない理由 = 画面外・切れ・未描画も赤にする範囲を狭く見せ、検知の極性(§11)を
+名前に戻すので採らなかった)。同日、キーも `fmTextVisibilityCheck` / `ocrTextVisibilityCheck`、実行バイナリのフラグも
+`--no-fm-text-visibility-check` / `--no-ocr-text-visibility-check` へ改名した(プロトコル版 46。手元の結果 JSON は同じ置換で移行済み)。
 **run.json の旧キーを読む互換は無い** —— `FMSettingsRecord` は欄が必須で、旧キーの run.json は
 `RunResultsStore` が `try?` で丸ごと読み飛ばす(stderr に件数の1行だけ)。この日の改名の前の形
 (`falsePositiveCheck`)の run.json は移行しておらず、読めない。
@@ -2773,7 +2777,7 @@ iOS の `BlankWorkerTriage` は回復でポートが変わるので、結果の 
 
 ## 56. 3時間負荷テストで出た穴(2026-09-27)
 
-構成: フリート run の周回(手元 + M1Max / M1Ultra / M1mini、`--set` で `fmTextOcclusionCheck` / `ocrTextOcclusionCheck`
+構成: フリート run の周回(手元 + M1Max / M1Ultra / M1mini、`--set` で `fmTextVisibilityCheck` / `ocrTextVisibilityCheck`
 の組を周回ごとに切り替え・3 本に1本は手元のデバイスを `devices down` して起動前の掃除を通す・7 本に1本は途中で INT)+
 MCP ファズ(実機 iPhone SE3・Pixel 4a・Pixel 3a、フリートと取り合う sim -08 / emulator-5562)+ ライブ操作ファズ
 (予備の sim -10・emulator-5560)+ CLI ファズ(results / retention / clean / `--set` の不正値 / 使用中のデバイスの再起動)。
@@ -2895,7 +2899,7 @@ static の補助関数**を呼ぶためだけに `StepExecutor` を参照して�
 ## 58. 3時間負荷テストで出た穴(2026-09-29)
 
 構成: フリート run の周回(手元 + M1Max / M1Ultra / M1mini の E2E と、手元だけの E2EX を交互に。`--set` で
-`fmTextOcclusionCheck` / `ocrTextOcclusionCheck` の組を周回ごとに切り替え・途中で INT・使用中のブリッジを
+`fmTextVisibilityCheck` / `ocrTextVisibilityCheck` の組を周回ごとに切り替え・途中で INT・使用中のブリッジを
 `--force` で停止・プロファイルのデバイスを `devices down`)+ MCP ファズ(実機 iPhone SE3・Pixel 4a・Pixel 3a、
 フリートと取り合う sim -08 / emulator-5562)+ ライブ操作ファズ(予備の sim -09 / -10・emulator-5570)+ CLI ファズ
 (`results log`・`doctor --bundle`・`run --device` の機械またぎ・`--set` の不正値・`--help` 総当たり)。
@@ -3231,7 +3235,7 @@ api run 側(出し口あり)/ `fleetest run` 側(なし)/ `DispatchPrelock`(mode
 
 ### 62.6 ツールの不具合ではなかったもの(記録のみ)
 - **アプリの領域が全面白に写る**(iOS の CMP・Android の RN/Flutter。木は満載)が同時刻に複数台で出た。FM と Vision も同じ時期に
-  異常(特徴量の距離 0)だった。テキストの視覚検証は白を「描かれていない」事実として扱う設計(`BlankFrameDetector.isUnjudgeable`
+  異常(特徴量の距離 0)だった。テキストの可視性検証は白を「描かれていない」事実として扱う設計(`BlankFrameDetector.isUnjudgeable`
   の注記)なので赤は設計どおり。起動直後の猶予(`firstFrameBlankObserved`)も超えて白いままだった
 - `waitSeconds` の上限なし(§59 と同じ。`1e308` で ft_snapshot が 150 秒超)
 - `run --fleet <無い名前> --dry-run` が「no scenarios」で落ちる = 既定プロジェクトにシナリオが無いだけ(実在の検査は後段にある)
@@ -3243,7 +3247,7 @@ api run 側(出し口あり)/ `fleetest run` 側(なし)/ `DispatchPrelock`(mode
 **台帳**(`Scripts/flake-ledger.py`。結果 JSON の全数・デバイス不要・約1秒): 9/17〜10/1・標準3プロファイル・10本以上の run で、
 **静かなリモート2台は 0.20%(33/16,891)・この Mac(負荷テストを回す機械)は 3.81%**。同じ SUT・同じ版で Android は
 リモート 0/約7,700・この Mac 4〜6%。**率は機械別に割ってから読む**(混ぜると環境差がツールの率に見える)。
-この Mac を静かにして Android 4 SUT を 24 run 回すと 0/996。**この日の実験は全部 FM 死**(07:54Z から)= テキストの視覚検証は
+この Mac を静かにして Android 4 SUT を 24 run 回すと 0/996。**この日の実験は全部 FM 死**(07:54Z から)= テキストの可視性検証は
 OCR だけの弱い緑。**フレークの実験は run.json の `fmDead` を先に見る**。
 
 **並列度の実験**(この Mac・Android 4 SUT・エミュレータ 6 台 / 10 台を交互に各3セット・各 498 実行):
@@ -3490,7 +3494,7 @@ watchdog(基準 30 秒)の窓は本人確認・操作・観測をまとめて数
 - **M1mini への ssh が接続確立の途中で切られた**(`kex_exchange_identification: Connection reset by peer`)。リモートの
   コマンドは1度も走らず、そのレーンの2本が結果なし(exit 255)。sshd の接続制限(MaxStartups)が疑わしいが未確認。
   何も実行されていないことを文言の照合で判定して撃ち直す形は、仕分けを文言で決めない規律と衝突するので入れていない
-- **xcuitest の手元レーンの赤**(1周で 29 本中 11 本)は、テキストの視覚検証の OCR 段が絵から何も読めなかった反転で、
+- **xcuitest の手元レーンの赤**(1周で 29 本中 11 本)は、テキストの可視性検証の OCR 段が絵から何も読めなかった反転で、
   **スクリーンショットはアプリの領域が真っ白**(木には要素がある)= Compose Multiplatform の iOS アプリが負荷下で描画できて
   いない状態を正しく捉えた赤。配信 32 本が張られていた。同じ周回の M1Ultra の xcuitest レーンは全緑
 - 実機 SE3 で `ft_type` が 63 秒止まった後に USB の転送路が固まり(wedged の診断は正しく出た)、次の run の供給が死んだ台帳を
@@ -3518,7 +3522,7 @@ E2EX-CMP android を各 10 周、ImeTracker の onRequestShow→onShown 計 140 
 ### 66.5 負荷テスト後の xcuitest エンジンの E2E(`--ios-xcuitest --local`)
 E2E-iOS 54・E2E-Flutter 45 は全緑。E2E-RN の赤は全部 sim-08 で、**負荷テストの MCP ファズが横向きにしたまま残した**
 (run 冒頭の `warnOnNonPortraitIOS` が警告)+ 写真の権限アラートが残っていた —— 縦に戻してアラートを閉じると 46 本全緑。
-E2E-CMP は 56 本中 4〜8 本が赤のまま。中身は**テキストの視覚検証の OCR 段の反転**([notRendered]・observed="")と
+E2E-CMP は 56 本中 4〜8 本が赤のまま。中身は**テキストの可視性検証の OCR 段の反転**([notRendered]・observed="")と
 kAXErrorAPIDisabled(§65.7)で、反転の回のスクリーンショットは**ボタンの形だけ描かれて文字が1つも無い**(CMP の iOS アプリが
 文字を描けていない。simctl で撮り直すと描かれている = 毎回ではない)。**HEAD 対照(Swift 6 化の前の da534c52)でも
 56 本中 5 本が同じ型で赤** = 移行による退行ではない。FM が死んだ機械だけに出る(OCR だけで判定するため)。
@@ -4087,7 +4091,7 @@ E2EY は既定で赤 10 本・XCUITest で赤 13 本)。負荷テストは実機
   = 届いていない」として追送しうる(二重入力)
 - 何も読めなかったときだけ、埋め込みの試験画像(`RegionText.livenessProbePNG`)を同じ設定で読ませる(`readerIsAlive`。正常系の
   コストは 0)。死んでいればリンク文字は理由を言って失敗、読み返しは追送しない。注入口 `FT_FAKE_OCR_DEAD`(陽性対照で文言を確認)
-- **テキストの視覚検証は対象外**: OCR が空でもインク量が多ければ判定不能(素通り)に倒れ、「描かれていない」はインクが無いときだけ。
+- **テキストの可視性検証は対象外**: OCR が空でもインク量が多ければ判定不能(素通り)に倒れ、「描かれていない」はインクが無いときだけ。
   負荷テストの「OCR だけの判定で notRendered」の赤は、CMP の iOS で文字だけ描かれない絵(事実)だった
 - リンク文字の OCR が落ちたときは OCR へ渡した絵を証跡に添える(`read-by-link-text-ocr`)
 
@@ -4106,7 +4110,7 @@ E2EY は既定で赤 10 本・XCUITest で赤 13 本)。負荷テストは実機
 - UIKit のチャットの浮いたボタンが inputAccessoryView の下に潜っていた(下端をキーボードの通知でしか上げない作り)→ keyboardLayoutGuide
 - E2EY-Flutter の隠れるバーは、Stack がクリップするのはレイアウトのはみ出しだけで、AnimatedSlide のずれは描画の段なので固定領域の
   上に描かれていた → ClipRect。「セマンティクスが元の位置のまま」として `@Draft` にしていた S0020 の正体もこれ
-- **教訓**: 「既知の制約」として外す前に、SUT が契約どおり描けているかを画面で確かめる。テキストの視覚検証(FM)が生きている機械では
+- **教訓**: 「既知の制約」として外す前に、SUT が契約どおり描けているかを画面で確かめる。テキストの可視性検証(FM)が生きている機械では
   この種の誤りを正しく赤にする(FM が死んでいる間は見逃していた)
 
 ### 76.2 半開きシートの中の探索(sheetExpandDrag)
@@ -4337,4 +4341,4 @@ M2Ultra・M1Ultra の両方で起きた。
 - findImage の特徴量の所要(負荷下・p50): ANE 5.2ms / GPU 固定 12.8ms(初回 2.5 秒のシェーダコンパイル)/ CPU 固定 48.5ms
 - E2E 中のシミュレータのデーモン(`intelligencetasksd` 等)のクラッシュは XPC の権利検査の assert で、FM・ANE とは無関係
   (ANE に繋いだプロセスは名前の取れた全部が fleetest のプロセスだった)
-- `FT_OCCLUSION_OCR=off` が切るのはテキストの視覚検証の OCR の段だけ。findImage・分類器・打鍵の読み返しは Vision を使い続ける
+- `FT_OCCLUSION_OCR=off` が切るのはテキストの可視性検証の OCR の段だけ。findImage・分類器・打鍵の読み返しは Vision を使い続ける

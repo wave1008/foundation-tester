@@ -57,7 +57,7 @@ public enum FMServeServer {
     static let probeTextTokens = 8
     static let probeVisionTokens = 16
 
-    /// 予備のセッション(テキストの視覚検証の instructions で暖めたもの。規律①②)
+    /// 予備のセッション(テキストの可視性検証の instructions で暖めたもの。規律①②)
     static let spare = PreloadSlot<LanguageModelSession>()
 
     private struct Clock: Sendable {
@@ -252,7 +252,7 @@ public enum FMServeServer {
         return CGImageSourceCreateImageAtIndex(source, 0, nil)
     }
 
-    /// テキストの視覚検証の転写。**期待文字列は受け取らない**(prompt は定数。OcclusionVerifier 冒頭)
+    /// テキストの可視性検証の転写。**期待文字列は受け取らない**(prompt は定数。OcclusionVerifier 冒頭)
     @available(macOS 27, *)
     static func transcribe(_ image: CGImage) async throws -> String {
         let session = spare.take(matching: OcclusionVerifier.instructions)

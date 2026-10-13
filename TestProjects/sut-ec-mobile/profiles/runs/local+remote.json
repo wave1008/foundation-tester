@@ -413,7 +413,7 @@
   "record": true,
   "recoverCpuFallbackToGpu": true,
   "screenLooksLike": true,
-  "fmTextOcclusionCheck": true,
+  "fmTextVisibilityCheck": true,
   "updateWebView": true,
   "wipeDataOnBloat": true
 }

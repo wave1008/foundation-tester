@@ -52,7 +52,7 @@ is unavailable.
 - The toolbar charts (MEM / CPU / GPU / Vision / FM) show the Mac's load and the call counts of image analysis (Vision)
   and Foundation Models (FM). When FM becomes unusable, the FM chart turns gray and **N/A** appears
   to its right (hover it for the stopped path, the reason and when it was observed). While it is shown, checks
-  that use FM (`screenLooksLike` and the FM stage of text visual verification) may not run.
+  that use FM (`screenLooksLike` and the FM stage of text visibility check) may not run.
   While the OCR model is being compiled (for example on the first run after a rebuild; tens of seconds), the run waits
   for the compile to finish before starting its first scenario ("Compiling Vision…" appears in the running list).
   Turning on **"Show memory size, CPU cores, and GPU cores in the device monitor"** (Machines section of the

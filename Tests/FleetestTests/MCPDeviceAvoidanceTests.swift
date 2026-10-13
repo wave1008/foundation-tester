@@ -35,7 +35,7 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
             defaultTimeout: nil, scenarioTimeout: nil, wipeDataOnBloat: true, updateWebView: false,
             wipeDataThresholdGB: 8, recoverCpuFallbackToGpu: false, locale: "ja_JP",
             iosPreActionPing: true, containerInference: true,
-            ocrTextOcclusionCheck: true, preferCheckStateClassifier: true, enableAnimations: false,
+            ocrTextVisibilityCheck: true, preferCheckStateClassifier: true, enableAnimations: false,
             homeOnStart: true, playProtectBypass: true, record: false, recordFailuresOnly: false,
             recordBitrateKbps: 1500, recordFullResolution: false, warnings: [])
     }

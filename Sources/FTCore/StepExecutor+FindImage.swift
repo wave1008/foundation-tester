@@ -184,7 +184,7 @@ extension StepExecutor {
         if BlankFrameDetector.isUnjudgeable(pngData: png) {
             throw FindImage.MatchError.blankScreenshot
         }
-        // 絵が木に追いついていなければ照合しない(視覚検証と同じ判定・同じ控えを共有する)。控えが無ければ判定しない
+        // 絵が木に追いついていなければ照合しない(可視性検証と同じ判定・同じ控えを共有する)。控えが無ければ判定しない
         // = 前に検証が1度も走っていない場面(起動 → 遷移 → すぐ照合)は拾えない
         let frame = StaleFrameDetector.judge(png: png, elements: snapshot.elements, previous: lastGuardFrameRecord)
         if judgeStale, frame.isStale || StaleFrameDetector.isKnownStale(png: png, knownStaleImageHash: knownStaleGuardImageHash) {

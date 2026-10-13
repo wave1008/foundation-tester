@@ -37,10 +37,10 @@ const VALID_RUN_PROFILE_SAVE = {
       { platform: "android", name: "エミュ1", enabled: true, machine: "M1Max" },
     ],
     heal: false,
-    fmTextOcclusionCheck: true,
+    fmTextVisibilityCheck: true,
     screenLooksLike: true,
     containerInference: true,
-    ocrTextOcclusionCheck: true,
+    ocrTextVisibilityCheck: true,
     preferCheckStateClassifier: true,
     iosInappEngine: true,
     iosPreActionPing: true,
@@ -96,10 +96,10 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields22�
         app: "",
         devices: [],
         heal: true,
-        fmTextOcclusionCheck: false,
+        fmTextVisibilityCheck: false,
         screenLooksLike: false,
         containerInference: false,
-        ocrTextOcclusionCheck: false,
+        ocrTextVisibilityCheck: false,
         preferCheckStateClassifier: false,
         iosInappEngine: false,
         iosPreActionPing: false,
@@ -167,7 +167,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 空文字・fields
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
-      fields: { ...VALID_RUN_PROFILE_SAVE.fields, fmTextOcclusionCheck: "true" }, // boolean でない
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, fmTextVisibilityCheck: "true" }, // boolean でない
     }),
     false,
   );
@@ -633,10 +633,10 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
       { platform: "android", machine: "M1Max", name: "エミュ1", enabled: false },
     ],
     heal: true,
-    fmTextOcclusionCheck: false,
+    fmTextVisibilityCheck: false,
     screenLooksLike: false,
     containerInference: false,
-    ocrTextOcclusionCheck: false,
+    ocrTextVisibilityCheck: false,
     preferCheckStateClassifier: false,
     iosInappEngine: false,
     iosPreActionPing: false,
@@ -662,10 +662,10 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
       { platform: "android", machine: "M1Max", name: "エミュ1", enabled: false },
     ],
     heal: true,
-    fmTextOcclusionCheck: false,
+    fmTextVisibilityCheck: false,
     screenLooksLike: false,
     containerInference: false,
-    ocrTextOcclusionCheck: false,
+    ocrTextVisibilityCheck: false,
     preferCheckStateClassifier: false,
     iosInappEngine: false,
     iosPreActionPing: false,
@@ -687,16 +687,16 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、heal/screenLooksLike/fmTextOcclusionCheck/containerInference=true、iosInappEngine=true、wipeDataOnBloat=true、wipeDataThresholdGB=''、record=true、recordFailuresOnly/recordFullResolution/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionPing=true)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、heal/screenLooksLike/fmTextVisibilityCheck/containerInference=true、iosInappEngine=true、wipeDataOnBloat=true、wipeDataThresholdGB=''、record=true、recordFailuresOnly/recordFullResolution/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionPing=true)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
     app: "",
     devices: [],
     heal: true,
-    fmTextOcclusionCheck: true,
+    fmTextVisibilityCheck: true,
     screenLooksLike: true,
     containerInference: true,
-    ocrTextOcclusionCheck: true,
+    ocrTextVisibilityCheck: true,
     preferCheckStateClassifier: true,
     iosInappEngine: true,
     iosPreActionPing: true,
@@ -723,10 +723,10 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     app: null,
     devices: "not-an-array",
     heal: "true",
-    fmTextOcclusionCheck: "false",
+    fmTextVisibilityCheck: "false",
     screenLooksLike: "false",
     containerInference: "false",
-    ocrTextOcclusionCheck: "true",
+    ocrTextVisibilityCheck: "true",
     preferCheckStateClassifier: "true",
     iosInappEngine: "false",
     reportDir: false,
@@ -744,10 +744,10 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     app: "",
     devices: [],
     heal: true,
-    fmTextOcclusionCheck: true,
+    fmTextVisibilityCheck: true,
     screenLooksLike: true,
     containerInference: true,
-    ocrTextOcclusionCheck: true,
+    ocrTextVisibilityCheck: true,
     preferCheckStateClassifier: true,
     iosInappEngine: true,
     iosPreActionPing: true,
@@ -805,12 +805,12 @@ test("parseRunProfileForForm: heal/screenLooksLike/containerInference は boolea
 });
 
 // **既定は 2026-09-03 に false → true(ユーザー決定)**。既定値は Swift 側
-// (RunProfile.swift の `runDoc.fmTextOcclusionCheck ?? true`)と JSON スキーマと3箇所で一致させる
-test("parseRunProfileForForm: fmTextOcclusionCheck は boolean ならそのまま返し、欠落/非 boolean は既定値 true", () => {
-  assert.equal(parseRunProfileForForm({ fmTextOcclusionCheck: true }).fmTextOcclusionCheck, true);
-  assert.equal(parseRunProfileForForm({ fmTextOcclusionCheck: false }).fmTextOcclusionCheck, false);
-  assert.equal(parseRunProfileForForm({}).fmTextOcclusionCheck, true);
-  assert.equal(parseRunProfileForForm({ fmTextOcclusionCheck: "true" }).fmTextOcclusionCheck, true);
+// (RunProfile.swift の `runDoc.fmTextVisibilityCheck ?? true`)と JSON スキーマと3箇所で一致させる
+test("parseRunProfileForForm: fmTextVisibilityCheck は boolean ならそのまま返し、欠落/非 boolean は既定値 true", () => {
+  assert.equal(parseRunProfileForForm({ fmTextVisibilityCheck: true }).fmTextVisibilityCheck, true);
+  assert.equal(parseRunProfileForForm({ fmTextVisibilityCheck: false }).fmTextVisibilityCheck, false);
+  assert.equal(parseRunProfileForForm({}).fmTextVisibilityCheck, true);
+  assert.equal(parseRunProfileForForm({ fmTextVisibilityCheck: "true" }).fmTextVisibilityCheck, true);
 });
 
 test("parseRunProfileForForm: homeOnStart は boolean ならそのまま返し、欠落/非 boolean は既定値 true(= 撃つ)", () => {
@@ -1034,10 +1034,10 @@ const BASE_RUN_PROFILE_FIELDS = {
     { platform: "android", name: "エミュ1", enabled: true },
   ],
   heal: false,
-  fmTextOcclusionCheck: true,
+  fmTextVisibilityCheck: true,
   screenLooksLike: true,
   containerInference: true,
-  ocrTextOcclusionCheck: true,
+  ocrTextVisibilityCheck: true,
   preferCheckStateClassifier: true,
   iosInappEngine: true,
   iosPreActionPing: true,
@@ -1056,12 +1056,12 @@ const BASE_RUN_PROFILE_FIELDS = {
   workspace: "",
 };
 
-test("updateRunProfileInObject: 基本更新(app/heal/fmTextOcclusionCheck/screenLooksLike/containerInference/iosInappEngine/wipeDataOnBloat/reportDir)", () => {
+test("updateRunProfileInObject: 基本更新(app/heal/fmTextVisibilityCheck/screenLooksLike/containerInference/iosInappEngine/wipeDataOnBloat/reportDir)", () => {
   const result = updateRunProfileInObject({ app: "old", devices: [], heal: false, reportDir: "old" }, BASE_RUN_PROFILE_FIELDS);
   assert.equal(result.ok, true);
   assert.equal(result.object.app, "sampleapp");
   assert.equal(result.object.heal, false);
-  assert.equal(result.object.fmTextOcclusionCheck, true);
+  assert.equal(result.object.fmTextVisibilityCheck, true);
   assert.equal(result.object.screenLooksLike, true);
   assert.equal(result.object.containerInference, true);
   assert.equal(result.object.iosInappEngine, true);
@@ -1126,8 +1126,8 @@ test("updateRunProfileInObject: recordFailuresOnly/recordFullResolution/enableAn
   }
 });
 
-test("updateRunProfileInObject: heal/fmTextOcclusionCheck/screenLooksLike/containerInference/record は true/false どちらも常時書き込む(キー削除しない)", () => {
-  for (const key of ["heal", "fmTextOcclusionCheck", "screenLooksLike", "containerInference", "record"]) {
+test("updateRunProfileInObject: heal/fmTextVisibilityCheck/screenLooksLike/containerInference/record は true/false どちらも常時書き込む(キー削除しない)", () => {
+  for (const key of ["heal", "fmTextVisibilityCheck", "screenLooksLike", "containerInference", "record"]) {
     const enabled = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, [key]: true });
     assert.equal(enabled.object[key], true, `${key}: true で書き込まれるべき`);
 

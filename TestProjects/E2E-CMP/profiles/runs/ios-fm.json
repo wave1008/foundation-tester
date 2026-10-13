@@ -374,6 +374,6 @@
   ],
   "heal": true,
   "iosInappEngine": true,
-  "fmTextOcclusionCheck": true,
+  "fmTextVisibilityCheck": true,
   "wipeDataOnBloat": false
 }

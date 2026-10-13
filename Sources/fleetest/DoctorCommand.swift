@@ -166,7 +166,7 @@ struct Doctor: AsyncParsableCommand {
             ConsoleOut.out("❌ On-device OCR (Vision text recognition): read nothing from the built-in test image"
                 + " (an image with known text)")
             ConsoleOut.out("   While it stays so, link-text taps fail, typed text cannot be read back from the screen, and the OCR stage of"
-                + " the text visual verification cannot read text. Rebooting this Mac has cleared this state before.")
+                + " the text visibility check cannot read text. Rebooting this Mac has cleared this state before.")
         }
 
         if !printRoots() { problems += 1 }

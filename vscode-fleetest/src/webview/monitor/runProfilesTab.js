@@ -33,9 +33,9 @@ const runProfileEditor = document.getElementById('run-profile-editor');
 const runProfileSection = document.getElementById('run-profile-section');
 const runProfileApp = document.getElementById('run-profile-app');
 const runProfileHeal = document.getElementById('run-profile-heal');
-const runProfileFmTextOcclusionCheck = document.getElementById('run-profile-fm-text-occlusion-check');
+const runProfileFmTextVisibilityCheck = document.getElementById('run-profile-fm-text-visibility-check');
 const runProfileScreenLooksLike = document.getElementById('run-profile-screen-looks-like');
-const runProfileOcrTextOcclusionCheck = document.getElementById('run-profile-ocr-text-occlusion-check');
+const runProfileOcrTextVisibilityCheck = document.getElementById('run-profile-ocr-text-visibility-check');
 const runProfilePreferCheckStateClassifier = document.getElementById('run-profile-prefer-check-state-classifier');
 const runProfileContainerInference = document.getElementById('run-profile-container-inference');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
@@ -248,9 +248,9 @@ function renderRunProfileEditor(fields) {
   renderDeviceRows(fields.devices);
   applyRunProfilePlatformScope();
   runProfileHeal.checked = fields.heal;
-  runProfileFmTextOcclusionCheck.checked = fields.fmTextOcclusionCheck;
+  runProfileFmTextVisibilityCheck.checked = fields.fmTextVisibilityCheck;
   runProfileScreenLooksLike.checked = fields.screenLooksLike;
-  runProfileOcrTextOcclusionCheck.checked = fields.ocrTextOcclusionCheck;
+  runProfileOcrTextVisibilityCheck.checked = fields.ocrTextVisibilityCheck;
   runProfilePreferCheckStateClassifier.checked = fields.preferCheckStateClassifier;
   updateInappOptionsVisibility();
   runProfileIosInappEngine.checked = fields.iosInappEngine;
@@ -373,9 +373,9 @@ function runProfileValuesEqual(fields) {
     runProfileApp.value === fields.app &&
     runProfileDevicesEqual(currentDeviceEntries(), fields.devices) &&
     runProfileHeal.checked === fields.heal &&
-    runProfileFmTextOcclusionCheck.checked === fields.fmTextOcclusionCheck &&
+    runProfileFmTextVisibilityCheck.checked === fields.fmTextVisibilityCheck &&
     runProfileScreenLooksLike.checked === fields.screenLooksLike &&
-    runProfileOcrTextOcclusionCheck.checked === fields.ocrTextOcclusionCheck &&
+    runProfileOcrTextVisibilityCheck.checked === fields.ocrTextVisibilityCheck &&
     runProfilePreferCheckStateClassifier.checked === fields.preferCheckStateClassifier &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileIosPreActionPing.checked === fields.iosPreActionPing &&
@@ -466,9 +466,9 @@ function collectRunProfileFields() {
     app: runProfileApp.value.trim(),
     devices: currentDeviceEntries(),
     heal: runProfileHeal.checked,
-    fmTextOcclusionCheck: runProfileFmTextOcclusionCheck.checked,
+    fmTextVisibilityCheck: runProfileFmTextVisibilityCheck.checked,
     screenLooksLike: runProfileScreenLooksLike.checked,
-    ocrTextOcclusionCheck: runProfileOcrTextOcclusionCheck.checked,
+    ocrTextVisibilityCheck: runProfileOcrTextVisibilityCheck.checked,
     preferCheckStateClassifier: runProfilePreferCheckStateClassifier.checked,
     iosInappEngine: runProfileIosInappEngine.checked,
     iosPreActionPing: runProfileIosPreActionPing.checked,

@@ -262,7 +262,7 @@ production の FM 呼び出しは全て `FMCallAdmission.enter()` → `FMCallSlo
 M1Max 10コア/16コア ANE が 3.51 で、コア数比にも ANE 比にも対応しない)。
 新世代で膝が動いた疑いが出たら、同じ掃引をやり直してこの表を更新すること。
 
-**枠数は掃引だけでは決まらない**。実 run(E2E-CMP・local 8レーン・`fmTextOcclusionCheck` ON)で
+**枠数は掃引だけでは決まらない**。実 run(E2E-CMP・local 8レーン・`fmTextVisibilityCheck` ON)で
 **「ゲート待ち + FM 実働」= レーンが FM で止まった総時間**を測る:
 
 | 枠 | ゲート待ち | FM 実働 | 和 | 壁時計 |
@@ -295,7 +295,7 @@ M1Max 10コア/16コア ANE が 3.51 で、コア数比にも ANE 比にも対�
 iOS レーン稼働846秒の6.4%。`occlusionInkThreshold` と `OcclusionEligibility` の足切りがよく
 効いており、「アサーション毎に発火」は起きない。FM は失敗シナリオと長時間シナリオに偏る。
 
-- テキストの視覚検証(occlusion-guard)は 2026-07-28 から**実行プロファイル既定 OFF**
+- テキストの可視性検証(occlusion-guard)は 2026-07-28 から**実行プロファイル既定 OFF**
   だったが、**2026-09-03 に既定 ON へ変更**(ユーザー決定)。発火が増えて律速になったら:
   `occlusionInkThreshold` を上げる(per-step の逃げ道は `requireVisible: false`)
 - **失敗シナリオを直すと FM コストも自動的に減る**(発生源が偏っているため)
@@ -353,7 +353,7 @@ screenLooksLike 51 回 / heal 34 回)。**occlusion 一択**。
   `OcclusionVerifier.cropRect` と同じ規則(適応余白 min(24, 辺/3))で切り出し、
   期待テキスト = そのラベルとして撃つ(台本は scratchpad の `fm-positive-check.swift`)
 - **実 run での確認(M1Max・E2E-CMP `スクロールで折り返し下の要素に到達できること`・
-  `fmTextOcclusionCheck: true`・交互に撃つ)**。殺しスイッチで同じ機械・同じシナリオを A/B した:
+  `fmTextVisibilityCheck: true`・交互に撃つ)**。殺しスイッチで同じ機械・同じシナリオを A/B した:
 
   | | 1呼び出しあたり(中央値) | run ごとの FM 総時間(中央値) | 対の差 |
   |---|---|---|---|
@@ -1626,7 +1626,7 @@ v173 / v99 で撤去)。動機は「木と完了通知は動きの一部しか�
 
 目的(ユーザー方針): ホストの CPU が 100% に張り付かないようにする。条件は特記なき限り
 **この Mac(M2 Ultra・24 コア)・E2E-Flutter の android プロファイル・Emulator 6 台・モニターの配信あり・FM 死**
-(テキストの視覚検証は OCR だけ)。1条件 2 run を交互に回した。CPU は run の `host-metrics.ndjson`(1 秒ごと)。
+(テキストの可視性検証は OCR だけ)。1条件 2 run を交互に回した。CPU は run の `host-metrics.ndjson`(1 秒ごと)。
 
 **閾値の根拠(既存の結果 約 171 万ステップ・ステップ開始時の CPU 別の失敗率)**: 同じ run の中で比べると
 (高低の両方を含む run だけの O/E)、90% 未満 0.56〜0.87 / 90〜97% 0.82〜1.08 / **97〜99% 1.37 / 99〜100% 1.48**。
@@ -1716,7 +1716,7 @@ test time だけ +28〜44%** に膨らんだ(E2E-CMP/ios-xcuitest 71.2→91.2s)�
 | タップのたびに 3.6〜12s 上乗せ | SpringBoard の劣化(シミュレータ 8 台中 3 台)。`springboard.alerts.firstMatch.exists` が遅い。健全なら 0.04〜0.2s | 劣化の回復(`BridgeProvisioner.restartRunner`。run の途中の再確認と MCP が共有)で、シミュレータはランナーの前に SpringBoard を起こし直す(`SimulatorSpringBoard`)。MCP は遅い呼び出しの直後ではなく `ft_launch`・`ft_clear_app_data` の入口で測る(起こし直しは前面のアプリも落とすため。ユーザー決定) | 起こし直し約 8s + ランナー 29s で 3.5s → 0.11〜0.18s(手動の陽性対照)。ランナーの起動し直しだけでは 3.5s のままだった |
 
 **run の開始時の `compile-ocr` は run の設定を見る**(同日): `ScenarioHost.listForRun(compilesOCR:)`。それまでプロファイルや `--set` で
-OCR の段も FM のテキストの視覚検証も切った run でも起こしていた。陽性対照(E2E-iOS・1本・`pgrep` を 0.02s おき): 既定 2 回観測 /
+OCR の段も FM のテキストの可視性検証も切った run でも起こしていた。陽性対照(E2E-iOS・1本・`pgrep` を 0.02s おき): 既定 2 回観測 /
 両方を切った run 0 回。
 
 **計測基盤**: MCP の段の内訳(`.fleetest/mcp-rpc.log` の phases)に `performing the action` を足した。
@@ -2277,7 +2277,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   Flutter の IME の Enter 5/5 対 5/5(= 全体の run の赤は偶然)・**RN 横スクロール S0090 5/5 対 2/5**(全体の run と合わせ
   6 回中 4 回落ちる。探索が `#tag_15` を見つけて止まった後も慣性で流れ、中心 (-4, 720) で画面外)。**判定: タップ・入力は
   木の観察だけで足りる / スワイプの慣性は足りない** → **タップ・ダブルタップ・長押しだけ既定で待ちを飛ばし、スワイプは待ちを
-  残す**ように分けた(`QuiescenceWait.around` の `skipByDefault`。版 163)。**分けた版の確認**(同じ条件): CMP 55/56(赤1本は FM が使えない機械での OCR だけの視覚検証。単独で3回は 3/3)・
+  残す**ように分けた(`QuiescenceWait.around` の `skipByDefault`。版 163)。**分けた版の確認**(同じ条件): CMP 55/56(赤1本は FM が使えない機械での OCR だけの可視性検証。単独で3回は 3/3)・
   iOS 54/54(S0080/S0060 を含む)・Flutter 45/45・RN 46/46・**S0090 単独 5/5**。この設定(当時の `iosFastInput`)は現在は無く、スワイプの待ちはコマンドごとの `settle: false` でだけ飛ばせる(上の記録は測ったときの名前のまま)。ランナーの `FastInput` も `QuiescenceWait` へ、リクエストの `fast` も `skipQuiescence` へ改名した(版 164)
 - ✅ **代わりに「待ちの上限を縮める」を入れた**(XCTest の完了の知らせは使い続ける): ランナーの `QuiescenceWait`(当時の名前は FastInput)が操作の間だけ
   `_XCTSetApplicationStateTimeout` で上限を 60 → 6 秒に差し替えて戻す(`QuiescenceWait.quiescenceCapSeconds`。実測の正常な待ちは

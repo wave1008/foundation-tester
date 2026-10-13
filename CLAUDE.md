@@ -104,7 +104,7 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
 | `.claude/rules/dsl-commands.md` | DSL コマンド(索引・引数名・スクロール指定・操作の待ち) |
 | `.claude/rules/e2e-sut.md` | fleetest 自身の E2E(SUT) |
 | `.claude/rules/executor.md` | StepExecutor(実行時設定・失敗の文言・システムアラート) |
-| `.claude/rules/fm-occlusion.md` | FM・テキストの視覚検証(occlusion-guard / OCR) |
+| `.claude/rules/fm-occlusion.md` | FM・テキストの可視性検証(occlusion-guard / OCR) |
 | `.claude/rules/gesture.md` | ピンチ・座標ジェスチャ |
 | `.claude/rules/installer-agents.md` | 受け手フローのスクリプト・エージェント連携・配布 |
 | `.claude/rules/live-control.md` | ライブ操作 |
@@ -482,8 +482,8 @@ docs/design.md §12.6 が唯一の定義元**)。**両ビューに出るのは�
 **誤反転**(occlusion-guard が可視な要素を反転)。**`偽陽性`・`偽陰性` は書かない**
 (`VocabularyPolarityTests` がソース走査で落とす)。**陽性対照**は1語の固有名詞として残す
 (単独の「陽性」は書かない)。**例外は置かない** —— occlusion guard の利用者向けの名前は
-**「テキストの視覚検証」**(英語 "text visual verification")、キーは **`fmTextOcclusionCheck` /
-`ocrTextOcclusionCheck`**(ユーザー決定 2026-09-15。拡張のチェックボックス・キー・CLI フラグ
-`--no-fm-text-occlusion-check`・docs・コメントとも。OCR 段は「OCR を使ったテキストの視覚検証」)。**走査は受け手向けの面(docs/user-docs/・拡張の i18n 文字列)も含む** ——
+**「テキストの可視性検証」**(英語 "text visibility check")、キーは **`fmTextVisibilityCheck` /
+`ocrTextVisibilityCheck`**(ユーザー決定 2026-09-15・名前・キー・フラグは 2026-10-14 に変更。拡張のチェックボックス・キー・CLI フラグ
+`--no-fm-text-visibility-check`・docs・コメントとも。OCR 段は「OCR を使ったテキストの可視性検証」)。**走査は受け手向けの面(docs/user-docs/・拡張の i18n 文字列)も含む** ——
 どちらも対の英語があるので、直すときは ja/en を同時に直す。**対象外は TestProjects/(ユーザー資産)と
 reports/(.gitignore 済み。Apple へ提出済みの資料)だけ** → maintainer-notes §11

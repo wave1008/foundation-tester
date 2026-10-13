@@ -8,17 +8,17 @@ import FTCore
 final class ApiRunDryRunFMTests: XCTestCase {
 
     func testDryRunSwitchesFMOffEntirely() {
-        var input = ScenarioExecutionSettings(fm: FMConfig(enabled: true, fmTextOcclusionCheck: true), heal: true)
+        var input = ScenarioExecutionSettings(fm: FMConfig(enabled: true, fmTextVisibilityCheck: true), heal: true)
         input.tunables.defaultTimeout = 7
         let out = ApiRun.withDryRunFM(input, dryRun: true)
         XCTAssertFalse(out.fm.enabled, "dry-run では FM を有効のまま通さない")
-        XCTAssertFalse(out.fm.fmTextOcclusionCheck)
+        XCTAssertFalse(out.fm.fmTextVisibilityCheck)
         XCTAssertEqual(out.tunables.defaultTimeout, 7, "fm 以外の欄は触らない")
         XCTAssertTrue(out.heal, "heal は FM ではないので触らない")
     }
 
     func testRealRunKeepsTheSettingsUntouched() {
-        let input = ScenarioExecutionSettings(fm: FMConfig(enabled: true, fmTextOcclusionCheck: true), heal: true)
+        let input = ScenarioExecutionSettings(fm: FMConfig(enabled: true, fmTextVisibilityCheck: true), heal: true)
         let out = ApiRun.withDryRunFM(input, dryRun: false)
         XCTAssertEqual(out, input)
     }

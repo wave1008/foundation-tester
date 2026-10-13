@@ -2,7 +2,7 @@
 // (FTDriveCore)では executor 既定の occlusionGuard が常に false なので、StepExecutor.init の
 // コンパイルの門(executor 既定でガードが効くときだけ撃つ)は実質発火しない —— ステップ指定
 // (exist の requireVisible 既定 true)でガードが立つのが通常形のため。だから FTDriveCore.init が
-// 実行プロファイルのマスタースイッチ(fmTextOcclusionCheckEnabled)だけを見て別にコンパイルを頼む
+// 実行プロファイルのマスタースイッチ(fmTextVisibilityCheckEnabled)だけを見て別にコンパイルを頼む
 // (StepExecutorOCRModelCompileTests と対の配線テスト)。
 
 import FTCore
@@ -40,7 +40,7 @@ final class FTDriveCoreOCRModelCompileWiringTests: XCTestCase {
         _ = FTDriveCore(driver: SilentDriver(), platform: "ios", app: "com.example.app",
                         scenarioID: "T.S0010", scenarioTitle: "t",
                         delegate: nil, healingEnabled: false, tunables: RunTunables(),
-                        fmTextOcclusionCheckEnabled: true, emit: { _ in })
+                        fmTextVisibilityCheckEnabled: true, emit: { _ in })
         XCTAssertEqual(RegionText.modelCompileRequestCount, before + 1,
                        "DSL のシナリオ開始時にOCR モデルのコンパイルを始めていない")
     }
@@ -52,7 +52,7 @@ final class FTDriveCoreOCRModelCompileWiringTests: XCTestCase {
         _ = FTDriveCore(driver: SilentDriver(), platform: "ios", app: "com.example.app",
                         scenarioID: "T.S0010", scenarioTitle: "t",
                         delegate: nil, healingEnabled: false, tunables: RunTunables(),
-                        fmTextOcclusionCheckEnabled: false, occlusionOCREnabled: false, emit: { _ in })
+                        fmTextVisibilityCheckEnabled: false, occlusionOCREnabled: false, emit: { _ in })
         XCTAssertEqual(RegionText.modelCompileRequestCount, before)
     }
 
@@ -62,7 +62,7 @@ final class FTDriveCoreOCRModelCompileWiringTests: XCTestCase {
         let core = FTDriveCore(driver: SilentDriver(), platform: "ios", app: "com.example.app",
                                scenarioID: "T.S0010", scenarioTitle: "t",
                                delegate: nil, healingEnabled: false, tunables: RunTunables(),
-                               fmTextOcclusionCheckEnabled: false, occlusionOCREnabled: true, emit: { _ in })
+                               fmTextVisibilityCheckEnabled: false, occlusionOCREnabled: true, emit: { _ in })
         XCTAssertEqual(RegionText.modelCompileRequestCount, before + 1)
         XCTAssertTrue(core.executor.occlusionGuardEnabled, "OCR の段だけでも guard は走るはず")
         XCTAssertFalse(core.executor.fmVisibilityCheckEnabled, "FM の段は off のはず")
@@ -74,7 +74,7 @@ final class FTDriveCoreOCRModelCompileWiringTests: XCTestCase {
         _ = FTDriveCore(driver: SilentDriver(), platform: "ios", app: "com.example.app",
                         scenarioID: "T.S0010", scenarioTitle: "t",
                         delegate: nil, healingEnabled: false, tunables: RunTunables(),
-                        fmTextOcclusionCheckEnabled: true, occlusionOCREnabled: false, emit: { _ in })
+                        fmTextVisibilityCheckEnabled: true, occlusionOCREnabled: false, emit: { _ in })
         XCTAssertEqual(RegionText.modelCompileRequestCount, before)
     }
 }

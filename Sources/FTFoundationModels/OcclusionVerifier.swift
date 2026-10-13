@@ -116,7 +116,7 @@ public struct OcclusionVerifier {
         // (丸ごと読めたときだけ visible。読めなければ判定は FM の転写のまま = 規律どおり)。
         // 通常はここへ来る前に Tier-2 の OCR が同じ crop を読んで FM を省いているので、ここに
         // 届くのは OCR のモデルがコンパイル済みでない・予算切れの回だけ。
-        // **ocrTextOcclusionCheck(off)を見ない**(ユーザー決定: 精度優先。off はコンパイルしないのでこの回だけ
+        // **ocrTextVisibilityCheck(off)を見ない**(ユーザー決定: 精度優先。off はコンパイルしないのでこの回だけ
         // 初回コンパイルを払いうる = nearMissOCRBudget の 60 秒)。トグルに従わせると字形の取り違えが誤った赤になる
         if !verdict.visible,
            TranscriptMatch.isNearMiss(transcript: first, expected: expectedText)

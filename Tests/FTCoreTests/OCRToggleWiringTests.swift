@@ -19,15 +19,15 @@ final class OCRToggleWiringTests: XCTestCase {
 
     func testScenarioHostForwardsOcclusionOCRToTheChildRunner() throws {
         let host = try source("Sources/FTCore/ScenarioHost.swift")
-        XCTAssertTrue(host.contains("if !occlusionOCR { args.append(\"--no-occlusion-ocr\") }"),
+        XCTAssertTrue(host.contains("if !occlusionOCR { args.append(\"--no-ocr-text-visibility-check\") }"),
                       "occlusionOCR が子ランナーへ伝わっていない(切っても子は知らないまま走る)")
     }
 
     func testScenarioRunnerMainWiresTheFlagIntoTheRuntime() throws {
         let runner = try source("Sources/FTScenarioRunner/ScenarioRunnerMain.swift")
-        XCTAssertTrue(runner.contains("customLong(\"no-occlusion-ocr\")"), "--no-occlusion-ocr を受け取れない")
+        XCTAssertTrue(runner.contains("customLong(\"no-ocr-text-visibility-check\")"), "--no-ocr-text-visibility-check を受け取れない")
         XCTAssertTrue(runner.contains("occlusionOCREnabled: !noOcclusionOCR"),
-                      "--no-occlusion-ocr を実行時へ渡していない(受け取っても捨てている)")
+                      "--no-ocr-text-visibility-check を実行時へ渡していない(受け取っても捨てている)")
     }
 
     /// 折り返しで落ちないよう空白を畳んでから見る(整形で配線の検査が消えるのを防ぐ)

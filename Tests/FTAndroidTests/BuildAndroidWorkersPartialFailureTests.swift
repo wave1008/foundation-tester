@@ -68,7 +68,7 @@ final class BuildAndroidWorkersPartialFailureTests: XCTestCase {
             locale: "ja_JP",
             iosPreActionPing: true,
             containerInference: true,
-            ocrTextOcclusionCheck: true,
+            ocrTextVisibilityCheck: true,
             preferCheckStateClassifier: true,
             enableAnimations: false,
             homeOnStart: true, playProtectBypass: true,

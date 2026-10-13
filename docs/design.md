@@ -43,7 +43,7 @@ Tier-0 幾何 = 収まる軸の中心が画面外なら不可視(`TapTargetGeome
 **文言は呼び手ごと**)→ Tier-1〜 FM。iOS の木は画面外の要素も frame ごと残し、FM 側は crop が
 画像の外に落ちると nil(素通り)なので、**通り過ぎた要素への exist は FM が生きていても FM では
 塞がらなかった**(2026-08-20 受け手報告・横スクロール区画)。幾何の段は FM の有無に依らず
-`fmTextOcclusionCheck || ocrTextOcclusionCheck` の下で効く(`StepExecutor.visibilityGuardActive` が唯一の入口。FTRuntime の
+`fmTextVisibilityCheck || ocrTextVisibilityCheck` の下で効く(`StepExecutor.visibilityGuardActive` が唯一の入口。FTRuntime の
 保持値の高速経路もこれを見る)。
 **Tier-2 は Vision OCR**(2026-09-07): インク足切りを通って「FM に訊く」と決まった crop に、まず
 `FTCore.RegionText` が OCR を当て、**期待文字列が丸ごと読めたら可視として素通り**させる
@@ -51,7 +51,7 @@ Tier-0 幾何 = 収まる軸の中心が画面外なら不可視(`TapTargetGeome
 実 run で FM の段に届いた crop 163 枚のうち **97% がここで片付き**、FM に回ったのは本当に
 描かれていない 2 枚だけだった(p50 92ms。FM は 1.3〜2.8s)。守る規律は4つ:
 **①丸ごと読めなかったことだけを反転の根拠にしない**(日本語モデルを載せた版では可視な
-テキストの 29% を 1 文字誤読した)。FM の段(`fmTextOcclusionCheck`)が使えるときは丸ごと読めなかった回を**全部** FM に回し、
+テキストの 29% を 1 文字誤読した)。FM の段(`fmTextVisibilityCheck`)が使えるときは丸ごと読めなかった回を**全部** FM に回し、
 `OCROnlyVisibility.merge` で**見えていると読めた側を採る**(赤は両方が見えないと言った回だけ。割れた回は注記
 `ocr-read-what-fm-missed` / `fm-read-what-ocr-missed`。poc §5.22)。FM の段が無い・使えないときは
 `OCROnlyVisibility` の判定だけで赤にする/ **②一致は完全含有だけ**(先頭一致を許すと、部分的に覆われて
@@ -92,7 +92,7 @@ ID に LC_UUID が入るので、`ScenarioHost.build` が ID を製品名に揃�
 **コンパイル(コールド 20〜45 秒 × 言語集合 2)がそのプロセスの生存中に終わったときだけコミット**される。
 1 シナリオ = 1 プロセスの実行バイナリは終わる前に死んで `.tmp` を残すだけなので、
 **run の開始時に同じプロセス名の待てる子 `fleetest-scenarios-<project> compile-ocr` を背景で 1 本起こす**
-(`ScenarioHost.listForRun`。**その run で OCR の段か FM のテキストの視覚検証が有効なときだけ** = `ScenarioHost.ocrCompileNeeded`
+(`ScenarioHost.listForRun`。**その run で OCR の段か FM のテキストの可視性検証が有効なときだけ** = `ScenarioHost.ocrCompileNeeded`
 (プロファイル・`--set` で両方を切った run では起こさない。機械分担の親は起こさず機械ごとの run が決める)。dry-run / MCP / codegen の一覧取得 `list` では起こさない・機械で同時に 1 本
 = `OCRModelCompileLock`・**親の死を生き延びる** = `FT_PARENT_PID` を渡さない唯一の例外)。シナリオ側の探りは
 同じロックを**待ってから**読む(8 レーンが同じモデルを同時に焼かない)。認識器は **ANE を避けて CPU/GPU**
@@ -133,7 +133,7 @@ M1Max の launch storyboard は min=253 / max=255 = stdDev ≈ 0.1 で猶予が�
 実行後に stderr へ警告する。結果 JSON の `fm` にも載る(performance-tuning.md §4.2)。
 **これは理論上の話ではない**: 実績値では 6066 呼び出し中 5673 失敗(93.5%)で、
 成功を含む run は 582 中 58 しかない。**E2E の「緑」は基本的にツリー一致の緑**であり、
-視覚検証を含むとは限らないことを前提に読むこと(切り分け手順は docs/verification.md)。
+可視性検証を含むとは限らないことを前提に読むこと(切り分け手順は docs/verification.md)。
 
 **全 FM 呼び出しは `FMCallAdmission.enter()` を通す**(Sources/FTCore/FMCallAdmission.swift)。
 ①サーキットブレーカ(FM は累積 20〜30 回で死に再起動まで回復しないので、連続 3 回失敗したら
@@ -1107,7 +1107,7 @@ Android `VERSION_CODE` 100。XCUITest ランナーと Android ブリッジが持
 
 ### 5.1 セッション戦略(4K トークン運用)
 
-- **画像を伴う呼び出し(テキストの視覚検証・screenLooksLike・死活の確かめ)は FM の常駐プロセス
+- **画像を伴う呼び出し(テキストの可視性検証・screenLooksLike・死活の確かめ)は FM の常駐プロセス
   (`fleetest api fm-serve`)だけが撃つ**。シナリオのプロセスは `LanguageModelSession` を持たず、Unix ソケットで要求を送る
   (`FTCore/FMServe.swift`。理由は maintainer-notes §81 = 入れ替わる多数のプロセスが各自セッションを作ると、モデルの載せ直しが
   絶えず起き、その瞬間に ANE の `no memory` で FM が死んだ)。常駐プロセスは最後の利用から 1 秒空くたびに小さな画像の転写(実際の生成)を撃って
@@ -1208,7 +1208,7 @@ Android シナリオで約 33%、iOS シナリオで約 27% 所要を短縮し�
 
 | リスク | 対策 |
 |---|---|
-| Apple Intelligence 未有効 / FM 利用不可 | `fleetest doctor` で `availability` を事前診断。**PCC/外部 LLM への差替は行わない**(§1.2)—— `screenLooksLike` は判定されずに通り、テキストの視覚検証は OCR だけで判定して走る |
+| Apple Intelligence 未有効 / FM 利用不可 | `fleetest doctor` で `availability` を事前診断。**PCC/外部 LLM への差替は行わない**(§1.2)—— `screenLooksLike` は判定されずに通り、テキストの可視性検証は OCR だけで判定して走る |
 | 4K コンテキスト超過 | スナップショット圧縮 + 1 ステップ 1 セッション + 応答の構造化。FM 呼び出しの失敗は `FMHealth.record` に記録して諦める(再試行はしない) |
 | 巨大な画面ツリーで snapshot が遅い | ランナー側でフィルタしてから返す(ホストに生ツリーを送らない) |
 | xcodebuild ランナーの不安定さ | `bridge up` にヘルスチェック+自動再起動。`/status` ポーリング |
@@ -2224,7 +2224,7 @@ select(.id("txt_result")).textIs("dialog=none")   // 検証はセレクタを取
   `checkIsOFF` の誤用警告が消える)、`screenMatches` / `keyboard*`(要素の値を見ていない)
 - **可視性照合が走る設定では高速経路に入らない**(`visibilityWouldBeChecked`)。条件は
   `occlusionFlip` の入口のうちステップ非依存の部分と同じものを見る。飛ばすと
-  視覚検証が有効な run(fmTextOcclusionCheck か ocrTextOcclusionCheck)で誤った緑の検出が**静かに1つ消える**
+  可視性検証が有効な run(fmTextVisibilityCheck か ocrTextVisibilityCheck)で誤った緑の検出が**静かに1つ消える**
 - 記録は通常どおり1ステップだが、説明に `(from the grabbed value)` を付ける
   (レポートで「取り直していない判定」を見分けられるようにするため。durationMs は 0)
 - **残る危険は「古い値が偶然期待に一致して待たずに通る」向き**。`textIs` は本来
@@ -2337,7 +2337,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
 - **`enabledIsTrue` / `enabledIsFalse`** は `ElementInfo.enabled`(3 ブリッジとも埋めている)を見る。
   タイムアウトまで状態変化を待つ。「見つからない」と「状態が違う」を別メッセージで返す
 - **`countIs`** は**ツリー上の**候補の個数。**可視性は見ない**(覆われた要素も折り返しの下の
-  要素も1件に数える)。`exist` が(テキストの視覚検証を有効にした run で)可視性まで確認するのと
+  要素も1件に数える)。`exist` が(テキストの可視性検証を有効にした run で)可視性まで確認するのと
   **意図的に違う**: 件数ぶん FM を
   呼ぶことになり(FM は許可枠で制限される共有資源。performance-tuning.md §3.5)、
   リスト検証が実用的な速度でなくなるため。
@@ -3844,7 +3844,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
   ルートの子孫ではないため効かず、**ダイアログ内だけ `#id` が全滅する**(ラベルは引ける)。
   アプリ側でダイアログにも `Modifier.semantics { testTagsAsResourceId = true }` を再適用させる。
   iOS は testTag が自動で accessibilityIdentifier になるため起きない(Android 固有)
-- **テキストの視覚検証の run(実行プロファイル `fmTextOcclusionCheck` / `ocrTextOcclusionCheck` のどちらか。**既定はどちらも true**)では、
+- **テキストの可視性検証の run(実行プロファイル `fmTextVisibilityCheck` / `ocrTextVisibilityCheck` のどちらか。**既定はどちらも true**)では、
   `exist`/`textIs` は既定 `requireVisible: true` のため、ソフトキーボードに覆われた要素は
   「`false positive (occlusion)`」で失敗する**。入力を伴う画面では検証対象・操作対象を入力欄より**上**に置く
   (TestProjects/E2E-CMP のテキスト入力画面がこの配置。2026-07-22 実測)
@@ -4087,9 +4087,9 @@ targeting = bundletool にしか決められない。feature module を足した
 導入済みなら何もせず ok、選択中の Xcode の SDK の版(`xcodebuild -downloadPlatform iOS` が入れられる唯一の版)と主・副が一致しない版は何も入れずに拒む(判定は純粋関数 `decide`)。
 拡張の「デバイスを追加」は iOS のダウンロード候補で、確認の後、単発・バッチとも create-device の前にこれを1回だけ呼び、失敗したら1台も作らずに中止する(Android の `install-system-image` と同じ扱い。バッチで1台ずつ create-device に導入を任せると失敗のたびに再試行するため)。create-device 内の自動導入は profile setup と直接呼びのために残す。
 
-FM(Foundation Models)を使うのは `fmTextOcclusionCheck`(occlusion-guard の FM の段。OCR の段
-`ocrTextOcclusionCheck` と独立で、guard はどちらかが true なら走る = FTRuntime が合成)・`screenLooksLike` のどちらかが true のときだけで、いずれも既定 true
-(`fmTextOcclusionCheck` は 2026-09-03 にオプトインをやめた)。両方 false の run では FM 呼び出しを
+FM(Foundation Models)を使うのは `fmTextVisibilityCheck`(occlusion-guard の FM の段。OCR の段
+`ocrTextVisibilityCheck` と独立で、guard はどちらかが true なら走る = FTRuntime が合成)・`screenLooksLike` のどちらかが true のときだけで、いずれも既定 true
+(`fmTextVisibilityCheck` は 2026-09-03 にオプトインをやめた)。両方 false の run では FM 呼び出しを
 一切行わない(子ランナーへも伝搬し、delegate 自体を作らない)。screenLooksLike を無効にした
 run では該当ステップは skip(素通り)になり、FM 利用不可時と同じ扱い。子への伝搬(プロファイル →
 子 → 実行時)は `FMToggleWiringTests` が固定する。UI は「プロファイル」タブの実行プロファイル設定

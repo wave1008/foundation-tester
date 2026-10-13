@@ -54,11 +54,11 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 率を見るための注記で、立った回は stale-screenshot の待ちを払っていない
     case staleFrameTextVisible = "stale-frame-text-visible"
 
-    /// テキストの視覚検証(occlusion-guard)か screenLooksLike のスクショがステータスバー以外真っ黒
+    /// テキストの可視性検証(occlusion-guard)か screenLooksLike のスクショがステータスバー以外真っ黒
     /// (`BlankFrameDetector.isBlackApartFromSystemBars`)。絵が撮れていない・表示が凍結した回で、FM も OCR も
     /// 「何も描かれていない」「一致しない」と読むので、判定不能として素通りする(赤にしない)
     case blankScreenshot = "blank-screenshot"
-    /// テキストの視覚検証の対象が WebView の内側にあり、木の上では覆われていないのに、その文字の領域が絵では一色だった
+    /// テキストの可視性検証の対象が WebView の内側にあり、木の上では覆われていないのに、その文字の領域が絵では一色だった
     /// (`BlankFrameDetector.webViewCaptureMissed`)。WebView の層を取り逃した絵なので判定せずに素通りした(赤にしない)。
     /// 木に載らない覆い(ページ内の描画だけで隠す等)は見逃す —— 率を見る注記
     case webViewCaptureBlank = "webview-capture-blank"
@@ -174,7 +174,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 到達待ちの書き方(`waitForDisplay` の対象)を見直す材料になる
     case waitedForEnabled = "waited-for-enabled"
 
-    /// 可視性照合(`requireVisible`。実行プロファイル `fmTextOcclusionCheck` で有効)が **FM まで
+    /// 可視性照合(`requireVisible`。実行プロファイル `fmTextVisibilityCheck` で有効)が **FM まで
     /// 到達したのに判定が返らなかった**(実呼び出しの失敗・ブレーカ開・直列化待ちの期限切れ・
     /// 画像の不正)。このステップは幾何の Tier-0(中心が画面外でないこと)だけで通っている。
     /// **立てるのは FM に訊いた回だけ** —— マスタースイッチ OFF・macOS 26・インクゲートで

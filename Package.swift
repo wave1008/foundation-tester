@@ -66,7 +66,7 @@ let package = Package(
             name: "FTBridgeClient",
             dependencies: ["FTCore", "FTCoreSimShim"]
         ),
-        // FoundationModels 補助層(テキストの視覚検証・シナリオの下書きと命名・FM の死活と診断)
+        // FoundationModels 補助層(テキストの可視性検証・シナリオの下書きと命名・FM の死活と診断)
         .target(
             name: "FTFoundationModels",
             dependencies: ["FTCore"]

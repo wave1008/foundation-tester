@@ -44,7 +44,7 @@ final class OCRModelCompileWiringTests: XCTestCase {
         XCTAssertTrue(body.contains("if !dryRun, compilesOCR {"), "listForRun が run の設定を見ずにコンパイルを起こす: \(body)")
     }
 
-    /// **OCR の段も FM のテキストの視覚検証も切った run ではコンパイルを起こさない**(プロファイルで切っても、MCP が `--set` で
+    /// **OCR の段も FM のテキストの可視性検証も切った run ではコンパイルを起こさない**(プロファイルで切っても、MCP が `--set` で
     /// 切っても起きていた)。2つの run の実装は設定から決め、機械分担の親は起こさない(機械ごとの run が決める)
     func testTheRunPathsDecideTheCompileFromTheRunSettings() throws {
         func text(_ path: String) throws -> String {
@@ -54,9 +54,9 @@ final class OCRModelCompileWiringTests: XCTestCase {
             XCTAssertTrue(try text(path).contains("compilesOCR: ScenarioHost.ocrCompileNeeded("), path)
         }
         XCTAssertTrue(try text("fleetest/DeviceMachineRunner.swift").contains("compilesOCR: false"))
-        XCTAssertFalse(ScenarioHost.ocrCompileNeeded(fmTextOcclusionCheck: false, ocrTextOcclusionCheck: false))
-        XCTAssertTrue(ScenarioHost.ocrCompileNeeded(fmTextOcclusionCheck: true, ocrTextOcclusionCheck: false))
-        XCTAssertTrue(ScenarioHost.ocrCompileNeeded(fmTextOcclusionCheck: false, ocrTextOcclusionCheck: true))
+        XCTAssertFalse(ScenarioHost.ocrCompileNeeded(fmTextVisibilityCheck: false, ocrTextVisibilityCheck: false))
+        XCTAssertTrue(ScenarioHost.ocrCompileNeeded(fmTextVisibilityCheck: true, ocrTextVisibilityCheck: false))
+        XCTAssertTrue(ScenarioHost.ocrCompileNeeded(fmTextVisibilityCheck: false, ocrTextVisibilityCheck: true))
     }
 }
 

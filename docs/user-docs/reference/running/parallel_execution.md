@@ -39,7 +39,7 @@ own subprocess, so platforms stay isolated).
 
 - **More devices is not always faster.** Past the point where the Mac is saturated, each scenario
   just gets slower, the total time stays flat, and image-based steps (`findImage` / `existImage`) and
-  text visual verification start to fail more often.
+  text visibility check start to fail more often.
 - So find the knee on your own Mac: add devices a few at a time and stop when the wall time of the
   run stops dropping. If a run turns red only at the higher count, go back to the lower one.
 - A freshly cold-booted Simulator can time out on its accessibility IPC. Workers warm up with a

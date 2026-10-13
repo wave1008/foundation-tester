@@ -165,11 +165,11 @@ struct RunScenario: AsyncParsableCommand {
         }
     }
 
-    @Flag(name: .customLong("no-fm"), help: "Do not use any FM feature (text visual verification / screenLooksLike)")
+    @Flag(name: .customLong("no-fm"), help: "Do not use any FM feature (text visibility check / screenLooksLike)")
     var noFM = false
 
-    @Flag(name: .customLong("no-fm-text-occlusion-check"), help: "Disable the FM stage of text visual verification (the occlusion guard runs on OCR alone unless --no-occlusion-ocr)")
-    var noFMTextOcclusionCheck = false
+    @Flag(name: .customLong("no-fm-text-visibility-check"), help: "Disable the FM stage of text visibility check (the occlusion guard runs on OCR alone unless --no-ocr-text-visibility-check)")
+    var noFMTextVisibilityCheck = false
 
     @Flag(name: .customLong("no-screen-looks-like"), help: "Disable screenLooksLike (screenMatches)")
     var noScreenLooksLike = false
@@ -180,7 +180,7 @@ struct RunScenario: AsyncParsableCommand {
           help: "Disable corrections that infer the scroll container from the tree")
     var noContainerInference = false
 
-    @Flag(name: .customLong("no-occlusion-ocr"), help: "Disable the Vision OCR stage of the occlusion guard (FM only; with --no-fm-text-occlusion-check too, no guard)")
+    @Flag(name: .customLong("no-ocr-text-visibility-check"), help: "Disable the Vision OCR stage of the occlusion guard (FM only; with --no-fm-text-visibility-check too, no guard)")
     var noOcclusionOCR = false
 
     @Flag(name: .customLong("no-prefer-check-state-classifier"),
@@ -555,7 +555,7 @@ struct RunScenario: AsyncParsableCommand {
                                scenarioID: scenarioID, scenarioTitle: scenarioTitle,
                                delegate: delegate, healingEnabled: heal,
                                tunables: runTunables,
-                               fmTextOcclusionCheckEnabled: !noFMTextOcclusionCheck,
+                               fmTextVisibilityCheckEnabled: !noFMTextVisibilityCheck,
                                screenLooksLikeEnabled: !noScreenLooksLike,
                                containerInference: !noContainerInference,
                                occlusionOCREnabled: !noOcclusionOCR,

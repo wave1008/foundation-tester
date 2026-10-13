@@ -269,7 +269,7 @@ struct RunScenarios: AsyncParsableCommand {
     @Option(name: .customLong("set"),
             help: ArgumentHelp("Override one field of the run profile document for this run only "
                 + "(repeatable): <key>=<value>, where <key> is exactly the run profile JSON key and "
-                + "<value> matches that key's type (e.g. --set fmTextOcclusionCheck=false "
+                + "<value> matches that key's type (e.g. --set fmTextVisibilityCheck=false "
                 + "--set reportDir=/tmp/out). Keys that need a run profile's device list/supply "
                 + "pipeline (iosInappEngine, updateWebView, wipeDataOnBloat, recoverCpuFallbackToGpu, "
                 + "app, machine, locale, wipeDataThresholdGB) need --profile. The run profile keys "
@@ -731,12 +731,12 @@ struct RunScenarios: AsyncParsableCommand {
         let all = try ScenarioHost.listForRun(
             project: testProject, dryRun: dryRun,
             compilesOCR: ScenarioHost.ocrCompileNeeded(
-                fmTextOcclusionCheck: earlyResolved?.fm.fmTextOcclusionCheck ?? noProfileSettings.fm.fmTextOcclusionCheck,
-                ocrTextOcclusionCheck: earlyResolved?.ocrTextOcclusionCheck ?? noProfileSettings.ocrTextOcclusionCheck))
+                fmTextVisibilityCheck: earlyResolved?.fm.fmTextVisibilityCheck ?? noProfileSettings.fm.fmTextVisibilityCheck,
+                ocrTextVisibilityCheck: earlyResolved?.ocrTextVisibilityCheck ?? noProfileSettings.ocrTextVisibilityCheck))
         // FM の常駐プロセス(画像を伴う FM の呼び出しを1つのプロセスに集める。FTCore/FMServe.swift 冒頭)。
         // シナリオのプロセスを起こす前に用意する(子の環境とサンドボックスの許可がソケットのパスを読む)
         let fmForServe = earlyResolved?.fm ?? noProfileSettings.fm
-        if !dryRun, FMServeHost.needed(fmTextOcclusionCheck: fmForServe.fmTextOcclusionCheck,
+        if !dryRun, FMServeHost.needed(fmTextVisibilityCheck: fmForServe.fmTextVisibilityCheck,
                                        screenLooksLike: fmForServe.screenLooksLike) {
             await FMServeHost.ensureRunning { ConsoleOut.err($0) }
         }
@@ -889,9 +889,9 @@ struct RunScenarios: AsyncParsableCommand {
                                 performanceMode: performanceMode,
                                 fmSettings: FMSettingsRecord(
                                     heal: noProfileSettings.heal,
-                                    fmTextOcclusionCheck: noProfileSettings.fm.fmTextOcclusionCheck,
+                                    fmTextVisibilityCheck: noProfileSettings.fm.fmTextVisibilityCheck,
                                     screenLooksLike: noProfileSettings.fm.screenLooksLike,
-                                    ocrTextOcclusionCheck: noProfileSettings.ocrTextOcclusionCheck),
+                                    ocrTextVisibilityCheck: noProfileSettings.ocrTextVisibilityCheck),
                                 setOverrides: profileOverrides.mapValues(\.token),
                                 abortReason: error.localizedDescription)
                 throw error
@@ -983,9 +983,9 @@ struct RunScenarios: AsyncParsableCommand {
         // fmSettings は下の finish 呼び出しと同じ noProfileSettings 由来の値なので先に計算する
         let noProfileFMSettings = FMSettingsRecord(
             heal: noProfileSettings.heal,
-            fmTextOcclusionCheck: noProfileSettings.fm.fmTextOcclusionCheck,
+            fmTextVisibilityCheck: noProfileSettings.fm.fmTextVisibilityCheck,
             screenLooksLike: noProfileSettings.fm.screenLooksLike,
-            ocrTextOcclusionCheck: noProfileSettings.ocrTextOcclusionCheck)
+            ocrTextVisibilityCheck: noProfileSettings.ocrTextVisibilityCheck)
         let failedCount: Int
         let skippedCount: Int
         let interrupted: Bool

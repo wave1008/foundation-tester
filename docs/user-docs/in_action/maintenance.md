@@ -54,7 +54,7 @@ If a test run ends with `FM is dead on this machine`, the on-device model (FM) o
 working. You can check with `fleetest doctor --fm-only` (it exits with code 1 when FM is not working).
 
 - A stopped FM sometimes comes back by itself within a few minutes. **If `fleetest doctor --fm-only` keeps failing, restart the Mac** while no test is running.
-- Tests still run in the meantime, but `screenLooksLike` is skipped, and the text visual verification is
+- Tests still run in the meantime, but `screenLooksLike` is skipped, and the text visibility check is
   judged by OCR alone. **Text that OCR cannot judge passes without being checked** (such steps carry the
   note `visibility-guard-skipped`).
 - While FM is known to have stopped, fleetest does not call it (calling a stopped FM takes more than ten

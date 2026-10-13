@@ -8,7 +8,7 @@ Checks whether elements matched by a selector exist, are gone, or number a given
 
 | function | description |
 |---|---|
-| `exist(selector, requireVisible:, waitSeconds:, scroll:, maxSwipes:)` | Asserts existence and returns the matched element, so text/value/id checks can chain onto it. On a run with `fmTextOcclusionCheck` or `ocrTextOcclusionCheck` set to `true` in the run profile, also confirms the element is actually visible. |
+| `exist(selector, requireVisible:, waitSeconds:, scroll:, maxSwipes:)` | Asserts existence and returns the matched element, so text/value/id checks can chain onto it. On a run with `fmTextVisibilityCheck` or `ocrTextVisibilityCheck` set to `true` in the run profile, also confirms the element is actually visible. |
 | `notExist(selector, waitSeconds:, scroll:, maxSwipes:)` | Waits until the element is gone (already absent succeeds immediately). With `scroll:`, scrolls in that direction while searching, and finding the element fails the check; without a match while scrolling, falls back to waiting for disappearance on the current viewport. |
 | `countIs(selector, count, waitSeconds:)` | Asserts the number of matching candidates in the tree. Visibility is not considered. `\|\|` counts the union (duplicates counted once). When counting by label, narrow by type first, e.g. `.button&&Add` — a button and its inner label are separate elements and both would match a bare label. |
 | `exist(selector, scroll: .noScroll)` | Checks existence on the current screen even inside a `withScrollDown` / `withScrollUp` / `withScrollRight` / `withScrollLeft` block. |
@@ -40,7 +40,7 @@ expectation {
     `text-partially-hidden` (part of the text is hidden)
   - no ellipsis, and half or less is drawn → failed (`most of the text is hidden`). For a screen
     that hides most of a text on purpose, use `requireVisible: false`
-  - For examples with images, see [How text visual verification decides](../testclass/text_visual_check.md)
+  - For examples with images, see [How the text visibility check decides](../testclass/text_visibility_check.md)
 
 ### Link
 - [index](../../index.md)

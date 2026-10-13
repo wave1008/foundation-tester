@@ -149,7 +149,7 @@ final class BlankScreenshotJudgementTests: XCTestCase {
         let driver = SequenceDriver(elements: fixture.screenElements, shots: [before, FindImageTests.screenPNG()])
         let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
         executor.visionClassifierProjectRoot = root
-        // 遷移前の画面で視覚検証が控えた絵と木(木は今と違う)
+        // 遷移前の画面で可視性検証が控えた絵と木(木は今と違う)
         let previousTree = [ElementInfo(ref: 9, type: "button", identifier: "nav_noid", label: nil, value: nil,
                                         placeholder: nil, enabled: true,
                                         frame: FTRect(x: 0, y: 0, width: 300, height: 50), depth: 1)]

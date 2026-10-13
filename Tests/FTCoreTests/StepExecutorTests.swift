@@ -441,7 +441,7 @@ final class StepExecutorTests: XCTestCase {
     }
 
     /// ステータスバーだけが残った黒い絵(Android Emulator の実物)も判定の根拠にしない。
-    /// 視覚検証は上端の帯も除く判定(isBlackApartFromSystemBars)を使う —— 下端だけ除く判定だと黒と言えず赤にしていた
+    /// 可視性検証は上端の帯も除く判定(isBlackApartFromSystemBars)を使う —— 下端だけ除く判定だと黒と言えず赤にしていた
     func testBlackScreenshotWithAStatusBarSkipsTheGuardWithANote() async throws {
         let png = try Data(contentsOf: URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -684,7 +684,7 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertTrue(msg.contains("occlusion"), "occlusion 失敗を返すこと: \(msg)")
     }
 
-    /// occlusionGuardEnabled=false(実行プロファイルの fmTextOcclusionCheck:false)は per-step の
+    /// occlusionGuardEnabled=false(実行プロファイルの fmTextVisibilityCheck:false)は per-step の
     /// occlusionGuard:true より優先して occlusion-guard 自体を止める(FM を呼ばず pass)
     func testOcclusionGuardMasterSwitchOffSkipsGuard() async throws {
         let log = CallLog()

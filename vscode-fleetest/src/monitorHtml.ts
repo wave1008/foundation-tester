@@ -678,12 +678,12 @@ function renderRunProfileSection(): string {
               <label for="run-profile-prefer-check-state-classifier">${t("panels.runProfile.preferCheckStateClassifierLabel")}</label>
             </div>
             <div class="modal-row profile-checkbox-row">
-              <input type="checkbox" id="run-profile-ocr-text-occlusion-check">
-              <label for="run-profile-ocr-text-occlusion-check">${t("panels.runProfile.ocrTextOcclusionCheckLabel")}</label>
+              <input type="checkbox" id="run-profile-ocr-text-visibility-check">
+              <label for="run-profile-ocr-text-visibility-check">${t("panels.runProfile.ocrTextVisibilityCheckLabel")}</label>
             </div>
             <div class="modal-row profile-checkbox-row">
-              <input type="checkbox" id="run-profile-fm-text-occlusion-check">
-              <label for="run-profile-fm-text-occlusion-check">${t("panels.runProfile.fmTextOcclusionCheckLabel")}</label>
+              <input type="checkbox" id="run-profile-fm-text-visibility-check">
+              <label for="run-profile-fm-text-visibility-check">${t("panels.runProfile.fmTextVisibilityCheckLabel")}</label>
             </div>
             <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-screen-looks-like">

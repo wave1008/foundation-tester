@@ -148,7 +148,7 @@ final class BlankFrameDetectorTests: XCTestCase {
     }
 
     /// 撮れていない絵に**ステータスバーだけ**残った実物(Android Emulator。3 台の Mac の OCR が同じ 2 行だけを読んだ)。
-    /// 視覚検証の素通りの判定は黒と言い、凍結の警告の判定は言わない(上端に中身のある暗い画面を凍結と呼ばない)
+    /// 可視性検証の素通りの判定は黒と言い、凍結の警告の判定は言わない(上端に中身のある暗い画面を凍結と呼ばない)
     func testRealBlackFrameWithAStatusBarIsBlackOnlyForTheVisualCheck() throws {
         let png = try Data(contentsOf: Self.blackFrames
             .appendingPathComponent("android-emulator-black-with-status-bar.png"))
@@ -156,7 +156,7 @@ final class BlankFrameDetectorTests: XCTestCase {
         XCTAssertFalse(BlankFrameDetector.isBlackApartFromBottomStrip(pngData: png))
     }
 
-    /// 視覚検証の判定が見ないのは上端の帯(約 6%)だけ。その下に中身があれば黒い絵ではない
+    /// 可視性検証の判定が見ないのは上端の帯(約 6%)だけ。その下に中身があれば黒い絵ではない
     func testSystemBarsCheckStillSeesContentBelowTheStatusBar() {
         let png = Self.makePNG(width: 400, height: 800) { context in
             context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
@@ -168,7 +168,7 @@ final class BlankFrameDetectorTests: XCTestCase {
         XCTAssertFalse(BlankFrameDetector.isBlackApartFromSystemBars(pngData: png))
     }
 
-    /// 上端の帯(ステータスバー)の中身は視覚検証の判定では見ない
+    /// 上端の帯(ステータスバー)の中身は可視性検証の判定では見ない
     func testSystemBarsCheckIgnoresTheStatusBar() {
         let png = Self.makePNG(width: 400, height: 800) { context in
             context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
@@ -203,7 +203,7 @@ final class BlankFrameDetectorTests: XCTestCase {
         return output as Data
     }
 
-    // MARK: - WebView の層を取り逃した絵(テキストの視覚検証が判定を見送る)
+    // MARK: - WebView の層を取り逃した絵(テキストの可視性検証が判定を見送る)
 
     private func el(_ type: String, _ x: Double, _ y: Double, _ w: Double, _ h: Double) -> ElementInfo {
         ElementInfo(ref: 1, type: type, identifier: nil, label: nil, value: nil, placeholder: nil,
@@ -236,7 +236,7 @@ final class BlankFrameDetectorTests: XCTestCase {
                                                                targetStdDev: nil, ceiling: 1.0))
     }
 
-    /// テキストの視覚検証は OCR/FM の読みより前に WebView 領域の一色を見て、見送りに注記を残す
+    /// テキストの可視性検証は OCR/FM の読みより前に WebView 領域の一色を見て、見送りに注記を残す
     func testVisualCheckSkipsBeforeReadingWhenTheWebViewAreaIsBlank() throws {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

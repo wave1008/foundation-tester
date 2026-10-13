@@ -15,8 +15,8 @@
   ヘッドレスの `LaunchDaemon` や ssh 直のセッションでは Simulator が不安定になります。
 - **Apple Intelligence は不要です。** 無くても(起動時に `⚠️` が1行出ます)、決定的実行(タップ・検証)と
   自己修復(ロケータの指紋照合。FM を使いません)はそのまま動きます。変わるのは2つです。
-  **`screenLooksLike` は判定されずに通ります**。**テキストの視覚検証は OCR だけで判定します**
-  ([テキストの視覚検証](../reference/testclass/text_visual_check_ja.md))。
+  **`screenLooksLike` は判定されずに通ります**。**テキストの可視性検証は OCR だけで判定します**
+  ([テキストの可視性検証](../reference/testclass/text_visibility_check_ja.md))。
   画面照合を CI でも効かせたい場合は、下の「Apple Intelligence を CI で使う」を見てください。
 - Xcode(Android を回すなら Android SDK も)がランナーに導入済みであること。
 
@@ -83,11 +83,11 @@ Apple Intelligence は、ランナーの実体が物理 Mac(ベアメタル)の�
 
 - 物理 Mac(Jenkins 常駐機など): 使えます。
 - AWS EC2 Mac(ベアメタル): 原理的には使えるはずですが、未検証です。
-- macOS の VM: 使えません。`screenLooksLike` は判定されずに通り、テキストの視覚検証は OCR だけで判定します。
+- macOS の VM: 使えません。`screenLooksLike` は判定されずに通り、テキストの可視性検証は OCR だけで判定します。
 
 ベアメタルで有効にするときの条件です。
 
-- Apple silicon で macOS 26 以上。`screenLooksLike` とテキストの視覚検証(画像入力)は macOS 27 以上が必要です。
+- Apple silicon で macOS 26 以上。`screenLooksLike` とテキストの可視性検証(画像入力)は macOS 27 以上が必要です。
 - 有効化は GUI で1回行います(macOS 27 は システム設定 → Siri で Siri をオン(Siri が Apple Intelligence を使います)、macOS 26 は システム設定 → Apple Intelligence と Siri で「Apple Intelligence」をオン。画面の無い機械は画面共有経由。
   モデルのダウンロードが走ります)。EC2 Mac は素の AMI から作り直すと設定が消えるので、有効化したあとにカスタム AMI を作るか、
   プロビジョニングに有効化を含めてください。

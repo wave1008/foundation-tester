@@ -6,7 +6,7 @@ import XCTest
 @testable import FTCore
 
 private let testFMSettings = FMSettingsRecord(
-    heal: false, fmTextOcclusionCheck: false, screenLooksLike: true, ocrTextOcclusionCheck: true)
+    heal: false, fmTextVisibilityCheck: false, screenLooksLike: true, ocrTextVisibilityCheck: true)
 
 final class ScenarioHostIdleWatchTests: XCTestCase {
 

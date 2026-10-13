@@ -52,7 +52,7 @@ waitForSettle(_ selector: String? = nil, quietSeconds: Double? = nil,
 画面の動きが止まるまで待ちます。**書いたときだけ待ちます** —— 通常の操作(`tap`・`swipe`・`scroll*` など)は
 画素の静止を待ちません。絵を読むステップの直前に書いてください。
 
-- 画像の判定(`findImage` / `existImage` / `imageIs`)や、OCR を使うテキストの視覚検証の前
+- 画像の判定(`findImage` / `existImage` / `imageIs`)や、OCR を使うテキストの可視性検証の前
 - 画素単位の位置に依存する操作の前
 - レポート用のスクリーンショットの前
 - **Compose Multiplatform・Flutter の iOS アプリで、自分で払った(`scrollDown()`・`flick*` など)直後に要素をタップするとき**

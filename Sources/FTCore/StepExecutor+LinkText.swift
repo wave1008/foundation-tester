@@ -14,7 +14,7 @@ extension StepExecutor {
         // OCR へ渡した絵のうちアプリの領域が一色だった枚数(失敗文に事実として添える。読めないのが絵のせいか読みのせいかを分ける)
         var blankShots = 0
         if point == nil {
-            // コンパイルを待つ(待った分は DeadlineExclusion が締め切りから差し引く。テキストの視覚検証の OCR と同じ使い方)
+            // コンパイルを待つ(待った分は DeadlineExclusion が締め切りから差し引く。テキストの可視性検証の OCR と同じ使い方)
             _ = await RegionText.awaitModelCompile(mode: .on)
             let clock = ContinuousClock()
             for attempt in 1...LinkTextLocator.ocrShotAttempts {

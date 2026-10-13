@@ -55,7 +55,7 @@ Waits until the screen has stopped moving. **It waits only when you write it** �
 (`tap`, `swipe`, `scroll*`, …) do not wait for the pixels to be still. Write it right before a step
 that reads the picture:
 
-- an image check (`findImage` / `existImage` / `imageIs`) or a text visual verification that uses OCR
+- an image check (`findImage` / `existImage` / `imageIs`) or a text visibility check that uses OCR
 - an operation that depends on exact pixels
 - a screenshot for the report
 - **a tap right after you swiped yourself (`scrollDown()`, `flick*`, …) in a Compose Multiplatform or Flutter app on

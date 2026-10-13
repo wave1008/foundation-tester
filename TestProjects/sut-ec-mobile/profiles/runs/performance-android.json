@@ -405,12 +405,12 @@
   "homeOnStart": true,
   "iosInappEngine": true,
   "iosPreActionPing": true,
-  "ocrTextOcclusionCheck": true,
+  "ocrTextVisibilityCheck": true,
   "playProtectBypass": true,
   "record": true,
   "recoverCpuFallbackToGpu": true,
   "screenLooksLike": true,
-  "fmTextOcclusionCheck": true,
+  "fmTextVisibilityCheck": true,
   "updateWebView": true,
   "wipeDataOnBloat": true
 }

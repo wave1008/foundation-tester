@@ -28,7 +28,7 @@
     {
       "project": "E2E-iOS", "file": "96_遮蔽の反転.swift", "profile": "ios-fpc", "os": "ios",
       "class": "遮蔽の反転",
-      "guards": "テキストの視覚検証が FM に訊いて反転する経路(2段目)",
+      "guards": "テキストの可視性検証が FM に訊いて反転する経路(2段目)",
       "scenarios": {
         "S0010": { "expect": "red", "command": "exist", "failureKind": "assertion",
                    "detailContains": ["false positive (occlusion"],

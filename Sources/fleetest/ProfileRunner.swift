@@ -22,15 +22,15 @@ enum LocalDeviceLeaseWaitPolicy {
 
 enum ProfileRunner {
 
-    /// 実行プロファイルの実効 FM 設定を、`ResolvedProfile.fm`/`ocrTextOcclusionCheck` から
+    /// 実行プロファイルの実効 FM 設定を、`ResolvedProfile.fm`/`ocrTextVisibilityCheck` から
     /// そのまま写す(**上書きは `--set` が `ProfileResolver.resolve(overrides:)` で当て済み**なので、
     /// ここで CLI 由来の override を二重に適用しない)
     static func fmSettingsRecord(resolved: ResolvedProfile) -> FMSettingsRecord {
         FMSettingsRecord(
             heal: resolved.heal,
-            fmTextOcclusionCheck: resolved.fm.fmTextOcclusionCheck,
+            fmTextVisibilityCheck: resolved.fm.fmTextVisibilityCheck,
             screenLooksLike: resolved.fm.screenLooksLike,
-            ocrTextOcclusionCheck: resolved.ocrTextOcclusionCheck)
+            ocrTextVisibilityCheck: resolved.ocrTextVisibilityCheck)
     }
 
     /// この run が使おうとしているデバイスの run-lease(`.fleetest/run-<key>.lease`)に、
@@ -700,7 +700,7 @@ enum ProfileRunner {
         // 視覚系(occlusion-guard / screenLooksLike)を使う run だけが vision の死に影響を受ける。
         // **使わない run では台帳を引く前に返る** —— refresh は台帳が古いと FM を実際に呼ぶ
         // (0.7〜4.7 秒・FMCallSlots を取る)ので、結果を捨てる run で払わない
-        let usesVision = fm.fmTextOcclusionCheck || fm.screenLooksLike
+        let usesVision = fm.fmTextVisibilityCheck || fm.screenLooksLike
         guard fm.enabled, usesVision else { return }
         guard FMVisionSupport.isSupported else {
             log("⚠️ \(FMVisionSupport.requirement): \(visionLossDescription(fm))")
@@ -718,7 +718,7 @@ enum ProfileRunner {
     static func visionLossDescription(_ fm: FMConfig) -> String {
         var parts: [String] = []
         if fm.screenLooksLike { parts.append("screenLooksLike is skipped") }
-        if fm.fmTextOcclusionCheck {
+        if fm.fmTextVisibilityCheck {
             parts.append("the occlusion-guard (the default requireVisible of exist) judges from on-device OCR alone"
                          + OCROnlyVisibility.fmFallbackCaveat)
         }

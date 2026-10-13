@@ -176,7 +176,7 @@ public struct StepOutcome: Sendable {
     public let resolvedElement: ElementInfo?
     /// `select` が見えないと判定した要素(利用者には空の要素を返す = `resolvedElement` は nil)。
     /// **状態だけを読む検証(`enabledIsTrue` / `enabledIsFalse`)が「選んだ時点の値」として使うためだけ**に運ぶ ——
-    /// 骨組みの行のように文字を描かない要素は、視覚検証が時間を使って「見えない」と結論する間に状態が変わり、
+    /// 骨組みの行のように文字を描かない要素は、可視性検証が時間を使って「見えない」と結論する間に状態が変わり、
     /// 次の `enabledIsFalse` が取り直した木で落ちた(E2EY-Android の読み込み中)
     public let notVisibleSelection: ElementInfo?
     /// スクロール探索で実際に撃ったスワイプ数(runScrollSearch を経由したときだけ非nil。
@@ -401,11 +401,11 @@ public final class StepExecutor {
     /// 自己修復(指紋照合)を許す(`execute` の入口で畳む)。FM は使わない
     public var healingEnabled: Bool
     /// occlusion-guard のマスタースイッチ(既定 true)。実行プロファイルでは
-    /// `fmTextOcclusionCheck || ocrTextOcclusionCheck`(FTRuntime が合成)。false なら occlusionGuard/perStepGuard の
+    /// `fmTextVisibilityCheck || ocrTextVisibilityCheck`(FTRuntime が合成)。false なら occlusionGuard/perStepGuard の
     /// 値に関わらず occlusion-guard 自体を無効化する(Tier-0 の幾何も止まる)
     public var occlusionGuardEnabled: Bool
-    /// occlusion-guard の FM の段を使うか = 実行プロファイルの `fmTextOcclusionCheck`(既定 true)。
-    /// OCR の段(`occlusionOCRMode` = `ocrTextOcclusionCheck`)とは独立で、false なら OCR の読みだけで判定する。
+    /// occlusion-guard の FM の段を使うか = 実行プロファイルの `fmTextVisibilityCheck`(既定 true)。
+    /// OCR の段(`occlusionOCRMode` = `ocrTextVisibilityCheck`)とは独立で、false なら OCR の読みだけで判定する。
     /// delegate が nil なら true でも FM は撃てない(OCR だけ)
     public var fmVisibilityCheckEnabled: Bool
     /// 実行プロファイルの screenLooksLike に対応するマスタースイッチ(既定 true)。false なら

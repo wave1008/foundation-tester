@@ -518,10 +518,10 @@ E2E(local)でガード 54 件中 43 件が近道・予算切れ 0・guardMs 最�
 
 ### 既定と殺しスイッチ
 
-**利用者の口は実行プロファイルの `ocrTextOcclusionCheck`**(既定 true。拡張のプロファイルタブ
-「Advanced Features(Experimental)」セクションの「OCRを使用したテキストの視覚検証を有効にする」)。
-他のキーを経由せずこの値がそのまま効く。`false` にすると `--no-occlusion-ocr` がランナーへ渡り、
-**環境変数より優先**して OCR を止める(従来どおり FM だけで判定)。`fmTextOcclusionCheck` との関係は §5.22。
+**利用者の口は実行プロファイルの `ocrTextVisibilityCheck`**(既定 true。拡張のプロファイルタブ
+「Advanced Features(Experimental)」セクションの「OCRを使用したテキストの可視性検証を有効にする」)。
+他のキーを経由せずこの値がそのまま効く。`false` にすると `--no-ocr-text-visibility-check` がランナーへ渡り、
+**環境変数より優先**して OCR を止める(従来どおり FM だけで判定)。`fmTextVisibilityCheck` との関係は §5.22。
 
 環境変数は保守者用の口:
 `FT_OCCLUSION_OCR`: 未設定/その他 = **on(既定)** / `0`・`off` = 殺しスイッチ(従来どおり FM だけ)/
@@ -729,8 +729,8 @@ FM が拾えるのは空白と全面の覆いだけで、どちらもインク�
 
 ## 5.22 FM の段と OCR の段を独立させ、両方の判定を突き合わせる(2026-09-26)
 
-ユーザー決定で §5.21 を改める: 実行プロファイルの `fmTextOcclusionCheck`(「FM を使用したテキストの視覚検証」)は
-**FM の段**、`ocrTextOcclusionCheck` は **OCR の段**を指し、独立に切り替える(guard はどちらかが true なら走る)。
+ユーザー決定で §5.21 を改める: 実行プロファイルの `fmTextVisibilityCheck`(「FM を使用したテキストの可視性検証」)は
+**FM の段**、`ocrTextVisibilityCheck` は **OCR の段**を指し、独立に切り替える(guard はどちらかが true なら走る)。
 **FM の段が使えるときは OCR の赤でも FM に回し**、最終判定は2つを突き合わせて決める。
 
 **突き合わせの規則: 見えていると読めた側を採る**(`OCROnlyVisibility.merge`。赤は両方が見えないと言った回か、
@@ -750,7 +750,7 @@ OCR が判定不能で FM が見えないと言った回だけ)。根拠:
 
 構成ごとの動き:
 
-| fmTextOcclusionCheck | ocrTextOcclusionCheck | 判定 |
+| fmTextVisibilityCheck | ocrTextVisibilityCheck | 判定 |
 |---|---|---|
 | on | on(既定) | OCR が丸ごと読めれば緑(FM を省く)/ それ以外は FM と OCR を突き合わせ |
 | on | off | FM だけ(FM が答えなければ素通り + `visibility-guard-skipped`) |
@@ -758,8 +758,8 @@ OCR が判定不能で FM が見えないと言った回だけ)。根拠:
 | off | off | guard 無し(Tier-0 の幾何も止まる) |
 
 - FM の段が on でも使えない(macOS 26・実呼び出しの失敗・注入)ときは OCR だけ(文言は `... because FM gave no verdict`)
-- 配線: FTRuntime が `occlusionGuardEnabled = fmTextOcclusionCheck || ocrTextOcclusionCheck` と
-  `fmVisibilityCheckEnabled = fmTextOcclusionCheck` を渡す。`--no-fm` で delegate が nil でも OCR の段は走る
+- 配線: FTRuntime が `occlusionGuardEnabled = fmTextVisibilityCheck || ocrTextVisibilityCheck` と
+  `fmVisibilityCheckEnabled = fmTextVisibilityCheck` を渡す。`--no-fm` で delegate が nil でも OCR の段は走る
 - テスト: `OCROnlyVisibilityTests`(merge の全組み合わせ)・`OCROnlyVisibilityWiringTests`(FM より前に OCR の赤で
   返らない・merge が FM の後)・`FTDriveCoreOCRModelCompileWiringTests`(OCR だけでも guard が走る)・
   `testFMStageOffNeverCallsFM`。変異 5 件をすべて検出

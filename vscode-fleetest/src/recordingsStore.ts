@@ -336,9 +336,9 @@ export async function loadRecordingSessionDetail(
 /** run.json の fmSettings(docs/results-json.md)。寛容に読む(欠落した欄は null)。 */
 export interface RunMetaFmSettings {
   readonly heal: boolean | null;
-  readonly fmTextOcclusionCheck: boolean | null;
+  readonly fmTextVisibilityCheck: boolean | null;
   readonly screenLooksLike: boolean | null;
-  readonly ocrTextOcclusionCheck: boolean | null;
+  readonly ocrTextVisibilityCheck: boolean | null;
 }
 
 /** エクスポート(resultsExportModel.ts)が使う run.json の断片。host/profile は生の
@@ -367,9 +367,9 @@ export async function loadRunMeta(runDir: string): Promise<RunMetaFragment> {
   const fmSettingsRaw = isRecord(meta?.fmSettings) ? meta.fmSettings : null;
   const fmSettings: RunMetaFmSettings | null = fmSettingsRaw === null ? null : {
     heal: booleanField(fmSettingsRaw, "heal"),
-    fmTextOcclusionCheck: booleanField(fmSettingsRaw, "fmTextOcclusionCheck"),
+    fmTextVisibilityCheck: booleanField(fmSettingsRaw, "fmTextVisibilityCheck"),
     screenLooksLike: booleanField(fmSettingsRaw, "screenLooksLike"),
-    ocrTextOcclusionCheck: booleanField(fmSettingsRaw, "ocrTextOcclusionCheck"),
+    ocrTextVisibilityCheck: booleanField(fmSettingsRaw, "ocrTextVisibilityCheck"),
   };
   return {
     profile: stringField(meta, "profile") ?? null,

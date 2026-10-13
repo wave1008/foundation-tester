@@ -11,7 +11,7 @@ extension MCPServer {
 
     /// プロファイルのキーのうち FM と Vision を使うもの(`ft_start_run` が `--set <key>=false` で切る)。
     /// `withoutFMAndVision` と同じ4つ(片方だけ足さない。`MCPFMAndVisionOffTests` が両方を突き合わせる)
-    static let fmAndVisionProfileKeys = ["fmTextOcclusionCheck", "screenLooksLike", "ocrTextOcclusionCheck",
+    static let fmAndVisionProfileKeys = ["fmTextVisibilityCheck", "screenLooksLike", "ocrTextVisibilityCheck",
                                          "preferCheckStateClassifier"]
 
     /// **MCP の run は既定で FM と Vision を使わない**(ユーザー決定)。子は OCR のコンパイルも起こさない
@@ -19,7 +19,7 @@ extension MCPServer {
     static func withoutFMAndVision(_ settings: ScenarioExecutionSettings) -> ScenarioExecutionSettings {
         var out = settings
         out.fm.enabled = false
-        out.fm.fmTextOcclusionCheck = false
+        out.fm.fmTextVisibilityCheck = false
         out.fm.screenLooksLike = false
         out.occlusionOCR = false
         out.preferCheckStateClassifier = false

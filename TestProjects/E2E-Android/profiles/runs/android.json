@@ -172,10 +172,10 @@
   "iosInappEngine": true,
   "record": true,
   "screenLooksLike": true,
-  "fmTextOcclusionCheck": true,
+  "fmTextVisibilityCheck": true,
   "updateWebView": true,
   "wipeDataOnBloat": true,
-  "ocrTextOcclusionCheck": true,
+  "ocrTextVisibilityCheck": true,
   "preferCheckStateClassifier": true,
   "iosPreActionPing": true,
   "playProtectBypass": true

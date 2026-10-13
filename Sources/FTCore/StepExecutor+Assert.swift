@@ -72,7 +72,7 @@ extension StepExecutor {
 
     /// 可視性照合(`requireVisible`)がこのステップで効くか。ステップ指定(DSL の requireVisible)
     /// 優先、無ければ executor 既定。`occlusionGuardEnabled` はどちらより上位の実行プロファイル由来
-    /// マスタースイッチ(`fmTextOcclusionCheck || ocrTextOcclusionCheck`)。**FM の有無は含めない** —— 幾何の Tier-0 は FM 無しで
+    /// マスタースイッチ(`fmTextVisibilityCheck || ocrTextVisibilityCheck`)。**FM の有無は含めない** —— 幾何の Tier-0 は FM 無しで
     /// 効くので、FTRuntime の保持値の高速経路もこれを見て「照合が走る設定なら実機を見に行く」と決める
     /// (FM 前提の条件で判定すると、FM の無いホストで幾何の照合が静かに1つ消える)
     public func visibilityGuardActive(perStepGuard: Bool?) -> Bool {
@@ -86,7 +86,7 @@ extension StepExecutor {
     ///     同じ述語)。iOS の木は画面外の要素も frame ごと残すので、これが無いと通り過ぎた要素への
     ///     exist が通る。FM 側は crop が画像の外に落ちると nil = 素通りなので、**FM が生きていても
     ///     この形は FM では塞がらない**(受け手報告・横スクロール区画の実例)
-    ///   Tier-1〜 OCR の段(ocrTextOcclusionCheck)と FM の段(fmTextOcclusionCheck = fmVisibilityCheckEnabled)は独立:
+    ///   Tier-1〜 OCR の段(ocrTextVisibilityCheck)と FM の段(fmTextVisibilityCheck = fmVisibilityCheckEnabled)は独立:
     ///     OCR が丸ごと読めれば緑 / それ以外は FM と突き合わせて見えていると読めた側を採る(OCROnlyVisibility.merge)/
     ///     FM の段が無い・使えないときは OCR の判定だけ。FM に訊いて答えが無ければ `visibilityGuardSkipped`
     /// 呼び出し側(exists/textEquals)は不可視を即失敗にせず timeout まで可視化を待つ(poll-until-visible)。
@@ -115,7 +115,7 @@ extension StepExecutor {
                            + " (\(Int(c.x)), \(Int(c.y))) is outside the screen, so it is not visible"
                            + " (scroll it into view before this step)")
         }
-        // FM の段(fmTextOcclusionCheck)と OCR の段(ocrTextOcclusionCheck)は独立。**どちらも無ければ Tier-0 の幾何だけ**
+        // FM の段(fmTextVisibilityCheck)と OCR の段(ocrTextVisibilityCheck)は独立。**どちらも無ければ Tier-0 の幾何だけ**
         let fmConfigured = fmVisibilityCheckEnabled && delegate != nil
         guard fmConfigured || occlusionOCRMode != .off else { return nil }
         // 退化 frame(サイズ 0・クランプで潰れた等)は視覚照合の意味がないのでスキップ(素通り)
@@ -274,7 +274,7 @@ extension StepExecutor {
         // 読んでいない(nil)は judge が判定不能を返す
         let ocrOnly = ocrOnlyOutcome(ocrReading: ocrReading, expectedText: expectedText, sd: sd,
                                      screenshot: screenshot, element: element, screen: screen)
-        // FM の段を使わない(fmTextOcclusionCheck off・delegate 無し)/ 使えない(macOS 26・陽性対照の注入)なら
+        // FM の段を使わない(fmTextVisibilityCheck off・delegate 無し)/ 使えない(macOS 26・陽性対照の注入)なら
         // OCR の読みだけで決める。**訊いてすらいない**ので visibilityGuardSkipped は立てない
         // (「静的に無効な構成では出ない」契約を保つ。applyOCROnlyVisibility の countsAsSkipped)
         guard fmAvailable, let delegate else {
@@ -353,7 +353,7 @@ extension StepExecutor {
     }
 
     /// 絵の**アプリ領域全体が一色**だったときに失敗文へ添える事実(そうでなければ空文字)。判定は変えない —— テキストの
-    /// 視覚検証は白を「描かれていない」の事実として扱う(`BlankFrameDetector.isUnjudgeable` の doc)。添えないと、
+    /// 可視性検証は白を「描かれていない」の事実として扱う(`BlankFrameDetector.isUnjudgeable` の doc)。添えないと、
     /// 1つの要素が隠れているのか画面全体に何も描かれていないのかを読み分けられない(実測: XCUITest の run で CMP の画面が
     /// 真っ白に撮れ、木は中身を持つのに、要素ごとに「木にはあるが見えない」と 18 本が赤になった)。失敗の経路だけで払う
     /// **上端で除く帯は木から決める**(いちばん上の要素の上端まで・下限は従来の2行)。ステータスバーの高さは機種で違い
@@ -1920,7 +1920,7 @@ extension StepExecutor {
             return frozen
         }
         // ステータスバーだけが残った黒(撮れていない・表示の凍結)を FM に渡すと必ず「一致しない」になる。
-        // 視覚検証と同じく判定の根拠にしない(凍結の根拠にもしない = 回復は撃たない)
+        // 可視性検証と同じく判定の根拠にしない(凍結の根拠にもしない = 回復は撃たない)
         if BlankFrameDetector.isBlackApartFromSystemBars(pngData: screenshot) {
             noteCodesThisStep.insert(.blankScreenshot)
             return .skipped("the screenshot is black apart from the system bars (the capture failed or the"

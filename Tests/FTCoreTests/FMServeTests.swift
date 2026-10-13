@@ -52,9 +52,9 @@ final class FMServeTests: XCTestCase {
     // MARK: - 起動の判断
 
     func testNeededFollowsTheTwoFMFeatures() {
-        XCTAssertFalse(FMServeHost.needed(fmTextOcclusionCheck: false, screenLooksLike: false))
-        XCTAssertTrue(FMServeHost.needed(fmTextOcclusionCheck: true, screenLooksLike: false))
-        XCTAssertTrue(FMServeHost.needed(fmTextOcclusionCheck: false, screenLooksLike: true))
+        XCTAssertFalse(FMServeHost.needed(fmTextVisibilityCheck: false, screenLooksLike: false))
+        XCTAssertTrue(FMServeHost.needed(fmTextVisibilityCheck: true, screenLooksLike: false))
+        XCTAssertTrue(FMServeHost.needed(fmTextVisibilityCheck: false, screenLooksLike: true))
     }
 
     private func status(version: Int = FMServeWire.protocolVersion, executable: String, stamp: String) -> FMServeWire.Response {
@@ -217,7 +217,7 @@ final class FMServeTests: XCTestCase {
             let list = try XCTUnwrap(text.range(of: "let all = try ScenarioHost.listForRun("), path)
             let ensure = try XCTUnwrap(text.range(of: "await FMServeHost.ensureRunning"), "\(path) が FM の常駐プロセスを用意していない")
             XCTAssertLessThan(list.lowerBound, ensure.lowerBound, path)
-            XCTAssertTrue(text.contains("if !dryRun, FMServeHost.needed(fmTextOcclusionCheck:"),
+            XCTAssertTrue(text.contains("if !dryRun, FMServeHost.needed(fmTextVisibilityCheck:"),
                           "\(path) が設定を見ずに(または dry-run でも)常駐プロセスを起こす")
         }
     }
@@ -230,7 +230,7 @@ final class FMServeTests: XCTestCase {
             .contains("FMServeHost.activeSocketPath].compactMap"))
     }
 
-    /// **LanguageModelSession を作ってよいのは決まったファイルだけ**。画像を伴う呼び出し(テキストの視覚検証・
+    /// **LanguageModelSession を作ってよいのは決まったファイルだけ**。画像を伴う呼び出し(テキストの可視性検証・
     /// screenLooksLike・死活の確かめ)は常駐プロセスだけが撃つ —— シナリオのプロセスや常駐ヘルパーが各自
     /// セッションを作ると、モデルの載せ直しが絶えず起きて FM が死んだ(docs/maintainer-notes.md §81)
     func testOnlyTheFMProcessAndAuthoringToolsCreateSessions() throws {

@@ -597,7 +597,7 @@ extension StepExecutor {
                                                           inferring: step.containerInference ?? true))
                     .flatMap { ScrollGeometry.intersection($0, snapshot.screen) } ?? snapshot.screen
                 // **キーボードの下は見えていない**: 差し引かないと、打った後にキーボードの下へ残った echo を
-                // 「見つけた」で止まり、視覚検証が描かれていないと赤にした(E2EX-iOS 入力画面 S0040・XCUITest)
+                // 「見つけた」で止まり、可視性検証が描かれていないと赤にした(E2EX-iOS 入力画面 S0040・XCUITest)
                 let viewport = ScrollGeometry.intersection(
                     containerViewport, ScrollGeometry.viewport(snapshot.screen, excludingKeyboard: effectiveKeyboard))
                     ?? containerViewport

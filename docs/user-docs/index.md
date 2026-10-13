@@ -72,7 +72,7 @@ scenarios the AI assistant wrote, or to write some yourself.
 
 - [Creating a TestClass](reference/testclass/creating_testclass.md)
 - [Select and assert](reference/testclass/select_and_assert.md)
-- [How text visual verification decides](reference/testclass/text_visual_check.md)
+- [How the text visibility check decides](reference/testclass/text_visibility_check.md)
 - [Test code structure](reference/testclass/testcode_structure.md)
 - [Custom commands](reference/testclass/custom_commands.md)
 - [Test result files](reference/testclass/test_result_files.md)

@@ -71,7 +71,7 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 
 - [テストクラスの作成](reference/testclass/creating_testclass_ja.md)
 - [要素の選択と検証](reference/testclass/select_and_assert_ja.md)
-- [テキストの視覚検証の判定](reference/testclass/text_visual_check_ja.md)
+- [テキストの可視性検証の判定](reference/testclass/text_visibility_check_ja.md)
 - [テストコードの構造](reference/testclass/testcode_structure_ja.md)
 - [独自コマンド](reference/testclass/custom_commands_ja.md)
 - [テスト結果ファイル](reference/testclass/test_result_files_ja.md)

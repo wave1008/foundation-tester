@@ -750,12 +750,12 @@ struct ApiRunCommand: AsyncParsableCommand {
         let all = try ScenarioHost.listForRun(
             project: testProject, dryRun: dryRun,
             compilesOCR: ScenarioHost.ocrCompileNeeded(
-                fmTextOcclusionCheck: resolvedProfile?.fm.fmTextOcclusionCheck ?? noProfileSettings.fm.fmTextOcclusionCheck,
-                ocrTextOcclusionCheck: resolvedProfile?.ocrTextOcclusionCheck ?? noProfileSettings.ocrTextOcclusionCheck))
+                fmTextVisibilityCheck: resolvedProfile?.fm.fmTextVisibilityCheck ?? noProfileSettings.fm.fmTextVisibilityCheck,
+                ocrTextVisibilityCheck: resolvedProfile?.ocrTextVisibilityCheck ?? noProfileSettings.ocrTextVisibilityCheck))
         // FM の常駐プロセス(画像を伴う FM の呼び出しを1つのプロセスに集める。FTCore/FMServe.swift 冒頭)。
         // シナリオのプロセスを起こす前に用意する(子の環境とサンドボックスの許可がソケットのパスを読む)
         let fmForServe = resolvedProfile?.fm ?? noProfileSettings.fm
-        if !dryRun, FMServeHost.needed(fmTextOcclusionCheck: fmForServe.fmTextOcclusionCheck,
+        if !dryRun, FMServeHost.needed(fmTextVisibilityCheck: fmForServe.fmTextVisibilityCheck,
                                        screenLooksLike: fmForServe.screenLooksLike) {
             await FMServeHost.ensureRunning { ConsoleOut.err($0) }
         }
@@ -813,16 +813,16 @@ struct ApiRunCommand: AsyncParsableCommand {
         if let resolvedProfile {
             let fm = resolvedProfile.fm
             fmSettings = FMSettingsRecord(
-                heal: resolvedProfile.heal, fmTextOcclusionCheck: fm.fmTextOcclusionCheck,
+                heal: resolvedProfile.heal, fmTextVisibilityCheck: fm.fmTextVisibilityCheck,
                 screenLooksLike: fm.screenLooksLike,
-                ocrTextOcclusionCheck: resolvedProfile.ocrTextOcclusionCheck)
+                ocrTextVisibilityCheck: resolvedProfile.ocrTextVisibilityCheck)
         } else {
             // runDirect と同じ設定(DeviceIndependentRunSettings)
             let fm = noProfileSettings.fm
             fmSettings = FMSettingsRecord(
-                heal: noProfileSettings.heal, fmTextOcclusionCheck: fm.fmTextOcclusionCheck,
+                heal: noProfileSettings.heal, fmTextVisibilityCheck: fm.fmTextVisibilityCheck,
                 screenLooksLike: fm.screenLooksLike,
-                ocrTextOcclusionCheck: noProfileSettings.ocrTextOcclusionCheck)
+                ocrTextVisibilityCheck: noProfileSettings.ocrTextVisibilityCheck)
         }
 
         var outcome: RunOutcome

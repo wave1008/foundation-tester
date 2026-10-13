@@ -1,4 +1,4 @@
-// FM の常駐プロセス(`fleetest api fm-serve`)との通信と起動。**画像を伴う FM の呼び出し(テキストの視覚検証・
+// FM の常駐プロセス(`fleetest api fm-serve`)との通信と起動。**画像を伴う FM の呼び出し(テキストの可視性検証・
 // screenLooksLike・死活の確かめ)は全部この1プロセスが撃つ**。シナリオのプロセスは LanguageModelSession を持たない。
 //
 // なぜ常駐の1プロセスか(実測・docs/maintainer-notes.md §81): FM の死(ANE の `Program load failed — no memory`)は
@@ -44,7 +44,7 @@ public enum FMServeWire {
     }
 
     public enum Kind: String, Codable, Sendable {
-        /// 切り出した画像に描かれた文字の転写(テキストの視覚検証)。`png` が要る
+        /// 切り出した画像に描かれた文字の転写(テキストの可視性検証)。`png` が要る
         case transcribe
         /// 画面が期待の状態に合うか(screenLooksLike)。`png` と `expected` が要る
         case screen
@@ -169,9 +169,9 @@ public enum FMServeHost {
     /// このプロセスが用意した常駐プロセスのソケット(`ScenarioHost.childEnvironment` とサンドボックスの許可が読む)
     public static var activeSocketPath: String? { active.withLock { $0 } }
 
-    /// その run で FM を使う機能が有効か(テキストの視覚検証の FM の段か screenLooksLike)
-    public static func needed(fmTextOcclusionCheck: Bool, screenLooksLike: Bool) -> Bool {
-        fmTextOcclusionCheck || screenLooksLike
+    /// その run で FM を使う機能が有効か(テキストの可視性検証の FM の段か screenLooksLike)
+    public static func needed(fmTextVisibilityCheck: Bool, screenLooksLike: Bool) -> Bool {
+        fmTextVisibilityCheck || screenLooksLike
     }
 
     /// 起こす実行ファイル: このプロセスと同じディレクトリの `fleetest`(`fleetest-mcp` からも同じ物を指す)。

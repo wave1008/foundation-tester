@@ -20,10 +20,10 @@ public enum OCROnlyVisibility {
     }
 
     /// FM が判定を返さない run の occlusion-guard を説明する但し書き(括弧つき・先頭空白つき)。CLI の警告・
-    /// FMHealth・doctor・ft_status が共有する。**ocrTextOcclusionCheck を知らない呼び手でも真になる形**
+    /// FMHealth・doctor・ft_status が共有する。**ocrTextVisibilityCheck を知らない呼び手でも真になる形**
     /// (off なら読みが無く judge は常に判定不能 = 素通り)
     public static let fmFallbackCaveat =
-        " (text that OCR cannot judge passes unchecked; with ocrTextOcclusionCheck off the guard passes through)"
+        " (text that OCR cannot judge passes unchecked; with ocrTextVisibilityCheck off the guard passes through)"
 
     /// FM の判定と OCR の読みの判定の突き合わせ。**見えていると読めた側を採る**(赤は両方が見えないと
     /// 言った回か、OCR が判定不能で FM が見えないと言った回だけ)。どちらも期待文字列を知らずに読んだ文字を

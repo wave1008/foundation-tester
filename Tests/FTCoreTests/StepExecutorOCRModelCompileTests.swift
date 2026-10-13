@@ -18,7 +18,7 @@ final class StepExecutorOCRModelCompileTests: XCTestCase {
                        "ガードが効く executor でコンパイルを始めていない")
     }
 
-    /// マスタースイッチ(実行プロファイルの fmTextOcclusionCheck)が off の run では撃たない
+    /// マスタースイッチ(実行プロファイルの fmTextVisibilityCheck)が off の run では撃たない
     func testDoesNotStartModelCompileWhenTheMasterSwitchIsOff() {
         let before = RegionText.modelCompileRequestCount
         _ = StepExecutor(driver: SilentDriver(), occlusionGuard: true,

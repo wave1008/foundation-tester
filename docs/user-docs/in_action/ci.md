@@ -15,8 +15,8 @@ CI.
   `LaunchDaemon` or a bare `ssh` session makes Simulators unstable.
 - **Apple Intelligence is not required.** Without it (a `⚠️` line is printed at startup), deterministic execution —
   tapping, asserting, and self-healing (locator fingerprint matching, which does not use FM) — runs unaffected.
-  Two things change: **`screenLooksLike` passes without being checked**, and **text visual verification judges by OCR
-  alone** ([Text visual verification](../reference/testclass/text_visual_check.md)). If you
+  Two things change: **`screenLooksLike` passes without being checked**, and **text visibility check judges by OCR
+  alone** ([Text visibility check](../reference/testclass/text_visibility_check.md)). If you
   need visual checks enforced, see "Using Apple Intelligence in CI" below.
 - Xcode (and the Android SDK, if running Android scenarios) already installed on the runner.
 
@@ -86,11 +86,11 @@ inside a macOS VM (Tart, Anka and the like), so plan on it being unavailable the
 
 - Physical Mac (a standing Jenkins machine, for example): works.
 - AWS EC2 Mac (bare metal): should work in principle, but it is unverified.
-- macOS VM: does not work. `screenLooksLike` passes without being checked, and text visual verification judges by OCR alone.
+- macOS VM: does not work. `screenLooksLike` passes without being checked, and text visibility check judges by OCR alone.
 
 To enable it on bare metal:
 
-- Apple silicon with macOS 26 or later. `screenLooksLike` and text visual verification (image input) need macOS 27 or later.
+- Apple silicon with macOS 26 or later. `screenLooksLike` and text visibility check (image input) need macOS 27 or later.
 - Enable it once in the GUI (on macOS 27, turn Siri on in System Settings → Siri (Siri uses Apple Intelligence); on macOS 26, turn on "Apple Intelligence" in System Settings → Apple Intelligence & Siri; on a machine without a display, through Screen Sharing.
   A model download runs). An EC2 Mac loses the setting when recreated from a plain AMI, so bake a custom AMI after enabling it,
   or include the enabling in your provisioning.

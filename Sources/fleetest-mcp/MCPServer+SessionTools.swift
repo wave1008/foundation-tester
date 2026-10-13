@@ -420,7 +420,7 @@ extension MCPServer {
                 ? "✅ On-device OCR (Vision text recognition) read the built-in test image"
                 : "❌ On-device OCR (Vision text recognition) read nothing from the built-in test image (an image"
                     + " with known text) — while it stays so, link-text taps fail, typed text cannot be read back from the"
-                    + " screen, and the OCR stage of the text visual verification cannot read text (rebooting this"
+                    + " screen, and the OCR stage of the text visibility check cannot read text (rebooting this"
                     + " Mac has cleared this state before)"))
     }
 }

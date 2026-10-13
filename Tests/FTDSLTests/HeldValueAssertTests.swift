@@ -53,7 +53,7 @@ final class HeldValueAssertTests: XCTestCase {
         func terminate() async throws {}
     }
 
-    /// occlusion-guard(fmTextOcclusionCheck)が実際に走る条件を作るための delegate。
+    /// occlusion-guard(fmTextVisibilityCheck)が実際に走る条件を作るための delegate。
     /// 「見えている」と答えるので、ガードは通るが**走ったこと自体**は snapshot 回数に出る
     private final class VisibleDelegate: ReplayDelegate {
         func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
@@ -75,12 +75,12 @@ final class HeldValueAssertTests: XCTestCase {
     }
 
     private func run(driver: MutatingDriver, delegate: ReplayDelegate? = nil,
-                     fmTextOcclusionCheck: Bool = false,
+                     fmTextVisibilityCheck: Bool = false,
                      _ body: @escaping () -> Void) -> FTDriveCore {
         let core = FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
                                scenarioID: "T.S0010", scenarioTitle: "t",
                                delegate: delegate, healingEnabled: false, tunables: RunTunables(),
-                               fmTextOcclusionCheckEnabled: fmTextOcclusionCheck, occlusionOCREnabled: fmTextOcclusionCheck,
+                               fmTextVisibilityCheckEnabled: fmTextVisibilityCheck, occlusionOCREnabled: fmTextVisibilityCheck,
                                dryRun: false,
                                fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                                    .appendingPathComponent("ft-held-assert-test.json"),
@@ -103,7 +103,7 @@ final class HeldValueAssertTests: XCTestCase {
         let core = FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
                                scenarioID: "T.S0010", scenarioTitle: "t",
                                delegate: nil, healingEnabled: false, tunables: RunTunables(),
-                               fmTextOcclusionCheckEnabled: false, occlusionOCREnabled: false, dryRun: false,
+                               fmTextVisibilityCheckEnabled: false, occlusionOCREnabled: false, dryRun: false,
                                fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                                    .appendingPathComponent("ft-held-assert-notes-test.json"),
                                emit: { events.append($0) })
@@ -225,12 +225,12 @@ final class HeldValueAssertTests: XCTestCase {
         XCTAssertEqual(driver.snapshotCount, 2, "checked が掴んだ値で判定されている")
     }
 
-    /// **可視性照合(fmTextOcclusionCheck)が走る run では高速経路に入らない**。
+    /// **可視性照合(fmTextVisibilityCheck)が走る run では高速経路に入らない**。
     /// 飛ばすと「覆われているのに緑」を検出する検査が静かに1つ消える
     func testVisibilityCheckedRunStillReadsTheDevice() {
         let driver = MutatingDriver()
         let delegate = VisibleDelegate()
-        let core = run(driver: driver, delegate: delegate, fmTextOcclusionCheck: true) {
+        let core = run(driver: driver, delegate: delegate, fmTextVisibilityCheck: true) {
             select("#total").textIs("1,200")
         }
         assertAllPassed(core)
@@ -243,7 +243,7 @@ final class HeldValueAssertTests: XCTestCase {
     /// FM の無いホストで幾何の検査が静かに1つ消える
     func testVisibilityCheckedRunReadsTheDeviceEvenWithoutAnFMDelegate() {
         let driver = MutatingDriver()
-        let core = run(driver: driver, delegate: nil, fmTextOcclusionCheck: true) {
+        let core = run(driver: driver, delegate: nil, fmTextVisibilityCheck: true) {
             select("#total").textIs("1,200")
         }
         assertAllPassed(core)
@@ -252,17 +252,17 @@ final class HeldValueAssertTests: XCTestCase {
     }
 
     /// **select が見えないと判定した要素でも、enabledIs* は選んだ時点の状態で判定する**。witness: E2EY-Android の
-    /// 骨組み —— 文字の無い灰色の帯を視覚検証が FM に訊く間(約 1.6 秒)に 2 秒の読み込み中が終わり、取り直した木で
+    /// 骨組み —— 文字の無い灰色の帯を可視性検証が FM に訊く間(約 1.6 秒)に 2 秒の読み込み中が終わり、取り直した木で
     /// enabledIsFalse が落ちた。利用者に返す要素は空のまま(text は読ませない)
     func testNotVisibleSelectionServesTheStateAssertionWithTheValueAtSelection() {
         let driver = MutatingDriver()
         driver.enabled = false
         driver.enabledAfterMutation = true
         let selectOnly = MutatingDriver()
-        _ = run(driver: selectOnly, delegate: InvisibleDelegate(), fmTextOcclusionCheck: true) { select("#total") }
+        _ = run(driver: selectOnly, delegate: InvisibleDelegate(), fmTextVisibilityCheck: true) { select("#total") }
         driver.mutatesAfter = selectOnly.snapshotCount   // select の後の取り直しはすべて「本物」(有効)を返す
         var grabbedText: String? = "unset"
-        let core = run(driver: driver, delegate: InvisibleDelegate(), fmTextOcclusionCheck: true) {
+        let core = run(driver: driver, delegate: InvisibleDelegate(), fmTextVisibilityCheck: true) {
             let element = select("#total")
             grabbedText = element.text
             element.enabledIsFalse(waitSeconds: 0.5)
@@ -271,10 +271,10 @@ final class HeldValueAssertTests: XCTestCase {
         XCTAssertNil(grabbedText, "見えない要素の text を利用者へ返している")
     }
 
-    /// 見えないと判定した要素の値で、**文字の検証は通さない**(視覚検証の目的 = 見えていない値で緑にしない)
+    /// 見えないと判定した要素の値で、**文字の検証は通さない**(可視性検証の目的 = 見えていない値で緑にしない)
     func testNotVisibleSelectionIsNotUsedForTextAssertions() {
         let driver = MutatingDriver()
-        let core = run(driver: driver, delegate: InvisibleDelegate(), fmTextOcclusionCheck: true) {
+        let core = run(driver: driver, delegate: InvisibleDelegate(), fmTextVisibilityCheck: true) {
             select("#total").textIs("1,200", waitSeconds: 0.5)
         }
         XCTAssertTrue(steps(core).contains { if case .failed = $0.status { return true }; return false },

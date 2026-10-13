@@ -61,9 +61,9 @@ extension StepExecutor {
                                        inferring: step.containerInference ?? true,
                                        scale: driver.pointScale) ?? element.frame
         let duration = step.duration ?? tunables.defaultHoldDuration
-        // **指を置く前に OCR のコンパイルを済ませる**: ブロックの最初の視覚検証がコンパイルを待つと(実測 12 秒)、
+        // **指を置く前に OCR のコンパイルを済ませる**: ブロックの最初の可視性検証がコンパイルを待つと(実測 12 秒)、
         // その間に指が離れて押している間だけ出る部品が消える。occlusionFlip と同じ条件で待つ
-        // (詰まった読みがある間は待たない)。待った時間は視覚検証の内訳へ入れる
+        // (詰まった読みがある間は待たない)。待った時間は可視性検証の内訳へ入れる
         // 見るのは実行プロファイルの親スイッチ(ステップの既定ガードは off で、各 exist が自分で立てる)
         if occlusionGuardEnabled, occlusionOCRMode != .off,
            RegionText.abandonedInFlight == 0, !RegionText.isModelReady {

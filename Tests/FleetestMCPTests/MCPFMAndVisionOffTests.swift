@@ -10,13 +10,13 @@ final class MCPFMAndVisionOffTests: XCTestCase {
     func testRunSettingsTurnOffEveryFMAndVisionSwitch() {
         var on = ScenarioExecutionSettings()
         on.fm.enabled = true
-        on.fm.fmTextOcclusionCheck = true
+        on.fm.fmTextVisibilityCheck = true
         on.fm.screenLooksLike = true
         on.occlusionOCR = true
         on.preferCheckStateClassifier = true
         let off = MCPServer.withoutFMAndVision(on)
         XCTAssertFalse(off.fm.enabled)
-        XCTAssertFalse(off.fm.fmTextOcclusionCheck)
+        XCTAssertFalse(off.fm.fmTextVisibilityCheck)
         XCTAssertFalse(off.fm.screenLooksLike)
         XCTAssertFalse(off.occlusionOCR)
         XCTAssertFalse(off.preferCheckStateClassifier)

@@ -30,7 +30,7 @@ To enable it, on macOS 27, turn Siri on in System Settings → Siri (Siri uses A
 
 - **`screenLooksLike`**
   - Visual verification of the screen against a natural-language description.
-- **Text visual verification**
+- **Text visibility check**
   - Visually checks whether a text is actually displayed and not hidden behind something else, which makes test verdicts more accurate.
 
 All processing for these features is on-device; screen data from your app never leaves your Mac through them (the screen contents sent to your AI assistant when you create tests are a separate matter).

@@ -22,7 +22,7 @@ final class OCROnlyVisibilityWiringTests: XCTestCase {
         return String(text[start.lowerBound..<end.lowerBound])
     }
 
-    /// FM の段(fmTextOcclusionCheck)と OCR の段は独立: どちらも無いときだけ早期 return。FM を撃てるかは
+    /// FM の段(fmTextVisibilityCheck)と OCR の段は独立: どちらも無いときだけ早期 return。FM を撃てるかは
     /// fmAvailable の1箇所(設定 × macOS 27+ × 注入なし)で決める
     func testFMAndOCRStagesAreIndependentGates() throws {
         let text = source

@@ -155,7 +155,7 @@ final class ScrollSpanShrinkTests: XCTestCase {
     }
 
     /// **キーボードの下で見つかった要素は「見えている」で止めず、送る**(E2EX-iOS 入力画面 S0040・XCUITest:
-    /// 打った後にキーボードの下へ残った echo を見つけたで止まり、視覚検証が描かれていないと赤にした)
+    /// 打った後にキーボードの下へ残った echo を見つけたで止まり、可視性検証が描かれていないと赤にした)
     func testScrollSearchDoesNotStopOnAnElementUnderTheKeyboard() async throws {
         let keyboard = FTRect(x: 0, y: 600, width: 402, height: 274)
         let driver = PathRecordingDriver(elements: [Self.frame(anchorY: 640)], keyboardFrame: keyboard)

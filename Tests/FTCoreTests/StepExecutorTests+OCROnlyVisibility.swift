@@ -117,7 +117,7 @@ extension StepExecutorTests {
         XCTAssertFalse(outcome.notes.contains(.textEllipsized), "\(outcome.notes)")
     }
 
-    /// FM の段を切った設定(fmTextOcclusionCheck off = fmVisibilityCheckEnabled: false)では、delegate があっても
+    /// FM の段を切った設定(fmTextVisibilityCheck off = fmVisibilityCheckEnabled: false)では、delegate があっても
     /// FM を呼ばない。OCR も off なら Tier-0 の幾何だけ = 低インクの画面でも緑のまま
     func testFMStageOffNeverCallsFM() async throws {
         let log = CallLog()

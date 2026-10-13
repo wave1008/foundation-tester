@@ -46,8 +46,8 @@ final class MCPRunJobsTests: XCTestCase {
             profile: "smoke", project: nil, runner: nil, scenarios: [], folders: [], failed: false, broadcast: false,
             fmAndVision: false)
         XCTAssertEqual(args, ["FT_OCCLUSION_OCR=off", "FT_FIND_IMAGE_PREWARM=off", "swift", "run", "fleetest", "run", "--profile", "smoke",
-                              "--set", "fmTextOcclusionCheck=false", "--set", "screenLooksLike=false",
-                              "--set", "ocrTextOcclusionCheck=false", "--set", "preferCheckStateClassifier=false"])
+                              "--set", "fmTextVisibilityCheck=false", "--set", "screenLooksLike=false",
+                              "--set", "ocrTextVisibilityCheck=false", "--set", "preferCheckStateClassifier=false"])
     }
 
     /// MCP は承認なしで呼ばれうるので、登録していない宛先へは送らない(local と登録名だけ)

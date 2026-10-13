@@ -59,11 +59,11 @@ exist("#total"); textStartsWith("合計")
 どちらも `waitSeconds:` を明示すれば(小数可。`waitSeconds: 1.2` 等)、その呼び出しだけ既定値を
 上書きできます。
 
-## 可視性・テキストの視覚検証
+## 可視性・テキストの可視性検証
 
 `requireVisible: false` を渡すと、`exist`(通常は覆われ・見切れを検出して検証結果を失敗に
 反転させる)と `select`(通常は空要素を返す)を裏で支えている可視性確認を省きます。
-この追加の可視性照合は既定で有効です(`fmTextOcclusionCheck` と `ocrTextOcclusionCheck` の両方を
+この追加の可視性照合は既定で有効です(`fmTextVisibilityCheck` と `ocrTextVisibilityCheck` の両方を
 `false` にした run では走らず、そのときはこのフラグに省くべき処理がありません)。
 
 ### Link

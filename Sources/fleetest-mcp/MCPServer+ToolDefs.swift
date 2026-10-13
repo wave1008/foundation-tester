@@ -101,7 +101,7 @@ extension MCPServer {
     nonisolated(unsafe) static let skipBuildProperty: [String: Any] = ["type": "boolean", "description": "Skip the swift build"]
     /// **MCP は既定で FM と Vision を使わない**(ユーザー決定)。切り方は `MCPServer.withoutFMAndVision`・応答の文言は `MCPServer.fmAndVisionOffNote`
     nonisolated(unsafe) static let fmAndVisionProperty: [String: Any] = ["type": "boolean", "description":
-        "Use Foundation Models and Vision (text visual verification, screenLooksLike, the checkIsON classifier, "
+        "Use Foundation Models and Vision (text visibility check, screenLooksLike, the checkIsON classifier, "
         + "OCR) — off by default in MCP"]
     nonisolated(unsafe) static let runPidProperty: [String: Any] = [
         "type": "integer", "description": "pid from ft_start_run (default: the latest)",

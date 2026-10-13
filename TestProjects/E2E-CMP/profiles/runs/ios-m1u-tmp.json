@@ -372,6 +372,6 @@
   "heal": true,
   "iosInappEngine": true,
   "scenarioTimeout": 900,
-  "fmTextOcclusionCheck": true,
+  "fmTextVisibilityCheck": true,
   "wipeDataOnBloat": true
 }

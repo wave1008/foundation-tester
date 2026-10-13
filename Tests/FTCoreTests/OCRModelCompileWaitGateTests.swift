@@ -43,7 +43,7 @@ final class OCRModelCompileWaitGateTests: XCTestCase {
         XCTAssertTrue(block.contains(".ocrCompileCapped"), "上限に達したことの注記が無い")
     }
 
-    /// hold は**指を置く前**にコンパイルを済ませる(ブロックの最初の視覚検証がコンパイルを待つと、その間に指が離れて
+    /// hold は**指を置く前**にコンパイルを済ませる(ブロックの最初の可視性検証がコンパイルを待つと、その間に指が離れて
     /// 押している間だけ出る部品が消える。実測 M1Ultra: 12 秒待って離れていた)。
     /// 見るのは親スイッチ(occlusionGuardEnabled)—— ステップの既定ガードは off なので
     /// visibilityGuardActive(perStepGuard: nil) では一度も待たない

@@ -136,10 +136,10 @@ fleetest remote exec <宛先> -- api installed-devices
 
 - `"devices"` はまず**1台**にする(検証を速く回すため)
 - `"heal"` は既定のままでよい(自己修復はロケータの指紋照合で FM を使わないため、
-  ランナー機の Apple Intelligence の有無に影響されない)。`"fmTextOcclusionCheck"` /
+  ランナー機の Apple Intelligence の有無に影響されない)。`"fmTextVisibilityCheck"` /
   `"screenLooksLike"` も既定の `true` のままでよい(ランナー機で Apple Intelligence が無効でも
-  FM の段は自動で OCR だけの判定になり、run は止まらない)。`fmTextOcclusionCheck` を `false` にしても
-  `ocrTextOcclusionCheck` が `true` なら OCR だけで検証は続く(両方 `false` にすると画面外の判定も含めて
+  FM の段は自動で OCR だけの判定になり、run は止まらない)。`fmTextVisibilityCheck` を `false` にしても
+  `ocrTextVisibilityCheck` が `true` なら OCR だけで検証は続く(両方 `false` にすると画面外の判定も含めて
   occlusion guard ごと止まる)
 
 ### 5. アプリは手元でビルドしておく

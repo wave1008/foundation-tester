@@ -465,11 +465,11 @@ public final class FTDriveCore {
                 delegate: ReplayDelegate?, healingEnabled: Bool,
                 // 既定を持たない(渡し忘れをコンパイルで止める)。既定値の定義元は RunTunables.init
                 tunables: RunTunables,
-                // occlusion-guard の FM の段(`fmTextOcclusionCheck`)。OCR の段(occlusionOCREnabled)と独立
-                fmTextOcclusionCheckEnabled: Bool = true, screenLooksLikeEnabled: Bool = true,
+                // occlusion-guard の FM の段(`fmTextVisibilityCheck`)。OCR の段(occlusionOCREnabled)と独立
+                fmTextVisibilityCheckEnabled: Bool = true, screenLooksLikeEnabled: Bool = true,
                 // 容器の推測に依存する補正の既定(実行プロファイル由来。**FM とは無関係**)
                 containerInference: Bool = true,
-                // occlusion guard 前段の Vision OCR 事前判定(`ocrTextOcclusionCheck` の実効値。
+                // occlusion guard 前段の Vision OCR 事前判定(`ocrTextVisibilityCheck` の実効値。
                 // `fm` の配下ではない)。false のときは FT_OCCLUSION_OCR を読まず常に .off ——
                 // プロファイルの明示 off が環境変数に勝つ
                 occlusionOCREnabled: Bool = true,
@@ -511,9 +511,9 @@ public final class FTDriveCore {
                                      typeDriverGestures: typeDriverGestures,
                                      delegate: delegate, healingEnabled: healingEnabled,
                                      occlusionOCRMode: occlusionOCRResolvedMode,
-                                     // guard は FM の段(fmTextOcclusionCheck)と OCR の段のどちらかがあれば走る
-                                     occlusionGuardEnabled: fmTextOcclusionCheckEnabled || occlusionOCREnabled,
-                                     fmVisibilityCheckEnabled: fmTextOcclusionCheckEnabled,
+                                     // guard は FM の段(fmTextVisibilityCheck)と OCR の段のどちらかがあれば走る
+                                     occlusionGuardEnabled: fmTextVisibilityCheckEnabled || occlusionOCREnabled,
+                                     fmVisibilityCheckEnabled: fmTextVisibilityCheckEnabled,
                                      screenLooksLikeEnabled: screenLooksLikeEnabled,
                                      releasesScrollTouch: platform == "ios",
                                      isAndroid: platform == "android",
@@ -552,8 +552,8 @@ public final class FTDriveCore {
         // ここで実行プロファイルのマスタースイッチだけを見て頼む。off のときは compileModelIfNeeded
         // 自身が no-op(occlusionOCRResolvedMode の doc)。**dry-run では頼まない**(ガードを撃たない。
         // 短命なので途中で捨てた上にキャッシュの 1 モデルを上書きし、次の run に払い直させる = performance-tuning §3.33)
-        if !dryRun, ScenarioHost.ocrCompileNeeded(fmTextOcclusionCheck: fmTextOcclusionCheckEnabled,
-                                                  ocrTextOcclusionCheck: occlusionOCREnabled) {
+        if !dryRun, ScenarioHost.ocrCompileNeeded(fmTextVisibilityCheck: fmTextVisibilityCheckEnabled,
+                                                  ocrTextVisibilityCheck: occlusionOCREnabled) {
             RegionText.compileModelIfNeeded(mode: occlusionOCRResolvedMode)
         }
         // 画像照合の特徴量も同じくシナリオ開始時に(見本を持つプロジェクトだけ。FindImage+Prewarm.swift)
@@ -843,7 +843,7 @@ public final class FTDriveCore {
         // 満たしていなければ何もせず下の通常経路へ落ちる = 取り直しながらポーリングする。
         // 判定できるアサートの範囲と除外理由は HeldElementAssert。
         // **可視性照合(occlusion-guard)が走る設定では高速経路に入らない** —— 見えているかは
-        // 保持値から言えないので、飛ばすと視覚検証が有効な run で検査が1つ静かに消える。
+        // 保持値から言えないので、飛ばすと可視性検証が有効な run で検査が1つ静かに消える。
         // 条件は StepExecutor.occlusionFlip の入口と同じ述語(`visibilityGuardActive`)。
         // **FM の有無で絞らない** —— 幾何の Tier-0 は FM 無しで効く。
         // 注記を description に足すのは、レポートで「取り直していない判定」を見分けられるようにするため
