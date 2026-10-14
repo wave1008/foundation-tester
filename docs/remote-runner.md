@@ -2539,7 +2539,10 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   Docker は `image ls` の大きさと `system df -v --format json` の `Volumes[].Size`(`volume inspect` には無い)・Apple は
   `image ls --format json` の `variants[].size` の和と、`volume inspect` の `source`(512 GiB のスパースな volume.img)の
   **割り当て済みブロック**(新規の ext4 で 69.4 MB)。閾値は置かない(人が見て `reset` を決める)。読み取りは FTServices `RuntimeSizes`
-  (純粋・実データの fixture で固定)。**残り**: UDP の警告を赤へ上げる判断。**コンテナ → 外部の UDP** は設計どおり止まったまま(作らない)
+  (純粋・実データの fixture で固定)。**UDP の経路の確認は赤へ上げた**(⑤の締め・ユーザー決定 2026-10-15): 3 回届かなければ `ServicesError`(phase wait)で run を
+  始めない(警告の文言をそのまま detail に。Rancher の原因も同じ)。判断の材料は Apple = 3 回の probe で必ず応答(1 回目の取りこぼしあり)・
+  Rancher の SSH 転送方式 = 3 回とも届かない、の 2 系統。`servicesWarnings` に残る警告は `adb reverse` だけになった。
+  **残り**: なし(§17 の設計分は完了)。**コンテナ → 外部の UDP** は設計どおり止まったまま(作らない)
 - **②で実測して分かったこと**: Apple の名前付きボリュームの既定は **512 GiB のスパースなイメージ**(`-s` は付けない)/
   `container build` と `run` は `--label` を、`run` は `--init` も受ける(1.1.0 の help)/ **run の親を `kill -9` しても孤児は
   生まれない**(サービスを持つのは `[local]` の子 run で、親の死を `ParentDeathWatch` で見て自分で片付ける)。**控えの持ち主の

@@ -637,9 +637,9 @@ final class RunRecordTests: XCTestCase {
         let (recorder, cleanup) = try runRecorder()
         defer { cleanup() }
         recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil,
-                        servicesWarnings: ["⚠️ services: 127.0.0.1:18053/udp (published by apple) did not answer 3 probes of 1s each"])
+                        servicesWarnings: ["⚠️ services: `adb -s 14141JEC204922 reverse tcp:8090 tcp:8090` failed (exit 1: device offline)"])
         let meta = try readMeta(recorder)
-        XCTAssertEqual(meta.servicesWarnings, ["⚠️ services: 127.0.0.1:18053/udp (published by apple) did not answer 3 probes of 1s each"])
+        XCTAssertEqual(meta.servicesWarnings, ["⚠️ services: `adb -s 14141JEC204922 reverse tcp:8090 tcp:8090` failed (exit 1: device offline)"])
         let raw = try String(contentsOf: recorder.runDir.appendingPathComponent("run.json"), encoding: .utf8)
         XCTAssertTrue(raw.contains("\"servicesWarnings\""), raw)
 

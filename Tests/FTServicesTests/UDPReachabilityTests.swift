@@ -17,25 +17,25 @@ final class UDPReachabilityTests: XCTestCase {
         XCTAssertFalse(UDPReachability.matches(sent: "", received: Data()))
     }
 
-    func testWarningTCPClauseVariants() {
+    func testFailureDetailTCPClauseVariants() {
         XCTAssertEqual(
-            UDPReachability.warning(hostPort: 15001, runtime: .docker, attempts: 3, timeoutSeconds: 1, tcpReached: nil, cause: nil),
-            "⚠️ services: 127.0.0.1:15001/udp (published by docker) did not answer 3 probes of 1s each")
+            UDPReachability.failureDetail(hostPort: 15001, runtime: .docker, attempts: 3, timeoutSeconds: 1, tcpReached: nil, cause: nil),
+            "127.0.0.1:15001/udp (published by docker) did not answer 3 probes of 1s each")
         XCTAssertEqual(
-            UDPReachability.warning(hostPort: 15001, runtime: .docker, attempts: 3, timeoutSeconds: 1, tcpReached: true, cause: nil),
-            "⚠️ services: 127.0.0.1:15001/udp (published by docker) did not answer 3 probes of 1s each; TCP on the same path did answer")
+            UDPReachability.failureDetail(hostPort: 15001, runtime: .docker, attempts: 3, timeoutSeconds: 1, tcpReached: true, cause: nil),
+            "127.0.0.1:15001/udp (published by docker) did not answer 3 probes of 1s each; TCP on the same path did answer")
         XCTAssertEqual(
-            UDPReachability.warning(hostPort: 15001, runtime: .apple, attempts: 3, timeoutSeconds: 1, tcpReached: false, cause: nil),
-            "⚠️ services: 127.0.0.1:15001/udp (published by apple) did not answer 3 probes of 1s each; TCP on the same path did not answer either")
+            UDPReachability.failureDetail(hostPort: 15001, runtime: .apple, attempts: 3, timeoutSeconds: 1, tcpReached: false, cause: nil),
+            "127.0.0.1:15001/udp (published by apple) did not answer 3 probes of 1s each; TCP on the same path did not answer either")
     }
 
-    func testWarningWithCauseAndFractionalTimeout() {
+    func testFailureDetailWithCauseAndFractionalTimeout() {
         XCTAssertEqual(
-            UDPReachability.warning(hostPort: 15001, runtime: .docker, attempts: 3, timeoutSeconds: 1, tcpReached: true, cause: "because"),
-            "⚠️ services: 127.0.0.1:15001/udp (published by docker) did not answer 3 probes of 1s each; TCP on the same path did answer — because")
+            UDPReachability.failureDetail(hostPort: 15001, runtime: .docker, attempts: 3, timeoutSeconds: 1, tcpReached: true, cause: "because"),
+            "127.0.0.1:15001/udp (published by docker) did not answer 3 probes of 1s each; TCP on the same path did answer — because")
         XCTAssertEqual(
-            UDPReachability.warning(hostPort: 20, runtime: .docker, attempts: 2, timeoutSeconds: 0.5, tcpReached: nil, cause: "c"),
-            "⚠️ services: 127.0.0.1:20/udp (published by docker) did not answer 2 probes of 0.5s each — c")
+            UDPReachability.failureDetail(hostPort: 20, runtime: .docker, attempts: 2, timeoutSeconds: 0.5, tcpReached: nil, cause: "c"),
+            "127.0.0.1:20/udp (published by docker) did not answer 2 probes of 0.5s each — c")
     }
 
     func testReachedLine() {

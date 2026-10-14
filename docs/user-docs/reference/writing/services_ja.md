@@ -121,9 +121,10 @@ volumes:
 ## UDP
 
 `ports` に `/udp` を書くと、起動の後に fleetest が UDP の経路を一度確かめます(エコー、1 秒 × 3 回)。届かなければ
-**警告**を出します(run は止めません)。Rancher Desktop のポート転送方式が SSH のときは UDP が通らないので、警告には
-その設定名を添えます。run の警告(これと、張れなかった `adb reverse`)は、その run の `run.json` にも
-`servicesWarnings` として記録されます。
+**run はシナリオを 1 本も実行せずに止まり**、理由を言います(UDP が届かないアプリは、アプリの不具合の顔で落ちるだけに
+なるためです)。Rancher Desktop のポート転送方式が SSH のときは UDP が通らず、メッセージにその設定名と切り替え方を
+添えます。run を止めない警告(張れなかった `adb reverse`)は、その run の `run.json` に `servicesWarnings` として
+記録されます。
 
 ## レジストリに届かない機械でのイメージ
 

@@ -176,7 +176,7 @@ final class ServicesSession {
     private let gatewayProxyStopped = LockedValue(false)
     /// 内部ネットワークのゲートウェイとサブネット(作ってから分かる。`<gateway>` の差し替えと NO_PROXY に使う)
     private var internalAddresses: RuntimeListing.NetworkAddresses?
-    /// run の冒頭で出した警告(UDP の経路の確認)
+    /// run の冒頭で出した警告(張れなかった `adb reverse`)。run.json の servicesWarnings へ
     private(set) var warnings: [String] = []
     private var lease: ServicesLease
     private var satisfied = Set<String>()
@@ -713,13 +713,13 @@ final class ServicesSession {
         case .reached(let attempt):
             log(UDPReachability.reachedLine(hostPort: check.udpHostPort, attempt: attempt))
         case .unreached(let attempts):
-            // 「同じ経路の TCP は届いた」は実際に送って確かめたときだけ書く(エコーは TCP でも待ち受ける)
+            // 「同じ経路の TCP は届いた」は実際に送って確かめたときだけ書く(エコーは TCP でも待ち受ける)。
+            // 届かない経路で run を始めない(アプリの UDP が届かない赤はシナリオの側では原因が見えない)。
+            // 呼び手の `up` が巻き戻す(エコーは上の defer・ほかは teardown)
             let tcp = ServicesUDPProbe.probeTCP(hostPort: check.tcpHostPort)
-            let warning = UDPReachability.warning(
+            throw ServicesError(phase: .wait, detail: UDPReachability.failureDetail(
                 hostPort: check.udpHostPort, runtime: cli.runtime.kind, attempts: attempts,
-                timeoutSeconds: UDPReachability.attemptTimeoutSeconds, tcpReached: tcp, cause: udpCause())
-            warnings.append(warning)
-            log(warning)
+                timeoutSeconds: UDPReachability.attemptTimeoutSeconds, tcpReached: tcp, cause: udpCause()))
         }
     }
 

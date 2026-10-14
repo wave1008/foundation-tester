@@ -126,9 +126,10 @@ Without it the run does not start, and the message says how to write it.
 ## UDP
 
 If `ports` has a `/udp` entry, fleetest checks the UDP path once after startup (an echo, 1 second, 3 times). If it does
-not arrive, fleetest prints a **warning** (the run is not stopped). When Rancher Desktop's port forwarding is SSH, UDP
-does not pass, so the warning names that setting. The warnings of a run (this one and a failed `adb reverse`) are also
-recorded in its `run.json` as `servicesWarnings`.
+not arrive, **the run stops before any scenario** and says why (an app whose UDP never arrives would otherwise fail in
+ways that look like app bugs). When Rancher Desktop's port forwarding is SSH, UDP does not pass, and the message names
+that setting and how to switch it. Warnings that do not stop a run (a failed `adb reverse`) are recorded in its
+`run.json` as `servicesWarnings`.
 
 ## Images on a machine without registry access
 

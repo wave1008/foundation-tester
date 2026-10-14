@@ -307,7 +307,7 @@ public struct RunMetaRecord: Codable, Sendable {
     /// この欄だけが痕跡になる。空/未観測は nil(degradedWorkers と同じ規律)。
     /// **他ワーカーが居ない(1台の)runでは常に nil**(相対比較ができない)
     public var slowWorkers: [String]?
-    /// サービス(scripts/compose.yaml)の起動時の警告(英語の文言そのまま。UDP の経路・`adb reverse`)。合否は変えない。
+    /// サービス(scripts/compose.yaml)の起動時の警告(英語の文言そのまま。`adb reverse` 等)。合否は変えない。
     /// 無ければ省略(docs/results-json.md)
     public var servicesWarnings: [String]?
 

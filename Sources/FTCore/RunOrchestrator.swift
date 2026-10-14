@@ -257,7 +257,7 @@ public struct RunSummary: Sendable {
     /// 「デバイス/ワーカーの問題で赤くなった」と「利用者が止めた」を results insights が
     /// 混同しないため
     public let interrupted: Bool
-    /// サービス(scripts/compose.yaml)の起動時の警告(UDP の経路が応答しない・`adb reverse` が張れない 等。英語の文言そのまま)。
+    /// サービス(scripts/compose.yaml)の起動時の警告(`adb reverse` が張れない 等。英語の文言そのまま)。
     /// orchestrator 自身は知らないので常に空 —— 呼び手(ProfileRunner / ApiRunCommand)が `ServicesSession.warnings` で埋め、
     /// RunMetaRecord.servicesWarnings へ焼き込む
     public let servicesWarnings: [String]

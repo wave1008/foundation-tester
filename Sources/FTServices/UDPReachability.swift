@@ -8,7 +8,8 @@ import Foundation
 public enum UDPReachability {
     /// 1 回の待ち(秒)。根拠: UDP の往復は LAN でも数 ms で、1 秒は VM の起動直後の取りこぼしを跨ぐのに足りる。尽きたとき = 次の試行。
     public static let attemptTimeoutSeconds: Double = 1
-    /// 試行回数。根拠: 取りこぼしは連続しない(起動直後の 1 回程度)ので 3 回で十分。尽きたとき = 届かなかったと判定する(警告)。
+    /// 試行回数。根拠: 取りこぼしは連続しない(起動直後の 1 回程度)ので 3 回で十分。尽きたとき = 届かなかったと判定し、
+    /// run は始めない(`ServicesError`。アプリの UDP が届かない run はシナリオがアプリの不具合の顔で落ちるだけ)。
     public static let attempts = 3
 
     public enum Outcome: Sendable, Equatable {
@@ -23,10 +24,11 @@ public enum UDPReachability {
         return received == Data(token.utf8)
     }
 
-    /// 事実だけを書く。tcpReached: nil = TCP は確かめていない(句を書かない)。cause: nil = 書かない。
-    public static func warning(hostPort: Int, runtime: ServiceRuntime, attempts: Int, timeoutSeconds: Double,
-                               tcpReached: Bool?, cause: String?) -> String {
-        var s = "⚠️ services: 127.0.0.1:\(hostPort)/udp (published by \(runtime.rawValue)) did not answer "
+    /// 起動の失敗の detail(`ServicesError` が "services: … (phase: …)" で包む)。事実だけを書く。
+    /// tcpReached: nil = TCP は確かめていない(句を書かない)。cause: nil = 書かない。
+    public static func failureDetail(hostPort: Int, runtime: ServiceRuntime, attempts: Int, timeoutSeconds: Double,
+                                     tcpReached: Bool?, cause: String?) -> String {
+        var s = "127.0.0.1:\(hostPort)/udp (published by \(runtime.rawValue)) did not answer "
             + "\(attempts) probes of \(durationText(timeoutSeconds)) each"
         if let tcpReached {
             s += tcpReached ? "; TCP on the same path did answer" : "; TCP on the same path did not answer either"
