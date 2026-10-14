@@ -260,6 +260,9 @@ foundation-tester/
 │   │                              # StepExecutor を参照しない(§2)
 │   ├── FTRemote/                  # SSH ディスパッチ・ランナー登録簿・dispatch.lock・占有(docs/remote-runner.md)。
 │   │                              # 利用側は fleetest CLI だけ = 受け手のシナリオ実行バイナリにはリンクしない
+│   ├── FTServices/                # compose.yaml の解釈・検査(ComposePolicy)・実行計画(ServicePlanner)・ビルドの指紋
+│   │                              # (docs/remote-runner.md §17)。利用側は fleetest CLI と fleetest-mcp だけ =
+│   │                              # Yams ごと、受け手のシナリオ実行バイナリにはリンクしない(PackageLinkageTests)
 │   ├── FTDSL / FTDSLMacros/       # Shirates 風 Swift DSL とマクロ(§10)。
 │   │                              # コマンド本体・FTRuntime・下書き生成(ScenarioDraftCodeGen)
 │   ├── FTScenarioRunner/          # fleetest-scenarios-<project> の CLI 実装

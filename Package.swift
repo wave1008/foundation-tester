@@ -36,6 +36,8 @@ let package = Package(
         .package(url: "https://github.com/grpc/grpc-swift-2.git", from: "2.0.0"),
         .package(url: "https://github.com/grpc/grpc-swift-nio-transport.git", from: "2.0.0"),
         .package(url: "https://github.com/grpc/grpc-swift-protobuf.git", from: "2.0.0"),
+        // compose.yaml の読み取り(FTServices だけが使う)
+        .package(url: "https://github.com/jpsim/Yams.git", from: "5.1.0"),
     ],
     targets: [
         // ステップモデル・AppDriverプロトコル・StepExecutor・スナップショット描画など
@@ -48,6 +50,12 @@ let package = Package(
         .target(
             name: "FTRemote",
             dependencies: ["FTCore"]
+        ),
+        // compose.yaml の解釈・検査・実行計画(利用側は fleetest CLI と fleetest-mcp だけ。
+        // FTScenarioRunner = 受け手のシナリオ実行バイナリには Yams ごとリンクしない)
+        .target(
+            name: "FTServices",
+            dependencies: ["FTCore", .product(name: "Yams", package: "Yams")]
         ),
         // CoreSimulator 直叩きシム(ObjC・dlopen。SimulatorCatalog の simctl 高速化用)
         .target(
@@ -99,6 +107,7 @@ let package = Package(
                 "FTBridgeClient",
                 "FTFoundationModels",
                 "FTAndroid",
+                "FTServices",
             ]
         ),
         .executableTarget(
@@ -106,6 +115,7 @@ let package = Package(
             dependencies: [
                 "FTCore",
                 "FTRemote",
+                "FTServices",
                 "FTBridgeClient",
                 "FTFoundationModels",
                 "FTAndroid",
@@ -292,6 +302,10 @@ let package = Package(
         .testTarget(
             name: "FTCoreTests",
             dependencies: ["FTCore", "FTRemote", "FTTestSupport"]
+        ),
+        .testTarget(
+            name: "FTServicesTests",
+            dependencies: ["FTServices", "FTCore", "FTTestSupport"]
         ),
         .testTarget(
             name: "FTBridgeClientTests",

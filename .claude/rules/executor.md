@@ -17,6 +17,8 @@ paths:
   - "Sources/FTCore/ScenarioSandbox.swift"
   - "Sources/FTCore/SandboxBroker.swift"
   - "Sources/FTCore/SandboxProxy.swift"
+  - "Sources/FTServices/**"
+  - "Tests/FTServicesTests/**"
   - "Sources/FTCore/StepExecutor*.swift"
   - "Sources/FTCore/SystemUIGate*.swift"
   - "Sources/FTCore/SystemUIGate.swift"
@@ -102,3 +104,12 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   `XDG_CONFIG_HOME` / `FT_*_DIR` から書ける場所や読ませない場所を広げない)/
   **④開けるものは名指しで足す**(全許可へ戻さない。全許可の枠からは `simctl spawn` と `open -a` で外へ出られた)/
   **⑤拒否は先に起こした `log stream` で拾う**。規則の形・書式の罠・壁の外に残るものは docs/design.md §11.7
+- **サービスの宣言(compose.yaml)の解釈・検査・計画は `Sources/FTServices`**(docs/remote-runner.md §17。利用側は fleetest CLI と
+  fleetest-mcp だけ = 受け手のシナリオ実行バイナリには Yams ごとリンクしない。`PackageLinkageTests` が Package.swift の推移的な
+  リンク依存を走査で固定)。**FTCore から FTServices を参照しない**(broker へ方針を差し込む口だけ FTCore に置く)。守る規律4つ:
+  **①経路は1本** —— 読む(`ComposeReader`)→ 展開(`ComposeTreeExpander` = 正規化の前・秘密は `environment` の値だけ)→
+  正規化(`ComposeNormalizer`)→ 検査(`ComposePolicy`)→ 計画(`ServicePlanner`)。正規化後の型に展開をかける経路を足さない /
+  **②全部純粋関数** —— ファイルの実体・symlink・空きポート・乱数・時刻は呼び手が入力で渡す(`PathFact`・`PlanOptions`)/
+  **③拒否は `ComposeRefusal` の case で表し全部集めて返す**(文言は英語の `message`。拒否を文字列の一致で判定しない)/
+  **④許可は全階層の許可表**(知らないキー・型は断る。`version` と `x-*` だけ無視して1行言う)。
+  dockerfile の実体パスの鍵は `ComposePolicy.dockerfileKey` の1箇所(検査と計画が別々に組むと片方だけ引けない)
