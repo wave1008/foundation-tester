@@ -4480,6 +4480,13 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
   判定する。閉じると分類器が学習できない)。アプリを起こす `coreservicesd` と登録を書き換える `lsd.modifydb` は閉じる
 - **起動できないランナーは包む前に止める**。包むと `sandbox-exec` 自体は起動でき、ランナーの exec の失敗は
   子の終了に化けて失敗の記録が残らない(`ScenarioHostRunnerUnavailableTests`)
+- **run の前後のスクリプト(setup.sh / teardown.sh)も同じ土台で包む**(`Scope.purpose = .script`・入口は `FTCore.ScriptSandbox.launch`・
+  呼び手は `fleetest` の `RunHookRunner.runScript` の1箇所)。用途で集合が変わる: 書けるのは `<workspace>/data/` と
+  マシン側 `hooks.writablePaths`(`HooksSettings` が scripts/・`.fleetest`・ツール本体・ビルド元・秘密の置き場との重なりを断る)と
+  子専用の一時領域 / 通信は宣言した公開ポートと親のプロキシ・gateway のソケットだけ(`localhost:*`・bind・inbound は無し)/
+  GPU・ANE・LaunchServices の mach / iokit は開けない。コンテナの操作は中継コマンド `fleetest-services`(exec / logs / status / port)で
+  親が代行し、判定は `FTServices.ServicePolicy`(宣言したサービスだけ・ランタイムのオプションは固定)。
+  **中継に動詞を足したら `ServicePolicy` と `ServicePolicyTests` にも足す**。詳細は docs/remote-runner.md §17「スクリプト」
 - **Vision / Core ML に要る許可を閉じると、落ちるより先に遅くなる**。IOSurface・GPU・ANE の
   user client と `MTLCompilerService` を閉じた状態では、1 プロファイルが 120 秒 → 1,478 秒になり、
   画像照合は `Failed to create CVPixelBufferPool` / `espresso error: -1` で落ちた

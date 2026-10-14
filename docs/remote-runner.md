@@ -2450,9 +2450,24 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   `RuntimeCommands` / `ReadinessSchedule` / `ServicesLease` / `RelayImage`)と `Sources/fleetest/Services*.swift`(ランタイムの解決・
   事実の収集・`ServicesSession`・`ServicesReaper`・`ServicesLock`・`fleetest services status|reset`)。配線は `ProfileRunner.run` と
   `ApiRunCommand` の2箇所(dry-run は除く)。`hooks reap` がサービスの孤児も回収する
-- **未実装(③〜⑤)**: スクリプトの Seatbelt 化と中継の `exec`・UDP の経路の確認(`/udp` の宣言は今は「次の段で対応」と止める)・
-  親のプロキシの接続・`services up` / `down` と常駐の所有者・`adb reverse`・子プロセスの控え・失敗時のログの保存・MCP の
-  `ft_services`・拡張の雛形・利用者向け docs
+- **③(スクリプトの枠と中継)も実装済み**: `ScenarioSandbox.Scope` に用途(`.scenario` / `.script`)を足し、スクリプトは
+  `ScriptSandbox.launch`(FTCore)で包む。書けるのは `<workspace>/data/`(根は親が作る)+ マシン側 `hooks.writablePaths`
+  (`HooksSettings`。scripts/・`.fleetest`・ツール本体・ビルド元・秘密の置き場と重なる指定は読み込み時に断る)+ 子専用の一時領域だけ。
+  通信は宣言した公開ポート(127.0.0.1)と親のプロキシ・gateway の unix ソケットだけ(`localhost:*` も bind も開けない)。
+  mach / iokit は GPU・ANE・LaunchServices を開けない。**中継コマンドは `fleetest-services`**(PATH の先頭に親が置く。
+  `exec <service> -- <cmd…>`(標準入力をストリーム)/ `logs <service> [--tail N]` / `status` / `port <service> <port>[/udp]` の4形だけ =
+  FTServices の `ServicePolicy`。親の `ServiceGatewayServer`(FTCore)が行区切り JSON のフレームで stdin / stdout / stderr を流す)。
+  環境は基本の鍵 → compose.yaml が参照している秘密 → 契約(`FT_*` 7つ)→ 制御変数(PATH・TMPDIR・プロキシ・gateway)の順で
+  **明示した鍵だけ**(`FT_*` の前方一致は使わない)。終了は終了通知で待ち(パイプの EOF と独立)、残ったプロセスグループへ
+  SIGTERM → 2 s → SIGKILL。控え(`.fleetest/hooks/<pid>.json`)に動いている子の pid と開始時刻・秘密の名前を書き、`hooks reap` と
+  次の run は**先に子を止めてから** teardown を撃つ。`hooks reap` はスクリプトの孤児 → サービスの孤児の順。
+  **`exec` にランタイムのオプションは紛れ込まない**(実測: Docker 29.5 も Apple Container 1.1.0 もコンテナ名の後ろを全部コマンドとして
+  扱い、`-e` / `--env-file` / `--` は実行対象として失敗する。だから親は `exec -i <container>` の後ろに利用者のコマンドをそのまま置き、
+  `--` は渡さない)。証人の setup.sh(秘密・gateway・書き込み・読み取り・通信・残置・teardown)は全項目を実データで確認した
+- **未実装(④〜⑤)**: UDP の経路の確認(`/udp` の宣言は今は「次の段で対応」と止める)・親のプロキシの接続(スクリプトは
+  `allowedDomains` があればプロキシを使う配線まで済み。コンテナ側の `HTTP_PROXY` は未)・`services up` / `down` と常駐の所有者・
+  `adb reverse`・失敗時のログの保存・MCP の `ft_services`・拡張の雛形(compose.yaml・新しい規則のコメント)・利用者向け docs・
+  sut-ec-mobile のワークスペースの移行(今の setup.sh はホストでサーバーを起こすので枠の中では動かない)
 - **②で実測して分かったこと**: Apple の名前付きボリュームの既定は **512 GiB のスパースなイメージ**(`-s` は付けない)/
   `container build` と `run` は `--label` を、`run` は `--init` も受ける(1.1.0 の help)/ **run の親を `kill -9` しても孤児は
   生まれない**(サービスを持つのは `[local]` の子 run で、親の死を `ParentDeathWatch` で見て自分で片付ける)。**控えの持ち主の

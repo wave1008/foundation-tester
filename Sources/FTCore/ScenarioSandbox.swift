@@ -17,8 +17,24 @@ public enum ScenarioSandbox {
         + " only under the report directory, .fleetest and temporary directories, cannot read credential"
         + " stores, and connects only to this machine (and allowedDomains through the proxy)"
 
+    static let scriptNotice = "🔒 sandbox: the setup/teardown script runs inside Seatbelt — it can write only under"
+        + " the workspace's data/ directory (and hooks.writablePaths on this Mac), cannot read credential stores,"
+        + " and connects only to the declared service ports (and allowedDomains through the proxy)"
+
+    /// 枠を掛ける相手。書ける場所・開ける操作・通信が用途で変わる(`writablePaths`・`profile`)
+    public enum Purpose: Sendable, Equatable { case scenario, script }
+
     /// プロファイルを組み立てる入力。**パスは解決前でよい**(`profile` が実体パスへ直す)
     public struct Scope: Sendable, Equatable {
+        /// 既定値を置かない(渡し忘れをコンパイルで止める)
+        public var purpose: Purpose
+        /// `.script` が書ける `<workspace>/data`。根そのものは書かせない(他の根と同じ)
+        public var dataDir: String? = nil
+        /// `.script` が書ける追加の場所(マシン側 `hooks.writablePaths`)。**検証済みのものだけ渡す**
+        /// (`HooksSettings.validate`)
+        public var hookWritablePaths: [String] = []
+        /// `.script` が繋いでよい 127.0.0.1 のポート(宣言した公開ポートと親のプロキシ)
+        public var allowedLoopbackPorts: [UInt16] = []
         /// 一覧取得のようにレポートを書かない起動では nil
         public var reportDir: String?
         /// 親が決めて子に書かせる場所(静止画の置き場 `--still-frames-dir`)。**環境変数から作らない**
@@ -56,9 +72,10 @@ public enum ScenarioSandbox {
         /// 要るサービスを開ける
         public var usesProxy = false
 
-        public init(reportDir: String?, denyRead: [String], projectRoot: String, stateRoots: [String],
-                    home: String,
+        public init(purpose: Purpose, reportDir: String?, denyRead: [String], projectRoot: String,
+                    stateRoots: [String], home: String,
                     userTempRoots: [String], runnerName: String, remoteBridgePorts: [UInt16]) {
+            self.purpose = purpose
             self.reportDir = reportDir
             self.denyRead = denyRead
             self.projectRoot = projectRoot
@@ -210,6 +227,7 @@ public enum ScenarioSandbox {
                       environment: [String: String] = ProcessInfo.processInfo.environment,
                       home: String = realHome()) throws -> Scope {
         var scope = Scope(
+            purpose: .scenario,
             reportDir: reportDir,
             denyRead: plan.denyRead,
             projectRoot: project.rootURL.path,
@@ -321,7 +339,9 @@ public enum ScenarioSandbox {
     /// 子が書ける正規表現の場所(データコンテナ・Foundation の作業フォルダ・Core ML のコンパイル先)。
     /// broker の「子が書ける場所からの install を断る」判定にも同じ集合を使う
     static func childWritableRegexes(_ scope: Scope, containerUDID: String?) throws -> [String] {
-        [try simulatorDataContainerRegex(home: scope.home, udid: containerUDID)]
+        // スクリプトは Simulator・Foundation の作業フォルダ・Core ML を使わない
+        guard scope.purpose == .scenario else { return [] }
+        return [try simulatorDataContainerRegex(home: scope.home, udid: containerUDID)]
             + [try childReplacementDirectoryRegex(runnerName: scope.runnerName), try compiledModelRegex()].compactMap { $0 }
     }
 
@@ -385,6 +405,12 @@ public enum ScenarioSandbox {
     /// 子が書いてよい場所。**外で実行・解釈されるものを置く場所を足さない**(足すと、枠の中から
     /// 次の run や人の操作に実行させられる)。`/private/tmp` を入れないのも同じ理由(共有の置き場)
     static func writablePaths(_ scope: Scope) -> [String] {
+        // スクリプトは `.fleetest`・ホームの台帳・ログ・キャッシュ・レポート・状態ルートを書けない
+        // (`.fleetest/hooks` は次の run が実行する控え)
+        if scope.purpose == .script {
+            return [scope.dataDir].compactMap { $0 } + scope.hookWritablePaths + scope.userTempRoots
+                + scope.extraWritable
+        }
         var paths = [
             scope.projectRoot + "/.fleetest",
             scope.home + "/.fleetest",
@@ -505,8 +531,8 @@ public enum ScenarioSandbox {
         defaultDenyReadHomeSubpaths.map { home + "/" + $0 }
     }
 
-    /// 全拒否の上に開ける、ファイルと通信以外の操作
-    static let baseRules = [
+    /// 全拒否の上に開ける、ファイルと通信以外の操作(両用途で共通)
+    static let commonRules = [
         "(allow process-exec*)",
         "(allow process-fork)",
         "(allow signal (target same-sandbox))",
@@ -517,6 +543,10 @@ public enum ScenarioSandbox {
         "(allow file-ioctl (literal \"/dev/dtracehelper\"))",
         "(allow system-fsctl)",
         "(allow network-outbound (literal \"/private/var/run/syslog\"))",
+    ]
+
+    /// シナリオだけが開ける操作
+    static let scenarioOnlyRules = [
         // Vision / Core ML が画像バッファと GPU を使う。閉じると `Failed to create CVPixelBufferPool` で
         // 画像照合が落ち、OCR は 10 倍以上遅くなる(実測: 1 プロファイル 120 秒 → 1,478 秒)
         "(allow iokit-open-user-client (iokit-user-client-class \"IOSurfaceRootUserClient\")"
@@ -526,14 +556,18 @@ public enum ScenarioSandbox {
         "(allow mach-lookup (xpc-service-name \"com.apple.MTLCompilerService\"))",
     ]
 
-    /// 名指しで開ける mach サービス
-    static let machServices = [
+    /// 名指しで開ける mach サービス(両用途で共通)
+    static let commonMachServices = [
         "com.apple.system.opendirectoryd.libinfo",
         "com.apple.system.notification_center",
         "com.apple.logd",
         "com.apple.diagnosticd",
         "com.apple.bsd.dirhelper",
         "com.apple.system.opendirectoryd.membership",
+    ]
+
+    /// シナリオだけが開ける mach サービス
+    static let scenarioOnlyMachServices = [
         // LaunchServices のデータベースの読み取り専用の写像(UTType の判定)。閉じると Create ML が見本の画像を
         // 1枚も見つけられず(`No data found for label`)、チェック状態の分類器が学習できない(実測)。
         // **アプリを起こす `coreservicesd` と登録を書き換える `lsd.modifydb` は閉じたまま**(`open -a` は断られる)
@@ -548,10 +582,13 @@ public enum ScenarioSandbox {
     static let proxyMachServices = ["com.apple.trustd.agent"]
 
     /// Seatbelt のプロファイル本文。**後に書いた規則が勝つ**ので、順序は
-    /// 全拒否 → 開ける操作 → 書き込みの許可 → その中の拒否 → 読み取りの拒否 → 開け直し → 通信
+    /// 全拒否 → 開ける操作 → 書き込みの許可 → その中の拒否 → 読み取りの拒否 → 開け直し → 通信。
+    /// 用途で開ける集合が変わる(`.script` は GPU・ANE・LaunchServices・localhost の全ポートを開けない)
     public static func profile(_ scope: Scope) throws -> String {
-        var lines = ["(version 1)", "(deny default)"] + baseRules
-        let services = machServices + (scope.usesProxy ? proxyMachServices : [])
+        let isScenario = scope.purpose == .scenario
+        var lines = ["(version 1)", "(deny default)"] + commonRules + (isScenario ? scenarioOnlyRules : [])
+        let services = commonMachServices + (isScenario ? scenarioOnlyMachServices : [])
+            + (scope.usesProxy ? proxyMachServices : [])
         lines.append("(allow mach-lookup " + services.map { "(global-name \"\($0)\")" }
             .joined(separator: " ") + ")")
         let writable = try writablePaths(scope).map { try subpath($0) }
@@ -559,8 +596,10 @@ public enum ScenarioSandbox {
         let regexes = try childWritableRegexes(scope, containerUDID: scope.simulatorUDID).map { "(regex #\"" + $0 + "\")" }
         lines.append("(allow file-write* " + (dev + writable + regexes).joined(separator: " ") + ")")
         // Core ML がコンパイルキャッシュを ANE のデーモンへ見せるための権利の発行
-        lines.append("(allow file-issue-extension "
-            + (try subpath(scope.home + "/Library/Caches/" + scope.runnerName)) + ")")
+        if isScenario {
+            lines.append("(allow file-issue-extension "
+                + (try subpath(scope.home + "/Library/Caches/" + scope.runnerName)) + ")")
+        }
         let denied = try writeDeniedPaths(scope).map { try subpath($0) }
             + (try ledgerDenyRegexes(scope)).map { "(regex #\"" + $0 + "\")" }
             // 根そのもの(中身は書ける)。`prepareWritableRoots` の doc
@@ -579,11 +618,19 @@ public enum ScenarioSandbox {
         // **`network*` に `(local ip "localhost:*")` を書かない** —— 外向きの接続にも当たって全部通る
         // (実測)。向きごとに分け、外向きは宛先(remote)だけで絞る。`localhost` は自機の全アドレスを含む
         lines.append("(deny network*)")
-        lines.append("(allow network-outbound (remote ip \"localhost:*\"))")
+        if isScenario {
+            lines.append("(allow network-outbound (remote ip \"localhost:*\"))")
+        } else {
+            for port in scope.allowedLoopbackPorts {
+                lines.append("(allow network-outbound (remote ip \"localhost:\(port)\"))")
+            }
+        }
         for socket in [scope.brokerSocket].compactMap({ $0 }) + scope.helperSockets {
             lines.append("(allow network-outbound (remote unix-socket (path-literal "
                 + (try quoted(canonicalPath(socket))) + ")))")
         }
+        // スクリプトは何も待ち受けず、ブリッジにも繋がない。adb・Emulator の拒否も開けていないので要らない
+        guard isScenario else { return lines.joined(separator: "\n") + "\n" }
         lines.append("(allow network-bind (local ip \"localhost:*\"))")
         lines.append("(allow network-inbound (local ip \"localhost:*\"))")
         for port in scope.remoteBridgePorts {
@@ -591,8 +638,8 @@ public enum ScenarioSandbox {
         }
         // adb サーバと Emulator のコンソール / adbd は閉じる(後に書いた規則が勝つので上の localhost:* より後)。
         // 開いていると `adb shell` で Emulator の中 = 枠の外から外部へ出られ、繋がった全端末を操作できる。
-        // 子の adb は親が代行する(`AdbPolicy`)
-        for port in scope.allowDirectAdb ? [] : deniedLoopbackPorts() {
+        // 子の adb は親が代行する(`AdbPolicy`)。Docker の TCP の管理口は `allowDirectAdb` でも閉じる
+        for port in (scope.allowDirectAdb ? [] : deniedLoopbackPorts()) + dockerTCPPorts {
             lines.append("(deny network-outbound (remote ip \"localhost:\(port)\"))")
         }
         return lines.joined(separator: "\n") + "\n"
@@ -601,6 +648,10 @@ public enum ScenarioSandbox {
     static func deniedLoopbackPorts(environment: [String: String] = ProcessInfo.processInfo.environment) -> [UInt16] {
         [AdbLocator.adbServerPort(environment: environment)] + Array(AdbLocator.emulatorPorts)
     }
+
+    /// Docker API を TCP で公開している Mac での抜け道(2375 = 平文・2376 = TLS。Docker の既定)。枠の中から繋げると
+    /// `docker run -v $HOME:/h` でホストの秘密を読める(docs/sandbox-seatbelt.md §8.7 の実測)。別のポートでの公開は拾えない
+    static let dockerTCPPorts: [UInt16] = [2375, 2376]
 
     /// `(subpath "<実体パス>")`。Seatbelt は symlink を解決した後のパスで照合するので
     /// (`/var` → `/private/var`・`/tmp` → `/private/tmp`)、解決前のパスを書くと規則が当たらない

@@ -36,7 +36,7 @@ final class ScenarioSandboxTests: XCTestCase {
     /// 一時領域そのものは書ける場所に入れない(`root` がその下にあり、入れると全部が通る)
     private func scope(remoteBridgePorts: [UInt16] = []) -> ScenarioSandbox.Scope {
         var scope = ScenarioSandbox.Scope(
-            reportDir: path("reports"), denyRead: [path("home/.ssh"), path("home/.config")],
+            purpose: .scenario, reportDir: path("reports"), denyRead: [path("home/.ssh"), path("home/.config")],
             projectRoot: path("project"), stateRoots: [path("repo"), path("tool")],
             home: path("home"), userTempRoots: [], runnerName: "fleetest-scenarios-X",
             remoteBridgePorts: remoteBridgePorts)
@@ -220,6 +220,17 @@ final class ScenarioSandboxTests: XCTestCase {
     }
 
     /// マシン側の `allowDirectAdb` だけが adb を開ける: ポートの拒否と adb の鍵の読み取り拒否を外す
+    /// Docker API の TCP の管理口(2375 / 2376)は、adb を直接使う設定でも閉じたまま(待ち受けが無くても拒否が先に出る)
+    func testDockerTCPPortsAreDeniedEvenWithDirectAdb() throws {
+        var direct = scope()
+        direct.allowDirectAdb = true
+        let profile = try ScenarioSandbox.profile(direct)
+        XCTAssertTrue(profile.contains("(deny network-outbound (remote ip \"localhost:2375\"))"))
+        XCTAssertTrue(profile.contains("(deny network-outbound (remote ip \"localhost:2376\"))"))
+        let result = try runSandboxedOutput(nc(host: "127.0.0.1", port: 2375), scope: direct)
+        XCTAssertTrue(result.output.contains(Self.denied), result.output)
+    }
+
     func testAllowDirectAdbOpensTheAdbPortsAndKeys() throws {
         let plan = try XCTUnwrap(try ScenarioSandbox.plan(settings: .init(allowDirectAdb: true), home: "/H"))
         XCTAssertTrue(plan.allowDirectAdb)

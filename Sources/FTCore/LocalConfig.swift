@@ -49,6 +49,8 @@ public struct LocalConfig: Codable, Sendable, Equatable {
     public var hostLoadPacing: HostLoadPacing?
     /// サービス(compose.yaml)のランタイム設定。**検めて読むのは `ServicesSettings.load` だけ**(未知のキーは誤り)
     public var services: ServicesSettings?
+    /// setup/teardown スクリプトの枠(`hooks.writablePaths`)。**検めて読むのは `HooksSettings.load` だけ**(未知のキーは誤り)
+    public var hooks: HooksSettings?
 
     public init(defaultProject: String? = nil,
                 lastRunProfile: [String: String]? = nil,
@@ -57,7 +59,7 @@ public struct LocalConfig: Codable, Sendable, Equatable {
                 fmConcurrency: Int? = nil, localMachineEnabled: Bool? = nil,
                 retention: RetentionPolicy? = nil, sandbox: ScenarioSandbox.MachineSettings? = nil,
                 redactAccountValues: Bool? = nil, hostLoadPacing: HostLoadPacing? = nil,
-                services: ServicesSettings? = nil) {
+                services: ServicesSettings? = nil, hooks: HooksSettings? = nil) {
         self.defaultProject = defaultProject
         self.lastRunProfile = lastRunProfile
         self.developmentTeam = developmentTeam
@@ -71,6 +73,7 @@ public struct LocalConfig: Codable, Sendable, Equatable {
         self.redactAccountValues = redactAccountValues
         self.hostLoadPacing = hostLoadPacing
         self.services = services
+        self.hooks = hooks
     }
 
     /// 実機署名の設定。優先順位: 環境変数 > 設定ファイル。

@@ -323,7 +323,11 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   ぶんを代わりに実行する(**生存判定は pid だけ。mtime を見ない**)。**④刺さっても打ち切らない**
   (上限の根拠がこちらに無い)—— 無音が `RunHookStall.silentWarningSeconds`(60 秒)を跨ぐたびに
   警告を 1 行出して待ち続ける(出力が来れば数え直す)。**⑤dry-run では撃たない**(dry-run は
-  dispatch.lock を取らない = 走行中の run の依存サービスを teardown が落としうる。`RunHookDryRunWiringTests`)。
+  dispatch.lock を取らない = 走行中の run の依存サービスを teardown が落としうる。`RunHookDryRunWiringTests`)/
+  **⑥スクリプトは Seatbelt の中で動く**(docs/remote-runner.md §17「スクリプト」= 書けるのは `<workspace>/data/` と
+  マシン側 `hooks.writablePaths`・繋げるのは宣言した公開ポートと親の gateway・環境は明示した鍵だけ・コンテナの操作は
+  `fleetest-services exec|logs|status|port` で親が代行。終了後にプロセスグループを掃除し、控えに動いている子の pid を書く =
+  `hooks reap` は先に子を止める)。
   **転送から外すのは `.fleetest-transfer-ignore`**(`FTCore.TransferIgnore`)。
   **rsync の `-F`(dir-merge)は使わない** → maintainer-notes §3.4。
   **3つの転送(run ディスパッチ・fan-out の `RemoteProjectSync`・プロジェクト外ミラー)が

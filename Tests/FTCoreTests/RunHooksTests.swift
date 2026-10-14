@@ -61,14 +61,20 @@ final class RunHookEnvironmentTests: XCTestCase {
 final class RunHookLeaseTests: XCTestCase {
 
     func testRoundTrip() throws {
-        let info = RunHookLeaseInfo.now(
+        var info = RunHookLeaseInfo.now(
             pid: 7, project: "SampleApp", profile: "android-1",
             teardown: URL(fileURLWithPath: "/ws/scripts/teardown.sh"),
-            workspace: URL(fileURLWithPath: "/ws"),
+            workspace: URL(fileURLWithPath: "/ws"), secretNames: ["DB_PASSWORD"],
             date: Date(timeIntervalSince1970: 0))
         let encoded = try XCTUnwrap(RunHookLease.encode(info))
         XCTAssertEqual(RunHookLease.decode(encoded), info)
         XCTAssertTrue(encoded.contains("1970-01-01T00:00:00Z"), encoded)
+        XCTAssertTrue(encoded.contains("\"secretNames\":[\"DB_PASSWORD\"]"), encoded)
+        XCTAssertNil(info.child)
+        // 動いている子は開始時刻つきで書き、終わったら消える
+        info.child = .init(pid: 4242, startedAt: "1970-01-01T00:00:05Z")
+        let withChild = try XCTUnwrap(RunHookLease.encode(info))
+        XCTAssertEqual(RunHookLease.decode(withChild)?.child, .init(pid: 4242, startedAt: "1970-01-01T00:00:05Z"))
     }
 
     func testLeasePathIsProjectIndependent() {

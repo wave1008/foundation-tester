@@ -138,6 +138,8 @@ final class ServicesSession {
     private let home: String
     private let workspace: ServicesWorkspace
     private let dictionaries: ExpansionDictionaries
+    /// compose.yaml の environment が実際に参照した秘密の名前(スクリプトへ渡すのはこれだけ)
+    private let usedSecretNames: Set<String>
     private let declaredBuilds: [String: BuildDef]
     private let graceSeconds: [String: Int]
     private let interrupt: RunInterruptState?
@@ -149,7 +151,7 @@ final class ServicesSession {
     private var readySeconds: Double = 0
 
     private init(cli: RuntimeCLI, plan: ServicePlan, stateDir: URL, privateDir: URL, home: String,
-                 workspace: ServicesWorkspace, dictionaries: ExpansionDictionaries,
+                 workspace: ServicesWorkspace, dictionaries: ExpansionDictionaries, usedSecretNames: Set<String>,
                  declaredBuilds: [String: BuildDef], graceSeconds: [String: Int],
                  interrupt: RunInterruptState?, lease: ServicesLease) {
         self.cli = cli
@@ -161,6 +163,7 @@ final class ServicesSession {
         self.home = home
         self.workspace = workspace
         self.dictionaries = dictionaries
+        self.usedSecretNames = usedSecretNames
         self.declaredBuilds = declaredBuilds
         self.graceSeconds = graceSeconds
         self.interrupt = interrupt
@@ -190,7 +193,8 @@ final class ServicesSession {
                                        privateDir: privateDir, home: home, interrupt: interruptState, log: log)
             let session = ServicesSession(
                 cli: prepared.cli, plan: prepared.plan, stateDir: stateDir, privateDir: privateDir, home: home,
-                workspace: workspace, dictionaries: prepared.dictionaries, declaredBuilds: prepared.declaredBuilds,
+                workspace: workspace, dictionaries: prepared.dictionaries, usedSecretNames: prepared.usedSecretNames,
+                declaredBuilds: prepared.declaredBuilds,
                 graceSeconds: prepared.graceSeconds, interrupt: interruptState, lease: prepared.lease)
             try ServicesLock.withLock(prefix: prepared.plan.prefix, stateDir: stateDir) {
                 try session.claimPrefix(log: log)
@@ -214,6 +218,7 @@ final class ServicesSession {
         let cli: RuntimeCLI
         let plan: ServicePlan
         let dictionaries: ExpansionDictionaries
+        let usedSecretNames: Set<String>
         let declaredBuilds: [String: BuildDef]
         let graceSeconds: [String: Int]
         let lease: ServicesLease
@@ -307,8 +312,8 @@ final class ServicesSession {
             project: resolved.project.name, profile: resolved.runName,
             approvedServices: spec.services.map(\.name), publishedPorts: published,
             secretNames: usedSecretNames.sorted(), phase: .starting)
-        return Prepared(cli: cli, plan: plan, dictionaries: dictionaries, declaredBuilds: declaredBuilds,
-                        graceSeconds: grace, lease: lease)
+        return Prepared(cli: cli, plan: plan, dictionaries: dictionaries, usedSecretNames: usedSecretNames,
+                        declaredBuilds: declaredBuilds, graceSeconds: grace, lease: lease)
     }
 
     private static func refused(_ refusals: [ComposeRefusal], log: (String) -> Void) -> ServicesError {
@@ -342,6 +347,39 @@ final class ServicesSession {
                                 logTail: inspect.tail(lines: 5))
         }
         return inspect.trimmed
+    }
+
+    // MARK: スクリプトへ見せるもの(docs/remote-runner.md §17「スクリプト」)
+
+    /// compose.yaml が参照している秘密だけ(名前 → 値)。setup.sh / teardown.sh の環境へ渡す
+    var scriptSecrets: [String: String] {
+        Dictionary(uniqueKeysWithValues: usedSecretNames.compactMap { name in dictionaries.secrets[name].map { (name, $0) } })
+    }
+
+    /// スクリプトが 127.0.0.1 で繋いでよいポート = 宣言した公開ポート(エコーは除く)
+    var scriptLoopbackPorts: [UInt16] {
+        Set(lease.publishedPorts.map { UInt16(clamping: $0.hostPort) }).sorted()
+    }
+
+    /// 中継(`fleetest-services`)の判定の入力。**宣言したサービスだけ**(中継・エコーは入れない = 断られる)
+    func gatewayInputs() -> ServiceGatewayInputs {
+        var published: [ServicePublication] = []
+        if let relay = plan.relay {
+            for forward in relay.forwards where forward.targetService != plan.udpCheck?.echoName {
+                published.append(ServicePublication(service: forward.targetService, containerPort: forward.targetPort,
+                                                    proto: forward.proto, hostIP: forward.hostIP, hostPort: forward.hostPort))
+            }
+        }
+        for launch in plan.containers {
+            for binding in launch.publishes {
+                published.append(ServicePublication(service: launch.service, containerPort: binding.containerPort,
+                                                    proto: binding.proto, hostIP: binding.hostIP, hostPort: binding.hostPort))
+            }
+        }
+        return ServiceGatewayInputs(
+            runtime: cli.runtime.kind, executable: cli.runtime.executable, controlEnvironment: cli.controlEnvironment,
+            containers: Dictionary(uniqueKeysWithValues: plan.containers.map { ($0.service, $0.name) }),
+            published: published)
     }
 
     // MARK: 同じ接頭辞の控え

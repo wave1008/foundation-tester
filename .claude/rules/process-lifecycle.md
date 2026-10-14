@@ -77,7 +77,10 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   段の境目で中断を見て既存の早期失敗の出口で抜ける(teardown・ロック解放は defer)。遅く登録すると、その間のシグナル
   (fan-out の子は ssh 切断の SIGHUP)が OS 既定の即死になり、teardown が走らず dispatch.lock が死んだ pid のまま残り、
   孤児のビルド・供給と次の run が重なる(`InterruptRelayEarlyRegistrationWiringTests`)→ maintainer-notes §51。
-  **限界: `swift build` の実行中の中断は、ビルドが終わってから拾う**(ビルドの子は interruptState に登録していない)
+  **限界: `swift build` の実行中の中断は、ビルドが終わってから拾う**(ビルドの子は interruptState に登録していない)。
+  **setup.sh / teardown.sh は `registerChildProcess` で中断を受け、終了は終了通知で待ち(パイプの EOF と独立)、終わったら
+  プロセスグループに残った子孫へ SIGTERM → 2 s → SIGKILL**(`RunHookRunner.sweepProcessGroup`。`setsid` で離脱した子孫は検出できない)。
+  gateway(`ServiceGatewayServer`)の子も同じ猶予で止める
   **階層をまたぐ保証(起こした側 → `api run` → シナリオ実行バイナリ)は `CrossLayerTerminationTests` が
   実バイナリで固定する**(`--dry-run --debug --pause-on-start --skip-build` = デバイスも入れ子の swift build も
   要らない長生きの孫。親の SIGKILL と子への SIGTERM の両方)

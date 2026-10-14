@@ -427,10 +427,12 @@ UI 操作のハンドラ本体の一部は語句検索だけで、本文は読�
   端末側の sh が解釈し直すので、パッケージ名を埋める箇所は全部 `AndroidPackageName` で検めてから撃つ
   (`AndroidDriver.launch` も `/session` の前に検める)。
 
-### 8.7 run の前後のスクリプト(枠に入れる設計あり・未実装)
+### 8.7 run の前後のスクリプト(枠に入れた)
 
-`setup.sh` / `teardown.sh` は今は枠の外で、親の環境を全部継いで動く。枠に入れる設計は
-[remote-runner.md §17「サービスの宣言とスクリプトのサンドボックス化」](remote-runner.md)。要点は2つ。
+`setup.sh` / `teardown.sh` は `ScenarioSandbox` の用途 `.script` で包む(入口は `FTCore.ScriptSandbox.launch`。設計は
+[remote-runner.md §17「サービスの宣言とスクリプトのサンドボックス化」](remote-runner.md))。シナリオの枠との差は
+`ScenarioSandbox.profile` の用途分岐にまとまっている(書ける場所 = `data/` + `hooks.writablePaths` + 一時領域、
+通信 = 宣言した公開ポート + プロキシ + gateway のソケット、GPU・ANE・LaunchServices は開けない)。要点は2つ。
 
 - **枠に入れるだけではコンテナの実行基盤が抜け道になる**。Docker のデーモン / Apple Container の apiserver は
   枠の外にあり、繋げれば `docker run -v $HOME:/h …` でホストの秘密を読める。だからサーバーは compose.yaml の
@@ -441,8 +443,9 @@ UI 操作のハンドラ本体の一部は語句検索だけで、本文は読�
   繋がらず失敗・`~/.rd/docker.sock` と `/var/run/docker.sock` への接続は `Operation not permitted`。ただし **`127.0.0.1:2375` には
   繋がった**(シナリオの枠は `localhost:*` を開けている)= Docker を TCP で公開している Mac では抜け道になるので、
   2375 / 2376 を `localhost:*` より後で拒否する(§17 の規則。スクリプトの枠は localhost を宣言したポートしか開けない)
-- **実装したら測ること**: スクリプトの典型(`psql`・`curl`・`cp` / `mv`)に要る許可を `log stream` で洗い出す(§9.1)。
-  シナリオの土台で足りる見込みだが、シェルと外部コマンドの起動は未実測
+- **測ること(残り)**: スクリプトの典型(`psql`・`curl`・`cp` / `mv`)に要る許可を `log stream` で洗い出す(§9.1)。
+  `/bin/sh`・`wget` / `nc`・`fleetest-services` 経由の `exec` は枠の中で動いた(ScriptSandboxTests と ③ の実データ)。
+  `psql` など外部の道具は未実測
 
 ---
 

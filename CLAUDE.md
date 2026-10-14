@@ -131,6 +131,8 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
   (自分で `LanguageModelSession` を作らない。fm-occlusion.md → maintainer-notes §81)
 - MCP のツール・引数を足す → `ArgumentBounds` に載せる・ツールの集合を固定するテスト
   (`MCPToolCallTests` の driverBackedTools 等)を更新する・DSL と同じ判定は共有する(mcp.md)
+- compose.yaml に読めるキーを足す → `ComposeNormalizer` の許可表・`ComposePolicy` の検査・`ComposePolicyTests` / スクリプトの中継
+  `fleetest-services` に動詞を足す → `ServicePolicy` と `ServicePolicyTests`(executor.md)
 - ブリッジの挙動・エンドポイントを変える → 版を上げる(iOS `bridgeProtocolVersion` / Android
   `VERSION_CODE`。`BridgeContractTests` が落ちたらそこで上げる)・XCUITest を触ったら `--ios-xcuitest`
   (bridge-provision.md)

@@ -110,6 +110,12 @@ let package = Package(
                 "FTServices",
             ]
         ),
+        // setup.sh / teardown.sh の中から親の gateway へ頼む中継コマンド(docs/remote-runner.md §17「スクリプト」④)。
+        // 依存は FTCore だけ(ワイヤと unix ソケット)。親(fleetest)は自分の実行ファイルの隣から見つける
+        .executableTarget(
+            name: "fleetest-services",
+            dependencies: ["FTCore"]
+        ),
         .executableTarget(
             name: "fleetest",
             dependencies: [

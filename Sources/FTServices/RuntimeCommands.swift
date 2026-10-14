@@ -153,6 +153,8 @@ public enum DockerCommands {
         force ? ["rm", "-f", name] : ["rm", name]
     }
     public static func containerExec(name: String, argv: [String]) -> [String] { ["exec", name] + argv }
+    /// 標準入力を子へ流す exec(スクリプトの中継コマンド用)。`-i` は両ランタイムが受ける。
+    public static func containerExecInteractive(name: String, argv: [String]) -> [String] { ["exec", "-i", name] + argv }
     public static func containerLogs(name: String, tail: Int) -> [String] { ["logs", "--tail", String(tail), name] }
     public static func containerInspect(name: String) -> [String] { ["inspect", name] }
 
@@ -203,6 +205,8 @@ public enum AppleContainerCommands {
         force ? ["rm", "-f", name] : ["rm", name]
     }
     public static func containerExec(name: String, argv: [String]) -> [String] { ["exec", name] + argv }
+    /// 標準入力を子へ流す exec(スクリプトの中継コマンド用)。`-i` は両ランタイムが受ける。
+    public static func containerExecInteractive(name: String, argv: [String]) -> [String] { ["exec", "-i", name] + argv }
     public static func containerLogs(name: String, tail: Int) -> [String] { ["logs", "-n", String(tail), name] }
     public static func containerInspect(name: String) -> [String] { ["inspect", name] }
 

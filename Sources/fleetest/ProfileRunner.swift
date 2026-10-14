@@ -398,7 +398,7 @@ enum ProfileRunner {
             resolved: resolved, stateDir: hookStateDir, interruptState: interruptState) { ConsoleOut.out($0) }
         defer { servicesSession?.down { ConsoleOut.out($0) } }
         let hookSession = try RunHookRunner.begin(
-            resolved: resolved, stateDir: hookStateDir) { ConsoleOut.out($0) }
+            resolved: resolved, stateDir: hookStateDir, services: servicesSession, interrupt: interruptState) { ConsoleOut.out($0) }
         defer { RunHookRunner.end(hookSession) { ConsoleOut.out($0) } }
 
 

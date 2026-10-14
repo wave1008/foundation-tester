@@ -80,11 +80,15 @@ final class SandboxProxyRegistry: @unchecked Sendable {
     private var proxies: [[String]: SandboxProxy] = [:]
 
     func environment(for allowedDomains: [String]) throws -> [String: String] {
+        try proxy(for: allowedDomains).environment
+    }
+
+    func proxy(for allowedDomains: [String]) throws -> SandboxProxy {
         lock.lock()
         defer { lock.unlock() }
-        if let running = proxies[allowedDomains] { return running.environment }
+        if let running = proxies[allowedDomains] { return running }
         let proxy = try SandboxProxy(allowedDomains: allowedDomains)
         proxies[allowedDomains] = proxy
-        return proxy.environment
+        return proxy
     }
 }

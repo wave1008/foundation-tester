@@ -117,6 +117,17 @@ public enum RunHookEnvironment {
 /// 無音の時間で「古い」と判定すると**動いている run の DB を落とす**。pid 再利用で
 /// 生きていると誤認する側へ倒れるが、その pid が死ねば次の回収で拾える
 public struct RunHookLeaseInfo: Codable, Equatable, Sendable {
+    /// いま動いているスクリプトの子(開始時刻つき = pid の再利用で別のプロセスを止めない)。
+    /// 親が SIGKILL されても子は `data/` を書き続けうるので、回収側は先にこれを止めてから teardown を撃つ
+    public struct Child: Codable, Equatable, Sendable {
+        public let pid: Int32
+        public let startedAt: String
+        public init(pid: Int32, startedAt: String) {
+            self.pid = pid
+            self.startedAt = startedAt
+        }
+    }
+
     public let pid: Int32
     public let project: String
     public let profile: String
@@ -125,29 +136,42 @@ public struct RunHookLeaseInfo: Codable, Equatable, Sendable {
     public let teardown: String
     public let workspace: String
     public let startedAt: String
+    /// compose.yaml が参照している秘密の名前(値は書かない)。回収側の teardown に同じ名前だけを渡す
+    public var secretNames: [String]
+    /// nil = スクリプトは動いていない
+    public var child: Child?
 
     public init(pid: Int32, project: String, profile: String,
-                teardown: String, workspace: String, startedAt: String) {
+                teardown: String, workspace: String, startedAt: String,
+                secretNames: [String] = [], child: Child? = nil) {
         self.pid = pid
         self.project = project
         self.profile = profile
         self.teardown = teardown
         self.workspace = workspace
         self.startedAt = startedAt
+        self.secretNames = secretNames
+        self.child = child
     }
 
     public static func now(pid: Int32, project: String, profile: String,
-                           teardown: URL, workspace: URL, date: Date = Date()) -> RunHookLeaseInfo {
-        let formatter = ISO8601DateFormatter()
-        formatter.timeZone = TimeZone(identifier: "UTC")
+                           teardown: URL, workspace: URL, secretNames: [String] = [],
+                           date: Date = Date()) -> RunHookLeaseInfo {
         return RunHookLeaseInfo(
             pid: pid, project: project, profile: profile,
             teardown: teardown.path, workspace: workspace.path,
-            startedAt: formatter.string(from: date))
+            startedAt: RunHookLease.timestamp(date), secretNames: secretNames)
     }
 }
 
 public enum RunHookLease {
+
+    /// ISO8601(秒精度・UTC)。控えの時刻の形はこれ1つ
+    public static func timestamp(_ date: Date = Date()) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.string(from: date)
+    }
 
     /// `<stateDir>/hooks/`(stateDir = リポジトリルートの `.fleetest`)。**プロジェクト非依存**
     /// —— 孤児が掴んでいるのはポートというホスト全体の資源で、次に走る run が別プロジェクトでも

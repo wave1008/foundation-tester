@@ -24,9 +24,10 @@ struct HooksCommand: AsyncParsableCommand {
 
         func run() async throws {
             let stateDir = try RepoRoot.find().appendingPathComponent(".fleetest")
-            // サービスの控え(`<pid>~<接頭辞>.json`)は同じ置き場に居るが `reapOrphans` は名前で避ける = 順序は問わない
-            let services = ServicesReaper.reap(stateDir: stateDir) { ConsoleOut.out($0) }
+            // スクリプトの孤児を先に(teardown.sh は残っているサービスを使いうる)、サービスの孤児を後に片付ける。
+            // サービスの控え(`<pid>~<接頭辞>.json`)は同じ置き場に居るが `reapOrphans` は名前で避ける
             let reaped = RunHookRunner.reapOrphans(stateDir: stateDir) { ConsoleOut.out($0) }
+            let services = ServicesReaper.reap(stateDir: stateDir) { ConsoleOut.out($0) }
             if reaped == 0 {
                 // **黙るのは「0件のとき」だけ** —— 代行実行したことは共有ランナーでも必ず言う
                 // (他人の run の後始末が走ったのに誰も知らない状態を作らない)

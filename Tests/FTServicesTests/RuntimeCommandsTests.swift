@@ -79,6 +79,8 @@ final class RuntimeCommandsTests: XCTestCase {
         XCTAssertEqual(AppleContainerCommands.containerLogs(name: "c", tail: 50), ["logs", "-n", "50", "c"])
         XCTAssertEqual(DockerCommands.containerLogs(name: "c", tail: 50), ["logs", "--tail", "50", "c"])
         XCTAssertEqual(DockerCommands.containerExec(name: "c", argv: ["ls", "-l"]), ["exec", "c", "ls", "-l"])
+        XCTAssertEqual(DockerCommands.containerExecInteractive(name: "c", argv: ["ls", "-l"]), ["exec", "-i", "c", "ls", "-l"])
+        XCTAssertEqual(AppleContainerCommands.containerExecInteractive(name: "c", argv: ["ls"]), ["exec", "-i", "c", "ls"])
     }
 
     func testImageCommands() {

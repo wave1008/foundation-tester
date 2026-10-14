@@ -526,7 +526,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             servicesSession = try ServicesSession.up(
                 resolved: resolved, stateDir: hookStateDir, interruptState: interruptState) { logStderr($0) }
             hookSession = try RunHookRunner.begin(
-                resolved: resolved, stateDir: hookStateDir) { logStderr($0) }
+                resolved: resolved, stateDir: hookStateDir, services: servicesSession, interrupt: interruptState) { logStderr($0) }
         }
         defer {
             if let hookSession { RunHookRunner.end(hookSession) { logStderr($0) } }
