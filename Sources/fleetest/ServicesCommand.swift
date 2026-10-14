@@ -221,8 +221,10 @@ struct ServicesCommand: AsyncParsableCommand {
             if !owners.isEmpty {
                 for entry in ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix) {
                     guard let lease = entry.lease, ServicesLeaseFile.isOrphan(lease, isAlive: ServicesProcessIdentity.isAlive) else { continue }
-                    _ = ServicesReaper.reapOne(entry: entry, lease: lease, home: NSHomeDirectory(),
-                                               remover: ServicesReaper.defaultRemover(log: log), log: log)
+                    if ServicesReaper.reapOne(entry: entry, lease: lease, home: NSHomeDirectory(),
+                                              remover: ServicesReaper.defaultRemover(log: log), log: log) {
+                        reaped += 1
+                    }
                 }
             }
             if owners.isEmpty && reaped == 0 {
