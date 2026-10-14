@@ -2116,8 +2116,10 @@ compose.yaml ──(解釈)──▶ ServiceSpec ──(ComposePolicy で検査)
     **公開の形はランタイムで違う**(実測):
     **Apple** は `-p <LAN-IP>:p:cp` で**その IP だけ**に束縛できる(lsof は `192.168.20.96:18180`・`127.0.0.1` へは
     refused・LAN の対向と iPhone SE3 の Safari・Pixel 4a の Chrome から TCP が届き、UDP も LAN から届いた)→
-    **`127.0.0.1` と LAN アドレスの2つに公開する**(Android の reverse は `127.0.0.1` が要る。同じホストポートを2つの
-    アドレスに束縛できるかは**未実測**)。
+    当初は **`127.0.0.1` と LAN アドレスの2つに公開する**つもりだったが、**同じホストポートの 2 重の公開は Apple が
+    "host ports for different publish port specs may not overlap" で断る**(実測 2026-10-15・1.1.0)。`-p 0.0.0.0:p:cp`(と省略形)は
+    `*:p` で待ち受けて loopback と両 LAN から届いた → **実機のレーンがあるときは Apple も Docker と同じ `0.0.0.0` に 1 つだけ公開する**
+    (Simulator の `127.0.0.1` と実機の LAN の両方に届く。`lanAddress` は LAN へ出すことの同意の印)。
     **Docker(Rancher Desktop)は特定の IP に束縛できない**(`-p <LAN-IP>:…` は `cannot assign requested address` =
     束縛は VM の中で起きる)→ **`0.0.0.0` で公開する**(ホスト側は Lima の `ssh` が `*:p` で待ち受け、loopback と LAN の両方から
     届いた)= **全インターフェースに出る**(この Mac なら en0 の 10.0.0.104 側にも)。利用者向けに書く

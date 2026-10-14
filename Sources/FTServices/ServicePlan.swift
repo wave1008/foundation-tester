@@ -324,12 +324,11 @@ public enum ServicePlanner {
                                                       targetService: s.name, targetPort: p.containerPort,
                                                       proto: p.proto))
                 } else {
-                    publishes.append(HostBinding(hostIP: p.hostIP ?? loopback, hostPort: p.hostPort,
+                    // Apple は同じホストポートを 2 つのアドレスへは束縛できない("host ports for different publish port specs
+                    // may not overlap" = 実測)。実機のレーンがあるときは Docker と同じく全インターフェース(0.0.0.0)に 1 つだけ
+                    // 公開する(Simulator の 127.0.0.1 と実機の LAN の両方に届く。`lanAddress` は LAN へ出すことの同意の印)
+                    publishes.append(HostBinding(hostIP: hasLAN ? serviceHostIP : (p.hostIP ?? loopback), hostPort: p.hostPort,
                                                  containerPort: p.containerPort, proto: p.proto))
-                    if hasLAN, let lan = options.lanAddress {
-                        publishes.append(HostBinding(hostIP: lan, hostPort: p.hostPort,
-                                                     containerPort: p.containerPort, proto: p.proto))
-                    }
                 }
             }
 

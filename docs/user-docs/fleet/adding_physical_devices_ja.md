@@ -70,8 +70,9 @@ Simulator 用の `appPath` と並べて書けます([プロファイル](../refe
 アプリが接続先のサーバを焼き込む場合、実機から見た `127.0.0.1` は端末自身です。Mac で動くサーバに繋がせるなら、
 Mac の LAN のアドレスを焼き込んだビルドを使います。
 
-そのサーバが `compose.yaml` で宣言したサービスなら、fleetest が設定 `services.publishForPhysicalDevices` の LAN アドレスで
-公開し、Android の実機には公開した TCP ポートごとに `adb reverse` を張ります。
+そのサーバが `compose.yaml` で宣言したサービスなら、実機を含む run はこの Mac の全インターフェースに公開し(設定
+`services.publishForPhysicalDevices` に Mac の LAN アドレスを書くことがその同意で、実機はそのアドレスで届きます)、Android の
+実機には公開した TCP ポートごとに fleetest が `adb reverse` を張ります。
 [アプリが依存するサービス](../reference/writing/services_ja.md)を見てください。
 
 ## Android

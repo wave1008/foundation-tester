@@ -272,8 +272,8 @@ set -u
 #
 # 規則
 #   - コンテナは外部ネットワークへ出られない(sandbox.allowedDomains のプロキシ経由だけ)。
-#   - 公開ポートは 127.0.0.1 だけ。実機のレーンを含む run は、この Mac の設定
-#     services.publishForPhysicalDevices の LAN アドレスで公開する。
+#   - 公開ポートは 127.0.0.1 だけ。実機のレーンを含む run は全インターフェース(0.0.0.0)に公開する
+#     (この Mac の設定 services.publishForPhysicalDevices に LAN アドレスを書くことがその同意)。
 #   - イメージは手元に無いときだけ取得する。
 #   - build: の context は scripts/ の下か、この Mac の設定 services.buildSources に書いた場所。
 #   - 秘密は environment の値に \${NAME} で書く(値は ~/.config/fleetest/secrets/<project>.env から読まれる)。
@@ -330,8 +330,8 @@ set -u
 # Rules
 #   - Containers cannot reach external networks (only through the sandbox.allowedDomains proxy).
 #   - Ports are published on 127.0.0.1 only. A run that includes a physical-device lane
-#     publishes them on the LAN address set by services.publishForPhysicalDevices in this
-#     Mac's settings.
+#     publishes them on every interface (0.0.0.0); setting services.publishForPhysicalDevices
+#     to this Mac's LAN address in its settings is your consent to that.
 #   - Images are pulled only when they are not present locally.
 #   - The context of build: must be under scripts/ or a location listed in services.buildSources
 #     of this Mac's settings.

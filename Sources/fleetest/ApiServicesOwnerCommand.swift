@@ -31,8 +31,11 @@ struct ApiServicesOwnerCommand: AsyncParsableCommand {
         let target = try ServicesCommand.resolveTarget(project: project, profile: profile)
         let stopped = DispatchSemaphore(value: 0)
         let interruptState = RunInterruptState(recorder: nil, notice: "⏹ services-owner: stop requested — removing the services")
+        // 片付けに入った後のシグナル(`services down` の打ち直し・run の引き取り)は無視する ——
+        // `requestStop()` の 2 度目は即終了なので、片付けの途中で落ちて資源と控えを残す
+        let tearingDown = LockedValue(false)
         let relay = InterruptRelay.observing {
-            interruptState.requestStop()   // 起動の途中なら pull / build / 待ちを止める
+            if !tearingDown.value { interruptState.requestStop() }   // 起動の途中なら pull / build / 待ちを止める
             stopped.signal()
         }
         defer { relay.stop() }
@@ -67,6 +70,7 @@ struct ApiServicesOwnerCommand: AsyncParsableCommand {
             thread.name = "fleetest-api-services-owner-wait"
             thread.start()
         }
+        tearingDown.value = true
         session.down(log: log)
     }
 

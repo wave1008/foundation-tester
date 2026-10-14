@@ -114,8 +114,10 @@ A run that includes a lane of a physical device (a real iPhone or Android phone)
 
 Without it the run does not start, and the message says how to write it.
 
-- **Apple Container** binds the ports to both that LAN address and `127.0.0.1`. **Docker cannot bind to a single IP,
-  so it publishes on every interface (0.0.0.0).**
+- **With a physical-device lane, both runtimes publish the ports on every interface (0.0.0.0)**, so the Simulators
+  on this Mac still reach `127.0.0.1` and the physical devices reach the LAN address. Apple Container cannot bind one
+  host port to two addresses, and Docker cannot bind to a single IP. The setting is your consent to that exposure and
+  the address the physical devices use; runs without a physical device stay on `127.0.0.1`.
 - **Android physical devices**: for each published TCP port, fleetest sets up `adb reverse tcp:<port> tcp:<port>`, so
   the app on the device reaches the service at `127.0.0.1:<port>`. If it cannot be set up, fleetest prints a warning.
 - **iOS physical devices**: use a build with the LAN address built in, as described in

@@ -79,11 +79,12 @@ final class ServicePlanTests: XCTestCase {
         XCTAssertEqual(p.udpCheck?.hostIP, "127.0.0.1")
     }
 
-    func testApplePhysicalAddsLAN() throws {
+    /// Apple は同じホストポートを 2 つのアドレスへは束縛できない(実測 "host ports … may not overlap")ので、
+    /// 実機のレーンがあるときは Docker と同じく 0.0.0.0 に 1 つだけ。エコーの確認は loopback のまま
+    func testApplePhysicalPublishesOnAllInterfacesOnce() throws {
         let p = try plan(.apple, physical: true, lan: "192.168.0.5")
         let db = p.containers.first { $0.service == "db" }!
-        XCTAssertEqual(db.publishes.map(\.hostIP), ["127.0.0.1", "192.168.0.5"])
-        XCTAssertEqual(Set(db.publishes.map(\.hostPort)), [15432])
+        XCTAssertEqual(db.publishes, [HostBinding(hostIP: "0.0.0.0", hostPort: 15432, containerPort: 5432, proto: .tcp)])
         XCTAssertEqual(p.udpCheck?.hostIP, "127.0.0.1")
     }
 
