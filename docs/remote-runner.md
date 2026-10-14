@@ -2542,6 +2542,13 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   (純粋・実データの fixture で固定)。**UDP の経路の確認は赤へ上げた**(⑤の締め・ユーザー決定 2026-10-15): 3 回届かなければ `ServicesError`(phase wait)で run を
   始めない(警告の文言をそのまま detail に。Rancher の原因も同じ)。判断の材料は Apple = 3 回の probe で必ず応答(1 回目の取りこぼしあり)・
   Rancher の SSH 転送方式 = 3 回とも届かない、の 2 系統。`servicesWarnings` に残る警告は `adb reverse` だけになった。
+  **赤の陽性対照**(M1Ultra・Rancher の SSH 転送方式): `/udp` を宣言した compose を送ると、サービスは上がった後に
+  「`127.0.0.1:<p>/udp (published by docker) did not answer 3 probes of 1s each; TCP on the same path did answer — Rancher Desktop is
+  using the SSH port forwarder … switch with \`rdctl set …\` (phase: wait) — no scenario was run」で止まり、2.4 s で片付いた。
+  Apple(この Mac)は同じ compose で probe 1 回目に応答して上がる。
+  **並列レーン**(sut-ec-mobile `ios-5`・5 本の名指し = 6 シナリオ): 1 組のサービスを 5 レーンが共有して 5/6 緑・サーバーの応答は
+  7〜8 ms・片付け 2.6 s。赤の 1 本(`カートの数量を操作できること.S0020`)は単独でも落ち、履歴では 10/14 11:45(ホストのサーバーの頃)から
+  iOS / Android とも連続で赤 = SUT 側の既存の不一致で、サービス化とは無関係(`results trend` で確認)。
   **残り**: なし(§17 の設計分は完了)。**コンテナ → 外部の UDP** は設計どおり止まったまま(作らない)
 - **②で実測して分かったこと**: Apple の名前付きボリュームの既定は **512 GiB のスパースなイメージ**(`-s` は付けない)/
   `container build` と `run` は `--label` を、`run` は `--init` も受ける(1.1.0 の help)/ **run の親を `kill -9` しても孤児は
