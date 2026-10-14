@@ -337,7 +337,7 @@ let package = Package(
         // 実行プロファイルによる絞り込み・表示整形)
         .testTarget(
             name: "FleetestTests",
-            dependencies: ["fleetest", "FTCore", "FTRemote", "FTAndroid", "FTBridgeClient", "FTTestSupport"]
+            dependencies: ["fleetest", "FTCore", "FTRemote", "FTAndroid", "FTBridgeClient", "FTTestSupport", "FTServices"]
         ),
         .testTarget(
             name: "FTDSLTests",

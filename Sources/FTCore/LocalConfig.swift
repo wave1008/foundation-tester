@@ -47,6 +47,8 @@ public struct LocalConfig: Codable, Sendable, Equatable {
     /// ホストの CPU 負荷に応じたステップの減速(`HostLoadPacing`)。nil(欄ごと無い)= 既定で有効・既定の段。
     /// **読むのは親の `ScenarioHost.run` だけ**で、子へは `--host-load-pacing` で渡す
     public var hostLoadPacing: HostLoadPacing?
+    /// サービス(compose.yaml)のランタイム設定。**検めて読むのは `ServicesSettings.load` だけ**(未知のキーは誤り)
+    public var services: ServicesSettings?
 
     public init(defaultProject: String? = nil,
                 lastRunProfile: [String: String]? = nil,
@@ -54,7 +56,8 @@ public struct LocalConfig: Codable, Sendable, Equatable {
                 remoteHosts: [RemoteHostEntry]? = nil, issuerId: String? = nil,
                 fmConcurrency: Int? = nil, localMachineEnabled: Bool? = nil,
                 retention: RetentionPolicy? = nil, sandbox: ScenarioSandbox.MachineSettings? = nil,
-                redactAccountValues: Bool? = nil, hostLoadPacing: HostLoadPacing? = nil) {
+                redactAccountValues: Bool? = nil, hostLoadPacing: HostLoadPacing? = nil,
+                services: ServicesSettings? = nil) {
         self.defaultProject = defaultProject
         self.lastRunProfile = lastRunProfile
         self.developmentTeam = developmentTeam
@@ -67,6 +70,7 @@ public struct LocalConfig: Codable, Sendable, Equatable {
         self.sandbox = sandbox
         self.redactAccountValues = redactAccountValues
         self.hostLoadPacing = hostLoadPacing
+        self.services = services
     }
 
     /// 実機署名の設定。優先順位: 環境変数 > 設定ファイル。

@@ -65,6 +65,17 @@ final class ScenarioSandboxTests: XCTestCase {
         try runSandboxed(["/usr/bin/touch", path(sub)])
     }
 
+    func testSecretsAndPrivateDenyComesAfterTheConfigReopen() throws {
+        let lines = try ScenarioSandbox.profile(scope()).components(separatedBy: "\n")
+        let reopen = lines.firstIndex { $0.hasPrefix("(allow file-read*") && $0.contains(".config/fleetest") }
+        let deny = lines.firstIndex {
+            $0.hasPrefix("(deny file-read*") && $0.contains(".config/fleetest/secrets") && $0.contains(".config/fleetest/private")
+        }
+        XCTAssertNotNil(reopen)
+        XCTAssertNotNil(deny)
+        if let reopen, let deny { XCTAssertGreaterThan(deny, reopen) }
+    }
+
     func testWritesInsideTheAllowedRootsSucceed() throws {
         XCTAssertEqual(try touch("reports/a"), 0)
         XCTAssertEqual(try touch("project/.fleetest/a"), 0)

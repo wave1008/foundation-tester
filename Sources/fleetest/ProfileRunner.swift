@@ -392,6 +392,11 @@ enum ProfileRunner {
         let hookStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
         // 二重使用は開始スクリプトと破壊的な準備より前に断る(rejectIfDevicesLeasedBeforePreparation)
         try Self.rejectIfDevicesLeasedBeforePreparation(resolved: resolved, leaseStateDir: hookStateDir)
+        // サービス(scripts/compose.yaml)は開始スクリプトの前に上げ、片付けは終了スクリプトの後
+        // (defer は後に書いたものから走る = 下の終了スクリプトの defer より先に書く)
+        let servicesSession = try ServicesSession.up(
+            resolved: resolved, stateDir: hookStateDir, interruptState: interruptState) { ConsoleOut.out($0) }
+        defer { servicesSession?.down { ConsoleOut.out($0) } }
         let hookSession = try RunHookRunner.begin(
             resolved: resolved, stateDir: hookStateDir) { ConsoleOut.out($0) }
         defer { RunHookRunner.end(hookSession) { ConsoleOut.out($0) } }

@@ -24,6 +24,8 @@ struct HooksCommand: AsyncParsableCommand {
 
         func run() async throws {
             let stateDir = try RepoRoot.find().appendingPathComponent(".fleetest")
+            // サービスの控え(`<pid>~<接頭辞>.json`)は同じ置き場に居るが `reapOrphans` は名前で避ける = 順序は問わない
+            let services = ServicesReaper.reap(stateDir: stateDir) { ConsoleOut.out($0) }
             let reaped = RunHookRunner.reapOrphans(stateDir: stateDir) { ConsoleOut.out($0) }
             if reaped == 0 {
                 // **黙るのは「0件のとき」だけ** —— 代行実行したことは共有ランナーでも必ず言う
@@ -31,6 +33,12 @@ struct HooksCommand: AsyncParsableCommand {
                 if !quiet { ConsoleOut.out("→ no orphaned teardown scripts") }
             } else {
                 ConsoleOut.out("→ reaped \(reaped) orphaned teardown script(s)")
+            }
+            if services.reaped == 0 && services.unreadable.isEmpty && services.kept.isEmpty {
+                if !quiet { ConsoleOut.out("→ no orphaned services") }
+            } else {
+                ConsoleOut.out("→ services: reaped \(services.reaped), kept \(services.kept.count) with leftovers,"
+                    + " \(services.unreadable.count) unreadable lease(s) left in place")
             }
         }
     }

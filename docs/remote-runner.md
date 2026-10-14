@@ -1947,7 +1947,10 @@ apiserver は枠の外にあり、頼めば任意のマウント・特権・ホ�
   `depends_on` の循環は検査で断る・**`condition: service_completed_successfully` の初期化サービスは「正常終了 = 完了」**
   (②の「終了 = 失敗」はそれ以外のサービスに当てる)。**正常終了の待ちには期限を置かない**(Codex レビュー4 2026-10-14 #2 への回答): 初期化
   サービス(migrate 等)は利用者のコードで、妥当な上限を決める根拠がこちらに無い = スクリプトと同じ扱い。**コンテナのログの
-  無音が `RunHookStall` の閾値を跨ぐたびに警告を1行出して待ち続け**、異常終了(非0)したら即座に失敗する。打ち切るのは
+  無音が `RunHookStall` の閾値を跨ぐたびに警告を1行出して待ち続け**、異常終了(非0)したら即座に失敗する。**実装は前面実行**
+  (②で判明: Apple Container 1.1.0 の `inspect` は `status.state` だけで終了コードを持たない。前面の `run` は両ランタイムで
+  コンテナの終了コードをそのまま返す(実測 3 → 3)ので、初期化サービスは `-d` 無しで `runLong` から起こし CLI の終了コードで
+  決着する。**初期化サービスのネットワークは1つに限る**(前面実行の後からはつなげない。検査で断る))。打ち切るのは
   中断(SIGINT / SIGTERM)だけ。対応しない形は起動の前に断る
 - **デバイスに触る前に撃つ・渡すデバイス一覧は絞り込み後**(今と同じ)
 - **dry-run はサービスもスクリプトも動かさない**(今の hooks と同じ。セルフレビュー 2026-10-14)。**配線は `run` と `api run` の2経路に同じものを入れる**
@@ -2440,6 +2443,31 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
 | Apple Container の常駐サービス | カーネルが導入済みなら fleetest が `container system start` を撃つ・未導入なら止めて案内(上の「ランタイムの実体」)。`fleetest doctor` と `remote setup` の前提判定でも同じ判定 |
 | 移行 | sut-ec-mobile のワークスペースを、DB とサーバーのイメージを書いた compose.yaml + データ投入だけの setup.sh へ。利用者向け docs(en/ja)と導入スキル |
 | 実装の段取り | ① 検査と実行計画(純粋な部品とテスト)→ ② ランタイムごとの実行・起動完了の待ち・片付け → ③ スクリプトの枠と中継 → ④ UDP の経路の確認とプロキシ → ⑤ MCP・拡張・docs。各段で単体テストと実データでの確認 |
+
+#### 実装の状況
+
+- **①(解釈・検査・計画)と②(ランタイムごとの実行・起動完了の待ち・片付け)は実装済み**。`FTServices`(①の純粋な部品 +
+  `RuntimeCommands` / `ReadinessSchedule` / `ServicesLease` / `RelayImage`)と `Sources/fleetest/Services*.swift`(ランタイムの解決・
+  事実の収集・`ServicesSession`・`ServicesReaper`・`ServicesLock`・`fleetest services status|reset`)。配線は `ProfileRunner.run` と
+  `ApiRunCommand` の2箇所(dry-run は除く)。`hooks reap` がサービスの孤児も回収する
+- **未実装(③〜⑤)**: スクリプトの Seatbelt 化と中継の `exec`・UDP の経路の確認(`/udp` の宣言は今は「次の段で対応」と止める)・
+  親のプロキシの接続・`services up` / `down` と常駐の所有者・`adb reverse`・子プロセスの控え・失敗時のログの保存・MCP の
+  `ft_services`・拡張の雛形・利用者向け docs
+- **②で実測して分かったこと**: Apple の名前付きボリュームの既定は **512 GiB のスパースなイメージ**(`-s` は付けない)/
+  `container build` と `run` は `--label` を、`run` は `--init` も受ける(1.1.0 の help)/ **run の親を `kill -9` しても孤児は
+  生まれない**(サービスを持つのは `[local]` の子 run で、親の死を `ParentDeathWatch` で見て自分で片付ける)。**控えの持ち主の
+  子を `kill -9` すると残り、`hooks reap` が ID で消す**(実測で回収できた)/ 1 シナリオの run に載せたサービス(PostgreSQL +
+  busybox の httpd)の所要: Apple 起動 1.5 s + 待ち 1.3 s・Docker 起動 0.5 s + 待ち 1.2 s(初回は中継イメージのビルドと pull で
+  +15 s)・片付けは `stop_grace_period` の既定 10 s を SIGTERM を無視する busybox が使い切る / `services status` はランタイムを
+  起こさない(止まっていれば「使えない」と出る。起こすのは run だけ)/ **Apple の `inspect` の JSON** は `[{configuration, id,
+  status: {networks: [{ipv4Address: "192.168.64.4/24", …}], startedDate, state: "running" | "stopped"}}]` で**終了コードの欄が無い**
+  (`exec` と前面の `run` は終了コードを返す)。読み方は `RuntimeListing.containerState` / `appleAddress` に実データの fixture で固定 /
+  **Apple の `network delete` / `volume delete` は無いものにも "failed to delete one or more …"(exit 1)** と言い "not found" を
+  含まない → 片付けは削除に失敗したら一覧で実在を確かめる(`ServicesTeardown.absenceConfirmed`。セルフレビューの陽性対照で、
+  作れなかったネットワークを控えに持つ孤児が永遠に残るのを再現して直した)/ **Docker の常駐サービスは `create` → 2つ目以降の
+  `network connect` → `start`**(compose と同じ順。`run -d` の後につなぐと、起動直後に別のネットワークの相手を引くサービスが落ちる)/
+  **自動選択(`runtime` 未設定)で Apple の常駐サービスを起こすのは Docker が使えないときだけ**(`mayStartApple`。Docker が
+  上がっているのに Apple を起こしてから「両方使える」と断っていた = セルフレビューの Docker 側の対照で露見)/ **サービスの `networks` に書いた `default` は宣言不要**(compose の暗黙のネットワーク。計画は内部ネットワークへ写す。同じ対照で露見)
 
 #### 片付けの保証(今の仕組みからの変更)
 

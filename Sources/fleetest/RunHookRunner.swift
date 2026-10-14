@@ -8,6 +8,7 @@
 
 import Foundation
 import FTCore
+import FTServices
 import FTRemote
 
 /// begin() が返す片付けの控え。end() へそのまま渡す
@@ -66,7 +67,10 @@ enum RunHookRunner {
             at: dir, includingPropertiesForKeys: nil) else { return 0 }
         var reaped = 0
         for url in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
-        where url.pathExtension == "json" {
+        where url.pathExtension == "json"
+            // サービスの控え(`<pid>~<prefix>.json`)は同じ置き場に居るが別の形 = `ServicesReaper` が回収する。
+            // ここで decode に失敗した扱いにすると**生きている run の控えまで消す**
+            && ServicesLeaseFile.parse(fileName: url.lastPathComponent) == nil {
             guard let raw = try? String(contentsOf: url, encoding: .utf8),
                   let info = RunHookLease.decode(raw) else {
                 try? FileManager.default.removeItem(at: url)  // 読めない記録は残しても誰も使えない

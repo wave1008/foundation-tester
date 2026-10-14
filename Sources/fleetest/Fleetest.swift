@@ -36,6 +36,7 @@ struct Fleetest: AsyncParsableCommand {
             ResultsCommand.self,
             RemoteCommand.self,
             HooksCommand.self,
+            ServicesCommand.self,
             MonitorCommand.self,
             CleanCommand.self,
             VisionCommand.self,

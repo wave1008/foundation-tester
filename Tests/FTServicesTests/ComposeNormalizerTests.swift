@@ -253,6 +253,9 @@ final class ComposeNormalizerTests: XCTestCase {
     func testUndeclaredNetworkAndVolume() throws {
         XCTAssertEqual(try refusals(svc("networks: [nope]\n")),
                        [.undeclaredNetwork(path: ComposePath("services.app.networks[0]"), name: "nope")])
+        // `default` は宣言が無くてよい(compose の暗黙のネットワーク)
+        XCTAssertEqual(try refusals(svc("networks: [default, nope]\n")),
+                       [.undeclaredNetwork(path: ComposePath("services.app.networks[1]"), name: "nope")])
         XCTAssertEqual(try refusals(svc("volumes: [\"nope:/x\"]\n")),
                        [.undeclaredVolume(path: ComposePath("services.app.volumes[0]"), name: "nope")])
     }

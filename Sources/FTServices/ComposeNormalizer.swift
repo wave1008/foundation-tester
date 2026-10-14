@@ -815,7 +815,8 @@ public enum ComposeNormalizer {
             }
             var result: [String] = []
             for (name, np) in names {
-                if networkNames.contains(name) { result.append(name) } else {
+                // compose の `default` は暗黙に存在する(宣言不要。計画は内部ネットワークへ写す)
+                if name == "default" || networkNames.contains(name) { result.append(name) } else {
                     fail(.undeclaredNetwork(path: np, name: name))
                 }
             }

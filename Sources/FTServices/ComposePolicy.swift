@@ -65,6 +65,10 @@ public enum ComposePolicy {
         }
     }
 
+    private static let appleNetworkReason = "Apple Container attaches a container to one network; declare no extra networks"
+    private static let initServiceNetworkReason = "a service depended on with service_completed_successfully runs in the foreground"
+        + " on one network; declare at most one network for it"
+
     /// TCP/UDP のポート番号の範囲(1...65535 = 16 bit の無符号整数から 0 を除く)。
     private static let validPorts = 1...65535
 
@@ -80,9 +84,24 @@ public enum ComposePolicy {
             refusals.append(.invalidValue(path: ComposePath("<workspace>"), reason: "scripts/ or data/ is a symlink"))
         }
 
+        // Apple Container は1コンテナ1ネットワーク(2つ目へつなぐ口が無い)。計画の内部ネットワークが1つ目を使う
+        if context.runtime == .apple && !spec.networks.isEmpty {
+            refusals.append(.invalidValue(path: ComposePath("networks"), reason: Self.appleNetworkReason))
+        }
+
+        // 初期化サービスは前面で実行して終了コードで決着する(ServicesSession)。前面実行の後からは2つ目のネットワークへつなげない
+        let initServices = Set(spec.services.flatMap { svc in
+            svc.dependsOn.filter { $0.condition == .serviceCompletedSuccessfully }.map(\.service) })
+
         var publishedHost = Set<String>()
         for svc in spec.services {
             let base = services.append(key: svc.name)
+
+            if context.runtime == .apple && svc.networks.contains(where: { $0 != "default" }) {
+                refusals.append(.invalidValue(path: base.append(key: "networks"), reason: Self.appleNetworkReason))
+            } else if initServices.contains(svc.name) && svc.networks.count > 1 {
+                refusals.append(.invalidValue(path: base.append(key: "networks"), reason: Self.initServiceNetworkReason))
+            }
 
             for (i, mount) in svc.mounts.enumerated() {
                 guard case .bind(let source, _, let readOnly) = mount else { continue }

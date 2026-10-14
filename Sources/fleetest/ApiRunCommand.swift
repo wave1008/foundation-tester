@@ -514,11 +514,17 @@ struct ApiRunCommand: AsyncParsableCommand {
         // **dry-run では撃たない**(`fleetest run` の dry-run 分岐と同じ)—— dry-run は dispatch.lock を取らないので、
         // 走行中の run の依存サービスを teardown.sh が落としうる
         var hookSession: RunHookSession?
+        // サービス(scripts/compose.yaml)は開始スクリプトの前に上げ、片付けは終了スクリプトの後
+        // (この defer は下の終了スクリプトの defer より先に書く = 後に走る)
+        var servicesSession: ServicesSession?
+        defer { servicesSession?.down { logStderr($0) } }
         if let resolved = resolvedProfile, !dryRun {
             let hookStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
             // 二重使用は開始スクリプトと破壊的な準備より前に断る(ProfileRunner と同じ判定)
             try ProfileRunner.rejectIfDevicesLeasedBeforePreparation(
                 resolved: resolved, leaseStateDir: hookStateDir)
+            servicesSession = try ServicesSession.up(
+                resolved: resolved, stateDir: hookStateDir, interruptState: interruptState) { logStderr($0) }
             hookSession = try RunHookRunner.begin(
                 resolved: resolved, stateDir: hookStateDir) { logStderr($0) }
         }

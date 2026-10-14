@@ -572,6 +572,10 @@ public enum ScenarioSandbox {
             let reopened = try readReopenedHomeSubpaths.map { try subpath(scope.home + "/" + $0) }
             lines.append("(allow file-read* " + reopened.joined(separator: " ") + ")")
         }
+        // 開け直した `.config/fleetest` の中の秘密の置き場を名指しで閉じ直す(後に書いた規則が勝つ)
+        lines.append("(deny file-read* "
+            + (try subpath(ServicesSecretsLayout.secretsDirectory(home: scope.home))) + " "
+            + (try subpath(ServicesSecretsLayout.privateRoot(home: scope.home))) + ")")
         // **`network*` に `(local ip "localhost:*")` を書かない** —— 外向きの接続にも当たって全部通る
         // (実測)。向きごとに分け、外向きは宛先(remote)だけで絞る。`localhost` は自機の全アドレスを含む
         lines.append("(deny network*)")

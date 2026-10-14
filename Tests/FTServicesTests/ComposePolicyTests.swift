@@ -256,6 +256,44 @@ final class ComposePolicyTests: XCTestCase {
         XCTAssertEqual(portRefusals([PortPublish(hostIP: "127.0.0.1", hostPort: 8131, containerPort: 1, proto: .tcp)]), [])
     }
 
+    func testAppleRefusesExtraServiceNetwork() {
+        let spec = mutated { $0.services[2].networks = ["default", "back"] }
+        XCTAssertEqual(refusals(spec, baseContext(runtime: .apple)),
+                       [.invalidValue(path: ComposePath("services").append(key: "stub").append(key: "networks"),
+                                      reason: "Apple Container attaches a container to one network; declare no extra networks")])
+        XCTAssertEqual(refusals(spec, baseContext(runtime: .docker)), [])
+    }
+
+    func testInitServiceMayJoinOnlyOneNetwork() {
+        let reason = "a service depended on with service_completed_successfully runs in the foreground on one network;"
+            + " declare at most one network for it"
+        let spec = mutated {
+            $0.services[2].networks = ["default", "back"]
+            $0.services[1].dependsOn.append(Dependency(service: "stub", condition: .serviceCompletedSuccessfully))
+        }
+        XCTAssertEqual(refusals(spec, baseContext(runtime: .docker)),
+                       [.invalidValue(path: ComposePath("services").append(key: "stub").append(key: "networks"), reason: reason)])
+        // 条件が service_started なら2つのネットワークでよい / 1つなら初期化サービスでもよい
+        let started = mutated {
+            $0.services[2].networks = ["default", "back"]
+            $0.services[1].dependsOn.append(Dependency(service: "stub", condition: .serviceStarted))
+        }
+        XCTAssertEqual(refusals(started, baseContext(runtime: .docker)), [])
+        let single = mutated {
+            $0.services[2].networks = ["back"]
+            $0.services[1].dependsOn.append(Dependency(service: "stub", condition: .serviceCompletedSuccessfully))
+        }
+        XCTAssertEqual(refusals(single, baseContext(runtime: .docker)), [])
+    }
+
+    func testAppleRefusesTopLevelNetworks() {
+        let spec = mutated { $0.networks = [NetworkDef(name: "back")] }
+        XCTAssertEqual(refusals(spec, baseContext(runtime: .apple)),
+                       [.invalidValue(path: ComposePath("networks"),
+                                      reason: "Apple Container attaches a container to one network; declare no extra networks")])
+        XCTAssertEqual(refusals(spec, baseContext(runtime: .docker)), [])
+    }
+
     func testDuplicateHostPortRefused() {
         let dup = PortPublish(hostIP: "127.0.0.1", hostPort: 15432, containerPort: 5432, proto: .tcp)
         XCTAssertEqual(portRefusals([dup]),
