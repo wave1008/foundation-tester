@@ -2524,7 +2524,14 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   緑 → 5.5 s で片付け。ビルダーの資源は fleetest が変えない(利用者向け docs に注記。`services status` / 起動時にビルダーの資源を言う案は
   未実装)。**変異チェック**: 新テスト 25 件中 24 検出・生き残り 1 件(空の入力の guard)はテストを境界へ寄せて再検出。
   **MCP の入口のテストは実在しないプロジェクト名を添える**(入口の検査が抜けると本物の `swift run fleetest services` を起こし、
-  `swift test` のビルドロックと待ち合って止まる = 変異チェックで実際に 30 分止まった)。**残り**: `services status` へのイメージ・ボリュームの大きさ(Apple の
+  `swift test` のビルドロックと待ち合って止まる = 変異チェックで実際に 30 分止まった)。
+  **M1Ultra(ランナー機・Rancher Desktop 1.24 / Docker 29.5)の実データ**(アライン後に E2E-iOS の `ios-m1ultra` へ 1 本): ①1 回目は中継イメージの
+  base(alpine)の取得が Docker Hub の CDN から `EOF` で切れて run が始まらなかった(一過性。手で `docker pull` すると通る。
+  取得の再試行は置いていない = `services pull` で先に取る運用)②2 回目は中継イメージは通ったが `busybox` の pull が
+  `docker-credential-osxkeychain: executable file not found in $PATH` で失敗 —— docker CLI は config.json の `credsStore` の
+  ヘルパーを **PATH から** 起こし、ヘルパーは docker と同じ `~/.rd/bin` に居るが ssh 越しの非対話 PATH には無い → `RuntimeCLI` が
+  docker を起こすときは **docker の置き場を PATH の先頭に足す**(`pathWithExecutableDirectory`。子プロセスの非対話 PATH の補正の規律)。
+  **残り**: `services status` へのイメージ・ボリュームの大きさ(Apple の
   `image inspect` / `volume inspect` に大きさの欄が無い = 測り方を決めてから)・UDP の警告を赤へ上げる判断・M1Ultra での実データ
   (アラインは指示待ち)。**コンテナ → 外部の UDP** は設計どおり止まったまま(作らない)
 - **②で実測して分かったこと**: Apple の名前付きボリュームの既定は **512 GiB のスパースなイメージ**(`-s` は付けない)/

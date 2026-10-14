@@ -62,15 +62,29 @@ struct RuntimeCLI: Sendable {
     static let shortCommandTimeoutSeconds: Double = 60
 
     /// `dockerConfigDirectory` は fleetest 専有の `DOCKER_CONFIG`(Docker だけ)。
-    init(runtime: LocatedRuntime, dockerConfigDirectory: URL? = nil) {
+    init(runtime: LocatedRuntime, dockerConfigDirectory: URL? = nil,
+         environment: [String: String] = ProcessInfo.processInfo.environment) {
         self.runtime = runtime
         var env: [String] = []
         if runtime.kind == .docker {
             // 接続先を解決時の実体に固定する(DOCKER_HOST / context が後から変わっても同じデーモンに撃つ)
             env.append("DOCKER_HOST=unix://" + runtime.endpoint)
             if let dockerConfigDirectory { env.append("DOCKER_CONFIG=" + dockerConfigDirectory.path) }
+            // docker CLI は config.json の credsStore(`docker-credential-osxkeychain` 等)を **PATH から** 起こす。
+            // ヘルパーは docker と同じ置き場(Rancher = ~/.rd/bin・Docker Desktop = /usr/local/bin)に居るが、ssh 越しの
+            // 非対話 PATH には無い → 公開イメージの pull まで "executable file not found" で落ちた(M1Ultra の実測)。
+            // docker の置き場を PATH の先頭に足す(子プロセスの非対話 PATH の補正 = CLAUDE.md の規律)
+            env.append("PATH=" + Self.pathWithExecutableDirectory(runtime.executable, environment: environment))
         }
         self.controlEnvironment = env
+    }
+
+    /// 実行ファイルの置き場を PATH の先頭に(重複は除く)。
+    static func pathWithExecutableDirectory(_ executable: String, environment: [String: String]) -> String {
+        let directory = (executable as NSString).deletingLastPathComponent
+        let current = (environment["PATH"] ?? "").split(separator: ":").map(String.init).filter { !$0.isEmpty }
+        guard !directory.isEmpty else { return current.joined(separator: ":") }
+        return ([directory] + current.filter { $0 != directory }).joined(separator: ":")
     }
 
     var isDocker: Bool { runtime.kind == .docker }
