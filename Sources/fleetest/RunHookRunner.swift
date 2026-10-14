@@ -225,7 +225,7 @@ enum RunHookRunner {
     static func gatewayToolDirectory(current: URL? = Bundle.main.executableURL) -> String? {
         guard let current else { return nil }
         let dir = current.deletingLastPathComponent()
-        return FileManager.default.isExecutableFile(atPath: dir.appendingPathComponent("fleetest-services").path) ? dir.path : nil
+        return FileManager.default.isExecutableFile(atPath: dir.appendingPathComponent(ServiceGatewayWire.relayProductName).path) ? dir.path : nil
     }
 
     /// 枠・環境・中継を組んでスクリプト1本を実行する(setup / teardown / 孤児の teardown の3経路が通る唯一の入口)。

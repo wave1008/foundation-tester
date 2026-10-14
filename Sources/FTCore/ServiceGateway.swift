@@ -25,6 +25,10 @@ public protocol ServiceGatewayPolicy: Sendable {
 
 public enum ServiceGatewayWire {
     public static let environmentKey = "FT_SERVICES_GATEWAY"
+    /// 中継コマンドの実行ファイル名(= Package.swift の executableTarget 名)。**唯一の定義元** —— 同期相手は
+    /// `RemoteSetup.alignRevisionCommand`(ランナー機でビルドする製品の一覧。無いとランナーの setup.sh から
+    /// `fleetest-services: command not found` = M1Ultra の実測)と `RunHookRunner.gatewayToolDirectory`(隣に居るかの確認)
+    public static let relayProductName = "fleetest-services"
     /// 断られたときの終了コード(シェルの「実行できない」と同じ 126)
     public static let refusedStatus: Int32 = 126
     /// 1フレームの生データの上限(バイト)。根拠: パイプの PIPE_BUF を超える書き込みでも1回の write に収まる大きさで、

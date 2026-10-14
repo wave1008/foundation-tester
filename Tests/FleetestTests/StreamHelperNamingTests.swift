@@ -1,4 +1,5 @@
 import FTCore
+import FTRemote
 import XCTest
 
 @testable import fleetest
@@ -30,5 +31,16 @@ final class StreamHelperNamingTests: XCTestCase {
     func testHelperNamesAreTheBuiltProductNames() {
         XCTAssertEqual(StreamHelpers.all,
                        ["fleetest-simstream", "fleetest-androidstream", "fleetest-devicepoll"])
+    }
+
+    /// align がランナー機でビルドする製品は fleetest・配信ヘルパー・中継 `fleetest-services` の全部(等号)。
+    /// 中継が抜けると、ランナーで動く setup.sh から `fleetest-services: command not found` になる(M1Ultra の実測)
+    func testAlignBuildsEveryProductTheRunnerNeeds() {
+        let command = RemoteSetupPlan.alignRevisionCommand(
+            layout: RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci"), revision: "abc123")
+        let built = command.components(separatedBy: " && ")
+            .filter { $0.hasPrefix("swift build --product ") }
+            .map { $0.replacingOccurrences(of: "swift build --product ", with: "") }
+        XCTAssertEqual(built, ["fleetest", "fleetest-simstream", "fleetest-androidstream", "fleetest-devicepoll", "fleetest-services"])
     }
 }
