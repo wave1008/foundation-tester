@@ -174,7 +174,8 @@ final class RemoteSetupTests: XCTestCase {
                 + "git checkout '9655a21' && swift build --product fleetest"
                 + " && swift build --product fleetest-simstream"
                 + " && swift build --product fleetest-androidstream"
-                + " && swift build --product fleetest-devicepoll")
+                + " && swift build --product fleetest-devicepoll"
+                + " && swift build --product fleetest-services")
     }
 
     // MARK: - RemoteSetupPlan.validateUninstallBase
