@@ -510,15 +510,15 @@ struct ApiRunCommand: AsyncParsableCommand {
         // 開始/終了スクリプト(docs/remote-runner.md §17。ProfileRunner.run と同じ規律 ——
         // デバイスに触る前に撃ち、終了スクリプトは defer で必ず撃つ)。**resolvedAll ではなく
         // 絞り込み後の resolved を渡す**(スクリプトが受け取るデバイス一覧は、この run が実際に
-        // 使うデバイスと一致していないと `adb reverse` の宛先がずれる)
+        // 使うデバイスと一致していないと `adb reverse` の宛先がずれる)。
+        // **dry-run では撃たない**(`fleetest run` の dry-run 分岐と同じ)—— dry-run は dispatch.lock を取らないので、
+        // 走行中の run の依存サービスを teardown.sh が落としうる
         var hookSession: RunHookSession?
-        if let resolved = resolvedProfile {
+        if let resolved = resolvedProfile, !dryRun {
             let hookStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
             // 二重使用は開始スクリプトと破壊的な準備より前に断る(ProfileRunner と同じ判定)
-            if !dryRun {
-                try ProfileRunner.rejectIfDevicesLeasedBeforePreparation(
-                    resolved: resolved, leaseStateDir: hookStateDir)
-            }
+            try ProfileRunner.rejectIfDevicesLeasedBeforePreparation(
+                resolved: resolved, leaseStateDir: hookStateDir)
             hookSession = try RunHookRunner.begin(
                 resolved: resolved, stateDir: hookStateDir) { logStderr($0) }
         }

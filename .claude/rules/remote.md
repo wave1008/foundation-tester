@@ -317,12 +317,13 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   (名前も置き場所も固定。拡張のフォームにも入力欄を置かない = ユーザー決定)。
   **呼ぶのは `ProfileRunner.run` と `ApiRunCommand` の2箇所** —— リモートの子は
   `fleetest run --runner local` として向こうで同じコードを通るので `RemoteRunDispatcher` には
-  足さない。守る規律4つ: **①setup の失敗は run を止める**(teardown の失敗は結果を変えない)/
+  足さない。守る規律5つ: **①setup の失敗は run を止める**(teardown の失敗は結果を変えない)/
   **②デバイスに触る前に撃つ** / **③片付けは defer だけに頼らない** —— setup の前に
   `.fleetest/hooks/<pid>.json` を置き、次の run 開始時と `fleetest hooks reap`(`remote clean` が撃つ)が死んだ pid の
   ぶんを代わりに実行する(**生存判定は pid だけ。mtime を見ない**)。**④刺さっても打ち切らない**
   (上限の根拠がこちらに無い)—— 無音が `RunHookStall.silentWarningSeconds`(60 秒)を跨ぐたびに
-  警告を 1 行出して待ち続ける(出力が来れば数え直す)。
+  警告を 1 行出して待ち続ける(出力が来れば数え直す)。**⑤dry-run では撃たない**(dry-run は
+  dispatch.lock を取らない = 走行中の run の依存サービスを teardown が落としうる。`RunHookDryRunWiringTests`)。
   **転送から外すのは `.fleetest-transfer-ignore`**(`FTCore.TransferIgnore`)。
   **rsync の `-F`(dir-merge)は使わない** → maintainer-notes §3.4。
   **3つの転送(run ディスパッチ・fan-out の `RemoteProjectSync`・プロジェクト外ミラー)が

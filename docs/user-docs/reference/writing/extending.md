@@ -126,6 +126,7 @@ put scripts in the test project's workspace.
   the LAN), so connect to dependent services through `127.0.0.1`.
 - The scripts run outside the sandbox. They run with `fleetest run` and the MCP tool `ft_start_run`, but not with
   `ft_run_scenario` (the MCP tool that runs a single scenario).
+- The scripts do not run with `--dry-run` (it does not touch devices).
 
 ## Feeding results into your own systems
 
