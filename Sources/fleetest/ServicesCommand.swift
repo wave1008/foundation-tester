@@ -340,11 +340,15 @@ struct ServicesCommand: AsyncParsableCommand {
                 let listing = ServicesCommand.list(cli: cli, prefix: target.prefix)
                 for item in listing.containers { ConsoleOut.out("  container \(item.name) \(item.id)") }
                 for item in listing.networks { ConsoleOut.out("  network \(item.name) \(item.id)") }
-                for item in listing.volumes { ConsoleOut.out("  volume \(item.name)") }
-                if listing.containers.isEmpty && listing.networks.isEmpty && listing.volumes.isEmpty && listing.failures.isEmpty {
+                // ボリュームと fleetest が作ったイメージは大きさつき(ボリュームは消さないので、人が見て `services reset` を決める口)
+                let sizes = ServicesSizes.report(cli: cli, prefix: target.prefix, volumes: listing.volumes.map(\.name))
+                for line in sizes.volumeLines { ConsoleOut.out("  " + line) }
+                for line in sizes.imageLines { ConsoleOut.out("  " + line) }
+                if listing.containers.isEmpty && listing.networks.isEmpty && listing.volumes.isEmpty && sizes.imageLines.isEmpty
+                    && listing.failures.isEmpty {
                     ConsoleOut.out("  (no resources with this prefix)")
                 }
-                for failure in listing.failures { ConsoleOut.out("⚠️ \(failure)") }
+                for failure in listing.failures + sizes.failures { ConsoleOut.out("⚠️ \(failure)") }
             } catch {
                 ConsoleOut.out("runtime: unavailable (\((error as? ServicesError)?.shortDescription ?? error.localizedDescription))")
             }

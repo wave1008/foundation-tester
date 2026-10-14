@@ -15,8 +15,11 @@ public enum RelayImage {
     /// 桁数: 12 桁の hex = 48 ビット。Dockerfile 1種類の版識別に足りる(ServicePlanner.prefix と同じ長さ)。
     private static let tagHexDigits = 12
 
+    /// リポジトリ名(タグは Dockerfile の指紋)。`services status` が「fleetest が作ったイメージ」を名前で拾う
+    public static let repository = "fleetest-relay"
+
     public static var tag: String {
         let hash = ServiceBuildFingerprint.compute(FingerprintInputs(files: [], dockerfileContents: dockerfile))
-        return "fleetest-relay:" + hash.prefix(tagHexDigits)
+        return repository + ":" + hash.prefix(tagHexDigits)
     }
 }

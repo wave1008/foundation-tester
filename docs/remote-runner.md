@@ -2535,9 +2535,11 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   `remote align` がビルドする製品の一覧(`RemoteSetupPlan.alignRevisionCommand` = fleetest + 配信ヘルパー)に中継が無かった
   (受け手の install.sh は `swift build` 全体なので届く)。名前の定義元を `ServiceGatewayWire.relayProductName` の 1 箇所にして一覧へ足し、
   集合を等号で固定するテスト(`StreamHelperNamingTests`)を置いた。**ランナー機の実データはこの 3 つの穴を順に塞いで通した**(次の段落の実測)。
-  **残り**: `services status` へのイメージ・ボリュームの大きさ(Apple の
-  `image inspect` / `volume inspect` に大きさの欄が無い = 測り方を決めてから)・UDP の警告を赤へ上げる判断・M1Ultra での実データ
-  (アラインは指示待ち)。**コンテナ → 外部の UDP** は設計どおり止まったまま(作らない)
+  **`services status` の大きさ**(⑤の締め): fleetest が作ったイメージ(この接頭辞の `build:` と中継)と名前付きボリュームを大きさつきで出す。
+  Docker は `image ls` の大きさと `system df -v --format json` の `Volumes[].Size`(`volume inspect` には無い)・Apple は
+  `image ls --format json` の `variants[].size` の和と、`volume inspect` の `source`(512 GiB のスパースな volume.img)の
+  **割り当て済みブロック**(新規の ext4 で 69.4 MB)。閾値は置かない(人が見て `reset` を決める)。読み取りは FTServices `RuntimeSizes`
+  (純粋・実データの fixture で固定)。**残り**: UDP の警告を赤へ上げる判断。**コンテナ → 外部の UDP** は設計どおり止まったまま(作らない)
 - **②で実測して分かったこと**: Apple の名前付きボリュームの既定は **512 GiB のスパースなイメージ**(`-s` は付けない)/
   `container build` と `run` は `--label` を、`run` は `--init` も受ける(1.1.0 の help)/ **run の親を `kill -9` しても孤児は
   生まれない**(サービスを持つのは `[local]` の子 run で、親の死を `ParentDeathWatch` で見て自分で片付ける)。**控えの持ち主の

@@ -193,6 +193,10 @@ struct RuntimeCmds: Sendable {
     var listVolumes: [String] {
         isDocker ? ["volume", "ls", "--format", "{{.Name}}\t{{.Name}}"] : ["volume", "list", "--format", "json"]
     }
+    /// 大きさ(`ServicesSizes`)。Docker は一覧に大きさが載る・Apple は inspect と同じ JSON の variants の size
+    var imageListWithSizes: [String] { isDocker ? DockerCommands.imageListWithSizes : AppleContainerCommands.imageListJSON }
+    /// Docker だけ(ボリュームの大きさは `system df -v` にしか無い)
+    var systemDiskUsageJSON: [String] { DockerCommands.systemDiskUsageJSON }
 }
 
 /// 一覧の出力から (id, name) を取り出す。Docker は TSV。Apple は JSON で、`ls` / `network list` / `volume list` とも

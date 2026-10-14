@@ -169,7 +169,7 @@ For exploring, live operation and writing scenarios, a person can start the serv
 |---|---|
 | `fleetest services up [--project <p>] [--profile <pf>] [--physical] [--serial <adb serial>…]` | Starts the services, **waits until they are up**, prints the published ports and returns. The services keep running afterwards (a resident owner process holds them; the log is `.fleetest/services/<prefix>.log`). `--profile` can be omitted when the project has only one profile |
 | `fleetest services down` | Stops them |
-| `fleetest services status` | Shows the record, the lock and the resources on the runtime |
+| `fleetest services status` | Shows the record, the lock and the resources on the runtime, with the size of each named volume and of the images fleetest built (the `build:` images of this workspace and the relay image). Nothing is deleted automatically; use `reset` when they have grown |
 | `fleetest services reset [--force]` | Deletes this workspace's containers, networks, **volumes** and record. `--force` is needed while a run or `up` holds them |
 
 **A real run (`fleetest run` / `ft_start_run`) takes over services started with `up`**: it prints a warning, stops them,

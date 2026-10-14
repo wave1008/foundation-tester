@@ -130,6 +130,10 @@ public enum DockerCommands {
     public static func imageInspectID(ref: String) -> [String] { ["image", "inspect", "--format", "{{.Id}}", ref] }
     public static func imagePull(ref: String) -> [String] { ["pull", ref] }
     public static func imageLoad(file: String) -> [String] { ["load", "-i", file] }
+    /// 1 行 1 イメージ "<repo>:<tag>\t<size>"(`RuntimeSizes.dockerImageSizes`)
+    public static let imageListWithSizes = ["image", "ls", "--format", "{{.Repository}}:{{.Tag}}\t{{.Size}}"]
+    /// ボリュームの大きさは `system df -v` だけが出す(`volume inspect` には無い)。`RuntimeSizes.dockerVolumeSizes`
+    public static let systemDiskUsageJSON = ["system", "df", "-v", "--format", "{{json .}}"]
     public static func imageBuild(context: String, dockerfile: String, tag: String, args: [String: String] = [:],
                                   target: String? = nil, platform: String? = nil,
                                   labels: [String: String] = [:]) -> [String] {
@@ -191,6 +195,8 @@ public enum AppleContainerCommands {
     public static func imageInspectID(ref: String) -> [String] { ["image", "inspect", ref] }
     public static func imagePull(ref: String) -> [String] { ["image", "pull", ref] }
     public static func imageLoad(file: String) -> [String] { ["image", "load", "-i", file] }
+    /// inspect と同じ JSON を全イメージぶん(`RuntimeSizes.appleImageSizes`)
+    public static let imageListJSON = ["image", "ls", "--format", "json"]
     public static func imageBuild(context: String, dockerfile: String, tag: String, args: [String: String] = [:],
                                   target: String? = nil, platform: String? = nil,
                                   labels: [String: String] = [:]) -> [String] {

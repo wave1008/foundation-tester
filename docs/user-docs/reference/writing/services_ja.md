@@ -164,7 +164,7 @@ fleetest-services port api 8080            # 公開先の host:port を印字(UD
 |---|---|
 | `fleetest services up [--project <p>] [--profile <pf>] [--physical] [--serial <adb serial>…]` | 起動して**上がるまで待ち**、公開ポートを印字して返ります。サービスはその後も動き続けます(常駐の所有者プロセスが持ちます。ログは `.fleetest/services/<prefix>.log`)。プロジェクトにプロファイルが1つなら `--profile` は省略できます |
 | `fleetest services down` | 止めます |
-| `fleetest services status` | 控え・ロック・ランタイム上の資源を見ます |
+| `fleetest services status` | 控え・ロック・ランタイム上の資源を見ます。名前付きボリュームと、fleetest がビルドしたイメージ(このワークスペースの `build:` と中継のイメージ)は大きさつきで出ます。自動では消さないので、大きくなっていたら `reset` で消します |
 | `fleetest services reset [--force]` | このワークスペースのコンテナ・ネットワーク・**ボリューム**・控えを全部消します。run か `up` が握っている間は `--force` が要ります |
 
 **本番の run(`fleetest run` / `ft_start_run`)は、`up` で起こしたサービスを引き取ります。** 警告を出して止め、自分で
