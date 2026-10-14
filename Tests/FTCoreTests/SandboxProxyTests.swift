@@ -74,6 +74,10 @@ final class SandboxDomainPolicyTests: XCTestCase {
         XCTAssertNil(SandboxDomainPolicy.target(requestLine: "GET /path HTTP/1.1"))
         XCTAssertNil(SandboxDomainPolicy.target(requestLine: "GET https://example.com/ HTTP/1.1"))
         XCTAssertNil(SandboxDomainPolicy.target(requestLine: "CONNECT example.com:notaport HTTP/1.1"))
+        // ポートの範囲外は nil(URLComponents は 65536 以上も Int で返す。UInt16 へ直に変換すると親(run)が落ちる)
+        XCTAssertNil(SandboxDomainPolicy.target(requestLine: "GET http://example.com:65536/ HTTP/1.1"))
+        XCTAssertNil(SandboxDomainPolicy.target(requestLine: "GET http://example.com:99999/ HTTP/1.1"))
+        XCTAssertNil(SandboxDomainPolicy.target(requestLine: "GET http://example.com:0/ HTTP/1.1"))
         XCTAssertNil(SandboxDomainPolicy.target(requestLine: "CONNECT a:1:2 HTTP/1.1"))
         XCTAssertNil(SandboxDomainPolicy.target(requestLine: "garbage"))
     }

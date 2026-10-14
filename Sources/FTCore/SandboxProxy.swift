@@ -84,7 +84,9 @@ public enum SandboxDomainPolicy {
         }
         guard let components = URLComponents(string: parts[1]), components.scheme?.lowercased() == "http",
               let host = components.host, !host.isEmpty else { return nil }
-        return (host, UInt16(components.port ?? 80), false)
+        // `URLComponents.port` は 65536 以上も Int で返す → 範囲を検めてから変換(trap は親 = run を落とす)
+        guard let port = UInt16(exactly: components.port ?? 80), port > 0 else { return nil }
+        return (host, port, false)
     }
 
     static func splitHostPort(_ authority: String, defaultPort: UInt16) -> (String, UInt16)? {
