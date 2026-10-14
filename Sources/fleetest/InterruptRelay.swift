@@ -259,7 +259,7 @@ final class RunInterruptState: @unchecked Sendable {
     }
 }
 
-/// setup.sh・供給(ブリッジ起動等)・ビルドのいずれか(= まだ `RunRecorder` が無いか、
+/// run-setup.sh・供給(ブリッジ起動等)・ビルドのいずれか(= まだ `RunRecorder` が無いか、
 /// シナリオが1本も始まっていない段階)で中断が来たときに投げる。**既存の早期失敗と同じ出口**
 /// (ビルド失敗等と同じく、NDJSON は1行も出さず defer で後始末して stderr + 非0 exit で終わる)。
 /// 利用者向け文言は英語のみ

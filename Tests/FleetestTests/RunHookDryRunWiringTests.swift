@@ -1,5 +1,5 @@
-// dry-run では run 前後のスクリプト(setup.sh / teardown.sh)を撃たない。dry-run は dispatch.lock を取らないので、
-// 撃つと走行中の run の依存サービスを teardown.sh が落としうる。run と api run は別々に持つ2実装なのでソースで固定する
+// dry-run では run 前後のスクリプト(run-setup.sh / run-teardown.sh)を撃たない。dry-run は dispatch.lock を取らないので、
+// 撃つと走行中の run の依存サービスを run-teardown.sh が落としうる。run と api run は別々に持つ2実装なのでソースで固定する
 // (`fleetest run` は dry-run 分岐で ProfileRunner.run の前に抜ける / `api run` は呼び出しを `!dryRun` で囲む)。
 
 import XCTest

@@ -653,7 +653,7 @@ struct RunScenarios: AsyncParsableCommand {
         // **中断(SIGINT/SIGTERM/SIGHUP)の登録は、この Mac のロックを取るより前**(1プロセス1組。
         // .claude/rules/process-lifecycle.md「割り込みの登録は run の記録開始の直後・供給より前」)。recorder はまだ無い
         // (`RunRecorder.begin` はビルド後にしか作れない)ので nil で構築し、後で確定したら
-        // `attachRecorder` で繋ぐ。setup.sh・供給は `ProfileRunner.run`/`runSequential`/
+        // `attachRecorder` で繋ぐ。run-setup.sh・供給は `ProfileRunner.run`/`runSequential`/
         // `runParallel` の内側でこの interruptState をそのまま受け取るので、ここで登録すれば
         // それらもカバーする(runParallel は orchestrator 構築後に attachLateSubscriber で合流する)
         let interruptState = RunInterruptState(recorder: nil)

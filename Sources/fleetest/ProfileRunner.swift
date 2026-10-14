@@ -398,7 +398,7 @@ enum ProfileRunner {
         let servicesSession = try ServicesSession.up(
             resolved: resolved, stateDir: hookStateDir, options: .forRun(resolved), interruptState: interruptState) { ConsoleOut.out($0) }
         defer { servicesSession?.down { ConsoleOut.out($0) } }
-        // 失敗の証跡: setup.sh が落ちたとき・赤の run の後に、各サービスのログの末尾を run の記録(無ければレポートの出力先)へ残す
+        // 失敗の証跡: run-setup.sh が落ちたとき・赤の run の後に、各サービスのログの末尾を run の記録(無ければレポートの出力先)へ残す
         let servicesLogDir = recorder?.runDir ?? reportDir
         let hookSession: RunHookSession
         do {

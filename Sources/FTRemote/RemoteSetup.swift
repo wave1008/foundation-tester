@@ -155,7 +155,7 @@ public enum RemoteSetupPlan {
     /// **ヘルパーを省かない** —— `fleetest` だけをビルドすると、そのランナーのタイルは状態は届くのに
     /// 映像が1枚も来ない(`api device-stream` が exec 対象を見つけられず即死し、拡張は
     /// 「映像なし」で諦める)。名前の定義元は `StreamHelpers`。**中継 `fleetest-services` も省かない** ——
-    /// 無いとランナーで動く setup.sh / teardown.sh がサービスに触れない(`ServiceGatewayWire.relayProductName`)
+    /// 無いとランナーで動く run-setup.sh / run-teardown.sh がサービスに触れない(`ServiceGatewayWire.relayProductName`)
     public static func alignRevisionCommand(layout: RemoteLayout, revision: String) -> String {
         let builds = (["fleetest"] + StreamHelpers.all + [ServiceGatewayWire.relayProductName])
             .map { "swift build --product \($0)" }

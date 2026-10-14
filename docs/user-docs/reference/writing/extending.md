@@ -109,12 +109,12 @@ project's workspace. **Servers, databases and stubs are not started by a script*
 
 | File | When it runs |
 |---|---|
-| `TestProjects/<project>/workspace/scripts/setup.sh` | At the start of the run, before any device is touched |
-| `TestProjects/<project>/workspace/scripts/teardown.sh` | At the end of the run |
+| `TestProjects/<project>/workspace/scripts/run-setup.sh` | At the start of the run, before any device is touched |
+| `TestProjects/<project>/workspace/scripts/run-teardown.sh` | At the end of the run |
 
 - **If the file is there, it runs** (there is nothing to set in a profile). If it is not, nothing happens.
-- **If `setup.sh` exits with a non-zero status, the run stops** (no scenario runs). `teardown.sh` still runs in that
-  case, always after the run. A failing `teardown.sh` only produces a warning; its exit code does not change the result.
+- **If `run-setup.sh` exits with a non-zero status, the run stops** (no scenario runs). `run-teardown.sh` still runs in that
+  case, always after the run. A failing `run-teardown.sh` only produces a warning; its exit code does not change the result.
 - Without the execute permission the script is started with `/bin/sh`. With it, the shebang is honoured (you can write
   it in Python, for example).
 - There is no timeout. Each time the script produces no output for more than 60 seconds, a one-line warning is printed.

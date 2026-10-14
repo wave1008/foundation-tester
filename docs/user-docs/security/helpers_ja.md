@@ -16,7 +16,7 @@
 | シナリオ間で値を渡す | `writeMemo` / `readMemo` |
 | 秘密をレポートに残さない | `redactAccountValues` |
 | 外部の Swift パッケージを使う | `fleetestScenarioDependencies` |
-| run の前後に DB やスタブサーバを用意する | `setup.sh` / `teardown.sh` |
+| run の前後に DB やスタブサーバを用意する | `run-setup.sh` / `run-teardown.sh` |
 
 ## ファイルを書く(TestLog)
 
@@ -96,10 +96,10 @@ response.status.thisIs(201)
 
 詳細: [テストプロジェクトの作成](../reference/project/creating_project_ja.md)
 
-## run の前後で処理を走らせる(setup.sh, teardown.sh)
+## run の前後で処理を走らせる(run-setup.sh, run-teardown.sh)
 
 テスト対象のアプリが依存する DB・スタブサーバのように、サンドボックスの中ではできない準備は、
-`TestProjects/<プロジェクト>/workspace/scripts/setup.sh` / `teardown.sh` に書きます。これらは run の開始時と
+`TestProjects/<プロジェクト>/workspace/scripts/run-setup.sh` / `run-teardown.sh` に書きます。これらは run の開始時と
 終了時にサンドボックスの外で走ります(MCP の `ft_run_scenario` では走りません)。
 
 詳細: [自分で機能を足す](../reference/writing/extending_ja.md)

@@ -1,7 +1,7 @@
 // RunHooks.swift
 // run の前後で走らせる利用者のスクリプト(docs/remote-runner.md §17)——
 // テスト対象が依存する DB・スタブサーバ等をランナー機の上で起こし、終わったら片付けるための口。
-// **宣言は無い**: ワークスペースの `scripts/setup.sh` / `scripts/teardown.sh` が
+// **宣言は無い**: ワークスペースの `scripts/run-setup.sh` / `scripts/run-teardown.sh` が
 // 存在すれば実行する、それだけ(プロファイルに書く項目を増やさない)。
 //
 // ここは**パス解決と実行可否の判定だけ**を行う純粋関数(I/O なし)。実際の起動・環境変数の
@@ -18,8 +18,8 @@ public struct RunHook: Sendable, Equatable {
         /// 置き場所と名前が1つに決まっているほうが、受け手にも回収側にも読み違えが起きない)
         public var script: String {
             switch self {
-            case .setup: return "setup.sh"
-            case .teardown: return "teardown.sh"
+            case .setup: return "run-setup.sh"
+            case .teardown: return "run-teardown.sh"
             }
         }
     }

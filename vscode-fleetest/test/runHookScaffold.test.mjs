@@ -30,8 +30,8 @@ after(() => {
 test("雛形の中身は locale に追従する(日本語モードなら日本語コメント)", () => {
   // 既定 locale は "ja"(initI18n を呼ばないテストの前提。src/i18n/index.ts)
   const templates = hookScriptTemplates();
-  assert.match(templates.get("setup.sh"), /テスト実行の前に/);
-  assert.match(templates.get("teardown.sh"), /テスト実行の後に/);
+  assert.match(templates.get("run-setup.sh"), /テスト実行の前に/);
+  assert.match(templates.get("run-teardown.sh"), /テスト実行の後に/);
   // en 側は locale を切り替えず辞書を直接見る(locale の差し替え口を production に足さない)
   assert.match(hookScaffoldStrings["hookScaffold.setupTemplate"].en, /Runs before the scenarios/);
   assert.match(hookScaffoldStrings["hookScaffold.teardownTemplate"].en, /Runs after the scenarios/);
@@ -58,10 +58,10 @@ test("writeHookScriptTemplates: scripts/ を作って2本を実行権付きで(+
   const workspace = path.join(tempDir(), "workspace");
   const result = writeHookScriptTemplates(workspace);
 
-  assert.deepEqual([...result.created].sort(), ["compose.yaml", "setup.sh", "teardown.sh"]);
+  assert.deepEqual([...result.created].sort(), ["compose.yaml", "run-setup.sh", "run-teardown.sh"]);
   assert.deepEqual(result.skipped, []);
   assert.equal(result.scriptsDir, path.join(workspace, "scripts"));
-  for (const name of ["setup.sh", "teardown.sh"]) {
+  for (const name of ["run-setup.sh", "run-teardown.sh"]) {
     const file = path.join(result.scriptsDir, name);
     const content = fs.readFileSync(file, "utf8");
     assert.match(content, /^#!\/bin\/sh\n/);
@@ -77,14 +77,14 @@ test("writeHookScriptTemplates: scripts/ を作って2本を実行権付きで(+
   const composeBody = fs.readFileSync(compose, "utf8");
   assert.match(composeBody, /^# fleetest が run ごとに/);
   assert.ok(composeBody.split("\n").every((l) => l === "" || l.startsWith("#")));
-  for (const name of ["setup.sh", "teardown.sh"]) {
+  for (const name of ["run-setup.sh", "run-teardown.sh"]) {
     const body = fs.readFileSync(path.join(result.scriptsDir, name), "utf8");
     assert.match(body, /fleetest-services exec db/);
     assert.doesNotMatch(body, /docker compose up|adb -s/);
   }
   // 例のコマンドは言語に依らず同じ(文言だけが locale で変わる)
-  assert.match(fs.readFileSync(path.join(result.scriptsDir, "setup.sh"), "utf8"), /psql/);
-  assert.match(fs.readFileSync(path.join(result.scriptsDir, "teardown.sh"), "utf8"), /set -u/);
+  assert.match(fs.readFileSync(path.join(result.scriptsDir, "run-setup.sh"), "utf8"), /psql/);
+  assert.match(fs.readFileSync(path.join(result.scriptsDir, "run-teardown.sh"), "utf8"), /set -u/);
 });
 
 test("雛形は ja/en どちらも sh として構文が通る(コメントの書き足しで壊さない)", () => {
@@ -105,16 +105,16 @@ test("writeHookScriptTemplates: 既にあるファイルは1バイトも触ら�
   const scriptsDir = path.join(workspace, "scripts");
   fs.mkdirSync(scriptsDir, { recursive: true });
   const mine = "#!/bin/sh\necho mine\n";
-  fs.writeFileSync(path.join(scriptsDir, "setup.sh"), mine, "utf8");
+  fs.writeFileSync(path.join(scriptsDir, "run-setup.sh"), mine, "utf8");
 
   const result = writeHookScriptTemplates(workspace);
 
-  assert.deepEqual(result.skipped, ["setup.sh"]);
-  assert.deepEqual([...result.created].sort(), ["compose.yaml", "teardown.sh"]);
+  assert.deepEqual(result.skipped, ["run-setup.sh"]);
+  assert.deepEqual([...result.created].sort(), ["compose.yaml", "run-teardown.sh"]);
   // 利用者が書いた片付け手順を雛形で潰すと、次の run が古い環境を掴んだまま走る
-  assert.equal(fs.readFileSync(path.join(scriptsDir, "setup.sh"), "utf8"), mine);
+  assert.equal(fs.readFileSync(path.join(scriptsDir, "run-setup.sh"), "utf8"), mine);
 });
 
 test("hookScriptTemplates: .sh は FTCore.RunHook.Kind.script と同じ2本 + compose.yaml", () => {
-  assert.deepEqual([...hookScriptTemplates().keys()], ["setup.sh", "teardown.sh", "compose.yaml"]);
+  assert.deepEqual([...hookScriptTemplates().keys()], ["run-setup.sh", "run-teardown.sh", "compose.yaml"]);
 });

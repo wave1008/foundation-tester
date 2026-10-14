@@ -106,12 +106,12 @@ run の前後でデータを用意する(シードの投入・準備用 API の�
 
 | ファイル | 走るとき |
 |---|---|
-| `TestProjects/<プロジェクト>/workspace/scripts/setup.sh` | run の開始時。デバイスに触る前 |
-| `TestProjects/<プロジェクト>/workspace/scripts/teardown.sh` | run の終了時 |
+| `TestProjects/<プロジェクト>/workspace/scripts/run-setup.sh` | run の開始時。デバイスに触る前 |
+| `TestProjects/<プロジェクト>/workspace/scripts/run-teardown.sh` | run の終了時 |
 
 - **置けば実行されます**(プロファイルに書く項目はありません)。無ければ何もしません。
-- **`setup.sh` が 0 以外で終わると、run を止めます**(シナリオは1本も走りません)。そのときも `teardown.sh` は走ります
-  (必ず後で実行されます)。`teardown.sh` の失敗は警告だけで、終了コードは結果を変えません。
+- **`run-setup.sh` が 0 以外で終わると、run を止めます**(シナリオは1本も走りません)。そのときも `run-teardown.sh` は走ります
+  (必ず後で実行されます)。`run-teardown.sh` の失敗は警告だけで、終了コードは結果を変えません。
 - 実行権が無ければ `/bin/sh` で起動します。実行権があれば shebang に従います(Python などでも書けます)。
 - タイムアウトはありません。出力の無い時間が 60 秒を超えるたびに警告が1行出ます。
 - **スクリプトはサンドボックス(Seatbelt)の中で動きます。**

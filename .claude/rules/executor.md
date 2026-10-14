@@ -113,7 +113,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **③拒否は `ComposeRefusal` の case で表し全部集めて返す**(文言は英語の `message`。拒否を文字列の一致で判定しない)/
   **④許可は全階層の許可表**(知らないキー・型は断る。`version` と `x-*` だけ無視して1行言う)。
   dockerfile の実体パスの鍵は `ComposePolicy.dockerfileKey` の1箇所(検査と計画が別々に組むと片方だけ引けない)
-- **スクリプト(setup.sh / teardown.sh)の枠は用途 `.script`**(`ScenarioSandbox.Scope.purpose`。入口は `FTCore.ScriptSandbox.launch`・
+- **スクリプト(run-setup.sh / run-teardown.sh)の枠は用途 `.script`**(`ScenarioSandbox.Scope.purpose`。入口は `FTCore.ScriptSandbox.launch`・
   呼ぶのは `RunHookRunner.runScript` の1箇所 = `RunHookRunnerSandboxWiringTests`)。**用途で変わる集合は `ScenarioSandbox` の中の分岐に
   置き、呼び手の値の工夫で絞らない**(`writablePaths` / `profile`)。スクリプトが書ける場所を足すなら `hooks.writablePaths` の検め
   (`HooksSettings.validate` の protected = `ScriptSandbox.protectedLocations`)に重なる場所が無いかを先に見る。

@@ -1,5 +1,5 @@
 // ServiceGateway.swift
-// サンドボックスの中の setup.sh / teardown.sh が、宣言したサービスでの exec・状態・ログ・公開ポートの照会を
+// サンドボックスの中の run-setup.sh / run-teardown.sh が、宣言したサービスでの exec・状態・ログ・公開ポートの照会を
 // 親へ頼む口(docs/remote-runner.md §17 スクリプト ④)。`SandboxBroker` の1往復と違い**ストリーム**:
 // 標準入力・標準出力・標準エラーを行区切りの JSON フレームで流す(巨大なダンプが 1 MiB の要求に載らないため)。
 // 判定は `ServiceGatewayPolicy`(FTServices の `ServicePolicy` が実装)。ここは配管だけで、何を実行するかは決めない。
@@ -26,7 +26,7 @@ public protocol ServiceGatewayPolicy: Sendable {
 public enum ServiceGatewayWire {
     public static let environmentKey = "FT_SERVICES_GATEWAY"
     /// 中継コマンドの実行ファイル名(= Package.swift の executableTarget 名)。**唯一の定義元** —— 同期相手は
-    /// `RemoteSetup.alignRevisionCommand`(ランナー機でビルドする製品の一覧。無いとランナーの setup.sh から
+    /// `RemoteSetup.alignRevisionCommand`(ランナー機でビルドする製品の一覧。無いとランナーの run-setup.sh から
     /// `fleetest-services: command not found` = M1Ultra の実測)と `RunHookRunner.gatewayToolDirectory`(隣に居るかの確認)
     public static let relayProductName = "fleetest-services"
     /// 断られたときの終了コード(シェルの「実行できない」と同じ 126)

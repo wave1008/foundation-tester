@@ -213,7 +213,7 @@ E2E では赤にならないが、書けないと**黙って効かなくなる**
 
 **そこに置いた物が、枠の外で実行・解釈されないか**を先に見る。
 
-- `<root>/.fleetest/hooks/<pid>.json` は、次の run が読んで `teardown.sh` を枠の外で実行する。
+- `<root>/.fleetest/hooks/<pid>.json` は、次の run が読んで `run-teardown.sh` を枠の外で実行する。
   `.fleetest/` は書けるようにしたが、`hooks/` だけ拒否に戻した。
 - `/private/tmp` は入れない(共有の置き場)。**ユーザーごとの一時領域(`/var/folders/xx/yy/`)も丸ごとは開けない**
   (他のツールが信じて読む `T/xcrun_db`・`C/clang` のモジュールキャッシュ・VSCode のシェル統合のファイルを
@@ -432,7 +432,7 @@ UI 操作のハンドラ本体の一部は語句検索だけで、本文は読�
 
 ### 8.7 run の前後のスクリプト(枠に入れた)
 
-`setup.sh` / `teardown.sh` は `ScenarioSandbox` の用途 `.script` で包む(入口は `FTCore.ScriptSandbox.launch`。設計は
+`run-setup.sh` / `run-teardown.sh` は `ScenarioSandbox` の用途 `.script` で包む(入口は `FTCore.ScriptSandbox.launch`。設計は
 [remote-runner.md §17「サービスの宣言とスクリプトのサンドボックス化」](remote-runner.md))。シナリオの枠との差は
 `ScenarioSandbox.profile` の用途分岐にまとまっている(書ける場所 = `data/` + `hooks.writablePaths` + 一時領域、
 通信 = 宣言した公開ポート + プロキシ + gateway のソケット、GPU・ANE・LaunchServices は開けない)。要点は2つ。

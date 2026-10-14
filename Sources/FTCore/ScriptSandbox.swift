@@ -1,5 +1,5 @@
 // ScriptSandbox.swift
-// setup.sh / teardown.sh を Seatbelt で包む入口(docs/remote-runner.md §17「スクリプト(Seatbelt の中)」)。
+// run-setup.sh / run-teardown.sh を Seatbelt で包む入口(docs/remote-runner.md §17「スクリプト(Seatbelt の中)」)。
 // 枠の土台と規則は ScenarioSandbox(用途 `.script`)。ここは入力を集めて Scope を組み、起動の形を返すだけ。
 // 包むかどうかの判断(マシン側の `sandbox.disabled`)はシナリオと同じ `ScenarioSandbox.plan` = 呼び手が nil なら包まない。
 import Foundation

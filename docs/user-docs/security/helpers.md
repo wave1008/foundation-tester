@@ -16,7 +16,7 @@ instead. All of them work inside the sandbox as they are.
 | Pass values between scenarios | `writeMemo` / `readMemo` |
 | Keep secrets out of reports | `redactAccountValues` |
 | Use external Swift packages | `fleetestScenarioDependencies` |
-| Prepare a DB or stub server around a run | `setup.sh` / `teardown.sh` |
+| Prepare a DB or stub server around a run | `run-setup.sh` / `run-teardown.sh` |
 
 ## Writing files (TestLog)
 
@@ -97,10 +97,10 @@ inside the same sandbox as the scenario (only building the dependencies runs out
 
 Details: [Creating a test project](../reference/project/creating_project.md)
 
-## Running something around a run (setup.sh, teardown.sh)
+## Running something around a run (run-setup.sh, run-teardown.sh)
 
 Preparation that cannot be done inside the sandbox, such as a DB or stub server the app under test depends on, goes in
-`TestProjects/<project>/workspace/scripts/setup.sh` / `teardown.sh`. They run outside the sandbox at the start and
+`TestProjects/<project>/workspace/scripts/run-setup.sh` / `run-teardown.sh`. They run outside the sandbox at the start and
 end of a run (they do not run for MCP's `ft_run_scenario`).
 
 Details: [Adding your own features](../reference/writing/extending.md)

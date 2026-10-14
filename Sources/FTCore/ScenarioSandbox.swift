@@ -479,7 +479,7 @@ public enum ScenarioSandbox {
                                       "/dev/dtracehelper"]
 
     /// 書いてよい場所の中で、書かせない場所。どれも**親が中身を信じて枠の外で実行・配布するもの**:
-    /// `hooks/` = 次の run が `teardown.sh` を実行(`RunHooks`)/ `DerivedData*` = ランナーの xctestrun と .app を
+    /// `hooks/` = 次の run が `run-teardown.sh` を実行(`RunHooks`)/ `DerivedData*` = ランナーの xctestrun と .app を
     /// 親が xcodebuild で起動(子はランナーをビルドしない)/ `ftbridge.apk` = 親が全 Android 端末へ入れる /
     /// `dispatch.lock`・`dispatch.queue` = 1マシン1 run の門(消すと他人の run に重ねられる)。
     /// **親だけが書く場所も閉じる**(子が symlink を置くと、親が先を書き換える・消す): WebView のキャッシュ

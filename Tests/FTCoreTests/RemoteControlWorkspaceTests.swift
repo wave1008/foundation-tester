@@ -327,8 +327,8 @@ final class RemoteControlWorkspaceTests: XCTestCase {
         """, to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
-        XCTAssertEqual(resolved.setupHook?.url.path, "/Volumes/shared/ws/scripts/setup.sh")
-        XCTAssertEqual(resolved.teardownHook?.url.path, "/Volumes/shared/ws/scripts/teardown.sh")
+        XCTAssertEqual(resolved.setupHook?.url.path, "/Volumes/shared/ws/scripts/run-setup.sh")
+        XCTAssertEqual(resolved.teardownHook?.url.path, "/Volumes/shared/ws/scripts/run-teardown.sh")
     }
 
     func testHooksFollowTheDefaultWorkspaceWhenUndeclared() throws {
@@ -339,6 +339,6 @@ final class RemoteControlWorkspaceTests: XCTestCase {
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
         XCTAssertEqual(resolved.setupHook?.url.path,
-                       project.rootURL.appendingPathComponent("workspace/scripts/setup.sh").path)
+                       project.rootURL.appendingPathComponent("workspace/scripts/run-setup.sh").path)
     }
 }

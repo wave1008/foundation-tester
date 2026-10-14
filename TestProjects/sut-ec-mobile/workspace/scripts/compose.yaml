@@ -1,5 +1,5 @@
-# sut-ec-mobile のバックエンド(PostgreSQL + サーバー)。fleetest が run ごとに起動し、healthcheck を待ってから setup.sh を
-# 実行し、teardown.sh の後に止める(docs/user-docs/reference/writing/services_ja.md)。
+# sut-ec-mobile のバックエンド(PostgreSQL + サーバー)。fleetest が run ごとに起動し、healthcheck を待ってから run-setup.sh を
+# 実行し、run-teardown.sh の後に止める(docs/user-docs/reference/writing/services_ja.md)。
 #
 # server は sut-ec-mobile のリポジトリからビルドする。context は foundation-tester と並ぶ clone(../../../../sut-ec-mobile)。
 # ビルド元として許すために、この Mac の設定 ~/.config/fleetest/config.json に

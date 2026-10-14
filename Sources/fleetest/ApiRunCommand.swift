@@ -512,7 +512,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // 絞り込み後の resolved を渡す**(スクリプトが受け取るデバイス一覧は、この run が実際に
         // 使うデバイスと一致していないと `adb reverse` の宛先がずれる)。
         // **dry-run では撃たない**(`fleetest run` の dry-run 分岐と同じ)—— dry-run は dispatch.lock を取らないので、
-        // 走行中の run の依存サービスを teardown.sh が落としうる
+        // 走行中の run の依存サービスを run-teardown.sh が落としうる
         var hookSession: RunHookSession?
         // サービス(scripts/compose.yaml)は開始スクリプトの前に上げ、片付けは終了スクリプトの後
         // (この defer は下の終了スクリプトの defer より先に書く = 後に走る)
@@ -531,14 +531,14 @@ struct ApiRunCommand: AsyncParsableCommand {
         defer {
             if let hookSession { RunHookRunner.end(hookSession) { logStderr($0) } }
         }
-        // **setup.sh の後で中断を見る**(既存の早期失敗と同じ出口 —— teardown は上の defer が
+        // **run-setup.sh の後で中断を見る**(既存の早期失敗と同じ出口 —— teardown は上の defer が
         // 撃つ・ロックは dispatchLock の defer が外す)。ここではまだ供給タスクが1つも起きていない
         if interruptState.isStopped {
             throw RunInterruptedBeforeStartError(phase: "the run setup script")
         }
 
         // **死活確認は開始スクリプトの後**(ProfileRunner.run と同じ順序)。
-        // 依存サービスを setup.sh が起動する構成では、先に撃つと毎回必ず「到達できない」と
+        // 依存サービスを run-setup.sh が起動する構成では、先に撃つと毎回必ず「到達できない」と
         // 警告することになり、**本当に落ちているときの警告が埋もれる**(受け手からの報告)
         if let resolved = resolvedProfile {
             await BackendHealthCheck.warnIfUnreachable(resolved: resolved) { logStderr($0) }
@@ -893,7 +893,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             // に誤分類し、割り当て分の記録も0件になっていた)。
             // ここへ来るのは常にシナリオ実行が1本も始まる前(供給・レーン検査の throw だけ)なので、
             // total 分すべて未実行という分かっている事実だけを記録してから rethrow する
-            // setup.sh やサービスの起動の失敗 = サービスのログも証跡に残す(run の記録があるときだけ)
+            // run-setup.sh やサービスの起動の失敗 = サービスのログも証跡に残す(run の記録があるときだけ)
             if let runDir = recorder?.runDir { servicesSession?.saveLogs(to: runDir) { logStderr($0) } }
             recorder?.finish(total: selected.count, passed: 0, failed: selected.count,
                              performanceMode: performanceMode, fmSettings: fmSettings,

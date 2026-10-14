@@ -66,7 +66,7 @@ Only the scenario binary and its descendants are inside the sandbox. The followi
 | Evaluating `Package.swift` and building added dependencies | Runs in SwiftPM's and the compiler's own sandbox. Add only packages you trust |
 | Containers of the services declared in compose.yaml | They run inside the container runtime (Docker / Apple Container). They cannot reach the outside, except through the proxy for `sandbox.allowedDomains`. Details: [Services the app depends on](../reference/writing/services.md) |
 
-`setup.sh` / `teardown.sh` run **inside their own sandbox, narrower than the scenarios'** ([Running scripts before and after a run](../reference/writing/extending.md#running-scripts-before-and-after-a-run)).
+`run-setup.sh` / `run-teardown.sh` run **inside their own sandbox, narrower than the scenarios'** ([Running scripts before and after a run](../reference/writing/extending.md#running-scripts-before-and-after-a-run)).
 
 ## Effect on speed
 

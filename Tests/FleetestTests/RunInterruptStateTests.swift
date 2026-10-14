@@ -142,7 +142,7 @@ final class RunInterruptStateTests: XCTestCase {
                        "attachRecorder で繋いだ recorder に markInterrupted が届いていない")
     }
 
-    /// 戻すと落ちる根拠: 中断が recorder の確定より先に来た場合(setup.sh/供給/ビルド中)、
+    /// 戻すと落ちる根拠: 中断が recorder の確定より先に来た場合(run-setup.sh/供給/ビルド中)、
     /// `attachRecorder` がその場で markInterrupted しないと、後から繋がれた recorder は
     /// 中断済みという事実を一生知らない(attachLateSubscriber と同じ取りこぼし対策)
     func testAttachRecorderMarksInterruptedImmediatelyIfAlreadyStopped() throws {

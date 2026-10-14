@@ -3,9 +3,9 @@
 [in Japanese(日本語)](services_ja.md)
 
 If the app under test needs a database, an API or a stub server, declare it in
-`TestProjects/<project>/workspace/scripts/compose.yaml` (next to `setup.sh`). fleetest **starts the services for each
-run and stops them afterwards**. It waits until they are up (the `healthcheck`) before `setup.sh` runs, and stops them
-after `teardown.sh`. If the file is not there, nothing happens.
+`TestProjects/<project>/workspace/scripts/compose.yaml` (next to `run-setup.sh`). fleetest **starts the services for each
+run and stops them afterwards**. It waits until they are up (the `healthcheck`) before `run-setup.sh` runs, and stops them
+after `run-teardown.sh`. If the file is not there, nothing happens.
 
 It works with `fleetest run`, a run from the VS Code extension and the MCP tool `ft_start_run`. It does not start with
 `ft_run_scenario` (a single scenario) or `--dry-run`; to have the services up while you explore, use
@@ -88,7 +88,7 @@ The syntax is the same as compose.
 - **Named volumes remain between runs.** Delete them with `fleetest services reset`.
 - **If a service fails to start or its healthcheck fails, the run stops without executing any scenario** and prints
   the tail of the failed service's log.
-- **When `setup.sh` fails or the run ends red, the tail of each service's log is saved** under the run's results
+- **When `run-setup.sh` fails or the run ends red, the tail of each service's log is saved** under the run's results
   directory (`results/runs/<month>/<runID>/services/<service>.log`).
 - **Docker's API must not be published on TCP** (`0.0.0.0:2375` / `2376`): containers could reach it and mount this
   Mac's files. While it is so, the services refuse to start, and `fleetest doctor` warns.
@@ -97,7 +97,7 @@ The syntax is the same as compose.
 
 Put secrets in `~/.config/fleetest/secrets/<project>.env` on this Mac, as `KEY=value` lines, and refer to them in
 the `environment` values of compose.yaml with `${NAME}` (only the values of `environment` can refer to them). Only the
-names you refer to are also passed to `setup.sh` / `teardown.sh` as environment variables. The values are masked in
+names you refer to are also passed to `run-setup.sh` / `run-teardown.sh` as environment variables. The values are masked in
 fleetest's output (console and logs). Scenarios and scripts cannot read this file.
 
 For substitutions that are not secret, write them in `scripts/.env` (same `${NAME}` notation).
@@ -143,7 +143,7 @@ ahead of time, or on a machine without that access:
 
 ## Operating the containers from the scripts
 
-The only way for `setup.sh` / `teardown.sh` to operate the containers is the relay command `fleetest-services` (it is on
+The only way for `run-setup.sh` / `run-teardown.sh` to operate the containers is the relay command `fleetest-services` (it is on
 `PATH`). Only the services you declared are targeted.
 
 ```sh

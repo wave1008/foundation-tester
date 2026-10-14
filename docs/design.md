@@ -4480,7 +4480,7 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
   判定する。閉じると分類器が学習できない)。アプリを起こす `coreservicesd` と登録を書き換える `lsd.modifydb` は閉じる
 - **起動できないランナーは包む前に止める**。包むと `sandbox-exec` 自体は起動でき、ランナーの exec の失敗は
   子の終了に化けて失敗の記録が残らない(`ScenarioHostRunnerUnavailableTests`)
-- **run の前後のスクリプト(setup.sh / teardown.sh)も同じ土台で包む**(`Scope.purpose = .script`・入口は `FTCore.ScriptSandbox.launch`・
+- **run の前後のスクリプト(run-setup.sh / run-teardown.sh)も同じ土台で包む**(`Scope.purpose = .script`・入口は `FTCore.ScriptSandbox.launch`・
   呼び手は `fleetest` の `RunHookRunner.runScript` の1箇所)。用途で集合が変わる: 書けるのは `<workspace>/data/` と
   マシン側 `hooks.writablePaths`(`HooksSettings` が scripts/・`.fleetest`・ツール本体・ビルド元・秘密の置き場との重なりを断る)と
   子専用の一時領域 / 通信は宣言した公開ポートと親のプロキシ・gateway のソケットだけ(`localhost:*`・bind・inbound は無し)/

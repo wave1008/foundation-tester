@@ -554,8 +554,8 @@ fleetest api delete-device --platform android --avd <AVD名>
 必要がある。設定は要らない —— **ワークスペースの `scripts/` に置くだけ**でよい。
 
 ```
-TestProjects/<project>/workspace/scripts/setup.sh      # テスト実行前に走る(あれば)
-TestProjects/<project>/workspace/scripts/teardown.sh   # テスト実行後に走る(あれば)
+TestProjects/<project>/workspace/scripts/run-setup.sh      # テスト実行前に走る(あれば)
+TestProjects/<project>/workspace/scripts/run-teardown.sh   # テスト実行後に走る(あれば)
 ```
 
 **雛形は VSCode 拡張から作れる**: モニターの「プロファイル」タブ →「リモート制御」→
@@ -565,14 +565,14 @@ TestProjects/<project>/workspace/scripts/teardown.sh   # テスト実行後に�
 - ワークスペースはディスパッチのときにランナー機へ運ばれるので、**スクリプトも資材
   (compose ファイル・シードデータ)も一緒に届く**
 - **手元で実行しても同じように走る**(リモート専用ではない)
-- **setup.sh が失敗したら、テストは1本も走らずに止まる**(依存サービスが無いまま流すと、
-  全シナリオが「アプリの不具合」の顔で落ちるため)。teardown.sh の失敗は結果を変えない(警告のみ)
+- **run-setup.sh が失敗したら、テストは1本も走らずに止まる**(依存サービスが無いまま流すと、
+  全シナリオが「アプリの不具合」の顔で落ちるため)。run-teardown.sh の失敗は結果を変えない(警告のみ)
 - スクリプトが読める環境変数: `FT_HOOK`(setup/teardown)・`FT_WORKSPACE`・`FT_PROJECT`・
   `FT_PROFILE`・`FT_REPORT_DIR`・`FT_IOS_DEVICES`・`FT_ANDROID_DEVICES`
 
 ```bash
 #!/bin/sh
-# workspace/scripts/setup.sh の例
+# workspace/scripts/run-setup.sh の例
 set -eu
 docker compose -f "$FT_WORKSPACE/data/compose.yaml" up -d
 until nc -z 127.0.0.1 5432; do sleep 1; done   # 「時間」ではなく「起きたこと」で待つ

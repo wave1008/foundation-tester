@@ -19,7 +19,7 @@ export const hookScaffoldStrings = {
 #   - 0 以外で終了すると run を中止する。シナリオは1本も実行されず、テストの失敗ではなく
 #     インフラ起因の失敗として報告される。
 #   - デバイスに触る前に実行される。
-#   - このスクリプトが失敗した場合も含め、teardown.sh は必ず後で実行される。
+#   - このスクリプトが失敗した場合も含め、run-teardown.sh は必ず後で実行される。
 #   - タイムアウトは無い。決め打ちの sleep ではなく、起きたことを確認して待つこと。
 #
 # サンドボックス(Seatbelt)の中で動く
@@ -32,7 +32,7 @@ export const hookScaffoldStrings = {
 #     だけ。それ以外のポート・外部へは繋がらない。ブリッジ・adb・Docker には繋げない。
 #   - サーバー・DB・スタブはこのスクリプトで起こさない(docker / docker compose / container は使えない)。
 #     同じ scripts/ の compose.yaml に宣言する(fleetest が run ごとに起動して止める。起動完了
-#     (healthcheck)を待ってから setup.sh が走る)。
+#     (healthcheck)を待ってから run-setup.sh が走る)。
 #   - コンテナの中での操作は中継コマンド fleetest-services で(PATH にある):
 #       fleetest-services exec <service> -- <command...>   (標準入力も渡せる)
 #       fleetest-services logs <service> [--tail N]
@@ -78,7 +78,7 @@ set -eu
 #   - A non-zero exit aborts the run: no scenario is executed, and the failure is
 #     reported as an infrastructure failure rather than a test failure.
 #   - It runs before any device is touched.
-#   - teardown.sh always runs afterwards, including when this script fails.
+#   - run-teardown.sh always runs afterwards, including when this script fails.
 #   - There is no timeout. Wait for the thing to be ready instead of sleeping blindly.
 #
 # Runs inside a sandbox (Seatbelt)
@@ -93,7 +93,7 @@ set -eu
 #     adb and Docker cannot be reached.
 #   - Do not start servers, databases or stubs from this script (docker / docker compose /
 #     container do not work). Declare them in compose.yaml in the same scripts/ directory:
-#     fleetest starts and stops them for each run, and setup.sh runs only after they are up
+#     fleetest starts and stops them for each run, and run-setup.sh runs only after they are up
 #     (their healthcheck passed).
 #   - To act inside a container, use the relay command fleetest-services (on PATH):
 #       fleetest-services exec <service> -- <command...>   (stdin can be piped in)
@@ -135,19 +135,19 @@ set -eu
   },
   "hookScaffold.teardownTemplate": {
     ja: `#!/bin/sh
-# テスト実行の後に、setup.sh と同じ機械の上で走る。setup.sh が入れたデータを片付ける。
+# テスト実行の後に、run-setup.sh と同じ機械の上で走る。run-setup.sh が入れたデータを片付ける。
 # サービスの停止は fleetest がやるので、ここには書かない。
 #
 # 規則
 #   - このファイルがあるときだけ実行される。要らなければ削除してよい。
 #   - 終了コードは run の合否を変えない(失敗は警告として出るだけ)。片付けの失敗で
 #     緑の run を赤にしないため。
-#   - setup.sh が失敗したときも実行されるので、途中まで起きた状態にも耐えること
+#   - run-setup.sh が失敗したときも実行されるので、途中まで起きた状態にも耐えること
 #     (下の例が "|| true" で終わっているのはそのため)。
 #   - 片付ける前に run ごと殺された場合(ssh の切断・SIGKILL)は、この機械で次に走る run が
 #     代わりにこのスクリプトを実行する。"fleetest hooks reap" で手動でも実行でき、
 #     リモートのランナー機に対しては "fleetest remote clean" がこれを撃つ。
-#   - 環境変数は setup.sh と同じ(FT_HOOK だけ "teardown" になる)。ただし上記の代理実行では
+#   - 環境変数は run-setup.sh と同じ(FT_HOOK だけ "teardown" になる)。ただし上記の代理実行では
 #     run の文脈が無いため、FT_MACHINE・FT_REPORT_DIR・デバイス一覧は空になる
 #     (FT_WORKSPACE・FT_PROJECT・FT_PROFILE は常に入っている)。
 #
@@ -161,7 +161,7 @@ set -eu
 #     だけ。それ以外のポート・外部へは繋がらない。ブリッジ・adb・Docker には繋げない。
 #   - サーバー・DB・スタブはこのスクリプトで起こさない(docker / docker compose / container は使えない)。
 #     同じ scripts/ の compose.yaml に宣言する(fleetest が run ごとに起動して止める。起動完了
-#     (healthcheck)を待ってから setup.sh が走る)。
+#     (healthcheck)を待ってから run-setup.sh が走る)。
 #   - コンテナの中での操作は中継コマンド fleetest-services で(PATH にある):
 #       fleetest-services exec <service> -- <command...>   (標準入力も渡せる)
 #       fleetest-services logs <service> [--tail N]
@@ -192,19 +192,19 @@ set -u
 # rm -f "$FT_WORKSPACE/data/fixture.json" || true
 `,
     en: `#!/bin/sh
-# Runs after the scenarios, on the same machine as setup.sh. Use it to clean up the data
-# setup.sh put in place. Stopping services is done by fleetest, so do not write that here.
+# Runs after the scenarios, on the same machine as run-setup.sh. Use it to clean up the data
+# run-setup.sh put in place. Stopping services is done by fleetest, so do not write that here.
 #
 # Rules
 #   - It runs only if this file exists. Delete it and nothing happens.
 #   - Its exit status does not change the run result: a failure here is only a warning,
 #     so that a broken cleanup cannot turn a green run red.
-#   - It also runs when setup.sh failed, so every step must tolerate a half-started
+#   - It also runs when run-setup.sh failed, so every step must tolerate a half-started
 #     environment (that is why the examples below end with "|| true").
 #   - If the run is killed before it can clean up (ssh disconnect, SIGKILL), the next run
 #     on this machine runs this script instead. "fleetest hooks reap" does the same on
 #     demand, and "fleetest remote clean" calls it on a remote runner.
-#   - Same environment variables as setup.sh, except FT_HOOK is "teardown". When it is run
+#   - Same environment variables as run-setup.sh, except FT_HOOK is "teardown". When it is run
 #     by the reaper there is no run context, so FT_MACHINE, FT_REPORT_DIR and the device
 #     lists are empty (FT_WORKSPACE, FT_PROJECT and FT_PROFILE are always set).
 #
@@ -220,7 +220,7 @@ set -u
 #     adb and Docker cannot be reached.
 #   - Do not start servers, databases or stubs from this script (docker / docker compose /
 #     container do not work). Declare them in compose.yaml in the same scripts/ directory:
-#     fleetest starts and stops them for each run, and setup.sh runs only after they are up
+#     fleetest starts and stops them for each run, and run-setup.sh runs only after they are up
 #     (their healthcheck passed).
 #   - To act inside a container, use the relay command fleetest-services (on PATH):
 #       fleetest-services exec <service> -- <command...>   (stdin can be piped in)
@@ -256,8 +256,8 @@ set -u
   "hookScaffold.composeTemplate": {
     ja: `# fleetest が run ごとに起動して止めるサービスの宣言。Docker と Apple Container のどちらでも同じ書き方。
 # サービスが要らなければこのファイルは削除してよい(無ければ何も起動しない)。
-# 起動完了(healthcheck)を待ってから setup.sh が走り、teardown.sh の後に止まる。
-# スクリプトからは fleetest-services で操作する(setup.sh / teardown.sh の説明を参照)。
+# 起動完了(healthcheck)を待ってから run-setup.sh が走り、run-teardown.sh の後に止まる。
+# スクリプトからは fleetest-services で操作する(run-setup.sh / run-teardown.sh の説明を参照)。
 #
 # 書けるもの
 #   services.<name>: image | build, command, entrypoint, environment, env_file, ports, volumes,
@@ -313,8 +313,8 @@ set -u
     en: `# Declares the services fleetest starts and stops for each run. The syntax is the same for
 # Docker and Apple Container.
 # Delete this file if you need no services (nothing is started without it).
-# setup.sh runs after they are up (healthcheck passed), and they are stopped after teardown.sh.
-# Scripts operate on them with fleetest-services (see the comments in setup.sh / teardown.sh).
+# run-setup.sh runs after they are up (healthcheck passed), and they are stopped after run-teardown.sh.
+# Scripts operate on them with fleetest-services (see the comments in run-setup.sh / run-teardown.sh).
 #
 # Allowed
 #   services.<name>: image | build, command, entrypoint, environment, env_file, ports, volumes,

@@ -202,7 +202,7 @@ final class ProjectScaffoldTests: XCTestCase {
     }
 
     /// 導入時から既定ワークスペースの規約フォルダを置く(run 時の ensure だけに任せると、
-    /// 初回実行まで scripts/ = setup.sh の置き場所が見えない)。名前の正は WorkspaceScaffold
+    /// 初回実行まで scripts/ = run-setup.sh の置き場所が見えない)。名前の正は WorkspaceScaffold
     func testCreatePlacesDefaultWorkspaceFolders() throws {
         let project = makeProject()
         try ProjectScaffold.create(project: project)

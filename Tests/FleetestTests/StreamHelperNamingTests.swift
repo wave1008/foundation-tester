@@ -34,7 +34,7 @@ final class StreamHelperNamingTests: XCTestCase {
     }
 
     /// align がランナー機でビルドする製品は fleetest・配信ヘルパー・中継 `fleetest-services` の全部(等号)。
-    /// 中継が抜けると、ランナーで動く setup.sh から `fleetest-services: command not found` になる(M1Ultra の実測)
+    /// 中継が抜けると、ランナーで動く run-setup.sh から `fleetest-services: command not found` になる(M1Ultra の実測)
     func testAlignBuildsEveryProductTheRunnerNeeds() {
         let command = RemoteSetupPlan.alignRevisionCommand(
             layout: RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci"), revision: "abc123")

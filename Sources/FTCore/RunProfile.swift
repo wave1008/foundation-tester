@@ -341,8 +341,8 @@ public struct FMConfig: Sendable, Equatable {
 
 /// リモート実行の制御(docs/remote-runner.md §17)。ワークスペース(アプリのパッケージと
 /// 資材を揃える共有ディレクトリ。中身の規約 apps/scripts/data は WorkspaceScaffold)の宣言。
-/// run 前後のスクリプトはここでは宣言しない —— ワークスペースの `scripts/setup.sh` /
-/// `scripts/teardown.sh` があれば実行される(`RunHookPlan`)。
+/// run 前後のスクリプトはここでは宣言しない —— ワークスペースの `scripts/run-setup.sh` /
+/// `scripts/run-teardown.sh` があれば実行される(`RunHookPlan`)。
 /// 同期相手: vscode-fleetest/schemas/run-profile.schema.json と拡張のプロファイルフォーム
 public struct RemoteControlSection: Codable, Sendable, Equatable {
     /// ワークスペースのルート。絶対パス、または**リポジトリルート基準**の相対パス。
@@ -1003,7 +1003,7 @@ public struct ResolvedProfile: Sendable {
     /// 既存テストの直接呼び出しが壊れる。型を Optional のまま残すのも同じ理由 ——
     /// 非 Optional にすると同じ既存テストが nil を渡せなくなる)
     public var workspaceRoot: URL? = nil
-    /// run の前後で走らせる利用者のスクリプト(`<workspace>/scripts/setup.sh`・`teardown.sh`)。
+    /// run の前後で走らせる利用者のスクリプト(`<workspace>/scripts/run-setup.sh`・`run-teardown.sh`)。
     /// **workspaceRoot と同じく既定値付きの `var`**(memberwise init を直に呼ぶ既存テストのため)。
     /// 実行するかどうかは**ファイルがあるかどうか**だけで決まる(`RunHookPlan.action`)
     public var setupHook: RunHook? = nil

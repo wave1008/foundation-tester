@@ -3,9 +3,9 @@
 [in English](services.md)
 
 テスト対象のアプリが DB・API・スタブサーバなどを必要とするときは、
-`TestProjects/<プロジェクト>/workspace/scripts/compose.yaml`(`setup.sh` と同じ `scripts/`)に宣言します。
-fleetest が **run ごとにサービスを起動し、終わったら止めます**。起動の完了(`healthcheck`)を待ってから `setup.sh` が走り、
-`teardown.sh` の後に止めます。ファイルが無ければ何も起きません。
+`TestProjects/<プロジェクト>/workspace/scripts/compose.yaml`(`run-setup.sh` と同じ `scripts/`)に宣言します。
+fleetest が **run ごとにサービスを起動し、終わったら止めます**。起動の完了(`healthcheck`)を待ってから `run-setup.sh` が走り、
+`run-teardown.sh` の後に止めます。ファイルが無ければ何も起きません。
 
 動くのは `fleetest run`・VS Code 拡張からの実行・MCP の `ft_start_run` です。`ft_run_scenario`(単発)と `--dry-run`
 では起動しません。探索のためにサービスを上げておくには `fleetest services up` を使います
@@ -84,7 +84,7 @@ volumes:
   0 以外なら run は始まりません。
 - **名前付きボリュームは run をまたいで残ります。** 消すのは `fleetest services reset` です。
 - **起動や healthcheck に失敗すると、run はシナリオを1本も実行せずに止まり**、失敗したサービスのログの末尾を出します。
-- **`setup.sh` が失敗したとき・run が赤で終わったときは、各サービスのログの末尾を保存します**(run の結果の
+- **`run-setup.sh` が失敗したとき・run が赤で終わったときは、各サービスのログの末尾を保存します**(run の結果の
   ディレクトリ `results/runs/<月>/<runID>/services/<service>.log`)。
 - **Docker の API を TCP で公開しないでください**(`0.0.0.0:2375` / `2376`)。コンテナがそこへ届くとこの Mac の
   ファイルをマウントできます。その状態ではサービスの起動は断られ、`fleetest doctor` が警告します。
@@ -93,7 +93,7 @@ volumes:
 
 秘密は、この Mac の `~/.config/fleetest/secrets/<プロジェクト>.env` に `KEY=value` の行で置き、compose.yaml の
 `environment` の値から `${NAME}` で参照します(参照できるのは `environment` の値だけです)。参照した名前だけが、
-`setup.sh` / `teardown.sh` の環境変数にも入ります。値は fleetest の出力(コンソール・ログ)で伏せられます。
+`run-setup.sh` / `run-teardown.sh` の環境変数にも入ります。値は fleetest の出力(コンソール・ログ)で伏せられます。
 シナリオとスクリプトからこのファイルは読めません。
 
 秘密でない変数の置き換えは `scripts/.env` に書きます(同じ `${NAME}` 記法)。
@@ -138,7 +138,7 @@ volumes:
 
 ## スクリプトからコンテナを操作する
 
-`setup.sh` / `teardown.sh` からコンテナを操作する手段は、中継コマンド `fleetest-services`(PATH にあります)だけです。
+`run-setup.sh` / `run-teardown.sh` からコンテナを操作する手段は、中継コマンド `fleetest-services`(PATH にあります)だけです。
 対象になるのは、宣言したサービスだけです。
 
 ```sh

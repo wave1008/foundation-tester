@@ -34,8 +34,8 @@ export function resolveWorkspaceDir(repoRoot: string, project: string, declared:
  */
 export function hookScriptTemplates(): ReadonlyMap<string, string> {
   return new Map([
-    ["setup.sh", t("hookScaffold.setupTemplate")],
-    ["teardown.sh", t("hookScaffold.teardownTemplate")],
+    ["run-setup.sh", t("hookScaffold.setupTemplate")],
+    ["run-teardown.sh", t("hookScaffold.teardownTemplate")],
     ["compose.yaml", t("hookScaffold.composeTemplate")],
   ]);
 }

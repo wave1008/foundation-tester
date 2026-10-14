@@ -28,7 +28,7 @@ struct ExpansionSession {
 /// 注意: ports / expose は正規化の時点で整数になっているので、ここでは `${…}` を展開できない。
 /// 変数つきのポートを許すなら ComposeTreeExpander を正規化の前に通す(パイプラインの正は木の展開)。
 /// 展開の結果。`usedSecretsByService` は「そのサービスの environment が実際に使った秘密の名前」
-/// (setup.sh / teardown.sh へ渡す名前と、親の伏せ字登録の入力)
+/// (run-setup.sh / run-teardown.sh へ渡す名前と、親の伏せ字登録の入力)
 public struct ExpandedTree: Sendable, Equatable {
     public let value: ComposeValue
     public let usedSecretsByService: [String: Set<String>]

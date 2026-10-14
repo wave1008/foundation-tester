@@ -1263,7 +1263,7 @@ export class MonitorProfilesController {
   }
 
   /**
-   * 「スクリプトの雛形を作成する」。ワークスペースの scripts/ に setup.sh / teardown.sh を置く
+   * 「スクリプトの雛形を作成する」。ワークスペースの scripts/ に run-setup.sh / run-teardown.sh を置く
    * (中身と「既存は触らない」規律は runHookScaffold.ts)。**プロファイルは書き換えない** ——
    * スクリプトは宣言を持たず、あれば実行されるため(docs/remote-runner.md §17)。
    * 結果は webview へ返さずホスト側の通知で出す(押した直後にしか意味が無い一過性の報告)。

@@ -1,4 +1,4 @@
-// この実行ファイルは Seatbelt の中の setup.sh / teardown.sh から呼ばれ、親の `ServiceGatewayServer` へ
+// この実行ファイルは Seatbelt の中の run-setup.sh / run-teardown.sh から呼ばれ、親の `ServiceGatewayServer` へ
 // unix ソケットで頼む。判定は親(方針は FTServices の `ServicePolicy`)。
 import Darwin
 import FTCore

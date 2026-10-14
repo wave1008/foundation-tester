@@ -313,7 +313,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   注入した単体と、**順序付けが無い形で確定的にデッドロックする陽性対照**を対で置く
 - **リモート制御(実行プロファイルの `remoteControl`)**: ワークスペース(資材の置き場)+
   **run 前後のスクリプト**(docs/remote-runner.md §17)。**スクリプトに宣言は無い** ——
-  `<workspace>/scripts/setup.sh` / `teardown.sh` が**あれば実行、無ければ何もしない**
+  `<workspace>/scripts/run-setup.sh` / `run-teardown.sh` が**あれば実行、無ければ何もしない**
   (名前も置き場所も固定。拡張のフォームにも入力欄を置かない = ユーザー決定)。
   **呼ぶのは `ProfileRunner.run` と `ApiRunCommand` の2箇所** —— リモートの子は
   `fleetest run --runner local` として向こうで同じコードを通るので `RemoteRunDispatcher` には

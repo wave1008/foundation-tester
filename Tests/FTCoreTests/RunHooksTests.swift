@@ -12,9 +12,9 @@ final class RunHookPlanTests: XCTestCase {
 
     func testScriptsResolveUnderTheWorkspaceScriptsFolder() {
         XCTAssertEqual(RunHookPlan.resolve(kind: .setup, workspaceRoot: workspace).url.path,
-                       "/repo/TestProjects/SampleApp/workspace/scripts/setup.sh")
+                       "/repo/TestProjects/SampleApp/workspace/scripts/run-setup.sh")
         XCTAssertEqual(RunHookPlan.resolve(kind: .teardown, workspaceRoot: workspace).url.path,
-                       "/repo/TestProjects/SampleApp/workspace/scripts/teardown.sh")
+                       "/repo/TestProjects/SampleApp/workspace/scripts/run-teardown.sh")
     }
 
     // MARK: - action: あれば実行、無ければ何もしない
@@ -35,7 +35,7 @@ final class RunHookEnvironmentTests: XCTestCase {
     func testKeysArePresentEvenWhenTheValuesAreUnknown() {
         let info = RunHookLeaseInfo(
             pid: 42, project: "SampleApp", profile: "android-1",
-            teardown: "/ws/scripts/teardown.sh", workspace: "/ws", startedAt: "2026-08-18T00:00:00Z")
+            teardown: "/ws/scripts/run-teardown.sh", workspace: "/ws", startedAt: "2026-08-18T00:00:00Z")
         let env = RunHookEnvironment.variables(orphan: info)
         // 回収経路は run の文脈を持たないが、キーを落とすと利用者の `set -u` が落ちる
         XCTAssertEqual(Set(env.keys), ["FT_HOOK", "FT_WORKSPACE", "FT_PROJECT", "FT_PROFILE",
@@ -63,7 +63,7 @@ final class RunHookLeaseTests: XCTestCase {
     func testRoundTrip() throws {
         var info = RunHookLeaseInfo.now(
             pid: 7, project: "SampleApp", profile: "android-1",
-            teardown: URL(fileURLWithPath: "/ws/scripts/teardown.sh"),
+            teardown: URL(fileURLWithPath: "/ws/scripts/run-teardown.sh"),
             workspace: URL(fileURLWithPath: "/ws"), secretNames: ["DB_PASSWORD"],
             date: Date(timeIntervalSince1970: 0))
         let encoded = try XCTUnwrap(RunHookLease.encode(info))
@@ -148,10 +148,10 @@ final class RunHookStallTests: XCTestCase {
     }
 
     func testMessageNamesTheScriptThePidAndTheFactThatNothingIsAborted() {
-        let text = RunHookStall.message(kind: .setup, path: "/w/scripts/setup.sh", silentSeconds: 61.7, pid: 4242)
+        let text = RunHookStall.message(kind: .setup, path: "/w/scripts/run-setup.sh", silentSeconds: 61.7, pid: 4242)
         XCTAssertTrue(text.contains("setup script"), text)
         XCTAssertTrue(text.contains("62s"), text)  // 61.7 → 四捨五入
-        XCTAssertTrue(text.contains("/w/scripts/setup.sh"), text)
+        XCTAssertTrue(text.contains("/w/scripts/run-setup.sh"), text)
         XCTAssertTrue(text.contains("pid 4242"), text)
         XCTAssertTrue(text.contains("no timeout"), text)
     }

@@ -402,7 +402,7 @@ final class ServicesSession {
 
     // MARK: スクリプトへ見せるもの(docs/remote-runner.md §17「スクリプト」)
 
-    /// compose.yaml が参照している秘密だけ(名前 → 値)。setup.sh / teardown.sh の環境へ渡す
+    /// compose.yaml が参照している秘密だけ(名前 → 値)。run-setup.sh / run-teardown.sh の環境へ渡す
     var scriptSecrets: [String: String] {
         Dictionary(uniqueKeysWithValues: usedSecretNames.compactMap { name in dictionaries.secrets[name].map { (name, $0) } })
     }
@@ -577,7 +577,7 @@ final class ServicesSession {
         }
         let startSeconds = Self.now() - startBegin - readySeconds
 
-        // /udp を公開したときだけ経路を確かめる(サービスの起動の後・setup.sh の前)
+        // /udp を公開したときだけ経路を確かめる(サービスの起動の後・run-setup.sh の前)
         if let check = plan.udpCheck { try runUDPCheck(check, log: log) }
 
         // Android 実機への reverse(TCP の公開ポートごと。張れたものだけ控えに残す = 解除の対象)
@@ -1047,7 +1047,7 @@ final class ServicesSession {
     // MARK: 失敗の証跡
 
     /// 各サービスのログの末尾(`ServicePolicy.maxLogLines` 行 = 中継の `logs --tail` の上限と同じ)を `<directory>/services/<service>.log` へ。
-    /// setup.sh か run が失敗したときに**片付けの前に**呼ぶ(止めた後は読めない)。失敗は警告だけ(合否を変えない)。
+    /// run-setup.sh か run が失敗したときに**片付けの前に**呼ぶ(止めた後は読めない)。失敗は警告だけ(合否を変えない)。
     func saveLogs(to directory: URL, log: (String) -> Void) {
         let target = directory.appendingPathComponent("services")
         do {

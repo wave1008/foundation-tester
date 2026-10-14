@@ -63,7 +63,7 @@ fleetest のシナリオ(`.swift`)は Swift のプログラムです。画面の
 | `Package.swift` の評価と、足した依存のビルド | SwiftPM とコンパイラ自身のサンドボックスで動きます。信頼できるパッケージだけを足してください |
 | compose.yaml で宣言したサービスのコンテナ | コンテナランタイム(Docker / Apple Container)の中で動きます。外部へは出られません(`sandbox.allowedDomains` のプロキシ経由だけ)。詳細は[アプリが依存するサービス](../reference/writing/services_ja.md) |
 
-`setup.sh` / `teardown.sh` は、**シナリオより狭い自分用のサンドボックスの中**で動きます([run の前後で処理を走らせる](../reference/writing/extending_ja.md#run-の前後で処理を走らせる))。
+`run-setup.sh` / `run-teardown.sh` は、**シナリオより狭い自分用のサンドボックスの中**で動きます([run の前後で処理を走らせる](../reference/writing/extending_ja.md#run-の前後で処理を走らせる))。
 
 ## 速さへの影響
 

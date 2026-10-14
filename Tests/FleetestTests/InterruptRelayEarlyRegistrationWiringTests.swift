@@ -2,7 +2,7 @@
 // install)」の最中に SIGHUP/SIGTERM/SIGINT を受けると、InterruptRelay がまだ1つも登録
 // されていなかった(runDirect/runWithProfile/runWithProfileParallel/runSequential/runParallel
 // が自分で登録するのは供給が終わった後だった)。その直しは「recorder 確定直後」に登録したが、
-// `api run` はそこに至るまでに setup.sh(`RunHookRunner.begin`)・供給タスクの起動
+// `api run` はそこに至るまでに run-setup.sh(`RunHookRunner.begin`)・供給タスクの起動
 // (`androidWorkersTask`)・ビルド(`ScenarioHost.build`)がまだ残っており、同じ穴が
 // (`fleetest run` はロック取得〜ビルドの間だけ)再発していた。
 //
@@ -18,7 +18,7 @@
 //
 // このテストはソース走査で「供給フェーズを含む関数の中で新しく RunInterruptState/
 // InterruptRelay.observing を作る」形の再発を本数の等号で固定し、加えて登録の**位置**
-// (ロック取得・setup.sh・供給タスクの起動・ビルドより前)を文字列の出現位置の大小で固定する
+// (ロック取得・run-setup.sh・供給タスクの起動・ビルドより前)を文字列の出現位置の大小で固定する
 // (順序を元に戻す変異 = 登録をこれらの後へ動かす変異で必ず落ちる)。
 
 import XCTest
@@ -37,7 +37,7 @@ final class InterruptRelayEarlyRegistrationWiringTests: XCTestCase {
 
     /// `api run` の唯一の登録元は `ApiRunCommand.run()`(ロック取得の直前)。
     /// runDirect/runWithProfile/runWithProfileParallel が自分で作ると、そこに着くまでの
-    /// setup.sh・供給フェーズ・ビルドが無防備に戻る
+    /// run-setup.sh・供給フェーズ・ビルドが無防備に戻る
     func testApiRunRegistersInterruptRelayExactlyOnce() throws {
         let text = try source("Sources/fleetest/ApiRunCommand.swift")
         XCTAssertEqual(count("RunInterruptState(recorder:", in: text), 1,
@@ -87,7 +87,7 @@ final class InterruptRelayEarlyRegistrationWiringTests: XCTestCase {
     }
 
     /// **`api run` の登録位置**: `RunInterruptState`/`InterruptRelay.observing` は
-    /// `LocalDispatchLock(...).acquire()` より前、かつ setup.sh(`RunHookRunner.begin`)・
+    /// `LocalDispatchLock(...).acquire()` より前、かつ run-setup.sh(`RunHookRunner.begin`)・
     /// 供給タスクの起動(`androidWorkersTask`)・ビルド(`ScenarioHost.build`)より前。
     /// 登録をこれらの後ろへ戻す変異はこの大小関係のどれかを崩すので必ず落ちる
     func testApiRunRegistersBeforeLockSetupSupplyAndBuild() throws {
@@ -100,14 +100,14 @@ final class InterruptRelayEarlyRegistrationWiringTests: XCTestCase {
         XCTAssertLessThan(registration.lowerBound, lock.lowerBound,
                           "登録が dispatch.lock の取得より後(acquire の待機中の中断を拾えない)")
         XCTAssertLessThan(lock.lowerBound, setup.lowerBound,
-                          "dispatch.lock の取得が setup.sh より後")
+                          "dispatch.lock の取得が run-setup.sh より後")
         XCTAssertLessThan(setup.lowerBound, supply.lowerBound,
-                          "setup.sh が供給タスクの起動より後")
+                          "run-setup.sh が供給タスクの起動より後")
         XCTAssertLessThan(supply.lowerBound, build.lowerBound,
                           "供給タスクの起動がビルドより後")
     }
 
-    /// **`run` の登録位置**: `fleetest run` は setup.sh/供給が `ProfileRunner.run` 等の内側
+    /// **`run` の登録位置**: `fleetest run` は run-setup.sh/供給が `ProfileRunner.run` 等の内側
     /// (登録より後で問題ない)なので、ここで確かめるのは登録がロック取得・ビルドより前であること
     func testCliRunRegistersBeforeLockAndBuild() throws {
         let text = try source("Sources/fleetest/Fleetest.swift")

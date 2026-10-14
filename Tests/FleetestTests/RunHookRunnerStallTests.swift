@@ -22,7 +22,7 @@ final class RunHookRunnerStallTests: XCTestCase {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("ft-hook-stall-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent("setup.sh")
+        let url = dir.appendingPathComponent("run-setup.sh")
         try ("#!/bin/sh\n" + body + "\n").write(to: url, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
         return url
