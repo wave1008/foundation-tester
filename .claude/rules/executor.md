@@ -127,5 +127,6 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   (読み替えは置かない)。Android 実機の `adb reverse` は親が張り、控えの `adbReverse` で外す(`ServicesAdbReverse`。資源ではないので
   解除の失敗で控えを残さない)。**張る前に `--list` で宛先を見る** —— 同じ宛先なら触らず、別の宛先なら起動の失敗(届く・届かないを
   推定で言わない)。`services reset --force` は**生きている持ち主の控えを消さない**(所有者には合図して排他の外で待ち、待ち切れなければ
-  何も消さない・run は止めない。判定は `Reset.forceDecision` の純粋関数)。`services up` の引数(`--physical` / `--serial`)と run の実機のレーンは `ServicesUpOptions` の1箇所で
+  何も消さない・run は止めない・読めない控えもその pid が生きていれば消さない。判定は `Reset.forceDecision` の純粋関数)。
+  **排他は押し切らない**(`ServicesLock` に強制解除の経路を足さない。取れなければ消さずに止める)。`services up` の引数(`--physical` / `--serial`)と run の実機のレーンは `ServicesUpOptions` の1箇所で
   `ServicesSession.up` へ入る(呼び手ごとに別の経路を作らない)

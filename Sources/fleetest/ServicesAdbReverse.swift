@@ -49,6 +49,19 @@ enum ServicesAdbReverse {
         return map
     }
 
+    /// 既にある転送の扱い: 同じ宛先(tcp:P → tcp:P)なら触らない(控えにも書かない = `down` で外さない)。それ以外は衝突
+    /// (別の宛先 = アプリがそちらへ届いて別のサーバーを検証する / 宛先が分からない = 同じと確認できない)
+    private static func noteExisting(serial: String, port: Int, destination: String?, outcome: inout Outcome, log: (String) -> Void) {
+        if destination == "tcp:\(port)" {
+            log("→ services: \(serial) already forwards tcp:\(port) to tcp:\(port); left as it is (not set by fleetest, so not removed on down)")
+            return
+        }
+        let reason = destination.map { "to \($0), so the app there would reach that instead of the service" }
+            ?? "and its destination could not be confirmed (`adb -s \(serial) reverse --list` did not show it), so the app there may reach something else"
+        outcome.conflicts.append("device \(serial) already forwards tcp:\(port) \(reason);"
+            + " remove it with `adb -s \(serial) reverse --remove tcp:\(port)` or stop publishing \(port)")
+    }
+
     struct Outcome: Equatable {
         /// 張れたもの(控えに書く = 解除の対象)
         var entries: [ServicesLease.AdbReverseEntry] = []
@@ -58,7 +71,8 @@ enum ServicesAdbReverse {
 
     /// 張る前に `--list` で既存を見る: 同じ宛先(tcp:<port> → tcp:<port>)なら触らない(控えにも書かない = `down` で外さない)・
     /// 別の宛先なら衝突(アプリがそちらへ届いて別のサーバーを検証してしまうので、呼び手が起動を止める)。
-    /// 一覧が取れないデバイスはそのまま張りにいき、張れなければ警告(起動は止めない。宛先が分からない失敗は届く・届かないを言わない)
+    /// 一覧が取れないデバイスはそのまま張りにいく。張れた = 転送は無かった。既存に当たって張れなければ宛先を照会し直し、
+    /// 同じ宛先と確認できたときだけ通す(確認できなければ衝突)。それ以外の失敗(デバイス不在・offline・時間切れ)は警告
     static func addAll(serials: [String], hostPorts: [Int], adb: String? = AdbLocator.adbPath(),
                        run: Runner = defaultRunner, log: (String) -> Void) -> Outcome {
         guard !serials.isEmpty, !hostPorts.isEmpty else { return Outcome() }
@@ -75,25 +89,22 @@ enum ServicesAdbReverse {
             }
             for port in hostPorts {
                 if let destination = existing?[port] {
-                    if destination == "tcp:\(port)" {
-                        log("→ services: \(serial) already forwards tcp:\(port) to tcp:\(port); left as it is (not set by fleetest, so not removed on down)")
-                    } else {
-                        outcome.conflicts.append("device \(serial) already forwards tcp:\(port) to \(destination), so the app there would reach that"
-                            + " instead of the service; remove it with `adb -s \(serial) reverse --remove tcp:\(port)` or stop publishing \(port)")
-                    }
+                    Self.noteExisting(serial: serial, port: port, destination: destination, outcome: &outcome, log: log)
                     continue
                 }
                 let result = run(addArguments(adb: adb, serial: serial, hostPort: port))
                 if let result, result.status == 0 {
                     outcome.entries.append(.init(serial: serial, hostPort: port))
+                } else if result?.output.contains("rebind") == true {
+                    // 一覧の後に張られた・一覧が取れなかったデバイス: 宛先を照会し直し、同じ宛先と確認できたときだけ通す
+                    let again = run(listArguments(adb: adb, serial: serial))
+                    let destination = (again?.status == 0) ? parseList(again?.output ?? "")[port] : nil
+                    Self.noteExisting(serial: serial, port: port, destination: destination, outcome: &outcome, log: log)
                 } else {
                     let detail = result.map { "exit \($0.status): \(lastLines($0.output))" } ?? "adb did not finish within \(Int(timeoutSeconds))s"
-                    // 一覧の後に張られた・一覧が取れなかったデバイス = 宛先が分からないので、届く・届かないは言わない
-                    let note = (result?.output.contains("rebind") ?? false)
-                        ? "; the device already forwards tcp:\(port) somewhere — see `adb -s \(serial) reverse --list` and remove it with"
-                            + " `adb -s \(serial) reverse --remove tcp:\(port)` if it is stale"
-                        : "; the app on that device cannot reach 127.0.0.1:\(port)"
-                    log("⚠️ services: `adb -s \(serial) reverse --no-rebind tcp:\(port) tcp:\(port)` failed (\(detail))\(note)")
+                    // 転送は無い(張れなかった)ので、デバイスの 127.0.0.1:<port> はデバイス自身に向く
+                    log("⚠️ services: `adb -s \(serial) reverse --no-rebind tcp:\(port) tcp:\(port)` failed (\(detail));"
+                        + " the app on that device cannot reach 127.0.0.1:\(port)")
                 }
             }
         }

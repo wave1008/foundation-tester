@@ -123,8 +123,9 @@ Without it the run does not start, and the message says how to write it.
 - **Android physical devices**: for each published TCP port, fleetest sets up `adb reverse tcp:<port> tcp:<port>`, so
   the app on the device reaches the service at `127.0.0.1:<port>`. If the device already forwards that port, fleetest
   leaves it alone when the destination is the same (`tcp:<port>` → `tcp:<port>`; `down` does not remove it either) and
-  stops the run when the destination differs (the app would reach that other server and verify the wrong thing). Any
-  other failure to set it up is a warning. fleetest removes the forwards it set when it finishes; one it could not remove
+  stops the run when the destination differs (the app would reach that other server and verify the wrong thing). When
+  setting it up runs into an existing forward, fleetest re-reads the destination and stops the run unless it is confirmed
+  to be the same. Any other failure to set it up (the device is not visible, for example) is a warning. fleetest removes the forwards it set when it finishes; one it could not remove
   (adb not responding, for example) stays on the device. The next run leaves it alone when the destination is the same,
   and says nothing about it once you change the published port. Check with `adb -s <serial> reverse --list` and remove
   it with `adb -s <serial> reverse --remove tcp:<port>`.

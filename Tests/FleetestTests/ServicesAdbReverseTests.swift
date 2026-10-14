@@ -32,14 +32,35 @@ final class ServicesAdbReverseTests: XCTestCase {
         XCTAssertTrue(logs.contains { $0 == "→ services: adb reverse set (A tcp:8090, A tcp:9000)" }, "\(logs)")
     }
 
-    /// 既にある転送は上書きしない(--no-rebind)。一覧が取れずに張って失敗したときの警告は、宛先を断定せず外し方を添える
-    func testExistingForwardIsNotRebound() {
+    /// 既にある転送は上書きしない(--no-rebind)。一覧が取れずに張って既存に当たり、照会し直しても宛先が分からなければ衝突
+    /// (同じ宛先と確認できないものは通さない)
+    func testRebindFailureWithoutAConfirmedDestinationIsAConflict() throws {
         var logs: [String] = []
         let outcome = ServicesAdbReverse.addAll(serials: ["A"], hostPorts: [8090], adb: "/adb",
                                                 run: { _ in (1, "error: cannot rebind existing socket") }, log: { logs.append($0) })
-        XCTAssertEqual(outcome, ServicesAdbReverse.Outcome())
-        XCTAssertTrue(logs.contains { $0.contains("the device already forwards tcp:8090 somewhere — see `adb -s A reverse --list` and remove it with `adb -s A reverse --remove tcp:8090` if it is stale") }, "\(logs)")
+        XCTAssertEqual(outcome.entries, [])
+        XCTAssertEqual(outcome.conflicts.count, 1)
+        let conflict = try XCTUnwrap(outcome.conflicts.first)
+        XCTAssertTrue(conflict.contains("device A already forwards tcp:8090 and its destination could not be confirmed"), conflict)
+        XCTAssertTrue(conflict.contains("`adb -s A reverse --remove tcp:8090`"), conflict)
         XCTAssertFalse(logs.contains { $0.contains("cannot reach") }, "宛先が分からないので届く・届かないは言わない: \(logs)")
+    }
+
+    /// 一覧が取れずに張って既存に当たっても、照会し直して同じ宛先と確認できれば触らずに通す(控えにも書かない)
+    func testRebindFailureConfirmedSameDestinationIsLeftAlone() {
+        var calls: [[String]] = []
+        var logs: [String] = []
+        let outcome = ServicesAdbReverse.addAll(
+            serials: ["A"], hostPorts: [8090], adb: "/adb",
+            run: { argv in
+                calls.append(argv)
+                if argv.contains("--list") { return calls.count == 1 ? (1, "error: closed") : (0, "UsbFfs tcp:8090 tcp:8090\n") }
+                return (1, "error: cannot rebind existing socket")
+            },
+            log: { logs.append($0) })
+        XCTAssertEqual(outcome, ServicesAdbReverse.Outcome())
+        XCTAssertEqual(calls.count, 3, "list → add → list: \(calls)")
+        XCTAssertTrue(logs.contains { $0.contains("A already forwards tcp:8090 to tcp:8090; left as it is") }, "\(logs)")
     }
 
     /// `adb reverse --list` の行 = `<transport> tcp:<デバイス側> tcp:<ホスト側>`。先頭の語は見ない・形の違う行は捨てる

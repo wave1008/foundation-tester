@@ -1,6 +1,8 @@
 // 接頭辞(ワークスペース)ごとの短い排他(docs/remote-runner.md §17「調停」)。
 // `<stateDir>/services.lock/<prefix>/` を mkdir(原子的)で取り、rmdir で放す。中の `owner` に pid と開始時刻。
 // 守るのはサービスの作成・片付けの区間だけ(秒単位)。run 全体の排他は dispatch.lock が持つ。
+// **生きている持ち主のロックを外す経路は置かない**(照合と削除が原子的でなく、取り直した別の持ち主のロックを消す)。
+// 死んだ持ち主と持ち主の記録が無い古いロックは `acquire` が回収する。
 
 import FTCore
 import Foundation
@@ -68,14 +70,6 @@ enum ServicesLock {
     static func currentHolder(prefix: String, stateDir: URL) -> (pid: Int32, startedAt: String)? {
         guard let owner = readOwner(lockDirectory(prefix: prefix, stateDir: stateDir)) else { return nil }
         return (owner.pid, owner.pidStartedAt)
-    }
-
-    /// `services reset --force` が排他を取れずに押し切った後に使う。**押し切るときに見た持ち主のままなら**外す
-    /// (押し切っている間に取り直した別の持ち主のロックは消さない)。
-    static func forceRelease(prefix: String, stateDir: URL, ifHeldBy holder: (pid: Int32, startedAt: String)) {
-        let dir = lockDirectory(prefix: prefix, stateDir: stateDir)
-        guard let current = readOwner(dir), current.pid == holder.pid, current.pidStartedAt == holder.startedAt else { return }
-        try? FileManager.default.removeItem(at: dir)
     }
 
     // MARK: - 内部
