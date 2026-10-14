@@ -2464,10 +2464,34 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   **`exec` にランタイムのオプションは紛れ込まない**(実測: Docker 29.5 も Apple Container 1.1.0 もコンテナ名の後ろを全部コマンドとして
   扱い、`-e` / `--env-file` / `--` は実行対象として失敗する。だから親は `exec -i <container>` の後ろに利用者のコマンドをそのまま置き、
   `--` は渡さない)。証人の setup.sh(秘密・gateway・書き込み・読み取り・通信・残置・teardown)は全項目を実データで確認した
-- **未実装(④〜⑤)**: UDP の経路の確認(`/udp` の宣言は今は「次の段で対応」と止める)・親のプロキシの接続(スクリプトは
-  `allowedDomains` があればプロキシを使う配線まで済み。コンテナ側の `HTTP_PROXY` は未)・`services up` / `down` と常駐の所有者・
-  `adb reverse`・失敗時のログの保存・MCP の `ft_services`・拡張の雛形(compose.yaml・新しい規則のコメント)・利用者向け docs・
-  sut-ec-mobile のワークスペースの移行(今の setup.sh はホストでサーバーを起こすので枠の中では動かない)
+- **④(UDP の経路の確認とプロキシ)も実装済み**: `/udp` の公開があるときだけ、サービスの起動完了の後・setup.sh の前に、
+  中継と同じイメージのエコー(`fleetest-<接頭辞>-udpcheck`)を内部ネットワークに立て(Apple は 127.0.0.1 の空きポートへ自分で公開・
+  Docker は中継に最初から含めた確認用のポート経由)、親が毎回変わるトークンを 127.0.0.1 の UDP へ送って同じ値が返るかを見る
+  (1 s × 3 回 = `UDPReachability`。I/O は `ServicesUDPProbe`)。**最初は警告だけ**(`→ services: UDP path … answered on probe N` /
+  `⚠️ services: 127.0.0.1:<p>/udp (published by <runtime>) did not answer 3 probes of 1s each; TCP on the same path did answer — <原因>`。
+  TCP の句はエコーの TCP 側へ実際に送って確かめたときだけ・原因は Rancher Desktop の settings.json が SSH の転送方式と読めたときだけ =
+  `RancherPortForwarding`)。終わったらエコーを消す。結果の記録(run.json)への注記は、警告から赤へ上げるときに拡張と一緒に足す(⑤)。
+  **プロキシ**: マシン側 `sandbox.allowedDomains` があるときだけ。親の loopback のプロキシのポートを計画に写し、Docker は中継が
+  `host.docker.internal:<port>` へ転送、Apple は内部ネットワークの**ゲートウェイの IP に同じ番号**で道を作る(計画の `<gateway>` と
+  NO_PROXY の内部サブネットはネットワークを作ってから埋める = `ServicesSession.resolveProxyEntry`)。**Apple の実測で分かったこと**
+  (④): ①`--internal` のネットワークのゲートウェイの IP は、**最初のコンテナが付いてから Mac のブリッジ(`bridge1xx`)に現れ、
+  全部外れると消える**(付く前の bind は `Can't assign requested address`)→ 最初のコンテナを起こす直前から背景で bind を試み続ける
+  (0.2 s 間隔・上限 30 s。実測は 0.4 s 後に bind)②**Network.framework の `NWListener` はそのブリッジのアドレスに bind できない**
+  (アドレスが現れた後も同じエラー)が、BSD ソケットの bind は通りコンテナから届く → run 専用の `SandboxProxy`(127.0.0.1・
+  内部サブネットを拒否する方針)を立て、ゲートウェイの IP:番号 から BSD ソケットの転送器(`ServicesGatewayForwarder`)で流す
+  ③hostOnly でもホストの待ち受けにはコンテナから届く(メンバーの増減でも切れない)④**busybox の wget は `NO_PROXY` を読まない**ので、
+  `HTTP_PROXY` を持つコンテナの healthcheck(`wget http://127.0.0.1/`)がプロキシへ向かって 403 で落ちた → healthcheck の `exec` は
+  プロキシの変数を `-e KEY=` で空にして撃つ(`RuntimeArgv.exec(clearing:)`)。**両方向の実データ**(④): Apple は UDP の経路が
+  2 回目の probe で応答(1 回目は VM 起動直後の取りこぼし = 再送の根拠)・コンテナと枠の中のスクリプトの両方から `example.com` を
+  プロキシ経由で取得でき、許可外は 403 / Docker(Rancher 1.24・SSH の転送方式)は「3 回届かず・同じ経路の TCP は届いた・原因 =
+  SSH の転送方式(切り替え方つき)」の警告が出て、プロキシは中継(`host.docker.internal` → 127.0.0.1)経由で通り、NO_PROXY に
+  Docker の内部サブネット(172.20.0.0/16)が入る。**プロキシは解決した IP を検めてから数値アドレスへ繋ぐ**(`ProxyDestinationPolicy`: loopback・
+  未指定・リンクローカル・マルチキャスト・自機のアドレス・内部ネットワークのサブネットを断る。許されたアドレスは解決順に試す =
+  先頭の IPv6 に届かない機械で次の IPv4 へ倒れる。接続拒否は NWConnection では `.waiting` で来るので失敗として次へ)。
+  これで docs/open-issues.md の「名前のまま接続する」穴は閉じた(シナリオ・スクリプトの loopback のプロキシにも同じ規則)
+- **未実装(⑤)**: `services up` / `down` と常駐の所有者・`adb reverse`・失敗時のログの保存・結果の記録への注記・MCP の `ft_services`・
+  拡張の雛形(compose.yaml・新しい規則のコメント)・利用者向け docs・sut-ec-mobile のワークスペースの移行(今の setup.sh は
+  ホストでサーバーを起こすので枠の中では動かない)。**コンテナ → 外部の UDP** は設計どおり止まったまま(作らない)
 - **②で実測して分かったこと**: Apple の名前付きボリュームの既定は **512 GiB のスパースなイメージ**(`-s` は付けない)/
   `container build` と `run` は `--label` を、`run` は `--init` も受ける(1.1.0 の help)/ **run の親を `kill -9` しても孤児は
   生まれない**(サービスを持つのは `[local]` の子 run で、親の死を `ParentDeathWatch` で見て自分で片付ける)。**控えの持ち主の

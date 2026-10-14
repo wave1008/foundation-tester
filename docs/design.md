@@ -4408,7 +4408,7 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
 | `ScenarioSandbox` | マシン側の設定(`MachineSettings`)→ 計画(`Plan`)→ 範囲(`Scope`)→ プロファイル本文。包むかどうかを決めるのは `plan` の1箇所 |
 | `ScenarioHost.sandboxedLaunch` | 包む入口。実行(dry-run を含む)・一覧取得(`list`)・OCR のコンパイル(`compile-ocr`)の3経路がここを通る(`ScenarioSandboxWiringTests`) |
 | `SandboxBroker` / `BrokerPolicy`(`SimctlPolicy` / `DevicectlPolicy` / `AdbPolicy`)/ `SandboxGateway` | Simulator・iOS 実機・Android の操作の代行(親 / 方針 / 子) |
-| `SandboxProxy` / `SandboxDomainPolicy` | 許可ドメインへのプロキシ |
+| `SandboxProxy` / `SandboxDomainPolicy` / `ProxyDestinationPolicy` | 許可ドメインへのプロキシ(名前の照合 → 親で解決 → loopback・自機・内部サブネットを断って数値アドレスへ接続) |
 
 **全拒否が土台**(`(deny default)`)。全許可を土台にして書き込みと通信だけ絞る形は壁にならない ——
 実測(PoC)で、その枠の中から `simctl spawn <udid> defaults write <枠の外>` が成功し、`open -a` でアプリが

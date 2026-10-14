@@ -122,7 +122,7 @@ final class SandboxProxyTests: XCTestCase {
     func testAllowedHostIsTunnelledAndOthersAreForbidden() throws {
         let upstream = try EchoServer()
         defer { upstream.stop() }
-        let proxy = try SandboxProxy(allowedDomains: ["localhost"])
+        let proxy = try SandboxProxy(allowedDomains: ["localhost"], destinationPolicy: .permissive)
         defer { proxy.stop() }
         XCTAssertNotEqual(proxy.port, 0)
 
@@ -146,7 +146,7 @@ final class SandboxProxyTests: XCTestCase {
     func testPortRestrictedEntryTunnelsOnlyThatPort() throws {
         let upstream = try EchoServer()
         defer { upstream.stop() }
-        let proxy = try SandboxProxy(allowedDomains: ["localhost:\(upstream.port)"])
+        let proxy = try SandboxProxy(allowedDomains: ["localhost:\(upstream.port)"], destinationPolicy: .permissive)
         defer { proxy.stop() }
         let tunnelled = try exchange(
             port: proxy.port, request: "CONNECT localhost:\(upstream.port) HTTP/1.1\r\n\r\n", thenSend: "ping\n")
@@ -155,6 +155,77 @@ final class SandboxProxyTests: XCTestCase {
         let refused = try exchange(port: proxy.port, request: "CONNECT localhost:\(otherPort) HTTP/1.1\r\n\r\n")
         XCTAssertTrue(refused.hasPrefix("HTTP/1.1 403"), refused)
         XCTAssertTrue(refused.contains("localhost:\(otherPort)"), refused)
+    }
+
+    /// 標準の方針では、許可した名前が loopback へ解決されると親は繋がない(DNS rebinding)
+    func testStandardPolicyRefusesAllowedNameResolvingToLoopback() throws {
+        let upstream = try EchoServer()
+        defer { upstream.stop() }
+        let proxy = try SandboxProxy(allowedDomains: ["localhost"])
+        defer { proxy.stop() }
+        let refused = try exchange(
+            port: proxy.port, request: "CONNECT localhost:\(upstream.port) HTTP/1.1\r\n\r\n", thenSend: "ping\n")
+        XCTAssertTrue(refused.hasPrefix("HTTP/1.1 403"), refused)
+        XCTAssertTrue(refused.contains("does not proxy"), refused)
+        XCTAssertFalse(refused.contains("echo:"), refused)
+    }
+
+    func testExplicitBindAddressWorksAndAppearsInEnvironment() throws {
+        let upstream = try EchoServer()
+        defer { upstream.stop() }
+        let proxy = try SandboxProxy(allowedDomains: ["localhost"], bindAddress: "127.0.0.1", destinationPolicy: .permissive)
+        defer { proxy.stop() }
+        XCTAssertEqual(proxy.environment["HTTPS_PROXY"], "http://127.0.0.1:\(proxy.port)")
+        let tunnelled = try exchange(
+            port: proxy.port, request: "CONNECT localhost:\(upstream.port) HTTP/1.1\r\n\r\n", thenSend: "ping\n")
+        XCTAssertTrue(tunnelled.contains("echo:ping"), tunnelled)
+    }
+
+    /// 待ち受けアドレスが loopback 以外のとき、環境変数の URL にそのアドレスが入る(自機の非 loopback の IPv4 で確かめる。
+    /// 無い機械(オフライン)では skip)
+    func testEnvironmentNamesTheBindAddressWhenItIsNotLoopback() throws {
+        let candidate = ProxyDestinationPolicy.currentInterfaceAddresses().first { address in
+            guard let bytes = ProxyDestinationPolicy.parseAddress(address), bytes.count == 4 else { return false }
+            return ProxyDestinationPolicy.specialKind(bytes) == nil
+        }
+        let address = try XCTUnwrap(candidate, "this Mac has no non-loopback IPv4 address; nothing to bind to")
+        let proxy = try SandboxProxy(allowedDomains: ["example.com"], bindAddress: address, destinationPolicy: .permissive)
+        defer { proxy.stop() }
+        XCTAssertEqual(proxy.environment["HTTP_PROXY"], "http://\(address):\(proxy.port)")
+        XCTAssertEqual(proxy.environment["https_proxy"], "http://\(address):\(proxy.port)")
+    }
+
+    func testBindPortFixesTheNumberAndRefusesOneInUse() throws {
+        let first = try SandboxProxy(allowedDomains: ["example.com"], destinationPolicy: .permissive)
+        defer { first.stop() }
+        XCTAssertThrowsError(try SandboxProxy(
+            allowedDomains: ["example.com"], bindAddress: "127.0.0.1", bindPort: first.port,
+            destinationPolicy: .permissive))
+        // 空いている番号(bind(0) で得て閉じる)を指定するとその番号になる
+        let probe = socket(AF_INET, SOCK_STREAM, 0)
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        _ = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.bind(probe, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+        }
+        var actual = sockaddr_in()
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        _ = withUnsafeMutablePointer(to: &actual) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(probe, $0, &length) }
+        }
+        close(probe)
+        let freePort = UInt16(bigEndian: actual.sin_port)
+        let second = try SandboxProxy(allowedDomains: ["example.com"], bindPort: freePort, destinationPolicy: .permissive)
+        defer { second.stop() }
+        XCTAssertEqual(second.port, freePort)
+    }
+
+    func testNonNumericBindAddressThrows() {
+        for bad in ["localhost", "", "999.1.1.1", "::1", "127.0.0.1:80"] {
+            XCTAssertThrowsError(try SandboxProxy(allowedDomains: ["example.com"], bindAddress: bad), bad)
+        }
     }
 
     func testEnvironmentPointsEveryProxyVariableAtTheListener() throws {

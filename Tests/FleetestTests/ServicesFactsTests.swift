@@ -199,6 +199,17 @@ final class ServicesFactsTests: XCTestCase {
         XCTAssertEqual(st.st_mode & 0o777, 0o600)
     }
 
+    /// 確認用の空きポートは TCP と UDP で別々に取り、予約の範囲(ブリッジ・Emulator・adb)を避ける
+    func testFreeCheckPortsAreDistinctAndOutsideTheReservedRanges() throws {
+        let reserved: [ClosedRange<Int>] = [8123...8154, 5554...5585, 5037...5037]
+        let ports = try ServicesFacts.freeCheckPorts(reserved: reserved)
+        XCTAssertGreaterThan(ports.tcp, 1024)
+        XCTAssertGreaterThan(ports.udp, 1024)
+        XCTAssertFalse(reserved.contains { $0.contains(ports.tcp) || $0.contains(ports.udp) })
+        // 予約の範囲が全部なら見つからない(黙って予約のポートを使わない)
+        XCTAssertThrowsError(try ServicesFacts.freeCheckPorts(reserved: [1...65535]))
+    }
+
     /// `#` 始まりはコメント・空白を含む名前は読み違え = ランタイムが黙って落とす形は書く前に断る
     func testWriteEnvFileRefusesNamesTheRuntimeWouldDropOrMisread() throws {
         for key in ["#SECRET", "A B", "", "A\tB"] {
@@ -217,21 +228,27 @@ final class ServicesFactsTests: XCTestCase {
 
     // MARK: 計画の入力
 
-    func testPlanOptionsRequireLANAddressForPhysicalLanesAndRefuseUDP() {
+    func testPlanOptionsRequireLANAddressForPhysicalLanesAndAllocateCheckPortsOnlyForUDP() throws {
         let empty = ServiceSpec(services: [ServiceDef(name: "a")], networks: [], volumes: [], ignoredTopLevelKeys: [])
         XCTAssertThrowsError(try ServicesFacts.planOptions(
             runtime: .docker, workspaceRealpath: "/w", generation: "g", physicalLanes: true,
-            settings: nil, relayImageID: "sha256:x", spec: empty))
+            settings: nil, relayImageID: "sha256:x", spec: empty, proxyPort: nil))
         let withLAN = ServicesSettings(publishForPhysicalDevices: "192.168.1.20")
-        XCTAssertEqual(try ServicesFacts.planOptions(
+        let lan = try ServicesFacts.planOptions(
             runtime: .docker, workspaceRealpath: "/w", generation: "g", physicalLanes: true,
-            settings: withLAN, relayImageID: "sha256:x", spec: empty).lanAddress, "192.168.1.20")
+            settings: withLAN, relayImageID: "sha256:x", spec: empty, proxyPort: 8899)
+        XCTAssertEqual(lan.lanAddress, "192.168.1.20")
+        XCTAssertEqual(lan.proxyPort, 8899)
+        XCTAssertNil(lan.checkPorts, "/udp の公開が無ければ確認用のポートは取らない")
         let udp = ServiceSpec(
             services: [ServiceDef(name: "a", ports: [PortPublish(hostIP: "127.0.0.1", hostPort: 9000, containerPort: 9000, proto: .udp)])],
             networks: [], volumes: [], ignoredTopLevelKeys: [])
-        XCTAssertThrowsError(try ServicesFacts.planOptions(
+        let checked = try ServicesFacts.planOptions(
             runtime: .docker, workspaceRealpath: "/w", generation: "g", physicalLanes: false,
-            settings: nil, relayImageID: "sha256:x", spec: udp))
+            settings: nil, relayImageID: "sha256:x", spec: udp, proxyPort: nil)
+        let ports = try XCTUnwrap(checked.checkPorts)
+        XCTAssertGreaterThan(ports.tcp, 1024)
+        XCTAssertGreaterThan(ports.udp, 1024)
     }
 
     // MARK: ランタイムの選択の部品

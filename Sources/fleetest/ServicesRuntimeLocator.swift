@@ -112,6 +112,12 @@ struct RuntimeCmds: Sendable {
         isDocker ? DockerCommands.volumeRemove(name: name) : AppleContainerCommands.volumeRemove(name: name)
     }
     func volumeInspect(_ name: String) -> [String] { ["volume", "inspect", name] }
+    /// JSON が返る(Docker は `IPAM.Config[]`、Apple は `status`)。読み方は `RuntimeListing.networkAddresses`
+    func networkInspect(_ name: String) -> [String] { ["network", "inspect", name] }
+    /// UDP の経路の確認用のエコー(Docker は中継が転送するので公開しない・Apple は自分で 127.0.0.1 へ公開する)
+    func echoRun(_ plan: UDPCheckPlan, network: String) -> [String] {
+        isDocker ? DockerCommands.echoRun(plan: plan, network: network) : AppleContainerCommands.echoRun(plan: plan, network: network)
+    }
     func imageInspectID(_ ref: String) -> [String] {
         isDocker ? DockerCommands.imageInspectID(ref: ref) : AppleContainerCommands.imageInspectID(ref: ref)
     }
@@ -149,8 +155,9 @@ struct RuntimeCmds: Sendable {
     func containerRemove(_ name: String) -> [String] {
         isDocker ? DockerCommands.containerRemove(name: name) : AppleContainerCommands.containerRemove(name: name)
     }
-    func containerExec(_ name: String, argv: [String]) -> [String] {
-        isDocker ? DockerCommands.containerExec(name: name, argv: argv) : AppleContainerCommands.containerExec(name: name, argv: argv)
+    func containerExec(_ name: String, argv: [String], clearing: [String] = []) -> [String] {
+        isDocker ? DockerCommands.containerExec(name: name, argv: argv, clearing: clearing)
+            : AppleContainerCommands.containerExec(name: name, argv: argv, clearing: clearing)
     }
     func containerLogs(_ name: String, tail: Int) -> [String] {
         isDocker ? DockerCommands.containerLogs(name: name, tail: tail) : AppleContainerCommands.containerLogs(name: name, tail: tail)
@@ -232,6 +239,27 @@ enum RuntimeListing {
         }
         guard let status = object["status"] as? [String: Any], let state = status["state"] as? String else { return nil }
         return ContainerStateFact(exited: state == "stopped", exitCode: nil)
+    }
+
+    struct NetworkAddresses: Equatable {
+        /// 数値アドレス(接頭辞長なし)
+        var gateway: String?
+        /// CIDR(`192.168.64.0/24`)
+        var subnet: String?
+    }
+
+    /// `network inspect` の JSON(配列1件)。Docker: `IPAM.Config[0].Gateway` / `.Subnet`。Apple: `status.ipv4Gateway` / `status.ipv4Subnet`
+    /// (1.1.0 の `network list --format json` と同じ形)。形が違えば nil
+    static func networkAddresses(json: Any, isDocker: Bool) -> NetworkAddresses? {
+        guard let object = (json as? [Any])?.first as? [String: Any] else { return nil }
+        if isDocker {
+            guard let ipam = object["IPAM"] as? [String: Any],
+                  let config = (ipam["Config"] as? [[String: Any]])?.first else { return nil }
+            return NetworkAddresses(gateway: (config["Gateway"] as? String).map { String($0.split(separator: "/").first ?? Substring($0)) },
+                                    subnet: config["Subnet"] as? String)
+        }
+        guard let status = object["status"] as? [String: Any] else { return nil }
+        return NetworkAddresses(gateway: status["ipv4Gateway"] as? String, subnet: status["ipv4Subnet"] as? String)
     }
 
     /// Apple の `inspect`: `status.networks[].ipv4Address`(`192.168.64.4/24` の形。接頭辞長は落とす)。

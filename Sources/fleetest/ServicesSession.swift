@@ -145,6 +145,19 @@ final class ServicesSession {
     private let interrupt: RunInterruptState?
     /// `service_completed_successfully` の相手 = 前面で実行して終了コードで決着するサービス(`runToCompletion`)
     private let initServices: Set<String>
+    /// マシン側 `sandbox.allowedDomains`。空ならプロキシは無い
+    private let allowedDomains: [String]
+    /// 親のプロキシのポート(loopback のプロキシと同じ番号。計画はこの番号で URL を組み、Apple はゲートウェイの IP にも同じ番号で立てる)
+    private let proxyPort: Int?
+    /// Apple: run 専用のプロキシ(127.0.0.1・内部サブネットを拒否)と、ゲートウェイの IP からそこへ流す転送器。
+    /// 転送器は背景のスレッドが bind に成功したら入る。`gatewayProxyStopped` が立った後は立てない
+    private let gatewayProxy = LockedValue<SandboxProxy?>(nil)
+    private let gatewayForwarder = LockedValue<ServicesGatewayForwarder?>(nil)
+    private let gatewayProxyStopped = LockedValue(false)
+    /// 内部ネットワークのゲートウェイとサブネット(作ってから分かる。`<gateway>` の差し替えと NO_PROXY に使う)
+    private var internalAddresses: RuntimeListing.NetworkAddresses?
+    /// run の冒頭で出した警告(UDP の経路の確認)
+    private(set) var warnings: [String] = []
     private var lease: ServicesLease
     private var satisfied = Set<String>()
     private var tornDown = false
@@ -153,7 +166,7 @@ final class ServicesSession {
     private init(cli: RuntimeCLI, plan: ServicePlan, stateDir: URL, privateDir: URL, home: String,
                  workspace: ServicesWorkspace, dictionaries: ExpansionDictionaries, usedSecretNames: Set<String>,
                  declaredBuilds: [String: BuildDef], graceSeconds: [String: Int],
-                 interrupt: RunInterruptState?, lease: ServicesLease) {
+                 interrupt: RunInterruptState?, allowedDomains: [String], proxyPort: Int?, lease: ServicesLease) {
         self.cli = cli
         self.plan = plan
         self.stateDir = stateDir
@@ -169,6 +182,8 @@ final class ServicesSession {
         self.interrupt = interrupt
         self.initServices = Set(plan.containers.flatMap { launch in
             launch.dependsOn.filter { $0.condition == .serviceCompletedSuccessfully }.map(\.service) })
+        self.allowedDomains = allowedDomains
+        self.proxyPort = proxyPort
         self.lease = lease
     }
 
@@ -195,7 +210,8 @@ final class ServicesSession {
                 cli: prepared.cli, plan: prepared.plan, stateDir: stateDir, privateDir: privateDir, home: home,
                 workspace: workspace, dictionaries: prepared.dictionaries, usedSecretNames: prepared.usedSecretNames,
                 declaredBuilds: prepared.declaredBuilds,
-                graceSeconds: prepared.graceSeconds, interrupt: interruptState, lease: prepared.lease)
+                graceSeconds: prepared.graceSeconds, interrupt: interruptState,
+                allowedDomains: prepared.allowedDomains, proxyPort: prepared.proxyPort, lease: prepared.lease)
             try ServicesLock.withLock(prefix: prepared.plan.prefix, stateDir: stateDir) {
                 try session.claimPrefix(log: log)
                 try session.persist()  // 控えは最初の資源を作る前に書く。書けなければ開始しない
@@ -221,6 +237,8 @@ final class ServicesSession {
         let usedSecretNames: Set<String>
         let declaredBuilds: [String: BuildDef]
         let graceSeconds: [String: Int]
+        let allowedDomains: [String]
+        let proxyPort: Int?
         let lease: ServicesLease
     }
 
@@ -269,15 +287,22 @@ final class ServicesSession {
         let dockerConfig = try located.kind == .docker
             ? ServicesFacts.dockerConfigDirectory(privateDir: privateDir, home: home) : nil
         let cli = RuntimeCLI(runtime: located, dockerConfigDirectory: dockerConfig)
-        let relayImageID = try located.kind == .docker
+        // 中継のイメージは Docker の中継と、両ランタイムの UDP の確認用のエコーに使う
+        let needsRelayImage = located.kind == .docker || ServicesFacts.hasUDPPublish(spec)
+        let relayImageID = try needsRelayImage
             ? ensureRelayImage(cli: cli, privateDir: privateDir, interrupt: interrupt, log: log) : ""
+
+        // 許可ドメインがあれば親のプロキシ(loopback)。番号を計画に写す(Docker は中継が host.docker.internal:<番号> へ転送・
+        // Apple はゲートウェイの IP にも同じ番号で立てる = `createAll`)
+        let allowedDomains = (try ScenarioSandbox.plan(settings: try ScenarioSandbox.machineSettings()))?.allowedDomains ?? []
+        let proxyPort: Int? = try allowedDomains.isEmpty ? nil : Int(ScriptSandbox.proxy(allowedDomains: allowedDomains).port)
 
         let workspaceRealpath = ServicesFacts.workspaceRealpath(workspace)
         let generation = ServicesFacts.generation()
         let options = try ServicesFacts.planOptions(
             runtime: located.kind, workspaceRealpath: workspaceRealpath, generation: generation,
             physicalLanes: ServicesFacts.physicalLanes(resolved: resolved), settings: settings,
-            relayImageID: relayImageID, spec: spec)
+            relayImageID: relayImageID, spec: spec, proxyPort: proxyPort)
         let plan: ServicePlan
         switch ServicePlanner.make(checked, options: options) {
         case .success(let value): plan = value
@@ -313,7 +338,8 @@ final class ServicesSession {
             approvedServices: spec.services.map(\.name), publishedPorts: published,
             secretNames: usedSecretNames.sorted(), phase: .starting)
         return Prepared(cli: cli, plan: plan, dictionaries: dictionaries, usedSecretNames: usedSecretNames,
-                        declaredBuilds: declaredBuilds, graceSeconds: grace, lease: lease)
+                        declaredBuilds: declaredBuilds, graceSeconds: grace, allowedDomains: allowedDomains,
+                        proxyPort: proxyPort, lease: lease)
     }
 
     private static func refused(_ refusals: [ComposeRefusal], log: (String) -> Void) -> ServicesError {
@@ -346,7 +372,8 @@ final class ServicesSession {
             throw ServicesError(phase: .build, detail: "cannot read the ID of the relay image \(tag) (exit \(inspect.status))",
                                 logTail: inspect.tail(lines: 5))
         }
-        return inspect.trimmed
+        // Apple の `image inspect` は JSON を返し、`run` が digest 参照を受けるかは未確認 = タグで起こす(ビルドは fleetest だけが行う)
+        return cli.isDocker ? inspect.trimmed : tag
     }
 
     // MARK: スクリプトへ見せるもの(docs/remote-runner.md §17「スクリプト」)
@@ -445,6 +472,10 @@ final class ServicesSession {
         if needsRelay, let relay = plan.relay {
             try createNetwork(relay.egressNetwork, argv: commands.networkCreateEgress(relay.egressNetwork))
         }
+        internalAddresses = inspectNetwork(plan.internalNetwork)
+        if proxyPort != nil, !cli.isDocker, internalAddresses?.gateway == nil {
+            throw ServicesError(phase: .network, detail: "cannot read the gateway address of network \(plan.internalNetwork), which the proxy must listen on")
+        }
 
         // 名前付きボリューム(無ければ作る。消さない)
         for name in plan.volumes.values.sorted() where !cli.run(commands.volumeInspect(name)).succeeded {
@@ -464,6 +495,7 @@ final class ServicesSession {
 
         // コンテナ
         let hostsFile = try prepareHostsFile()
+        startGatewayProxyBinder()
         for launch in plan.containers {
             try checkInterrupted()
             for dependency in launch.dependsOn { try waitFor(dependency) }
@@ -476,6 +508,9 @@ final class ServicesSession {
             try waitFor(Dependency(service: launch.service, condition: .serviceHealthy))
         }
         let startSeconds = Self.now() - startBegin - readySeconds
+
+        // /udp を公開したときだけ経路を確かめる(サービスの起動の後・setup.sh の前)
+        if let check = plan.udpCheck { try runUDPCheck(check, log: log) }
 
         lease.phase = .running
         try persist()
@@ -500,6 +535,126 @@ final class ServicesSession {
         let id = Self.lastLine(created.output)
         lease.networks[name] = id.isEmpty ? name : id
         try persist()
+    }
+
+    /// 背景の bind の間隔と上限(秒)。根拠: コンテナの VM の起動は 1〜2 s(§17 の実測)で、ゲートウェイの IP はその後に現れる。
+    /// 尽きたとき = 警告を出す(コンテナはプロキシへ繋げず、その失敗はコンテナ側に出る)
+    private static let gatewayProxyBindIntervalSeconds: Double = 0.2
+    private static let gatewayProxyBindDeadlineSeconds: Double = 30
+
+    /// Apple のコンテナからは Mac の 127.0.0.1 に届かない(§17 の実測)= 内部ネットワークのゲートウェイの IP に、計画と同じ番号で
+    /// 道を作る。run 専用のプロキシを 127.0.0.1 に立て(解決した宛先がこの内部ネットワークへ向くもの = DNS rebinding を断る)、
+    /// ゲートウェイの IP:番号 からそこへ流す転送器(BSD ソケット。NWListener はブリッジのアドレスに bind できない)を背景で立てる。
+    /// **ゲートウェイの IP は最初のコンテナが付いてから Mac のブリッジに現れ、全部外れると消える**(実測)ので、最初のコンテナを
+    /// 起こす直前から bind を試み続ける
+    private func startGatewayProxyBinder() {
+        guard let proxyPort, !cli.isDocker, let gateway = internalAddresses?.gateway else { return }
+        let subnet = internalAddresses?.subnet
+        let domains = allowedDomains
+        let proxyBox = gatewayProxy
+        let forwarderBox = gatewayForwarder
+        let stopped = gatewayProxyStopped
+        let deadline = Date().addingTimeInterval(Self.gatewayProxyBindDeadlineSeconds)
+        let began = Date()
+        Thread.detachNewThread {
+            let proxy: SandboxProxy
+            do {
+                proxy = try SandboxProxy(allowedDomains: domains,
+                                         destinationPolicy: .standard(deniedNetworks: [subnet].compactMap { $0 }))
+            } catch {
+                ConsoleOut.err("⚠️ services: cannot start the proxy for the containers (\(error.localizedDescription)); containers cannot reach allowedDomains")
+                return
+            }
+            let keepProxy = stopped.withLock { isStopped -> Bool in
+                if isStopped { return false }
+                proxyBox.value = proxy
+                return true
+            }
+            if !keepProxy { proxy.stop(); return }
+            var lastError = "not attempted"
+            while Date() < deadline {
+                if stopped.value { return }
+                do {
+                    let forwarder = try ServicesGatewayForwarder(
+                        listenAddress: gateway, listenPort: UInt16(clamping: proxyPort), targetPort: proxy.port)
+                    let keep = stopped.withLock { isStopped -> Bool in
+                        if isStopped { return false }
+                        forwarderBox.value = forwarder
+                        return true
+                    }
+                    if !keep { forwarder.stop() }
+                    ConsoleOut.out("→ services: proxy for the containers listens on \(gateway):\(proxyPort)"
+                        + " (\(String(format: "%.1f", Date().timeIntervalSince(began)))s after the first container was started)")
+                    return
+                } catch {
+                    lastError = error.localizedDescription
+                    Thread.sleep(forTimeInterval: Self.gatewayProxyBindIntervalSeconds)
+                }
+            }
+            ConsoleOut.err("⚠️ services: the proxy could not listen on \(gateway):\(proxyPort) within"
+                + " \(Int(Self.gatewayProxyBindDeadlineSeconds))s (\(lastError)); containers cannot reach allowedDomains")
+        }
+    }
+
+    private func inspectNetwork(_ name: String) -> RuntimeListing.NetworkAddresses? {
+        let result = cli.run(cli.commands.networkInspect(name))
+        guard result.succeeded, let json = RuntimeListing.decodeJSON(result.output) else { return nil }
+        return RuntimeListing.networkAddresses(json: json, isDocker: cli.isDocker)
+    }
+
+    /// 計画が置いた `<gateway>` を実際のゲートウェイの IP に差し替え、NO_PROXY に内部のサブネットを足す(どちらも作ってから分かる)
+    static func resolveProxyEntry(_ entry: EnvEntry, addresses: RuntimeListing.NetworkAddresses?) -> String? {
+        guard var value = entry.value else { return nil }
+        if let gateway = addresses?.gateway {
+            value = value.replacingOccurrences(of: ServicePlanner.gatewayPlaceholder, with: gateway)
+        }
+        if let subnet = addresses?.subnet, entry.key.lowercased() == "no_proxy",
+           !value.split(separator: ",").contains(Substring(subnet)) {
+            value += "," + subnet
+        }
+        return value
+    }
+
+    /// `/udp` の公開があるときだけ: エコーを立て、127.0.0.1 の公開ポートへトークンを送って経路を確かめる。
+    /// 対象は経路だけ(利用者のサービスは見ない)。**最初は警告だけ**(run は止めない)。終わったらエコーを消す
+    private func runUDPCheck(_ check: UDPCheckPlan, log: (String) -> Void) throws {
+        try checkInterrupted()
+        lease.udpCheck = check.echoName  // 作る前に名前を控える
+        try persist()
+        let started = cli.run(cli.commands.echoRun(check, network: plan.internalNetwork), timeout: Self.containerStartTimeoutSeconds)
+        guard started.succeeded else {
+            throw ServicesError(phase: .start, detail: "starting the UDP check echo failed (exit \(started.status))",
+                                logTail: started.tail(lines: 5))
+        }
+        let id = Self.lastLine(started.output)
+        lease.udpCheck = id.isEmpty ? check.echoName : id
+        try persist()
+        defer {
+            _ = cli.run(cli.commands.containerRemove(lease.udpCheck ?? check.echoName))
+            lease.udpCheck = nil
+            try? persist()
+        }
+        switch ServicesUDPProbe.probeUDP(hostPort: check.udpHostPort) {
+        case .reached(let attempt):
+            log(UDPReachability.reachedLine(hostPort: check.udpHostPort, attempt: attempt))
+        case .unreached(let attempts):
+            // 「同じ経路の TCP は届いた」は実際に送って確かめたときだけ書く(エコーは TCP でも待ち受ける)
+            let tcp = ServicesUDPProbe.probeTCP(hostPort: check.tcpHostPort)
+            let warning = UDPReachability.warning(
+                hostPort: check.udpHostPort, runtime: cli.runtime.kind, attempts: attempts,
+                timeoutSeconds: UDPReachability.attemptTimeoutSeconds, tcpReached: tcp, cause: udpCause())
+            warnings.append(warning)
+            log(warning)
+        }
+    }
+
+    /// 原因は確かめられたときだけ: Rancher Desktop(接続先が `~/.rd/` のソケット)の設定が SSH の転送方式のとき
+    private func udpCause() -> String? {
+        guard cli.isDocker, cli.runtime.endpoint.contains("/.rd/") else { return nil }
+        let path = home + "/" + RancherPortForwarding.settingsSubpath
+        guard let data = FileManager.default.contents(atPath: path),
+              RancherPortForwarding.usesSSHForwarder(settingsJSON: data) == true else { return nil }
+        return RancherPortForwarding.cause
     }
 
     private struct ImageStats {
@@ -653,7 +808,9 @@ final class ServicesSession {
             }
         }
         for entry in launch.environment { put(entry.key, entry.value) }
-        for entry in launch.proxyEnvironment { put(entry.key, entry.value) }  // fleetest の設定が利用者の同名より優先
+        for entry in launch.proxyEnvironment {  // fleetest の設定が利用者の同名より優先
+            put(entry.key, Self.resolveProxyEntry(entry, addresses: internalAddresses))
+        }
         return order.map { EnvEntry(key: $0, value: values[$0]) }
     }
 
@@ -774,7 +931,9 @@ final class ServicesSession {
         case .cmdShell(let text)?: argv = ["sh", "-c", text]
         default: argv = []
         }
-        let result = cli.run(cli.commands.containerExec(launch.name, argv: argv), timeout: policy.timeoutSeconds)
+        // プロキシの変数は healthcheck では空にする(NO_PROXY を読まないクライアントが 127.0.0.1 の検査をプロキシへ送らないように)
+        let clearing = launch.proxyEnvironment.map(\.key)
+        let result = cli.run(cli.commands.containerExec(launch.name, argv: argv, clearing: clearing), timeout: policy.timeoutSeconds)
         let at = Self.now()
         if result.timedOut { return .probeTimedOut(at: at) }
         return result.succeeded ? .probeSucceeded(at: at) : .probeFailed(at: at)
@@ -827,6 +986,9 @@ final class ServicesSession {
     private func teardown(log: (String) -> Void) {
         guard !tornDown else { return }
         tornDown = true
+        gatewayProxyStopped.value = true
+        gatewayForwarder.value?.stop()
+        gatewayProxy.value?.stop()
         let began = Self.now()
         lease.phase = .tearingDown
         try? persist()

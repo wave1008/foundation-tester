@@ -30,6 +30,18 @@ final class RuntimeListingTests: XCTestCase {
                        .init(exited: false, exitCode: nil))
     }
 
+    /// `network inspect`: Docker は IPAM.Config、Apple は status(1.1.0 の `network list --format json` と同じ形)
+    func testNetworkAddressesForBothRuntimes() throws {
+        let docker = try json(#"[{"Name":"fleetest-x","IPAM":{"Driver":"default","Config":[{"Subnet":"172.18.0.0/16","Gateway":"172.18.0.1"}]}}]"#)
+        XCTAssertEqual(RuntimeListing.networkAddresses(json: docker, isDocker: true),
+                       .init(gateway: "172.18.0.1", subnet: "172.18.0.0/16"))
+        let apple = try json(#"[{"configuration":{"name":"fleetest-x","mode":"nat"},"id":"fleetest-x","status":{"ipv4Gateway":"192.168.64.1","ipv4Subnet":"192.168.64.0/24","ipv6Subnet":"fd9e::/64"}}]"#)
+        XCTAssertEqual(RuntimeListing.networkAddresses(json: apple, isDocker: false),
+                       .init(gateway: "192.168.64.1", subnet: "192.168.64.0/24"))
+        XCTAssertNil(RuntimeListing.networkAddresses(json: try json(#"[{"IPAM":{"Config":[]}}]"#), isDocker: true))
+        XCTAssertNil(RuntimeListing.networkAddresses(json: try json(#"[{"status":{"state":"running"}}]"#), isDocker: true))
+    }
+
     func testUnexpectedShapeIsNil() throws {
         XCTAssertNil(RuntimeListing.containerState(json: try json("[]"), isDocker: true))
         XCTAssertNil(RuntimeListing.containerState(json: try json(#"[{"State":{"Status":"exited"}}]"#), isDocker: false))

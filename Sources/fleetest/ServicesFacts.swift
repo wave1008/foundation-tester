@@ -218,20 +218,53 @@ enum ServicesFacts {
 
     static func planOptions(
         runtime: ServiceRuntime, workspaceRealpath: String, generation: String, physicalLanes: Bool,
-        settings: ServicesSettings?, relayImageID: String, spec: ServiceSpec
+        settings: ServicesSettings?, relayImageID: String, spec: ServiceSpec, proxyPort: Int?,
+        reservedPorts: [ClosedRange<Int>] = reservedHostPorts()
     ) throws -> PlanOptions {
         if physicalLanes && settings?.publishForPhysicalDevices == nil {
             throw ServicesError(phase: .check, detail: "the run includes a physical device, so published ports must be reachable over the LAN;"
                 + " set \"services\": {\"publishForPhysicalDevices\": \"<this Mac's IPv4 address>\"} in \(LocalConfig.url().path)")
         }
-        if hasUDPPublish(spec) {
-            // 確認用のエコーのポート割り当てと到達確認は次の段で入れる(今は ServicePlanner が checkPorts を要求する)
-            throw ServicesError(phase: .check, detail: "publishing UDP ports is not supported yet (the UDP reachability check is the next stage)")
-        }
+        // /udp の公開があるときだけ、経路の確認用のエコーの空きポート(TCP と UDP)を今の瞬間の空きから取る
+        let checkPorts = try hasUDPPublish(spec) ? freeCheckPorts(reserved: reservedPorts) : nil
         return PlanOptions(
             runtime: runtime, workspaceRealpath: workspaceRealpath, generation: generation,
             physicalLanes: physicalLanes, lanAddress: settings?.publishForPhysicalDevices,
-            proxyPort: nil, checkPorts: nil, relayImageID: relayImageID)
+            proxyPort: proxyPort, checkPorts: checkPorts, relayImageID: relayImageID)
+    }
+
+    /// 空きポートを取り直す回数の上限。根拠: OS が返す一時ポート(49152〜65535)が予約の範囲(ブリッジ・Emulator・adb)に
+    /// 重なることは無いので、通常は 1 回で決まる。尽きたとき = 失敗として投げる(黙って予約の範囲のポートを使わない)
+    static let freePortAttempts = 20
+
+    /// 127.0.0.1 の空きポートを TCP と UDP で1つずつ(`bind` して OS に選ばせ、番号だけ持って閉じる)。
+    /// 閉じてからランタイムが公開するまでの間に他が取る窓は残る(起動の失敗として出る = 黙らない)
+    static func freeCheckPorts(reserved: [ClosedRange<Int>]) throws -> CheckPorts {
+        func pick(_ type: Int32) throws -> Int {
+            for _ in 0..<freePortAttempts {
+                let fd = socket(AF_INET, type, 0)
+                guard fd >= 0 else { throw ServicesError(phase: .check, detail: "cannot create a socket: \(String(cString: strerror(errno)))") }
+                defer { close(fd) }
+                var address = sockaddr_in()
+                address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+                address.sin_family = sa_family_t(AF_INET)
+                address.sin_addr.s_addr = inet_addr("127.0.0.1")
+                address.sin_port = 0
+                let bound = withUnsafePointer(to: &address) {
+                    $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+                }
+                guard bound == 0 else { throw ServicesError(phase: .check, detail: "cannot bind a loopback port: \(String(cString: strerror(errno)))") }
+                var actual = sockaddr_in()
+                var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+                _ = withUnsafeMutablePointer(to: &actual) {
+                    $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &length) }
+                }
+                let port = Int(UInt16(bigEndian: actual.sin_port))
+                if port > 0, !reserved.contains(where: { $0.contains(port) }) { return port }
+            }
+            throw ServicesError(phase: .check, detail: "could not find a free loopback port outside the reserved ranges after \(freePortAttempts) attempts")
+        }
+        return CheckPorts(tcp: try pick(SOCK_STREAM), udp: try pick(SOCK_DGRAM))
     }
 
     // MARK: 親専用の領域・env-file・資格情報

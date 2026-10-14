@@ -79,6 +79,9 @@ final class RuntimeCommandsTests: XCTestCase {
         XCTAssertEqual(AppleContainerCommands.containerLogs(name: "c", tail: 50), ["logs", "-n", "50", "c"])
         XCTAssertEqual(DockerCommands.containerLogs(name: "c", tail: 50), ["logs", "--tail", "50", "c"])
         XCTAssertEqual(DockerCommands.containerExec(name: "c", argv: ["ls", "-l"]), ["exec", "c", "ls", "-l"])
+        // healthcheck はプロキシの変数を空にして撃つ(コンテナの環境を継がせない)
+        XCTAssertEqual(AppleContainerCommands.containerExec(name: "c", argv: ["wget", "-q", "http://127.0.0.1/"], clearing: ["HTTP_PROXY", "http_proxy"]),
+                       ["exec", "-e", "HTTP_PROXY=", "-e", "http_proxy=", "c", "wget", "-q", "http://127.0.0.1/"])
         XCTAssertEqual(DockerCommands.containerExecInteractive(name: "c", argv: ["ls", "-l"]), ["exec", "-i", "c", "ls", "-l"])
         XCTAssertEqual(AppleContainerCommands.containerExecInteractive(name: "c", argv: ["ls"]), ["exec", "-i", "c", "ls"])
     }

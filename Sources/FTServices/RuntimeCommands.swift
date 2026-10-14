@@ -98,6 +98,10 @@ private enum RuntimeArgv {
         return lines.joined(separator: "\n")
     }
 
+    static func exec(name: String, argv: [String], clearing: [String]) -> [String] {
+        ["exec"] + clearing.flatMap { ["-e", "\($0)="] } + [name] + argv
+    }
+
     static func echoRun(plan: UDPCheckPlan, network: String, publish: Bool) -> [String] {
         var argv = ["run", "-d", "--name", plan.echoName, "--network", network]
         if publish {
@@ -152,7 +156,11 @@ public enum DockerCommands {
     public static func containerRemove(name: String, force: Bool = true) -> [String] {
         force ? ["rm", "-f", name] : ["rm", name]
     }
-    public static func containerExec(name: String, argv: [String]) -> [String] { ["exec", name] + argv }
+    /// healthcheck の exec。`clearing` の変数は空にして撃つ(コンテナに渡したプロキシの変数を healthcheck に効かせない =
+    /// `NO_PROXY` を読まないクライアント(busybox の wget)が 127.0.0.1 の検査をプロキシへ送って落ちる)
+    public static func containerExec(name: String, argv: [String], clearing: [String] = []) -> [String] {
+        RuntimeArgv.exec(name: name, argv: argv, clearing: clearing)
+    }
     /// 標準入力を子へ流す exec(スクリプトの中継コマンド用)。`-i` は両ランタイムが受ける。
     public static func containerExecInteractive(name: String, argv: [String]) -> [String] { ["exec", "-i", name] + argv }
     public static func containerLogs(name: String, tail: Int) -> [String] { ["logs", "--tail", String(tail), name] }
@@ -204,7 +212,11 @@ public enum AppleContainerCommands {
     public static func containerRemove(name: String, force: Bool = true) -> [String] {
         force ? ["rm", "-f", name] : ["rm", name]
     }
-    public static func containerExec(name: String, argv: [String]) -> [String] { ["exec", name] + argv }
+    /// healthcheck の exec。`clearing` の変数は空にして撃つ(コンテナに渡したプロキシの変数を healthcheck に効かせない =
+    /// `NO_PROXY` を読まないクライアント(busybox の wget)が 127.0.0.1 の検査をプロキシへ送って落ちる)
+    public static func containerExec(name: String, argv: [String], clearing: [String] = []) -> [String] {
+        RuntimeArgv.exec(name: name, argv: argv, clearing: clearing)
+    }
     /// 標準入力を子へ流す exec(スクリプトの中継コマンド用)。`-i` は両ランタイムが受ける。
     public static func containerExecInteractive(name: String, argv: [String]) -> [String] { ["exec", "-i", name] + argv }
     public static func containerLogs(name: String, tail: Int) -> [String] { ["logs", "-n", String(tail), name] }

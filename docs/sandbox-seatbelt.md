@@ -316,7 +316,10 @@ Seatbelt では名前で絞れないので(§2.5)、親がプロキシを起動�
 | `URLSession`(既定の設定) | 環境変数を読まないので、直接繋ごうとして拒否される |
 | `URLSession` + `connectionProxyDictionary` | 許可した宛先は 200(`trustd.agent` を開けてから。閉じたままだと -1202) |
 
-- 名前の照合は接続の前に行い、解決は親が行う。
+- 名前の照合は接続の前に行い、解決は親が行う。**解決したアドレスは検めてから数値アドレスへ繋ぐ**(`ProxyDestinationPolicy`:
+  loopback・未指定・リンクローカル・マルチキャスト・自機のアドレス・コンテナの内部サブネットを断る。許可した名前が
+  `127.0.0.1` を返す DNS rebinding で親の loopback = ブリッジ・adb・TCP の Docker API に届く穴を閉じる。許されたアドレスは
+  解決順に試す = 先頭の IPv6 に届かない機械で次の IPv4 へ倒れる。接続拒否は NWConnection では `.waiting` で来る)。
 - `*` 単独や途中のワイルドカードは受けない(「全部通す」を書けなくする)。
 - `*.example.com` は `example.com` 自身を含まない。接尾辞の一致は区切りを跨がせない
   (`evilcdn.example.net` を `*.cdn.example.net` に当てない)。

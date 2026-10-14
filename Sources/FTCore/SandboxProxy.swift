@@ -6,7 +6,8 @@
 // `URLSession` は環境変数のプロキシを読まない = シナリオ側で `connectionProxyDictionary` に渡す。
 //
 // 受けるのは `CONNECT host:port`(HTTPS)と絶対 URI の平文 HTTP(`GET http://host/…`)の2形。
-// 名前の照合は**接続の前**に行い、解決は親が行う(子に名前解決をさせない)。
+// 名前の照合は**接続の前**に行い、解決は親が行う(子に名前解決をさせない)。解決したアドレスは
+// `ProxyDestinationPolicy` で検めてから**数値アドレスへ**繋ぐ(許可した名前が loopback を返しても届かない)。
 import Foundation
 import Network
 
@@ -115,15 +116,33 @@ public final class SandboxProxy: @unchecked Sendable {
     public private(set) var port: UInt16 = 0
     private let listener: NWListener
     private let patterns: [String]
+    private let destinationPolicy: ProxyDestinationPolicy
+    private let bindAddress: String
     private let queue = DispatchQueue(label: "fleetest.sandbox-proxy", attributes: .concurrent)
 
     /// 要求ヘッダの上限(バイト)。これを超えても空行が来なければ断る(無限に溜めない)
     static let maxHeaderBytes = 64 * 1024
 
-    public init(allowedDomains: [String]) throws {
+    /// `bindAddress` は IPv4 の数値(数値でなければ throw)。コンテナ向けにゲートウェイの IP で待ち受けるときに渡す。
+    /// `bindPort` が 0 なら空きポート・0 以外ならその番号(取れなければ throw)。別のアドレスなら同じ番号を同時に待ち受けられる
+    public init(allowedDomains: [String], bindAddress: String = "127.0.0.1", bindPort: UInt16 = 0,
+                destinationPolicy: ProxyDestinationPolicy = .standard()) throws {
+        var probe = in_addr()
+        guard inet_pton(AF_INET, bindAddress, &probe) == 1, let local = IPv4Address(bindAddress) else {
+            throw POSIXError(.EINVAL)
+        }
         patterns = allowedDomains
+        self.bindAddress = bindAddress
+        self.destinationPolicy = destinationPolicy
         let parameters = NWParameters.tcp
-        parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: .any)
+        let wanted: NWEndpoint.Port
+        if bindPort == 0 {
+            wanted = .any
+        } else {
+            guard let fixed = NWEndpoint.Port(rawValue: bindPort) else { throw POSIXError(.EINVAL) }
+            wanted = fixed
+        }
+        parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(local), port: wanted)
         listener = try NWListener(using: parameters)
         let ready = DispatchSemaphore(value: 0)
         listener.stateUpdateHandler = { state in
@@ -146,7 +165,7 @@ public final class SandboxProxy: @unchecked Sendable {
 
     /// 子へ渡す環境変数(大文字と小文字の両方。読むクライアントで綴りが割れている)
     public var environment: [String: String] {
-        let url = "http://127.0.0.1:\(port)"
+        let url = "http://\(bindAddress):\(port)"
         return ["HTTP_PROXY": url, "HTTPS_PROXY": url, "http_proxy": url, "https_proxy": url,
                 "ALL_PROXY": url, "all_proxy": url, "NO_PROXY": "localhost,127.0.0.1,::1",
                 "no_proxy": "localhost,127.0.0.1,::1"]
@@ -185,7 +204,64 @@ public final class SandboxProxy: @unchecked Sendable {
         guard let port = NWEndpoint.Port(rawValue: target.port) else {
             return refuse(client, status: "400 Bad Request", message: "bad port")
         }
-        let upstream = NWConnection(host: NWEndpoint.Host(target.host), port: port, using: .tcp)
+        let host = target.host.hasPrefix("[") ? String(target.host.dropFirst().dropLast()) : target.host
+        if ProxyDestinationPolicy.parseAddress(host) != nil {
+            return connect(client, target: target, resolved: [host], port: port, raw: raw, bodyStart: bodyStart)
+        }
+        // getaddrinfo はブロックする → 並行キューの待受スレッドを塞がないよう別の queue で引く
+        DispatchQueue.global(qos: .utility).async { [self] in
+            let resolved = Self.resolve(host)
+            queue.async {
+                self.connect(client, target: target, resolved: resolved, port: port, raw: raw, bodyStart: bodyStart)
+            }
+        }
+    }
+
+    /// 名前を数値アドレス(解決順・重複なし)にする。引けなければ nil
+    static func resolve(_ host: String) -> [String]? {
+        var hints = addrinfo()
+        hints.ai_family = AF_UNSPEC
+        hints.ai_socktype = SOCK_STREAM
+        var head: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(host, nil, &hints, &head) == 0, let first = head else { return nil }
+        defer { freeaddrinfo(head) }
+        var result: [String] = []
+        var cursor: UnsafeMutablePointer<addrinfo>? = first
+        while let entry = cursor {
+            defer { cursor = entry.pointee.ai_next }
+            guard let address = entry.pointee.ai_addr else { continue }
+            var buffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            guard getnameinfo(address, entry.pointee.ai_addrlen, &buffer, socklen_t(buffer.count),
+                              nil, 0, NI_NUMERICHOST) == 0 else { continue }
+            var text = String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+            if let percent = text.firstIndex(of: "%") { text = String(text[..<percent]) }
+            if !result.contains(text) { result.append(text) }
+        }
+        return result.isEmpty ? nil : result
+    }
+
+    private func connect(_ client: NWConnection, target: (host: String, port: UInt16, isConnect: Bool),
+                         resolved: [String]?, port: NWEndpoint.Port, raw: Data, bodyStart: Data.Index) {
+        guard let resolved else {
+            return refuse(client, status: "502 Bad Gateway", message: "cannot resolve \(target.host)")
+        }
+        switch destinationPolicy.allowed(resolved: resolved) {
+        case .success(let candidates):
+            connectNext(client, target: target, candidates: candidates[...], port: port, raw: raw, bodyStart: bodyStart)
+        case .failure(let refusal):
+            refuse(client, status: "403 Forbidden",
+                   message: "\(target.host) resolves only to addresses the sandbox does not proxy (\(refusal.reason))")
+        }
+    }
+
+    /// 検めたアドレスを解決順に試す(先頭の IPv6 に届かない機械で次の IPv4 へ倒れる)。全部失敗したら 502
+    private func connectNext(_ client: NWConnection, target: (host: String, port: UInt16, isConnect: Bool),
+                             candidates: ArraySlice<String>, port: NWEndpoint.Port, raw: Data, bodyStart: Data.Index) {
+        guard let address = candidates.first else {
+            return refuse(client, status: "502 Bad Gateway", message: "cannot reach \(target.host)")
+        }
+        // ホスト名ではなく検めた数値アドレスへ繋ぐ(再解決させない)。CONNECT と平文の中身は書き換えない
+        let upstream = NWConnection(host: NWEndpoint.Host(address), port: port, using: .tcp)
         upstream.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
             switch state {
@@ -208,9 +284,11 @@ public final class SandboxProxy: @unchecked Sendable {
                         self.pipe(upstream, client)
                     })
                 }
-            case .failed, .cancelled:
+            // 接続拒否は `.waiting`(経路が変わるのを待つ)で来て `.failed` にならない = 待たずに次のアドレスへ
+            case .failed, .cancelled, .waiting:
                 upstream.stateUpdateHandler = nil
-                self.refuse(client, status: "502 Bad Gateway", message: "cannot reach \(target.host)")
+                upstream.cancel()
+                self.connectNext(client, target: target, candidates: candidates.dropFirst(), port: port, raw: raw, bodyStart: bodyStart)
             default: break
             }
         }
