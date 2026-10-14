@@ -2530,7 +2530,11 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   取得の再試行は置いていない = `services pull` で先に取る運用)②2 回目は中継イメージは通ったが `busybox` の pull が
   `docker-credential-osxkeychain: executable file not found in $PATH` で失敗 —— docker CLI は config.json の `credsStore` の
   ヘルパーを **PATH から** 起こし、ヘルパーは docker と同じ `~/.rd/bin` に居るが ssh 越しの非対話 PATH には無い → `RuntimeCLI` が
-  docker を起こすときは **docker の置き場を PATH の先頭に足す**(`pathWithExecutableDirectory`。子プロセスの非対話 PATH の補正の規律)。
+  docker を起こすときは **docker の置き場を PATH の先頭に足す**(`pathWithExecutableDirectory`。子プロセスの非対話 PATH の補正の規律)
+  ③3 回目はサービスが 5.5 s で上がった(pull 4.9 s)が、枠の中の setup.sh が `fleetest-services: command not found` ——
+  `remote align` がビルドする製品の一覧(`RemoteSetupPlan.alignRevisionCommand` = fleetest + 配信ヘルパー)に中継が無かった
+  (受け手の install.sh は `swift build` 全体なので届く)。名前の定義元を `ServiceGatewayWire.relayProductName` の 1 箇所にして一覧へ足し、
+  集合を等号で固定するテスト(`StreamHelperNamingTests`)を置いた。**ランナー機の実データはこの 3 つの穴を順に塞いで通した**(次の段落の実測)。
   **残り**: `services status` へのイメージ・ボリュームの大きさ(Apple の
   `image inspect` / `volume inspect` に大きさの欄が無い = 測り方を決めてから)・UDP の警告を赤へ上げる判断・M1Ultra での実データ
   (アラインは指示待ち)。**コンテナ → 外部の UDP** は設計どおり止まったまま(作らない)
