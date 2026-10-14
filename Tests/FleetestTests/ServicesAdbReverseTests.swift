@@ -12,24 +12,39 @@ final class ServicesAdbReverseTests: XCTestCase {
                        ["/adb", "-s", "14141JEC204922", "reverse", "--remove", "tcp:8090"])
     }
 
-    func testAddAllKeepsOnlySuccessfulEntriesAndWarnsForTheRest() {
+    /// 張れたものだけ控えに入る。張れず、転送の状態も読めないデバイス(不在・offline・通信断)は状態不明として起動を止める
+    func testAddAllRecordsSuccessesAndStopsOnDevicesWhoseStateCannotBeRead() throws {
         var calls: [[String]] = []
         var logs: [String] = []
-        let entries = ServicesAdbReverse.addAll(
+        let outcome = ServicesAdbReverse.addAll(
             serials: ["A", "B"], hostPorts: [8090, 9000], adb: "/adb",
             run: { argv in
                 calls.append(argv)
                 return argv[2] == "A" ? (0, "") : (1, "adb: device 'B' not found")
             },
             log: { logs.append($0) })
-        XCTAssertEqual(entries.entries, [.init(serial: "A", hostPort: 8090), .init(serial: "A", hostPort: 9000)])
-        XCTAssertEqual(entries.conflicts, [])
-        // デバイスごとに `--list` 1 回 + ポートごとに張る
-        XCTAssertEqual(calls.count, 6)
+        XCTAssertEqual(outcome.entries, [.init(serial: "A", hostPort: 8090), .init(serial: "A", hostPort: 9000)])
+        // A: list + 2 adds / B: list(失敗)+ ポートごとに add(失敗)+ list(失敗)
+        XCTAssertEqual(calls.count, 8, "\(calls)")
         XCTAssertEqual(calls[0], ["/adb", "-s", "A", "reverse", "--list"])
-        XCTAssertTrue(logs.contains { $0.contains("`adb -s B reverse --no-rebind tcp:8090 tcp:8090` failed (exit 1: adb: device 'B' not found)") }, "\(logs)")
-        XCTAssertTrue(logs.contains { $0.contains("cannot reach 127.0.0.1:8090") }, "\(logs)")
+        XCTAssertEqual(outcome.conflicts.count, 2)
+        for conflict in outcome.conflicts {
+            XCTAssertTrue(conflict.contains("device B: `adb reverse --no-rebind"), conflict)
+            XCTAssertTrue(conflict.contains("adb: device 'B' not found") && conflict.contains("could not be read"), conflict)
+        }
+        XCTAssertFalse(logs.contains { $0.contains("cannot reach") }, "確認できないものを「届かない」と言わない: \(logs)")
         XCTAssertTrue(logs.contains { $0 == "→ services: adb reverse set (A tcp:8090, A tcp:9000)" }, "\(logs)")
+    }
+
+    /// 張れなかったが、一覧で転送が無いと確認できた = 警告(その端末のアプリは届かない)で起動は止めない
+    func testAddFailureWithConfirmedAbsenceIsAWarning() {
+        var logs: [String] = []
+        let outcome = ServicesAdbReverse.addAll(
+            serials: ["A"], hostPorts: [8090], adb: "/adb",
+            run: { argv in argv.contains("--list") ? (0, "") : nil },
+            log: { logs.append($0) })
+        XCTAssertEqual(outcome, ServicesAdbReverse.Outcome())
+        XCTAssertTrue(logs.contains { $0.hasPrefix("⚠️") && $0.contains("the device has no forward for tcp:8090") && $0.contains("cannot reach 127.0.0.1:8090") }, "\(logs)")
     }
 
     /// 既にある転送は上書きしない(--no-rebind)。一覧が取れずに張って既存に当たり、照会し直しても宛先が分からなければ衝突
@@ -41,8 +56,8 @@ final class ServicesAdbReverseTests: XCTestCase {
         XCTAssertEqual(outcome.entries, [])
         XCTAssertEqual(outcome.conflicts.count, 1)
         let conflict = try XCTUnwrap(outcome.conflicts.first)
-        XCTAssertTrue(conflict.contains("device A already forwards tcp:8090 and its destination could not be confirmed"), conflict)
-        XCTAssertTrue(conflict.contains("`adb -s A reverse --remove tcp:8090`"), conflict)
+        XCTAssertTrue(conflict.contains("device A: `adb reverse --no-rebind tcp:8090 tcp:8090` failed") && conflict.contains("could not be read"), conflict)
+        XCTAssertTrue(conflict.contains("`adb -s A reverse --list`"), conflict)
         XCTAssertFalse(logs.contains { $0.contains("cannot reach") }, "宛先が分からないので届く・届かないは言わない: \(logs)")
     }
 

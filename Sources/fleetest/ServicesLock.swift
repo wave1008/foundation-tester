@@ -1,8 +1,8 @@
 // 接頭辞(ワークスペース)ごとの短い排他(docs/remote-runner.md §17「調停」)。
-// `<stateDir>/services.lock/<prefix>/` を mkdir(原子的)で取り、rmdir で放す。中の `owner` に pid と開始時刻。
+// `<stateDir>/services.lock/<prefix>.lock` を flock(LOCK_EX)で取る。持ち主が死ねばカーネルが外すので回収の処理が無く、
+// **他者の取得を消す操作が存在しない**(mkdir の「死んだ持ち主を照合 → パスで削除」は、照合と削除の間に別の取得が入ると
+// 他者のロックを消して 2 者が同時に本体へ入れた)。ファイルの中身(pid と開始時刻)は `services status` の表示用で、排他ではない。
 // 守るのはサービスの作成・片付けの区間だけ(秒単位)。run 全体の排他は dispatch.lock が持つ。
-// **生きている持ち主のロックを外す経路は置かない**(照合と削除が原子的でなく、取り直した別の持ち主のロックを消す)。
-// 死んだ持ち主と持ち主の記録が無い古いロックは `acquire` が回収する。
 
 import FTCore
 import Foundation
@@ -37,17 +37,12 @@ enum ServicesLock {
     }
 
     /// 取れないときの待ちの上限(秒)。根拠: 作成と片付けは数秒で終わる(§17 の実測: 起動 1〜3 秒)ので、
-    /// 30 秒を超えて握っているのは死んだ持ち主か刺さった片付け。
-    /// 尽きたとき = 持ち主の pid を言って止める。
+    /// 30 秒を超えて握っているのは刺さった持ち主(死んだ持ち主の分はカーネルが外している)。尽きたとき = 持ち主の pid を言って止める。
     static let acquireTimeoutSeconds: Double = 30
     static let pollSeconds: Double = 0.2
 
-    /// 持ち主の記録がまだ無いロック(mkdir と owner の書き込みの間)を「作り途中」とみなす猶予(秒)。
-    /// 根拠: 書き込みは mkdir の直後でマイクロ秒。これを超えて無いなら作った側が間で死んでいる。
-    static let ownerFileGraceSeconds: Double = 5
-
-    static func lockDirectory(prefix: String, stateDir: URL) -> URL {
-        stateDir.appendingPathComponent("services.lock").appendingPathComponent(prefix)
+    static func lockFile(prefix: String, stateDir: URL) -> URL {
+        stateDir.appendingPathComponent("services.lock").appendingPathComponent(prefix + ".lock")
     }
 
     static func withLock<T>(
@@ -56,86 +51,77 @@ enum ServicesLock {
         pidStartedAt: String? = nil,
         timeoutSeconds: Double = ServicesLock.acquireTimeoutSeconds,
         pollSeconds: Double = ServicesLock.pollSeconds,
-        isAlive: (Int32, String) -> Bool = ServicesProcessIdentity.isAlive,
         body: () throws -> T
     ) throws -> T {
-        let dir = lockDirectory(prefix: prefix, stateDir: stateDir)
+        let file = lockFile(prefix: prefix, stateDir: stateDir)
         let owner = Owner(pid: pid, pidStartedAt: pidStartedAt ?? ServicesProcessIdentity.startedAtText(pid: pid))
-        try acquire(dir: dir, owner: owner, timeoutSeconds: timeoutSeconds, pollSeconds: pollSeconds, isAlive: isAlive)
-        defer { release(dir: dir, owner: owner) }
+        let fd = try acquire(file: file, owner: owner, timeoutSeconds: timeoutSeconds, pollSeconds: pollSeconds)
+        defer { release(fd: fd) }
         return try body()
     }
 
-    /// 現在の持ち主(無ければ nil)。`services status` が使う。
+    /// 現在の持ち主(握られていなければ nil。握られているが持ち主がまだ書かれていない瞬間は pid 0)。`services status` が使う。
+    /// 判定は flock の状態(中身は表示用。持ち主が死んで中身が残っていても、握られていなければ nil)
     static func currentHolder(prefix: String, stateDir: URL) -> (pid: Int32, startedAt: String)? {
-        guard let owner = readOwner(lockDirectory(prefix: prefix, stateDir: stateDir)) else { return nil }
+        let file = lockFile(prefix: prefix, stateDir: stateDir)
+        let fd = open(file.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        if flock(fd, LOCK_EX | LOCK_NB) == 0 {
+            flock(fd, LOCK_UN)
+            return nil
+        }
+        guard let owner = readOwner(file) else { return (0, "") }
         return (owner.pid, owner.pidStartedAt)
     }
 
     // MARK: - 内部
 
-    private static func acquire(dir: URL, owner: Owner, timeoutSeconds: Double, pollSeconds: Double,
-                                isAlive: (Int32, String) -> Bool) throws {
-        let parent = dir.deletingLastPathComponent()
+    private static func acquire(file: URL, owner: Owner, timeoutSeconds: Double, pollSeconds: Double) throws -> Int32 {
+        let parent = file.deletingLastPathComponent()
         do {
             try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
         } catch {
             throw ServicesError(phase: .lock, detail: "cannot create \(parent.path): \(error.localizedDescription)")
         }
+        let fd = open(file.path, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o644)
+        guard fd >= 0 else {
+            throw ServicesError(phase: .lock, detail: "cannot open the lock \(file.path): \(String(cString: strerror(errno)))")
+        }
         let deadline = Date().addingTimeInterval(timeoutSeconds)
-        var lastHolder = "unknown"
         while true {
-            if mkdir(dir.path, 0o755) == 0 {
-                if let data = try? JSONEncoder().encode(owner),
-                   (try? data.write(to: ownerFile(dir), options: .atomic)) != nil {
-                    return
-                }
-                rmdir(dir.path)  // 持ち主を書けないロックは残さない
-                throw ServicesError(phase: .lock, detail: "cannot record the owner in \(dir.path)")
+            if flock(fd, LOCK_EX | LOCK_NB) == 0 {
+                writeOwner(owner, to: fd)
+                return fd
             }
-            if errno != EEXIST {
-                throw ServicesError(phase: .lock, detail: "cannot create the lock \(dir.path): \(String(cString: strerror(errno)))")
-            }
-            if let current = readOwner(dir) {
-                lastHolder = "pid \(current.pid)"
-                if !isAlive(current.pid, current.pidStartedAt) {
-                    reclaimIfStillOwnedBy(current, dir: dir)  // 回収したら次の周で mkdir を試す
-                    if !FileManager.default.fileExists(atPath: dir.path) { continue }
-                }
-            } else if lockAge(dir) > ownerFileGraceSeconds {
-                try? FileManager.default.removeItem(at: dir)
-                if !FileManager.default.fileExists(atPath: dir.path) { continue }
+            if errno != EWOULDBLOCK {
+                let reason = String(cString: strerror(errno))
+                close(fd)
+                throw ServicesError(phase: .lock, detail: "cannot lock \(file.path): \(reason)")
             }
             if Date() >= deadline {
-                throw ServicesError(phase: .lock, detail: "timed out after \(Int(timeoutSeconds))s waiting for the services lock held by \(lastHolder) (\(dir.path))")
+                let holder = readOwner(file).map { "pid \($0.pid)" } ?? "unknown"
+                close(fd)
+                throw ServicesError(phase: .lock, detail: "timed out after \(Int(timeoutSeconds))s waiting for the services lock held by \(holder) (\(file.path))")
             }
             Thread.sleep(forTimeInterval: pollSeconds)
         }
     }
 
-    /// 回収の直前にもう一度読み、同じ死んだ持ち主のままのときだけ消す(別の run が回収して取り直した直後のロックを消さない。
-    /// 読みと消しの間の窓は残る = 競合は mkdir を取れた側が勝つ)。
-    private static func reclaimIfStillOwnedBy(_ stale: Owner, dir: URL) {
-        guard let again = readOwner(dir), again.pid == stale.pid, again.pidStartedAt == stale.pidStartedAt else { return }
-        try? FileManager.default.removeItem(at: dir)
+    private static func release(fd: Int32) {
+        ftruncate(fd, 0)  // 持ち主の表示を消す(読み手は flock の状態を先に見るので、空でも判定は変わらない)
+        flock(fd, LOCK_UN)
+        close(fd)
     }
 
-    private static func release(dir: URL, owner: Owner) {
-        // 自分のロックだけを外す(回収されて他人が取り直した後に、他人のロックを消さない)
-        guard let current = readOwner(dir), current.pid == owner.pid, current.pidStartedAt == owner.pidStartedAt else { return }
-        try? FileManager.default.removeItem(at: dir)
+    private static func writeOwner(_ owner: Owner, to fd: Int32) {
+        guard let data = try? JSONEncoder().encode(owner) else { return }
+        ftruncate(fd, 0)
+        _ = data.withUnsafeBytes { pwrite(fd, $0.baseAddress, $0.count, 0) }
     }
 
-    private static func ownerFile(_ dir: URL) -> URL { dir.appendingPathComponent("owner") }
-
-    private static func readOwner(_ dir: URL) -> Owner? {
-        guard let data = FileManager.default.contents(atPath: ownerFile(dir).path) else { return nil }
+    private static func readOwner(_ file: URL) -> Owner? {
+        guard let data = FileManager.default.contents(atPath: file.path), !data.isEmpty else { return nil }
         return try? JSONDecoder().decode(Owner.self, from: data)
-    }
-
-    private static func lockAge(_ dir: URL) -> Double {
-        let attributes = try? FileManager.default.attributesOfItem(atPath: dir.path)
-        guard let created = attributes?[.creationDate] as? Date else { return 0 }
-        return Date().timeIntervalSince(created)
     }
 }

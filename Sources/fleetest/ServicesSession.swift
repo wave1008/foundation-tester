@@ -459,7 +459,7 @@ final class ServicesSession {
                                terminate: (Int32) -> Void = { _ = kill($0, SIGTERM) },
                                log: (String) -> Void) throws {
         struct Owner { let pid: Int32; let startedAt: String; let budget: Double }
-        let owners: [Owner] = try ServicesLock.withLock(prefix: prefix, stateDir: stateDir, isAlive: isAlive) {
+        let owners: [Owner] = try ServicesLock.withLock(prefix: prefix, stateDir: stateDir) {
             ServicesLeaseStore.entries(stateDir: stateDir, prefix: prefix).compactMap { entry in
                 guard let other = entry.lease, other.kind == .owner,
                       !ServicesLeaseFile.isOrphan(other, isAlive: isAlive) else { return nil }

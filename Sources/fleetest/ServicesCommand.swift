@@ -364,8 +364,12 @@ struct ServicesCommand: AsyncParsableCommand {
             ConsoleOut.out("prefix: \(target.prefix)")
 
             if let holder = ServicesLock.currentHolder(prefix: target.prefix, stateDir: target.stateDir) {
-                let alive = ServicesProcessIdentity.isAlive(pid: holder.pid, startedAt: holder.startedAt)
-                ConsoleOut.out("lock: held by pid \(holder.pid) (\(alive ? "running" : "not running"))")
+                if holder.pid == 0 {
+                    ConsoleOut.out("lock: held (the holder has not recorded itself yet)")
+                } else {
+                    let alive = ServicesProcessIdentity.isAlive(pid: holder.pid, startedAt: holder.startedAt)
+                    ConsoleOut.out("lock: held by pid \(holder.pid) (\(alive ? "running" : "not running"))")
+                }
             } else {
                 ConsoleOut.out("lock: free")
             }
