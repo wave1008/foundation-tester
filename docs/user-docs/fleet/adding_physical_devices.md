@@ -74,6 +74,10 @@ VS Code extension). It sits next to `appPath`, which is for the Simulator ([Prof
 If your app has a server address built in, remember that `127.0.0.1` on the device is the device itself. To reach a
 server running on your Mac, use a build with the Mac's LAN address built in.
 
+If the server is a service declared in `compose.yaml`, fleetest publishes it on the LAN address you set in
+`services.publishForPhysicalDevices` and, for an Android physical device, sets up `adb reverse` for each published TCP
+port. See [Services the app depends on](../reference/writing/services.md).
+
 ## Android
 
 ### 1. Prepare the Mac

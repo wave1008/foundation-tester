@@ -179,3 +179,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   使うのは呼び手が `fmAndVision: true` を渡したときだけ。切った run の応答には `fmAndVisionOffNote` を必ず添える
   (黙ると、見えていない文字の緑を検証済みと読まれる)。**MCP の注記・判定に OCR/FM を足すときもこの既定に従う**
   (`MCPFMAndVisionOffTests`)
+- **`ft_services` は本物の CLI(`swift run fleetest services up|down|status …`)を同期に起こす**(`MCPServer+Services.swift`。
+  `up` は上がるまで待つ CLI なので応答も待つ)。承認は `ft_start_run` と同列の ask(`ProjectScaffold.mcpAskPermissions`)。
+  **宛先の予約名(`serial` / `udid` / `port`)をツールの引数名に使わない** —— `toolAcceptsDeviceTarget` は props の名前で判定するので、
+  adb のシリアルの配列は `androidSerials`(`DeviceIndependentToolsIgnoreTargetTests` / `MCPServerToolDefinitionsTests` の集合が止める)

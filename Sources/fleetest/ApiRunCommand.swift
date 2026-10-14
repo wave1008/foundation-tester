@@ -524,7 +524,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             try ProfileRunner.rejectIfDevicesLeasedBeforePreparation(
                 resolved: resolved, leaseStateDir: hookStateDir)
             servicesSession = try ServicesSession.up(
-                resolved: resolved, stateDir: hookStateDir, interruptState: interruptState) { logStderr($0) }
+                resolved: resolved, stateDir: hookStateDir, options: .forRun(resolved), interruptState: interruptState) { logStderr($0) }
             hookSession = try RunHookRunner.begin(
                 resolved: resolved, stateDir: hookStateDir, services: servicesSession, interrupt: interruptState) { logStderr($0) }
         }
@@ -893,9 +893,12 @@ struct ApiRunCommand: AsyncParsableCommand {
             // に誤分類し、割り当て分の記録も0件になっていた)。
             // ここへ来るのは常にシナリオ実行が1本も始まる前(供給・レーン検査の throw だけ)なので、
             // total 分すべて未実行という分かっている事実だけを記録してから rethrow する
+            // setup.sh やサービスの起動の失敗 = サービスのログも証跡に残す(run の記録があるときだけ)
+            if let runDir = recorder?.runDir { servicesSession?.saveLogs(to: runDir) { logStderr($0) } }
             recorder?.finish(total: selected.count, passed: 0, failed: selected.count,
                              performanceMode: performanceMode, fmSettings: fmSettings,
                              setOverrides: profileOverrides.mapValues(\.token),
+                             servicesWarnings: servicesSession?.warnings ?? [],
                              abortReason: error.localizedDescription)
             // `--failed` が拾えるよう、始まらなかった分を直近失敗として残す(`run` の供給段は
             // ProfileRunner.run の defer が同じ記録を書く。**対象外は selected に既に居ない**)
@@ -915,6 +918,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         let validity = MeasurementValidity.verdict(
             performanceMode: performanceMode,
             degradedWorkers: outcome.degradedWorkers, blankExclusions: outcome.blankExclusions)
+        // 赤の run はサービスのログの末尾も記録へ(ProfileRunner.run と同じ。片付けの前に読む)
+        if outcome.failed > 0, let runDir = recorder?.runDir { servicesSession?.saveLogs(to: runDir) { logStderr($0) } }
         // fmSettings は上(do/catch より前)で計算済み —— 供給段の abort 記録もここを使うため
         let slowWorkers = recorder?.finish(total: selected.count, passed: outcome.passed, failed: outcome.failed,
                          degradedWorkers: outcome.degradedWorkers,
@@ -927,6 +932,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                          performanceMode: performanceMode,
                          fmSettings: fmSettings,
                          setOverrides: profileOverrides.mapValues(\.token),
+                         servicesWarnings: servicesSession?.warnings ?? [],
                          interrupted: outcome.interrupted) ?? []
         if !outcome.degradedWorkers.isEmpty {
             logStderr("⚠️ Degraded or dropped workers (\(outcome.degradedWorkers.count)):")

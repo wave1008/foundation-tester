@@ -75,6 +75,7 @@ these; naming a second device requires future calls to be explicit again.
 | `ft_capture_element` | Saves an element as a sample image of an image classifier and reports the training check (samples for `checkIsON` / `imageIs`; see [imageIs](../commands/image_assertion.md)) |
 | `ft_list_scenarios` / `ft_run_scenario` | List scenarios / run deterministically (auto-builds; compile errors are returned as-is). A class name as `id` runs every scenario of the class except `@Deleted`/`@Draft`, like `fleetest run`. `profile:` cannot be combined with `port`/`serial`/`platform`/`udid`. **Unlike `fleetest run` it does not run the profile's setup/teardown scripts, send the device home first, or record into `results/`** (use the CLI for a full run). It installs the app only on iOS with a `profile:` whose app has `autoInstall` (copied into the workspace, then installed when the installed copy is out of date); otherwise install it with `ft_install`. **A failure comes back as isError** with the failing step, the element list and screenshot at the moment of failure (first failed scenario only), and the report path. **By default it runs without Foundation Models and Vision** (no text visibility check, `screenLooksLike` steps skipped, `checkIsON` reads the tree only); pass `fmAndVision: true` to use them |
 | `ft_start_run` / `ft_run_status` / `ft_stop_run` | The real run, same as `fleetest run --profile`. `ft_start_run` starts it in the background and returns at once (`profile` required; `scenario` / `folder` are arrays; `failed`, `broadcast`, and `runner` to send this run to another machine — a registered machine name or `local`); `ft_run_status` returns progress and the result (runID, pass/fail, reports of failed scenarios, the tail of the log). Stop it with `ft_stop_run` (SIGTERM). Includes result history (`results/`), recordings and the setup/teardown scripts. It runs inside the MCP server, so agents whose shell is sandboxed (such as Codex by default) can use it too. One run at a time per server. **Like `ft_run_scenario`, it runs without Foundation Models and Vision unless `fmAndVision: true`** (it turns the four profile switches off with `--set`) |
+| `ft_services` | Starts, stops and inspects the services that `scripts/compose.yaml` declares, for exploring and live operation (the same as `fleetest services up` / `down` / `status`). `action`: `up` / `down` / `status`; `profile` (required for `up` / `down`); `project`; `physical`; `androidSerials` (an array of strings). Asks for approval like `ft_start_run` (see below). Details: [Services the app depends on](../writing/services.md) |
 | `ft_results` | The run-results history, same text as `fleetest results <query>` (no JSON). `query` is required: `list`, `summary`, `flaky`, `trend` (needs `scenario`), `devices`, `slow`, `insights` or `log` (a run's per-scenario execution log; `runId`, default `latest`). Optional: `since` (default `90d`; not for `log`), `scenario`, `limit` (`list` / `slow`), `minRuns` (`flaky`). Reads files only, so it works for agents whose shell is sandboxed (such as Codex by default) |
 | `ft_dry_run` | Device-free validation: fails (isError) on selector syntax errors; flags assertion-less expectations and unknown `#id`s as ⚠️ lines (warnings, not failures). For a scenario that declares no platform, `platform:` (default ios) picks the `ios { } / android { }` branch and the `#id` ledger |
 | `ft_list_projects` | List test projects and their run profiles |
@@ -115,23 +116,24 @@ calling agent (it already has a snapshot and operation primitives to explore wit
 
 The MCP server runs **outside** the agent's shell sandbox. Tools that build and run
 (`ft_list_scenarios`, `ft_dry_run`, `ft_run_scenario`, `ft_start_run`) execute the project's scenarios (`.swift`)
-as arbitrary Swift code (a dry run executes them too).
+as arbitrary Swift code (a dry run executes them too), and `ft_services` starts the containers the project declares
+in `scripts/compose.yaml`.
 
 - **Scenarios always run inside fleetest's sandbox (macOS Seatbelt)**, whether they are started from MCP, the CLI or
   the extension. Where a scenario can write, what it cannot read, where it can connect, and the settings for all of
   this (`sandbox` in this Mac's `~/.config/fleetest/config.json`) are in
   [Accessible folders and destinations](../../security/access.md). What the sandbox does not stop (services on
-  localhost, other devices' bridges, the setup / teardown scripts and so on) is in
+  localhost, other devices' bridges and so on) is in
   [Notes and limitations](../../security/limitations.md).
 - **Choose what to approve by what runs outside the sandbox.**
 
   | Tools that ask for approval | Convenience | What goes past a human |
   |---|---|---|
   | none | never interrupted | nothing (assumes a repository and app you trust) |
-  | `ft_start_run` (recommended) | once, when you ask for a test run | setup / teardown scripts, sending a run to another machine |
-  | `ft_list_scenarios`, `ft_dry_run`, `ft_run_scenario`, `ft_start_run` | asked at every compile and check while writing scenarios | every scenario execution |
+  | `ft_start_run`, `ft_services` (recommended) | once, when you ask for a test run or to start the services | starting and stopping services, setup / teardown scripts, sending a run to another machine |
+  | `ft_list_scenarios`, `ft_dry_run`, `ft_run_scenario`, `ft_start_run`, `ft_services` | asked at every compile and check while writing scenarios | every scenario execution |
 
-  For Claude Code, the installer writes "allow the fleetest tools (`mcp__fleetest`), ask only before `ft_start_run`
+  For Claude Code, the installer writes "allow the fleetest tools (`mcp__fleetest`), ask only before `ft_start_run` and `ft_services`
   (`ask`)" into the work folder's `.claude/settings.json` (the recommended shape; remove it from `ask` if you do not
   want the prompt, and later updates will not put it back). It also makes the fleetest clone read-only (reading is
   allowed, editing is denied); this is skipped when the work folder is inside the clone. In Auto mode, the AI decides
@@ -147,7 +149,7 @@ as arbitrary Swift code (a dry run executes them too).
   | Read-only (`readOnlyHint: true`) | `ft_status`, `ft_list_*`, `ft_snapshot`, `ft_screenshot`, `ft_logs`, `ft_results`, `ft_run_status`, `ft_dsl_commands`, `ft_doctor`, `ft_draft_scenario` |
   | Changes the device's screen or the app's state | taps, typing, swipes and other operations, `ft_launch`, `ft_terminate`, `ft_open_url`, `ft_batch`, `ft_capture_element` (writes a sample into the project) |
   | Cannot be undone (`destructiveHint: true`) | `ft_clear_app_data`, `ft_install`, `ft_stop_run` |
-  | Runs the project's code (`destructiveHint: true`, `openWorldHint: true`) | `ft_list_scenarios`, `ft_dry_run`, `ft_run_scenario`, `ft_start_run` |
+  | Runs the project's code (`destructiveHint: true`, `openWorldHint: true`) | `ft_list_scenarios`, `ft_dry_run`, `ft_run_scenario`, `ft_start_run`, `ft_services` |
 - **Check the contents of scenarios you receive from others before running them.** The sandbox protects this Mac,
   but it does not stop what [Notes and limitations](../../security/limitations.md) lists, nor operations on the app under test or its accounts
   (deleting, purchasing and so on).
@@ -159,6 +161,8 @@ as arbitrary Swift code (a dry run executes them too).
   no arbitrary command can be injected through the arguments. Values of `profile`, `runner`, `scenario` and `folder`
   that start with `-` are refused (`fleetest run` would read them as options, which could get around the `runner`
   restriction above).
+- `ft_services` works the same way: it passes checked arguments as an array to a fixed command (`fleetest services`),
+  and values of `profile`, `project` and `androidSerials` that start with `-` are refused.
 
 ## Structured output (opt-in)
 

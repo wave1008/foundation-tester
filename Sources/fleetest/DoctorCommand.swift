@@ -193,6 +193,18 @@ struct Doctor: AsyncParsableCommand {
 
         await reportUnmanagedBridges()
 
+        // Docker の管理口が TCP で LAN に出ていると、fleetest が起こすコンテナからホストのファイルをマウントできる
+        // (docs/remote-runner.md §17)。サービスの起動は断る側・ここは警告(サービスを使わない機械の doctor を赤にしない)
+        switch DockerTCPExposure.scan() {
+        case .clear: break
+        case .exposed(let listeners):
+            ConsoleOut.out("⚠️ Docker's API is published on TCP at \(DockerTCPExposure.describe(listeners)): containers started by"
+                + " fleetest could reach it and mount this Mac's files, so `fleetest services` refuses to start while it is so;"
+                + " \(DockerTCPExposure.remedy)")
+        case .unknown(let detail):
+            ConsoleOut.out("⚠️ Could not check whether Docker's API is published on TCP (\(detail))")
+        }
+
         // ランナーをビルドした Xcode/SDK と現在のものの一致確認。Xcode(beta)更新後に
         // 旧ビルドのランナーを使う・逆に新ビルドのランナーを旧ランタイムに載せると、アプリが
         // 実行中に「Application is not running」でクラッシュする(実害)。

@@ -257,6 +257,10 @@ public struct RunSummary: Sendable {
     /// 「デバイス/ワーカーの問題で赤くなった」と「利用者が止めた」を results insights が
     /// 混同しないため
     public let interrupted: Bool
+    /// サービス(scripts/compose.yaml)の起動時の警告(UDP の経路が応答しない・`adb reverse` が張れない 等。英語の文言そのまま)。
+    /// orchestrator 自身は知らないので常に空 —— 呼び手(ProfileRunner / ApiRunCommand)が `ServicesSession.warnings` で埋め、
+    /// RunMetaRecord.servicesWarnings へ焼き込む
+    public let servicesWarnings: [String]
 
     public init(total: Int, failed: Int, skipped: Int = 0, degradedWorkers: [String] = [],
                 freezeRetries: [String] = [],
@@ -266,7 +270,8 @@ public struct RunSummary: Sendable {
                 workerAnomalies: [WorkerAnomalyRecord] = [],
                 performanceMode: Bool = false,
                 fmSettings: FMSettingsRecord? = nil,
-                interrupted: Bool = false) {
+                interrupted: Bool = false,
+                servicesWarnings: [String] = []) {
         self.total = total
         self.failed = failed
         self.skipped = skipped
@@ -281,6 +286,7 @@ public struct RunSummary: Sendable {
         self.performanceMode = performanceMode
         self.fmSettings = fmSettings
         self.interrupted = interrupted
+        self.servicesWarnings = servicesWarnings
     }
 
     /// FM の呼び出しが**全部失敗した**か(呼び出しが1件も無いときは false = 使っていないだけ)

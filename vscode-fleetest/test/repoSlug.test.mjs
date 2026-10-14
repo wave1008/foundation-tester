@@ -38,6 +38,7 @@ const UPSTREAM_SLUGS = new Set([
   "grpc/grpc-swift",
   "grpc/grpc-swift-2",
   "grpc/grpc-swift-nio-transport",
+  "jpsim/Yams",
   "grpc/grpc-swift-protobuf",
   "microsoft/vscode-debugadapter-node",
   "react-native-community/cli",

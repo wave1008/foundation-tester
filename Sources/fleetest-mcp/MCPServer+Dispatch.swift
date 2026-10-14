@@ -881,6 +881,9 @@ extension MCPServer {
         case "ft_stop_run":
             return try stopRun(args)
 
+        case "ft_services":
+            return try ftServices(args)
+
         case "ft_results":
             return try await ftResults(args)
 

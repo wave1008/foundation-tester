@@ -16,7 +16,8 @@ import XCTest
 final class StreamingHelperAutoreleaseScanTests: XCTestCase {
 
     /// **画面を取り込み続ける**常駐ヘルパー。増やしたらここへ足す(等号照合なので漏れは落ちる)。
-    /// `fleetest-mcp` は入れない —— 常駐だが 1 リクエスト = 1 応答で、抜けない取り込みループを持たない
+    /// `fleetest-mcp` は入れない —— 常駐だが 1 リクエスト = 1 応答で、抜けない取り込みループを持たない。
+    /// `fleetest-services` も入れない —— スクリプトの中継(行区切り JSON の往復)で画像を作らない
     private static let capturingHelpers: Set<String> = [
         "fleetest-devicepoll",
         "fleetest-simstream",
@@ -43,7 +44,7 @@ final class StreamingHelperAutoreleaseScanTests: XCTestCase {
                       "固定している取り込みヘルパーが Sources に無い: "
                       + Self.capturingHelpers.subtracting(names).sorted().joined(separator: ", "))
         // 新しい `fleetest-*` が増えたら、取り込み系かどうかを人が判断してこの集合を更新する
-        XCTAssertEqual(names.subtracting(Self.capturingHelpers), ["fleetest-mcp"],
+        XCTAssertEqual(names.subtracting(Self.capturingHelpers), ["fleetest-mcp", "fleetest-services"],
                        "`Sources/fleetest-*` が増減した —— 取り込み系なら capturingHelpers へ足し、"
                        + "主ループを autoreleasepool で区切ること")
     }

@@ -123,6 +123,9 @@ struct RuntimeCmds: Sendable {
     }
     /// ラベルの読み取り用(JSON 全体。ラベルは再帰探索で拾う)。
     func imageInspectJSON(_ ref: String) -> [String] { ["image", "inspect", ref] }
+    func imageLoad(_ file: String) -> [String] {
+        isDocker ? DockerCommands.imageLoad(file: file) : AppleContainerCommands.imageLoad(file: file)
+    }
     func imagePull(_ ref: String) -> [String] {
         isDocker ? DockerCommands.imagePull(ref: ref) : AppleContainerCommands.imagePull(ref: ref)
     }

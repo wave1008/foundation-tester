@@ -84,7 +84,7 @@ FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 
 Codex asks for approval every time it calls an MCP tool (dozens of times while exploring screens,
 and non-interactive `codex exec` rejects them all). The recommended setting **lets calls through without approval
-but asks before the real run, `ft_start_run`** ):
+but asks before the real run, `ft_start_run`, and before starting services, `ft_services`** ):
 
 ```toml
 [mcp_servers.fleetest]
@@ -92,12 +92,15 @@ default_tools_approval_mode = "approve"
 
 [mcp_servers.fleetest.tools.ft_start_run]
 approval_mode = "prompt"
+
+[mcp_servers.fleetest.tools.ft_services]
+approval_mode = "prompt"
 ```
 
 Exploring screens and the checks while writing a scenario are not interrupted; you are asked once, when you ask for
-a test run. `ft_start_run` runs the run profile's setup / teardown scripts and can send the run to another machine
+a test run or to start services. `ft_start_run` runs the run profile's setup / teardown scripts and can send the run to another machine
 with `runner`. How to choose what to approve is in [MCP server](./mcp_server.md#sandbox-and-approval).
-Non-interactive `codex exec` refuses `prompt` tools, so remove that one table (`[mcp_servers.fleetest.tools.ft_start_run]`)
+Non-interactive `codex exec` refuses `prompt` tools, so remove those two tables (`[mcp_servers.fleetest.tools.ft_start_run]` and `[mcp_servers.fleetest.tools.ft_services]`)
 when you let `codex exec` run tests.
 
 > **Do not blindly append it.** TOML does not allow a table to be defined twice, so a second

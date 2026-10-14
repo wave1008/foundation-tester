@@ -25,9 +25,9 @@ final class ServicesReaperTests: XCTestCase {
         try? FileManager.default.removeItem(at: root)
     }
 
-    private func lease(pid: Int32, schema: Int = 1) -> ServicesLease {
+    private func lease(pid: Int32, schema: Int = 2, kind: ServicesLease.Kind = .run) -> ServicesLease {
         ServicesLease(
-            schemaVersion: schema, pid: pid, pidStartedAt: "2026-10-14T00:00:00Z", runtime: "docker",
+            schemaVersion: schema, pid: pid, pidStartedAt: "2026-10-14T00:00:00Z", kind: kind, runtime: "docker",
             endpoint: "/sock", prefix: prefix, generation: "g", workspace: "/ws", project: "p", profile: "r",
             containers: ["\(prefix)-db": "c1"], networks: [prefix: "n1"], phase: .running)
     }
@@ -156,6 +156,13 @@ final class ServicesReaperTests: XCTestCase {
         XCTAssertFalse(l.hasResources)
         l.relay = "r"
         XCTAssertTrue(l.hasResources)
+    }
+
+    func testTeardownBudgetUsesTheLongestDeclaredGrace() {
+        var l = lease(pid: 1)
+        XCTAssertEqual(ServicesTeardown.teardownBudgetSeconds(lease: l), 40, "default grace 10 + stop overhead 30")
+        l.stopGraceSeconds = ["\(prefix)-db": 25, "\(prefix)-api": 5]
+        XCTAssertEqual(ServicesTeardown.teardownBudgetSeconds(lease: l), 55)
     }
 }
 

@@ -1915,6 +1915,12 @@ apiserver は枠の外にあり、頼めば任意のマウント・特権・ホ�
   次の run / reap が片付ける。**引き取りの手順**(Codex レビュー2 2026-10-14 #6): run は排他の中で印を「引き取り中(新しい世代)」に書き換え、
   **排他を外して旧所有者の終了を待ち**(旧所有者も同じ排他で片付けるので、握ったまま待つと待ち合う)、終わったら再取得して
   世代を確かめてから作る。旧所有者は**自分の世代の資源 ID だけ**を片付ける(新しい世代のコンテナや reverse を消さない)。
+  **実装(⑤)は印の書き換えを持たない**: 所有者は常駐プロセスなので印の生存は pid で判定でき、合図は SIGTERM そのもの
+  (`ServicesSession.takeOverOwners` = 排他の中で生きている所有者の控えを見つけて SIGTERM → **排他を外して**所有者の終了を待つ
+  (上限は所有者の控えの `stopGraceSeconds` から導く `ServicesTeardown.teardownBudgetSeconds`。尽きたら pid を言って止める)→
+  取り直して `claimPrefix`)。所有者は自分の控えの ID だけを消して控えを消すので、終わった後に run が同じ名前で作れる。
+  片付けに失敗して残った控えは孤児として `claimPrefix` が ID で拾う。控えの `kind`(`run` / `owner`)で `down` / `reset` の
+  断りの文言と対処(run は待つ・owner は `services down`)を分ける
   **排他の回収**(Codex レビュー2 2026-10-14 #8): `services.lock` は PID と開始時刻を持ち、`LocalDispatchLock` と同じ `isAliveAndNotStartedAfter` で
   死んだ持ち主のものだけ回収する。**読めない控え(壊れた JSON)は残して「不明」と報告し、その接頭辞の新しい起動を止める**
   (資源を特定できないまま作ると二重になる)。人の入口は `services reset --force`(接頭辞で列挙した全部を消す)
@@ -2489,9 +2495,38 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   未指定・リンクローカル・マルチキャスト・自機のアドレス・内部ネットワークのサブネットを断る。許されたアドレスは解決順に試す =
   先頭の IPv6 に届かない機械で次の IPv4 へ倒れる。接続拒否は NWConnection では `.waiting` で来るので失敗として次へ)。
   これで docs/open-issues.md の「名前のまま接続する」穴は閉じた(シナリオ・スクリプトの loopback のプロキシにも同じ規則)
-- **未実装(⑤)**: `services up` / `down` と常駐の所有者・`adb reverse`・失敗時のログの保存・結果の記録への注記・MCP の `ft_services`・
-  拡張の雛形(compose.yaml・新しい規則のコメント)・利用者向け docs・sut-ec-mobile のワークスペースの移行(今の setup.sh は
-  ホストでサーバーを起こすので枠の中では動かない)。**コンテナ → 外部の UDP** は設計どおり止まったまま(作らない)
+- **⑤(人の入口・MCP・雛形・docs・小物)も実装済み**: `fleetest services up` は常駐の所有者 `fleetest api services-owner` を起こし
+  (fm-serve と同型: stdin は /dev/null・`FT_PARENT_PID` を消す・出力は `.fleetest/services/<接頭辞>.log`)、所有者が
+  `ServicesSession.up(kind: .owner)` → 控え(`kind = owner`・schema 2・`stopGraceSeconds`)を持ったまま SIGTERM を待ち → `down`。
+  CLI の `up` は**所有者が書く控えの `running`** か所有者の終了で決着し(待ちに期限は置かない)、公開ポートと reverse を印字する。
+  `services down` は排他の中で「run の控えが生きていれば断る・所有者なら SIGTERM・孤児なら回収」を決めてから**排他の外で**所有者の
+  終了を待つ(上限は `ServicesTeardown.teardownBudgetSeconds`)。run の引き取りは `takeOverOwners`(上の「調停」の実装の注記)。
+  `up --physical` で LAN 公開・`--serial` で Android 実機への `adb reverse`(run はプロファイルの Android 実機に自動 =
+  `ServicesUpOptions.forRun`。TCP の公開ポートごと・控えの `adbReverse` で解除・資源ではないので解除の失敗で控えを残さない)。
+  MCP は `ft_services`(`action` / `profile` / `project` / `physical` / `androidSerials`。`swift run fleetest services …` を同期に起こす。
+  承認は `ft_start_run` と同列の ask = `ProjectScaffold.mcpAskPermissions`。宛先の予約名 `serial` を引数名に使わない)。
+  拡張の雛形は compose.yaml を足し setup / teardown のコメントを枠の規則に書き換えた。失敗の証跡: setup.sh の失敗と赤の run の後に
+  各サービスのログの末尾(`ServicePolicy.maxLogLines` 行)を `results/runs/<月>/<runID>/services/<service>.log` へ(`saveLogs`)。
+  run.json に `servicesWarnings`(UDP の経路・adb reverse の警告。`RunSummary.servicesWarnings` → `RunRecorder.finish` の必須引数)。
+  `doctor` は Docker の管理口(2375 / 2376)の非ループバック LISTEN を警告し、サービスの起動は断る(`DockerTCPExposure`。lsof の
+  exit 1 + 空出力だけを「無い」と読む)。`preflight.sh` は docker / container の有無を情報として出す(無くても ready)。
+  `services pull [--refresh]`(先行取得。中継のイメージの初回ビルドも)と `services load <tar>`(閉じたネットワーク)。
+  利用者向け docs は reference/writing/services(新設・en/ja)と extending / mcp_server / other_agents / agent_guide / security の
+  sandbox・limitations / fleet の adding_physical_devices。**sut-ec-mobile のワークスペースは compose.yaml へ移行**(db = postgres:16・
+  server = clone からの `build:`。teardown.sh は削除・setup.sh は公開ポートへの到達の確認だけ。ビルド元はマシン側 `services.buildSources`)。
+  **実データ(2026-10-15・Apple Container)**: `up` 3.2 s(起動 2.1 s)→ `status` → 2 回目の `up` は「already up」→ 1 シナリオの run が
+  所有者を引き取り(警告 → 所有者 1.5 s で片付け → run が 3.0 s で起こし直し → 緑 → 1.3 s で片付け)→ 生きている run の控えがある間の
+  `down` / `reset` / `up` は断られ、死んだ run の控えは `down` が回収 → `up --serial 14141JEC204922` で Pixel 4a に `tcp:18080` の reverse が
+  張られ `down` で消えた(`adb reverse --list` で確認)。**sut-ec-mobile(db = postgres:16 + server = clone からの build)**: 1 回目は
+  **Apple Container のビルダー VM の既定(2 CPU / 2048 MB)で Gradle が ResourceExhausted(ビルドデーモン消失)**= 25 分無出力の末に失敗 →
+  `container builder stop && container builder start --cpus 6 --memory 8g` で起こし直すと build 123.9 s・start 1.6 s・ready 5.5 s で上がり、
+  枠の中の setup.sh が `/health`(`{"status":"ok","db":"up"}`)を読めた → 1 シナリオの run が引き取り(build は指紋で skip・7.3 s で起こし直し)→
+  緑 → 5.5 s で片付け。ビルダーの資源は fleetest が変えない(利用者向け docs に注記。`services status` / 起動時にビルダーの資源を言う案は
+  未実装)。**変異チェック**: 新テスト 25 件中 24 検出・生き残り 1 件(空の入力の guard)はテストを境界へ寄せて再検出。
+  **MCP の入口のテストは実在しないプロジェクト名を添える**(入口の検査が抜けると本物の `swift run fleetest services` を起こし、
+  `swift test` のビルドロックと待ち合って止まる = 変異チェックで実際に 30 分止まった)。**残り**: `services status` へのイメージ・ボリュームの大きさ(Apple の
+  `image inspect` / `volume inspect` に大きさの欄が無い = 測り方を決めてから)・UDP の警告を赤へ上げる判断・M1Ultra での実データ
+  (アラインは指示待ち)。**コンテナ → 外部の UDP** は設計どおり止まったまま(作らない)
 - **②で実測して分かったこと**: Apple の名前付きボリュームの既定は **512 GiB のスパースなイメージ**(`-s` は付けない)/
   `container build` と `run` は `--label` を、`run` は `--init` も受ける(1.1.0 の help)/ **run の親を `kill -9` しても孤児は
   生まれない**(サービスを持つのは `[local]` の子 run で、親の死を `ParentDeathWatch` で見て自分で片付ける)。**控えの持ち主の

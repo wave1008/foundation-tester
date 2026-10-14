@@ -31,6 +31,8 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
         // run の起動・状態・停止。宛先は実行プロファイルが決める(profile は run の入力で、デバイス選択ではない)
         "ft_start_run": ["profile"], "ft_run_status": [], "ft_stop_run": [],
         "ft_results": [],
+        // サービスの起動・停止。profile は run と同じ入力で、宛先の選択ではない(adb のシリアルは `androidSerials` = 予約名を避ける)
+        "ft_services": ["profile"],
         "ft_logs": ["platform", "serial", "port", "udid"],
     ]
 

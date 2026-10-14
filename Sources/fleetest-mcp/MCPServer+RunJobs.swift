@@ -532,7 +532,7 @@ extension MCPServer {
     }
 
     /// 省略 = false の真偽値引数(型違いは `booleanArgumentTypeError`)
-    private static func flagArgument(_ args: [String: Any], _ key: String) throws -> Bool {
+    static func flagArgument(_ args: [String: Any], _ key: String) throws -> Bool {
         guard let raw = args[key] else { return false }
         guard isJSONBoolean(raw), let value = raw as? Bool else {
             throw MCPError(booleanArgumentTypeError(key: key, raw: raw))

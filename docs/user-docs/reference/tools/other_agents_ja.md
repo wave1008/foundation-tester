@@ -80,7 +80,7 @@ FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 ```
 
 Codex は MCP のツールを呼ぶたびに承認を求めます(画面の探索では数十回になり、非対話の
-`codex exec` では全部拒否されます)。おすすめは、**全体は承認なしで通し、本番の実行 `ft_start_run` だけ
+`codex exec` では全部拒否されます)。おすすめは、**全体は承認なしで通し、本番の実行 `ft_start_run` と、サービスを起こす `ft_services` だけ
 承認を求める**設定です):
 
 ```toml
@@ -89,13 +89,16 @@ default_tools_approval_mode = "approve"
 
 [mcp_servers.fleetest.tools.ft_start_run]
 approval_mode = "prompt"
+
+[mcp_servers.fleetest.tools.ft_services]
+approval_mode = "prompt"
 ```
 
-画面の探索やシナリオ作成中の確認は止まらず、テストの実行を指示したときにだけ1回聞かれます。
+画面の探索やシナリオ作成中の確認は止まらず、テストの実行やサービスの起動を指示したときにだけ聞かれます。
 `ft_start_run` は実行プロファイルの setup / teardown スクリプトを動かし、`runner` で別の機械へ送ることも
 できるためです。承認を求める範囲の選び方は [MCP サーバ](./mcp_server_ja.md#サンドボックスと承認)にあります。
 非対話の `codex exec` では `prompt` のツールは断られるので、`codex exec` で実行まで任せるときは
-この1つ(`[mcp_servers.fleetest.tools.ft_start_run]`)を外します。
+この2つ(`[mcp_servers.fleetest.tools.ft_start_run]` と `[mcp_servers.fleetest.tools.ft_services]`)を外します。
 
 > **そのまま追記しないでください。** TOML は同じテーブルの重複を許さないので、
 > `[mcp_servers.fleetest]` が2つになると**設定ファイル全体が無効**になります。既にある場合は

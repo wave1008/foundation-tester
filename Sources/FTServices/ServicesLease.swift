@@ -41,13 +41,20 @@ public struct ServicesLease: Codable, Sendable, Equatable {
         case starting, running, tearingDown
     }
 
+    /// 誰が握っているか。`run` = run の親プロセス(終わると自分で片付ける)、`owner` = `fleetest services up` が起こした
+    /// 常駐の所有者(`services down` か run の引き取りの SIGTERM で片付ける)。生存判定はどちらも pid で同じ。
+    public enum Kind: String, Codable, Sendable, Equatable {
+        case run, owner
+    }
+
     /// 欄を変えたら +1。読み替えは置かない(読めない控えは「不明」として残す)。
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public var schemaVersion: Int
     public var pid: Int32
     /// ISO8601(秒精度)。
     public var pidStartedAt: String
+    public var kind: Kind
     public var runtime: String
     /// docker の unix ソケットの実体パス、または "apple"。
     public var endpoint: String
@@ -66,19 +73,24 @@ public struct ServicesLease: Codable, Sendable, Equatable {
     public var adbReverse: [AdbReverseEntry]
     public var secretNames: [String]
     public var childProcesses: [ChildProcess]
+    /// コンテナ名 → 宣言した `stop_grace_period`(秒)。無いコンテナは片付け側の既定。控えからの回収(孤児・引き取り・down)が
+    /// 宣言を読み直さずに同じ猶予で止めるために持つ。
+    public var stopGraceSeconds: [String: Int]
     public var phase: Phase
 
     public init(
-        schemaVersion: Int = ServicesLease.currentSchemaVersion, pid: Int32, pidStartedAt: String,
+        schemaVersion: Int = ServicesLease.currentSchemaVersion, pid: Int32, pidStartedAt: String, kind: Kind,
         runtime: String, endpoint: String, prefix: String, generation: String, workspace: String,
         project: String, profile: String, approvedServices: [String] = [],
         containers: [String: String] = [:], networks: [String: String] = [:], relay: String? = nil,
         udpCheck: String? = nil, publishedPorts: [PublishedPort] = [], adbReverse: [AdbReverseEntry] = [],
-        secretNames: [String] = [], childProcesses: [ChildProcess] = [], phase: Phase = .starting
+        secretNames: [String] = [], childProcesses: [ChildProcess] = [], stopGraceSeconds: [String: Int] = [:],
+        phase: Phase = .starting
     ) {
         self.schemaVersion = schemaVersion
         self.pid = pid
         self.pidStartedAt = pidStartedAt
+        self.kind = kind
         self.runtime = runtime
         self.endpoint = endpoint
         self.prefix = prefix
@@ -95,7 +107,16 @@ public struct ServicesLease: Codable, Sendable, Equatable {
         self.adbReverse = adbReverse
         self.secretNames = secretNames
         self.childProcesses = childProcesses
+        self.stopGraceSeconds = stopGraceSeconds
         self.phase = phase
+    }
+
+    /// 文言用: 誰が握っているか(run と `services up` で利用者の対処が違う)。
+    public var holderDescription: String {
+        switch kind {
+        case .run: return "run pid \(pid)"
+        case .owner: return "`fleetest services up` (pid \(pid))"
+        }
     }
 }
 

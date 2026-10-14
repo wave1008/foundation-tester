@@ -55,7 +55,7 @@ final class ScenarioHostRunnerUnavailableTests: XCTestCase {
         }
         recorder.finish(total: 1, passed: passed ? 1 : 0, failed: passed ? 0 : 1,
                         performanceMode: false,
-                        fmSettings: testFMSettings, setOverrides: nil)
+                        fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
         return (passed, RunResultsStore.records(runDir: recorder.runDir), sink.events)
     }
 

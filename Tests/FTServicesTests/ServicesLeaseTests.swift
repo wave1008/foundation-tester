@@ -4,21 +4,35 @@ import XCTest
 final class ServicesLeaseTests: XCTestCase {
     private func lease(pid: Int32 = 4242) -> ServicesLease {
         ServicesLease(
-            pid: pid, pidStartedAt: "2026-10-14T01:02:03Z", runtime: "docker", endpoint: "/var/run/docker.sock",
+            pid: pid, pidStartedAt: "2026-10-14T01:02:03Z", kind: .run, runtime: "docker", endpoint: "/var/run/docker.sock",
             prefix: "fleetest-0123456789ab", generation: "g1", workspace: "/ws", project: "demo", profile: "run1",
             approvedServices: ["db", "api"], containers: ["fleetest-0123456789ab-db": "c1"],
             networks: ["fleetest-0123456789ab": "n1"], relay: "fleetest-0123456789ab-relay", udpCheck: nil,
             publishedPorts: [.init(hostIP: "127.0.0.1", hostPort: 15432, proto: "tcp", service: "db")],
             adbReverse: [.init(serial: "emulator-5554", hostPort: 15432)], secretNames: ["TOKEN"],
-            childProcesses: [.init(pid: 99, startedAt: "2026-10-14T01:02:04Z")], phase: .running)
+            childProcesses: [.init(pid: 99, startedAt: "2026-10-14T01:02:04Z")],
+            stopGraceSeconds: ["fleetest-0123456789ab-db": 25], phase: .running)
     }
 
     func testRoundTrip() throws {
         let original = lease()
         let raw = try XCTUnwrap(ServicesLeaseFile.encode(original))
         XCTAssertEqual(ServicesLeaseFile.decode(raw), original)
-        XCTAssertEqual(original.schemaVersion, 1)
+        XCTAssertEqual(original.schemaVersion, 2)
         XCTAssertNil(ServicesLeaseFile.decode("{}"))
+        // 旧版(kind の無い v1)は読まない = 読み替えを置かない
+        let v1 = raw.replacingOccurrences(of: "\"kind\":\"run\",", with: "")
+        XCTAssertNil(ServicesLeaseFile.decode(v1))
+    }
+
+    func testKindRoundTripAndHolderDescription() throws {
+        var owner = lease()
+        owner.kind = .owner
+        let raw = try XCTUnwrap(ServicesLeaseFile.encode(owner))
+        XCTAssertTrue(raw.contains("\"kind\":\"owner\""))
+        XCTAssertEqual(ServicesLeaseFile.decode(raw)?.kind, .owner)
+        XCTAssertEqual(owner.holderDescription, "`fleetest services up` (pid 4242)")
+        XCTAssertEqual(lease().holderDescription, "run pid 4242")
     }
 
     func testFileNameBuildAndParse() {

@@ -13,7 +13,7 @@ The sandbox exists to protect this Mac. It does not stop the following.
 | Bridges of other devices | Bridges of other devices on the same Mac are reachable too, so a scenario can read and drive other devices' screens |
 | Exfiltration through the device | Contents of files a scenario could read can be sent to the device as input to the app. Nothing stops the app from sending it out |
 | Reading secrets that are not in the list | The read denial is a list of the usual places and is not exhaustive. Add places to `sandbox.denyRead` |
-| What runs outside the sandbox | fleetest itself, evaluating `Package.swift` and building dependencies, `setup.sh` / `teardown.sh`, the app under test |
+| What runs outside the sandbox | fleetest itself, evaluating `Package.swift` and building dependencies, the containers of the compose.yaml services, the app under test |
 
 **On a Mac that runs untrusted scenarios, do not leave the following running.**
 
@@ -21,6 +21,9 @@ The sandbox exists to protect this Mac. It does not stop the following.
   and so on): a scenario can run code outside the sandbox
 - Local proxies (traffic analysis tools, corporate proxy agents, SSH port forwarding, and so on): a scenario can
   bypass `allowedDomains` and reach any destination
+- Docker's API published on TCP (`0.0.0.0:2375` / `2376`): the containers started for a run's services
+  ([compose.yaml](../reference/writing/services.md)) could reach it and mount this Mac's files. fleetest refuses to
+  start services while it is so, and `fleetest doctor` warns
 
 ## What scenarios cannot do
 
@@ -47,7 +50,7 @@ The sandbox exists to protect this Mac. It does not stop the following.
 - **`sandbox.disabled` is for temporarily isolating a cause.** If a scenario works without the sandbox, it is doing
   something the sandbox refuses; rewrite it with the "Instead" column above and restore the setting.
 - **Runs from MCP go through approval.** In Claude Code, the installer writes settings that ask for confirmation only
-  for `ft_start_run` (the full run, including the scripts before and after it). How to choose the approval scope is in
+  for `ft_start_run` (the full run, including the scripts before and after it) and `ft_services` (starting the services). How to choose the approval scope is in
   [MCP server](../reference/tools/mcp_server.md).
 - **macOS updates can change the behavior.** The `sandbox-exec` fleetest uses is marked deprecated by Apple, and its
   syntax is not officially documented. If scenarios start failing with permission errors after a macOS update,

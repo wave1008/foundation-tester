@@ -118,6 +118,7 @@ background and returns at once; follow progress and the result with `ft_run_stat
 with `fleetest run` in the shell or similar; tell the user the run needs their approval (the approval setting is the
 safety line the user chose).
 It runs inside the MCP server, so it also works for agents whose shell is sandboxed.
+To have the services the app depends on (`compose.yaml`) up for exploring or live operation, use `ft_services` (`up`, use them, then `down`). `ft_start_run` starts them again itself, so leaving them `up` is fine.
 
 | Request | Tool (arguments) |
 |---|---|

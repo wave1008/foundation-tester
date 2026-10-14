@@ -127,7 +127,7 @@ public struct RunMetaRecord: Codable, Sendable {
         case measurementInvalid, measurementInvalidReasons, workerAnomalies, issuer, runGroup
         case performanceMode, fmDead, fmDeadReason
         case guarded, guardSkipped, guardStaleFrame, fmSettings, setOverrides
-        case interrupted, abortReason, slowWorkers
+        case interrupted, abortReason, slowWorkers, servicesWarnings
     }
 
     public init(from decoder: Decoder) throws {
@@ -165,6 +165,7 @@ public struct RunMetaRecord: Codable, Sendable {
         interrupted = try c.decodeIfPresent(Bool.self, forKey: .interrupted)
         abortReason = try c.decodeIfPresent(String.self, forKey: .abortReason)
         slowWorkers = try c.decodeIfPresent([String].self, forKey: .slowWorkers)
+        servicesWarnings = try c.decodeIfPresent([String].self, forKey: .servicesWarnings)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -202,6 +203,7 @@ public struct RunMetaRecord: Codable, Sendable {
         try c.encodeIfPresent(interrupted, forKey: .interrupted)
         try c.encodeIfPresent(abortReason, forKey: .abortReason)
         try c.encodeIfPresent(slowWorkers, forKey: .slowWorkers)
+        try c.encodeIfPresent(servicesWarnings, forKey: .servicesWarnings)
     }
 
     public var schemaVersion: Int
@@ -305,6 +307,9 @@ public struct RunMetaRecord: Codable, Sendable {
     /// この欄だけが痕跡になる。空/未観測は nil(degradedWorkers と同じ規律)。
     /// **他ワーカーが居ない(1台の)runでは常に nil**(相対比較ができない)
     public var slowWorkers: [String]?
+    /// サービス(scripts/compose.yaml)の起動時の警告(英語の文言そのまま。UDP の経路・`adb reverse`)。合否は変えない。
+    /// 無ければ省略(docs/results-json.md)
+    public var servicesWarnings: [String]?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
                 profile: String?, host: String, toolchain: String? = nil, trigger: String, startedAt: String,
@@ -321,7 +326,8 @@ public struct RunMetaRecord: Codable, Sendable {
                 fmSettings: FMSettingsRecord? = nil,
                 setOverrides: [String: String]? = nil,
                 interrupted: Bool? = nil, abortReason: String? = nil,
-                slowWorkers: [String]? = nil) {
+                slowWorkers: [String]? = nil,
+                servicesWarnings: [String]? = nil) {
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.project = project
@@ -355,6 +361,7 @@ public struct RunMetaRecord: Codable, Sendable {
         self.interrupted = interrupted
         self.abortReason = abortReason
         self.slowWorkers = slowWorkers
+        self.servicesWarnings = servicesWarnings
     }
 }
 

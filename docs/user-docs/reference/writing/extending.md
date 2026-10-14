@@ -11,7 +11,7 @@ itself. There are five main ways to do it. All of them are written in scenarios 
 | Run something the DSL has no command for, as one step | `procedure { }` | [Descriptors](../commands/descriptors.md) |
 | Use test data or talk to external servers | `account()` / `data()` / `dataFile()` / `httpRequest` | [Test data and accounts](../commands/dataset.md), [HTTP request](../commands/http_request.md) |
 | Use a library or share common code | Add a dependency to `Package.swift` | [Creating a test project](../project/creating_project.md) |
-| Prepare a database or stub server around a run | Start/end scripts | [Running scripts before and after a run](#running-scripts-before-and-after-a-run) on this page |
+| Prepare a database or stub server around a run | `compose.yaml` and start/end scripts | [Services the app depends on](services.md) and [Running scripts before and after a run](#running-scripts-before-and-after-a-run) on this page |
 
 ## 1. Bundle steps into functions
 
@@ -103,8 +103,9 @@ Building the added dependencies (including macros and build plugins) runs outsid
 
 ## Running scripts before and after a run
 
-To start a database or stub server that the app under test depends on before a run, and clean it up afterwards,
-put scripts in the test project's workspace.
+To prepare data around a run (load a seed, call a setup API) and clean it up afterwards, put scripts in the test
+project's workspace. **Servers, databases and stubs are not started by a script**: declare them in
+`scripts/compose.yaml` ([Services the app depends on](services.md)).
 
 | File | When it runs |
 |---|---|
@@ -113,19 +114,28 @@ put scripts in the test project's workspace.
 
 - **If the file is there, it runs** (there is nothing to set in a profile). If it is not, nothing happens.
 - **If `setup.sh` exits with a non-zero status, the run stops** (no scenario runs). `teardown.sh` still runs in that
-  case. A failing `teardown.sh` only produces a warning; it does not turn the result red.
+  case, always after the run. A failing `teardown.sh` only produces a warning; its exit code does not change the result.
 - Without the execute permission the script is started with `/bin/sh`. With it, the shebang is honoured (you can write
   it in Python, for example).
 - There is no timeout. Each time the script produces no output for more than 60 seconds, a one-line warning is printed.
-- The script receives the environment variables `FT_HOOK` (`setup` / `teardown`), `FT_WORKSPACE`, `FT_PROJECT`,
-  `FT_PROFILE`, `FT_REPORT_DIR`, `FT_IOS_DEVICES` and `FT_ANDROID_DEVICES` (device names separated by spaces). The
-  variables are set even when they have no value. The Emulator's adb serial and the Simulator's UDID are not passed
-  (call `adb devices` and the like yourself if you need them).
+- **The scripts run inside a sandbox (Seatbelt).**
+  - They can write only inside `<workspace>/data/` (plus the paths in `"hooks": {"writablePaths": [...]}` in this Mac's
+    settings). Use `$TMPDIR` for temporary files; it is private to the script and removed after the run.
+  - They cannot read secrets such as `~/.ssh`.
+  - They can connect only to the ports published by compose.yaml (`127.0.0.1:<port>`) and, through the proxy, to
+    `sandbox.allowedDomains`. They cannot reach the bridges, adb or Docker.
+  - **Do not start a server, database or stub from a script** (`docker` / `container` cannot be used). Declare it in
+    compose.yaml. To operate inside a container, use `fleetest-services`
+    ([Services the app depends on](services.md#operating-the-containers-from-the-scripts)).
+  - A process left in the background is stopped after the run.
+  - For an Android physical device, fleetest sets up `adb reverse` itself.
+- The scripts receive the environment variables `FT_HOOK` (`setup` / `teardown`), `FT_WORKSPACE`, `FT_PROJECT`,
+  `FT_PROFILE`, `FT_MACHINE`, `FT_REPORT_DIR` (readable, not writable), `FT_IOS_DEVICES` and `FT_ANDROID_DEVICES`
+  (device names separated by spaces), and the names of the secrets that compose.yaml refers to. The variables are set
+  even when they have no value. The Emulator's adb serial and the Simulator's UDID are not passed.
 - For a run sent to a [remote runner](../../fleet/remote_runners.md), the scripts run on the runner machine.
-  Processes started over ssh may be unable to reach other addresses on the same machine (container virtual networks,
-  the LAN), so connect to dependent services through `127.0.0.1`.
-- The scripts run outside the sandbox. They run with `fleetest run` and the MCP tool `ft_start_run`, but not with
-  `ft_run_scenario` (the MCP tool that runs a single scenario).
+- They run with `fleetest run` and the MCP tool `ft_start_run`, but not with `ft_run_scenario` (the MCP tool that runs
+  a single scenario).
 - The scripts do not run with `--dry-run` (it does not touch devices).
 
 ## Feeding results into your own systems

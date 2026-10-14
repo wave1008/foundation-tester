@@ -143,6 +143,14 @@ check_adb() {
   command -v adb >/dev/null 2>&1 && kv adb yes || kv adb no
 }
 
+# コンテナランタイム(scripts/compose.yaml を持つプロジェクトの run だけが要る。docs/remote-runner.md §17)。
+# 情報だけ —— 無くても ready(サービスを使わない受け手を止めない)。無い機械へ compose を持つ run を送ると、その run が
+# 「no container runtime」で始まらずに言う
+check_container_runtime() {
+  command -v docker >/dev/null 2>&1 && kv docker yes || kv docker no
+  command -v container >/dev/null 2>&1 && kv apple_container yes || kv apple_container no
+}
+
 if [ "$MODE" = "runner" ]; then
   # ===============================================================================
   # --runner: ランナー機としての判定(docs/remote-runner.md §5・§14)。読み取りのみ・sudo 不使用。
@@ -213,6 +221,7 @@ PMSET_OUT
     runner_manual+=("neither xcodegen nor Homebrew is available → install Homebrew (https://brew.sh), then install.sh installs xcodegen automatically")
   fi
   check_adb
+  check_container_runtime
 
   # ---- ツール本体・作業場所(§14「構成」)。未導入は `fleetest remote setup` が作るので情報のみ ----
   tool_root="$BASE/foundation-tester"
@@ -387,6 +396,7 @@ check_core_toolchain
 check_xcodegen || missing+=("xcodegen (install.sh installs it via brew)")
 command -v npm >/dev/null 2>&1 && kv npm yes || { kv npm no; missing+=("npm (needed to build the VSCode extension)"); }
 check_adb
+check_container_runtime
 command -v claude >/dev/null 2>&1 && kv claude_cli yes || kv claude_cli no
 # ---- 判定 ---------------------------------------------------------------------
 if [ "${#blocked_reasons[@]}" -gt 0 ]; then

@@ -248,6 +248,9 @@ public final class RunRecorder: @unchecked Sendable {
                        // (`fleetest run`/`api run` は別実装。渡し忘れをコンパイルで止める。
                        //)
                        setOverrides: [String: String]?,
+                       // サービス(compose.yaml)の起動時の警告。**既定値を置かない**(run / api run の片方の渡し忘れをコンパイルで止める。
+                       // サービスの無い経路は `[]` を明示する)
+                       servicesWarnings: [String],
                        // **既定値を持つ**(上と違い「渡し忘れ」が安全側に倒れる —— 大半の
                        // run は中断も中断以外の異常終了もしないので、省略時の false/nil がそのまま
                        // 正しい事実になる)
@@ -306,7 +309,9 @@ public final class RunRecorder: @unchecked Sendable {
             // false/nil は書かない(既存レコードと同じ形。他の Bool 欄と同じ流儀)
             interrupted: interrupted ? true : nil,
             abortReason: abortReason,
-            slowWorkers: slowWorkerSummaries.isEmpty ? nil : slowWorkerSummaries)
+            slowWorkers: slowWorkerSummaries.isEmpty ? nil : slowWorkerSummaries,
+            // 無ければ書かない(欄が無い = 警告なし、または この版より前の記録)
+            servicesWarnings: servicesWarnings.isEmpty ? nil : servicesWarnings)
         RunResultsStore.writeMeta(meta, runDir: runDir)
         return slowFindings
     }

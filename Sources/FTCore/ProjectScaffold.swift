@@ -120,6 +120,9 @@ public enum ProjectScaffold {
     /// MCP サーバの登録名は install.sh が `.mcp.json` に書く `fleetest`(Claude Code のツール名の接頭辞)
     static let mcpToolsPermission = "mcp__fleetest"
     static let mcpStartRunPermission = "mcp__fleetest__ft_start_run"
+    /// サービスの起動・停止(compose.yaml)も承認を求める。ask に置く一覧は `mcpAskPermissions`
+    static let mcpServicesPermission = "mcp__fleetest__ft_services"
+    static let mcpAskPermissions = [mcpStartRunPermission, mcpServicesPermission]
 
     /// 受け手のパッケージに `.claude/settings.json` を書く(fleetest init から呼ぶ)。
     /// **fleetest の CLI とスクリプトだけ**を許可リストに載せ、セットアップ〜実行のたびに
@@ -164,9 +167,9 @@ public enum ProjectScaffold {
         var added = (entries + [mcpToolsPermission]).filter { !allow.contains($0) }
         if firstMCPGrant {
             var ask = (permissions["ask"] as? [String]) ?? []
-            if !ask.contains(mcpStartRunPermission) {
-                ask.append(mcpStartRunPermission)
-                added.append(mcpStartRunPermission)
+            for permission in mcpAskPermissions where !ask.contains(permission) {
+                ask.append(permission)
+                added.append(permission)
             }
             permissions["ask"] = ask
         }
@@ -188,7 +191,7 @@ public enum ProjectScaffold {
         }
         guard !added.isEmpty else { return [] }
         let denied = Set((permissions["deny"] as? [String]) ?? [])
-        allow.append(contentsOf: added.filter { $0 != mcpStartRunPermission && !denied.contains($0) })
+        allow.append(contentsOf: added.filter { !mcpAskPermissions.contains($0) && !denied.contains($0) })
         permissions["allow"] = allow
         settings["permissions"] = permissions
 

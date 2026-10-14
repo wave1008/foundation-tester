@@ -115,13 +115,32 @@ extension RuntimeCLI {
     }
 }
 
+/// `ServicesSession.up` の起こし方。run は `forRun` で導く(実機のレーン = LAN 公開・Android 実機 = reverse)。
+/// `fleetest services up` はフラグ(`--physical` / `--serial`)から作る(kind = owner)。
+struct ServicesUpOptions: Equatable {
+    let kind: ServicesLease.Kind
+    /// 公開ポートをマシン設定 `services.publishForPhysicalDevices` の LAN アドレスにも束縛する
+    let publishForPhysicalDevices: Bool
+    /// `adb reverse` を張る Android 実機のシリアル(TCP の公開ポートごと)
+    let adbReverseSerials: [String]
+
+    static func forRun(_ resolved: ResolvedProfile) -> ServicesUpOptions { forRun(devices: resolved.devices) }
+
+    static func forRun(devices: [ResolvedDevice]) -> ServicesUpOptions {
+        ServicesUpOptions(
+            kind: .run,
+            publishForPhysicalDevices: devices.contains { $0.spec.isPhysical },
+            adbReverseSerials: devices.filter { $0.platform == "android" && $0.spec.isPhysical }.compactMap(\.spec.serial))
+    }
+}
+
 final class ServicesSession {
 
     // MARK: 定数
 
     /// 起動完了の待ちを回す刻み(秒)。コンテナの状態の確認(inspect 約 30〜60ms)を重ねすぎず、起動の検知を遅らせない間隔。
     /// 尽きたとき = なし(待ちの上限は healthcheck の retries × (interval + timeout) + start_period が決める)。
-    private static let pollIntervalSeconds: Double = 0.25
+    static let pollIntervalSeconds: Double = 0.25
     /// `run -d` の上限(秒)。Apple はコンテナごとに VM を起こす(§17 の実測で約 1〜2 秒)。刺さったデーモンだけがこれを超える。
     private static let containerStartTimeoutSeconds: Double = 120
     /// Apple のコンテナの IP が割り当てられるのを待つ上限(秒)。起動直後の inspect は未割り当てのことがある。尽きたら起動の失敗。
@@ -141,7 +160,8 @@ final class ServicesSession {
     /// compose.yaml の environment が実際に参照した秘密の名前(スクリプトへ渡すのはこれだけ)
     private let usedSecretNames: Set<String>
     private let declaredBuilds: [String: BuildDef]
-    private let graceSeconds: [String: Int]
+    /// `adb reverse` を張る Android 実機(run = プロファイルの実機・`services up --serial`)
+    private let adbReverseSerials: [String]
     private let interrupt: RunInterruptState?
     /// `service_completed_successfully` の相手 = 前面で実行して終了コードで決着するサービス(`runToCompletion`)
     private let initServices: Set<String>
@@ -165,7 +185,7 @@ final class ServicesSession {
 
     private init(cli: RuntimeCLI, plan: ServicePlan, stateDir: URL, privateDir: URL, home: String,
                  workspace: ServicesWorkspace, dictionaries: ExpansionDictionaries, usedSecretNames: Set<String>,
-                 declaredBuilds: [String: BuildDef], graceSeconds: [String: Int],
+                 declaredBuilds: [String: BuildDef], adbReverseSerials: [String],
                  interrupt: RunInterruptState?, allowedDomains: [String], proxyPort: Int?, lease: ServicesLease) {
         self.cli = cli
         self.plan = plan
@@ -178,7 +198,7 @@ final class ServicesSession {
         self.dictionaries = dictionaries
         self.usedSecretNames = usedSecretNames
         self.declaredBuilds = declaredBuilds
-        self.graceSeconds = graceSeconds
+        self.adbReverseSerials = adbReverseSerials
         self.interrupt = interrupt
         self.initServices = Set(plan.containers.flatMap { launch in
             launch.dependsOn.filter { $0.condition == .serviceCompletedSuccessfully }.map(\.service) })
@@ -190,7 +210,8 @@ final class ServicesSession {
     // MARK: 起動
 
     /// compose.yaml が無ければ nil(何もしない)。`stateDir` は `.fleetest`(控えとロックの置き場)。
-    static func up(resolved: ResolvedProfile, stateDir: URL?, interruptState: RunInterruptState? = nil,
+    static func up(resolved: ResolvedProfile, stateDir: URL?, options: ServicesUpOptions,
+                   interruptState: RunInterruptState? = nil,
                    home: String = NSHomeDirectory(), log: (String) -> Void) throws -> ServicesSession? {
         let workspace = ServicesFacts.workspace(for: resolved)
         guard workspace.hasComposeFile else { return nil }
@@ -200,18 +221,21 @@ final class ServicesSession {
         let pid = ProcessInfo.processInfo.processIdentifier
         let settings = try ServicesSettings.load()
         let located = try ServicesRuntimeLocator.locate(settings: settings, log: log)
+        try refuseIfDockerAPIIsExposed(log: log)
         try ServicesFacts.ensureDataDirectory(workspace)
         let privateDir = try ServicesFacts.makePrivateDirectory(home: home, pid: pid)
         var leaseWritten = false
         do {
-            let prepared = try prepare(resolved: resolved, workspace: workspace, settings: settings, located: located,
-                                       privateDir: privateDir, home: home, interrupt: interruptState, log: log)
+            let prepared = try prepare(resolved: resolved, options: options, workspace: workspace, settings: settings,
+                                       located: located, privateDir: privateDir, home: home, interrupt: interruptState, log: log)
             let session = ServicesSession(
                 cli: prepared.cli, plan: prepared.plan, stateDir: stateDir, privateDir: privateDir, home: home,
                 workspace: workspace, dictionaries: prepared.dictionaries, usedSecretNames: prepared.usedSecretNames,
                 declaredBuilds: prepared.declaredBuilds,
-                graceSeconds: prepared.graceSeconds, interrupt: interruptState,
+                adbReverseSerials: options.adbReverseSerials, interrupt: interruptState,
                 allowedDomains: prepared.allowedDomains, proxyPort: prepared.proxyPort, lease: prepared.lease)
+            // run は `services up` の所有者を引き取る(排他の外で終了を待つ = 所有者も同じ排他の中で片付ける)
+            if options.kind == .run { try takeOverOwners(prefix: prepared.plan.prefix, stateDir: stateDir, log: log) }
             try ServicesLock.withLock(prefix: prepared.plan.prefix, stateDir: stateDir) {
                 try session.claimPrefix(log: log)
                 try session.persist()  // 控えは最初の資源を作る前に書く。書けなければ開始しない
@@ -236,7 +260,6 @@ final class ServicesSession {
         let dictionaries: ExpansionDictionaries
         let usedSecretNames: Set<String>
         let declaredBuilds: [String: BuildDef]
-        let graceSeconds: [String: Int]
         let allowedDomains: [String]
         let proxyPort: Int?
         let lease: ServicesLease
@@ -244,8 +267,8 @@ final class ServicesSession {
 
     /// 資源を作る前の段(読む → 展開 → 正規化 → 検査 → 計画)。中継のイメージだけここで用意する(イメージは片付けの対象ではない)。
     private static func prepare(
-        resolved: ResolvedProfile, workspace: ServicesWorkspace, settings: ServicesSettings?, located: LocatedRuntime,
-        privateDir: URL, home: String, interrupt: RunInterruptState?, log: (String) -> Void
+        resolved: ResolvedProfile, options: ServicesUpOptions, workspace: ServicesWorkspace, settings: ServicesSettings?,
+        located: LocatedRuntime, privateDir: URL, home: String, interrupt: RunInterruptState?, log: (String) -> Void
     ) throws -> Prepared {
         let pid = ProcessInfo.processInfo.processIdentifier
         let dictionaries = try ServicesFacts.dictionaries(project: resolved.project.name, workspace: workspace, home: home)
@@ -299,12 +322,12 @@ final class ServicesSession {
 
         let workspaceRealpath = ServicesFacts.workspaceRealpath(workspace)
         let generation = ServicesFacts.generation()
-        let options = try ServicesFacts.planOptions(
+        let planOptions = try ServicesFacts.planOptions(
             runtime: located.kind, workspaceRealpath: workspaceRealpath, generation: generation,
-            physicalLanes: ServicesFacts.physicalLanes(resolved: resolved), settings: settings,
+            physicalLanes: options.publishForPhysicalDevices, settings: settings,
             relayImageID: relayImageID, spec: spec, proxyPort: proxyPort)
         let plan: ServicePlan
-        switch ServicePlanner.make(checked, options: options) {
+        switch ServicePlanner.make(checked, options: planOptions) {
         case .success(let value): plan = value
         case .failure(let error): throw ServicesError(phase: .check, detail: "cannot plan the services: \(error)")
         }
@@ -332,13 +355,14 @@ final class ServicesSession {
             }
         }
         let lease = ServicesLease(
-            pid: pid, pidStartedAt: ServicesProcessIdentity.startedAtText(pid: pid), runtime: located.kind.rawValue,
+            pid: pid, pidStartedAt: ServicesProcessIdentity.startedAtText(pid: pid), kind: options.kind,
+            runtime: located.kind.rawValue,
             endpoint: located.endpoint, prefix: plan.prefix, generation: generation, workspace: workspaceRealpath,
             project: resolved.project.name, profile: resolved.runName,
             approvedServices: spec.services.map(\.name), publishedPorts: published,
-            secretNames: usedSecretNames.sorted(), phase: .starting)
+            secretNames: usedSecretNames.sorted(), stopGraceSeconds: grace, phase: .starting)
         return Prepared(cli: cli, plan: plan, dictionaries: dictionaries, usedSecretNames: usedSecretNames,
-                        declaredBuilds: declaredBuilds, graceSeconds: grace, allowedDomains: allowedDomains,
+                        declaredBuilds: declaredBuilds, allowedDomains: allowedDomains,
                         proxyPort: proxyPort, lease: lease)
     }
 
@@ -411,6 +435,50 @@ final class ServicesSession {
 
     // MARK: 同じ接頭辞の控え
 
+    /// 生きている他人の控えがあるときの文言(相手と自分の種類で対処が違う)
+    static func heldByOther(_ other: ServicesLease, mine: ServicesLease.Kind) -> String {
+        switch (other.kind, mine) {
+        case (.run, _):
+            return "\(other.holderDescription) holds these services; wait for that run to finish"
+        case (.owner, .owner):
+            return "these services are already up (\(other.holderDescription)); use them, or run `fleetest services down` first"
+        case (.owner, .run):
+            // 引き取りの後に別の `services up` が割り込んだときだけ
+            return "\(other.holderDescription) holds these services; stop them with `fleetest services down` first"
+        }
+    }
+
+    /// 生きている所有者(`services up`)の控えがあれば SIGTERM を送り、**排他の外で**終了を待つ(所有者も同じ排他の中で片付けるので、
+    /// 握ったまま待つと待ち合う)。所有者は自分の控えの ID だけを消す = 終わった後に run が同じ名前で作れる。
+    /// 片付けに失敗して残った控えは孤児として `claimPrefix` が拾う。待ちの上限は所有者の控えから(`ServicesTeardown.teardownBudgetSeconds`)。
+    static func takeOverOwners(prefix: String, stateDir: URL, budgetOverrideSeconds: Double? = nil,
+                               isAlive: (Int32, String) -> Bool = ServicesProcessIdentity.isAlive,
+                               terminate: (Int32) -> Void = { _ = kill($0, SIGTERM) },
+                               log: (String) -> Void) throws {
+        struct Owner { let pid: Int32; let startedAt: String; let budget: Double }
+        let owners: [Owner] = try ServicesLock.withLock(prefix: prefix, stateDir: stateDir, isAlive: isAlive) {
+            ServicesLeaseStore.entries(stateDir: stateDir, prefix: prefix).compactMap { entry in
+                guard let other = entry.lease, other.kind == .owner,
+                      !ServicesLeaseFile.isOrphan(other, isAlive: isAlive) else { return nil }
+                log("⚠️ services: taking over the services started by \(other.holderDescription) — this run stops them"
+                    + " and starts them again (a run never shares services with a live `services up`)")
+                terminate(other.pid)
+                return Owner(pid: other.pid, startedAt: other.pidStartedAt,
+                             budget: budgetOverrideSeconds ?? ServicesTeardown.teardownBudgetSeconds(lease: other))
+            }
+        }
+        for owner in owners {
+            let deadline = now() + owner.budget
+            while isAlive(owner.pid, owner.startedAt) {
+                if now() >= deadline {
+                    throw ServicesError(phase: .start, detail: "the previous owner of these services (`fleetest services up`,"
+                        + " pid \(owner.pid)) has not exited \(Int(owner.budget))s after the takeover signal; stop it, then retry")
+                }
+                Thread.sleep(forTimeInterval: pollIntervalSeconds)
+            }
+        }
+    }
+
     private func claimPrefix(log: (String) -> Void) throws {
         for entry in ServicesLeaseStore.entries(stateDir: stateDir, prefix: plan.prefix) {
             switch entry.state {
@@ -420,7 +488,7 @@ final class ServicesSession {
                     + " Inspect them, then run `fleetest services reset --force`")
             case .readable(let other):
                 guard ServicesLeaseFile.isOrphan(other, isAlive: ServicesProcessIdentity.isAlive) else {
-                    throw ServicesError(phase: .start, detail: "another run holds these services (pid \(other.pid))")
+                    throw ServicesError(phase: .start, detail: Self.heldByOther(other, mine: lease.kind))
                 }
                 let removed = withoutActuallyEscaping(log) { escapable in
                     ServicesReaper.reapOne(entry: entry, lease: other, home: home,
@@ -511,6 +579,13 @@ final class ServicesSession {
 
         // /udp を公開したときだけ経路を確かめる(サービスの起動の後・setup.sh の前)
         if let check = plan.udpCheck { try runUDPCheck(check, log: log) }
+
+        // Android 実機への reverse(TCP の公開ポートごと。張れたものだけ控えに残す = 解除の対象)
+        let tcpPorts = Set(lease.publishedPorts.filter { $0.proto == "tcp" }.map(\.hostPort)).sorted()
+        lease.adbReverse = ServicesAdbReverse.addAll(serials: adbReverseSerials, hostPorts: tcpPorts) { line in
+            if line.hasPrefix("⚠️") { warnings.append(line) }  // run.json の servicesWarnings へ(合否は変えない)
+            log(line)
+        }
 
         lease.phase = .running
         try persist()
@@ -969,6 +1044,91 @@ final class ServicesSession {
         }
     }
 
+    // MARK: 失敗の証跡
+
+    /// 各サービスのログの末尾(`ServicePolicy.maxLogLines` 行 = 中継の `logs --tail` の上限と同じ)を `<directory>/services/<service>.log` へ。
+    /// setup.sh か run が失敗したときに**片付けの前に**呼ぶ(止めた後は読めない)。失敗は警告だけ(合否を変えない)。
+    func saveLogs(to directory: URL, log: (String) -> Void) {
+        let target = directory.appendingPathComponent("services")
+        do {
+            try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        } catch {
+            log("⚠️ services: cannot create \(target.path) for the service logs: \(error.localizedDescription)")
+            return
+        }
+        var saved = 0
+        for launch in plan.containers where lease.containers[launch.name] != nil {
+            let result = cli.run(cli.commands.containerLogs(launch.name, tail: ServicePolicy.maxLogLines))
+            guard result.succeeded else {
+                log("⚠️ services: cannot read the log of \(launch.service) (exit \(result.status))")
+                continue
+            }
+            let file = target.appendingPathComponent("\(launch.service).log")
+            do {
+                try result.output.write(to: file, atomically: true, encoding: .utf8)
+                saved += 1
+            } catch {
+                log("⚠️ services: cannot write \(file.path): \(error.localizedDescription)")
+            }
+        }
+        if saved > 0 { log("→ services: saved the log of \(saved) service(s) under \(target.path)") }
+    }
+
+    // MARK: 管理口の公開の検知
+
+    /// Docker の管理口(2375 / 2376)が非ループバックで LISTEN なら起動しない(docs/remote-runner.md §17「実行基盤の管理口」。
+    /// コンテナがそこへ届くとホストのファイルをマウントできる)。見られなかったときは1行言って進む(「無い」とは言わない)。
+    static func refuseIfDockerAPIIsExposed(scan: () -> DockerTCPExposure.Scan = { DockerTCPExposure.scan() },
+                                           log: (String) -> Void) throws {
+        switch scan() {
+        case .clear: break
+        case .exposed(let listeners):
+            throw ServicesError(phase: .check, detail: "Docker's API is published on TCP at \(DockerTCPExposure.describe(listeners));"
+                + " containers could reach it and mount this Mac's files, so the services are not started; \(DockerTCPExposure.remedy)")
+        case .unknown(let detail):
+            log("→ services: could not check whether Docker's API is published on TCP (\(detail))")
+        }
+    }
+
+    // MARK: イメージの先行取得(`fleetest services pull`)
+
+    /// 宣言したイメージを今取る(`refresh` = 手元にあっても取り直す)。中継のイメージの初回ビルドも含む(`prepare`)。
+    /// サービスは起こさない・控えも書かない。閉じたネットワークでは `services load <file>` で読み込んだ後に run を回す。
+    static func pull(resolved: ResolvedProfile, options: ServicesUpOptions, refresh: Bool,
+                     home: String = NSHomeDirectory(), log: (String) -> Void) throws -> (pulled: Int, present: Int) {
+        let workspace = ServicesFacts.workspace(for: resolved)
+        guard workspace.hasComposeFile else {
+            throw ServicesError(phase: .check, detail: "no scripts/compose.yaml in \(workspace.root.path)")
+        }
+        let pid = ProcessInfo.processInfo.processIdentifier
+        let settings = try ServicesSettings.load()
+        let located = try ServicesRuntimeLocator.locate(settings: settings, log: log)
+        let privateDir = try ServicesFacts.makePrivateDirectory(home: home, pid: pid)
+        defer { try? FileManager.default.removeItem(at: privateDir) }
+        let prepared = try prepare(resolved: resolved, options: options, workspace: workspace, settings: settings,
+                                   located: located, privateDir: privateDir, home: home, interrupt: nil, log: log)
+        let cli = prepared.cli
+        let commands = cli.commands
+        var pulled = 0
+        var present = 0
+        var seen = Set<String>()
+        for launch in prepared.plan.containers where launch.build == nil {
+            guard let reference = launch.image, seen.insert(reference).inserted else { continue }
+            if !refresh, cli.run(commands.imageInspectID(reference)).succeeded {
+                present += 1
+                continue
+            }
+            log("→ services: pulling \(reference)")
+            let result = cli.runLong(commands.imagePull(reference), label: "the pull of \(reference)", interrupt: nil, log: log)
+            guard result.status == 0 else {
+                throw ServicesError(phase: .pull, detail: "pulling \(reference) failed (exit \(result.status))",
+                                    logTail: result.tail.suffix(10).joined(separator: "\n"))
+            }
+            pulled += 1
+        }
+        return (pulled, present)
+    }
+
     // MARK: 片付け
 
     /// 通常終了の片付け。**run の成否を変えない**(失敗は警告のみ)。削除に失敗した資源があれば控えを残す。
@@ -992,7 +1152,7 @@ final class ServicesSession {
         let began = Self.now()
         lease.phase = .tearingDown
         try? persist()
-        let remaining = ServicesTeardown.remove(lease: lease, cli: cli, graceSeconds: graceSeconds, log: log)
+        let remaining = ServicesTeardown.remove(lease: lease, cli: cli, log: log)
         // 親専用の領域(env-file = 秘密の値・hosts・docker config)は資源が残っても要らない(回収は控えの ID で動く)
         try? FileManager.default.removeItem(at: privateDir)
         guard !remaining.hasResources else {

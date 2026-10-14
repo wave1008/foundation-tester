@@ -28,7 +28,7 @@ export function resolveWorkspaceDir(repoRoot: string, project: string, declared:
 }
 
 /**
- * ファイル名 → 中身(FTCore.RunHook.Kind.script と同期)。**関数にする** ——
+ * ファイル名 → 中身(.sh は FTCore.RunHook.Kind.script と同期。compose.yaml は FTServices の宣言ファイル)。**関数にする** ——
  * 雛形の中身は locale に追従する(日本語モードならコメントも日本語)ので、module-level の
  * const にすると initI18n 前の既定 locale で固定される(src/i18n/index.ts の契約)。
  */
@@ -36,6 +36,7 @@ export function hookScriptTemplates(): ReadonlyMap<string, string> {
   return new Map([
     ["setup.sh", t("hookScaffold.setupTemplate")],
     ["teardown.sh", t("hookScaffold.teardownTemplate")],
+    ["compose.yaml", t("hookScaffold.composeTemplate")],
   ]);
 }
 
@@ -51,8 +52,8 @@ export interface HookScaffoldResult {
 /**
  * `<workspace>/scripts/` に雛形を書く。**既にあるファイルは1バイトも触らない**
  * (利用者が書いた片付け手順を雛形で上書きすると、次の run が古い環境を掴んだまま走る)。
- * 実行権(0o755)を付ける —— 付いていなくても実行側が /bin/sh で起動するが、
- * 雛形は shebang を書いてあるので直接実行できる形で置く。
+ * .sh には実行権(0o755)を付ける —— 付いていなくても実行側が /bin/sh で起動するが、
+ * 雛形は shebang を書いてあるので直接実行できる形で置く。compose.yaml は読まれるだけなので 0o644。
  */
 export function writeHookScriptTemplates(workspaceDir: string): HookScaffoldResult {
   const scriptsDir = path.join(workspaceDir, HOOK_SCRIPTS_DIR);
@@ -65,7 +66,7 @@ export function writeHookScriptTemplates(workspaceDir: string): HookScaffoldResu
       skipped.push(name);
       continue;
     }
-    fs.writeFileSync(target, content, { encoding: "utf8", mode: 0o755 });
+    fs.writeFileSync(target, content, { encoding: "utf8", mode: name.endsWith(".sh") ? 0o755 : 0o644 });
     created.push(name);
   }
   return { scriptsDir, created, skipped };

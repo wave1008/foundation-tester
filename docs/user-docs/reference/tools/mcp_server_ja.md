@@ -74,6 +74,7 @@ cwd(受け手パッケージ)とは別物です。
 | `ft_capture_element` | 要素を画像分類器の見本として保存し、学習の点検結果を返す(`checkIsON` / `imageIs` の見本。[imageIs](../commands/image_assertion_ja.md)) |
 | `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(自動ビルド込み。コンパイルエラーはそのまま返る)。`id` にクラス名を渡すと `fleetest run` と同じく `@Deleted`/`@Draft` 以外の全本を順に流す。`profile:` は `port`/`serial`/`platform`/`udid` と併用できない。**`fleetest run` と違い、プロファイルの setup/teardown スクリプト・run 開始時の home・`results/` への記録は行わない**(フルの run は CLI で)。アプリを入れるのは、`autoInstall` のアプリを持つ `profile:` を iOS で指定したときだけ(ワークスペースへコピーし、入っている版が古ければインストールする)。それ以外は `ft_install` で入れておく。**失敗は isError で返り**、失敗したステップ・失敗した瞬間の要素一覧とスクリーンショット(最初に落ちた1本だけ)・レポートパスが載る。**既定では FM と Vision を使わずに動く**(テキストの可視性検証なし・`screenLooksLike` のステップは飛ばす・`checkIsON` は木だけで読む)。使うときは `fmAndVision: true` |
 | `ft_start_run` / `ft_run_status` / `ft_stop_run` | `fleetest run --profile` と同じ本番の実行。`ft_start_run` は裏で始めてすぐ返り(`profile` 必須・`scenario` / `folder` は配列・`failed`・`broadcast`・その回だけ別の機械へ送る `runner` = 登録済みの機械名か `local`)、`ft_run_status` が進み具合と結果(runID・合否・失敗したシナリオのレポート・ログの末尾)を返す。止めるのは `ft_stop_run`(SIGTERM)。結果の履歴(`results/`)・録画・セットアップ/後始末のスクリプトまで含む。MCP サーバの中で動くので、シェルのサンドボックスの中のエージェント(Codex の既定など)からも使える。同時に動かせるのはこのサーバから1本。**`ft_run_scenario` と同じく、`fmAndVision: true` を渡さなければ FM と Vision を使わずに動く**(プロファイルの4つのスイッチを `--set` で切る) |
+| `ft_services` | `scripts/compose.yaml` が宣言するサービスを、探索・ライブ操作のために起動・停止・確認する(`fleetest services up` / `down` / `status` と同じ)。`action`: `up` / `down` / `status`・`profile`(`up` / `down` で必須)・`project`・`physical`・`androidSerials`(文字列の配列)。`ft_start_run` と同じく承認を求める(下記)。詳細は[アプリが依存するサービス](../writing/services_ja.md) |
 | `ft_results` | 結果の履歴。`fleetest results <query>` と同じ文面(JSON は無い)。`query` は必須で `list` / `summary` / `flaky` / `trend`(`scenario` 必須) / `devices` / `slow` / `insights` / `log`(1 run のシナリオごとの実行ログ。`runId`・既定 `latest`)。任意: `since`(既定 `90d`・`log` では使わない)・`scenario`・`limit`(`list` / `slow`)・`minRuns`(`flaky`)。ファイルを読むだけなので、シェルのサンドボックスの中のエージェント(Codex の既定など)からも使える |
 | `ft_dry_run` | デバイス不要の検証(セレクタの構文誤りは失敗 = isError。アサーション無しの expectation・実在しない `#id` は ⚠️ 行の警告で、失敗にはしない)。platform 宣言の無いシナリオは `platform:`(既定 ios)で `ios { } / android { }` の分岐と `#id` 台帳を選ぶ |
 | `ft_list_projects` | テストプロジェクトと実行プロファイルの一覧 |
@@ -114,23 +115,24 @@ SpringBoard で閉じた後は `ft_launch bundleId: <app> resume: true` で、
 
 MCP サーバはエージェントのシェルのサンドボックスの**外**で動きます。ビルドと実行を伴うツール
 (`ft_list_scenarios`・`ft_dry_run`・`ft_run_scenario`・`ft_start_run`)は、プロジェクトのシナリオ(`.swift`)を
-任意の Swift のコードとして実行します(dry-run でも動きます)。
+任意の Swift のコードとして実行します(dry-run でも動きます)。`ft_services` は、プロジェクトが `scripts/compose.yaml` で
+宣言したコンテナを起動します。
 
 - **シナリオは常に fleetest のサンドボックス(macOS の Seatbelt)の中で動きます。** MCP からでも、CLI からでも、
   拡張からでも同じです。書ける場所・読めない場所・通信先と、その設定(この Mac の `~/.config/fleetest/config.json` の
   `sandbox`)は[アクセスできるフォルダと通信先](../../security/access_ja.md)にあります。サンドボックスが止めないもの
-  (localhost のサービス・他のデバイスのブリッジ・setup / teardown スクリプトなど)は
+  (localhost のサービス・他のデバイスのブリッジなど)は
   [注意事項と制限事項](../../security/limitations_ja.md)にあります。
 - **承認を省く範囲は、何を外で動かすかで選んでください。**
 
   | 承認を求めるツール | 使い勝手 | 人を通るもの |
   |---|---|---|
   | なし | 止まらない | なし(信頼できるリポジトリとアプリが前提) |
-  | `ft_start_run`(おすすめ) | テストの実行を指示したときに1回 | setup / teardown スクリプト・別の機械への送り出し |
-  | `ft_list_scenarios`・`ft_dry_run`・`ft_run_scenario`・`ft_start_run` | シナリオ作成中もコンパイル・確認のたびに聞かれる | シナリオの実行すべて |
+  | `ft_start_run`・`ft_services`(おすすめ) | テストの実行やサービスの起動を指示したときに1回 | サービスの起動と停止・setup / teardown スクリプト・別の機械への送り出し |
+  | `ft_list_scenarios`・`ft_dry_run`・`ft_run_scenario`・`ft_start_run`・`ft_services` | シナリオ作成中もコンパイル・確認のたびに聞かれる | シナリオの実行すべて |
 
   Claude Code では、インストーラが作業フォルダの `.claude/settings.json` に「fleetest のツールは許可
-  (`mcp__fleetest`)・`ft_start_run` だけ確認(`ask`)」を書きます(おすすめの形。確認を外したければ `ask` から
+  (`mcp__fleetest`)・`ft_start_run` と `ft_services` だけ確認(`ask`)」を書きます(おすすめの形。確認を外したければ `ask` から
   消せば、以後の更新でも戻しません)。あわせて、fleetest 本体のクローンを読み取り専用にする設定(読むのは許可・
   編集は拒否)も書きます(作業フォルダがクローンの中にある構成では書きません)。Auto モードでは、確認の要否を
   AI が自動で判断します。ただし判断の対象はツールの呼び出しで、シナリオの中身ではありません。
@@ -145,7 +147,7 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
   | 読むだけ(`readOnlyHint: true`) | `ft_status`・`ft_list_*`・`ft_snapshot`・`ft_screenshot`・`ft_logs`・`ft_results`・`ft_run_status`・`ft_dsl_commands`・`ft_doctor`・`ft_draft_scenario` |
   | デバイスの画面やアプリの状態を変える | タップ・入力・スワイプなどの操作、`ft_launch`・`ft_terminate`・`ft_open_url`・`ft_batch`、`ft_capture_element`(プロジェクトへ見本を書く) |
   | 取り返しがつかない(`destructiveHint: true`) | `ft_clear_app_data`・`ft_install`・`ft_stop_run` |
-  | プロジェクトのコードを実行する(`destructiveHint: true`・`openWorldHint: true`) | `ft_list_scenarios`・`ft_dry_run`・`ft_run_scenario`・`ft_start_run` |
+  | プロジェクトのコードを実行する(`destructiveHint: true`・`openWorldHint: true`) | `ft_list_scenarios`・`ft_dry_run`・`ft_run_scenario`・`ft_start_run`・`ft_services` |
 - **他人から受け取ったシナリオは、中身を確かめてから実行してください。** サンドボックスはホストを守りますが、
   [注意事項と制限事項](../../security/limitations_ja.md)に挙げたものと、テスト対象のアプリやアカウントへの操作(削除・購入など)は止めません。
 - **`ft_start_run` の `runner` は、登録済みの機械名と `local` だけを受け付けます。** `user@host` のような
@@ -155,6 +157,7 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
 - `ft_start_run` は決まったコマンド(`fleetest run`)に、検査した引数を配列で渡します(シェルを通さないので、
   引数から任意のコマンドは注入できません)。`profile`・`runner`・`scenario`・`folder` の値が `-` で始まると断ります
   (`fleetest run` のオプションとして読まれ、上の `runner` の制限をすり抜けられるためです)。
+- `ft_services` も同じです。決まったコマンド(`fleetest services`)に検査した引数を配列で渡し、`-` で始まる `profile`・`project`・`androidSerials` の値は断ります。
 
 ## 構造化出力(明示的に有効にしたときだけ)
 

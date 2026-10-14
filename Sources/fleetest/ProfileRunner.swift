@@ -394,18 +394,26 @@ enum ProfileRunner {
         try Self.rejectIfDevicesLeasedBeforePreparation(resolved: resolved, leaseStateDir: hookStateDir)
         // サービス(scripts/compose.yaml)は開始スクリプトの前に上げ、片付けは終了スクリプトの後
         // (defer は後に書いたものから走る = 下の終了スクリプトの defer より先に書く)
+        let reportDir = reportDirOverride.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
         let servicesSession = try ServicesSession.up(
-            resolved: resolved, stateDir: hookStateDir, interruptState: interruptState) { ConsoleOut.out($0) }
+            resolved: resolved, stateDir: hookStateDir, options: .forRun(resolved), interruptState: interruptState) { ConsoleOut.out($0) }
         defer { servicesSession?.down { ConsoleOut.out($0) } }
-        let hookSession = try RunHookRunner.begin(
-            resolved: resolved, stateDir: hookStateDir, services: servicesSession, interrupt: interruptState) { ConsoleOut.out($0) }
+        // 失敗の証跡: setup.sh が落ちたとき・赤の run の後に、各サービスのログの末尾を run の記録(無ければレポートの出力先)へ残す
+        let servicesLogDir = recorder?.runDir ?? reportDir
+        let hookSession: RunHookSession
+        do {
+            hookSession = try RunHookRunner.begin(
+                resolved: resolved, stateDir: hookStateDir, services: servicesSession, interrupt: interruptState) { ConsoleOut.out($0) }
+        } catch {
+            servicesSession?.saveLogs(to: servicesLogDir) { ConsoleOut.out($0) }
+            throw error
+        }
         defer { RunHookRunner.end(hookSession) { ConsoleOut.out($0) } }
 
 
         // fm は上(full 確定直後)で計算済み。filteringDevices/limitingDevices/broadcast は
         // devices だけを変えるので resolved.fm も同じ値のまま(再計算しない)
         await Self.warnIfFMDegraded(fm: fm) { ConsoleOut.out($0) }
-        let reportDir = reportDirOverride.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
         RunEnvironment.apply(resolved)
         let deviceList = resolved.devices
             .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
@@ -650,6 +658,7 @@ enum ProfileRunner {
         }
 
         let finalSummary = await summary
+        if finalSummary.failed > 0 { servicesSession?.saveLogs(to: servicesLogDir) { ConsoleOut.out($0) } }
         if !finalSummary.degradedWorkers.isEmpty {
             ConsoleOut.out("⚠️ Degraded or dropped workers (\(finalSummary.degradedWorkers.count)):")
             for entry in finalSummary.degradedWorkers { ConsoleOut.out("   - \(entry)") }
@@ -682,7 +691,8 @@ enum ProfileRunner {
                                  workerAnomalies: finalSummary.workerAnomalies + preRunAnomalies,
                                  performanceMode: performanceMode,
                                  fmSettings: fmSettings,
-                                 interrupted: finalSummary.interrupted)
+                                 interrupted: finalSummary.interrupted,
+                                 servicesWarnings: servicesSession?.warnings ?? [])
         return (resultSummary, fmSettings)
     }
 

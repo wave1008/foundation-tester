@@ -365,7 +365,9 @@ final class ProjectScaffoldTests: XCTestCase {
         let permissions = try XCTUnwrap(object["permissions"] as? [String: Any])
         XCTAssertTrue((permissions["allow"] as? [String] ?? []).contains("mcp__fleetest"))
         XCTAssertFalse((permissions["allow"] as? [String] ?? []).contains("mcp__fleetest__ft_start_run"))
-        XCTAssertEqual(permissions["ask"] as? [String], ["mcp__fleetest__ft_start_run"])
+        XCTAssertFalse((permissions["allow"] as? [String] ?? []).contains("mcp__fleetest__ft_services"))
+        XCTAssertEqual(permissions["ask"] as? [String],
+                       ["mcp__fleetest__ft_start_run", "mcp__fleetest__ft_services"])
     }
 
     /// 利用者が ask を外したら、補修(install.sh が毎回呼ぶ)で書き戻さない
@@ -376,6 +378,7 @@ final class ProjectScaffoldTests: XCTestCase {
             .write(to: claudeSettingsURL, atomically: true, encoding: .utf8)
         let added = try ProjectScaffold.writeClaudeSettings(packageRoot: packageRoot, toolRoot: "/tools/ft")
         XCTAssertFalse(added.contains("mcp__fleetest__ft_start_run"))
+        XCTAssertFalse(added.contains("mcp__fleetest__ft_services"))
         let object = try XCTUnwrap(JSONSerialization.jsonObject(
             with: Data(contentsOf: claudeSettingsURL)) as? [String: Any])
         let permissions = try XCTUnwrap(object["permissions"] as? [String: Any])

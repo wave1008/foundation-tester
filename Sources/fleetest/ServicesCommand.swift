@@ -1,6 +1,8 @@
 // ServicesCommand.swift
-// `fleetest services`: ワークスペースのサービス(scripts/compose.yaml)の状態の確認と、人が打つ一掃
-// (docs/remote-runner.md §17「人の入口」)。起動と終了そのものは run が行う(ServicesSession)。
+// `fleetest services`: ワークスペースのサービス(scripts/compose.yaml)を人が起こす・止める・見る・一掃する
+// (docs/remote-runner.md §17「人の入口」「調停」)。run の間の起動と終了は run が行う(ServicesSession)。
+// `up` は常駐の所有者(`fleetest api services-owner`)を起こして上がるまで待つ。`down` は所有者へ SIGTERM を送り終了を待つ。
+// run が握っているサービスは `down` も `reset`(--force 無し)も触らない。
 
 import ArgumentParser
 import Foundation
@@ -11,10 +13,11 @@ import FTServices
 struct ServicesCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "services",
-        abstract: "Inspect or reset the services a workspace declares in scripts/compose.yaml (docs/remote-runner.md §17)",
-        subcommands: [Status.self, Reset.self])
+        abstract: "Start, stop, inspect or reset the services a workspace declares in scripts/compose.yaml (docs/remote-runner.md §17)",
+        subcommands: [Up.self, Down.self, Status.self, Pull.self, Load.self, Reset.self])
 
     struct Target {
+        let resolved: ResolvedProfile
         let workspace: ServicesWorkspace
         let prefix: String
         let stateDir: URL
@@ -37,7 +40,7 @@ struct ServicesCommand: AsyncParsableCommand {
         let workspace = ServicesFacts.workspace(for: resolved)
         let prefix = ServicePlanner.prefix(forWorkspace: ServicesFacts.workspaceRealpath(workspace))
         let stateDir = try RepoRoot.find().appendingPathComponent(".fleetest")
-        return Target(workspace: workspace, prefix: prefix, stateDir: stateDir, project: testProject.name)
+        return Target(resolved: resolved, workspace: workspace, prefix: prefix, stateDir: stateDir, project: testProject.name)
     }
 
     struct Listing {
@@ -78,6 +81,218 @@ struct ServicesCommand: AsyncParsableCommand {
         return RuntimeCLI(runtime: located)
     }
 
+    /// 所有者(pid・開始時刻)の終了を待つ。上限はその控えの片付けの予算。尽きたら false(所有者は片付けを続けている)。
+    static func waitForExit(pid: Int32, startedAt: String, budgetSeconds: Double) -> Bool {
+        let deadline = ProcessInfo.processInfo.systemUptime + budgetSeconds
+        while ServicesProcessIdentity.isAlive(pid: pid, startedAt: startedAt) {
+            if ProcessInfo.processInfo.systemUptime >= deadline { return false }
+            Thread.sleep(forTimeInterval: ServicesSession.pollIntervalSeconds)
+        }
+        return true
+    }
+
+    struct Up: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "up",
+            abstract: "Start this workspace's services and keep them running until `services down`"
+                + " (for exploration, live control and scenario writing; a run takes them over and starts them again)")
+
+        @Option(name: .long, help: "Test project (defaults to the only one in TestProjects/, or the default project)")
+        var project: String?
+
+        @Option(name: .long, help: "Run profile (optional when the project has exactly one)")
+        var profile: String?
+
+        @Flag(help: "Also publish the ports on this Mac's LAN address (services.publishForPhysicalDevices) for physical devices")
+        var physical = false
+
+        @Option(name: .long, help: "Android physical device (adb serial) that receives `adb reverse` for each published TCP port; repeatable")
+        var serial: [String] = []
+
+        func run() async throws {
+            let target = try ServicesCommand.resolveTarget(project: project, profile: profile)
+            guard target.workspace.hasComposeFile else {
+                ConsoleOut.out("→ services: no scripts/compose.yaml in \(target.workspace.root.path); nothing to start")
+                return
+            }
+            // 既に上がっていれば何もしない(MCP から繰り返し呼べる)。run が握っていれば断る
+            let before = ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix)
+            for lease in before.compactMap(\.lease)
+            where !ServicesLeaseFile.isOrphan(lease, isAlive: ServicesProcessIdentity.isAlive) {
+                switch lease.kind {
+                case .owner:
+                    ConsoleOut.out("→ services: already up (\(lease.holderDescription)); stop with `fleetest services down`")
+                    Self.printPublished(lease)
+                    return
+                case .run:
+                    throw ValidationError("\(lease.holderDescription) holds these services; wait for that run to finish")
+                }
+            }
+            guard let executable = Bundle.main.executableURL else {
+                throw ValidationError("cannot locate the fleetest executable to start the services owner")
+            }
+            let logURL = ServicesOwnerLaunch.logURL(stateDir: target.stateDir, prefix: target.prefix)
+            let (owner, ownerExited) = try ServicesOwnerLaunch.spawn(
+                executable: executable, project: target.project, profile: target.resolved.runName,
+                physical: physical, serials: serial, logURL: logURL)
+            ConsoleOut.out("→ services: starting (owner pid \(owner.processIdentifier), log \(logURL.path))")
+
+            let interrupted = LockedValue(false)
+            let relay = InterruptRelay.observing { interrupted.value = true }
+            defer { relay.stop() }
+            while true {
+                if interrupted.value {
+                    _ = kill(owner.processIdentifier, SIGTERM)
+                    ownerExited()
+                    ConsoleOut.err("⏹ services up interrupted; the owner was stopped (exit \(owner.terminationStatus))")
+                    throw ExitCode(130)
+                }
+                let entries = ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix)
+                switch ServicesOwnerLaunch.readiness(entries: entries, ownerPid: owner.processIdentifier, ownerRunning: owner.isRunning) {
+                case .running(let lease):
+                    ConsoleOut.out("→ services: up (\(lease.holderDescription)); stop with `fleetest services down`")
+                    Self.printPublished(lease)
+                    return
+                case .exited:
+                    ConsoleOut.err("✗ services up failed (owner exit \(owner.terminationStatus)); last log lines (\(logURL.path)):")
+                    for line in ServicesOwnerLaunch.logTail(logURL, lines: 20) { ConsoleOut.err("  " + line) }
+                    throw ExitCode.failure
+                case .waiting:
+                    try await Task.sleep(nanoseconds: UInt64(ServicesSession.pollIntervalSeconds * 1_000_000_000))
+                }
+            }
+        }
+
+        private static func printPublished(_ lease: ServicesLease) {
+            for line in lease.publishedSummary { ConsoleOut.out("  " + line) }
+            for entry in lease.adbReverse { ConsoleOut.out("  adb reverse \(entry.serial) tcp:\(entry.hostPort)") }
+        }
+    }
+
+    struct Down: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "down",
+            abstract: "Stop the services started by `services up` (services held by a run are left to that run)")
+
+        @Option(name: .long, help: "Test project (defaults to the only one in TestProjects/, or the default project)")
+        var project: String?
+
+        @Option(name: .long, help: "Run profile (optional when the project has exactly one)")
+        var profile: String?
+
+        func run() async throws {
+            let target = try ServicesCommand.resolveTarget(project: project, profile: profile)
+            struct Owner { let pid: Int32; let startedAt: String; let budget: Double }
+            var owners: [Owner] = []
+            var reaped = 0
+            let log: (String) -> Void = { ConsoleOut.out($0) }
+            // 「確認 → 合図」は排他の中で。終了の待ちは排他の外で(所有者は同じ排他の中で片付ける)
+            try ServicesLock.withLock(prefix: target.prefix, stateDir: target.stateDir) {
+                for entry in ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix) {
+                    switch entry.state {
+                    case .unreadable(let reason):
+                        ConsoleOut.out("⚠️ lease \(entry.url.lastPathComponent): unreadable (\(reason)); not removed —"
+                            + " `fleetest services reset --force` clears it")
+                    case .readable(let lease):
+                        if ServicesLeaseFile.isOrphan(lease, isAlive: ServicesProcessIdentity.isAlive) {
+                            if ServicesReaper.reapOne(entry: entry, lease: lease, home: NSHomeDirectory(),
+                                                      remover: ServicesReaper.defaultRemover(log: log), log: log) {
+                                reaped += 1
+                            }
+                        } else if lease.kind == .run {
+                            throw ValidationError("\(lease.holderDescription) holds these services; they stop when that run finishes")
+                        } else {
+                            ConsoleOut.out("→ services: stopping \(lease.holderDescription)")
+                            _ = kill(lease.pid, SIGTERM)
+                            owners.append(Owner(pid: lease.pid, startedAt: lease.pidStartedAt,
+                                                budget: ServicesTeardown.teardownBudgetSeconds(lease: lease)))
+                        }
+                    }
+                }
+            }
+            for owner in owners {
+                guard ServicesCommand.waitForExit(pid: owner.pid, startedAt: owner.startedAt, budgetSeconds: owner.budget) else {
+                    ConsoleOut.err("⚠️ services: pid \(owner.pid) is still stopping after \(Int(owner.budget))s;"
+                        + " check `fleetest services status` later")
+                    throw ExitCode.failure
+                }
+            }
+            // 所有者が片付けに失敗して残した控え(資源あり)は孤児 = ここでもう一度試す
+            if !owners.isEmpty {
+                for entry in ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix) {
+                    guard let lease = entry.lease, ServicesLeaseFile.isOrphan(lease, isAlive: ServicesProcessIdentity.isAlive) else { continue }
+                    _ = ServicesReaper.reapOne(entry: entry, lease: lease, home: NSHomeDirectory(),
+                                               remover: ServicesReaper.defaultRemover(log: log), log: log)
+                }
+            }
+            if owners.isEmpty && reaped == 0 {
+                ConsoleOut.out("→ services: nothing is up for this workspace")
+            } else {
+                ConsoleOut.out("→ services: down (\(owners.count) owner(s) stopped, \(reaped) leftover(s) removed)")
+            }
+        }
+    }
+
+    struct Pull: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "pull",
+            abstract: "Pull the images compose.yaml declares ahead of a run (and build the relay image on first use);"
+                + " --refresh pulls them again even when they are already present")
+
+        @Option(name: .long, help: "Test project (defaults to the only one in TestProjects/, or the default project)")
+        var project: String?
+
+        @Option(name: .long, help: "Run profile (optional when the project has exactly one)")
+        var profile: String?
+
+        @Flag(help: "Pull every declared image again, replacing the local copy")
+        var refresh = false
+
+        func run() async throws {
+            let target = try ServicesCommand.resolveTarget(project: project, profile: profile)
+            do {
+                let result = try ServicesSession.pull(
+                    resolved: target.resolved, options: .forRun(target.resolved), refresh: refresh) { ConsoleOut.out($0) }
+                ConsoleOut.out("→ services pull: \(result.pulled) image(s) pulled, \(result.present) already present")
+            } catch let error as ServicesError {
+                ConsoleOut.err("✗ \(error.shortDescription)")  // run の外 = 「シナリオは走らなかった」を付けない
+                throw ExitCode.failure
+            }
+        }
+    }
+
+    struct Load: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "load",
+            abstract: "Load images from a tar archive (`docker save` / `container image save`) into this Mac's container runtime,"
+                + " for machines without network access to the registry")
+
+        @Argument(help: "Path of the image archive")
+        var file: String
+
+        func run() async throws {
+            let path = (file as NSString).expandingTildeInPath
+            guard FileManager.default.fileExists(atPath: path) else {
+                throw ValidationError("\(path) does not exist")
+            }
+            let cli: RuntimeCLI
+            do {
+                let located = try ServicesRuntimeLocator.locate(settings: try ServicesSettings.load()) { ConsoleOut.out($0) }
+                cli = RuntimeCLI(runtime: located)
+            } catch let error as ServicesError {
+                ConsoleOut.err("✗ \(error.shortDescription)")
+                throw ExitCode.failure
+            }
+            ConsoleOut.out("→ services load: \(path) into \(cli.runtime.kind.rawValue)")
+            let result = cli.runLong(cli.commands.imageLoad(path), label: "the image load", interrupt: nil) { ConsoleOut.out($0) }
+            guard result.status == 0 else {
+                ConsoleOut.err("✗ services: loading \(path) failed (exit \(result.status)): \(result.tail.suffix(5).joined(separator: " | "))")
+                throw ExitCode.failure
+            }
+            for line in result.tail.suffix(5) { ConsoleOut.out("  " + line) }
+        }
+    }
+
     struct Status: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "status",
@@ -111,9 +326,11 @@ struct ServicesCommand: AsyncParsableCommand {
                         + " `fleetest services reset --force` clears it")
                 case .readable(let lease):
                     let orphan = ServicesLeaseFile.isOrphan(lease, isAlive: ServicesProcessIdentity.isAlive)
-                    ConsoleOut.out("lease \(entry.url.lastPathComponent): pid \(lease.pid) \(orphan ? "not running (orphan)" : "running"),"
+                    ConsoleOut.out("lease \(entry.url.lastPathComponent): \(lease.holderDescription) \(orphan ? "not running (orphan)" : "running"),"
                         + " phase \(lease.phase.rawValue), \(lease.runtime), containers [\(lease.containers.keys.sorted().joined(separator: ", "))],"
                         + " networks [\(lease.networks.keys.sorted().joined(separator: ", "))]")
+                    for line in lease.publishedSummary { ConsoleOut.out("  published \(line)") }
+                    for reverse in lease.adbReverse { ConsoleOut.out("  adb reverse \(reverse.serial) tcp:\(reverse.hostPort)") }
                 }
             }
 
@@ -145,7 +362,7 @@ struct ServicesCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Run profile (optional when the project has exactly one)")
         var profile: String?
 
-        @Flag(help: "Remove everything even if a run still holds the services or a lease cannot be read")
+        @Flag(help: "Remove everything even if a run or `services up` still holds the services or a lease cannot be read")
         var force = false
 
         func run() async throws {
@@ -159,7 +376,8 @@ struct ServicesCommand: AsyncParsableCommand {
                         throw ValidationError("the lease \(entry.url.lastPathComponent) cannot be read (\(reason)); rerun with --force to remove the services anyway")
                     case .readable(let lease):
                         if !ServicesLeaseFile.isOrphan(lease, isAlive: ServicesProcessIdentity.isAlive) {
-                            throw ValidationError("run pid \(lease.pid) holds these services; stop it first, or rerun with --force")
+                            let how = lease.kind == .owner ? "`fleetest services down`" : "wait for the run"
+                            throw ValidationError("\(lease.holderDescription) holds these services; stop it first (\(how)), or rerun with --force")
                         }
                     }
                 }
@@ -189,6 +407,8 @@ struct ServicesCommand: AsyncParsableCommand {
             for item in listing.volumes {
                 report("volume \(item.name)", cli.run(commands.volumeRemove(item.name)), &failed)
             }
+            // 控えの adb reverse も外す(資源ではないので失敗は警告だけ)
+            ServicesAdbReverse.removeAll(entries.compactMap(\.lease).flatMap(\.adbReverse)) { ConsoleOut.out($0) }
 
             guard failed.isEmpty else {
                 // 消せなかったものがあるので、控えとロックは残す(再試行できるように)

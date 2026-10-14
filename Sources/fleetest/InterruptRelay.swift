@@ -176,8 +176,17 @@ final class RunInterruptState: @unchecked Sendable {
     /// 順序でオーケストレータが中断を一生知らない)
     private var lateSubscriber: (@Sendable () -> Void)?
 
-    init(recorder: RunRecorder?) {
+    /// 1回目の中断で stderr に出す文。既定は run 向け —— run でない呼び手(`api services-owner`)は自分の文を渡す
+    /// (「供給」「シナリオ」の無い文脈でその語を出さない)
+    private let notice: String
+
+    static let runNotice = "⏹ Interrupt received — stopping (the device supply or the running"
+        + " scenario finishes its current step first; send it again to quit immediately"
+        + " without the interruption record)"
+
+    init(recorder: RunRecorder?, notice: String = RunInterruptState.runNotice) {
         self.recorder = recorder
+        self.notice = notice
     }
 
     var isStopped: Bool {
@@ -202,9 +211,7 @@ final class RunInterruptState: @unchecked Sendable {
             subscriber?()
             // 供給中(ブリッジの起動等)は止まるまで数十秒かかりうるので、効いていることを言う
             // (無言だと利用者は効いていないと見て強制終了し、中断の記録が残らない)
-            ConsoleOut.err("⏹ Interrupt received — stopping (the device supply or the running"
-                + " scenario finishes its current step first; send it again to quit immediately"
-                + " without the interruption record)")
+            ConsoleOut.err(notice)
         }
         for process in toKill where process.isRunning { process.terminate() }
         guard !firstTime else { return }

@@ -54,11 +54,11 @@ test("resolveWorkspaceDir: 相対はリポジトリルート基準、絶対は�
   assert.equal(resolveWorkspaceDir("/repo", "p", "/Volumes/shared/ws"), "/Volumes/shared/ws");
 });
 
-test("writeHookScriptTemplates: scripts/ を作って2本を実行権付きで書く", () => {
+test("writeHookScriptTemplates: scripts/ を作って2本を実行権付きで(+ compose.yaml)書く", () => {
   const workspace = path.join(tempDir(), "workspace");
   const result = writeHookScriptTemplates(workspace);
 
-  assert.deepEqual([...result.created].sort(), ["setup.sh", "teardown.sh"]);
+  assert.deepEqual([...result.created].sort(), ["compose.yaml", "setup.sh", "teardown.sh"]);
   assert.deepEqual(result.skipped, []);
   assert.equal(result.scriptsDir, path.join(workspace, "scripts"));
   for (const name of ["setup.sh", "teardown.sh"]) {
@@ -71,14 +71,26 @@ test("writeHookScriptTemplates: scripts/ を作って2本を実行権付きで�
     // 実行権(雛形は shebang 付きなので直接実行できる形で置く)
     assert.equal(fs.statSync(file).mode & 0o111, 0o111);
   }
+  // compose.yaml は実行権なし・全行コメント(有効な宣言を勝手に起こさない)・旧来の例は残さない
+  const compose = path.join(result.scriptsDir, "compose.yaml");
+  assert.equal(fs.statSync(compose).mode & 0o111, 0);
+  const composeBody = fs.readFileSync(compose, "utf8");
+  assert.match(composeBody, /^# fleetest が run ごとに/);
+  assert.ok(composeBody.split("\n").every((l) => l === "" || l.startsWith("#")));
+  for (const name of ["setup.sh", "teardown.sh"]) {
+    const body = fs.readFileSync(path.join(result.scriptsDir, name), "utf8");
+    assert.match(body, /fleetest-services exec db/);
+    assert.doesNotMatch(body, /docker compose up|adb -s/);
+  }
   // 例のコマンドは言語に依らず同じ(文言だけが locale で変わる)
-  assert.match(fs.readFileSync(path.join(result.scriptsDir, "setup.sh"), "utf8"), /docker compose/);
+  assert.match(fs.readFileSync(path.join(result.scriptsDir, "setup.sh"), "utf8"), /psql/);
   assert.match(fs.readFileSync(path.join(result.scriptsDir, "teardown.sh"), "utf8"), /set -u/);
 });
 
 test("雛形は ja/en どちらも sh として構文が通る(コメントの書き足しで壊さない)", () => {
   const dir = tempDir();
   for (const [key, entry] of Object.entries(hookScaffoldStrings)) {
+    if (key === "hookScaffold.composeTemplate") continue; // YAML(sh ではない)
     for (const [locale, body] of Object.entries(entry)) {
       const file = path.join(dir, `${key}.${locale}.sh`);
       fs.writeFileSync(file, body, "utf8");
@@ -98,11 +110,11 @@ test("writeHookScriptTemplates: 既にあるファイルは1バイトも触ら�
   const result = writeHookScriptTemplates(workspace);
 
   assert.deepEqual(result.skipped, ["setup.sh"]);
-  assert.deepEqual(result.created, ["teardown.sh"]);
+  assert.deepEqual([...result.created].sort(), ["compose.yaml", "teardown.sh"]);
   // 利用者が書いた片付け手順を雛形で潰すと、次の run が古い環境を掴んだまま走る
   assert.equal(fs.readFileSync(path.join(scriptsDir, "setup.sh"), "utf8"), mine);
 });
 
-test("hookScriptTemplates: ファイル名は FTCore.RunHook.Kind.script と同じ2本だけ", () => {
-  assert.deepEqual([...hookScriptTemplates().keys()], ["setup.sh", "teardown.sh"]);
+test("hookScriptTemplates: .sh は FTCore.RunHook.Kind.script と同じ2本 + compose.yaml", () => {
+  assert.deepEqual([...hookScriptTemplates().keys()], ["setup.sh", "teardown.sh", "compose.yaml"]);
 });

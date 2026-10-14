@@ -1,0 +1,45 @@
+# sut-ec-mobile のバックエンド(PostgreSQL + サーバー)。fleetest が run ごとに起動し、healthcheck を待ってから setup.sh を
+# 実行し、teardown.sh の後に止める(docs/user-docs/reference/writing/services_ja.md)。
+#
+# server は sut-ec-mobile のリポジトリからビルドする。context は foundation-tester と並ぶ clone(../../../../sut-ec-mobile)。
+# ビルド元として許すために、この Mac の設定 ~/.config/fleetest/config.json に
+#   "services": { "buildSources": ["<その clone の絶対パス>"] }
+# を書く(無いと「build context outside allowed roots」で起動を断られる)。ビルドの入力が変わらなければ再ビルドしない。
+#
+# アプリの接続先はビルドに焼かれている(Android Emulator = 10.0.2.2:8090 / iOS Simulator = 127.0.0.1:8090)。
+# DB は run ごとに空から作り、シードはサーバーが起動時に行う(Flyway + CatalogSeed)= 毎回同じ状態で始まる。
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: sutec
+      POSTGRES_USER: sutec
+      POSTGRES_PASSWORD: sutec
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sutec"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  server:
+    build:
+      context: ../../../../sut-ec-mobile
+      dockerfile: server/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: jdbc:postgresql://db:5432/sutec
+      DB_USER: sutec
+      DB_PASSWORD: sutec
+      JWT_SECRET: dev-secret-change-me
+      IMAGES_DIR: /app/mock-server/images
+    ports:
+      - "127.0.0.1:8090:8090"
+    healthcheck:
+      # JRE のイメージに curl / wget は無いので、bash の /dev/tcp で /health を読む
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8090 && printf 'GET /health HTTP/1.0\r\n\r\n' >&3 && grep -q '\"status\":\"ok\"' <&3"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
+      start_period: 10s

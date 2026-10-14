@@ -77,7 +77,14 @@ enum ServicesTeardown {
     /// 中継・エコーは片付けるものを持たない socat なので待たせない。
     static let relayStopGraceSeconds = 2
     /// `stop` 自体の上限に足す余裕(秒)。猶予が尽きて SIGKILL された後の後始末の分。
-    private static let stopOverheadSeconds = 30
+    static let stopOverheadSeconds = 30
+
+    /// 控えの持ち主(run / `services up` の所有者)が片付けを終えるまでの待ちの上限(秒)= 最も長い宣言の猶予(無ければ既定)+ `stop` の余裕。
+    /// コンテナは同時に止めるので直列には足さない(ネットワークの削除は 1 秒未満)。
+    /// 尽きたとき = 持ち主の pid を言って止める(持ち主は片付けを続けている・やり直せば通る)。
+    static func teardownBudgetSeconds(lease: ServicesLease) -> Double {
+        Double((lease.stopGraceSeconds.values.max() ?? defaultStopGraceSeconds) + stopOverheadSeconds)
+    }
 
     static func isGone(_ output: String) -> Bool {
         let text = output.lowercased()
@@ -113,9 +120,8 @@ enum ServicesTeardown {
     }
 
     /// 控えの資源を ID で(無ければ名前で)削除する。**消せなかったものだけが残った控えを返す**。
-    /// ボリュームは消さない。
-    static func remove(lease: ServicesLease, cli: RuntimeCLI, graceSeconds: [String: Int] = [:],
-                       log: (String) -> Void) -> ServicesLease {
+    /// ボリュームは消さない。停止の猶予は控えの `stopGraceSeconds`(宣言を読み直さない)。
+    static func remove(lease: ServicesLease, cli: RuntimeCLI, log: (String) -> Void) -> ServicesLease {
         let commands = cli.commands
         var remaining = lease
 
@@ -123,7 +129,7 @@ enum ServicesTeardown {
         struct Target { let key: String; let reference: String; let grace: Int }
         var targets: [Target] = lease.containers.sorted { $0.key < $1.key }.map {
             Target(key: $0.key, reference: $0.value.isEmpty ? $0.key : $0.value,
-                   grace: graceSeconds[$0.key] ?? defaultStopGraceSeconds)
+                   grace: lease.stopGraceSeconds[$0.key] ?? defaultStopGraceSeconds)
         }
         if let relay = lease.relay { targets.append(Target(key: "\u{0}relay", reference: relay, grace: relayStopGraceSeconds)) }
         if let echo = lease.udpCheck { targets.append(Target(key: "\u{0}echo", reference: echo, grace: relayStopGraceSeconds)) }
@@ -167,7 +173,21 @@ enum ServicesTeardown {
                 log("⚠️ services: could not remove network \(name): \(removal.tail(lines: 2))")
             }
         }
+
+        // Android 実機の reverse。資源ではない(デバイスが外れれば消える・次の起動は同じ番号で張り直す)ので、
+        // 解除に失敗しても控えに残さない(警告だけ)
+        if !lease.adbReverse.isEmpty {
+            ServicesAdbReverse.removeAll(lease.adbReverse, log: log)
+            remaining.adbReverse = []
+        }
         return remaining
+    }
+}
+
+extension ServicesLease {
+    /// 人向けの公開ポートの一覧("<service>: 127.0.0.1:8090/tcp")。`services up` / `status` が出す
+    var publishedSummary: [String] {
+        publishedPorts.map { "\($0.service): \($0.hostIP):\($0.hostPort)/\($0.proto)" }.sorted()
     }
 }
 
@@ -235,7 +255,7 @@ enum ServicesReaper {
     /// 孤児1件を片付ける。全部消せたら控えと親専用の領域を消して true。
     static func reapOne(entry: ServicesLeaseEntry, lease: ServicesLease, home: String,
                         remover: Remover, log: (String) -> Void) -> Bool {
-        log("🧹 services: removing what run pid \(lease.pid) left behind (prefix \(lease.prefix), \(lease.runtime))")
+        log("🧹 services: removing what \(lease.holderDescription) left behind (prefix \(lease.prefix), \(lease.runtime))")
         if let remaining = remover(lease) {
             try? ServicesLeaseStore.write(remaining, to: entry.url)
             log("⚠️ services: some resources of pid \(lease.pid) could not be removed; the lease is kept for the next attempt")

@@ -35,6 +35,7 @@ extension MCPServer {
 
         "ft_list_scenarios": .runsProjectCode, "ft_dry_run": .runsProjectCode,
         "ft_run_scenario": .runsProjectCode, "ft_start_run": .runsProjectCode,
+        "ft_services": .runsProjectCode,
 
         "ft_capture_element": .writesProjectFiles,
     ]

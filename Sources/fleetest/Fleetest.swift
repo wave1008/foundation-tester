@@ -894,6 +894,7 @@ struct RunScenarios: AsyncParsableCommand {
                                     screenLooksLike: noProfileSettings.fm.screenLooksLike,
                                     ocrTextVisibilityCheck: noProfileSettings.ocrTextVisibilityCheck),
                                 setOverrides: profileOverrides.mapValues(\.token),
+                                servicesWarnings: [],
                                 abortReason: error.localizedDescription)
                 throw error
             }
@@ -917,6 +918,7 @@ struct RunScenarios: AsyncParsableCommand {
                             performanceMode: runSummary.performanceMode,
                             fmSettings: fmSettings,
                             setOverrides: profileOverrides.mapValues(\.token),
+                            servicesWarnings: runSummary.servicesWarnings,
                             interrupted: runSummary.interrupted)
             PhaseLog.mark("recorder-finish")
             try writeJUnitIfRequested(project: testProject, recorder: recorder)
@@ -1011,6 +1013,7 @@ struct RunScenarios: AsyncParsableCommand {
             recorder.finish(total: items.count, passed: 0, failed: items.count,
                             performanceMode: false, fmSettings: noProfileFMSettings,
                             setOverrides: profileOverrides.mapValues(\.token),
+                            servicesWarnings: [],
                             abortReason: error.localizedDescription)
             throw error
         }
@@ -1022,6 +1025,7 @@ struct RunScenarios: AsyncParsableCommand {
                         performanceMode: false,
                         fmSettings: noProfileFMSettings,
                         setOverrides: profileOverrides.mapValues(\.token),
+                        servicesWarnings: [],
                         interrupted: interrupted)
         try writeJUnitIfRequested(project: testProject, recorder: recorder)
         RunCompletionSweep.spawn(activeRunID: recorder.runID) { ConsoleOut.out($0) }

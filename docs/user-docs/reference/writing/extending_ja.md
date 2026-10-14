@@ -11,7 +11,7 @@
 | DSL に無い処理を1ステップにしたい | `procedure { }` | [記述子](../commands/descriptors_ja.md) |
 | テストデータ・外部のサーバとつなぎたい | `account()` / `data()` / `dataFile()` / `httpRequest` | [テストデータ・アカウント](../commands/dataset_ja.md)・[HTTP リクエスト](../commands/http_request_ja.md) |
 | ライブラリを使いたい・共通部品を共有したい | `Package.swift` に依存を足す | [テストプロジェクトの作成](../project/creating_project_ja.md) |
-| run の前後に DB やスタブサーバを用意したい | 開始/終了スクリプト | このページの[run の前後で処理を走らせる](#run-の前後で処理を走らせる) |
+| run の前後に DB やスタブサーバを用意したい | `compose.yaml` と開始/終了スクリプト | [アプリが依存するサービス](services_ja.md)と、このページの[run の前後で処理を走らせる](#run-の前後で処理を走らせる) |
 
 ## 1. 手順を関数にまとめる
 
@@ -100,8 +100,9 @@ procedure("テスト用の注文を API で作る") {
 
 ## run の前後で処理を走らせる
 
-テスト対象のアプリが依存する DB・スタブサーバなどを、run の前に起こして後で片付けるには、
-テストプロジェクトのワークスペースにスクリプトを置きます。
+run の前後でデータを用意する(シードの投入・準備用 API の呼び出しなど)・後で片付けるには、テストプロジェクトの
+ワークスペースにスクリプトを置きます。**サーバ・DB・スタブはスクリプトで起こしません**。`scripts/compose.yaml` に宣言します
+([アプリが依存するサービス](services_ja.md))。
 
 | ファイル | 走るとき |
 |---|---|
@@ -109,18 +110,28 @@ procedure("テスト用の注文を API で作る") {
 | `TestProjects/<プロジェクト>/workspace/scripts/teardown.sh` | run の終了時 |
 
 - **置けば実行されます**(プロファイルに書く項目はありません)。無ければ何もしません。
-- **`setup.sh` が 0 以外で終わると、run を止めます**(シナリオは1本も走りません)。そのときも `teardown.sh` は走ります。
-  `teardown.sh` の失敗は警告だけで、結果は赤になりません。
+- **`setup.sh` が 0 以外で終わると、run を止めます**(シナリオは1本も走りません)。そのときも `teardown.sh` は走ります
+  (必ず後で実行されます)。`teardown.sh` の失敗は警告だけで、終了コードは結果を変えません。
 - 実行権が無ければ `/bin/sh` で起動します。実行権があれば shebang に従います(Python などでも書けます)。
 - タイムアウトはありません。出力の無い時間が 60 秒を超えるたびに警告が1行出ます。
-- スクリプトに渡る環境変数は `FT_HOOK`(`setup` / `teardown`)・`FT_WORKSPACE`・`FT_PROJECT`・`FT_PROFILE`・
-  `FT_REPORT_DIR`・`FT_IOS_DEVICES`・`FT_ANDROID_DEVICES`(空白区切りのデバイス名)です。値が無いときも変数自体は渡ります。
-  Emulator の adb serial・Simulator の UDID は渡りません(必要なら `adb devices` などを自分で呼びます)。
+- **スクリプトはサンドボックス(Seatbelt)の中で動きます。**
+  - 書けるのは `<workspace>/data/` の中だけです(+ この Mac の設定 `"hooks": {"writablePaths": [...]}`)。一時ファイルは
+    `$TMPDIR` を使います(スクリプト専用で、run の後に消えます)。
+  - `~/.ssh` などの秘密は読めません。
+  - 繋げるのは、compose.yaml で公開したポート(`127.0.0.1:<port>`)と、プロキシ経由の `sandbox.allowedDomains` だけです。
+    ブリッジ・adb・Docker には繋げません。
+  - **サーバ・DB・スタブをスクリプトで起こさないでください**(`docker` / `container` は使えません)。compose.yaml に
+    宣言します。コンテナの中の操作は `fleetest-services` です
+    ([アプリが依存するサービス](services_ja.md#スクリプトからコンテナを操作する))。
+  - 背景に残したプロセスは、run の後に止められます。
+  - Android 実機の `adb reverse` は fleetest が行います。
+- スクリプトに渡る環境変数は `FT_HOOK`(`setup` / `teardown`)・`FT_WORKSPACE`・`FT_PROJECT`・`FT_PROFILE`・`FT_MACHINE`・
+  `FT_REPORT_DIR`(読めますが書けません)・`FT_IOS_DEVICES`・`FT_ANDROID_DEVICES`(空白区切りのデバイス名)と、
+  compose.yaml が参照した秘密の名前です。値が無いときも変数自体は渡ります。Emulator の adb serial・Simulator の UDID は
+  渡りません。
 - [リモート実行](../../fleet/remote_runners_ja.md)へ送った run では、スクリプトはランナー機の上で走ります。
-  ssh 越しに起こしたプロセスは同じ機械の他のアドレス(コンテナの仮想ネットワーク・LAN)へ繋げないことがあるので、
-  依存サービスには `127.0.0.1` で繋いでください。
-- スクリプトはサンドボックスの外で動きます。`fleetest run` と MCP の `ft_start_run` では走りますが、
-  `ft_run_scenario`(シナリオを1本だけ回す MCP ツール)では走りません。
+- `fleetest run` と MCP の `ft_start_run` では走りますが、`ft_run_scenario`(シナリオを1本だけ回す MCP ツール)では
+  走りません。
 - `--dry-run` では走りません(デバイスに触らない実行なので)。
 
 ## 結果を自分の仕組みに流す

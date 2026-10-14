@@ -551,6 +551,19 @@ extension MCPServer {
             + "ft_run_status)", [
             "pid": runPidProperty,
         ], scope: .none),
+        tool("ft_services", "Start, stop or inspect the services a workspace declares in scripts/compose.yaml "
+            + "(= fleetest services up|down|status). up starts them for exploration and scenario writing and keeps "
+            + "them running until down; a real run (ft_start_run) takes them over and restarts them. Nothing happens "
+            + "for a workspace without compose.yaml. Requires approval like ft_start_run.", [
+            "action": ["type": "string", "enum": ["up", "down", "status"],
+                       "description": "up / down need profile; status can omit it when the project has one profile"],
+            "profile": ["type": "string", "description": "Run profile (profiles/runs/<name>.json); required for up and down"],
+            "project": defaultProjectProperty,
+            "physical": ["type": "boolean", "description": "up only: also publish the ports on this Mac's LAN address "
+                + "(services.publishForPhysicalDevices in the machine settings) so physical devices can reach them"],
+            "androidSerials": ["type": "array", "items": ["type": "string"], "description": "up only: Android physical "
+                + "devices (adb serials) that receive `adb reverse` for each published TCP port"],
+        ], required: ["action"], scope: .project),
         tool("ft_results", "Read a project's results history (= fleetest results <query>, text). query: "
             + "list, summary (pass rate, duration), flaky, trend (needs scenario), devices, slow, insights "
             + "(regressions, repeated failures, stale selectors), log (a run's execution log)", [

@@ -3,7 +3,7 @@
 // (ユーザー決定: 日本語モードならコメントも日本語)。
 //
 // 中身は実行規則の説明そのものなので、規則を変えたら Sources/FTCore/RunHooks.swift・
-// Sources/fleetest/RunHookRunner.swift・docs/remote-runner.md §17 と一緒に直す。
+// Sources/fleetest/RunHookRunner.swift・docs/remote-runner.md §17(スクリプトの枠)と一緒に直す。
 // **ja/en は同じ内容を書く**(片方だけ詳しい状態にしない)。
 
 import type { MessageDict } from "../core";
@@ -12,7 +12,7 @@ export const hookScaffoldStrings = {
   "hookScaffold.setupTemplate": {
     ja: `#!/bin/sh
 # テスト実行の前に、デバイスを動かす機械(この Mac、--runner でディスパッチしたときはランナー機)
-# の上で走る。テスト対象アプリが必要とするもの —— DB・スタブサーバ・初期データ —— の用意に使う。
+# の上で走る。テスト対象アプリが必要とするデータ —— 初期データなど —— の用意に使う。
 #
 # 規則
 #   - このファイルがあるときだけ実行される。要らなければ削除してよい。
@@ -22,43 +22,56 @@ export const hookScaffoldStrings = {
 #   - このスクリプトが失敗した場合も含め、teardown.sh は必ず後で実行される。
 #   - タイムアウトは無い。決め打ちの sleep ではなく、起きたことを確認して待つこと。
 #
+# サンドボックス(Seatbelt)の中で動く
+#   - 書けるのは <workspace>/data/ の中だけ(と、この Mac の設定
+#     ~/.config/fleetest/config.json の hooks.writablePaths に書いた場所)。scripts/・ホーム・
+#     一時領域以外・.fleetest には書けない。一時ファイルは $TMPDIR(スクリプト専用。run の後に消える)。
+#   - 読めない場所: ~/.ssh などの認証情報の置き場・秘密のファイル(シナリオと同じ)。
+#   - 繋げるのは compose.yaml で公開したポート(127.0.0.1:<port>)と、この Mac の設定
+#     sandbox.allowedDomains に書いた外部ドメイン(プロキシ経由。HTTP_PROXY / HTTPS_PROXY が入っている)
+#     だけ。それ以外のポート・外部へは繋がらない。ブリッジ・adb・Docker には繋げない。
+#   - サーバー・DB・スタブはこのスクリプトで起こさない(docker / docker compose / container は使えない)。
+#     同じ scripts/ の compose.yaml に宣言する(fleetest が run ごとに起動して止める。起動完了
+#     (healthcheck)を待ってから setup.sh が走る)。
+#   - コンテナの中での操作は中継コマンド fleetest-services で(PATH にある):
+#       fleetest-services exec <service> -- <command...>   (標準入力も渡せる)
+#       fleetest-services logs <service> [--tail N]
+#       fleetest-services status
+#       fleetest-services port <service> <containerPort>[/udp]   (公開先の host:port を印字)
+#   - 秘密: compose.yaml の environment が \${NAME} で参照した秘密は、この Mac の
+#     ~/.config/fleetest/secrets/<project>.env から読まれ、その名前だけがこのスクリプトの
+#     環境変数にも入る。スクリプトに秘密を書かない。
+#   - このスクリプトが背景に残したプロセスは run の後に止められる(常駐させられない)。
+#
 # 環境変数
 #   FT_HOOK             "setup"
 #   FT_WORKSPACE        このワークスペースの絶対パス(カレントディレクトリでもある)
 #   FT_PROJECT          テストプロジェクト名
 #   FT_PROFILE          実行プロファイル名
 #   FT_MACHINE          実行対象のマシン名(登録簿のエイリアス。手元は local)
-#   FT_REPORT_DIR       レポート出力先の絶対パス
+#   FT_REPORT_DIR       レポート出力先の絶対パス(読めるが書けない)
 #   FT_IOS_DEVICES      この run が使うデバイス名(空白区切り。空のこともある)
 #   FT_ANDROID_DEVICES  同上、Android のぶん
 #
-# ワークスペースは丸ごとランナー機へ運ばれる。compose ファイルや初期データは ../data/ に
-# 置いておけば向こうにも届く。逆に、起こしたサービスが状態やログをワークスペースの中に書くなら、
-# そのパスをワークスペースの .fleetest-transfer-ignore に書く(rsync の --exclude の書き方。
-# 置いたディレクトリ起点)。書かないと次のディスパッチで手元の内容がランナー機のものを上書きする。
+# ワークスペースは丸ごとランナー機へ運ばれる。初期データは data/ に置いておけば向こうにも届く。
+# 逆に、スクリプトが状態やログを data/ の中に書くなら、そのパスをワークスペースの
+# .fleetest-transfer-ignore に書く(rsync の --exclude の書き方。置いたディレクトリ起点)。
+# 書かないと次のディスパッチで手元の内容がランナー機のものを上書きする。
 #
-# テスト対象アプリからサービスへ届かせる方法: iOS シミュレータからはこの機械が 127.0.0.1、
-# Android エミュレータからは 10.0.2.2 に見える。Android 実機は
-# "adb -s <シリアル> reverse tcp:<ポート> tcp:<ポート>" が要る。この時点ではデバイスのシリアルは
-# まだ確定していないので、必要なら "adb devices" を自分で叩くこと。
+# Android 実機への adb reverse は fleetest が行う(スクリプトで adb は使えない)。
 
 set -eu
 
-# --- 例: DB とスタブサーバを起こす -------------------------------------------
-# docker compose -f "$FT_WORKSPACE/data/compose.yaml" up -d
+# --- 例: データ投入 ----------------------------------------------------------
+# fleetest-services exec db -- psql -U app < "$FT_WORKSPACE/data/seed.sql"
 #
-# # 秒数ではなく、観測できることを待つ。
-# until nc -z 127.0.0.1 5432; do sleep 1; done
-#
-# # Android 実機からこの機械のスタブサーバへ届かせる。
-# for serial in $(adb devices | awk '/\\tdevice$/ {print $1}'); do
-#   adb -s "$serial" reverse tcp:8080 tcp:8080
-# done
+# # data/ の中へファイルを生成する。
+# echo '{"user":"demo"}' > "$FT_WORKSPACE/data/fixture.json"
 `,
     en: `#!/bin/sh
 # Runs before the scenarios, on the machine that drives the devices (this Mac, or the
-# remote runner when the run is dispatched with --runner). Use it to start whatever the app
-# under test needs: a database, a stub/mock server, seed data.
+# remote runner when the run is dispatched with --runner). Use it to prepare the data the
+# app under test needs, such as seed data.
 #
 # Rules
 #   - It runs only if this file exists. Delete it and nothing happens.
@@ -68,44 +81,62 @@ set -eu
 #   - teardown.sh always runs afterwards, including when this script fails.
 #   - There is no timeout. Wait for the thing to be ready instead of sleeping blindly.
 #
+# Runs inside a sandbox (Seatbelt)
+#   - The only place you can write is <workspace>/data/ (plus any location listed in
+#     hooks.writablePaths of this Mac's settings, ~/.config/fleetest/config.json). scripts/, the
+#     home directory, temp areas other than $TMPDIR, and .fleetest are not writable. Use $TMPDIR
+#     for scratch files (private to the script; removed after the run).
+#   - Unreadable: credential stores such as ~/.ssh, and secret files (same as scenarios).
+#   - Network: only the ports published in compose.yaml (127.0.0.1:<port>) and the external
+#     domains listed in sandbox.allowedDomains of this Mac's settings (through the proxy;
+#     HTTP_PROXY / HTTPS_PROXY are set). Every other port or host is unreachable. The bridge,
+#     adb and Docker cannot be reached.
+#   - Do not start servers, databases or stubs from this script (docker / docker compose /
+#     container do not work). Declare them in compose.yaml in the same scripts/ directory:
+#     fleetest starts and stops them for each run, and setup.sh runs only after they are up
+#     (their healthcheck passed).
+#   - To act inside a container, use the relay command fleetest-services (on PATH):
+#       fleetest-services exec <service> -- <command...>   (stdin can be piped in)
+#       fleetest-services logs <service> [--tail N]
+#       fleetest-services status
+#       fleetest-services port <service> <containerPort>[/udp]   (prints the published host:port)
+#   - Secrets: a secret that compose.yaml references as \${NAME} in environment is read from
+#     ~/.config/fleetest/secrets/<project>.env on this Mac, and only that name is also set as an
+#     environment variable of this script. Never write secrets in the script.
+#   - Processes this script leaves running in the background are stopped after the run (you
+#     cannot keep a daemon alive).
+#
 # Environment
 #   FT_HOOK             "setup"
 #   FT_WORKSPACE        absolute path of this workspace (also the working directory)
 #   FT_PROJECT          test project name
 #   FT_PROFILE          run profile name
 #   FT_MACHINE          the target machine's registered alias ("local" for this Mac)
-#   FT_REPORT_DIR       absolute path of the report directory
+#   FT_REPORT_DIR       absolute path of the report directory (readable, not writable)
 #   FT_IOS_DEVICES      device names this run will use, space separated (may be empty)
 #   FT_ANDROID_DEVICES  same, for Android
 #
-# The whole workspace is copied to the remote runner, so keep compose files and fixtures
-# under ../data/ and they will be there too. Conversely, if a service you start writes its
-# state or logs inside the workspace, list those paths in the workspace's
-# .fleetest-transfer-ignore (rsync --exclude syntax, relative to the file's directory) —
-# otherwise the next dispatch overwrites the runner's copy with this machine's.
+# The whole workspace is copied to the remote runner, so keep seed data under data/ and it
+# will be there too. Conversely, if the script writes state or logs inside data/, list those
+# paths in the workspace's .fleetest-transfer-ignore (rsync --exclude syntax, relative to
+# the file's directory) — otherwise the next dispatch overwrites the runner's copy with this
+# machine's.
 #
-# Reaching the service from the app under test: an iOS simulator sees this machine as
-# 127.0.0.1, an Android emulator as 10.0.2.2, and a physical Android device needs
-# "adb -s <serial> reverse tcp:<port> tcp:<port>". Device serials are not resolved yet at
-# this point, so call "adb devices" here if you need them.
+# fleetest itself runs adb reverse for physical Android devices (adb is not available here).
 
 set -eu
 
-# --- example: a database and a stub server -----------------------------------
-# docker compose -f "$FT_WORKSPACE/data/compose.yaml" up -d
+# --- example: load data ------------------------------------------------------
+# fleetest-services exec db -- psql -U app < "$FT_WORKSPACE/data/seed.sql"
 #
-# # Wait for something observable, not for a fixed number of seconds.
-# until nc -z 127.0.0.1 5432; do sleep 1; done
-#
-# # Let physical Android devices reach the stub server on this machine.
-# for serial in $(adb devices | awk '/\\tdevice$/ {print $1}'); do
-#   adb -s "$serial" reverse tcp:8080 tcp:8080
-# done
+# # Generate a file under data/.
+# echo '{"user":"demo"}' > "$FT_WORKSPACE/data/fixture.json"
 `,
   },
   "hookScaffold.teardownTemplate": {
     ja: `#!/bin/sh
-# テスト実行の後に、setup.sh と同じ機械の上で走る。setup.sh が起こしたものを止めて片付ける。
+# テスト実行の後に、setup.sh と同じ機械の上で走る。setup.sh が入れたデータを片付ける。
+# サービスの停止は fleetest がやるので、ここには書かない。
 #
 # 規則
 #   - このファイルがあるときだけ実行される。要らなければ削除してよい。
@@ -120,20 +151,49 @@ set -eu
 #     run の文脈が無いため、FT_MACHINE・FT_REPORT_DIR・デバイス一覧は空になる
 #     (FT_WORKSPACE・FT_PROJECT・FT_PROFILE は常に入っている)。
 #
+# サンドボックス(Seatbelt)の中で動く
+#   - 書けるのは <workspace>/data/ の中だけ(と、この Mac の設定
+#     ~/.config/fleetest/config.json の hooks.writablePaths に書いた場所)。scripts/・ホーム・
+#     一時領域以外・.fleetest には書けない。一時ファイルは $TMPDIR(スクリプト専用。run の後に消える)。
+#   - 読めない場所: ~/.ssh などの認証情報の置き場・秘密のファイル(シナリオと同じ)。
+#   - 繋げるのは compose.yaml で公開したポート(127.0.0.1:<port>)と、この Mac の設定
+#     sandbox.allowedDomains に書いた外部ドメイン(プロキシ経由。HTTP_PROXY / HTTPS_PROXY が入っている)
+#     だけ。それ以外のポート・外部へは繋がらない。ブリッジ・adb・Docker には繋げない。
+#   - サーバー・DB・スタブはこのスクリプトで起こさない(docker / docker compose / container は使えない)。
+#     同じ scripts/ の compose.yaml に宣言する(fleetest が run ごとに起動して止める。起動完了
+#     (healthcheck)を待ってから setup.sh が走る)。
+#   - コンテナの中での操作は中継コマンド fleetest-services で(PATH にある):
+#       fleetest-services exec <service> -- <command...>   (標準入力も渡せる)
+#       fleetest-services logs <service> [--tail N]
+#       fleetest-services status
+#       fleetest-services port <service> <containerPort>[/udp]   (公開先の host:port を印字)
+#   - 秘密: compose.yaml の environment が \${NAME} で参照した秘密は、この Mac の
+#     ~/.config/fleetest/secrets/<project>.env から読まれ、その名前だけがこのスクリプトの
+#     環境変数にも入る。スクリプトに秘密を書かない。
+#   - このスクリプトが背景に残したプロセスは run の後に止められる(常駐させられない)。
+#
+# 環境変数
+#   FT_HOOK             "teardown"
+#   FT_WORKSPACE        このワークスペースの絶対パス(カレントディレクトリでもある)
+#   FT_PROJECT          テストプロジェクト名
+#   FT_PROFILE          実行プロファイル名
+#   FT_MACHINE          実行対象のマシン名(登録簿のエイリアス。手元は local)
+#   FT_REPORT_DIR       レポート出力先の絶対パス(読めるが書けない)
+#   FT_IOS_DEVICES      この run が使うデバイス名(空白区切り。空のこともある)
+#   FT_ANDROID_DEVICES  同上、Android のぶん
+#
 # ここでは "set -e" を使わない。1つ失敗しただけで残りの片付けを飛ばさないため。
 
 set -u
 
-# --- 例: setup.sh がやったことを元に戻す -------------------------------------
-# docker compose -f "$FT_WORKSPACE/data/compose.yaml" down -v || true
+# --- 例: データの後始末 ------------------------------------------------------
+# fleetest-services exec db -- psql -U app -c 'TRUNCATE orders, users' || true
 #
-# for serial in $(adb devices | awk '/\\tdevice$/ {print $1}'); do
-#   adb -s "$serial" reverse --remove tcp:8080 || true
-# done
+# rm -f "$FT_WORKSPACE/data/fixture.json" || true
 `,
     en: `#!/bin/sh
-# Runs after the scenarios, on the same machine as setup.sh. Use it to stop and remove
-# whatever setup.sh started.
+# Runs after the scenarios, on the same machine as setup.sh. Use it to clean up the data
+# setup.sh put in place. Stopping services is done by fleetest, so do not write that here.
 #
 # Rules
 #   - It runs only if this file exists. Delete it and nothing happens.
@@ -148,16 +208,167 @@ set -u
 #     by the reaper there is no run context, so FT_MACHINE, FT_REPORT_DIR and the device
 #     lists are empty (FT_WORKSPACE, FT_PROJECT and FT_PROFILE are always set).
 #
+# Runs inside a sandbox (Seatbelt)
+#   - The only place you can write is <workspace>/data/ (plus any location listed in
+#     hooks.writablePaths of this Mac's settings, ~/.config/fleetest/config.json). scripts/, the
+#     home directory, temp areas other than $TMPDIR, and .fleetest are not writable. Use $TMPDIR
+#     for scratch files (private to the script; removed after the run).
+#   - Unreadable: credential stores such as ~/.ssh, and secret files (same as scenarios).
+#   - Network: only the ports published in compose.yaml (127.0.0.1:<port>) and the external
+#     domains listed in sandbox.allowedDomains of this Mac's settings (through the proxy;
+#     HTTP_PROXY / HTTPS_PROXY are set). Every other port or host is unreachable. The bridge,
+#     adb and Docker cannot be reached.
+#   - Do not start servers, databases or stubs from this script (docker / docker compose /
+#     container do not work). Declare them in compose.yaml in the same scripts/ directory:
+#     fleetest starts and stops them for each run, and setup.sh runs only after they are up
+#     (their healthcheck passed).
+#   - To act inside a container, use the relay command fleetest-services (on PATH):
+#       fleetest-services exec <service> -- <command...>   (stdin can be piped in)
+#       fleetest-services logs <service> [--tail N]
+#       fleetest-services status
+#       fleetest-services port <service> <containerPort>[/udp]   (prints the published host:port)
+#   - Secrets: a secret that compose.yaml references as \${NAME} in environment is read from
+#     ~/.config/fleetest/secrets/<project>.env on this Mac, and only that name is also set as an
+#     environment variable of this script. Never write secrets in the script.
+#   - Processes this script leaves running in the background are stopped after the run (you
+#     cannot keep a daemon alive).
+#
+# Environment
+#   FT_HOOK             "teardown"
+#   FT_WORKSPACE        absolute path of this workspace (also the working directory)
+#   FT_PROJECT          test project name
+#   FT_PROFILE          run profile name
+#   FT_MACHINE          the target machine's registered alias ("local" for this Mac)
+#   FT_REPORT_DIR       absolute path of the report directory (readable, not writable)
+#   FT_IOS_DEVICES      device names this run will use, space separated (may be empty)
+#   FT_ANDROID_DEVICES  same, for Android
+#
 # Do not use "set -e" here: one failing step should not skip the rest of the cleanup.
 
 set -u
 
-# --- example: undo what setup.sh did -----------------------------------------
-# docker compose -f "$FT_WORKSPACE/data/compose.yaml" down -v || true
+# --- example: clean up the data ----------------------------------------------
+# fleetest-services exec db -- psql -U app -c 'TRUNCATE orders, users' || true
 #
-# for serial in $(adb devices | awk '/\\tdevice$/ {print $1}'); do
-#   adb -s "$serial" reverse --remove tcp:8080 || true
-# done
+# rm -f "$FT_WORKSPACE/data/fixture.json" || true
+`,
+  },
+  "hookScaffold.composeTemplate": {
+    ja: `# fleetest が run ごとに起動して止めるサービスの宣言。Docker と Apple Container のどちらでも同じ書き方。
+# サービスが要らなければこのファイルは削除してよい(無ければ何も起動しない)。
+# 起動完了(healthcheck)を待ってから setup.sh が走り、teardown.sh の後に止まる。
+# スクリプトからは fleetest-services で操作する(setup.sh / teardown.sh の説明を参照)。
+#
+# 書けるもの
+#   services.<name>: image | build, command, entrypoint, environment, env_file, ports, volumes,
+#     depends_on(condition: service_started | service_healthy | service_completed_successfully),
+#     healthcheck, stop_grace_period, working_dir, user, mem_limit, cpus, tmpfs, init, platform,
+#     labels, networks
+#   トップレベル: networks, volumes
+# 書けないもの
+#   restart・privileged・cap_add・network_mode・extra_hosts・ホストのパスの bind
+#   (scripts/ と data/ の下だけ。scripts/ は読み取り専用)・外部ネットワーク。
+#   知らないキーは断られる。
+#
+# 規則
+#   - コンテナは外部ネットワークへ出られない(sandbox.allowedDomains のプロキシ経由だけ)。
+#   - 公開ポートは 127.0.0.1 だけ。実機のレーンを含む run は、この Mac の設定
+#     services.publishForPhysicalDevices の LAN アドレスで公開する。
+#   - イメージは手元に無いときだけ取得する。
+#   - build: の context は scripts/ の下か、この Mac の設定 services.buildSources に書いた場所。
+#   - 秘密は environment の値に \${NAME} で書く(値は ~/.config/fleetest/secrets/<project>.env から読まれる)。
+#   - healthcheck を書くこと。無いと「起動した」時点で使えるとみなす。
+#   - depends_on の service_completed_successfully の相手(初期化など)は前面で実行され、
+#     終了コードで決着する。
+#   - 名前付きボリュームは run をまたいで残る。消すのは "fleetest services reset"。
+
+# --- 例: DB と API ------------------------------------------------------------
+# services:
+#   db:
+#     image: postgres:16
+#     environment:
+#       POSTGRES_USER: app
+#       POSTGRES_PASSWORD: \${DB_PASSWORD}
+#     volumes:
+#       - dbdata:/var/lib/postgresql/data
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U app"]
+#       interval: 2s
+#       timeout: 3s
+#       retries: 30
+#
+#   api:
+#     image: example/api:latest
+#     depends_on:
+#       db:
+#         condition: service_healthy
+#     ports:
+#       - "127.0.0.1:8080:8080"
+#     environment:
+#       API_TOKEN: \${API_TOKEN}
+#
+# volumes:
+#   dbdata:
+`,
+    en: `# Declares the services fleetest starts and stops for each run. The syntax is the same for
+# Docker and Apple Container.
+# Delete this file if you need no services (nothing is started without it).
+# setup.sh runs after they are up (healthcheck passed), and they are stopped after teardown.sh.
+# Scripts operate on them with fleetest-services (see the comments in setup.sh / teardown.sh).
+#
+# Allowed
+#   services.<name>: image | build, command, entrypoint, environment, env_file, ports, volumes,
+#     depends_on (condition: service_started | service_healthy | service_completed_successfully),
+#     healthcheck, stop_grace_period, working_dir, user, mem_limit, cpus, tmpfs, init, platform,
+#     labels, networks
+#   Top level: networks, volumes
+# Not allowed
+#   restart, privileged, cap_add, network_mode, extra_hosts, bind mounts of host paths
+#   (only under scripts/ and data/; scripts/ is read-only), external networks.
+#   Unknown keys are rejected.
+#
+# Rules
+#   - Containers cannot reach external networks (only through the sandbox.allowedDomains proxy).
+#   - Ports are published on 127.0.0.1 only. A run that includes a physical-device lane
+#     publishes them on the LAN address set by services.publishForPhysicalDevices in this
+#     Mac's settings.
+#   - Images are pulled only when they are not present locally.
+#   - The context of build: must be under scripts/ or a location listed in services.buildSources
+#     of this Mac's settings.
+#   - Write secrets as \${NAME} in an environment value (read from
+#     ~/.config/fleetest/secrets/<project>.env).
+#   - Write a healthcheck. Without one, a service counts as ready as soon as it has started.
+#   - A depends_on target with service_completed_successfully (initialization) runs in the
+#     foreground and is settled by its exit code.
+#   - Named volumes persist across runs. "fleetest services reset" removes them.
+
+# --- example: a database and an API -------------------------------------------
+# services:
+#   db:
+#     image: postgres:16
+#     environment:
+#       POSTGRES_USER: app
+#       POSTGRES_PASSWORD: \${DB_PASSWORD}
+#     volumes:
+#       - dbdata:/var/lib/postgresql/data
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U app"]
+#       interval: 2s
+#       timeout: 3s
+#       retries: 30
+#
+#   api:
+#     image: example/api:latest
+#     depends_on:
+#       db:
+#         condition: service_healthy
+#     ports:
+#       - "127.0.0.1:8080:8080"
+#     environment:
+#       API_TOKEN: \${API_TOKEN}
+#
+# volumes:
+#   dbdata:
 `,
   },
 } satisfies MessageDict;

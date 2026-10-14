@@ -120,3 +120,10 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **中継 `fleetest-services` に動詞を足す → `ServicePolicy`(FTServices・純粋)と `ServicePolicyTests` に足す**(ランタイムのオプションは
   利用者に書かせない・サービスの集合は宣言だけが決める)。gateway のワイヤ(`ServiceGatewayWire`)を変えたら `fleetest-services` も同じ
   コミットで(同じ FTCore を使うので版は持たない = 必ず一緒にビルドされる)
+- **`fleetest services up` は常駐の所有者(`api services-owner`)を起こし、控えは `kind = owner`**(run の控えと同じ置き場・同じ生存判定 =
+  `ServicesOwnerLaunch` / `ApiServicesOwnerCommand`)。run は `ServicesSession.takeOverOwners` で所有者へ SIGTERM を送り**排他の外で**
+  終了を待ってから作る(所有者も同じ排他で片付ける = 握ったまま待つと待ち合う)。待ちの上限は控えの `stopGraceSeconds` から
+  (`ServicesTeardown.teardownBudgetSeconds`。新しい数字を置かない)。**控え(`ServicesLease`)の欄を足したら `currentSchemaVersion` を +1**
+  (読み替えは置かない)。Android 実機の `adb reverse` は親が張り、控えの `adbReverse` で外す(`ServicesAdbReverse`。資源ではないので
+  解除の失敗で控えを残さない)。`services up` の引数(`--physical` / `--serial`)と run の実機のレーンは `ServicesUpOptions` の1箇所で
+  `ServicesSession.up` へ入る(呼び手ごとに別の経路を作らない)
