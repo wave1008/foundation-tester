@@ -15,13 +15,15 @@ final class ScenarioSandboxTests: XCTestCase {
             .appendingPathComponent("ft-sandbox-テスト \(UUID().uuidString)", isDirectory: true)
         let container = "home/Library/Developer/CoreSimulator/Devices/UDID-1/data/Containers"
         for sub in ["reports", "project/.fleetest", "repo/.fleetest/hooks", "tool/.fleetest/hooks",
-                    "repo/.fleetest/services", "tool/.fleetest/services", "stills", "home/.ssh", "home/.config/fleetest", "home/.config/gh",
+                    "repo/.fleetest/services", "tool/.fleetest/services",
+                    "repo/.fleetest/services.lock", "tool/.fleetest/services.lock", "stills", "home/.ssh", "home/.config/fleetest", "home/.config/gh",
                     "home/Library/Caches/fleetest", "outside",
                     container + "/Data/Application/APP-1/Library", container + "/Bundle/Application/APP-1"] {
             try FileManager.default.createDirectory(
                 at: root.appendingPathComponent(sub), withIntermediateDirectories: true)
         }
         try Data("secret".utf8).write(to: root.appendingPathComponent("home/.ssh/id"))
+        try Data("{}".utf8).write(to: root.appendingPathComponent("repo/.fleetest/services.lock/fleetest-ab.lock"))
         try Data("plain".utf8).write(to: root.appendingPathComponent("home/readable"))
         try Data("{}".utf8).write(to: root.appendingPathComponent("home/.config/fleetest/config.json"))
         try Data("token".utf8).write(to: root.appendingPathComponent("home/.config/gh/hosts.yml"))
@@ -114,6 +116,18 @@ final class ScenarioSandboxTests: XCTestCase {
         XCTAssertNotEqual(try touch("tool/.fleetest/mcp-ask-offered.json"), 0)
         XCTAssertFalse(FileManager.default.fileExists(atPath: path("repo/.fleetest/mcp-ask-offered.json")))
         XCTAssertEqual(try touch("repo/.fleetest/other.json"), 0, "台帳の隣は書ける(拒否は台帳だけ)")
+    }
+
+    /// `services.lock/` はサービスの排他(固定ファイルの flock)。子がファイルを消す・置き換えると、別の inode を握った 2 者が同時に本体へ入れる
+    func testServicesLockDirectoryStaysReadOnlyInsideTheWritableStateDirectory() throws {
+        let file = "repo/.fleetest/services.lock/fleetest-ab.lock"
+        XCTAssertNotEqual(try runSandboxed(["/bin/rm", path(file)]), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/mv", path(file), path("repo/.fleetest/services.lock/moved.lock")]), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/mv", path("repo/.fleetest/services.lock"), path("repo/.fleetest/services.lock.old")]), 0)
+        XCTAssertNotEqual(try touch("repo/.fleetest/services.lock/new.lock"), 0)
+        XCTAssertNotEqual(try touch("tool/.fleetest/services.lock/new.lock"), 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path(file)))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: path("repo/.fleetest/services.lock.old")))
     }
 
     /// `clearAppData` は Simulator のデータコンテナの中身を直接消す。開けるのはデータ側だけで、

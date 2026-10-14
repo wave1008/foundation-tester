@@ -488,8 +488,9 @@ public enum ScenarioSandbox {
     static func writeDeniedPaths(_ scope: Scope) -> [String] {
         scope.stateRoots.flatMap { root in
             // `services/` = `services up` の所有者プロセスのログ(親が開いて書く)。子が symlink を置けると親の書き先を向け替えられる。
-            // `mcp-ask-offered.json` = 承認(ask)の提示済みの台帳(`ProjectScaffold`)。子が「提示済み」と書けると ask が足されない
-            ["hooks", "services", "mcp-ask-offered.json", "DerivedData", "DerivedData-device", "cleanup.log", "recording-probe"]
+            // `mcp-ask-offered.json` = 承認(ask)の提示済みの台帳(`ProjectScaffold`)。子が「提示済み」と書けると ask が足されない。
+            // `services.lock/` = サービスの排他(固定ファイルの flock。`ServicesLock`)。子が消す・置き換えると別の inode を握った 2 者が同時に入る
+            ["hooks", "services", "services.lock", "mcp-ask-offered.json", "DerivedData", "DerivedData-device", "cleanup.log", "recording-probe"]
                 .map { root + "/.fleetest/" + $0 }
         } + ["ftbridge.apk", "dispatch.lock", "dispatch.queue", "retention-sweep.lock"]
             .map { scope.home + "/.fleetest/" + $0 }

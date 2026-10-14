@@ -129,5 +129,6 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   推定で言わない)。`services reset --force` は**生きている持ち主の控えを消さない**(所有者には合図して排他の外で待ち、待ち切れなければ
   何も消さない・run は止めない・読めない控えもその pid が生きていれば消さない。判定は `Reset.forceDecision` の純粋関数)。
   **排他は押し切らない**(`ServicesLock` に強制解除の経路を足さない。取れなければ消さずに止める)。**排他の実体は固定ファイルの flock**
-  (mkdir + 「死んだ持ち主を照合して削除」に戻さない = 照合と削除の間の窓で他者のロックを消す)。`services up` の引数(`--physical` / `--serial`)と run の実機のレーンは `ServicesUpOptions` の1箇所で
+  (mkdir + 「死んだ持ち主を照合して削除」に戻さない = 照合と削除の間の窓で他者のロックを消す)。親だけが書く場所(`services.lock/`・
+  `services/`・`mcp-ask-offered.json` 等)を足したら `ScenarioSandbox.writeDeniedPaths` にも足す(flock は inode に付く = 消されると排他が崩れる)。`services up` の引数(`--physical` / `--serial`)と run の実機のレーンは `ServicesUpOptions` の1箇所で
   `ServicesSession.up` へ入る(呼び手ごとに別の経路を作らない)

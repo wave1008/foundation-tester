@@ -30,18 +30,21 @@ final class ServicesOwnerTakeoverTests: XCTestCase {
                       containers: ["\(prefix)-db": "c1"], phase: .running)
     }
 
-    private var lockDir: URL { stateDir.appendingPathComponent("services.lock").appendingPathComponent(prefix) }
+    /// 待っている間に排他を握っていないか(所有者も同じ排他で片付けるので、握ったまま待つと待ち合う)
+    private func lockHeld() -> Bool { ServicesLock.currentHolder(prefix: prefix, stateDir: stateDir) != nil }
 
     func testLiveOwnerIsSignalledThenWaitedFor() throws {
         try place(lease(pid: 5001, kind: .owner))
         var signalled: [Int32] = []
         var pollsAfterSignal = 0
+        var heldWhileWaiting = false
         var logs: [String] = []
         try ServicesSession.takeOverOwners(
             prefix: prefix, stateDir: stateDir,
             isAlive: { _, _ in
                 guard !signalled.isEmpty else { return true }
                 pollsAfterSignal += 1
+                if lockHeld() { heldWhileWaiting = true }
                 return pollsAfterSignal < 3   // 合図のあと 2 回は生きていて 3 回目で死ぬ
             },
             terminate: { signalled.append($0) },
@@ -49,7 +52,8 @@ final class ServicesOwnerTakeoverTests: XCTestCase {
         XCTAssertEqual(signalled, [5001])
         XCTAssertEqual(pollsAfterSignal, 3, "the run waits for the owner to exit")
         XCTAssertTrue(logs.contains { $0.contains("taking over the services started by `fleetest services up` (pid 5001)") }, "\(logs)")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: lockDir.path), "the lock is released before waiting")
+        XCTAssertFalse(heldWhileWaiting, "the lock is released before waiting")
+        XCTAssertFalse(lockHeld())
     }
 
     func testLiveRunLeaseIsNotSignalled() throws {
@@ -70,14 +74,20 @@ final class ServicesOwnerTakeoverTests: XCTestCase {
 
     func testOwnerThatDoesNotExitIsReportedWithItsPid() throws {
         try place(lease(pid: 5004, kind: .owner))
+        var signalled = false
+        var heldWhileWaiting = false
         XCTAssertThrowsError(try ServicesSession.takeOverOwners(
             prefix: prefix, stateDir: stateDir, budgetOverrideSeconds: 0.3,
-            isAlive: { _, _ in true }, terminate: { _ in }, log: { _ in })) { error in
+            isAlive: { _, _ in
+                if signalled, lockHeld() { heldWhileWaiting = true }
+                return true
+            }, terminate: { _ in signalled = true }, log: { _ in })) { error in
             let detail = (error as? ServicesError)?.detail ?? ""
             XCTAssertTrue(detail.contains("(`fleetest services up`, pid 5004) has not exited"), detail)
             XCTAssertTrue(detail.contains("stop it, then retry"), detail)
         }
-        XCTAssertFalse(FileManager.default.fileExists(atPath: lockDir.path))
+        XCTAssertFalse(heldWhileWaiting, "the lock is released before waiting")
+        XCTAssertFalse(lockHeld())
     }
 
     func testHeldByOtherWording() {
