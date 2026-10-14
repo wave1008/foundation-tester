@@ -31,6 +31,18 @@ enum ServicesFacts {
 
     // MARK: ワークスペース
 
+    /// compose.yaml が「宣言を持つ」か。無い・コメントだけ(YAML が空 = `.null`)なら false(= サービスは無いものとして進む。
+    /// 拡張の雛形はコメントだけなので、置いただけの run を壊さない)。壊れた YAML は true(断るのは解釈の段 = 文言はそちら)。
+    static func composeDeclaresSomething(_ workspace: ServicesWorkspace, log: (String) -> Void) throws -> Bool {
+        guard workspace.hasComposeFile else { return false }
+        let yaml = try readText(workspace.composeFile.path, what: "compose.yaml")
+        if case .success(let tree) = ComposeReader.read(yaml: yaml), tree == .null {
+            log("→ services: scripts/compose.yaml declares nothing (comments only); no services")
+            return false
+        }
+        return true
+    }
+
     static func workspace(for resolved: ResolvedProfile) -> ServicesWorkspace {
         ServicesWorkspace(root: resolved.workspaceRoot ?? resolved.project.rootURL)
     }

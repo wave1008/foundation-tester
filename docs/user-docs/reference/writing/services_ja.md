@@ -34,6 +34,8 @@ services:
     image: postgres:16
     environment:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
+      # Apple Container のボリュームは根に lost+found があり initdb が断るので、サブディレクトリを使う
+      PGDATA: /var/lib/postgresql/data/pgdata
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 2s

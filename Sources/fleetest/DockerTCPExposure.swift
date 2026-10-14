@@ -50,19 +50,26 @@ enum DockerTCPExposure {
     }
 
     /// lsof は該当が無いと exit 1 で何も出さない(= clear)。それ以外の非0は「見られなかった」。
+    /// 集約は exposed > unknown > clear —— 片方のポートの検査が失敗しても、確認できた公開口は捨てない
     static func scan(run: ([String]) -> (status: Int32, output: String)? = { argv in
         (try? Shell.run(argv)).map { ($0.status, $0.output) }
     }) -> Scan {
         var listeners: [Listener] = []
+        var unknown: String?
         for port in ports {
-            guard let result = run(lsofArguments(port: port)) else { return .unknown(detail: "lsof could not be started") }
+            guard let result = run(lsofArguments(port: port)) else {
+                unknown = unknown ?? "lsof could not be started"
+                continue
+            }
             switch result.status {
             case 0: listeners += nonLoopbackListeners(lsofOutput: result.output, port: port)
             case 1 where result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty: continue
-            default: return .unknown(detail: "lsof exit \(result.status)")
+            default: unknown = unknown ?? "lsof exit \(result.status)"
             }
         }
-        return listeners.isEmpty ? .clear : .exposed(listeners)
+        if !listeners.isEmpty { return .exposed(listeners) }
+        if let unknown { return .unknown(detail: unknown) }
+        return .clear
     }
 
     /// 文言は呼び手が付ける(doctor は警告・サービスの起動は拒否)。ここは事実の部分だけ

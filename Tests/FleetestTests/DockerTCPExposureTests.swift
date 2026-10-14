@@ -31,6 +31,11 @@ final class DockerTCPExposureTests: XCTestCase {
         })
         XCTAssertEqual(exposed, .exposed([.init(port: 2376, address: "0.0.0.0", command: "dockerd")]))
         XCTAssertEqual(DockerTCPExposure.scan(run: { _ in (2, "lsof: unsupported") }), .unknown(detail: "lsof exit 2"))
+        // 片方の検査が失敗しても、確認できた公開口は捨てない(exposed > unknown)
+        let mixed = DockerTCPExposure.scan(run: { argv in
+            argv.contains("-iTCP:2375") ? (0, self.header + "dockerd 1 u 7u IPv4 0x1 0t0 TCP *:2375 (LISTEN)\n") : (2, "lsof: unsupported")
+        })
+        XCTAssertEqual(mixed, .exposed([.init(port: 2375, address: "*", command: "dockerd")]))
         XCTAssertEqual(DockerTCPExposure.scan(run: { _ in nil }), .unknown(detail: "lsof could not be started"))
         XCTAssertEqual(DockerTCPExposure.lsofArguments(port: 2375), ["/usr/sbin/lsof", "-nP", "-iTCP:2375", "-sTCP:LISTEN"])
         XCTAssertEqual(DockerTCPExposure.describe([.init(port: 2375, address: "*", command: "dockerd")]), "*:2375 (dockerd)")

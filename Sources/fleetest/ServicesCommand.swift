@@ -111,22 +111,16 @@ struct ServicesCommand: AsyncParsableCommand {
 
         func run() async throws {
             let target = try ServicesCommand.resolveTarget(project: project, profile: profile)
-            guard target.workspace.hasComposeFile else {
-                ConsoleOut.out("→ services: no scripts/compose.yaml in \(target.workspace.root.path); nothing to start")
+            guard try ServicesFacts.composeDeclaresSomething(target.workspace, log: { ConsoleOut.out($0) }) else {
+                ConsoleOut.out("→ services: scripts/compose.yaml is absent or declares nothing in \(target.workspace.root.path); nothing to start")
                 return
             }
-            // 既に上がっていれば何もしない(MCP から繰り返し呼べる)。run が握っていれば断る
-            let before = ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix)
-            for lease in before.compactMap(\.lease)
-            where !ServicesLeaseFile.isOrphan(lease, isAlive: ServicesProcessIdentity.isAlive) {
-                switch lease.kind {
-                case .owner:
-                    ConsoleOut.out("→ services: already up (\(lease.holderDescription)); stop with `fleetest services down`")
-                    Self.printPublished(lease)
-                    return
-                case .run:
-                    throw ValidationError("\(lease.holderDescription) holds these services; wait for that run to finish")
-                }
+            // 既に上がっていれば何もしない(MCP から繰り返し呼べる)。起動中なら上がるまで・片付け中なら消えるまで待つ。
+            // run が握っていれば断る
+            if let existing = try await Self.settleExistingOwner(target: target) {
+                ConsoleOut.out("→ services: already up (\(existing.holderDescription)); stop with `fleetest services down`")
+                Self.printPublished(existing)
+                return
             }
             guard let executable = Bundle.main.executableURL else {
                 throw ValidationError("cannot locate the fleetest executable to start the services owner")
@@ -154,6 +148,13 @@ struct ServicesCommand: AsyncParsableCommand {
                     Self.printPublished(lease)
                     return
                 case .exited:
+                    // 事前の確認と所有者の控えの書き込みの間に別の `up` が割り込むと、こちらの所有者は「already up」で負ける。
+                    // そのときは相手の所有者が上がるのを待って「already up」として返す(失敗ではない)
+                    if let other = try await Self.settleExistingOwner(target: target) {
+                        ConsoleOut.out("→ services: already up (\(other.holderDescription)); stop with `fleetest services down`")
+                        Self.printPublished(other)
+                        return
+                    }
                     ConsoleOut.err("✗ services up failed (owner exit \(owner.terminationStatus)); last log lines (\(logURL.path)):")
                     for line in ServicesOwnerLaunch.logTail(logURL, lines: 20) { ConsoleOut.err("  " + line) }
                     throw ExitCode.failure
@@ -166,6 +167,46 @@ struct ServicesCommand: AsyncParsableCommand {
         private static func printPublished(_ lease: ServicesLease) {
             for line in lease.publishedSummary { ConsoleOut.out("  " + line) }
             for entry in lease.adbReverse { ConsoleOut.out("  adb reverse \(entry.serial) tcp:\(entry.hostPort)") }
+        }
+
+        enum ExistingDecision: Equatable {
+            case refuse(String)
+            case alreadyUp
+            /// starting = 上がるまで / tearingDown = 消えるまで(その後は新しく起こす)
+            case wait(String)
+        }
+
+        /// 生きている控え1つをどう扱うか(純粋)。phase を見ずに「already up」と言うと、healthcheck 待ちの最中や
+        /// 片付けの最中のサービスを起動済みとして返してしまう
+        static func decision(for lease: ServicesLease) -> ExistingDecision {
+            switch (lease.kind, lease.phase) {
+            case (.run, _):
+                return .refuse("\(lease.holderDescription) holds these services; wait for that run to finish")
+            case (.owner, .running):
+                return .alreadyUp
+            case (.owner, .starting):
+                return .wait("→ services: \(lease.holderDescription) is still starting; waiting for it")
+            case (.owner, .tearingDown):
+                return .wait("→ services: \(lease.holderDescription) is stopping; waiting for it to finish before starting again")
+            }
+        }
+
+        /// 生きている控えが無くなる(nil = 新しく起こす)か running の所有者が見つかるまで待つ。待ちに期限は置かない
+        /// (所有者の起動の上限は healthcheck が決め、片付けの上限は所有者の側で尽きる)
+        static func settleExistingOwner(target: Target) async throws -> ServicesLease? {
+            var announced: Set<String> = []
+            while true {
+                let live = ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix).compactMap(\.lease)
+                    .filter { !ServicesLeaseFile.isOrphan($0, isAlive: ServicesProcessIdentity.isAlive) }
+                guard let lease = live.first else { return nil }
+                switch decision(for: lease) {
+                case .refuse(let reason): throw ValidationError(reason)
+                case .alreadyUp: return lease
+                case .wait(let notice):
+                    if announced.insert(notice).inserted { ConsoleOut.out(notice) }
+                    try await Task.sleep(nanoseconds: UInt64(ServicesSession.pollIntervalSeconds * 1_000_000_000))
+                }
+            }
         }
     }
 
@@ -217,13 +258,15 @@ struct ServicesCommand: AsyncParsableCommand {
                     throw ExitCode.failure
                 }
             }
-            // 所有者が片付けに失敗して残した控え(資源あり)は孤児 = ここでもう一度試す
+            // 所有者が片付けに失敗して残した控え(資源あり)は孤児 = 排他を取り直してもう一度試す
             if !owners.isEmpty {
-                for entry in ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix) {
-                    guard let lease = entry.lease, ServicesLeaseFile.isOrphan(lease, isAlive: ServicesProcessIdentity.isAlive) else { continue }
-                    if ServicesReaper.reapOne(entry: entry, lease: lease, home: NSHomeDirectory(),
-                                              remover: ServicesReaper.defaultRemover(log: log), log: log) {
-                        reaped += 1
+                try ServicesLock.withLock(prefix: target.prefix, stateDir: target.stateDir) {
+                    for entry in ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix) {
+                        guard let lease = entry.lease, ServicesLeaseFile.isOrphan(lease, isAlive: ServicesProcessIdentity.isAlive) else { continue }
+                        if ServicesReaper.reapOne(entry: entry, lease: lease, home: NSHomeDirectory(),
+                                                  remover: ServicesReaper.defaultRemover(log: log), log: log) {
+                            reaped += 1
+                        }
                     }
                 }
             }
@@ -252,9 +295,14 @@ struct ServicesCommand: AsyncParsableCommand {
 
         func run() async throws {
             let target = try ServicesCommand.resolveTarget(project: project, profile: profile)
+            // Ctrl-C / SIGTERM で pull を止める(ランタイムの子へ SIGTERM・終了待ち)
+            let interruptState = RunInterruptState(recorder: nil, notice: "⏹ services pull: stop requested")
+            let relay = InterruptRelay.observing { interruptState.requestStop() }
+            defer { relay.stop() }
             do {
                 let result = try ServicesSession.pull(
-                    resolved: target.resolved, options: .forRun(target.resolved), refresh: refresh) { ConsoleOut.out($0) }
+                    resolved: target.resolved, options: .forRun(target.resolved), refresh: refresh,
+                    interrupt: interruptState) { ConsoleOut.out($0) }
                 ConsoleOut.out("→ services pull: \(result.pulled) image(s) pulled, \(result.present) already present")
             } catch let error as ServicesError {
                 ConsoleOut.err("✗ \(error.shortDescription)")  // run の外 = 「シナリオは走らなかった」を付けない
@@ -285,8 +333,11 @@ struct ServicesCommand: AsyncParsableCommand {
                 ConsoleOut.err("✗ \(error.shortDescription)")
                 throw ExitCode.failure
             }
+            let interruptState = RunInterruptState(recorder: nil, notice: "⏹ services load: stop requested")
+            let relay = InterruptRelay.observing { interruptState.requestStop() }
+            defer { relay.stop() }
             ConsoleOut.out("→ services load: \(path) into \(cli.runtime.kind.rawValue)")
-            let result = cli.runLong(cli.commands.imageLoad(path), label: "the image load", interrupt: nil) { ConsoleOut.out($0) }
+            let result = cli.runLong(cli.commands.imageLoad(path), label: "the image load", interrupt: interruptState) { ConsoleOut.out($0) }
             guard result.status == 0 else {
                 ConsoleOut.err("✗ services: loading \(path) failed (exit \(result.status)): \(result.tail.suffix(5).joined(separator: " | "))")
                 throw ExitCode.failure
@@ -373,26 +424,65 @@ struct ServicesCommand: AsyncParsableCommand {
 
         func run() async throws {
             let target = try ServicesCommand.resolveTarget(project: project, profile: profile)
-            let entries = ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix)
-
-            if !force {
-                for entry in entries {
-                    switch entry.state {
-                    case .unreadable(let reason):
-                        throw ValidationError("the lease \(entry.url.lastPathComponent) cannot be read (\(reason)); rerun with --force to remove the services anyway")
-                    case .readable(let lease):
-                        if !ServicesLeaseFile.isOrphan(lease, isAlive: ServicesProcessIdentity.isAlive) {
-                            let how = lease.kind == .owner ? "`fleetest services down`" : "wait for the run"
-                            throw ValidationError("\(lease.holderDescription) holds these services; stop it first (\(how)), or rerun with --force")
+            let log: (String) -> Void = { ConsoleOut.out($0) }
+            // 「確認 → 削除」は排他の中で(確認の直後に起きた up / run の新しい世代を消さない)。
+            // --force は ①生きている所有者へ合図(排他の中)②排他の外で終了を待つ ③取り直して全部消す。排他が取れなければ押し切る
+            if force {
+                struct Owner { let pid: Int32; let startedAt: String; let budget: Double }
+                let owners: [Owner] = try Self.withLockForcing(target: target, log: log) {
+                    ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix).compactMap(\.lease)
+                        .filter { $0.kind == .owner && !ServicesLeaseFile.isOrphan($0, isAlive: ServicesProcessIdentity.isAlive) }
+                        .map { lease in
+                            log("→ services: stopping \(lease.holderDescription) before the reset")
+                            _ = kill(lease.pid, SIGTERM)
+                            return Owner(pid: lease.pid, startedAt: lease.pidStartedAt, budget: ServicesTeardown.teardownBudgetSeconds(lease: lease))
                         }
-                    }
                 }
-                if let holder = ServicesLock.currentHolder(prefix: target.prefix, stateDir: target.stateDir),
-                   ServicesProcessIdentity.isAlive(pid: holder.pid, startedAt: holder.startedAt) {
-                    throw ValidationError("pid \(holder.pid) is creating or removing these services; wait for it, or rerun with --force")
+                for owner in owners where !ServicesCommand.waitForExit(pid: owner.pid, startedAt: owner.startedAt, budgetSeconds: owner.budget) {
+                    log("⚠️ services: pid \(owner.pid) is still stopping after \(Int(owner.budget))s; removing its resources anyway (--force)")
+                }
+                try Self.withLockForcing(target: target, log: log) { try removeEverything(target: target) }
+                ServicesLock.forceRelease(prefix: target.prefix, stateDir: target.stateDir)
+            } else {
+                try ServicesLock.withLock(prefix: target.prefix, stateDir: target.stateDir) {
+                    try refuseIfHeld(target: target)
+                    try removeEverything(target: target)
                 }
             }
+        }
 
+        /// --force 専用: 排他が取れない(刺さった持ち主)ときは言ってから押し切る
+        private static func withLockForcing<T>(target: Target, log: (String) -> Void, body: () throws -> T) throws -> T {
+            do {
+                return try ServicesLock.withLock(prefix: target.prefix, stateDir: target.stateDir,
+                                                 timeoutSeconds: forcedLockWaitSeconds, body: body)
+            } catch let error as ServicesError where error.phase == .lock {
+                log("⚠️ \(error.detail) — continuing without the lock (--force)")
+                return try body()
+            }
+        }
+
+        /// --force が排他を待つ上限(秒)。根拠: 作成・片付けの区間は数秒(§17 の実測)なので、それを超えて握っているのは
+        /// 死んだ持ち主か刺さった片付け = 押し切る対象。尽きたとき = 排他無しで続ける(上の withLockForcing)
+        private static let forcedLockWaitSeconds: Double = 5
+
+        private func refuseIfHeld(target: Target) throws {
+            for entry in ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix) {
+                switch entry.state {
+                case .unreadable(let reason):
+                    throw ValidationError("the lease \(entry.url.lastPathComponent) cannot be read (\(reason)); rerun with --force to remove the services anyway")
+                case .readable(let lease):
+                    if !ServicesLeaseFile.isOrphan(lease, isAlive: ServicesProcessIdentity.isAlive) {
+                        let how = lease.kind == .owner ? "`fleetest services down`" : "wait for the run"
+                        throw ValidationError("\(lease.holderDescription) holds these services; stop it first (\(how)), or rerun with --force")
+                    }
+                }
+            }
+        }
+
+        /// 接頭辞の資源と控えを全部消す(排他の中で呼ぶ)
+        private func removeEverything(target: Target) throws {
+            let entries = ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix)
             let cli: RuntimeCLI
             do {
                 cli = try ServicesCommand.runtime(for: entries)
@@ -425,7 +515,6 @@ struct ServicesCommand: AsyncParsableCommand {
                 try? FileManager.default.removeItem(at: entry.url)
                 ServicesReaper.removePrivateDirectory(home: NSHomeDirectory(), pid: entry.pid)
             }
-            ServicesLock.forceRelease(prefix: target.prefix, stateDir: target.stateDir)
             ConsoleOut.out("→ services reset: \(listing.containers.count) container(s), \(listing.networks.count) network(s),"
                 + " \(listing.volumes.count) volume(s) removed; \(entries.count) lease(s) cleared")
         }

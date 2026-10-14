@@ -882,7 +882,7 @@ extension MCPServer {
             return try stopRun(args)
 
         case "ft_services":
-            return try ftServices(args)
+            return try await ftServices(args)
 
         case "ft_results":
             return try await ftResults(args)

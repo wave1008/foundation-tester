@@ -7,7 +7,7 @@ import XCTest
 final class ServicesAdbReverseTests: XCTestCase {
     func testArguments() {
         XCTAssertEqual(ServicesAdbReverse.addArguments(adb: "/adb", serial: "14141JEC204922", hostPort: 8090),
-                       ["/adb", "-s", "14141JEC204922", "reverse", "tcp:8090", "tcp:8090"])
+                       ["/adb", "-s", "14141JEC204922", "reverse", "--no-rebind", "tcp:8090", "tcp:8090"])
         XCTAssertEqual(ServicesAdbReverse.removeArguments(adb: "/adb", serial: "14141JEC204922", hostPort: 8090),
                        ["/adb", "-s", "14141JEC204922", "reverse", "--remove", "tcp:8090"])
     }
@@ -24,9 +24,18 @@ final class ServicesAdbReverseTests: XCTestCase {
             log: { logs.append($0) })
         XCTAssertEqual(entries, [.init(serial: "A", hostPort: 8090), .init(serial: "A", hostPort: 9000)])
         XCTAssertEqual(calls.count, 4)
-        XCTAssertTrue(logs.contains { $0.contains("`adb -s B reverse tcp:8090 tcp:8090` failed (exit 1: adb: device 'B' not found)") }, "\(logs)")
+        XCTAssertTrue(logs.contains { $0.contains("`adb -s B reverse --no-rebind tcp:8090 tcp:8090` failed (exit 1: adb: device 'B' not found)") }, "\(logs)")
         XCTAssertTrue(logs.contains { $0.contains("cannot reach 127.0.0.1:8090") }, "\(logs)")
         XCTAssertTrue(logs.contains { $0 == "→ services: adb reverse set (A tcp:8090, A tcp:9000)" }, "\(logs)")
+    }
+
+    /// 既にある転送は上書きしない(--no-rebind)。失敗の警告には外し方を添える
+    func testExistingForwardIsNotRebound() {
+        var logs: [String] = []
+        let entries = ServicesAdbReverse.addAll(serials: ["A"], hostPorts: [8090], adb: "/adb",
+                                                run: { _ in (1, "error: cannot rebind existing socket") }, log: { logs.append($0) })
+        XCTAssertEqual(entries, [])
+        XCTAssertTrue(logs.contains { $0.contains("the device already forwards tcp:8090 — remove it with `adb -s A reverse --remove tcp:8090` if it is stale") }, "\(logs)")
     }
 
     func testAddAllWithoutAdbWarnsAndRunsNothing() {

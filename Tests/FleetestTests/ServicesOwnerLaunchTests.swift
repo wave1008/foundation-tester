@@ -45,3 +45,23 @@ final class ServicesOwnerLaunchTests: XCTestCase {
         XCTAssertEqual(ServicesOwnerLaunch.logTail(URL(fileURLWithPath: "/nonexistent/owner.log"), lines: 2), [])
     }
 }
+
+/// `services up` が生きている控えを見たときの判断(純粋)。phase を見ずに「already up」と言わない
+final class ServicesUpExistingDecisionTests: XCTestCase {
+    private func lease(kind: ServicesLease.Kind, phase: ServicesLease.Phase) -> ServicesLease {
+        ServicesLease(pid: 9, pidStartedAt: "2026-10-14T00:00:00Z", kind: kind, runtime: "apple", endpoint: "apple",
+                      prefix: "fleetest-ab", generation: "g", workspace: "/ws", project: "p", profile: "r", phase: phase)
+    }
+
+    func testDecisionByKindAndPhase() {
+        XCTAssertEqual(ServicesCommand.Up.decision(for: lease(kind: .owner, phase: .running)), .alreadyUp)
+        XCTAssertEqual(ServicesCommand.Up.decision(for: lease(kind: .owner, phase: .starting)),
+                       .wait("→ services: `fleetest services up` (pid 9) is still starting; waiting for it"))
+        XCTAssertEqual(ServicesCommand.Up.decision(for: lease(kind: .owner, phase: .tearingDown)),
+                       .wait("→ services: `fleetest services up` (pid 9) is stopping; waiting for it to finish before starting again"))
+        for phase in [ServicesLease.Phase.starting, .running, .tearingDown] {
+            XCTAssertEqual(ServicesCommand.Up.decision(for: lease(kind: .run, phase: phase)),
+                           .refuse("run pid 9 holds these services; wait for that run to finish"))
+        }
+    }
+}

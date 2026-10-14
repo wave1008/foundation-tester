@@ -268,3 +268,28 @@ final class ServicesFactsTests: XCTestCase {
         XCTAssertEqual(try ServicesRuntimeLocator.unixSocketPath("unix:///no/such/docker.sock"), "/no/such/docker.sock")
     }
 }
+
+/// compose.yaml が「宣言を持つ」かの判定。拡張の雛形はコメントだけなので、置いただけの run を壊さない
+final class ServicesComposePresenceTests: XCTestCase {
+    private func workspace(compose: String?) throws -> ServicesWorkspace {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("services-presence-\(UUID().uuidString)")
+        let ws = ServicesWorkspace(root: root)
+        try FileManager.default.createDirectory(at: ws.scripts, withIntermediateDirectories: true)
+        if let compose { try compose.write(to: ws.composeFile, atomically: true, encoding: .utf8) }
+        return ws
+    }
+
+    func testAbsentOrCommentOnlyMeansNoServices() throws {
+        var logs: [String] = []
+        XCTAssertFalse(try ServicesFacts.composeDeclaresSomething(try workspace(compose: nil), log: { logs.append($0) }))
+        XCTAssertEqual(logs, [], "無いときは黙る")
+        XCTAssertFalse(try ServicesFacts.composeDeclaresSomething(try workspace(compose: "# only comments\n\n# services:\n"), log: { logs.append($0) }))
+        XCTAssertEqual(logs, ["→ services: scripts/compose.yaml declares nothing (comments only); no services"])
+    }
+
+    func testDeclaredOrBrokenComposeIsHandedToTheReader() throws {
+        XCTAssertTrue(try ServicesFacts.composeDeclaresSomething(try workspace(compose: "services:\n  db:\n    image: postgres:16\n"), log: { _ in }))
+        // 壊れた YAML は「宣言あり」側 = 断るのは解釈の段(文言はそちら)
+        XCTAssertTrue(try ServicesFacts.composeDeclaresSomething(try workspace(compose: "services: [\n"), log: { _ in }))
+    }
+}

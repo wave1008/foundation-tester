@@ -214,7 +214,7 @@ final class ServicesSession {
                    interruptState: RunInterruptState? = nil,
                    home: String = NSHomeDirectory(), log: (String) -> Void) throws -> ServicesSession? {
         let workspace = ServicesFacts.workspace(for: resolved)
-        guard workspace.hasComposeFile else { return nil }
+        guard try ServicesFacts.composeDeclaresSomething(workspace, log: log) else { return nil }
         guard let stateDir else {
             throw ServicesError(phase: .check, detail: "cannot locate the fleetest state directory (.fleetest), which holds the services lease")
         }
@@ -236,16 +236,19 @@ final class ServicesSession {
                 allowedDomains: prepared.allowedDomains, proxyPort: prepared.proxyPort, lease: prepared.lease)
             // run は `services up` の所有者を引き取る(排他の外で終了を待つ = 所有者も同じ排他の中で片付ける)
             if options.kind == .run { try takeOverOwners(prefix: prepared.plan.prefix, stateDir: stateDir, log: log) }
+            // 排他の中で行うのは「確認 → 控えを書く」まで。作成(pull / build / 起動完了の待ち)は排他の外 ——
+            // 握ったままだと、起動中の所有者へ `down` / 引き取りが SIGTERM を送る前の排他の取得で止まる(30 s で失敗)。
+            // 書いた控え(phase starting・pid 生存)が他の起動を止める(`claimPrefix` は生きている控えを断る)
             try ServicesLock.withLock(prefix: prepared.plan.prefix, stateDir: stateDir) {
                 try session.claimPrefix(log: log)
                 try session.persist()  // 控えは最初の資源を作る前に書く。書けなければ開始しない
                 leaseWritten = true
-                do {
-                    try session.createAll(log: log)
-                } catch {
-                    session.teardown(log: log)
-                    throw error
-                }
+            }
+            do {
+                try session.createAll(log: log)
+            } catch {
+                session.down(log: log)   // 排他を取り直して片付ける(取れなければ控えの ID で消す)
+                throw error
             }
             return session
         } catch {
@@ -1065,7 +1068,8 @@ final class ServicesSession {
             }
             let file = target.appendingPathComponent("\(launch.service).log")
             do {
-                try result.output.write(to: file, atomically: true, encoding: .utf8)
+                // 伏せ字は ConsoleOut だけが通す。ファイルへ直接書くここは自分で通す(秘密の値がログに出ていることがある)
+                try SecretRedactor.shared.redact(result.output).write(to: file, atomically: true, encoding: .utf8)
                 saved += 1
             } catch {
                 log("⚠️ services: cannot write \(file.path): \(error.localizedDescription)")
@@ -1095,10 +1099,11 @@ final class ServicesSession {
     /// 宣言したイメージを今取る(`refresh` = 手元にあっても取り直す)。中継のイメージの初回ビルドも含む(`prepare`)。
     /// サービスは起こさない・控えも書かない。閉じたネットワークでは `services load <file>` で読み込んだ後に run を回す。
     static func pull(resolved: ResolvedProfile, options: ServicesUpOptions, refresh: Bool,
+                     interrupt: RunInterruptState? = nil,
                      home: String = NSHomeDirectory(), log: (String) -> Void) throws -> (pulled: Int, present: Int) {
         let workspace = ServicesFacts.workspace(for: resolved)
-        guard workspace.hasComposeFile else {
-            throw ServicesError(phase: .check, detail: "no scripts/compose.yaml in \(workspace.root.path)")
+        guard try ServicesFacts.composeDeclaresSomething(workspace, log: log) else {
+            throw ServicesError(phase: .check, detail: "scripts/compose.yaml is absent or declares nothing in \(workspace.root.path)")
         }
         let pid = ProcessInfo.processInfo.processIdentifier
         let settings = try ServicesSettings.load()
@@ -1106,7 +1111,7 @@ final class ServicesSession {
         let privateDir = try ServicesFacts.makePrivateDirectory(home: home, pid: pid)
         defer { try? FileManager.default.removeItem(at: privateDir) }
         let prepared = try prepare(resolved: resolved, options: options, workspace: workspace, settings: settings,
-                                   located: located, privateDir: privateDir, home: home, interrupt: nil, log: log)
+                                   located: located, privateDir: privateDir, home: home, interrupt: interrupt, log: log)
         let cli = prepared.cli
         let commands = cli.commands
         var pulled = 0
@@ -1118,8 +1123,9 @@ final class ServicesSession {
                 present += 1
                 continue
             }
+            if interrupt?.isStopped == true { throw RunInterruptedBeforeStartError(phase: "the image pull") }
             log("→ services: pulling \(reference)")
-            let result = cli.runLong(commands.imagePull(reference), label: "the pull of \(reference)", interrupt: nil, log: log)
+            let result = cli.runLong(commands.imagePull(reference), label: "the pull of \(reference)", interrupt: interrupt, log: log)
             guard result.status == 0 else {
                 throw ServicesError(phase: .pull, detail: "pulling \(reference) failed (exit \(result.status))",
                                     logTail: result.tail.suffix(10).joined(separator: "\n"))

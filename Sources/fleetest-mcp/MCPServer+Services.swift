@@ -55,7 +55,7 @@ enum MCPServices {
 
 extension MCPServer {
 
-    func ftServices(_ args: [String: Any]) throws -> [[String: Any]] {
+    func ftServices(_ args: [String: Any]) async throws -> [[String: Any]] {
         let action = try Self.requiredStringArgument(args, "action")
         guard MCPServices.actions.contains(action) else {
             throw MCPError("action must be one of \(MCPServices.actions.joined(separator: ", ")) (got \(action.debugDescription))")
@@ -76,12 +76,24 @@ extension MCPServer {
         let resolvedProject = try ScenarioHost.project(named: project).name
         let arguments = MCPServices.arguments(action: action, project: resolvedProject, profile: profile,
                                               physical: physical, serials: serials)
+        let environment = MCPRunJobs.childEnvironment(packageRoot: packageRoot, toolRoot: try? RepoRoot.find())
+        // CLI の終了まで**ブロッキングで**待つ(up は上がるまで返らない)ので、協調スレッドプールの外の専用 Thread で
+        let outcome = await Self.runOffCooperativePool(name: "fleetest-mcp-services") {
+            Self.runServicesCLI(arguments: arguments, packageRoot: packageRoot, environment: environment)
+        }
+        if let failure = outcome.failure { throw MCPError(failure) }
+        return text(MCPServices.responseText(action: action, status: outcome.status, output: outcome.output))
+    }
 
+    /// 同期・ブロッキング。`runOffCooperativePool` の中でだけ呼ぶ。子の出力はパイプで読まない(一時ファイルへ直接書き、終了後に末尾だけ読む)
+    private static func runServicesCLI(arguments: [String], packageRoot: URL, environment: [String: String])
+        -> (status: Int32, output: String, failure: String?)
+    {
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("fleetest-mcp-services-\(UUID().uuidString).log")
         guard FileManager.default.createFile(atPath: outputURL.path, contents: nil),
               let handle = try? FileHandle(forWritingTo: outputURL) else {
-            throw MCPError("cannot create a temporary output file at \(outputURL.path)")
+            return (-1, "", "cannot create a temporary output file at \(outputURL.path)")
         }
         defer { try? FileManager.default.removeItem(at: outputURL) }
 
@@ -89,7 +101,7 @@ extension MCPServer {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = arguments
         process.currentDirectoryURL = packageRoot
-        process.environment = MCPRunJobs.childEnvironment(packageRoot: packageRoot, toolRoot: try? RepoRoot.find())
+        process.environment = environment
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = handle
         process.standardError = handle
@@ -98,7 +110,7 @@ extension MCPServer {
             try process.run()
         } catch {
             try? handle.close()
-            throw MCPError("cannot start `fleetest services \(action)`: \(error.localizedDescription)")
+            return (-1, "", "cannot start `fleetest services`: \(error.localizedDescription)")
         }
         try? handle.close()
         exited()
@@ -110,6 +122,6 @@ extension MCPServer {
             try? reader.seek(toOffset: size > MCPServices.outputWindowBytes ? size - MCPServices.outputWindowBytes : 0)
             output = String(decoding: (try? reader.readToEnd()) ?? Data(), as: UTF8.self)
         }
-        return text(MCPServices.responseText(action: action, status: process.terminationStatus, output: output))
+        return (process.terminationStatus, output, nil)
     }
 }

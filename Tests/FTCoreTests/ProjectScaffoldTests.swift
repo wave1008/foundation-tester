@@ -370,18 +370,28 @@ final class ProjectScaffoldTests: XCTestCase {
                        ["mcp__fleetest__ft_start_run", "mcp__fleetest__ft_services"])
     }
 
-    /// 利用者が ask を外したら、補修(install.sh が毎回呼ぶ)で書き戻さない
-    func testClaudeSettingsDoesNotRestoreAnAskTheUserRemoved() throws {
+    /// 利用者が ask を外したら、補修(install.sh が毎回呼ぶ)で書き戻さない。**ただし後から足した承認対象は一度だけ届ける** ——
+    /// 旧版(台帳なし・MCP 許可済み)の受け手は ft_start_run を提示済みとみなし、新しい ft_services だけを一度足す
+    func testClaudeSettingsDoesNotRestoreAnAskTheUserRemovedButOffersNewOnesOnce() throws {
         try FileManager.default.createDirectory(
             at: claudeSettingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try #"{"permissions":{"allow":["mcp__fleetest"],"ask":[]}}"#
             .write(to: claudeSettingsURL, atomically: true, encoding: .utf8)
         let added = try ProjectScaffold.writeClaudeSettings(packageRoot: packageRoot, toolRoot: "/tools/ft")
-        XCTAssertFalse(added.contains("mcp__fleetest__ft_start_run"))
-        XCTAssertFalse(added.contains("mcp__fleetest__ft_services"))
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(
-            with: Data(contentsOf: claudeSettingsURL)) as? [String: Any])
-        let permissions = try XCTUnwrap(object["permissions"] as? [String: Any])
+        XCTAssertFalse(added.contains("mcp__fleetest__ft_start_run"), "外した ft_start_run は戻さない")
+        XCTAssertTrue(added.contains("mcp__fleetest__ft_services"), "新しい承認対象は一度だけ足す")
+        var permissions = try XCTUnwrap((try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(contentsOf: claudeSettingsURL)) as? [String: Any]))["permissions"] as? [String: Any])
+        XCTAssertEqual(permissions["ask"] as? [String], ["mcp__fleetest__ft_services"])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: ProjectScaffold.mcpAskLedgerURL(packageRoot: packageRoot).path))
+
+        // 利用者が ft_services も外した → 次の補修では戻らない(台帳に提示済み)
+        try #"{"permissions":{"allow":["mcp__fleetest"],"ask":[]}}"#
+            .write(to: claudeSettingsURL, atomically: true, encoding: .utf8)
+        let again = try ProjectScaffold.writeClaudeSettings(packageRoot: packageRoot, toolRoot: "/tools/ft")
+        XCTAssertFalse(again.contains("mcp__fleetest__ft_services"))
+        permissions = try XCTUnwrap((try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(contentsOf: claudeSettingsURL)) as? [String: Any]))["permissions"] as? [String: Any])
         XCTAssertEqual(permissions["ask"] as? [String], [])
     }
 

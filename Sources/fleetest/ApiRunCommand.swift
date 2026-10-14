@@ -525,8 +525,14 @@ struct ApiRunCommand: AsyncParsableCommand {
                 resolved: resolved, leaseStateDir: hookStateDir)
             servicesSession = try ServicesSession.up(
                 resolved: resolved, stateDir: hookStateDir, options: .forRun(resolved), interruptState: interruptState) { logStderr($0) }
-            hookSession = try RunHookRunner.begin(
-                resolved: resolved, stateDir: hookStateDir, services: servicesSession, interrupt: interruptState) { logStderr($0) }
+            do {
+                hookSession = try RunHookRunner.begin(
+                    resolved: resolved, stateDir: hookStateDir, services: servicesSession, interrupt: interruptState) { logStderr($0) }
+            } catch {
+                // run-setup.sh の失敗 = サービスのログも証跡に残す(記録はまだ無いのでレポートの出力先へ。ProfileRunner.run と同じ)
+                servicesSession?.saveLogs(to: resolved.reportDir) { logStderr($0) }
+                throw error
+            }
         }
         defer {
             if let hookSession { RunHookRunner.end(hookSession) { logStderr($0) } }

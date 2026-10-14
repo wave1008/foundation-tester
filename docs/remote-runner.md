@@ -2509,7 +2509,7 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   承認は `ft_start_run` と同列の ask = `ProjectScaffold.mcpAskPermissions`。宛先の予約名 `serial` を引数名に使わない)。
   拡張の雛形は compose.yaml を足し setup / teardown のコメントを枠の規則に書き換えた。失敗の証跡: run-setup.sh の失敗と赤の run の後に
   各サービスのログの末尾(`ServicePolicy.maxLogLines` 行)を `results/runs/<月>/<runID>/services/<service>.log` へ(`saveLogs`)。
-  run.json に `servicesWarnings`(UDP の経路・adb reverse の警告。`RunSummary.servicesWarnings` → `RunRecorder.finish` の必須引数)。
+  run.json に `servicesWarnings`(adb reverse の警告。UDP は後述のとおり赤。`RunSummary.servicesWarnings` → `RunRecorder.finish` の必須引数)。
   `doctor` は Docker の管理口(2375 / 2376)の非ループバック LISTEN を警告し、サービスの起動は断る(`DockerTCPExposure`。lsof の
   exit 1 + 空出力だけを「無い」と読む)。`preflight.sh` は docker / container の有無を情報として出す(無くても ready)。
   `services pull [--refresh]`(先行取得。中継のイメージの初回ビルドも)と `services load <tar>`(閉じたネットワーク)。
@@ -2551,6 +2551,15 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   **並列レーン**(sut-ec-mobile `ios-5`・5 本の名指し = 6 シナリオ): 1 組のサービスを 5 レーンが共有して 5/6 緑・サーバーの応答は
   7〜8 ms・片付け 2.6 s。赤の 1 本(`カートの数量を操作できること.S0020`)は単独でも落ち、履歴では 10/14 11:45(ホストのサーバーの頃)から
   iOS / Android とも連続で赤 = SUT 側の既存の不一致で、サービス化とは無関係(`results trend` で確認)。
+  **Codex レビュー(⑤・2026-10-15)で直したこと**: ①`up` の作成(pull / build / 待ち)を排他の外へ(握ったままだと起動中の所有者へ `down` /
+  引き取りの SIGTERM が届く前に排他で止まった)②`reset` の「確認 → 削除」を排他の中へ・`--force` は所有者へ合図 → 排他の外で待つ → 取り直して消す
+  ③`up` は生きている控えの phase を見る(starting は待つ・tearingDown は消えるまで待つ・running だけ already up。事前確認と控えの書き込みの間に
+  負けた所有者は相手を待って already up として返す)④既存の受け手にも新しい ask(ft_services)を一度だけ届ける台帳(`.fleetest/mcp-ask-offered.json`)
+  ⑤Docker 管理口の検知は exposed > unknown > clear で集約 ⑥adb reverse は `--no-rebind`(利用者の転送を上書きしない。実測: 既存の
+  18080→9000 は `down` の後も残る)⑦所有者のログの置き場をシナリオの書き込み拒否に足し O_NOFOLLOW で開く ⑧保存するサービスログに伏せ字
+  ⑨api run の run-setup.sh 失敗時もログ保存 ⑩pull / load に中断のリレー ⑪コメントだけの compose.yaml(拡張の雛形)は「宣言なし」として起動しない
+  (読み取りが mapping を要求して置いただけの run を壊していた)⑫MCP の CLI 待ちを協調プールの外へ ⑬PostgreSQL の例に PGDATA。
+  見送り: reverse の解除失敗を控えに残して再試行(台帳が永遠に残る害のほうが大きい。`--no-rebind` の失敗の警告が外し方を言う)。
   **残り**: なし(§17 の設計分は完了)。**コンテナ → 外部の UDP** は設計どおり止まったまま(作らない)
 - **②で実測して分かったこと**: Apple の名前付きボリュームの既定は **512 GiB のスパースなイメージ**(`-s` は付けない)/
   `container build` と `run` は `--label` を、`run` は `--init` も受ける(1.1.0 の help)/ **run の親を `kill -9` しても孤児は

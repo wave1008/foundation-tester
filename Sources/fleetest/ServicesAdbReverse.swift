@@ -22,8 +22,10 @@ enum ServicesAdbReverse {
         output.split(separator: "\n").suffix(2).map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: " | ")
     }
 
+    /// `--no-rebind`: デバイスに同じ番号の転送が既にあれば上書きせず失敗する(利用者が張った転送を黙って差し替え、
+    /// `down` で消してしまわない。失敗は "cannot rebind existing socket" の警告 = 既存の転送の始末は利用者)
     static func addArguments(adb: String, serial: String, hostPort: Int) -> [String] {
-        [adb, "-s", serial, "reverse", "tcp:\(hostPort)", "tcp:\(hostPort)"]
+        [adb, "-s", serial, "reverse", "--no-rebind", "tcp:\(hostPort)", "tcp:\(hostPort)"]
     }
 
     static func removeArguments(adb: String, serial: String, hostPort: Int) -> [String] {
@@ -47,8 +49,10 @@ enum ServicesAdbReverse {
                     entries.append(.init(serial: serial, hostPort: port))
                 } else {
                     let detail = result.map { "exit \($0.status): \(lastLines($0.output))" } ?? "adb did not finish within \(Int(timeoutSeconds))s"
-                    log("⚠️ services: `adb -s \(serial) reverse tcp:\(port) tcp:\(port)` failed (\(detail));"
-                        + " the app on that device cannot reach 127.0.0.1:\(port)")
+                    let existing = (result?.output.contains("rebind") ?? false)
+                        ? "; the device already forwards tcp:\(port) — remove it with `adb -s \(serial) reverse --remove tcp:\(port)` if it is stale" : ""
+                    log("⚠️ services: `adb -s \(serial) reverse --no-rebind tcp:\(port) tcp:\(port)` failed (\(detail));"
+                        + " the app on that device cannot reach 127.0.0.1:\(port)\(existing)")
                 }
             }
         }

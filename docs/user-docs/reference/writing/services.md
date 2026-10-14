@@ -35,6 +35,8 @@ services:
     image: postgres:16
     environment:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
+      # Apple Container's volumes have lost+found at their root, which initdb refuses; use a subdirectory
+      PGDATA: /var/lib/postgresql/data/pgdata
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 2s

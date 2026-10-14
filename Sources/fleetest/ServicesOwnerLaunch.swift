@@ -33,10 +33,12 @@ enum ServicesOwnerLaunch {
         process.environment = environment
         process.standardInput = FileHandle.nullDevice
         try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        guard FileManager.default.createFile(atPath: logURL.path, contents: nil) else {
-            throw ValidationError("cannot create the services log \(logURL.path)")
+        // symlink を辿らない(O_NOFOLLOW)・毎回空から。パスで開き直さず、この fd をそのまま子へ渡す
+        let fd = open(logURL.path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0o644)
+        guard fd >= 0 else {
+            throw ValidationError("cannot create the services log \(logURL.path): \(String(cString: strerror(errno)))")
         }
-        let sink = try FileHandle(forWritingTo: logURL)
+        let sink = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
         defer { try? sink.close() }   // 子は自分の複製を持つ
         process.standardOutput = sink
         process.standardError = sink

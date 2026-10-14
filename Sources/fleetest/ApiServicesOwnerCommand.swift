@@ -2,7 +2,8 @@
 // サービスを上げ、控え(kind = owner)・プロキシ・adb reverse を持ったまま SIGTERM/SIGINT/SIGHUP を待ち、受けたら片付けて終わる。
 // 起こすのは `ServicesOwnerLaunch.spawn`(stdin は /dev/null・出力は .fleetest/services/<prefix>.log・FT_PARENT_PID は消す = 親より長く生きる)。
 // 止めるのは `services down` と run の引き取り(`ServicesSession.takeOverOwners`)。dispatch.lock は取らない(MCP の印と同じ扱い)。
-// 2 度目のシグナルは `RunInterruptState` の規律どおり即終了(資源は控えが残る = 次の run / reap が片付ける)。
+// 起動の途中の 2 度目のシグナルは `RunInterruptState` の規律どおり即終了(資源は控えが残る = 次の run / reap が片付ける)。
+// 片付けに入った後のシグナルは無視する(途中で落とさない)。
 
 import ArgumentParser
 import FTCore
@@ -46,7 +47,7 @@ struct ApiServicesOwnerCommand: AsyncParsableCommand {
         do {
             guard let started = try ServicesSession.up(resolved: target.resolved, stateDir: target.stateDir, options: options,
                                                        interruptState: interruptState, log: log) else {
-                ConsoleOut.err("✗ services: no scripts/compose.yaml in \(target.workspace.root.path)")
+                ConsoleOut.err("✗ services: scripts/compose.yaml is absent or declares nothing in \(target.workspace.root.path)")
                 throw ExitCode.failure
             }
             session = started

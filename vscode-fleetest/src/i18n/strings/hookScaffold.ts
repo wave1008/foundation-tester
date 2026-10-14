@@ -289,6 +289,8 @@ set -u
 #     environment:
 #       POSTGRES_USER: app
 #       POSTGRES_PASSWORD: \${DB_PASSWORD}
+#       # Apple Container のボリュームは根に lost+found があり initdb が断るので、サブディレクトリを使う
+#       PGDATA: /var/lib/postgresql/data/pgdata
 #     volumes:
 #       - dbdata:/var/lib/postgresql/data
 #     healthcheck:
@@ -349,6 +351,8 @@ set -u
 #     environment:
 #       POSTGRES_USER: app
 #       POSTGRES_PASSWORD: \${DB_PASSWORD}
+#       # Apple Container's volumes have lost+found at their root, which initdb refuses; use a subdirectory
+#       PGDATA: /var/lib/postgresql/data/pgdata
 #     volumes:
 #       - dbdata:/var/lib/postgresql/data
 #     healthcheck:

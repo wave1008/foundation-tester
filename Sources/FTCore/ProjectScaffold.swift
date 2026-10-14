@@ -124,6 +124,13 @@ public enum ProjectScaffold {
     static let mcpServicesPermission = "mcp__fleetest__ft_services"
     static let mcpAskPermissions = [mcpStartRunPermission, mcpServicesPermission]
 
+    /// **一度提示した ask の台帳**(`<work-dir>/.fleetest/mcp-ask-offered.json` = 文字列の配列)。ask は「一度だけ提示し、利用者が外したら
+    /// 戻さない」規律なので、**新しい承認対象を後から足したとき**に既存の受け手へも一度だけ届ける口がこれ。台帳が無い受け手は
+    /// (旧版で MCP を許可済みなら)`ft_start_run` を提示済みとみなす = 外した人へ戻さない
+    static func mcpAskLedgerURL(packageRoot: URL) -> URL {
+        packageRoot.appendingPathComponent(".fleetest").appendingPathComponent("mcp-ask-offered.json")
+    }
+
     /// 受け手のパッケージに `.claude/settings.json` を書く(fleetest init から呼ぶ)。
     /// **fleetest の CLI とスクリプトだけ**を許可リストに載せ、セットアップ〜実行のたびに
     /// Bash の承認を求められる状態を避ける(承認回数を減らしたいという受け手の要望)。
@@ -165,14 +172,24 @@ public enum ProjectScaffold {
         var allow = (permissions["allow"] as? [String]) ?? []
         let firstMCPGrant = !allow.contains(mcpToolsPermission)
         var added = (entries + [mcpToolsPermission]).filter { !allow.contains($0) }
-        if firstMCPGrant {
-            var ask = (permissions["ask"] as? [String]) ?? []
-            for permission in mcpAskPermissions where !ask.contains(permission) {
-                ask.append(permission)
-                added.append(permission)
-            }
-            permissions["ask"] = ask
+        // ask は台帳に無いものだけ一度提示する(利用者が外したものは台帳にあるので戻らない)
+        let ledgerURL = mcpAskLedgerURL(packageRoot: packageRoot)
+        var offered: Set<String>
+        if let data = FileManager.default.contents(atPath: ledgerURL.path),
+           let list = (try? JSONSerialization.jsonObject(with: data)) as? [String] {
+            offered = Set(list)
+        } else {
+            offered = firstMCPGrant ? [] : [mcpStartRunPermission]
         }
+        var ask = (permissions["ask"] as? [String]) ?? []
+        for permission in mcpAskPermissions where !offered.contains(permission) && !ask.contains(permission) {
+            ask.append(permission)
+            added.append(permission)
+        }
+        permissions["ask"] = ask
+        offered.formUnion(mcpAskPermissions)
+        try FileManager.default.createDirectory(at: ledgerURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONSerialization.data(withJSONObject: offered.sorted(), options: [.prettyPrinted]).write(to: ledgerURL, options: .atomic)
         // クローンを読み取り専用にする(maintainer-notes §2.5)。Read の allow = 外を初めて読むときの確認を省く・
         // Edit の deny = 編集ツールと Claude Code が認識する Bash のファイル操作を止める。
         // **クローン構成(作業フォルダがクローンの内側)では書かない**(自分の作業ツリーを読み取り専用にする)。
