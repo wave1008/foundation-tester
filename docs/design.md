@@ -4499,7 +4499,8 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
   Emulator の shell と、そこからの外部通信に届く。閉じるにはドライバごと親へ移す必要がある
 - **デバイスを介した持ち出し**。読めたファイルの中身を、アプリへの入力として送れる
 - **テスト対象のアプリ**。Simulator の中のプロセスは枠の外のホストプロセス
-- **setup / teardown スクリプトと `Package.swift`**。前者は `ft_start_run` の確認(`ask`)で受け、後者は
+- **setup / teardown スクリプトと `Package.swift`**。前者は `ft_start_run` の確認(`ask`)で受け
+  (枠に入れてコンテナ(Docker / Apple Container)を宣言へ移す設計は docs/remote-runner.md §17「サービスの宣言とスクリプトのサンドボックス化」。未実装)、後者は
   SwiftPM 自身のサンドボックスで評価される。`fleetestScenarioDependencies`(§11.1)で足した依存のビルド
   (マクロ・ビルドプラグインを含む)も枠の外 = SwiftPM とコンパイラ自身のサンドボックスだけ
 
