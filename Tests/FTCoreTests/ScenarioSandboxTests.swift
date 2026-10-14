@@ -15,7 +15,7 @@ final class ScenarioSandboxTests: XCTestCase {
             .appendingPathComponent("ft-sandbox-テスト \(UUID().uuidString)", isDirectory: true)
         let container = "home/Library/Developer/CoreSimulator/Devices/UDID-1/data/Containers"
         for sub in ["reports", "project/.fleetest", "repo/.fleetest/hooks", "tool/.fleetest/hooks",
-                    "stills", "home/.ssh", "home/.config/fleetest", "home/.config/gh",
+                    "repo/.fleetest/services", "tool/.fleetest/services", "stills", "home/.ssh", "home/.config/fleetest", "home/.config/gh",
                     "home/Library/Caches/fleetest", "outside",
                     container + "/Data/Application/APP-1/Library", container + "/Bundle/Application/APP-1"] {
             try FileManager.default.createDirectory(
@@ -99,6 +99,13 @@ final class ScenarioSandboxTests: XCTestCase {
         XCTAssertNotEqual(try touch("repo/.fleetest/hooks/1.json"), 0)
         XCTAssertNotEqual(try touch("tool/.fleetest/hooks/1.json"), 0)
         XCTAssertFalse(FileManager.default.fileExists(atPath: path("repo/.fleetest/hooks/1.json")))
+    }
+
+    /// `services/` は `services up` の所有者プロセスのログ。親が開いて書く場所に子が symlink を置けると書き先を向け替えられる
+    func testServicesLogDirectoryStaysReadOnlyInsideTheWritableStateDirectory() throws {
+        XCTAssertNotEqual(try touch("repo/.fleetest/services/x.log"), 0)
+        XCTAssertNotEqual(try touch("tool/.fleetest/services/x.log"), 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: path("repo/.fleetest/services/x.log")))
     }
 
     /// `clearAppData` は Simulator のデータコンテナの中身を直接消す。開けるのはデータ側だけで、

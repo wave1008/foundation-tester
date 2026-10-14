@@ -1068,14 +1068,19 @@ final class ServicesSession {
             }
             let file = target.appendingPathComponent("\(launch.service).log")
             do {
-                // 伏せ字は ConsoleOut だけが通す。ファイルへ直接書くここは自分で通す(秘密の値がログに出ていることがある)
-                try SecretRedactor.shared.redact(result.output).write(to: file, atomically: true, encoding: .utf8)
+                try Self.writeServiceLog(result.output, to: file)
                 saved += 1
             } catch {
                 log("⚠️ services: cannot write \(file.path): \(error.localizedDescription)")
             }
         }
         if saved > 0 { log("→ services: saved the log of \(saved) service(s) under \(target.path)") }
+    }
+
+    /// 伏せ字は ConsoleOut だけが通す。ファイルへ直接書くここは自分で通す(compose の environment で渡した秘密を
+    /// サービスがログに出していることがある)。`redactor` はテストが自分の登録簿を渡すため(`shared` はプロセス大域)
+    static func writeServiceLog(_ output: String, to file: URL, redactor: SecretRedactor = .shared) throws {
+        try redactor.redact(output).write(to: file, atomically: true, encoding: .utf8)
     }
 
     // MARK: 管理口の公開の検知
