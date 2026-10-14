@@ -121,7 +121,13 @@ Without it the run does not start, and the message says how to write it.
   host port to two addresses, and Docker cannot bind to a single IP. The setting is your consent to that exposure and
   the address the physical devices use; runs without a physical device stay on `127.0.0.1`.
 - **Android physical devices**: for each published TCP port, fleetest sets up `adb reverse tcp:<port> tcp:<port>`, so
-  the app on the device reaches the service at `127.0.0.1:<port>`. If it cannot be set up, fleetest prints a warning.
+  the app on the device reaches the service at `127.0.0.1:<port>`. If the device already forwards that port, fleetest
+  leaves it alone when the destination is the same (`tcp:<port>` → `tcp:<port>`; `down` does not remove it either) and
+  stops the run when the destination differs (the app would reach that other server and verify the wrong thing). Any
+  other failure to set it up is a warning. fleetest removes the forwards it set when it finishes; one it could not remove
+  (adb not responding, for example) stays on the device. The next run leaves it alone when the destination is the same,
+  and says nothing about it once you change the published port. Check with `adb -s <serial> reverse --list` and remove
+  it with `adb -s <serial> reverse --remove tcp:<port>`.
 - **iOS physical devices**: use a build with the LAN address built in, as described in
   [Adding physical devices](../../fleet/adding_physical_devices.md).
 - **Exposure**: while the ports are published on the LAN, anyone on the same LAN can reach the service. Give the
@@ -175,7 +181,7 @@ For exploring, live operation and writing scenarios, a person can start the serv
 | `fleetest services up [--project <p>] [--profile <pf>] [--physical] [--serial <adb serial>…]` | Starts the services, **waits until they are up**, prints the published ports and returns. The services keep running afterwards (a resident owner process holds them; the log is `.fleetest/services/<prefix>.log`). `--profile` can be omitted when the project has only one profile |
 | `fleetest services down` | Stops them |
 | `fleetest services status` | Shows the record, the lock and the resources on the runtime, with the size of each named volume and of the images fleetest built (the `build:` images of this workspace and the relay image). Nothing is deleted automatically; use `reset` when they have grown |
-| `fleetest services reset [--force]` | Deletes this workspace's containers, networks, **volumes** and record. `--force` is needed while a run or `up` holds them |
+| `fleetest services reset [--force]` | Deletes this workspace's containers, networks, **volumes** and record. `--force` is needed while an `up` holds them (it stops that `up` first). While a run holds them, even `--force` deletes nothing (wait for the run to finish) |
 
 **A real run (`fleetest run` / `ft_start_run`) takes over services started with `up`**: it prints a warning, stops them,
 starts them again itself and stops them itself (so that the result is reproducible). While a run holds the services,

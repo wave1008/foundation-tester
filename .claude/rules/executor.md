@@ -125,5 +125,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   終了を待ってから作る(所有者も同じ排他で片付ける = 握ったまま待つと待ち合う)。待ちの上限は控えの `stopGraceSeconds` から
   (`ServicesTeardown.teardownBudgetSeconds`。新しい数字を置かない)。**控え(`ServicesLease`)の欄を足したら `currentSchemaVersion` を +1**
   (読み替えは置かない)。Android 実機の `adb reverse` は親が張り、控えの `adbReverse` で外す(`ServicesAdbReverse`。資源ではないので
-  解除の失敗で控えを残さない)。`services up` の引数(`--physical` / `--serial`)と run の実機のレーンは `ServicesUpOptions` の1箇所で
+  解除の失敗で控えを残さない)。**張る前に `--list` で宛先を見る** —— 同じ宛先なら触らず、別の宛先なら起動の失敗(届く・届かないを
+  推定で言わない)。`services reset --force` は**生きている持ち主の控えを消さない**(所有者には合図して排他の外で待ち、待ち切れなければ
+  何も消さない・run は止めない。判定は `Reset.forceDecision` の純粋関数)。`services up` の引数(`--physical` / `--serial`)と run の実機のレーンは `ServicesUpOptions` の1箇所で
   `ServicesSession.up` へ入る(呼び手ごとに別の経路を作らない)

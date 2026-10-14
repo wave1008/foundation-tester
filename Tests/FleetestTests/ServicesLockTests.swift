@@ -93,7 +93,12 @@ final class ServicesLockTests: XCTestCase {
         try Data(#"{"pid":4000002,"pidStartedAt":"2026-01-01T00:00:00Z"}"#.utf8)
             .write(to: lockDir.appendingPathComponent("owner"))
         XCTAssertEqual(ServicesLock.currentHolder(prefix: "fleetest-aaaaaaaaaaaa", stateDir: stateDir)?.pid, 4000002)
-        ServicesLock.forceRelease(prefix: "fleetest-aaaaaaaaaaaa", stateDir: stateDir)
+        // 押し切った後の解放は、押し切るときに見た持ち主のままのときだけ(取り直した別の持ち主のロックは消さない)
+        ServicesLock.forceRelease(prefix: "fleetest-aaaaaaaaaaaa", stateDir: stateDir, ifHeldBy: (4000003, "2026-01-01T00:00:00Z"))
+        XCTAssertEqual(ServicesLock.currentHolder(prefix: "fleetest-aaaaaaaaaaaa", stateDir: stateDir)?.pid, 4000002)
+        ServicesLock.forceRelease(prefix: "fleetest-aaaaaaaaaaaa", stateDir: stateDir, ifHeldBy: (4000002, "2026-01-01T00:00:01Z"))
+        XCTAssertEqual(ServicesLock.currentHolder(prefix: "fleetest-aaaaaaaaaaaa", stateDir: stateDir)?.pid, 4000002)
+        ServicesLock.forceRelease(prefix: "fleetest-aaaaaaaaaaaa", stateDir: stateDir, ifHeldBy: (4000002, "2026-01-01T00:00:00Z"))
         XCTAssertNil(ServicesLock.currentHolder(prefix: "fleetest-aaaaaaaaaaaa", stateDir: stateDir))
     }
 }

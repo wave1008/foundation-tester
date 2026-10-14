@@ -117,7 +117,11 @@ volumes:
   Docker は 1 つの IP に束縛できないためです。この設定は LAN へ出すことへの同意と、実機が向く先の記録です。実機の無い run は
   `127.0.0.1` のままです。
 - **Android の実機**: 公開した TCP ポートごとに、fleetest が `adb reverse tcp:<port> tcp:<port>` を張ります。端末の
-  アプリは `127.0.0.1:<port>` でサービスに届きます。張れなかったときは警告を出します。
+  アプリは `127.0.0.1:<port>` でサービスに届きます。端末に同じポートの転送が既にあるときは、宛先が同じ(`tcp:<port>` →
+  `tcp:<port>`)なら触らず(`down` でも外しません)、別の宛先なら run を止めます(アプリがそちらのサーバーへ届き、別のものを
+  検証してしまうためです)。それ以外の理由で張れなかったときは警告です。fleetest が張った転送は終了時に外しますが、外せなかった
+  とき(adb が応答しない等)は端末に残ります。次の run は同じ宛先なら触らず、公開ポートを変えた場合は古い転送について何も
+  言いません。`adb -s <serial> reverse --list` で確認し、`adb -s <serial> reverse --remove tcp:<port>` で外してください。
 - **iOS の実機**: LAN アドレスを焼き込んだビルドを使います([実機を足す](../../fleet/adding_physical_devices_ja.md))。
 - **露出の注意**: ポートを LAN に公開している間は、同じ LAN の誰でもそのサービスに届きます。サービス側で認証を
   掛け、公開はその run の間(と `services up --physical` から `down` まで)だけにしてください。
@@ -170,7 +174,7 @@ fleetest-services port api 8080            # 公開先の host:port を印字(UD
 | `fleetest services up [--project <p>] [--profile <pf>] [--physical] [--serial <adb serial>…]` | 起動して**上がるまで待ち**、公開ポートを印字して返ります。サービスはその後も動き続けます(常駐の所有者プロセスが持ちます。ログは `.fleetest/services/<prefix>.log`)。プロジェクトにプロファイルが1つなら `--profile` は省略できます |
 | `fleetest services down` | 止めます |
 | `fleetest services status` | 控え・ロック・ランタイム上の資源を見ます。名前付きボリュームと、fleetest がビルドしたイメージ(このワークスペースの `build:` と中継のイメージ)は大きさつきで出ます。自動では消さないので、大きくなっていたら `reset` で消します |
-| `fleetest services reset [--force]` | このワークスペースのコンテナ・ネットワーク・**ボリューム**・控えを全部消します。run か `up` が握っている間は `--force` が要ります |
+| `fleetest services reset [--force]` | このワークスペースのコンテナ・ネットワーク・**ボリューム**・控えを全部消します。`up` が握っている間は `--force` が要ります(先にその `up` を止めてから消します)。run が握っている間は `--force` でも消しません(run の終了を待ってください) |
 
 **本番の run(`fleetest run` / `ft_start_run`)は、`up` で起こしたサービスを引き取ります。** 警告を出して止め、自分で
 起こし直して自分で止めます(結果を再現できる形にするためです)。run が握っている間の `services down` は断られます。

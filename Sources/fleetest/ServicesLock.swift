@@ -70,9 +70,11 @@ enum ServicesLock {
         return (owner.pid, owner.pidStartedAt)
     }
 
-    /// `services reset --force` が使う。持ち主に関係なく外す。
-    static func forceRelease(prefix: String, stateDir: URL) {
+    /// `services reset --force` が排他を取れずに押し切った後に使う。**押し切るときに見た持ち主のままなら**外す
+    /// (押し切っている間に取り直した別の持ち主のロックは消さない)。
+    static func forceRelease(prefix: String, stateDir: URL, ifHeldBy holder: (pid: Int32, startedAt: String)) {
         let dir = lockDirectory(prefix: prefix, stateDir: stateDir)
+        guard let current = readOwner(dir), current.pid == holder.pid, current.pidStartedAt == holder.startedAt else { return }
         try? FileManager.default.removeItem(at: dir)
     }
 

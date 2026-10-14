@@ -549,6 +549,7 @@ final class ServicesSession {
         }
 
         // 名前付きボリューム(無ければ作る。消さない)
+        try checkInterrupted()
         for name in plan.volumes.values.sorted() where !cli.run(commands.volumeInspect(name)).succeeded {
             let created = cli.run(commands.volumeCreate(name))
             guard created.succeeded else {
@@ -583,11 +584,17 @@ final class ServicesSession {
         // /udp を公開したときだけ経路を確かめる(サービスの起動の後・run-setup.sh の前)
         if let check = plan.udpCheck { try runUDPCheck(check, log: log) }
 
-        // Android 実機への reverse(TCP の公開ポートごと。張れたものだけ控えに残す = 解除の対象)
+        // Android 実機への reverse(TCP の公開ポートごと。張れたものだけ控えに残す = 解除の対象)。別の宛先への転送が既にある
+        // デバイスがあれば起動の失敗(アプリがそちらへ届いて別のサーバーを検証してしまう)。張った分は先に控えへ = 失敗の down が外す
         let tcpPorts = Set(lease.publishedPorts.filter { $0.proto == "tcp" }.map(\.hostPort)).sorted()
-        lease.adbReverse = ServicesAdbReverse.addAll(serials: adbReverseSerials, hostPorts: tcpPorts) { line in
+        let reverse = ServicesAdbReverse.addAll(serials: adbReverseSerials, hostPorts: tcpPorts) { line in
             if line.hasPrefix("⚠️") { warnings.append(line) }  // run.json の servicesWarnings へ(合否は変えない)
             log(line)
+        }
+        lease.adbReverse = reverse.entries
+        try persist()
+        if !reverse.conflicts.isEmpty {
+            throw ServicesError(phase: .start, detail: reverse.conflicts.joined(separator: "; "))
         }
 
         lease.phase = .running

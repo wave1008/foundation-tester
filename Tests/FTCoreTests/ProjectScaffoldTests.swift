@@ -370,29 +370,38 @@ final class ProjectScaffoldTests: XCTestCase {
                        ["mcp__fleetest__ft_start_run", "mcp__fleetest__ft_services"])
     }
 
-    /// 利用者が ask を外したら、補修(install.sh が毎回呼ぶ)で書き戻さない。**ただし後から足した承認対象は一度だけ届ける** ——
-    /// 旧版(台帳なし・MCP 許可済み)の受け手は ft_start_run を提示済みとみなし、新しい ft_services だけを一度足す
+    /// 利用者が ask を外したら、補修(install.sh が毎回呼ぶ)で書き戻さない。**ただし後から足した承認対象は一度だけ届ける**。
+    /// 台帳の無い受け手(台帳より前の版)では一覧の全部を一度提示する = 外していた ask も 1 度だけ戻る(設定の形からは区別できない)
     func testClaudeSettingsDoesNotRestoreAnAskTheUserRemovedButOffersNewOnesOnce() throws {
         try FileManager.default.createDirectory(
             at: claudeSettingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try #"{"permissions":{"allow":["mcp__fleetest"],"ask":[]}}"#
             .write(to: claudeSettingsURL, atomically: true, encoding: .utf8)
         let added = try ProjectScaffold.writeClaudeSettings(packageRoot: packageRoot, toolRoot: "/tools/ft")
-        XCTAssertFalse(added.contains("mcp__fleetest__ft_start_run"), "外した ft_start_run は戻さない")
-        XCTAssertTrue(added.contains("mcp__fleetest__ft_services"), "新しい承認対象は一度だけ足す")
+        XCTAssertTrue(added.contains("mcp__fleetest__ft_start_run"), "台帳が無ければ全部を一度提示する")
+        XCTAssertTrue(added.contains("mcp__fleetest__ft_services"))
         var permissions = try XCTUnwrap((try XCTUnwrap(JSONSerialization.jsonObject(
             with: Data(contentsOf: claudeSettingsURL)) as? [String: Any]))["permissions"] as? [String: Any])
-        XCTAssertEqual(permissions["ask"] as? [String], ["mcp__fleetest__ft_services"])
+        XCTAssertEqual(permissions["ask"] as? [String], ["mcp__fleetest__ft_start_run", "mcp__fleetest__ft_services"])
         XCTAssertTrue(FileManager.default.fileExists(atPath: ProjectScaffold.mcpAskLedgerURL(packageRoot: packageRoot).path))
 
-        // 利用者が ft_services も外した → 次の補修では戻らない(台帳に提示済み)
+        // 利用者が両方外した → 次の補修では戻らない(台帳に提示済み)
         try #"{"permissions":{"allow":["mcp__fleetest"],"ask":[]}}"#
             .write(to: claudeSettingsURL, atomically: true, encoding: .utf8)
         let again = try ProjectScaffold.writeClaudeSettings(packageRoot: packageRoot, toolRoot: "/tools/ft")
-        XCTAssertFalse(again.contains("mcp__fleetest__ft_services"))
+        XCTAssertFalse(again.contains { $0.hasPrefix("mcp__fleetest__") }, "\(again)")
         permissions = try XCTUnwrap((try XCTUnwrap(JSONSerialization.jsonObject(
             with: Data(contentsOf: claudeSettingsURL)) as? [String: Any]))["permissions"] as? [String: Any])
         XCTAssertEqual(permissions["ask"] as? [String], [])
+    }
+
+    /// 提示済みの確定は settings の保存が成功した後。先に台帳を書くと、保存に失敗した ask が「提示済み」になって二度と足されない
+    func testAskLedgerIsRecordedOnlyAfterSettingsAreSaved() throws {
+        // `.claude` を普通のファイルにしておくと settings.json の保存(ディレクトリ作成)が失敗する
+        try Data("not a directory".utf8).write(to: claudeSettingsURL.deletingLastPathComponent())
+        XCTAssertThrowsError(try ProjectScaffold.writeClaudeSettings(packageRoot: packageRoot, toolRoot: "/tools/ft"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ProjectScaffold.mcpAskLedgerURL(packageRoot: packageRoot).path),
+                       "保存に失敗したのに提示済みになっている")
     }
 
     /// クローンは読み取り専用: Read は allow・Edit は deny(allow に Edit を混ぜない)。パスは `//` 始まりの絶対形

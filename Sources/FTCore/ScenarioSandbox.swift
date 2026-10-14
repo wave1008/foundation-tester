@@ -487,8 +487,9 @@ public enum ScenarioSandbox {
     /// `cleanup.log`・録画の点検フォルダ・Emulator のログ(`metal-history.ndjson` に追記・`<avd>.log` を開き直す)
     static func writeDeniedPaths(_ scope: Scope) -> [String] {
         scope.stateRoots.flatMap { root in
-            // `services/` = `services up` の所有者プロセスのログ(親が開いて書く)。子が symlink を置けると親の書き先を向け替えられる
-            ["hooks", "services", "DerivedData", "DerivedData-device", "cleanup.log", "recording-probe"]
+            // `services/` = `services up` の所有者プロセスのログ(親が開いて書く)。子が symlink を置けると親の書き先を向け替えられる。
+            // `mcp-ask-offered.json` = 承認(ask)の提示済みの台帳(`ProjectScaffold`)。子が「提示済み」と書けると ask が足されない
+            ["hooks", "services", "mcp-ask-offered.json", "DerivedData", "DerivedData-device", "cleanup.log", "recording-probe"]
                 .map { root + "/.fleetest/" + $0 }
         } + ["ftbridge.apk", "dispatch.lock", "dispatch.queue", "retention-sweep.lock"]
             .map { scope.home + "/.fleetest/" + $0 }

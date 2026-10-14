@@ -419,30 +419,15 @@ struct ServicesCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Run profile (optional when the project has exactly one)")
         var profile: String?
 
-        @Flag(help: "Remove everything even if a run or `services up` still holds the services or a lease cannot be read")
+        @Flag(help: "Stop a resident `services up` first, then remove everything even if a lease cannot be read (a running run is never interrupted)")
         var force = false
 
         func run() async throws {
             let target = try ServicesCommand.resolveTarget(project: project, profile: profile)
             let log: (String) -> Void = { ConsoleOut.out($0) }
-            // 「確認 → 削除」は排他の中で(確認の直後に起きた up / run の新しい世代を消さない)。
-            // --force は ①生きている所有者へ合図(排他の中)②排他の外で終了を待つ ③取り直して全部消す。排他が取れなければ押し切る
+            // 「確認 → 削除」は排他の中で(確認の直後に起きた up / run の新しい世代を消さない)
             if force {
-                struct Owner { let pid: Int32; let startedAt: String; let budget: Double }
-                let owners: [Owner] = try Self.withLockForcing(target: target, log: log) {
-                    ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix).compactMap(\.lease)
-                        .filter { $0.kind == .owner && !ServicesLeaseFile.isOrphan($0, isAlive: ServicesProcessIdentity.isAlive) }
-                        .map { lease in
-                            log("→ services: stopping \(lease.holderDescription) before the reset")
-                            _ = kill(lease.pid, SIGTERM)
-                            return Owner(pid: lease.pid, startedAt: lease.pidStartedAt, budget: ServicesTeardown.teardownBudgetSeconds(lease: lease))
-                        }
-                }
-                for owner in owners where !ServicesCommand.waitForExit(pid: owner.pid, startedAt: owner.startedAt, budgetSeconds: owner.budget) {
-                    log("⚠️ services: pid \(owner.pid) is still stopping after \(Int(owner.budget))s; removing its resources anyway (--force)")
-                }
-                try Self.withLockForcing(target: target, log: log) { try removeEverything(target: target) }
-                ServicesLock.forceRelease(prefix: target.prefix, stateDir: target.stateDir)
+                try forceReset(target: target, log: log)
             } else {
                 try ServicesLock.withLock(prefix: target.prefix, stateDir: target.stateDir) {
                     try refuseIfHeld(target: target)
@@ -451,13 +436,76 @@ struct ServicesCommand: AsyncParsableCommand {
             }
         }
 
-        /// --force 専用: 排他が取れない(刺さった持ち主)ときは言ってから押し切る
+        /// --force が控えから決めること(純粋関数。`ServicesResetDecisionTests`)
+        enum ForceDecision {
+            /// 生きている持ち主がいない → この排他の中で全部消す
+            case removeNow
+            /// 生きている所有者(`services up`)に合図して、排他の外で終わるのを待つ
+            case stop([ServicesLease])
+            /// 生きている run が握っている → 何も消さない(run は止めない)
+            case blockedByRun(ServicesLease)
+        }
+
+        static func forceDecision(leases: [ServicesLease], isAlive: (Int32, String) -> Bool) -> ForceDecision {
+            let live = leases.filter { !ServicesLeaseFile.isOrphan($0, isAlive: isAlive) }
+            if let run = live.first(where: { $0.kind == .run }) { return .blockedByRun(run) }
+            let owners = live.filter { $0.kind == .owner }
+            return owners.isEmpty ? .removeNow : .stop(owners)
+        }
+
+        /// --force: ①排他の中で生きている所有者へ合図 ②排他の外で終了を待つ(待ち切れなければ何も消さずに止める = 作り続けている
+        /// 相手の控えを消すと、消した後に資源が作られる)③取り直して持ち主がいないことを確かめてから、同じ排他の中で全部消す
+        /// (待っている間に現れた新しい所有者は ① からやり直す)
+        private func forceReset(target: Target, log: (String) -> Void) throws {
+            for _ in 0..<Self.forcedStopRounds {
+                let decision: ForceDecision = try Self.withLockForcing(target: target, log: log) {
+                    let leases = ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix).compactMap(\.lease)
+                    let decision = Self.forceDecision(leases: leases, isAlive: ServicesProcessIdentity.isAlive)
+                    switch decision {
+                    case .removeNow:
+                        try removeEverything(target: target)
+                    case .stop(let owners):
+                        for lease in owners {
+                            log("→ services: stopping \(lease.holderDescription) before the reset")
+                            _ = kill(lease.pid, SIGTERM)
+                        }
+                    case .blockedByRun:
+                        break
+                    }
+                    return decision
+                }
+                switch decision {
+                case .removeNow:
+                    return
+                case .blockedByRun(let lease):
+                    throw ValidationError("\(lease.holderDescription) holds these services; --force does not interrupt a run — wait for it to finish (or stop it) and rerun")
+                case .stop(let owners):
+                    for lease in owners {
+                        let budget = ServicesTeardown.teardownBudgetSeconds(lease: lease)
+                        guard ServicesCommand.waitForExit(pid: lease.pid, startedAt: lease.pidStartedAt, budgetSeconds: budget) else {
+                            throw ValidationError("pid \(lease.pid) is still running \(Int(budget))s after SIGTERM; nothing was removed —"
+                                + " stop it (kill \(lease.pid)) and rerun `services reset --force`")
+                        }
+                    }
+                }
+            }
+            throw ValidationError("a new `services up` appeared each time the reset waited (\(Self.forcedStopRounds) times); nothing was removed — stop it first")
+        }
+
+        /// --force が「合図 → 待つ → 取り直す」を繰り返す上限。根拠: 1 周で、合図した所有者が終わる間に現れた所有者を次の周で止める。
+        /// 3 周で収まらないのは誰かが `up` を繰り返している状態で、黙って回り続けるより人に言う。尽きたとき = 何も消さずに止める
+        private static let forcedStopRounds = 3
+
+        /// --force 専用: 排他が取れない(刺さった持ち主)ときは言ってから押し切り、**押し切るときに見た持ち主のロックだけ**を後で外す
+        /// (押し切っている間に取り直した別の持ち主のロックは消さない)
         private static func withLockForcing<T>(target: Target, log: (String) -> Void, body: () throws -> T) throws -> T {
             do {
                 return try ServicesLock.withLock(prefix: target.prefix, stateDir: target.stateDir,
                                                  timeoutSeconds: forcedLockWaitSeconds, body: body)
             } catch let error as ServicesError where error.phase == .lock {
+                let stuck = ServicesLock.currentHolder(prefix: target.prefix, stateDir: target.stateDir)
                 log("⚠️ \(error.detail) — continuing without the lock (--force)")
+                defer { if let stuck { ServicesLock.forceRelease(prefix: target.prefix, stateDir: target.stateDir, ifHeldBy: stuck) } }
                 return try body()
             }
         }

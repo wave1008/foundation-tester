@@ -108,6 +108,14 @@ final class ScenarioSandboxTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: path("repo/.fleetest/services/x.log")))
     }
 
+    /// 承認(ask)の提示済みの台帳は親が settings.json を補修するときに読む。子が「提示済み」と書けると ask が足されない
+    func testMCPAskLedgerStaysReadOnlyInsideTheWritableStateDirectory() throws {
+        XCTAssertNotEqual(try touch("repo/.fleetest/mcp-ask-offered.json"), 0)
+        XCTAssertNotEqual(try touch("tool/.fleetest/mcp-ask-offered.json"), 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: path("repo/.fleetest/mcp-ask-offered.json")))
+        XCTAssertEqual(try touch("repo/.fleetest/other.json"), 0, "台帳の隣は書ける(拒否は台帳だけ)")
+    }
+
     /// `clearAppData` は Simulator のデータコンテナの中身を直接消す。開けるのはデータ側だけで、
     /// アプリ本体(Bundle)と、コンテナの外の Simulator のファイルは開けない
     func testSimulatorDataContainerIsWritableButTheRestOfTheSimulatorIsNot() throws {

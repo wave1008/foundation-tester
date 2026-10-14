@@ -170,16 +170,15 @@ public enum ProjectScaffold {
         }
         var permissions = (settings["permissions"] as? [String: Any]) ?? [:]
         var allow = (permissions["allow"] as? [String]) ?? []
-        let firstMCPGrant = !allow.contains(mcpToolsPermission)
         var added = (entries + [mcpToolsPermission]).filter { !allow.contains($0) }
-        // ask は台帳に無いものだけ一度提示する(利用者が外したものは台帳にあるので戻らない)
+        // ask は台帳に無いものだけ一度提示する(利用者が外したものは台帳にあるので戻らない)。台帳が無ければ全部を一度提示する
+        // (台帳より前の受け手では、外していた ask も 1 度だけ戻る。設定の形からは「外した」と「提示前」を区別できない)。
+        // 台帳はシナリオから書けない(`ScenarioSandbox.writeDeniedPaths`。書けると「提示済み」にして ask を足させない)
         let ledgerURL = mcpAskLedgerURL(packageRoot: packageRoot)
-        var offered: Set<String>
+        var offered: Set<String> = []
         if let data = FileManager.default.contents(atPath: ledgerURL.path),
            let list = (try? JSONSerialization.jsonObject(with: data)) as? [String] {
             offered = Set(list)
-        } else {
-            offered = firstMCPGrant ? [] : [mcpStartRunPermission]
         }
         var ask = (permissions["ask"] as? [String]) ?? []
         for permission in mcpAskPermissions where !offered.contains(permission) && !ask.contains(permission) {
@@ -188,8 +187,6 @@ public enum ProjectScaffold {
         }
         permissions["ask"] = ask
         offered.formUnion(mcpAskPermissions)
-        try FileManager.default.createDirectory(at: ledgerURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try JSONSerialization.data(withJSONObject: offered.sorted(), options: [.prettyPrinted]).write(to: ledgerURL, options: .atomic)
         // クローンを読み取り専用にする(maintainer-notes §2.5)。Read の allow = 外を初めて読むときの確認を省く・
         // Edit の deny = 編集ツールと Claude Code が認識する Bash のファイル操作を止める。
         // **クローン構成(作業フォルダがクローンの内側)では書かない**(自分の作業ツリーを読み取り専用にする)。
@@ -206,7 +203,10 @@ public enum ProjectScaffold {
             }
             permissions["deny"] = deny
         }
-        guard !added.isEmpty else { return [] }
+        guard !added.isEmpty else {
+            try recordOfferedAsks(offered, at: ledgerURL)
+            return []
+        }
         let denied = Set((permissions["deny"] as? [String]) ?? [])
         allow.append(contentsOf: added.filter { !mcpAskPermissions.contains($0) && !denied.contains($0) })
         permissions["allow"] = allow
@@ -216,7 +216,14 @@ public enum ProjectScaffold {
         let data = try JSONSerialization.data(
             withJSONObject: settings, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
         try data.write(to: url, options: .atomic)
+        // 提示済みの確定は settings の保存が成功した後(先に書くと、保存に失敗した ask が提示済みになり二度と足されない)
+        try recordOfferedAsks(offered, at: ledgerURL)
         return added
+    }
+
+    private static func recordOfferedAsks(_ offered: Set<String>, at url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONSerialization.data(withJSONObject: offered.sorted(), options: [.prettyPrinted]).write(to: url, options: .atomic)
     }
 
     /// マシン側の設定の編集を止める規則(`~/` は Claude Code のホーム相対の形)
