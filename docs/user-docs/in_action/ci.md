@@ -19,6 +19,10 @@ CI.
   alone** ([Text visibility check](../reference/testclass/text_visibility_check.md)). If you
   need visual checks enforced, see "Using Apple Intelligence in CI" below.
 - Xcode (and the Android SDK, if running Android scenarios) already installed on the runner.
+- **If the project has `scripts/compose.yaml`** ([service declarations](../reference/writing/services.md)):
+  the CI machine needs Apple Container or Docker. Build your own images on the CI machine or load them with
+  `fleetest services load <tar>` (nothing is pulled for them). Registry images are pulled on first use, so outbound network
+  access is required. A run does not start if the Docker API is exposed over TCP (2375 / 2376).
 
 ## Running and retrieving results
 
@@ -74,6 +78,8 @@ pipeline {
   Simulator/Emulator) at the end of the job. While another test run on the same Mac is using a
   device, it stops nothing and exits with code 1 so that it does not kill that run. If jobs can
   overlap on the same Mac, schedule the cleanup for a time when no other job is running.
+  Without a profile, `devices down` sends the same sweep to every machine in the remote registry too, so a CI
+  machine that has runners registered would also stop Simulators on those machines. Pass `--profile`, or keep no registry on it.
 - **One run at a time per Mac.** A second `fleetest run` on the same agent does not start — it
   stops with `another fleetest run is already running on this Mac`. Either keep jobs that share an
   agent from overlapping, or add `--wait-lock <seconds>` so the second one queues instead of

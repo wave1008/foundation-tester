@@ -37,6 +37,9 @@
 | `--no-lpt` | LPT 順序付け(実績時間の長い順)を無効化し、シナリオ ID 順で投入する |
 | `--lpt-history-runs <n>` | LPT 順序付けに読む過去 run 数(既定 5) |
 | `--runner <runner>` / `--fleet <fleet>` | SSH 経由でリモートマシン/フリートへディスパッチする([リモート実行](../../fleet/remote_runners_ja.md)参照) |
+| `--wait-lock <秒>` | この Mac で別の run が走っているとき、すぐ失敗せずに待機列に並んで待つ上限(秒) |
+| `--device <名>` | 実行プロファイルのそのデバイスだけで実行する(複数回指定可)。`--broadcast` の絞り込みにも使える |
+| `--all-machines` | `--device` の名前が複数のマシンのデバイスに当たるとき、断らずに当たった全マシンで実行する |
 | `--platform <ios\|android>` | `--profile` 無しでの対象プラットフォーム(既定 `ios`) |
 | `--app-id <bundleID>` | `@TestClass(app:)` 未指定シナリオの既定アプリ。`--profile` 無しのときだけ必要。`--set app=...` とは別物(実行プロファイルの `app` キーはアプリ**プロファイル名**を指す) |
 | `--serial <s>` | Android デバイスの serial(`--profile` 無しのとき) |

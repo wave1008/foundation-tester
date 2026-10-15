@@ -39,6 +39,7 @@
 | 画面共有が ON であること(推奨。ランナー機の再起動後に手元からログインし直せます。`fleetest remote setup` の判定には使いません) | システム設定 → 一般 → 共有 → 画面共有 |
 | テストで使う iOS Simulator のランタイムをダウンロードしていること(iOS を回すときだけ。無くても実行は止まらず、ステップ5で警告が出ます) | `xcodebuild -downloadPlatform iOS` |
 | Android SDK と AVD があること(Android を回すときだけ)。SDK は既定の場所(`~/Library/Android/sdk`)に置く | `fleetest doctor` |
+| Apple Container か Docker があること(`scripts/compose.yaml` を持つプロジェクトを回すときだけ。サービスはランナー機の上で起動します。自分でビルドしたイメージはランナー機でもビルドするか `fleetest services load <tar>` で載せます。手元から転送はされません。詳しくは[サービス宣言](../reference/writing/services_ja.md)) | `container --version` または `docker --version` |
 
 ランナー機の `/Applications` に複数の Xcode を並べて入れておけば、手元の Mac の Xcode の製品版に
 合う方を fleetest が自動で選びます(他の版を削除する必要はなく、`sudo` も要りません)。別の場所に
@@ -265,8 +266,8 @@ fleetest remote status --runner M1Max
 ```
 
 ```
-HOST          REACHABLE  LOGIN  REV          TOOLCHAIN     RUNTIME             FM  BINARY  FREE
-user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 24A434  -   yes     412 GB
+HOST          REACHABLE  LOGIN  REV          TOOLCHAIN     RUNTIME             FM  BINARY  FREE    LOCK
+user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 24A434  -   yes     412 GB  -
 ```
 
 | 表示 | 意味 | 対処 |
@@ -303,7 +304,7 @@ fleetest run --profile <実行プロファイル> --scenario <シナリオID>
 実行プロファイルのデバイスに `"machine": "M1Max"` が書いてあれば、`--runner` を付けなくても
 ランナー機で実行されます。この1回だけ別のマシンへ送りたいときは `--runner M1Max` を付けます。
 
-**Android では、先に Emulator を起動しておきます**(iOS の Simulator と違い、自動では起動しません):
+Android の Emulator は、run が開始前に起動していないものを自動で起こします。事前に温めておきたいときだけ、次を実行します(任意):
 
 ```bash
 fleetest remote exec M1Max -- devices up --profile <実行プロファイル>
@@ -354,7 +355,7 @@ fleetest remote exec M1Max -- devices up --profile <実行プロファイル>
 | `could not tell which installed Xcode to dispatch with: … match this Mac's product version` | ランナー機に、手元の Mac の製品版に一致する Xcode が複数ある | 使わせたい方を固定します: `fleetest remote machines add <マシン名> --host <宛先> --developer-dir <.app へのパス>` |
 | `could not tell which installed Xcode to dispatch with: none of the …` | ランナー機に手元と一致する Xcode が1つも無い(メッセージが見つかった Xcode を全部並べます) | その製品版の Xcode をランナー機へ追加で入れます(他の版は消さなくて構いません)。固定しても直りません |
 | `no runner workspace at …` | ランナー機にあなたの作業場所がまだ無い | `fleetest remote setup M1Max` を1回実行します |
-| `no running emulator for AVD …` | Android の Emulator が起動していない | ステップ6の `devices up` を実行します |
+| `no running emulator for AVD …` | Android の Emulator が起動していない(run の開始前の自動起動でも起こせなかった) | ステップ6の `devices up` で起動を試し、出力を確かめます |
 | `app package not found at …` | 手元の `appPath` にアプリが無い | 手元でアプリをビルドするか、`appPath` を直します |
 | タイルが「状態不明」のまま | ランナー機の fleetest の版が古い、または SSH で接続できない | ステップ3をもう一度実行し、ツールバーの「モニター再起動」を押します |
 

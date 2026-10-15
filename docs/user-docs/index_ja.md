@@ -5,7 +5,7 @@
 fleetest は、Claude Code などの AIアシスタントへ自然言語で指示して使う、iOS / Android アプリの
 E2E テストツールです。名前の由来と特徴は [Fleetest とは](overview/about_ja.md) を参照してください。
 
-はじめての方は、[はじめに](getting-started_ja.md)でインストールし、[クイックスタート](quick-start_ja.md)、
+はじめての方は、[はじめに](getting-started_ja.md)でインストールし、[サンプルアプリの準備](sample-app_ja.md)、[クイックスタート](quick-start_ja.md)、
 [チュートリアル](#チュートリアル)の順に進んでください。
 
 ## リポジトリ
@@ -17,12 +17,14 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 - [fleetest とは](overview/about_ja.md)
 - [環境](overview/environments_ja.md)
 - [はじめに(インストール)](getting-started_ja.md)
+- [サンプルアプリの準備](sample-app_ja.md)
 - [クイックスタート](quick-start_ja.md)
 
 ## チュートリアル
 
 - [AIアシスタントへの指示の仕方](tutorial/asking_ai_ja.md)
 - [アプリとデバイスを用意する](tutorial/preparing_app_and_devices_ja.md)
+- [アプリが依存するサーバーを用意する](tutorial/preparing_app_server_ja.md)
 - [テストを作る](tutorial/creating_tests_ja.md)
 - [テストを実行する](tutorial/running_tests_ja.md)
 - [結果を読み、失敗を調べる](tutorial/investigating_failures_ja.md)

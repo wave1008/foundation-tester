@@ -39,7 +39,7 @@ tap("Settings")
 - Each attempt is recorded as a group named `"<description> #n"`, followed by one step with the
   result. If a command inside the block fails, the scenario stops there.
 - `doUntilTrue` stops only on `waitSeconds:` and `maxLoopCount:` (the 120-second cap of a single
-  command does not apply).
+  command does not apply). Time the step slowdown spent waiting before an action inside the block is subtracted from that limit.
 - A `throw` inside the condition block fails the step immediately (no further retries) —
   reserve throwing for a condition that can never become true, not for a transient read error.
 

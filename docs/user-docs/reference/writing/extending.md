@@ -51,12 +51,13 @@ wrap them in `group("name") { }`.
 
 ## 2. Run code the DSL has no command for, as one step
 
-Inside `procedure("description") { ... }` you can write any Swift (including `try` / `await`), and it is recorded in
-the report as a single step. Throwing inside it stops the scenario, just like a failed command.
+The body of `procedure("description") { ... }` is a synchronous closure (`() throws -> Void`); `await` cannot be written in it.
+DSL commands can be called inside, and the steps inside are recorded with a `[description]` prefix and folded into one step in
+the report (.md); the result JSON keeps all of them. Throwing inside it stops the scenario, just like a failed command.
 
 ```swift
 procedure("Create a test order through the API") {
-    try await seedTestOrder()   // an async function you wrote
+    try seedTestOrder()   // a synchronous function you wrote (it can call DSL commands)
 }
 ```
 
@@ -130,7 +131,7 @@ project's workspace. **Servers, databases and stubs are not started by a script*
   - A process left in the background is stopped after the run.
   - For an Android physical device, fleetest sets up `adb reverse` itself.
 - The scripts receive the environment variables `FT_HOOK` (`setup` / `teardown`), `FT_WORKSPACE`, `FT_PROJECT`,
-  `FT_PROFILE`, `FT_MACHINE`, `FT_REPORT_DIR` (readable, not writable), `FT_IOS_DEVICES` and `FT_ANDROID_DEVICES`
+  `FT_PROFILE`, `FT_REPORT_DIR` (readable, not writable), `FT_IOS_DEVICES` and `FT_ANDROID_DEVICES`
   (device names separated by spaces), and the names of the secrets that compose.yaml refers to. The variables are set
   even when they have no value. The Emulator's adb serial and the Simulator's UDID are not passed.
 - For a run sent to a [remote runner](../../fleet/remote_runners.md), the scripts run on the runner machine.

@@ -5,8 +5,8 @@
 How to update fleetest.
 
 An update brings in the **latest release** of fleetest. When a new release is out, the VSCode extension
-notifies you on startup (at most once a day) with "A new release X.Y.Z is available (current A.B.C)". The
-"What's changed" button in the notification shows what changed in that release. The update itself also prints
+notifies you on startup (at most once a day) with "fleetest X.Y.Z is available (current: A.B.C). You can apply it
+from the Settings tab of the device monitor." The "What's new" button in the notification shows what changed in that release. The update itself also prints
 the changes of the releases in between.
 
 ## Ask your AI assistant

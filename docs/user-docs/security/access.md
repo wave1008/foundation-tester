@@ -130,6 +130,14 @@ Settings go in `~/.config/fleetest/config.json` on the Mac that runs the scenari
     "allowDirectAdb": false,
     "disabled": false
   },
+  "hooks": {
+    "writablePaths": ["~/work/shared-fixtures"]
+  },
+  "services": {
+    "runtime": "docker",
+    "buildSources": ["~/work/server-src"],
+    "publishForPhysicalDevices": "192.168.1.10"
+  },
   "redactAccountValues": true
 }
 ```
@@ -140,6 +148,10 @@ Settings go in `~/.config/fleetest/config.json` on the Mac that runs the scenari
 | `sandbox.denyRead` | Places added to the default unreadable list (`~` is accepted) |
 | `sandbox.allowDirectAdb` | When `true`, scenarios can use adb and bundletool themselves. In exchange they can reach the outside through the shell inside an Emulator and reach every connected Android device. Do not use it unless you need it |
 | `sandbox.disabled` | When `true`, the sandbox is removed on this Mac |
+| `hooks.writablePaths` | Extra places `run-setup.sh` / `run-teardown.sh` may write (by default only `<workspace>/data/`; see [Running scripts before and after a run](../reference/writing/extending.md#running-scripts-before-and-after-a-run)) |
+| `services.runtime` | Runtime for compose.yaml services: `"docker"` or `"apple"`. If unset, Docker when it is available, otherwise Apple Container ([Services the app depends on](../reference/writing/services.md)) |
+| `services.buildSources` | Places allowed as a `build:` context in addition to under `scripts/` (mounted read-only for the build) |
+| `services.publishForPhysicalDevices` | Your consent to bind the services' published ports on every interface for a run that includes a physical device. Set it to this Mac's LAN IPv4 address; the device reaches the services at that address |
 | `redactAccountValues` | When `true`, values from `account()` are replaced with `***` in reports, run logs and results JSON (not redacted by default; [Test data and accounts](../reference/commands/dataset.md)) |
 
 - An unknown key or broken JSON stops with an error before the scenario starts (so that a restriction you added is

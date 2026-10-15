@@ -37,8 +37,9 @@ Self-healing is fingerprint matching only — it does not call FM (Foundation Mo
 - Every scenario report (`reports/scenario-*.md`) keeps listing a fix suggestion with a source
   location for as long as the source has not been updated, e.g.:
 
-  > `TestProjects/SampleApp/scenarios/LoginTest.swift:17` — passed via locator fingerprint
-  > matching; change the selector "#email_input" to "#email||.textField[1]"
+  > `TestProjects/SampleApp/scenarios/LoginTest.swift:17` — change the selector "#email_input" to
+  > "#email||.textField[1]" (passed via locator fingerprint matching; reason: matched by locator
+  > fingerprint (type+label))
 
 - If the matched element has no selector that can be written uniquely, the step still acts on it,
   but no fix suggestion is made for it.

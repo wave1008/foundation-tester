@@ -34,6 +34,16 @@ VSCode の拡張ビューからアンインストールし、`Developer: Reload 
 
 ## 2. fleetest のプロセスを止める
 
+`scripts/compose.yaml` のサービスを使っていたなら、プロセスを止める前に(作業フォルダとクローンが残っているうちに)サービスを止めて消します。
+
+```bash
+fleetest services down     # 作業フォルダのサービスを止める
+fleetest services reset    # コンテナ・ネットワーク・名前付きボリューム・控えを消す
+```
+
+自分でビルドしたイメージと取得したイメージはコンテナランタイム側に残るので、不要なら `container image rm <名前>` /
+`docker image rm <名前>` で消します(例: `sut-ec-mobile-server:local`・`postgres:16`)。
+
 この Mac で動いている fleetest のプロセスを、作業フォルダに関係なくすべて止めます(他の作業フォルダで
 使っている fleetest も止まります)。
 
@@ -51,7 +61,7 @@ VSCode を終了してから、作業フォルダと fleetest のクローン(�
 ## 4. 残るファイル
 
 - `~/.fleetest`(この Mac での実行の記録など)・`~/Library/Logs/fleetest`(ログ)・`~/Library/Caches/fleetest`
-- `~/.config/fleetest/`(設定と、この Mac だけのテストデータ)。**`dataset/` にパスワードなどの秘密を置いているなら、
+- `~/.config/fleetest/`(設定と、この Mac だけのテストデータ)。**`dataset/` や `secrets/<プロジェクト>.env`(compose.yaml が参照する秘密)にパスワードなどの秘密を置いているなら、
   必ず消します**
 - fleetest のために作った仮想デバイスが不要なら、Xcode の「Devices and Simulators」や Android Studio の
   Device Manager から削除します

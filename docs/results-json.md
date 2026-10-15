@@ -262,7 +262,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | measurementInvalidReasons | [String]? | 同上の理由(英語) |
 | performanceMode | Bool? | `--performance` の run だけ true(false は書かない)。有効な計測 run = これが true かつ measurementInvalid が無い run。2026-09-01 より前の記録には無い |
 | issuer | String? | ディスパッチ発行者の自己申告(認証ではない) |
-| fmDead | [String]? | **run を閉じた時点**でこの機械の FM が死んでいた経路(`"text"` / `"vision"`。`FTCore.FMLiveness`)。生きていた・不明なら欄ごと省略 —— **欄が無いことを「生きていた」と読まない**。**run 全体の状態ではない**(途中で死んで戻った run はここに出ない。そちらは `scenarios/*.json` の `fm.failures` / `fm.firstError`)。**緑の run を仕分けるための欄** —— FM が死んだ run の緑は occlusion-guard・screenLooksLike が素通りしただけかもしれない(自己修復は FM を呼ばないため対象外)。2026-09-03 より前の記録には無い。**台帳(FMLiveness)の観測が古い/無い経路は、`FMBreaker.isOpen`(サーキットブレーカが開いている = 直前に連続失敗した既知の事実)が真なら dead として補う**(観測済みの経路は上書きしない。ブレーカは呼ばずに死と言える唯一の根拠 —— run 全体がブレーカ開の間に終わり、台帳が一度も更新されないまま run が閉じるケースを拾う。2026-09-09 より前の記録は台帳の観測だけで、この補いを持たない) |
+| fmDead | [String]? | **run を閉じた時点**でこの機械の FM が死んでいた経路(`"text"` / `"vision"`。`FTCore.FMLiveness`)。生きていた・不明なら欄ごと省略 —— **欄が無いことを「生きていた」と読まない**。**run 全体の状態ではない**(途中で死んで戻った run はここに出ない。そちらは `scenarios/*.json` の `fm.failures` / `fm.firstError`)。**緑の run を仕分けるための欄** —— FM が死んだ run の緑は テキストの可視性検証(内部名 occlusion-guard)・screenLooksLike が素通りしただけかもしれない(自己修復は FM を呼ばないため対象外)。2026-09-03 より前の記録には無い。**台帳(FMLiveness)の観測が古い/無い経路は、`FMBreaker.isOpen`(サーキットブレーカが開いている = 直前に連続失敗した既知の事実)が真なら dead として補う**(観測済みの経路は上書きしない。ブレーカは呼ばずに死と言える唯一の根拠 —— run 全体がブレーカ開の間に終わり、台帳が一度も更新されないまま run が閉じるケースを拾う。2026-09-09 より前の記録は台帳の観測だけで、この補いを持たない) |
 | fmDeadReason | String? | `fmDead` の理由(`text: … / vision: …`)。**ブレーカ由来の補いは `"circuit breaker open"` になる**(実呼び出しの失敗理由が無いため)。`fmDead` が無ければ省略 |
 | guarded | Int? | **occlusion-guard(誤った緑の検査)が run 全体で `occlusionFlip` の `visibilityGuardActive` 判定を通ったステップ数**(run 横断合計)。**分母は occlusionFlip に実際に入った回数であって、`visibilityGuardActive` が true になった回数(検査対象の候補数)ではない** —— tap 等のアクションは `occlusionFlip` を通らないのでこの欄には数えない。足切り(型・ラベル・インク)で FM を呼ばずに素通りした回も、`occlusionFlip` の入口ガードは通っているのでここに数える。1度もガードに入らなかった run では省略(0 は書かない) |
 | guardSkipped | Int? | `guarded` のうち、FM が判定を返せず(死活・ブレーカ・呼び出しの枠の待ち・常駐プロセスに届かない・安全判定による拒否)素通りした回(`visibility-guard-skipped`)。**`guarded` が1件以上ある run では、0件でも必ず書く**(欄が無い=観測なし、0=観測したが起きなかった、を混ぜない)。`guarded` が省略された run では同じく省略 |
@@ -376,6 +376,18 @@ Android の凍結事後判定(`AndroidHealthProbe.observeBlankAndRepair`)が試�
 **ステップに到達しないまま落ちた run** では `failedSteps` が空になる(ブリッジ未接続・
 デバイス消失など)。そのときの一次情報は `errorLogs` と `skipKind`、および run.json の
 `workerAnomalies`。
+
+**`fm`(`FMUsageRecord`)の欄**:
+
+| 欄 | 型 | 意味 |
+|---|---|---|
+| calls / failures | Int | FM 呼び出しの回数と、呼んで失敗した回数 |
+| totalMs | Int | FM に費やした合計時間(直列化するため、実行全体の下限時間の見積もりに使う) |
+| p50Ms / maxMs | Int | 1回あたりの所要の中央値と最大 |
+| byKind | [String: FMKindUsage] | 用途別の実測(キーは `occlusion` / `screenLooksLike`。値は `calls` / `failures` / `totalMs` / `p50Ms` / `maxMs`) |
+| firstError | String? | 最初の失敗の内容(以降は捨てる)。失敗が1件も無ければ省略 |
+| gateWaitTotalMs / gateWaitP50Ms / gateWaitMaxMs | Int | `FMCallSlots` で実際に待たされた合計 / 中央値 / 最大(次の段落) |
+| skipped | Int | FM の答えが無かった回数(下記) |
 
 **`fm` の `gateWaitTotalMs` / `gateWaitP50Ms` / `gateWaitMaxMs`** は FM 呼び出しコスト
 (`totalMs` 等)とは別軸で、`FMCallAdmission.enter()` が `FMCallSlots`(ホスト単位の許可枠。既定1)で実際に

@@ -9,9 +9,9 @@ gesture builder for anything those three cannot express.
 
 | function | description |
 |---|---|
-| `doubleTap(sel?, settle:)` | Double taps. Omitting the selector taps the center of the screen. Writing `tap` twice does not substitute for it — the round trip exceeds the OS's double-tap detection window. |
-| `pinchOut(sel?, scale: 2.0, durationSeconds: 0.5, maxGestureSeconds:, settle:)` | Spreads two fingers apart = zoom in. `scale` must be greater than 1. `durationSeconds` is capped at 10 seconds by default — pass `maxGestureSeconds:` to allow up to 60 for this one call. |
-| `pinchIn(sel?, scale: 0.5, durationSeconds: 0.5, maxGestureSeconds:, settle:)` | Pinches two fingers together = zoom out. `scale` must be greater than 0 and less than 1. Same cap as `pinchOut`. |
+| `doubleTap(sel?, settle:, waitSeconds:)` | Double taps. Omitting the selector taps the center of the screen. Writing `tap` twice does not substitute for it — the round trip exceeds the OS's double-tap detection window. |
+| `pinchOut(sel?, scale: 2.0, durationSeconds: 0.5, maxGestureSeconds:, settle:, waitSeconds:)` | Spreads two fingers apart = zoom in. `scale` must be greater than 1. `durationSeconds` is capped at 10 seconds by default — pass `maxGestureSeconds:` to allow up to 60 for this one call. |
+| `pinchIn(sel?, scale: 0.5, durationSeconds: 0.5, maxGestureSeconds:, settle:, waitSeconds:)` | Pinches two fingers together = zoom out. `scale` must be greater than 0 and less than 1. Same cap as `pinchOut`. |
 | `gesture(sel?, maxGestureSeconds:settle:waitSeconds:) { FTFinger(x:y:).move(x:y:durationSeconds:).hold(seconds:) }` | Replays one or more finger paths as a single continuous touch — for a pattern-lock swipe, a long-press that then drags, a two-finger rotate, or anything `pinchOut`/`pinchIn`/`doubleTap`/`swipeBy` cannot express. |
 | `hold(sel, holdSeconds: 3, maxGestureSeconds:, settle:, waitSeconds:, scroll:, maxSwipes:) { … }` | Runs the block while the finger stays down (for checking a component that only shows while pressed). `holdSeconds` defaults to 3 seconds. See the `hold` section below. |
 

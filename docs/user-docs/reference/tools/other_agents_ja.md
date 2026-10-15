@@ -123,10 +123,10 @@ approval_mode = "prompt"
 インストーラは手順書を作業フォルダの `.claude/skills/` へ写します(Claude Code では
 `/fleetest-scenario` のように名前で呼べます)。他のエージェントは、作業フォルダの `AGENTS.md` の入口
 からたどって同じ `SKILL.md` を読ませてください。写しは `git pull` では更新されないので、更新は
-`Scripts/update.sh` に任せます(元のファイルから写し直し、`✅ Skills: refreshed N copied SKILL.md` と
-報告します)。写した後は**エージェントを再起動**してください。
-インストーラは `.claude/skills/` に印 `.fleetest-copied` を残し、`update.sh` は**この印があるときだけ**
-新しく増えたスキルも置きます。
+`Scripts/update.sh` に任せます(update.sh が呼ぶ install.sh が元のファイルから写し直し、
+`✅ [ok] skills: <n> placed, <n> refreshed, <n> removed (in <dir>)` と報告します。変化が無ければ `skills: already up to date`)。写した後は**エージェントを再起動**してください。
+インストーラは `.claude/skills/` に印 `.fleetest-copied` を残します。作業フォルダに無いスキルは印に関わらず置きます。
+印が決めるのは「既にある同名のスキルを更新・削除してよいか」だけです(印に無い同名は受け手のものとして触りません)。
 
 ## Codex を使う場合(サンドボックス)
 

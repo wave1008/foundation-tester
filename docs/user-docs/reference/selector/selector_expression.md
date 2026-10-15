@@ -54,11 +54,11 @@ Clauses are tried in the order you write them, so the usual order is id, then la
 
 ## Rules that produce a syntax error before touching a device
 
-Misspellings, unsupported notation (`:near`, `:parent`, …), non-numeric ordinals (`[abc]`),
-and unbalanced parentheses are all rejected up front — a typo is never silently treated as a
-literal label (which would let `notExist` pass for the wrong reason). An **unknown filter
+Unknown markers of the form `:name(` (`:near(`, `:parent(`, …), mistyped direction names (`right` / `left` / `above` /
+`below`: a prefix or a case-only difference), non-numeric ordinals (`[abc]`), and unbalanced parentheses are rejected up front — a typo is never silently treated as a
+literal label (which would let `notExist` pass for the wrong reason). A name such as `notify:near`, with no parenthesis and unrelated to a direction name, is treated as part of a label (it is simply not found; no error). An **unknown filter
 name** (`name=value`) is allowed as a raw label (e.g. `notify=off`), *except* when it's
-close enough to a known filter name to look like a typo (a prefix relationship, a
+close enough to a known filter name to look like a typo (a prefix relationship of 3+ characters, a
 case-only difference, a one-character difference at 6+ characters, or a known base name
 followed directly by an uppercase letter, e.g. `idPrefix=`) — those are rejected instead of
 silently becoming a label.

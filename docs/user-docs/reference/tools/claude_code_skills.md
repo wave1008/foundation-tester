@@ -28,7 +28,7 @@ through [Update](../../update.md) or `/fleetest-update`.
 | `fleetest-update` | `/fleetest-update` | Take in the latest release: switch to it, resync `TestProjects/`/`Package.swift`, rebuild, reinstall the VS Code extension, and reload |
 | `fleetest-profiles` | `/fleetest-profiles` | Create app and run profiles together in one pass (asks for iOS/Android and the app's display name/ID, then picks or creates a device) |
 | `fleetest-scenario` | `/fleetest-scenario` | Author one Swift DSL scenario (`.swift`) in an already set-up project, from live exploration through compile verification |
-| `fleetest-mcp` | `/fleetest-mcp` | Register just the MCP server (`fleetest-mcp`) with Claude Code — no VS Code extension, project creation, or profiles |
+| `fleetest-mcp` | `/fleetest-mcp` | Register just the MCP server (`fleetest-mcp`) with your AI assistant (`.mcp.json` for Claude Code, the assistant's own settings file for Codex and others) — no VS Code extension, project creation, or profiles |
 | `fleetest-remote-setup` | `/fleetest-remote-setup` | Provision another Mac as a runner machine so scenarios can be dispatched to it over SSH |
 
 `fleetest-setup` is the entry point for a first-time install; the others assume it (or an

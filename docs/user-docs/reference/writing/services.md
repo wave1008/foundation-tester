@@ -63,7 +63,7 @@ The app and the scenarios reach `api` at `127.0.0.1:8080`.
 The syntax is the same as compose.
 
 - Under `services.<name>`: `image` or `build`, `command`, `entrypoint`, `environment`, `env_file`, `ports`,
-  `volumes`, `depends_on` (`condition`: `service_started` / `service_healthy` / `service_completed_successfully`),
+  `expose`, `volumes`, `depends_on` (`condition`: `service_started` / `service_healthy` / `service_completed_successfully`),
   `healthcheck`, `stop_grace_period`, `working_dir`, `user`, `mem_limit`, `cpus`, `tmpfs`, `init`, `platform`,
   `labels`, `networks`.
 - Top level: `networks` and `volumes`. `version` and `x-*` are ignored (fleetest prints one line saying so).
@@ -78,7 +78,8 @@ The syntax is the same as compose.
   `NO_PROXY`). See [Network access from scenarios](network_access.md) for the entries.
 - **Published ports (`ports`) are bound to `127.0.0.1` only** (physical devices: see below).
 - **An image is pulled only when it is not on this Mac.** The runtime pulls it directly, so the first pull needs
-  outside network access.
+  outside network access. An image you built yourself with `container build` / `docker build` is used as it is when you
+  write the same name in `image:` (it is not pulled). See [Preparing the servers your app depends on](../../tutorial/preparing_app_server.md).
 - **`build:`** The context must be below `scripts/`, or in a place you list in this Mac's settings with
   `"services": {"buildSources": ["<dir>", …]}` (mounted read-only for the build). A build whose inputs have not
   changed is not repeated. **Apple Container builds inside a builder VM that starts with 2 CPUs and 2 GB of memory**;

@@ -15,6 +15,7 @@ AIアシスタントがデバイス上のアプリを実際に操作して画面
 |---|---|
 | 「このアプリ向けに fleetest のプロファイルを作って」 | [アプリとデバイスを用意する](preparing_app_and_devices_ja.md) |
 | 「ログイン画面だけを対象に、探索的テストを作成して」 | [テストを作る](creating_tests_ja.md) |
+| 「アプリが依存するサーバーをコンテナにして、fleetest に宣言して」 | [アプリが依存するサーバーを用意する](preparing_app_server_ja.md) |
 | 「作成したシナリオを iOS で実行して」 | [テストを実行する](running_tests_ja.md) |
 | 「今の実行結果を要約して。失敗があれば原因を調べて」 | [結果を読み、失敗を調べる](investigating_failures_ja.md) |
 | 「ログイン画面のデザインを変えたので、関係するテストを直して」 | [アプリの変更にテストを追従させる](keeping_up_with_app_changes_ja.md) |

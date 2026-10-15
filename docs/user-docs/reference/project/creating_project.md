@@ -40,7 +40,7 @@ There are two ways this project's Package.swift can reference foundation-tester:
 `fleetest init` scaffolds the external configuration (a `Package.swift` plus a first test
 project). With `--no-project` it creates no project: only the `Package.swift` and an empty `TestProjects/`
 (the installation uses this; the `project1` project is created later by `/fleetest-profiles` or the VSCode extension;
-`--no-project` cannot be combined with `--name` / `--app-id`). `--fleetest-path` points at a local clone (`.package(path:)`); `--fleetest-url` depends
+`--no-project` cannot be combined with `--name`). `--fleetest-path` points at a local clone (`.package(path:)`); `--fleetest-url` depends
 on a git URL instead (`--fleetest-branch` selects the branch to track; it defaults to `main`).
 
 ## Managing projects
@@ -52,6 +52,7 @@ on a git URL instead (`--fleetest-branch` selects the branch to track; it defaul
 | `fleetest project sync` | Regenerate the `Package.swift` marker section from a scan of `TestProjects/` (run this after a manual copy or a `git pull`) |
 | `fleetest project copy <source> <newName>` | Duplicate a project under a new name and register it in `Package.swift`. Excludes run artifacts and caches (`reports/`, `results/`, `.fleetest/`) so the copy starts clean |
 | `fleetest project rename <oldName> <newName>` | Rename a project's directory and update `Package.swift` |
+| `fleetest project lint-selectors [--project <project>] [--contract <contract>]` | Check for drift between the `#id` selectors in scenarios and the contract (`ui-contract.md`) (only `#id`; labels are excluded because localisation makes them vary). `--contract` defaults to `TestProjects/<name>/docs/ui-contract.md` (an error if missing) |
 | `fleetest project delete <name> --yes` | Move a project's directory to the Trash (not permanently deleted) and remove it from `Package.swift`. `--yes` is required — omitting it deletes nothing |
 
 `Package.swift`'s marker section (between `// === fleetest projects begin/end ===`) is fully
@@ -84,7 +85,7 @@ let package = Package(
 ```
 
 `fleetestScenarioDependencies` is outside the marker section, so `create`/`sync` do not rewrite it
-(`sync` adds an empty declaration to a `Package.swift` that does not have one). A key that does not match a
+(`create` / `sync` add an empty declaration to a `Package.swift` that does not have one). A key that does not match a
 project name means its dependencies are not used, so `sync` warns about it.
 
 The build of the dependencies you add (including macros and build plugins) runs outside the scenario

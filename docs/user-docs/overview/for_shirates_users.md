@@ -58,7 +58,8 @@ present, and what only fleetest has.
 | `macro` | a plain Swift function, optionally marked `@FTCommand("summary")` to list it in the DSL command index (`ft_dsl_commands`) so an agent can find and reuse it — see [Custom commands](../reference/testclass/custom_commands.md) |
 | `manual` / `knownIssue` | not available — a failing command always aborts the scenario; there is no escape hatch to mark a failure as expected |
 | `must` / `should` / `want`, `SKIP` / `MANUAL` / `NOTIMPL` | not available — for OS-specific tests use `@TestClass(platform:)` / `@Test(platform:)` instead |
-| Datasets (`account` / `app` / `data` / `dataPattern`) | Swift literals or constants written directly in the scenario |
+| Datasets: `app` / `dataPattern` | not available — Swift literals or constants written directly in the scenario |
+| Datasets: `account` / `data` | implemented with the same names and arguments — see [Test data and accounts](../reference/commands/dataset.md) |
 | `canSelect` on its own | wrap it in `ifCanSelect { }` or `repeatWhileCanSelect(sel, maxLoopCount:) { }` |
 | `existAll` / `canSelectAll` / `dontExistAll` | a chain of individual `exist` calls (each can have its own `waitSeconds:` / `scroll:`) |
 | `tempSelector` / `tempValue` | write the selector directly at the call site |
@@ -81,6 +82,10 @@ Shirates has no equivalent for these:
 | `openURL(url)` / `launchApp(url:)` | deep-link delivery, with or without restarting the app |
 | `rotateTo(.landscape)` | rotates the device; the scenario restores the original orientation on completion |
 | `waitForSettle(sel?, quietSeconds:, throwsException:, waitSeconds:)` | waits until the pixels of the screen (or of an element's area) stop completely and the accessibility tree has caught up — for image checks or screenshots after scroll inertia has fully stopped ([wait](../reference/commands/wait.md)) |
+| `hold(sel, holdSeconds:) { }` | for parts shown only while pressed (tooltips etc.); the block runs while the finger is down ([gestures](../reference/commands/gestures.md)) |
+| `dataFile(filename)` / `addMedia(filename)` | get the `URL` of a file (CSV, JSON, image) in the dataset folder / put an image or video into the photo library (fails on a physical iPhone) ([dataset](../reference/commands/dataset.md)) |
+| `httpRequest(url, method:, headers:, body:, waitSeconds:)` | call an external API from inside the sandbox; 4xx/5xx are not failures, network errors and timeouts are ([http_request](../reference/commands/http_request.md)) |
+| `tap(sel, linkText:)` | taps an inline link inside a paragraph by the position of the text within the element (tree descendants first, then OCR; fails if not found) |
 | `iosAlertHandler(alert:, button:)` | auto-dismisses iOS system alerts (permission prompts etc. — a separate process, so `irregularHandler` can't see them) |
 | `@Draft("reason")` | marks a scenario as work-in-progress; excluded from bulk runs like `@Deleted`, but can still be run by exact ID |
 | `group("name") { }` | prefixes a run of steps with a label in the report; doesn't change execution or failure handling |

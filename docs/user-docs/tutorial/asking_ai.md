@@ -15,6 +15,7 @@ go through the [Quick Start](../quick-start.md) first.
 |---|---|
 | "Create fleetest profiles for this app" | [Prepare the app and devices](preparing_app_and_devices.md) |
 | "Create an exploratory test that covers only the login screen" | [Create tests](creating_tests.md) |
+| "Put the server my app depends on in a container and declare it to fleetest" | [Preparing the servers your app depends on](preparing_app_server.md) |
 | "Run the scenarios you created on iOS" | [Run tests](running_tests.md) |
 | "Summarize the current run results. If there are failures, investigate the cause" | [Read results and investigate failures](investigating_failures.md) |
 | "I changed the design of the login screen, so fix the related tests" | [Keep tests up to date with app changes](keeping_up_with_app_changes.md) |

@@ -72,7 +72,9 @@ Mac の LAN のアドレスを焼き込んだビルドを使います。
 
 そのサーバが `compose.yaml` で宣言したサービスなら、実機を含む run はこの Mac の全インターフェースに公開し(設定
 `services.publishForPhysicalDevices` に Mac の LAN アドレスを書くことがその同意で、実機はそのアドレスで届きます)、Android の
-実機には公開した TCP ポートごとに fleetest が `adb reverse` を張ります。
+実機には公開した TCP ポートごとに fleetest が `adb reverse` を張ります
+(張る前に端末の転送を `adb reverse --list` で見て、同じ宛先なら触らず、別の宛先なら run を止めます。張れなかったときは状態を読み直し、
+転送が無いと確認できたときだけ警告します。端末が応答しなければ run を止めます)。
 [アプリが依存するサービス](../reference/writing/services_ja.md)を見てください。
 
 ## Android

@@ -39,6 +39,7 @@ In the examples below, the runner is `<user@192.168.xxx.xxx>` and its machine na
 | Screen Sharing on (recommended: lets you log back in from your Mac after the runner restarts; `fleetest remote setup` does not require it) | System Settings → General → Sharing → Screen Sharing |
 | The iOS Simulator runtime you test with is downloaded (only when running iOS; runs are not stopped without it, but Step 5 warns) | `xcodebuild -downloadPlatform iOS` |
 | Android SDK and AVDs (only when running Android). Keep the SDK in its default location (`~/Library/Android/sdk`) | `fleetest doctor` |
+| Apple Container or Docker (only when running a project that has `scripts/compose.yaml`; the services start on the runner. Build your own images on the runner too, or load them with `fleetest services load <tar>`; nothing is transferred from your Mac. See [service declarations](../reference/writing/services.md)) | `container --version` or `docker --version` |
 
 If the runner has several Xcode versions installed side by side under `/Applications`, fleetest
 automatically picks the one that matches your Mac's Xcode product version — you don't need to
@@ -47,8 +48,8 @@ path when you register the machine (Step 2), with `--developer-dir <path to the 
 fleetest won't find it. If no matching Xcode can be found, or more than one equally matches, the
 run is stopped with a message that lists the candidates.
 
-If your Mac and the runner run different macOS versions (for example 26 and 27), text visual
-verification (OCR and FM) uses the features bundled with each Mac's macOS, so its results can
+If your Mac and the runner run different macOS versions (for example 26 and 27), text visibility
+check (OCR and FM) uses the features bundled with each Mac's macOS, so its results can
 differ between Macs. If a check fails only on one Mac, suspect the macOS version difference.
 
 ## Step 0: Prepare the runner (on the runner, once)
@@ -110,7 +111,13 @@ If anything is still missing, `fleetest remote setup` in Step 3 lists it for you
 
 ## Step 1: Set up SSH key login (on your Mac)
 
-Run this in the terminal (if you get an error, ask an AI assistant: "Set up SSH so that I can connect to user@192.168.xxx.xxx"):
+### Prompt for the AI
+
+```text
+Set up SSH so that I can connect to user@192.168.xxx.xxx
+```
+
+To do it by hand, run this in the terminal:
 
 ```bash
 ssh-copy-id <user@192.168.xxx.xxx>                       # enter the password once, the first time only
@@ -264,8 +271,8 @@ fleetest remote status --runner M1Max
 ```
 
 ```
-HOST          REACHABLE  LOGIN  REV          TOOLCHAIN     RUNTIME             FM  BINARY  FREE
-user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 24A434  -   yes     412 GB
+HOST          REACHABLE  LOGIN  REV          TOOLCHAIN     RUNTIME             FM  BINARY  FREE    LOCK
+user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 24A434  -   yes     412 GB  -
 ```
 
 | What you see | Meaning | What to do |
@@ -301,8 +308,8 @@ fleetest run --profile <run profile> --scenario <scenario id>
 If the run profile's devices carry `"machine": "M1Max"`, the run goes to the runner without
 `--runner`. To send just this one run to a different machine, add `--runner M1Max`.
 
-**On Android, start the Emulators first** (unlike iOS Simulators, they do not start
-automatically):
+A run starts any Android Emulator that is not running before it begins. Run this only if you want
+to warm them up beforehand (optional):
 
 ```bash
 fleetest remote exec M1Max -- devices up --profile <run profile>
@@ -358,7 +365,7 @@ until the versions match.
 | `could not tell which installed Xcode to dispatch with: … match this Mac's product version` | More than one Xcode on the runner matches your product version | Pin the one to use: `fleetest remote machines add M1Max --host <user@host> --developer-dir <path to the .app>` |
 | `could not tell which installed Xcode to dispatch with: none of the …` | No Xcode on the runner matches your Mac (the message lists every Xcode it found) | Install that product version of Xcode on the runner (you can keep the others). Pinning does not help here |
 | `no runner workspace at …` | Your work area does not exist on the runner yet | Run `fleetest remote setup M1Max` once |
-| `no running emulator for AVD …` | The Android Emulator is not running | Run the `devices up` command from Step 6 |
+| `no running emulator for AVD …` | The Android Emulator is not running (the run's automatic start before the run could not start it) | Try the `devices up` command from Step 6 and read its output |
 | `app package not found at …` | There is no app at `appPath` on your Mac | Build the app on your Mac, or fix `appPath` |
 | A tile stays "unknown" | The runner's fleetest is out of date, or SSH cannot connect | Run Step 3 again, then press "Restart Monitor" in the toolbar |
 

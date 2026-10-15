@@ -112,6 +112,7 @@ Re-run only the fleetest scenarios that failed on iOS last time.
 
 ## More details
 
+- If your app depends on a server or DB, declare it in compose.yaml and it is started and stopped on every run → [Services the app depends on](../reference/writing/services.md)
 - [Running scenarios (fleetest run)](../reference/running/running_scenarios.md) —— the full list of options
 - [Dry-run](../reference/running/dry_run.md) and [Parallel execution](../reference/running/parallel_execution.md)
 

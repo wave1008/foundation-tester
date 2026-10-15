@@ -58,7 +58,8 @@ Fleetest の Swift DSL は Shirates(Classic)の慣習に準拠しています。
 | `macro` | 素の Swift 関数。`@FTCommand("説明")` を付けると DSL コマンド索引(`ft_dsl_commands`)に載り、エージェントが見つけて再利用できる —— [独自コマンド](../reference/testclass/custom_commands_ja.md) |
 | `manual` / `knownIssue` | 無い —— 失敗したコマンドは必ずシナリオを中断する。失敗を「想定内」として黙らせる逃げ道は無い |
 | `must` / `should` / `want`、`SKIP` / `MANUAL` / `NOTIMPL` | 無い —— OS 限定のテストは `@TestClass(platform:)` / `@Test(platform:)` を使う |
-| データセット(`account` / `app` / `data` / `dataPattern`) | Swift のリテラル・定数をシナリオに直接書く |
+| データセットの `app` / `dataPattern` | 無い —— Swift のリテラル・定数をシナリオに直接書く |
+| データセットの `account` / `data` | 同名・同引数で実装済み —— [テストデータ・アカウント](../reference/commands/dataset_ja.md) |
 | `canSelect` 単独 | `ifCanSelect { }` か `repeatWhileCanSelect(sel, maxLoopCount:) { }` に包んで使う |
 | `existAll` / `canSelectAll` / `dontExistAll` | 個別の `exist` をチェーンで並べる(要素ごとに `waitSeconds:` / `scroll:` を指定できる) |
 | `tempSelector` / `tempValue` | 呼び出し箇所にセレクタを直接書く |
@@ -81,6 +82,10 @@ Shirates に対応物が無いもの:
 | `openURL(url)` / `launchApp(url:)` | ディープリンク配送(アプリ再起動あり・なしの両方) |
 | `rotateTo(.landscape)` | 画面を回転する。シナリオ終了時に元の向きへ自動で戻る |
 | `waitForSettle(sel?, quietSeconds:, throwsException:, waitSeconds:)` | 画面(または要素の範囲)の画素が止まりきり、木も追いつくまで待つ —— スクロールの慣性が止まりきった画面で画像の判定やスクリーンショットをしたいときに([wait](../reference/commands/wait_ja.md)) |
+| `hold(sel, holdSeconds:) { }` | 押している間だけ出る部品(ツールチップ等)の確認用。指が下がっている間にブロックの中身が走る([gestures](../reference/commands/gestures_ja.md)) |
+| `dataFile(filename)` / `addMedia(filename)` | データセットのフォルダのファイル(CSV・JSON・画像)の `URL` を得る / 画像・動画を写真ライブラリへ入れる(iOS 実機は失敗)([dataset](../reference/commands/dataset_ja.md)) |
+| `httpRequest(url, method:, headers:, body:, waitSeconds:)` | サンドボックスの中から外部の API を叩く。4xx/5xx は失敗にせず、通信の失敗と時間切れは失敗にする([http_request](../reference/commands/http_request_ja.md)) |
+| `tap(sel, linkText:)` | 段落の中の文中リンクを、要素の中での文字列の位置で押す(木の子孫 → OCR の順。見つからなければ失敗) |
 | `iosAlertHandler(alert:, button:)` | iOS のシステムアラート(権限確認等)を自動で閉じる(別プロセスなので `irregularHandler` では扱えない) |
 | `@Draft("理由")` | 実装中(未完成)マーク。`@Deleted` と同様に一括実行から除外されるが、完全一致 ID なら実行できる |
 | `group("名前") { }` | 一連のステップをレポート上でラベル付けする。実行・失敗の扱いは変わらない |

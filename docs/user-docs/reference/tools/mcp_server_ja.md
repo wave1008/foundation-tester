@@ -40,7 +40,7 @@ cwd(受け手パッケージ)とは別物です。
 |---|---|
 | `platform` | `ios`(既定)または `android` |
 | `project` | テストプロジェクト名 |
-| `profile` | 実行プロファイル名(`profiles/runs/<name>`)。`ft_run_scenario` と同じデバイス・エンジンで動く |
+| `profile` | 実行プロファイル名(`profiles/runs/<name>`)。同じデバイスで動く(iOS は常に XCUITest) |
 | `udid` | iOS デバイスの UDID(Simulator・実機とも。`ft_list_devices` で取得) |
 | `serial` | Android デバイスのシリアル番号 |
 | `port` | iOS ブリッジのポート(既定: 起動中のブリッジ) |
@@ -54,7 +54,7 @@ cwd(受け手パッケージ)とは別物です。
 | ツール | 内容 |
 |---|---|
 | `ft_status` | 接続確認 — 宛先デバイスと、session のアプリが今も前面かを返す |
-| `ft_doctor` | FM(Foundation Models)・Vision・OCR の可用性。**`fmAndVision: true` を渡したときだけ確かめる**(MCP は既定でこれらを使わないので、渡さなければ触らない)。FM が使えないときは無効になる機能(`screenLooksLike`・遮蔽チェック)を返す。自己修復は FM を使わないため影響を受けない |
+| `ft_doctor` | FM(Foundation Models)・Vision・OCR の可用性。**`fmAndVision: true` を渡したときだけ確かめる**(MCP は既定でこれらを使わないので、渡さなければ触らない)。FM が使えないときは無効になる機能(`screenLooksLike`・テキストの可視性検証)を返す。自己修復は FM を使わないため影響を受けない |
 | `ft_launch` / `ft_terminate` | アプリの起動・終了 |
 | `ft_install` | パッケージファイルからアプリをインストール(iOS: `.app` / Android: `.apk` または分割バンドルの `.apks`) |
 | `ft_snapshot` | 画面要素一覧のスナップショット(圧縮された set-of-mark 形式)。`waitFor` でセレクタが出るまで待つ |
@@ -68,11 +68,11 @@ cwd(受け手パッケージ)とは別物です。
 | `ft_clear_input` | 入力欄を空にする |
 | `ft_clear_app_data` | アプリのデータと権限をリセットする(iOS 実機は `ft_install` のパスか `packagePath:` で uninstall + install に振り替える) |
 | `ft_dsl_commands` | DSL コマンドの索引(名前と署名)。書く前に存在確認できる |
-| `ft_double_tap` / `ft_pinch` / `ft_drag` | ダブルタップ・ピンチ・任意方向のドラッグ。iOS の Compose アプリでは実機と `xcuitest` の構成でダブルタップが効かないので、拡大が目的なら `ft_pinch` を使う([ジェスチャ](../commands/gestures_ja.md)) |
+| `ft_double_tap` / `ft_pinch` / `ft_drag` | ダブルタップ・ピンチ・任意方向のドラッグ。MCP の iOS は常に XCUITest なので、Compose の iOS アプリのダブルタップは MCP からは届きません(シナリオで in-app / hybrid のプロファイルを使えば成立します)。拡大が目的なら `ft_pinch` を使う([ジェスチャ](../commands/gestures_ja.md)) |
 | `ft_gesture` | 指ごとの時刻つき経路を1本の連続タッチとして再生する(区切りで指を離さない)—— パターンロック・長押しからのドラッグ・独自の複数指ジェスチャ用。絶対座標のみ・ref/セレクタ形は無い |
 | `ft_screenshot` | 視覚確認用のスクリーンショット画像 |
 | `ft_capture_element` | 要素を画像分類器の見本として保存し、学習の点検結果を返す(`checkIsON` / `imageIs` の見本。[imageIs](../commands/image_assertion_ja.md)) |
-| `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(自動ビルド込み。コンパイルエラーはそのまま返る)。`id` にクラス名を渡すと `fleetest run` と同じく `@Deleted`/`@Draft` 以外の全本を順に流す。`profile:` は `port`/`serial`/`platform`/`udid` と併用できない。**`fleetest run` と違い、プロファイルの setup/teardown スクリプト・run 開始時の home・`results/` への記録は行わない**(フルの run は CLI で)。アプリを入れるのは、`autoInstall` のアプリを持つ `profile:` を iOS で指定したときだけ(ワークスペースへコピーし、入っている版が古ければインストールする)。それ以外は `ft_install` で入れておく。**失敗は isError で返り**、失敗したステップ・失敗した瞬間の要素一覧とスクリーンショット(最初に落ちた1本だけ)・レポートパスが載る。**既定では FM と Vision を使わずに動く**(テキストの可視性検証なし・`screenLooksLike` のステップは飛ばす・`checkIsON` は木だけで読む)。使うときは `fmAndVision: true` |
+| `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(自動ビルド込み。コンパイルエラーはそのまま返る)。`id` にクラス名を渡すと `fleetest run` と同じく `@Deleted`/`@Draft` 以外の全本を順に流す。`profile:` は `port`/`serial`/`platform`/`udid` と併用できない。**`fleetest run` と違い、プロファイルの setup/teardown スクリプト・run 開始時の home・`results/` への記録は行わない**(フルの run は CLI で)。アプリを入れるのは、`autoInstall` のアプリを持つ `profile:` を iOS で指定したときだけ(ワークスペースへコピーし、入っている版が古ければインストールする)。それ以外は `ft_install` で入れておく。**失敗は isError で返り**、失敗したステップ・失敗した瞬間の要素一覧とスクリーンショット(最初に落ちた1本だけ)・レポートパスが載る。**既定では FM と Vision を使わずに動く**(テキストの可視性検証なし・`screenLooksLike` のステップは飛ばす・`checkIsON` は木だけで読む)。使うときは `fmAndVision: true`。`heal`(指紋照合の上書き。既定はプロファイルの値、無ければ false)を渡せる。`scripts/compose.yaml` のサービスは起こさない(先に `ft_services` で上げておく) |
 | `ft_start_run` / `ft_run_status` / `ft_stop_run` | `fleetest run --profile` と同じ本番の実行。`ft_start_run` は裏で始めてすぐ返り(`profile` 必須・`scenario` / `folder` は配列・`failed`・`broadcast`・その回だけ別の機械へ送る `runner` = 登録済みの機械名か `local`)、`ft_run_status` が進み具合と結果(runID・合否・失敗したシナリオのレポート・ログの末尾)を返す。止めるのは `ft_stop_run`(SIGTERM)。結果の履歴(`results/`)・録画・セットアップ/後始末のスクリプトまで含む。MCP サーバの中で動くので、シェルのサンドボックスの中のエージェント(Codex の既定など)からも使える。同時に動かせるのはこのサーバから1本。**この Mac で別の run が走っていると既定ではすぐ終わる**(1台の Mac で同時に走る run は1本)—— 並んで待たせるときは `waitLockSeconds`(待つ上限の秒数。`fleetest run --wait-lock` と同じ)を渡す。待っている間も `ft_stop_run` で止められる。**`ft_run_scenario` と同じく、`fmAndVision: true` を渡さなければ FM と Vision を使わずに動く**(プロファイルの4つのスイッチを `--set` で切る) |
 | `ft_services` | `scripts/compose.yaml` が宣言するサービスを、探索・ライブ操作のために起動・停止・確認する(`fleetest services up` / `down` / `status` と同じ)。`action`: `up` / `down` / `status`・`profile`(`up` / `down` で必須)・`project`・`physical`・`androidSerials`(文字列の配列)。`ft_start_run` と同じく承認を求める(下記)。詳細は[アプリが依存するサービス](../writing/services_ja.md) |
 | `ft_results` | 結果の履歴。`fleetest results <query>` と同じ文面(JSON は無い)。`query` は必須で `list` / `summary` / `flaky` / `trend`(`scenario` 必須) / `devices` / `slow` / `insights` / `log`(1 run のシナリオごとの実行ログ。`runId`・既定 `latest`)。任意: `since`(既定 `90d`・`log` では使わない)・`scenario`・`limit`(`list` / `slow`)・`minRuns`(`flaky`)。ファイルを読むだけなので、シェルのサンドボックスの中のエージェント(Codex の既定など)からも使える |
@@ -144,7 +144,7 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
 
   | 宣言 | ツール |
   |---|---|
-  | 読むだけ(`readOnlyHint: true`) | `ft_status`・`ft_list_*`・`ft_snapshot`・`ft_screenshot`・`ft_logs`・`ft_results`・`ft_run_status`・`ft_dsl_commands`・`ft_doctor`・`ft_draft_scenario` |
+  | 読むだけ(`readOnlyHint: true`) | `ft_status`・`ft_list_devices`・`ft_list_apps`・`ft_list_projects`・`ft_snapshot`・`ft_screenshot`・`ft_logs`・`ft_results`・`ft_run_status`・`ft_dsl_commands`・`ft_doctor`・`ft_draft_scenario` |
   | デバイスの画面やアプリの状態を変える | タップ・入力・スワイプなどの操作、`ft_launch`・`ft_terminate`・`ft_open_url`・`ft_batch`、`ft_capture_element`(プロジェクトへ見本を書く) |
   | 取り返しがつかない(`destructiveHint: true`) | `ft_clear_app_data`・`ft_install`・`ft_stop_run` |
   | プロジェクトのコードを実行する(`destructiveHint: true`・`openWorldHint: true`) | `ft_list_scenarios`・`ft_dry_run`・`ft_run_scenario`・`ft_start_run`・`ft_services` |

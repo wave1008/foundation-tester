@@ -61,7 +61,7 @@ fleetest のシナリオ(`.swift`)は Swift のプログラムです。画面の
 | fleetest 本体・MCP サーバ・VSCode 拡張・モニター | デバイスを用意し、代行とプロキシを受け持つ側です |
 | テスト対象のアプリ | Simulator・Emulator・端末の中で動きます |
 | `Package.swift` の評価と、足した依存のビルド | SwiftPM とコンパイラ自身のサンドボックスで動きます。信頼できるパッケージだけを足してください |
-| compose.yaml で宣言したサービスのコンテナ | コンテナランタイム(Docker / Apple Container)の中で動きます。外部へは出られません(`sandbox.allowedDomains` のプロキシ経由だけ)。詳細は[アプリが依存するサービス](../reference/writing/services_ja.md) |
+| compose.yaml で宣言したサービスのコンテナ | コンテナランタイム(Docker / Apple Container)の中で動きます。実行中は外部へ出られません(`sandbox.allowedDomains` のプロキシ経由だけ)。ただし `build:` でのイメージのビルドは、依存の取得のため外へ出られます。詳細は[アプリが依存するサービス](../reference/writing/services_ja.md) |
 
 `run-setup.sh` / `run-teardown.sh` は、**シナリオより狭い自分用のサンドボックスの中**で動きます([run の前後で処理を走らせる](../reference/writing/extending_ja.md#run-の前後で処理を走らせる))。
 

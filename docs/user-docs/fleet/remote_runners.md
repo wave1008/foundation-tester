@@ -181,8 +181,11 @@ the terminal.
 
 Registered remote devices can be viewed and operated in the Device Monitor just like local ones,
 including state, live video and per-tile start/stop. The only visible difference is a badge with
-the machine name. However, automatic repair of bridges and device health only applies to local
-devices.
+the machine name. Automatic repair of bridges also covers remote devices, but the device health
+watch (Wi-Fi repair) only applies to local devices. Physical devices are excluded from both.
+
+Services in `scripts/compose.yaml` start on the runner, so the runner also needs a container
+runtime and the images (see the requirements table in [Adding a Mac](adding_mac.md)).
 
 ## Sharing one runner between several people
 
@@ -199,13 +202,18 @@ using it and since when. Your own Mac works the same way for the runs you start 
 - **See who is using it**: it appears in the LOCK column of
   `fleetest remote status --runner <machine>`. `-` means "could not be checked", not "free".
   The Device Monitor shows 🔒 on that machine's row in the toolbar.
-- **Live video stops automatically during a run**: when someone's run starts, that machine's
-  tiles switch from live video to a still image every two seconds, and switch back when the run
-  ends. Streaming interferes with test execution, so this applies to your own runs too. Also, if
+- **Live video stops automatically during someone else's run**: when another person's run starts,
+  that machine's tiles switch from live video to still images, and switch back when the run
+  ends. Streaming interferes with test execution. The same applies to a machine whose state cannot
+  be observed. For your own run, streaming continues while the Device Monitor's "Live update"
+  (on by default) is on. Also, if
   two people watch the same device at once, the one who opened it later gets still images.
 - **Operations that would break someone else's run stop first**: `fleetest remote clean` stops
-  if a run is in progress. When you bulk-stop or delete devices in the extension, the
+  if a run is in progress (`--ignore-lock` overrides this, but kills that run). When you bulk-stop or delete devices in the extension, the
   confirmation shows whose run is in progress.
+- **Release a dead lock**: if a dispatch died and left its lock behind, reclaim it with
+  `fleetest remote unlock [--runner <machine>|local] [--force]`. Without `--force` it releases only your own
+  lock; `--force` releases it whoever holds it (this breaks that run if it is still going).
 
 If you set your name in `issuerId` in `~/.config/fleetest/config.json`, that name appears in these
 messages. For setting up a runner shared by several people, see "When several people share one
@@ -215,7 +223,7 @@ runner" in [Adding a Mac](adding_mac.md).
 
 Nobody looks at a runner machine's results, reports, and recordings the way you look at your own, so
 they pile up unnoticed. Run `fleetest remote clean --runner <machine>` from time to time. You can check the free
-space with `fleetest remote status`. `remote clean` stops if a test is running.
+space with `fleetest remote status`. `remote clean` stops if a test is running (`--ignore-lock` overrides this, but kills that run).
 
 When you update fleetest on your Mac, bring the runner machines to the same version too (see "When you update fleetest"
 in [Adding a Mac](adding_mac.md)).

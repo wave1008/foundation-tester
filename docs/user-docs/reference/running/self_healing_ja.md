@@ -36,8 +36,11 @@
 - ソースを直すまでの間、シナリオレポート(`reports/scenario-*.md`)にはソース位置付きの
   修正提案が出続けます。例:
 
-  > `TestProjects/SampleApp/scenarios/LoginTest.swift:17` — ロケータの指紋照合で通過。
-  > セレクタ "#email_input" を "#email||.textField[1]" に変更してください
+  > `TestProjects/SampleApp/scenarios/LoginTest.swift:17` — change the selector "#email_input" to
+  > "#email||.textField[1]" (passed via locator fingerprint matching; reason: matched by locator
+  > fingerprint (type+label))
+
+  レポートの文は英語です。
 
 - 一致した要素に一意に書けるセレクタが無いときは、操作自体は続行しますが修正提案は出しません。
 - **ソースの `.swift` を自動で書き換えることはありません。** 修正提案の適用は別途、明示的な

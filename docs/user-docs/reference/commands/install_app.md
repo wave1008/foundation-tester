@@ -8,14 +8,14 @@ Installs, uninstalls, or resets the data of the app under test.
 
 | function | description |
 |---|---|
-| `installApp(appPackageFile?)` | Installs the app (iOS: `.app`, Android: `.apk` or `.apks`). Without `appPackageFile`, the run profile's `appPath` is used (an explicit path always wins over the profile). |
+| `installApp(appPackageFile?)` | Installs the app (iOS: `.app`, Android: `.apk` or `.apks`). Without `appPackageFile`, the app profile's `<platform>.appPath` (the app profile that the run profile's `app` points to) is used (an explicit path always wins over the profile). |
 | `removeApp(appID?)` | Uninstalls the app. `appID` defaults the same way as `launchApp()`'s `appID` when omitted. |
 | `clearAppData(appID?)` | Keeps the app installed but clears its data and permissions, so onboarding and permission dialogs reappear. `appID` defaults the same way as `launchApp()`'s `appID`. |
 
 ## Example
 
 ```swift
-installApp()                       // path from the run profile's appPath
+installApp()                       // path from the app profile's appPath
 installApp("/path/to/MyApp.app")
 clearAppData()                     // back to a first-run state
 removeApp()
@@ -42,7 +42,7 @@ removeApp()
   Protect's "Send app for a security check?") is turned off for the duration of the install and
   the device setting is restored afterwards.** The app under test is never sent to Google (with
   verification on, a release-signed APK leaves `adb install` blocked on that dialog — on an
-  Emulator with Google Play just the same).
+  Emulator with Google Play just the same). Set `playProtectBypass` in the run profile to false (default true) to stop this.
 
 ### Link
 - [index](../../index.md)

@@ -41,6 +41,10 @@ scrollTo("#row_40", scrollFrame: "#list_rows")
 - **If the region resolves but nothing in it actually moves**, the swipe is still sent but a note
   is left on the step (`the specified scrollFrame is not scrollable`, or
   `resolved but leaves nothing to move` if the margins leave no room).
+- **In a half-open bottom sheet** (the given container touches the bottom edge of the screen and its top is
+  below the top quarter of the screen), if a downward search never moved at all, it drags once, quickly, inside
+  that container to expand the sheet and then searches again (note
+  `the sheet was expanded by a drag inside the scrollFrame first`).
 - **If the region does not resolve to anything on screen, the command fails without sending a
   single swipe** — this applies to `scrollTo`'s search, `scroll*` / `scrollTo*Edge`, `flick*`, and
   anything inside `withScroll*`. `select`-family commands are the one exception: they still
@@ -60,7 +64,7 @@ These are observations, not failures:
 
 `scrollToBottom` etc. repeat "scroll once, then check whether the screen stopped moving." On Android, and on iOS with the
 XCUITest engine or Compose / Flutter, one step covers about one page, so raise `maxSwipes` for long screens (the default
-`maxSwipes: 50` may not reach very long documents). iOS UIKit / SwiftUI, WebView, and the Android WebView jump straight to
+`maxSwipes: 50` may not reach very long documents). iOS UIKit / SwiftUI and WebView with the in-app engine, and the Android WebView, jump straight to
 the edge, so they do not depend on document length. Chaining several `flick*` calls to go faster is not a substitute —
 flick has no notion of having reached the edge; see [flick](./flick.md).
 

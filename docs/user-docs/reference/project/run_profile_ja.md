@@ -25,7 +25,7 @@
 | `devices` | array | — | 実行するデバイスの実体(同じ配列に iOS/Android を混在可)。各要素: `platform`(`"ios"`/`"android"`、必須)、`machine`(そのデバイスが居るマシン。手元は `"local"`、`fleetest remote machines add` で登録した名前も書ける)、`name`(必須。`machine` と組み合わせて一意。iOS Simulator では Simulator 自身の名前)、`enabled`(`false` なら一覧に残すが走らせない。省略 = 走らせる)、そのデバイス自身の実体キー(`osVersion`/`udid`/`avd`/`serial`/`kind`/`port`/`engine`/`model`。詳細は [profiles_ja.md](./profiles_ja.md)) |
 | `heal` | bool | `--profile` 実行は `true`・プロファイル無しの素の `fleetest run` は `false` | セレクタの自己修復(指紋照合方式)を許可する([self_healing_ja.md](../running/self_healing_ja.md)参照)。下記の FM・OCR 系のトグルとは独立(自己修復は FM を使わない) |
 | `fmTextVisibilityCheck` | bool | `true` | FM(Foundation Models。experimental — [environments_ja.md](../../overview/environments_ja.md))でテキストの可視性検証をする。詳細は[テキストの可視性検証](../testclass/text_visibility_check_ja.md)。FM が呼ばれるのは、これか `screenLooksLike` が `true` のときだけ |
-| `screenLooksLike` | bool | `true` | `screenLooksLike`(FM 視覚検証)を有効にする。`false` のときは該当ステップが失敗ではなく skip になる |
+| `screenLooksLike` | bool | `true` | `screenLooksLike`(FM 視覚検証。experimental — [environments_ja.md](../../overview/environments_ja.md))を有効にする。`false` のときは該当ステップが失敗ではなく skip になる |
 | `ocrTextVisibilityCheck` | bool | `true` | 端末の OCR(Vision)でテキストの可視性検証をする。`fmTextVisibilityCheck` と独立で、どちらかが `true` なら視覚検証は走る(両方 `false` なら走らない)。FM が判定を返せないときは、この読みだけで判定する。詳細は[テキストの可視性検証](../testclass/text_visibility_check_ja.md) |
 | `preferCheckStateClassifier` | bool | `true` | `checkIsON` / `checkIsOFF` の判定で CheckStateClassifier(プロジェクトの `vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]` に置いた見本画像から学習する画像分類器)をアクセシビリティより優先する。`false` なら、アクセシビリティが状態を報告しない要素にだけ使う。見本画像が無ければ効かない |
 | `reportDir` | string | `"reports"` | Markdown レポートの出力先(プロジェクトルート相対) |
@@ -46,7 +46,7 @@
 | `recordFailuresOnly` | bool | `false` | `record: true` のとき、失敗(frozen 含む)したシナリオの clip のみ残す |
 | `recordBitrateKbps` | int | `1000` | 保存する clip の再エンコード bitrate |
 | `recordFullResolution` | bool | `false` | `record: true` のとき、半分解像度化をスキップする。テストの所要時間は変わらないが、クリップの容量と、全テストが終わった後のクリップの切り出しの待ちが増える。どちらも画面の動きが多いほど大きい |
-| `remoteControl` | object | — | リモート実行のワークスペース宣言(`{ "workspace": "<path>" }`)。[リモート実行](../../fleet/remote_runners_ja.md) 参照 |
+| `remoteControl` | object | — | ワークスペースの宣言(`{ "workspace": "<path>" }`)。ワークスペースは常に有効で、省略時は `TestProjects/<プロジェクト>/workspace`。手元の run でもここに `appPath` の原本をステージングし、`scripts/run-setup.sh` / `run-teardown.sh` と `scripts/compose.yaml` をここから読みます。[リモート実行](../../fleet/remote_runners_ja.md) 参照 |
 
 ## FM の使われ方
 

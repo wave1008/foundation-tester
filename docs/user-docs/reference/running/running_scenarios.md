@@ -37,6 +37,9 @@ foundation-tester clone itself, `swift run fleetest` does the same.
 | `--no-lpt` | Disable LPT ordering (longest-past-runtime-first dispatch) and run in scenario ID order |
 | `--lpt-history-runs <n>` | Number of past runs to read for LPT ordering (default 5) |
 | `--runner <runner>` / `--fleet <fleet>` | Dispatch to a remote machine or a fleet of machines over SSH (see [Remote Runners](../../fleet/remote_runners.md)) |
+| `--wait-lock <seconds>` | When another run is active on this Mac, queue up and wait for up to this many seconds instead of failing right away |
+| `--device <name>` | Run on only that device of the run profile (repeatable). Also narrows `--broadcast` |
+| `--all-machines` | When a `--device` name matches devices on more than one machine, run on every matching machine instead of refusing |
 | `--platform <ios\|android>` | Target platform without `--profile` (default `ios`) |
 | `--app-id <bundleID>` | Default app for scenarios with no `@TestClass(app:)`, only needed without `--profile`. Unrelated to `--set app=...` (the run profile's `app` key names an app *profile*, not a bundle ID) |
 | `--serial <s>` | Android device serial (without `--profile`) |

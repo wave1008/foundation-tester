@@ -9,6 +9,7 @@
 | Common | A Mac with Apple silicon, macOS 26+ (Intel Macs are not supported) |
 | If you test iOS | Xcode 26+, iOS Simulator, [xcodegen](https://github.com/yonaskolb/XcodeGen) |
 | If you test Android | Android SDK (adb), Emulator or physical device |
+| If your app needs a server, DB or stub | Apple Container (the `container` command on macOS; Docker also works) |
 | Installing the VSCode extension | VSCode, Node.js v24 or newer, npm v11 or newer (to build and install the extension) |
 
 

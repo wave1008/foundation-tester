@@ -107,7 +107,7 @@ fleetest のアプリプロファイルにある iOS のアプリのパスを、
 - 設定できる項目の一覧: [プロファイル](../reference/project/profiles_ja.md)・[実行プロファイルの設定項目](../reference/project/run_profile_ja.md)
 - テストプロジェクト(テストをまとめる単位)を分けたいとき: [テストプロジェクトの作成](../reference/project/creating_project_ja.md)
 
-次へ: [テストを作る](creating_tests_ja.md)
+次へ: [アプリが依存するサーバーを用意する](preparing_app_server_ja.md)
 
 ### Link
 - [index](../index_ja.md)

@@ -77,7 +77,9 @@ server running on your Mac, use a build with the Mac's LAN address built in.
 If the server is a service declared in `compose.yaml`, a run with a physical device publishes it on every interface
 of this Mac (you consent to that by setting `services.publishForPhysicalDevices` to the Mac's LAN address, which is
 the address the device uses) and, for an Android physical device, fleetest sets up `adb reverse` for each published TCP
-port. See [Services the app depends on](../reference/writing/services.md).
+port (before that it reads the device's forwards with `adb reverse --list`: if the same destination is already there it
+leaves it alone, and if it points elsewhere the run stops. If setting it up fails, it re-reads the state and only warns
+when it can confirm no forward exists; if the device does not respond, the run stops). See [Services the app depends on](../reference/writing/services.md).
 
 ## Android
 

@@ -17,6 +17,8 @@ How the files and destinations that test code (scenarios) can reach are restrict
 | Android Emulator gRPC | `127.0.0.1` | A Bearer token the Emulator itself issues once per boot |
 | **Physical iPhone, USB path (default, recommended)** | An iproxy (libimobiledevice) USB tunnel. **Stays entirely on loopback** | Not needed (loopback) |
 | **Physical iPhone, LAN path** | **All of the device's network interfaces.** Reachable from the same LAN | **Token required** (see below) |
+| Published ports from compose.yaml (a run of a project that has `scripts/compose.yaml`) | Normally `127.0.0.1`. `0.0.0.0` for a run with a physical-device lane and for `services up --physical` | Not needed |
+| fleetest's proxy (Apple Container, when `allowedDomains` is set) | The gateway IP of the container network | Not needed (it relays only to the `allowedDomains` destinations) |
 | Remote Login (SSH) on the runner machine. Turned on there only when you use remote runs | Port 22 of the runner machine | Key-based authentication |
 | Screen Sharing on the runner machine (recommended; turned on there only when you use remote runs) | Port 5900 of the runner machine. Do not open it on the router | macOS authentication |
 
@@ -55,17 +57,21 @@ How the files and destinations that test code (scenarios) can reach are restrict
   duration of the install and always restored afterward.
 - Outbound traffic happens **only during setup, updates, the update check (once a day by the VSCode extension, with
   `git ls-remote`), and when Android system images are downloaded**. **Nothing goes out while tests run** (except what a
-  scenario sends to destinations listed in `sandbox.allowedDomains`; with nothing listed, a scenario cannot reach
+  scenario sends to destinations listed in `sandbox.allowedDomains`, and the images a run of a project with compose.yaml pulls
+  from a container registry (docker.io etc.) when they are not on the Mac; the relay image is also built from alpine on docker.io.
+  An image you built yourself and wrote in `image:` is not pulled. On a closed network, load images first with
+  `fleetest services pull` or `fleetest services load <tar>`. With nothing listed in `allowedDomains`, a scenario cannot reach
   anything outside the Mac. See [Accessible folders and destinations](access.md)).
 
 | What is fetched | Destination | When |
 |---|---|---|
 | Bootstrap scripts | `raw.githubusercontent.com` | Setup and update |
 | fleetest itself | `github.com` | clone, pull, update check |
-| **20+ Swift dependencies** | `github.com` (`apple/*`, `grpc/*`, `swiftlang/*`) | `swift build` |
+| **20+ Swift dependencies** | `github.com` (`apple/*`, `grpc/*`, `swiftlang/*`, `swift-server/*`, `jpsim/Yams`) | `swift build` |
 | 8 VSCode extension dependencies | `registry.npmjs.org` | Building the extension |
 | `xcodegen` (required), `libimobiledevice` | Homebrew's distribution hosts | Setup |
 | Android system images and command-line tools | `dl.google.com` | Creating an Emulator, installing Android SDK tools |
+| Container images (when you use compose.yaml) | A container image registry (docker.io) | Start of a run, `fleetest services pull` |
 
 **By volume the Swift dependencies dominate** — not the fleetest repository itself. The Android
 bridge APK ships inside the repository, so no Android build tooling is needed.
@@ -75,7 +81,7 @@ bridge APK ships inside the repository, so no Android build tooling is needed.
 ### Option A (recommended): allow HTTPS to the destinations above
 
 Five destinations need to be reachable (`raw.githubusercontent.com`, `github.com`,
-`registry.npmjs.org`, Homebrew's distribution hosts, and `dl.google.com` if you use Android). Since there is no telemetry and **nothing
+`registry.npmjs.org`, Homebrew's distribution hosts, and `dl.google.com` if you use Android), plus a container image registry (docker.io) if you use compose.yaml. Since there is no telemetry and **nothing
 goes out while tests run**, this is usually straightforward to justify in an exemption request.
 **No extra configuration is needed on the tool side.**
 

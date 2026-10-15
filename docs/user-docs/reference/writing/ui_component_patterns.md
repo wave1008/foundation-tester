@@ -7,7 +7,7 @@ Native, Android (Views/XML) and iOS (SwiftUI) in a scenario. **This page is mean
 agent (AI assistant) writing scenarios** — if the app's screen has one of these components, read the
 matching section before writing.
 
-- Verified on: Compose Multiplatform 1.11 (≈ Material3 1.4), Flutter 3.47.7, React Native 0.86.2 (New
+- Verified on: Compose Multiplatform 1.12.1 (≈ Material3 1.4), Flutter 3.47.7, React Native 0.87.1 (New
   Architecture / Fabric), Android Views + Material Components, and SwiftUI. iOS 27 Simulator (hybrid
   engine / XCUITest engine) and Android 15 Emulator
 - Every behaviour here reproduces with the verification apps bundled with fleetest

@@ -2,47 +2,10 @@
 
 [in Japanese(日本語)](quick-start_ja.md)
 
-The shortest path from a completed [Getting Started (Installation)](getting-started.md) to creating
+The shortest path from completed [Getting Started (Installation)](getting-started.md) and [Preparing the Sample App](sample-app.md) to creating
 scenarios for a sample app and running them. You do not write scenarios by hand.
 
-## 1. Prepare the sample app
-
-The app under test is [sut-ec-mobile](https://github.com/wave1008/sut-ec-mobile), a sample
-e-commerce shopping app (Compose Multiplatform, for both iOS and Android).
-
-### Prompt for the AI
-
-```text
-Clone https://github.com/wave1008/sut-ec-mobile next to this folder and start the server.
-Use nohup or similar so the server keeps running after this session ends.
-The server needs JDK 17 and Apple Container. If either is missing, you can install it with Homebrew.
-Don't modify any shell configuration files. There's no need to build the app.
-Let me know once /health returns ok.
-```
-
-After you restart your Mac, start the server again with the same prompt.
-
-<details>
-<summary><b>Do it manually (click to show details)</b></summary>
-
-You need JDK 17 and Apple Container (`brew install container`).
-
-```bash
-git clone https://github.com/wave1008/sut-ec-mobile.git
-cd sut-ec-mobile
-```
-
-Leave the server running in another terminal:
-
-```bash
-./scripts/dev-server.sh    # http://localhost:8090
-```
-
-See `server/README.md` in sut-ec-mobile for the details of starting the server.
-
-</details>
-
-## 2. Prepare the profiles
+## 1. Prepare the profiles
 
 Create the app profile and the run profile.
 
@@ -51,13 +14,15 @@ Create the app profile and the run profile.
 For iOS:
 
 ```text
-Build the sut-ec-mobile iOS app and create its profiles with two devices.
+Build the sut-ec-mobile iOS app and create its profiles. The app's display name is "SUT Store". Use two devices.
+The build needs JDK 17; if it is missing, you can install it with Homebrew. Don't modify any shell configuration files.
 ```
 
 For Android:
 
 ```text
-Build the sut-ec-mobile Android app and create its profiles with two devices.
+Build the sut-ec-mobile Android app and create its profiles. The app's display name is "SUT Store". Use two devices.
+The build needs JDK 17; if it is missing, you can install it with Homebrew. Don't modify any shell configuration files.
 ```
 
 <details>
@@ -84,14 +49,15 @@ Go back to your work folder and run the following. The installation creates no t
 ../foundation-tester/.build/debug/fleetest project create project1
 
 # iOS
-../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.sutec.mobile.ios --auto-device \
+../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.sutec.mobile.ios --auto-device --app-name "SUT Store" \
   --app-path ../sut-ec-mobile/build/ios-sim/Build/Products/Debug-iphonesimulator/iosApp.app
 
 # Android
-../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.sutec.mobile.android --auto-device \
+../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.sutec.mobile.android --auto-device --app-name "SUT Store" \
   --app-path ../sut-ec-mobile/composeApp/build/outputs/apk/debug/composeApp-debug.apk
 ```
 
+Without `--app-name` the name defaults to the project name, which differs from the icon name on the home screen and produces a warning at the start of a run.
 Passing the built app to `--app-path` makes the run install it on the device automatically.
 `--auto-device` picks a Simulator/Emulator with the newest iOS runtime and the newest Pixel (and creates it
 when missing; a missing iOS runtime is downloaded first: several GB, several minutes to tens of minutes;
@@ -105,7 +71,7 @@ When it succeeds, the AI assistant reports the name of the run profile (such as 
 
 See [Profiles](./reference/project/profiles.md) for the details.
 
-## 3. Create the scenarios
+## 2. Create the scenarios
 
 Let's create exploratory tests for the login screen.
 
@@ -120,10 +86,24 @@ For Android, read "on iOS" as "on Android".
 
 The AI assistant launches the app on a device, reads the elements of the login screen while
 operating it, and turns the behavior it finds into scenarios.
+Before exploring, the AI assistant starts the server declared in compose.yaml with `ft_services`.
 
-## 4. Run it on a device
+<details>
+<summary><b>When you explore manually (click to show details)</b></summary>
+
+Start the server by hand, explore, and stop it when you are done.
+
+```bash
+../foundation-tester/.build/debug/fleetest services up --profile ios-run
+../foundation-tester/.build/debug/fleetest services down --profile ios-run
+```
+
+</details>
+
+## 3. Run it on a device
 
 Let's run the scenarios you created.
+On every run fleetest starts the server and stops it when the run ends. Services you started beforehand are taken over.
 
 ### Prompt for the AI
 
@@ -140,7 +120,7 @@ For scenarios created on Android, ask "Run them on Android" instead.
 ../foundation-tester/.build/debug/fleetest run --profile ios-run
 ```
 
-`--profile` takes the name of the run profile from step 2 (`ios-run`, or `android-run` for Android).
+`--profile` takes the name of the run profile from step 1 (`ios-run`, or `android-run` for Android).
 The app, the devices, and the run-time settings are all resolved from it.
 
 From VSCode, open the **Test Explorer**, pick the scenario, and click **Run**.
@@ -149,9 +129,11 @@ Command Palette. Without one, the run does not start and shows an error.
 
 </details>
 
-## 5. Read the results
+## 4. Read the results
 
 Every run writes a Markdown report per scenario to `TestProjects/<project>/reports/`.
+
+When a run fails, the server's log is kept at `TestProjects/<project>/results/runs/<month>/<runID>/services/server.log`.
 
 Let's summarize the reports and analyze the errors.
 
@@ -174,3 +156,4 @@ Next: [Asking the AI assistant](tutorial/asking_ai.md)
 ### Link
 - [index](index.md)
 - [Getting Started (Installation)](getting-started.md)
+- [Preparing the Sample App](sample-app.md)

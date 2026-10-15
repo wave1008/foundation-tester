@@ -9,6 +9,7 @@
 | 共通 | Apple silicon の Mac、macOS 26+(Intel Mac は対象外) |
 | iOS をテストするなら | Xcode 26+、iOS Simulator、[xcodegen](https://github.com/yonaskolb/XcodeGen) |
 | Android をテストするなら | Android SDK(adb)、Emulator または実機 |
+| アプリがサーバー・DB・スタブを必要とするなら | Apple Container(macOS の `container` コマンド。Docker も可) |
 | VSCode 拡張のインストール | VSCode、Node.js v24 以降、npm v11 以降(拡張をビルドして入れるため) |
 
 

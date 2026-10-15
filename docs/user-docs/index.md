@@ -6,7 +6,8 @@ fleetest is an E2E test tool for iOS / Android apps that you use by asking an AI
 Claude Code in natural language. For the origin of the name and its features, see
 [What is fleetest?](overview/about.md).
 
-If you are new, install it with [Getting Started](getting-started.md), then go through the
+If you are new, install it with [Getting Started](getting-started.md), prepare the sample app with
+[Preparing the Sample App](sample-app.md), then go through the
 [Quick start](quick-start.md) and the [Tutorial](#tutorial).
 
 ## Repository
@@ -18,12 +19,14 @@ If you are new, install it with [Getting Started](getting-started.md), then go t
 - [What is fleetest?](overview/about.md)
 - [Environment](overview/environments.md)
 - [Getting Started (Installation)](getting-started.md)
+- [Preparing the Sample App](sample-app.md)
 - [Quick start](quick-start.md)
 
 ## Tutorial
 
 - [Asking the AI assistant](tutorial/asking_ai.md)
 - [Preparing the app and devices](tutorial/preparing_app_and_devices.md)
+- [Preparing the servers your app depends on](tutorial/preparing_app_server.md)
 - [Creating tests](tutorial/creating_tests.md)
 - [Running tests](tutorial/running_tests.md)
 - [Reading results and investigating failures](tutorial/investigating_failures.md)

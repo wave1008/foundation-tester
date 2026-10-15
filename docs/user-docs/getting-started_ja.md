@@ -16,6 +16,8 @@ fleetest のインストールの手順です。
   - Android Studio(Android SDK)をインストールしておく
 - **VSCode と Node.js**
   - VSCode と、Node.js v24 以降(npm v11 以降)をインストールしておく(VSCode 拡張をビルドして入れるため)
+- **サンプルアプリやアプリのサーバーをコンテナで動かす場合**(任意)
+  - Apple Container(`brew install container`)をインストールしておく。[サンプルアプリの準備](sample-app_ja.md)で AIアシスタントに入れさせることもできる
 - **AIアシスタント**
   - MCP に対応した AIアシスタント(Claude Code・Codex・Cline・Cursor・Copilot など)を
     インストールしておく。どの AIアシスタントでも、インストールは AIアシスタントへ指示して進めます。
@@ -46,15 +48,16 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 インストールすると、作業フォルダの隣に `foundation-tester` フォルダができ、**最新のリリース**が入ります。このドキュメントで手で打つコマンドの
 `../foundation-tester/.build/debug/fleetest` は、その中の `fleetest` を指します。
 
-インストールが済んだら、[クイックスタート](quick-start_ja.md)でテストを作って実行してみましょう。
+インストールが済んだら、[サンプルアプリの準備](sample-app_ja.md)をして、[クイックスタート](quick-start_ja.md)でテストを作って実行してみましょう。
 
 ## 4. トラブルシュート
 
 問題が起きたら AIアシスタントに相談してください。よくある症状と切り分けは
 [トラブルシューティング](in_action/troubleshooting_ja.md)にまとめてあります。
 
-次へ: [クイックスタート](quick-start_ja.md)
+次へ: [サンプルアプリの準備](sample-app_ja.md)
 
 ### Link
 - [index](index_ja.md)
+- [サンプルアプリの準備](sample-app_ja.md)
 - [クイックスタート](quick-start_ja.md)

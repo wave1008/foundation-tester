@@ -112,6 +112,7 @@ fleetest で、前回 iOS で落ちたシナリオだけを実行し直して。
 
 ## もっと詳しく
 
+- アプリがサーバー・DB に依存するなら、compose.yaml に宣言すると実行のたびに起動・停止します → [アプリが依存するサービス](../reference/writing/services_ja.md)
 - [シナリオの実行(fleetest run)](../reference/running/running_scenarios_ja.md) —— オプションの全一覧
 - [dry-run](../reference/running/dry_run_ja.md)・[並列実行](../reference/running/parallel_execution_ja.md)
 

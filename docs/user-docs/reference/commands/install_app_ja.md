@@ -8,14 +8,14 @@
 
 | 関数 | 説明 |
 |---|---|
-| `installApp(appPackageFile?)` | アプリをインストールします(iOS: `.app` / Android: `.apk` または `.apks`)。`appPackageFile` 省略時は実行プロファイルの `appPath` が使われます(明示引数はプロファイルより優先されます)。 |
+| `installApp(appPackageFile?)` | アプリをインストールします(iOS: `.app` / Android: `.apk` または `.apks`)。`appPackageFile` 省略時はアプリプロファイルの `<platform>.appPath`(実行プロファイルの `app` が指すアプリプロファイル)が使われます(明示引数はプロファイルより優先されます)。 |
 | `removeApp(appID?)` | アプリをアンインストールします。`appID` 省略時の解決は `launchApp()` の `appID` と同じです。 |
 | `clearAppData(appID?)` | アプリは残したままデータと権限だけ消します。オンボーディングや権限ダイアログが再び出るようになります。`appID` 省略時の解決は `launchApp()` の `appID` と同じです。 |
 
 ## 例
 
 ```swift
-installApp()                       // 実行プロファイルの appPath から
+installApp()                       // アプリプロファイルの appPath から
 installApp("/path/to/MyApp.app")
 clearAppData()                     // 初回起動相当の状態に戻す
 removeApp()
@@ -41,7 +41,7 @@ removeApp()
   (Play Protect の「アプリをセキュリティ確認のために送信しますか?」)を切り、終わったら端末の
   設定を元に戻します。** テスト対象のアプリが Google へ送られることはありません(release 署名の
   APK は、この検証が有効だとダイアログで `adb install` が止まったままになります。Google Play
-  入りの Emulator でも同じです)。
+  入りの Emulator でも同じです)。実行プロファイルの `playProtectBypass`(既定 true)を false にすると、この切り替えを止められます。
 
 ### Link
 - [index](../../index_ja.md)

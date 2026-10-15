@@ -39,7 +39,7 @@ TestProjects/SampleApp/
 `fleetest init` は外部パッケージ構成(`Package.swift` + 最初のテストプロジェクト)を生成します。
 `--no-project` を付けるとプロジェクトは作らず、`Package.swift` と空の `TestProjects/` だけを置きます
 (インストールはこちらを使い、`project1` プロジェクトは後から `/fleetest-profiles` か VSCode 拡張が作ります。
-`--no-project` は `--name` / `--app-id` と併用できません)。
+`--no-project` は `--name` と併用できません)。
 `--fleetest-path` はローカルのクローンを指定し(`.package(path:)`)、`--fleetest-url` は代わりに
 git URL へ依存させます(`--fleetest-branch` で追従するブランチを指定。既定は `main`)。
 
@@ -52,6 +52,7 @@ git URL へ依存させます(`--fleetest-branch` で追従するブランチを
 | `fleetest project sync` | `TestProjects/` を走査して `Package.swift` のマーカー区間を再生成する(手動コピーや `git pull` の後に実行する) |
 | `fleetest project copy <source> <newName>` | プロジェクトを新しい名前で複製し `Package.swift` に登録する。実行の産物とキャッシュ(`reports/`・`results/`・`.fleetest/`)は複製されないので、複製先はまっさらな状態から始まる |
 | `fleetest project rename <oldName> <newName>` | プロジェクトのディレクトリを改名し `Package.swift` を更新する |
+| `fleetest project lint-selectors [--project <project>] [--contract <contract>]` | シナリオ内の `#id` セレクタと契約(`ui-contract.md`)のずれを検査する(`#id` だけが対象。ラベルはローカライズで変わるため除く)。`--contract` の既定は `TestProjects/<name>/docs/ui-contract.md`(無ければエラー) |
 | `fleetest project delete <name> --yes` | プロジェクトのディレクトリをゴミ箱へ移し(完全削除ではない)`Package.swift` から除く。`--yes` は必須 —— 付けなければ何も削除されない |
 
 `Package.swift` のマーカー区間(`// === fleetest projects begin/end ===` の間)は
@@ -84,7 +85,7 @@ let package = Package(
 ```
 
 `fleetestScenarioDependencies` はマーカー区間の外にあるので、`create`/`sync` は書き換えません
-(宣言が無い `Package.swift` には `sync` が空の宣言を足します)。キーがプロジェクト名と一致しないと
+(宣言が無い `Package.swift` には `create` / `sync` が空の宣言を足します)。キーがプロジェクト名と一致しないと
 その依存は使われないため、`sync` が警告を出します。
 
 足した依存のビルド(マクロやビルドプラグインを含む)は、シナリオのサンドボックスの外で動きます。

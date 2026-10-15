@@ -49,12 +49,13 @@ func login(user: String, password: String) {
 
 ## 2. DSL に無い処理を1ステップにする
 
-`procedure("説明") { ... }` の中には任意の Swift(`try` / `await` を含む)を書けて、レポートには1ステップとして残ります。
+`procedure("説明") { ... }` の本体は同期のクロージャ(`() throws -> Void`)で、`await` は書けません。中で DSL コマンドも呼べて、
+中のステップは `[説明]` を前置して記録され、レポート(.md)では1ステップに畳まれます(結果 JSON には全部残ります)。
 中で throw すると、コマンドの失敗と同じようにシナリオが中断します。
 
 ```swift
 procedure("テスト用の注文を API で作る") {
-    try await seedTestOrder()   // 自分で書いた async 関数
+    try seedTestOrder()   // 自分で書いた同期の関数(中で DSL コマンドも呼べる)
 }
 ```
 
@@ -125,7 +126,7 @@ run の前後でデータを用意する(シードの投入・準備用 API の�
     ([アプリが依存するサービス](services_ja.md#スクリプトからコンテナを操作する))。
   - 背景に残したプロセスは、run の後に止められます。
   - Android 実機の `adb reverse` は fleetest が行います。
-- スクリプトに渡る環境変数は `FT_HOOK`(`setup` / `teardown`)・`FT_WORKSPACE`・`FT_PROJECT`・`FT_PROFILE`・`FT_MACHINE`・
+- スクリプトに渡る環境変数は `FT_HOOK`(`setup` / `teardown`)・`FT_WORKSPACE`・`FT_PROJECT`・`FT_PROFILE`・
   `FT_REPORT_DIR`(読めますが書けません)・`FT_IOS_DEVICES`・`FT_ANDROID_DEVICES`(空白区切りのデバイス名)と、
   compose.yaml が参照した秘密の名前です。値が無いときも変数自体は渡ります。Emulator の adb serial・Simulator の UDID は
   渡りません。

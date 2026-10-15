@@ -8,7 +8,7 @@ Nothing at the core of fleetest is agent-specific. In Claude Code the
 
 | What you need | How to get it | Agent-specific? |
 |---|---|---|
-| The mechanical work (clone, build, project scaffolding, VS Code extension) | the clone and installer below | no |
+| The mechanical work (clone, build, test package preparation, VS Code extension) | the clone and installer below | no |
 | `ft_*` (exploring screens, driving devices, running scenarios) | register `fleetest-mcp` as an MCP server | only the config file format |
 | The runbooks | point the agent at the `SKILL.md` files in the clone | only where they live |
 
@@ -116,7 +116,7 @@ written not to depend on any one agent's features, so an agent can simply read o
 
 | Runbook | What it does |
 |---|---|
-| `fleetest-setup` | first install (clone → build → project → verification) |
+| `fleetest-setup` | first install (clone → build → test package → verification; it creates no project and no profiles) |
 | `fleetest-update` | pull in a newer version |
 | `fleetest-profiles` | create app / run profiles in one pass |
 | `fleetest-scenario` | author a test scenario (.swift) |
@@ -126,11 +126,12 @@ written not to depend on any one agent's features, so an agent can simply read o
 The installer copies the runbooks into the work folder's `.claude/skills/` (in Claude Code you call
 them by name, such as `/fleetest-scenario`). Other agents should be pointed at the same `SKILL.md`
 files through the entry point in the work folder's `AGENTS.md`. Copied skills are not
-updated by `git pull`, so leave updates to `Scripts/update.sh` — it re-copies them from the clone
-and reports `✅ Skills: refreshed N copied SKILL.md`. **Restart the agent** afterwards, or it keeps
+updated by `git pull`, so leave updates to `Scripts/update.sh` — it calls install.sh, which re-copies them from the clone
+and reports `✅ [ok] skills: <n> placed, <n> refreshed, <n> removed (in <dir>)` (`skills: already up to date` when nothing changed). **Restart the agent** afterwards, or it keeps
 reading the old runbooks.
-The installer leaves a marker `.fleetest-copied` in `.claude/skills/`; `update.sh` adds newly
-introduced skills **only when the marker exists**.
+The installer leaves a marker `.fleetest-copied` in `.claude/skills/`. A skill that is not in the work folder yet is
+placed whether or not the marker lists it; the marker only decides whether a same-named skill that already exists may be
+refreshed or removed (a same-named skill the marker does not list is treated as yours and left alone).
 
 ## Using Codex (the sandbox)
 

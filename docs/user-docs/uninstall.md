@@ -34,6 +34,16 @@ extension (while the extension is running, it restarts the fleetest processes yo
 
 ## 2. Stop the fleetest processes
 
+If you used the services in `scripts/compose.yaml`, stop and remove them before stopping the processes (while the work folder and the clone still exist).
+
+```bash
+fleetest services down     # stop this work folder's services
+fleetest services reset    # remove containers, networks, named volumes and the records
+```
+
+Images you built yourself and images that were pulled stay in the container runtime; remove them with
+`container image rm <name>` / `docker image rm <name>` if you no longer need them (for example `sut-ec-mobile-server:local`, `postgres:16`).
+
 This stops every fleetest process on this Mac, whichever work folder it belongs to (fleetest in your
 other work folders stops too).
 
@@ -52,7 +62,7 @@ If `.build` reappears after you delete them, fleetest processes are still runnin
 
 - `~/.fleetest` (records of runs on this Mac and the like), `~/Library/Logs/fleetest` (logs), and `~/Library/Caches/fleetest`
 - `~/.config/fleetest/` (settings and test data kept only on this Mac). **If you keep passwords or other secrets in
-  `dataset/`, be sure to delete it**
+  `dataset/` or in `secrets/<project>.env` (the secrets compose.yaml refers to), be sure to delete them**
 - Virtual devices you created for fleetest, if you no longer need them — delete them from Xcode's
   "Devices and Simulators" or Android Studio's Device Manager
 

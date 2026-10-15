@@ -16,6 +16,8 @@ For the supported macOS, Xcode, Android SDK and other requirements, see [Environ
   - Install Android Studio (Android SDK)
 - **VSCode and Node.js**
   - Install VSCode and Node.js v24 or newer (npm v11 or newer), which are needed to build and install the VSCode extension
+- **If you run the sample app or your app's server in containers** (optional)
+  - Install Apple Container (`brew install container`). You can also have the AI assistant install it in [Preparing the Sample App](sample-app.md)
 - **AI assistant**
   - Install an AI assistant that supports MCP (Claude Code, Codex, Cline, Cursor, Copilot, and so on).
     With any of them, you have the assistant carry out the installation.
@@ -46,15 +48,16 @@ following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
 The installation creates a `foundation-tester` folder next to your work folder, holding the **latest release**. In this documentation,
 `../foundation-tester/.build/debug/fleetest` in the commands you type by hand refers to the `fleetest` inside it.
 
-Once it is installed, create and run a test in the [Quick start](quick-start.md).
+Once it is installed, prepare the sample app in [Preparing the Sample App](sample-app.md), then create and run a test in the [Quick start](quick-start.md).
 
 ## 4. Troubleshooting
 
 If you run into a problem, ask your AI assistant. Common symptoms and how to narrow them down are
 collected in [Troubleshooting](in_action/troubleshooting.md).
 
-Next: [Quick start](quick-start.md)
+Next: [Preparing the Sample App](sample-app.md)
 
 ### Link
 - [index](index.md)
+- [Preparing the Sample App](sample-app.md)
 - [Quick start](quick-start.md)

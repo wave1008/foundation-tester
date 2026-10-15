@@ -48,8 +48,7 @@ func login(user: String, password: String) {
 ```
 
 `fleetest api dsl-commands --project <name>` and the MCP tool `ft_dsl_commands` (called with
-`project:` — it defaults to your only project, or the project the VSCode extension is set up
-for) now list it alongside the built-in commands, tagged `[project: file:line]` so its origin is
+`project:` — when omitted it resolves to your only project, then the machine setting's default project, then `project1`; if none of these decides, only the built-in commands are returned) now list it alongside the built-in commands, tagged `[project: file:line]` so its origin is
 clear. An agent asked to write a new scenario is told to prefer it over inventing similar steps
 by hand, because it encodes your team's own conventions (e.g. what "logged in" means for your
 app).

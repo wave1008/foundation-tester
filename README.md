@@ -33,7 +33,7 @@
 
 | 対象 | 要件 |
 |---|---|
-| 共通 | macOS 26+。Apple Intelligence(Foundation Models)は**任意** — FM 視覚検証・シナリオ生成に使う(自己修復は使わない)。後から有効化すればそのまま使える |
+| 共通 | macOS 26+。Apple silicon の Mac(Intel Mac は対象外)。Apple Intelligence(Foundation Models)は**任意** — FM 視覚検証・シナリオ生成に使う(自己修復は使わない)。後から有効化すればそのまま使える |
 | iOS(テストするなら) | Xcode 26+、iOS シミュレータ、xcodegen |
 | Android(テストするなら) | Android SDK(adb)、エミュレータまたは実機 |
 
@@ -102,7 +102,7 @@ bash ../foundation-tester/Scripts/install.sh
   `fleetest-setup`(初回導入)・`fleetest-update`(更新)・`fleetest-profiles`
   (マシン/アプリ/実行プロファイル)・`fleetest-scenario`(シナリオ作成)・`fleetest-mcp`(MCP のみ)・
   `fleetest-remote-setup`(別の Mac をランナー機にする)。
-  配布口は `main` の1本(版を固定する導線は無い)。
+  受け手は**最新のリリースタグ**に追従する(install.sh が最新リリースへ移す。更新は `Scripts/update.sh`)。
 - 既定は**外部パッケージ構成**: ツール(この clone)と、あなたの `TestProjects/` が住むテスト用フォルダを分ける。
 - 事前準備・インストールの手順は [docs/user-docs/getting-started_ja.md](docs/user-docs/getting-started_ja.md)、更新は [docs/user-docs/update_ja.md](docs/user-docs/update_ja.md)、アンインストールは [docs/user-docs/uninstall_ja.md](docs/user-docs/uninstall_ja.md)。
   導入後の使い方(プロファイル・シナリオ・実行)は**利用者向けドキュメント [docs/user-docs/index_ja.md](docs/user-docs/index_ja.md)**([English](docs/user-docs/index.md))と [docs/commands.md](docs/commands.md)。
@@ -183,9 +183,10 @@ swift run fleetest run --profile ios-run       # 実行プロファイル(ブリ
 | `--version` | `<git の短い revision> (protocol <版>)` を表示(`api version` はプロトコル版だけを JSON で返す別口) |
 | `doctor` | FM・Xcode・シミュレータ・adb の事前診断 |
 | `bridge up / down / status` | iOS ブリッジ(常駐 XCUITest ランナー)の管理 |
-| `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--set heal=...` 自己修復、`--report-dir`、`--port` 並列(繰り返し指定)、`--skip-build`、`--no-lpt` 投入順を ID 順に固定、`--lpt-history-runs` 実績を読む run 数、`--broadcast` 選んだシナリオを実行プロファイルの**全デバイスで1回ずつ**回す(ブロードキャスト。warmup 向け。供給・フック・復帰・レポートは通常 run と同じで、結果はデバイスごとに `worker` で区別)、`--quiet`/`--junit` CI 向け出力、`--set enableAnimations=true` アプリのアニメーションを残す、`--set iosFastInput=true` iOS xcuitest の quiescence 待ちを飛ばす)。**`--dry-run` はデバイスに触れずステップを列挙・検証する**(下記「dry-run」) |
+| `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--set heal=...` 自己修復、`--report-dir`、`--port` 並列(繰り返し指定)、`--skip-build`、`--no-lpt` 投入順を ID 順に固定、`--lpt-history-runs` 実績を読む run 数、`--broadcast` 選んだシナリオを実行プロファイルの**全デバイスで1回ずつ**回す(ブロードキャスト。warmup 向け。供給・フック・復帰・レポートは通常 run と同じで、結果はデバイスごとに `worker` で区別)、`--quiet`/`--junit` CI 向け出力、`--set enableAnimations=true` アプリのアニメーションを残す、操作コマンドごとの `settle: false`(docs/commands.md)で整定待ちを飛ばせる)。**`--dry-run` はデバイスに触れずステップを列挙・検証する**(下記「dry-run」) |
 | `run-file <path.swift>...` | Package.swift に**登録していない** .swift をそのまま実行(プロファイル・レポート・自己修復は `--project` のものを借りる。`--profile`、`--scenario`、`--set heal=...`、`--port`) |
-| `project create / list / sync` | テストプロジェクトの作成・一覧・Package.swift 再整合 |
+| `project create / list / sync / copy / rename / delete / lint-selectors` | テストプロジェクトの作成・一覧・Package.swift 再整合・複製・改名・削除・セレクタの lint |
+| `services up / down / status / pull / load / reset` | `scripts/compose.yaml` に宣言したサービスの起動・停止・確認・イメージの取得/読み込み・片付け(詳細は [docs/user-docs/reference/writing/services_ja.md](docs/user-docs/reference/writing/services_ja.md)) |
 | `devices up / down` | 実行プロファイルのデバイスを一括起動・停止(ブリッジ供給込み) |
 | `results list / summary / flaky / trend / devices / slow / insights / log` | 実行結果の集約・分析(reports/ を横断) |
 | `draft-scenario` | テストベース(`docs/testbases/*.md`)からシナリオの下書きを生成(`--testbase`、`--app-id`、`--platform`、`--no-fm` で FM 不使用、`--dry-run`) |
@@ -449,8 +450,8 @@ condition {
     ifCanSelect("許可しない", waitSeconds: 2) {   // 出るか不定のダイアログ
         tap("許可しない")
     }
-    procedure("テストデータを API で投入") {       // 任意 Swift(try/await 可)。1ステップとして記録
-        try await seedTestData()
+    procedure("テストデータを API で投入") {       // 同期の本文(await は書けない)。中で DSL も呼べる。1ステップとして記録
+        try seedTestData()
     }
 }
 ```
@@ -520,11 +521,11 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 | ツール | 内容 |
 |---|---|
 | `ft_status` | 接続確認。**宛先**(どのシミュレータ/エミュレータか。Android は serial と AVD 名)と、**session のアプリが今も前面か**まで返す(session はブリッジが掴んでいるアプリで、ホームへ戻っても変わらない)。Android で `serial` を省略して複数台つながっているときは、失敗せず**全台を一覧**で返す(読み取り専用なので。操作系は従来どおり曖昧なら断る) |
-| `ft_doctor` | FM 可用性。使えないときは**止まる機能(screenLooksLike / occlusion-guard)と代わりの書き方**まで返す(自己修復は FM を使わないため対象外) |
+| `ft_doctor` | FM 可用性。`fmAndVision: true` を渡したときだけ FM・Vision・OCR を検査する(MCP は既定で使わない)。使えないときは**止まる機能(screenLooksLike / テキストの可視性検証)と代わりの書き方**まで返す(自己修復は FM を使わないため対象外) |
 | `ft_launch` / `ft_terminate` | アプリ起動・終了 |
 | `ft_install` | アプリをパッケージファイルからインストールする(iOS: `.app` バンドル / Android: `.apk`、分割バンドルの `.apks` は bundletool で) |
 | `ft_snapshot` | 画面要素一覧(set-of-mark 圧縮形式)。**`waitFor` を渡すと出るまでホスト側で待つ**(セレクタ記法は DSL と同じ。既定 5 秒)。**対象アプリが前面に居なければ先頭で警告する**(XCUITest の木はセッションのアプリに閉じているので、別アプリが前面でも同じ木を返してしまう。**iOS 実機では OS が前面状態を正しく申告しないため警告は出ない**)。**スクロール容器の外に取り残された要素(ghost)は先頭と各行で名指しする**(`⚠️scroll-leftover`) —— 一覧の見た目は普通の行と同じだが、その座標には別のものが描かれていることがある。**スクロール容器の行には `scroll` を付ける**(`scrollFrame:` に指定できる領域。**2つ以上あるときだけ**先頭でも名指しする)—— ただし**印が無い = スクロールしない、ではない**(Compose / Flutter の in-app は自前描画で申告できない)。撮った `#id` は `<プロジェクト>/.fleetest/selector-inventory.json` に貯まり、`ft_dry_run` の綴り誤り照合に使われる。**同じ id の大群(地図の POI など。非操作の葉が20件以上)は1行に畳む** —— 見出しに続けて「ラベル[ref]」の索引が出るので ref では撃てる。frame まで要るときは `expandBulk: true`。**上限で要素が落ちたときは先頭で言う**(何件・何が落ちたか。内訳は iOS のブリッジが申告する) —— 落ちた要素は木から消えているので `waitFor` も `ft_scroll_to` も一生見つけられない。**ラベルも id も無い clickable には `#容器 >> .clickable[n]` を添える**(id を持つ祖先があるときだけ。無ければ従来どおり「ref か座標しかない」)。**同じラベルが複数に当たるときは「代わりに書けるセレクタ」を一致ごとに出す**(`#id` > 一意ラベル > `#容器 >> .型[n]`。書けないものは「—」で明示する = 無言のケースを作らない。**勧める前にサーバ自身が引いて当人が返ることを確かめている**)。**打ち切ったときは枠を食っている id 群まで名指しする**(`#VKPointFeature が 119 件中 87 件` のように)—— 読み手にできる手は「それを描いている物を畳む」なので、原因を当てさせない。**`interactiveOnly: true` でレイアウト専用の行を隠す**(ラベルも値も持たず、操作もスクロールもしない要素。密な画面では半分以上が消える)—— ref も frame も変わらず、隠れた行も ref では撃てる |
-| `ft_tap` / `ft_type` / `ft_swipe` / `ft_long_press` | 画面操作(`ft_type` は `pressEnter: true` で入力後に Enter/IME アクションまで撃つ。`text` を省けば Enter だけ)。**ref は撃つ直前に撮り直して照合する** —— 動いていれば今の位置へ撃ち直し、消えていれば撃たずに理由を返す。スクロール残像は撃つが、**何に当たったかもしれないかを警告に添える**(黙って別の要素を叩かない)。**ref を撃つ操作系は「その操作を再現するセレクタ」を必ず返す**(`tap [40] done (selector: #btn_add)`)—— ref はセッション限りの番号でシナリオには書けないため。安定セレクタが無ければ「無い」と明示し、座標には出さない(再現できる根拠が無い)。**操作系のツール(`ft_tap` / `ft_type` / `ft_swipe` / `ft_drag` / `ft_double_tap` / `ft_long_press` / `ft_pinch` / `ft_gesture` ほか)は `snapshotAfter: true` で結果の一覧まで一緒に返す** —— 操作のたびに `ft_snapshot` を撃つ往復が消える(`waitFor` を併せて渡せば、結果の画面に目的のセレクタが出るまで待ってから返す)。長押しの秒数は DSL と同語彙の `holdSeconds`(`ft_long_press`) |
+| `ft_tap` / `ft_type` / `ft_swipe` / `ft_long_press` | 画面操作(`ft_tap` は `alertButton:` で前面のシステムアラートのボタンを押せる。`ft_type` は `pressEnter: true` で入力後に Enter/IME アクションまで撃つ。`text` を省けば Enter だけ)。**ref は撃つ直前に撮り直して照合する** —— 動いていれば今の位置へ撃ち直し、消えていれば撃たずに理由を返す。スクロール残像は撃つが、**何に当たったかもしれないかを警告に添える**(黙って別の要素を叩かない)。**ref を撃つ操作系は「その操作を再現するセレクタ」を必ず返す**(`tap [40] done (selector: #btn_add)`)—— ref はセッション限りの番号でシナリオには書けないため。安定セレクタが無ければ「無い」と明示し、座標には出さない(再現できる根拠が無い)。**操作系のツール(`ft_tap` / `ft_type` / `ft_swipe` / `ft_drag` / `ft_double_tap` / `ft_long_press` / `ft_pinch` / `ft_gesture` ほか)は `snapshotAfter: true` で結果の一覧まで一緒に返す** —— 操作のたびに `ft_snapshot` を撃つ往復が消える(`waitFor` を併せて渡せば、結果の画面に目的のセレクタが出るまで待ってから返す)。長押しの秒数は DSL と同語彙の `holdSeconds`(`ft_long_press`) |
 | `ft_scroll_to` | セレクタが出るまでスクロールして、**撮り直した一覧を返す**。`ft_swipe` + `ft_snapshot` の繰り返しより確実で、探索そのものは DSL の `scrollTo` と同じ実装(整定・容器基準の刻み・飛び越しの拾い直し)。`scrollFrame` でスクロールする容器を指定できる(候補は `ft_snapshot` の `scroll` 印)。**半開きのシートの中でリストが動かなくなったら、グラバーを引き上げて1度だけやり直す**(判定は DSL と共有の `StepNote.sheetCollapsed`。やり直したことは note で言う)—— グラバーを名前で特定できないときは何もしない(当てずっぽうのドラッグで地図やリストを動かさない) |
 | `ft_batch` | **DSL の手を並べて1回の承認で実行する**(`"steps": "tap '#a'; type '#field' 'abc'; scrollTo '#btn' direction: .down"`)。構文は最小記述の1つだけ —— 引数は引用符(`'…'`/`"…"` 等価)+空白区切り・手は `;` か改行。正形の括弧・カンマ・配列は書き換え方を添えて拒否する。operation/scroll コマンドのみ(launchApp 等は `ft_launch` へ誘導)・対象はセレクタ指定(ref 不可)・全手を実行前に検証し、最初の失敗で止まってその画面を返す(成功時は最後の画面を1回だけ)。通ったバッチは `ft_draft_scenario` がそのまま正形の DSL にする |
 | `ft_rotate` | デバイスを回転し、**新しい向きの画面一覧を返す**(回転の整定を待つので frame は新座標系。回転前の ref は解決しなくなる)。シナリオの `rotateTo()` と違い**終了時に向きを戻さない**ので、次の作業へ渡す前に自分で戻す。Android は自動回転を off にして off のままにする(戻さないと角度が定着しないため) |
@@ -535,14 +536,14 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 | `ft_clear_app_data` | アプリのデータと権限を消す(iOS 実機は uninstall + install に振り替える。入れ直すパッケージは直前の `ft_install` のパスか `packagePath:`)。**シナリオは `clearAppData()` から始まる**ので、探索も同じ初期状態から行う。アプリは止まるので後で `ft_launch` |
 | `ft_dsl_commands` | **DSL コマンドの索引**(名前と署名)。シナリオを書く前に引いて、存在しないコマンドを書かないようにする。デバイスに触らない |
 | `ft_double_tap` / `ft_pinch` / `ft_drag` | マップ・キャンバス系の操作(ダブルタップ / ズーム / **斜めを含む任意方向のドラッグ**)。**`ft_drag` は `fromRef`(要素の中心から)と `dx`/`dy`(移動量)でも書ける** —— 半開きのボトムシートを広げるのに、グラバーの frame を読んで座標を組む必要がない。**`ft_pinch` は `ref` でも `x`/`y` でも対象を指せる** —— 地図は要素として木に無いので、シートが半分出ている画面で対象を省くと指が画面全体に開いて**シートのほうが掴まれる**(実測)。座標は**全エンジンが honour する**(XCUITest は非公開 API で座標ピンチを再生する。この API を
-持たない Xcode でだけ要素の枠のピンチへ**退化したことを戻り値で言う**)。iOS は Compose の
-ダブルタップだけエンジンで成否が分かれる(hybrid なら成立・`xcuitest` では不成立)ので、**`profile` を渡して実行と同じエンジンで試す**(docs/commands.md の表) |
+持たない Xcode でだけ要素の枠のピンチへ**退化したことを戻り値で言う**)。Compose の iOS の
+ダブルタップは MCP からは成立しない(XCUITest の合成タッチを Compose が数えない)。シナリオで in-app / hybrid のプロファイルを使えば成立する(docs/commands.md の表) |
 | `ft_gesture` | 指ごとの時刻つき経路を**1本の連続タッチ**として再生する(区切りで指を離さない)—— `ft_tap`/`ft_drag`/`ft_pinch` を繰り返し呼ぶと呼ぶたびに指が離れるが、これは離れない。パターンロック・長押しからのドラッグ・3本指以上のジェスチャ用。**ref 形は無く座標のみ**(iOS=pt / Android=px)。iOS は既定の hybrid でも常に XCUITest 経由(in-app に経路が無い) |
 | `ft_screenshot` | スクリーンショット(画像を返す — エージェントの視覚検証用) |
 | `ft_capture_element` | 要素を画像分類器の見本として保存する(プロジェクト内 `vision/classifiers/<classifier>/<label>/`)。切り出しは `checkIsON`/`checkIsOFF`(CheckStateClassifier)や `imageIs`(DefaultClassifier)が判定時に使うのと同じ a11y の枠。保存後は必要なら学習し直し、見分けられない見本があれば報告する |
-| `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(`project`・`profile`・`heal` オプション付き。自動ビルド込みで、コンパイルエラーはそのまま返る=エージェントが直せる) |
+| `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(`project`・`profile`・`heal` オプション付き。自動ビルド込みで、コンパイルエラーはそのまま返る=エージェントが直せる。既定では FM と Vision を使わない(screenLooksLike は skip・テキストの可視性検証なし・checkIsON は木だけ)。使うときは `fmAndVision: true`) |
 | `ft_results` | 結果の履歴(`fleetest results <query>` と同じ文面。`list` / `summary` / `flaky` / `trend` / `devices` / `slow` / `insights` / `log`)。ファイルを読むだけで、シェルのサンドボックスの中のエージェントからも使える |
-| `ft_start_run` / `ft_run_status` / `ft_stop_run` | `fleetest run --profile` と同じ本番の実行を裏で始め(即返る)、進み具合・結果を見て、止める。結果の履歴・`failed`・`broadcast`・録画を含み、シェルのサンドボックスの中のエージェントからも使える |
+| `ft_start_run` / `ft_run_status` / `ft_stop_run` | `fleetest run --profile` と同じ本番の実行を裏で始め(即返る)、進み具合・結果を見て、止める。結果の履歴・`failed`・`broadcast`・録画を含み、シェルのサンドボックスの中のエージェントからも使える。既定では FM と Vision を使わない(使うときは `fmAndVision: true`) |
 | `ft_dry_run` | **デバイス不要**の検証(数秒)。セレクタの構文誤り・到達しない scene・アサーション0の expectation・**`ft_snapshot` で撮った画面に実在しない `#id`** をデバイス実行の前に落とす |
 | `ft_list_projects` | テストプロジェクトと実行プロファイルの一覧 |
 | `ft_draft_scenario` | **探索した操作列を Swift シナリオの下書きにして返す**(ファイルには書かない — 置き場所はスキルの仕事)。各手は「そのとき MCP が推奨したセレクタ」で書かれ、**セレクタを解決できなかった手は TODO コメントとして残る**(消すと下書きが実際の手順と食い違う)。既定の範囲は直近の `ft_launch` 以降(`all: true` で全体)。**expectation は空の骨格で出る** —— アサーションは推測で作らず、`ft_dry_run` の「アサーションの無い expectation」検出が作者に埋めさせる(dry-run がそこを指摘するのは意図した設計)。**応答は使った手を番号付きで並べる** —— 探索は行き止まりや撃ち直しも本筋と同じ忠実さで記録するので、その一覧を見て `drop: [n, …]`(番号は一覧のもの)や `lastN: k` で回り道を落としてから採用する |
@@ -557,16 +558,9 @@ in-app エンジンは注入できないので実機では選ばれない。Andr
 実機では自動的に adb 経路へ落ちる。**`profile` を渡すと端末の UDID まで分かる**ので、
 渡しておくのが確実(渡さないときはブリッジが名乗るデバイス名から引き当てる)。
 
-**iOS のエンジン**: `profile` を渡せば実行プロファイルのエンジンに追従する。渡さないときは
-**接続先ポートのブリッジに従う** —— in-app ブリッジが動いていればそれを主にした hybrid を組み
-(実行の既定と同じ)、XCUITest ブリッジならそのまま使う。in-app 側が実装できない操作
-(ホーム / タスク切替 / ドラッグ / 座標長押し)は XCUITest ブリッジへ自動で回るので、
-どちらでも全ツールが使える。**実機は注入できない**ので常に XCUITest。
-なお in-app 経路で `ft_navigate` の `home` / `appSwitcher` を撃つと対象アプリが背面化し、
-その中に住む in-app ブリッジが suspend されて応答しなくなる。**その間は全ツールが自動的に
-XCUITest ブリッジ側へ寄る**(読みが少し遅くなるだけで止まらない。`ft_launch` で戻すと元に戻る)。
+**iOS のエンジン**: MCP の iOS は**常に XCUITest**(`profile` を渡しても in-app / hybrid にはならない)。
 
-全ツールに `platform: ios|android` を指定可能。**`profile` を渡すと実行プロファイルのエンジン(既定 hybrid = in-app 優先)で動く** —— 探索と実行で snapshot の内容もジェスチャの成否も揃うので、マップ系を触るときは必ず渡す。探索(explore 相当)はツール化していない —
+全ツールに `platform: ios|android` を指定可能。**`profile` を渡すと実行プロファイルと同じデバイスで動く**(iOS は常に XCUITest)。探索(explore 相当)はツール化していない —
 スナップショットと操作プリミティブがあれば、クライアント側のエージェント自身が探索できるため。
 役割分担は「エージェント=知能(探索・判断)、fleetest=決定性(操作・再生・検証)」。
 

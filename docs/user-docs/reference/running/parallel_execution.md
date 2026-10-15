@@ -5,7 +5,7 @@
 ## With a run profile
 
 **The parallelism level equals the number of resolved devices.** Each device in a run profile
-becomes a worker; scenarios are shared out across them. iOS reuses any already-running bridge
+becomes a worker; scenarios are shared out across them. When only a few scenarios run, the number of devices prepared is cut to "scenarios + 1 spare" (`--broadcast` is not cut down). iOS reuses any already-running bridge
 and only starts what's missing. A run profile can mix iOS and Android devices in the same
 `devices` list to use iOS and Android devices together in one run (each scenario runs on only one of the two OSes — see below; see [profiles.md](../project/profiles.md)).
 
@@ -93,7 +93,7 @@ warning is printed once at the start of the run.
 once on **every** device of the run profile (e.g. a warm-up pass), rather than dividing them. It
 still needs `--profile`; `--device` narrows which devices are included (when devices with the same
 name exist on more than one machine, say which machine with `--runner` or `--all-machines`; see
-[Remote Runners](../../fleet/remote_runners.md)). Results are told apart
+[Remote Runners](../../fleet/remote_runners.md). When the `--device` name narrows to just one remote machine, the run goes to that machine even without `--runner`). Results are told apart
 by their `worker` field, since the same `scenarioID` appears once per device (see
 [results_analysis.md](./results_analysis.md)).
 

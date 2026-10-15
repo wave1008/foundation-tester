@@ -68,8 +68,9 @@ length is unknown, such as Swift inside `procedure { }`, stays silent for more t
 ## Structuring and passing values
 
 `group("name") { }` labels a run of steps in the report without changing execution or
-failure behavior. `procedure("description") { }` runs arbitrary Swift (including
-`try`/`await`) as a single recorded step — this is how irregular handling and test-data
+failure behavior. `procedure("description") { }` runs a synchronous body (`() throws -> Void`; `await`
+cannot be written; DSL commands can be called inside, and the steps inside are recorded with a `[description]`
+prefix and folded in the report .md) as a single recorded step — this is how irregular handling and test-data
 setup are written directly in code instead of a fixed DSL vocabulary. Details:
 [Descriptors](../commands/descriptors.md).
 

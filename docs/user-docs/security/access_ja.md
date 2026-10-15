@@ -124,6 +124,14 @@ macOS のファイアウォール(システム設定 → ネットワーク → 
     "allowDirectAdb": false,
     "disabled": false
   },
+  "hooks": {
+    "writablePaths": ["~/work/shared-fixtures"]
+  },
+  "services": {
+    "runtime": "docker",
+    "buildSources": ["~/work/server-src"],
+    "publishForPhysicalDevices": "192.168.1.10"
+  },
   "redactAccountValues": true
 }
 ```
@@ -134,6 +142,10 @@ macOS のファイアウォール(システム設定 → ネットワーク → 
 | `sandbox.denyRead` | 既定の一覧に足す、読ませない場所(`~` を使えます) |
 | `sandbox.allowDirectAdb` | `true` にすると、シナリオが adb と bundletool を自分で使えます。そのぶん Emulator の中のシェル経由で外部へ出られ、繋がった全 Android 端末に届くようになります。必要なとき以外は使わないでください |
 | `sandbox.disabled` | `true` にすると、この Mac ではサンドボックスを外します |
+| `hooks.writablePaths` | `run-setup.sh` / `run-teardown.sh` が書ける追加の場所(既定は `<workspace>/data/` だけ。[run の前後で処理を走らせる](../reference/writing/extending_ja.md#run-の前後で処理を走らせる)) |
+| `services.runtime` | compose.yaml のサービスに使うランタイム。`"docker"` か `"apple"`。未設定なら Docker が使えれば Docker、使えなければ Apple Container([アプリが依存するサービス](../reference/writing/services_ja.md)) |
+| `services.buildSources` | `build:` の context として `scripts/` の下に加えて許す場所(読み取り専用でマウントしてビルドします) |
+| `services.publishForPhysicalDevices` | 実機を含む run でサービスの公開ポートを全インターフェースに束縛することへの同意。この Mac の LAN の IPv4 アドレスを書き、実機がそのアドレスで届きます |
 | `redactAccountValues` | `true` にすると、`account()` の値をレポート・実行ログ・結果 JSON で `***` に伏せます(既定は伏せません。[テストデータ・アカウント](../reference/commands/dataset_ja.md)) |
 
 - 知らないキーや壊れた JSON があると、シナリオを起動せずにエラーで止まります(足したはずの制限が黙って消えた状態で

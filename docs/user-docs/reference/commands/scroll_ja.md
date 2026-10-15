@@ -40,6 +40,9 @@ scrollTo("#row_40", scrollFrame: "#list_rows")
 - **領域は解決できたが中の何も動かない場合**、スワイプ自体は送られますがステップに注記が
   付きます(`the specified scrollFrame is not scrollable`。マージンで動かせる幅が潰れた場合は
   `resolved but leaves nothing to move`)。
+- **半分開いたボトムシート**(指定した容器が画面下端に接し、上端が画面の上 1/4 より下)の中で、下へ送る
+  探索が1度も動かずに止まったら、その容器の中で1回だけ速く払ってシートを広げてから探し直します
+  (注記 `the sheet was expanded by a drag inside the scrollFrame first`)。
 - **領域が画面に1件も無い場合は、スワイプを1本も送らずに失敗します** —— これは `scrollTo`
   の探索だけでなく `scroll*` / `scrollTo*Edge` 系 / `flick*` / `withScroll*` 配下の探索すべてに
   当てはまります。**`select` 系だけは例外**で、掴めなければ空要素を返す契約が優先されます。
@@ -58,7 +61,7 @@ scrollTo("#row_40", scrollFrame: "#list_rows")
 
 `scrollToBottom` 等は「1回送る → 画面の動きが止まったか見る」の繰り返しです。Android と、iOS の XCUITest エンジン・
 Compose / Flutter では1回の送りが約1ページぶんなので、長い画面では `maxSwipes` を上げてください
-(既定の `maxSwipes: 50` では届かない文書もあります)。iOS の UIKit / SwiftUI・WebView と Android の WebView は
+(既定の `maxSwipes: 50` では届かない文書もあります)。iOS の in-app エンジンの UIKit / SwiftUI・WebView と Android の WebView は
 端へ一度に寄せるので、文書の長さに依存しません。`flick*` を並べて速くしようとするのは代用になりません ——
 flick は端に着いたかどうかを判定しないため([flick](./flick_ja.md) 参照)。
 

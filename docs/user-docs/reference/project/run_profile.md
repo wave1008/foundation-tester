@@ -25,7 +25,7 @@ for how `--profile` selects one.
 | `devices` | array | — | Device entities to run (iOS/Android can mix in the same list). Each entry: `platform` (`"ios"`/`"android"`, required), `machine` (the machine it lives on — `"local"` for this Mac, or a name registered with `fleetest remote machines add`), `name` (required; unique together with `machine`; for an iOS Simulator this is the Simulator's own name), `enabled` (`false` keeps it listed but does not run it; default = run it), plus the device's own body keys (`osVersion`/`udid`/`avd`/`serial`/`kind`/`port`/`engine`/`model` — see [profiles.md](./profiles.md)) |
 | `heal` | bool | `true` for `--profile` runs, `false` for a plain `fleetest run` | Allow selector self-healing (fingerprint matching; see [self_healing.md](../running/self_healing.md)). Independent of the FM- and OCR-based toggles below — self-healing does not use FM |
 | `fmTextVisibilityCheck` | bool | `true` | Use FM (Foundation Models, experimental — see [environments.md](../../overview/environments.md)) for text visibility check. See [Text visibility check](../testclass/text_visibility_check.md). FM is called only when this or `screenLooksLike` is `true` |
-| `screenLooksLike` | bool | `true` | Enable `screenLooksLike` (FM visual verification). When `false`, those steps are skipped rather than failing |
+| `screenLooksLike` | bool | `true` | Enable `screenLooksLike` (FM visual verification, experimental — see [environments.md](../../overview/environments.md)). When `false`, those steps are skipped rather than failing |
 | `ocrTextVisibilityCheck` | bool | `true` | Use on-device OCR (Vision) for text visibility check. Independent of `fmTextVisibilityCheck`; the verification runs when either is `true` (and not at all when both are `false`). When FM gives no verdict, this reading alone decides. See [Text visibility check](../testclass/text_visibility_check.md) |
 | `preferCheckStateClassifier` | bool | `true` | For `checkIsON` / `checkIsOFF`, prefer CheckStateClassifier (an image classifier trained from the sample images in the project's `vision/classifiers/CheckStateClassifier/[ON]` and `[OFF]`) over accessibility. When `false`, it is used only for elements whose accessibility reports no check state. It has no effect without sample images |
 | `reportDir` | string | `"reports"` | Where to write Markdown reports (relative to the project root) |
@@ -46,7 +46,7 @@ for how `--profile` selects one.
 | `recordFailuresOnly` | bool | `false` | With `record: true`, keep only clips for failed (including frozen) scenarios |
 | `recordBitrateKbps` | int | `1000` | Re-encoding bitrate for saved clips |
 | `recordFullResolution` | bool | `false` | With `record: true`, skip the half-resolution re-encode. Test time does not change, but clip size and the wait for cutting clips after all tests finish go up, more so on screens with more motion |
-| `remoteControl` | object | — | Workspace declaration for remote execution (`{ "workspace": "<path>" }`); see [Remote Runners](../../fleet/remote_runners.md) |
+| `remoteControl` | object | — | Workspace declaration (`{ "workspace": "<path>" }`). The workspace is always enabled and defaults to `TestProjects/<project>/workspace`. Even a local run stages the original `appPath` package here and reads `scripts/run-setup.sh` / `run-teardown.sh` and `scripts/compose.yaml` from it; see [Remote Runners](../../fleet/remote_runners.md) |
 
 ## FM usage
 

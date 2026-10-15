@@ -19,6 +19,15 @@ run(成否問わず)は何種類かの出力を残します。このページは
 シナリオ1本ごとは `scenarios/<シナリオID>.json` です。CI のゲート判定・ダッシュボード・
 スクリプトによるトリアージはここを情報源にします。欄の読み方は[結果の分析](../running/results_analysis_ja.md)にあります。
 
+run ディレクトリ(`results/runs/<YYYY-MM>/<runID>/`)の直下には、ほかに次が入ります。
+
+- `events/<シナリオID>.ndjson` —— シナリオごとの実行ログ
+- `host-metrics.ndjson` —— 実行中のホスト負荷の記録
+- `superseded/` —— 振り直しで取り消した記録の退避
+- `services/<サービス>.log` —— compose.yaml のある run で、`run-setup.sh` か run が失敗したときのサービスのログ
+
+Markdown レポートと同じ場所には、`scenario-<日時>-….failure.json` と `.png` も置かれます。
+
 ## JUnit XML
 
 `fleetest run --junit <パス>` を付けると、JUnit XML 形式をそのまま読める CI システム向けに

@@ -10,7 +10,7 @@ Types text into a field, either the currently focused one or a specified element
 |---|---|
 | `type("some text", replace: false, settle:)` | Types into the **currently focused** element (focus it first with `tap(inputField)`). The argument is text, not a selector — passing something that looks like a selector (starts with `#`, or contains `\|\|` / `>>`) fails before execution rather than silently typing the literal string. To actually type such a string, use the two-argument form `type("#field", "#email")`. `replace: true` clears the field (like `clearInput`) before typing. |
 | `type(sel, "some text", replace:settle:waitSeconds:scroll:maxSwipes:)` | Resolves the element, then types into it. Japanese text is typed as-is (no IME switching needed). `replace: true` clears the field before typing. |
-| `select(sel).type("some text", replace:waitSeconds:)` | Types into the grabbed element. It resolves the grabbed selector again, so it behaves exactly like `type(sel, "some text")`. It fails on an element that was not found. Elements found by `findImage` / `findImages` cannot be typed into this way (call `.tap()` first, then `type("some text")`). **To just type, write `type(sel, "some text")`** — `select` only adds a step. |
+| `select(sel).type("some text", replace:settle:waitSeconds:)` | Types into the grabbed element. It resolves the grabbed selector again, so it behaves exactly like `type(sel, "some text")`. It fails on an element that was not found. Elements found by `findImage` / `findImages` cannot be typed into this way (call `.tap()` first, then `type("some text")`). **To just type, write `type(sel, "some text")`** — `select` only adds a step. |
 
 ## Example
 
@@ -28,9 +28,8 @@ field.type("alice")                // same as type("#login_id", "alice")
 ## Notes
 
 - **Pointing it at a button or another non-input element fails before anything is typed.** `type` taps its target
-  first, so typing into a button would press it (a submit or a purchase). It refuses only when the UI framework is known
-  to be UIKit, SwiftUI, React Native or Android View and the element's type is a button, switch, link and so on
-  (Compose and Flutter can report a real input field with another type, so they are not refused). Pointing at an
+  first, so typing into a button would press it (a submit or a purchase). It refuses whatever the UI framework (Compose and Flutter
+  included), only when the element's type is a button, switch, link and so on. Pointing at an
   element that wraps exactly one input field types into it with a warning.
 - **Line breaks (`\n`) follow the OS default.** On iOS this arrives as a Return key press: it
   inserts a newline in a multi-line field, or fires the field's commit action (search, done, …)

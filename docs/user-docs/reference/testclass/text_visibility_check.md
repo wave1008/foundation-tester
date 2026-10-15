@@ -33,7 +33,7 @@ With FM turned off (`fmTextVisibilityCheck: false`) the OCR reading alone decide
 
 Turning OCR off makes the check slower and removes the judgement for when FM is unavailable (with both off, visual
 verification does not run). Even with OCR off, OCR re-reads the text when FM's transcription differs from the expected
-text by just one character, so that a mix-up of similar-looking characters does not fail the check by mistake
+text by up to one character, or by up to the length of the normalized expected text ÷ 5 characters (2 for 10 characters), so that a mix-up of similar-looking characters does not fail the check by mistake
 (only then, OCR's first-time preparation can take up to 60 seconds).
 
 An element whose centre is off the screen fails before any image is looked at.

@@ -107,7 +107,7 @@ Change the iOS app path in the fleetest app profile to ~/builds/MyShop-2.0.app.
 - List of settable items: [Profiles](../reference/project/profiles.md) and [Run profile settings](../reference/project/run_profile.md)
 - To split test projects (the unit that groups tests): [Creating a test project](../reference/project/creating_project.md)
 
-Next: [Creating tests](creating_tests.md)
+Next: [Preparing the servers your app depends on](preparing_app_server.md)
 
 ### Link
 - [index](../index.md)

@@ -17,6 +17,8 @@
 | Android Emulator の gRPC | `127.0.0.1` | Emulator 自身が発行するブート毎の Bearer トークン |
 | **iOS 実機・USB 経路(既定・推奨)** | iproxy(libimobiledevice)の USB トンネル。**すべてループバックに留まる** | 不要(ループバック) |
 | **iOS 実機・LAN 経路** | **端末の全インターフェース**。同じ LAN から届く | **トークン必須**(下記) |
+| compose.yaml の公開ポート(`scripts/compose.yaml` を持つプロジェクトの run) | 通常 `127.0.0.1`。実機のレーンがある run と `services up --physical` では `0.0.0.0` | 不要 |
+| fleetest のプロキシ(Apple Container で `allowedDomains` があるとき) | コンテナ網のゲートウェイ IP | 不要(中継するのは `allowedDomains` の宛先だけ) |
 | ランナー機のリモートログイン(SSH)。リモート実行を使うときだけ、ランナー機で ON にする | ランナー機の 22 番 | 鍵認証 |
 | ランナー機の画面共有(推奨。リモート実行を使うときだけ、ランナー機で ON にする) | ランナー機の 5900 番。ルーターで開けない | macOS の認証 |
 
@@ -51,17 +53,20 @@
   止まることがあるため、インストールの間だけ検証を切って必ず元に戻します。
 - 外へ出るのは、**導入・更新・更新の有無の確認(VSCode 拡張が1日1回、`git ls-remote` で)・Android の
   システムイメージの取得**のときだけです。**テストの実行中は外へ出ません**(シナリオが
-  `sandbox.allowedDomains` に書いた宛先へ通信する分を除きます。何も書かなければシナリオは外へ一切出られません。
+  `sandbox.allowedDomains` に書いた宛先へ通信する分と、compose.yaml を持つプロジェクトの run が手元に無いイメージをコンテナレジストリ(docker.io 等)から取得する分を除きます。
+  中継用のイメージも docker.io の alpine から作ります。自分でビルドしたイメージを `image:` に書けば取得は起きません。閉じたネットワークでは先に
+  `fleetest services pull` か `fleetest services load <tar>` で載せます。何も書かなければシナリオは外へ一切出られません。
   [アクセスできるフォルダと通信先](access_ja.md))。
 
 | 何を取りに行くか | 行き先 | いつ |
 |---|---|---|
 | 導入スクリプト | `raw.githubusercontent.com` | 導入・更新 |
 | fleetest 本体 | `github.com` | clone・pull・更新の有無の確認 |
-| **Swift の依存 20 本超** | `github.com`(`apple/*`・`grpc/*`・`swiftlang/*`) | `swift build` |
+| **Swift の依存 20 本超** | `github.com`(`apple/*`・`grpc/*`・`swiftlang/*`・`swift-server/*`・`jpsim/Yams`) | `swift build` |
 | VSCode 拡張の依存 8 個 | `registry.npmjs.org` | 拡張のビルド |
 | `xcodegen`(必須)・`libimobiledevice` | Homebrew の配信元 | 導入時 |
 | Android のシステムイメージ・コマンドラインツール | `dl.google.com` | Emulator を作るとき・Android SDK のツールを入れるとき |
+| コンテナイメージ(compose.yaml を使うとき) | コンテナイメージのレジストリ(docker.io) | run の開始時・`fleetest services pull` |
 
 **量が一番大きいのは Swift の依存**で、fleetest 自身のリポジトリではありません。
 Android ブリッジの APK はリポジトリに同梱してあるため、Android のビルドツールは要りません。
@@ -71,7 +76,7 @@ Android ブリッジの APK はリポジトリに同梱してあるため、Andr
 ### 方針 A(推奨): 上の行き先だけ HTTPS を通す
 
 許可する宛先は5つ(`raw.githubusercontent.com` / `github.com` / `registry.npmjs.org` /
-Homebrew の配信元 / Android を使うなら `dl.google.com`)だけです。テレメトリが0件で、**テスト実行中は外へ出ない**ことを添えれば、
+Homebrew の配信元 / Android を使うなら `dl.google.com`)と、compose.yaml を使うならコンテナイメージのレジストリ(docker.io)だけです。テレメトリが0件で、**テスト実行中は外へ出ない**ことを添えれば、
 例外申請の説明がつけやすい形です。**ツール側に追加の設定は要りません。**
 
 ### 方針 B: 社内ミラー(A が通らない場合)

@@ -16,7 +16,7 @@ instead. All of them work inside the sandbox as they are.
 | Pass values between scenarios | `writeMemo` / `readMemo` |
 | Keep secrets out of reports | `redactAccountValues` |
 | Use external Swift packages | `fleetestScenarioDependencies` |
-| Prepare a DB or stub server around a run | `run-setup.sh` / `run-teardown.sh` |
+| Prepare a DB or stub server around a run | `scripts/compose.yaml` / `run-setup.sh` / `run-teardown.sh` |
 
 ## Writing files (TestLog)
 
@@ -99,9 +99,12 @@ Details: [Creating a test project](../reference/project/creating_project.md)
 
 ## Running something around a run (run-setup.sh, run-teardown.sh)
 
-Preparation that cannot be done inside the sandbox, such as a DB or stub server the app under test depends on, goes in
-`TestProjects/<project>/workspace/scripts/run-setup.sh` / `run-teardown.sh`. They run outside the sandbox at the start and
-end of a run (they do not run for MCP's `ft_run_scenario`).
+Processing to run at the start and end of a run goes in
+`TestProjects/<project>/workspace/scripts/run-setup.sh` / `run-teardown.sh` (they do not run for MCP's `ft_run_scenario`).
+The scripts also run inside a sandbox of their own: they can write only to `<workspace>/data/` and `hooks.writablePaths`, and
+connect only to the ports compose.yaml publishes and to the allowed domains through the proxy. Declare the DB or stub
+server the app under test depends on in `scripts/compose.yaml` and fleetest starts and stops it
+([Declaring services](../reference/writing/services.md)). Operate inside a container with `fleetest-services`.
 
 Details: [Adding your own features](../reference/writing/extending.md)
 

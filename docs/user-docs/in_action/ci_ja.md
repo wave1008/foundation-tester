@@ -19,6 +19,10 @@
   ([テキストの可視性検証](../reference/testclass/text_visibility_check_ja.md))。
   画面照合を CI でも効かせたい場合は、下の「Apple Intelligence を CI で使う」を見てください。
 - Xcode(Android を回すなら Android SDK も)がランナーに導入済みであること。
+- **`scripts/compose.yaml` を持つプロジェクトを回すなら**([サービス宣言](../reference/writing/services_ja.md)):
+  CI 機に Apple Container か Docker が要ります。自分でビルドしたイメージは CI 機でビルドするか `fleetest services load <tar>` で載せてください
+  (取得は起きません)。レジストリのイメージは初回に取得するので外へのネットワークが要ります。
+  Docker の API を TCP(2375 / 2376)で公開していると run が始まりません。
 
 ## 実行と結果の取り出し
 
@@ -68,7 +72,8 @@ pipeline {
   夜間などジョブが 2 時間以上空く運用なら掃除は不要です。**24 時間ジョブが途切れない運用では**、
   定期的に `fleetest devices down` を実行してください。
 - ジョブ間で環境を掃除したい場合は、ジョブ末尾に `fleetest devices down`(全ブリッジ停止 +
-  Simulator/Emulator 全終了)を置きます。同じ Mac で別のテスト実行がデバイスを使っている間は、
+  Simulator/Emulator 全終了)を置きます。プロファイル無しの `devices down` は、登録簿にある全リモート機械にも同じ掃討を投げます。
+  CI 機にランナーの登録があると他の機械の Simulator まで止めるので、`--profile` を付けるか、登録簿を持たないでください。同じ Mac で別のテスト実行がデバイスを使っている間は、
   実行中のテストを止めないよう何も停止せずに終了コード 1 で終わります。同じ Mac でジョブが
   重なりうる場合は、他のジョブが動いていない時間帯に掃除を置いてください。
 - **1台の Mac で同時に走る実行は1本です。** 同じエージェントで2本目の `fleetest run` は開始せず、

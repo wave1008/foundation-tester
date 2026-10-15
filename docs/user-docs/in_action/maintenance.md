@@ -17,6 +17,7 @@ You don't need to do anything for these.
 | Android Emulator data | At the start of a test run, the Emulator gets a Wipe Data if its data is over the threshold (8 GB by default). It also gets a Wipe Data, followed by one more install attempt, when installing the app fails because the device is out of storage | `wipeDataOnBloat` in [Run profile settings](../reference/project/run_profile.md) |
 | Bridges on the devices | When the fleetest version changes, they are reinstalled or rebuilt the next time they are used | — |
 | Bridges that stop responding | When the extension detects one, it tries to repair it while no test is running (setting `fleetest.autoRepairBridge`, on by default) | — |
+| Scripts left by dead runs, orphaned services | The next run's start and `fleetest hooks reap` (`remote clean` fires it too) reclaim them | — |
 | Update checks | The extension checks once a day and notifies you (it never pulls anything by itself) | [Update](../update.md) |
 
 The Simulator cleanup only runs when fleetest boots the Simulator (not when you boot it from Xcode or
@@ -78,6 +79,11 @@ working. You can check with `fleetest doctor --fm-only` (it exits with code 1 wh
   removed, and this can't be undone. If your app isn't installed automatically, install it again
   afterwards. To see how much space each virtual device uses, press "Refresh storage" under
   "Device health" in the Results Dashboard.
+- **What compose.yaml services use**: images fleetest built, the relay image and named volumes are not deleted
+  automatically. `fleetest services status` shows their sizes, and `fleetest services reset` removes them. Images you built
+  yourself (for example `sut-ec-mobile-server:local`) and pulled images stay in the runtime, so remove them with
+  `container image rm` / `docker image rm`. The service logs of a failed run are kept in
+  `results/runs/<month>/<runID>/services/<service>.log`.
 - **What stays**: The result records (the pass/fail and timing JSON) are never deleted, but even
   thousands of runs take only a few tens of MB. The build folder (`.build`) takes a few GB, but it does
   not keep growing. If you delete it, it is rebuilt the next time you use fleetest, which takes a few

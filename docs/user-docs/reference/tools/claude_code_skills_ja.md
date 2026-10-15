@@ -27,7 +27,7 @@ fleetest は、導入・プロファイル設定・シナリオ作成を自動�
 | `fleetest-update` | `/fleetest-update` | 新しいリリースの取り込み(最新リリースへ切り替え → `TestProjects/`/`Package.swift` の再整合 → 再ビルド → VSCode 拡張の再インストール → 反映) |
 | `fleetest-profiles` | `/fleetest-profiles` | アプリ/実行プロファイルを1回のフローでまとめて作成(iOS/Android の確認、アプリの表示名/アプリID を聞き、デバイスは既存を選ぶか新規作成) |
 | `fleetest-scenario` | `/fleetest-scenario` | セットアップ済みプロジェクトに Swift DSL のシナリオ(`.swift`)を1本作成(ライブ探索からコンパイル検証まで) |
-| `fleetest-mcp` | `/fleetest-mcp` | MCP サーバ(`fleetest-mcp`)だけを Claude Code に登録(VSCode 拡張・プロジェクト作成・プロファイル設定は行わない) |
+| `fleetest-mcp` | `/fleetest-mcp` | MCP サーバ(`fleetest-mcp`)だけを AIアシスタントに登録(Claude Code は `.mcp.json`、Codex などはその設定ファイル。VSCode 拡張・プロジェクト作成・プロファイル設定は行わない) |
 | `fleetest-remote-setup` | `/fleetest-remote-setup` | 別の Mac をランナー機として用意し、手元から SSH 経由でシナリオをディスパッチできるようにする |
 
 `fleetest-setup` が初回導入の入口で、他のスキルはこれ(または同等の手動セットアップ)が

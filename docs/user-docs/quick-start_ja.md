@@ -2,48 +2,10 @@
 
 [in English](quick-start.md)
 
-[はじめに(インストール)](getting-started_ja.md)が済んだ後、サンプルアプリを対象にシナリオを作り、実行するまでの最短手順です。
+[はじめに(インストール)](getting-started_ja.md)と[サンプルアプリの準備](sample-app_ja.md)が済んだ後、サンプルアプリを対象にシナリオを作り、実行するまでの最短手順です。
 シナリオを手で書く必要はありません。
 
-## 1. サンプルアプリを用意する
-
-テスト対象として、EC 買い物アプリのサンプル
-[sut-ec-mobile](https://github.com/wave1008/sut-ec-mobile)(Compose Multiplatform・iOS / Android 両対応)
-を使います。
-
-### AIへの指示文
-
-```text
-https://github.com/wave1008/sut-ec-mobile をこのフォルダの隣に clone して、サーバを起動して。
-サーバはこのセッションを閉じても止まらないよう、nohup などで起動して。
-JDK 17 と Apple Container が必要。無ければ Homebrew でインストールしてよい。
-シェルの設定ファイルは変更しないで。アプリはビルドしなくてよい。
-/health が ok を返したら、完了を報告して。
-```
-
-Mac を再起動したら、同じ指示文でサーバを起動し直します。
-
-<details>
-<summary><b>手動で実行(クリックで詳細表示)</b></summary>
-
-JDK 17 と Apple Container(`brew install container`)が要ります。
-
-```bash
-git clone https://github.com/wave1008/sut-ec-mobile.git
-cd sut-ec-mobile
-```
-
-サーバは別のターミナルで起動したままにします。
-
-```bash
-./scripts/dev-server.sh    # http://localhost:8090
-```
-
-サーバの起動方法の詳細は sut-ec-mobile の `server/README.md` にあります。
-
-</details>
-
-## 2. プロファイルを用意する
+## 1. プロファイルを用意する
 
 アプリプロファイルと実行プロファイルを作成します。
 
@@ -52,13 +14,15 @@ cd sut-ec-mobile
 iOS の場合:
 
 ```text
-sut-ec-mobile の iOS アプリをビルドし、プロファイルを作成して。デバイスは2台にして。
+sut-ec-mobile の iOS アプリをビルドし、プロファイルを作成して。アプリの表示名は「SUT Store」。デバイスは2台にして。
+ビルドには JDK 17 が必要。無ければ Homebrew でインストールしてよい。シェルの設定ファイルは変更しないで。
 ```
 
 Android の場合:
 
 ```text
-sut-ec-mobile の Android アプリをビルドし、プロファイルを作成して。デバイスは2台にして。
+sut-ec-mobile の Android アプリをビルドし、プロファイルを作成して。アプリの表示名は「SUT Store」。デバイスは2台にして。
+ビルドには JDK 17 が必要。無ければ Homebrew でインストールしてよい。シェルの設定ファイルは変更しないで。
 ```
 
 <details>
@@ -85,14 +49,15 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 ../foundation-tester/.build/debug/fleetest project create project1
 
 # iOS
-../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.sutec.mobile.ios --auto-device \
+../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.sutec.mobile.ios --auto-device --app-name "SUT Store" \
   --app-path ../sut-ec-mobile/build/ios-sim/Build/Products/Debug-iphonesimulator/iosApp.app
 
 # Android
-../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.sutec.mobile.android --auto-device \
+../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.sutec.mobile.android --auto-device --app-name "SUT Store" \
   --app-path ../sut-ec-mobile/composeApp/build/outputs/apk/debug/composeApp-debug.apk
 ```
 
+`--app-name` を省略するとプロジェクト名になり、ホーム画面のアイコン名と食い違って実行の開始時に警告が出ます。
 `--app-path` にビルドしたアプリを渡すと、実行時にデバイスへ自動でインストールされます。
 `--auto-device` は、最新の iOS ランタイムと最新の Pixel を使う Simulator/Emulator を自動で選びます
 (足りなければ作成します。iOS のランタイムが未導入のときは数 GB をダウンロードするので数分〜数十分かかります。
@@ -105,7 +70,7 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 
 プロファイルの詳細は[プロファイル](./reference/project/profiles_ja.md)。
 
-## 3. シナリオを作る
+## 2. シナリオを作る
 
 ログイン画面を対象に、探索的テストを作成してみましょう。
 
@@ -120,10 +85,24 @@ Android の場合は「iOS で」を「Android で」に読み替えてくださ
 
 AIアシスタントはデバイス上でアプリを起動し、ログイン画面を操作しながら要素を読み取って、
 見つけた挙動をシナリオに落とします。
+AIアシスタントは探索の前に、compose.yaml に宣言したサーバーを `ft_services` で起こします。
 
-## 4. デバイスで実行する
+<details>
+<summary><b>手動で探索するとき(クリックで詳細表示)</b></summary>
+
+サーバーを手で起こしてから探索し、終わったら止めます。
+
+```bash
+../foundation-tester/.build/debug/fleetest services up --profile ios-run
+../foundation-tester/.build/debug/fleetest services down --profile ios-run
+```
+
+</details>
+
+## 3. デバイスで実行する
 
 作成したシナリオを実行してみましょう。
+実行のたびに fleetest がサーバーを起動し、終わったら止めます。先に起こしてあったサービスは引き取ります。
 
 ### AIへの指示文
 
@@ -140,7 +119,7 @@ AIアシスタントはデバイス上でアプリを起動し、ログイン画
 ../foundation-tester/.build/debug/fleetest run --profile ios-run
 ```
 
-`--profile` には、ステップ2で用意した実行プロファイルの名前(`ios-run`。Android なら `android-run`)を渡します。
+`--profile` には、ステップ1で用意した実行プロファイルの名前(`ios-run`。Android なら `android-run`)を渡します。
 アプリ・デバイス・実行時設定はそこから解決されます。
 
 VSCode からは **Test Explorer** でシナリオを選び、**実行**をクリックします。
@@ -149,10 +128,12 @@ VSCode からは **Test Explorer** でシナリオを選び、**実行**をク�
 
 </details>
 
-## 5. 結果を見る
+## 4. 結果を見る
 
 実行のたびに `TestProjects/<プロジェクト>/reports/` にシナリオごとの Markdown
 レポートが出ます。
+
+失敗したときは、サーバーのログが `TestProjects/<プロジェクト>/results/runs/<月>/<runID>/services/server.log` に残ります。
 
 レポートを要約し、エラーを分析してみましょう。
 
@@ -175,3 +156,4 @@ VSCode からは **Test Explorer** でシナリオを選び、**実行**をク�
 ### Link
 - [index](index_ja.md)
 - [はじめに(インストール)](getting-started_ja.md)
+- [サンプルアプリの準備](sample-app_ja.md)

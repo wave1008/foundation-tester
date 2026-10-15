@@ -22,6 +22,15 @@ whole run and `scenarios/<scenarioID>.json` per scenario. This is the source use
 gating, dashboards, and scripted triage. How to read the fields is in
 [Results analysis](../running/results_analysis.md).
 
+The run directory (`results/runs/<YYYY-MM>/<runID>/`) also holds, directly under it:
+
+- `events/<scenarioID>.ndjson` — the execution log of each scenario
+- `host-metrics.ndjson` — the host load recorded during the run
+- `superseded/` — records set aside when a scenario was run again
+- `services/<service>.log` — the services' logs, for a run with compose.yaml when `run-setup.sh` or the run failed
+
+`scenario-<timestamp>-….failure.json` and a `.png` are also placed in the same folder as the Markdown report.
+
 ## JUnit XML
 
 `fleetest run --junit <path>` additionally writes a JUnit XML file, for CI systems that
