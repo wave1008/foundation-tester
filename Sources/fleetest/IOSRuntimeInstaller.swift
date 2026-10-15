@@ -130,11 +130,35 @@ struct IOSAutoDevice: Equatable {
             sdkVersion: IOSRuntimeInstaller.sdkVersion()),
               let device = make(target: target, runtimes: runtimes, deviceTypes: types) else {
             throw IOSRuntimeInstaller.Failure(
-                "no iOS runtime / iPhone model could be chosen automatically (no installed iOS runtime and"
-                + " the selected Xcode's SDK version is unreadable, or no iPhone <N> model is available);"
-                + " specify one explicitly with --device-name/--os or --udid")
+                "no iOS runtime / iPhone model could be chosen automatically ("
+                + unresolvedReason(runtimes: runtimes, deviceTypeIdentifiers: types.map { $0.identifier },
+                                   sdkVersion: IOSRuntimeInstaller.sdkVersion())
+                + "); specify one explicitly with --device-name/--os or --udid")
         }
         return device
+    }
+
+    /// 自動選定が決まらなかった条件を、観測した事実だけで言う(iosAutoTarget が nil を返す2経路に対応)
+    static func unresolvedReason(runtimes: [DevicePicker.IOSRuntimeInfo], deviceTypeIdentifiers: [String],
+                                 sdkVersion: String?) -> String {
+        guard DevicePicker.newestIPhoneDeviceType(identifiers: deviceTypeIdentifiers, supportedBy: nil) != nil else {
+            return "no plain iPhone <N> device type is available in `xcrun simctl list devicetypes`"
+        }
+        let capable = Set(DevicePicker.iPhoneCapableRuntimes(runtimes, deviceTypeIdentifiers: deviceTypeIdentifiers)
+            .map(\.identifier))
+        let skipped = runtimes.filter { !capable.contains($0.identifier) }.map(\.identifier)
+        var parts: [String] = []
+        if capable.isEmpty {
+            parts.append(runtimes.isEmpty
+                ? "no iOS runtime is installed"
+                : "no installed iOS runtime supports a plain iPhone <N> model (skipped: "
+                    + skipped.joined(separator: ", ") + ")")
+        }
+        if sdkVersion == nil {
+            parts.append("the iPhone simulator SDK version of the selected Xcode could not be read"
+                + " (xcrun --sdk iphonesimulator --show-sdk-version)")
+        }
+        return parts.isEmpty ? "the chosen runtime or model was not found in simctl's lists" : parts.joined(separator: ", and ")
     }
 }
 

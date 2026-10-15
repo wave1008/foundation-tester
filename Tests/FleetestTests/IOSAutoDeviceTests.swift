@@ -51,4 +51,23 @@ final class IOSAutoDeviceTests: XCTestCase {
             target: .init(runtime: .needsDownload(version: "27.0"), deviceTypeIdentifier: pro18),
             runtimes: [], deviceTypes: []))
     }
+
+    /// 文言は実際に失敗した条件だけを言う(SDK が読めているのに「読めない」と言わない)
+    func testUnresolvedReasonNamesTheSkippedModelSpecificRuntime() {
+        let duo = "com.apple.CoreSimulator.SimDeviceType.iPhone-Duo"
+        let iPhone17 = "com.apple.CoreSimulator.SimDeviceType.iPhone-17"
+        let specific = DevicePicker.IOSRuntimeInfo(
+            identifier: "com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4", version: "27.2",
+            name: "iOS 27.2", supportedDeviceTypeIdentifiers: [duo])
+        let reason = IOSAutoDevice.unresolvedReason(
+            runtimes: [specific], deviceTypeIdentifiers: [iPhone17, duo], sdkVersion: nil)
+        XCTAssertTrue(reason.contains("no installed iOS runtime supports a plain iPhone <N> model"
+            + " (skipped: com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4)"), reason)
+        XCTAssertTrue(reason.contains("SDK version"), reason)
+        XCTAssertEqual(
+            IOSAutoDevice.unresolvedReason(runtimes: [], deviceTypeIdentifiers: [duo], sdkVersion: "27.2"),
+            "no plain iPhone <N> device type is available in `xcrun simctl list devicetypes`")
+        XCTAssertFalse(IOSAutoDevice.unresolvedReason(
+            runtimes: [], deviceTypeIdentifiers: [iPhone17], sdkVersion: "27.2").contains("SDK"))
+    }
 }
