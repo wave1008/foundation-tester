@@ -115,6 +115,26 @@ final class DevicePickerTests: XCTestCase {
         XCTAssertNil(DevicePicker.iosAutoTarget(runtimes: [], deviceTypeIdentifiers: [], sdkVersion: nil))
     }
 
+    /// 同じ版に機種専用のランタイム(iPhone Duo だけ)が並び、一覧で先に来ても汎用の方を選ぶ。
+    /// 汎用が無ければ機種専用では作れないので、SDK の版を要ダウンロードにする(実地 = Xcode 27.2 beta 3)
+    func testIOSAutoTargetSkipsModelSpecificRuntimeOfTheSameVersion() {
+        let specific = DevicePicker.IOSRuntimeInfo(
+            identifier: "com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4", version: "27.2",
+            name: "iOS 27.2", supportedDeviceTypeIdentifiers: [type("iPhone-Duo")])
+        let general = DevicePicker.IOSRuntimeInfo(
+            identifier: "com.apple.CoreSimulator.SimRuntime.iOS-27-2", version: "27.2",
+            name: "iOS 27.2", supportedDeviceTypeIdentifiers: [type("iPhone-17"), type("iPhone-Duo")])
+        let ids = ["iPhone-17", "iPhone-Duo"].map(type)
+        XCTAssertEqual(
+            DevicePicker.iosAutoTarget(runtimes: [specific, general], deviceTypeIdentifiers: ids, sdkVersion: "27.2"),
+            DevicePicker.IOSAutoTarget(runtime: .installed(identifier: general.identifier),
+                                       deviceTypeIdentifier: "com.apple.CoreSimulator.SimDeviceType.iPhone-17"))
+        XCTAssertEqual(
+            DevicePicker.iosAutoTarget(runtimes: [specific], deviceTypeIdentifiers: ids, sdkVersion: "27.2"),
+            DevicePicker.IOSAutoTarget(runtime: .needsDownload(version: "27.2"),
+                                       deviceTypeIdentifier: "com.apple.CoreSimulator.SimDeviceType.iPhone-17"))
+    }
+
     // MARK: - Android の機種・システムイメージ選定
 
     func testNewestPixelPhonePicksHighestNumber() {

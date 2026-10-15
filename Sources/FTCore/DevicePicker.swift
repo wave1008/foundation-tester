@@ -106,10 +106,23 @@ public enum DevicePicker {
         }
     }
 
+    /// 自動選定の候補にしてよいランタイム = 無印の iPhone <N> を1つでも作れるもの。
+    /// **同じ版でも機種専用のランタイムがある**(Xcode 27.2 beta の `iOS-27-2-iPhone19-4` は iPhone Duo だけ)。
+    /// 版だけで選ぶと一覧の先勝ちでそちらを掴み、機種が決まらず自動選定ごと止まる
+    public static func iPhoneCapableRuntimes(
+        _ runtimes: [IOSRuntimeInfo], deviceTypeIdentifiers: [String]
+    ) -> [IOSRuntimeInfo] {
+        runtimes.filter {
+            newestIPhoneDeviceType(identifiers: deviceTypeIdentifiers,
+                                   supportedBy: Set($0.supportedDeviceTypeIdentifiers)) != nil
+        }
+    }
+
     /// iOS の自動選定の規則そのもの(CLI の profile setup と device-catalog の recommended が共有する)
     public static func iosAutoTarget(
-        runtimes: [IOSRuntimeInfo], deviceTypeIdentifiers: [String], sdkVersion: String?
+        runtimes allRuntimes: [IOSRuntimeInfo], deviceTypeIdentifiers: [String], sdkVersion: String?
     ) -> IOSAutoTarget? {
+        let runtimes = iPhoneCapableRuntimes(allRuntimes, deviceTypeIdentifiers: deviceTypeIdentifiers)
         guard let choice = newestIOSRuntime(
             installed: runtimes.map { ($0.identifier, $0.version, $0.name) }, sdkVersion: sdkVersion)
         else { return nil }

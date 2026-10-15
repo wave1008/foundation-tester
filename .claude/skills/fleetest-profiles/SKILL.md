@@ -120,9 +120,13 @@ fleetest profile setup --project <プロジェクト> --platform <ios|android|hy
 #### 4-b. 新規作成が要るとき(create-device)
 
 ```
-fleetest api create-device --project <プロジェクト> --profile <実行プロファイル名> \
+fleetest api create-device --no-register \
   --platform <plat> --name "<論理名>" --model "<機種 identifier/id>" --os "<ランタイム identifier / システムイメージ package>"
 ```
+
+**`--no-register` を必ず付ける**(作るだけ。登録は続く `profile setup --device-name` が行い、実行プロファイルが
+まだ無ければそこで作られる)。`--profile` で登録させると、実行プロファイルが無い最初の1台目で
+`run profile <名>.json does not exist` になって止まる。
 
 `--model` / `--os` の値は `fleetest api device-catalog` の
 `ios.deviceTypes[i].identifier` / `ios.runtimes[i].identifier`(Android は `android.models[i].id` /

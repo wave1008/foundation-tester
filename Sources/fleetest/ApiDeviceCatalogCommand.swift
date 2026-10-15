@@ -96,7 +96,8 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
         let allDeviceTypeIDs = rawDeviceTypes.compactMap { $0["identifier"] as? String }
         let downloadable: [ApiIOSDownloadableRuntime]
         if case .needsDownload(let version)? = DevicePicker.newestIOSRuntime(
-            installed: runtimeInfos.map { ($0.identifier, $0.version, $0.name) }, sdkVersion: sdkVersion),
+            installed: DevicePicker.iPhoneCapableRuntimes(runtimeInfos, deviceTypeIdentifiers: allDeviceTypeIDs)
+                .map { ($0.identifier, $0.version, $0.name) }, sdkVersion: sdkVersion),
            let identifier = DevicePicker.predictedIOSRuntimeIdentifier(version: version) {
             downloadable = [ApiIOSDownloadableRuntime(
                 identifier: identifier, name: "iOS \(version)", nameLabel: "iOS \(version)", version: version)]
