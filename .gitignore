@@ -31,3 +31,7 @@ InAppBridge/build/
 # (中身は `$PWD/Scripts/mcp-server.sh` 依存なのでクローンの外では必ず落ちる。2026-08-27 実測)。
 # clone 構成の登録は install.sh が絶対パスで書く。追跡すると受け手のクローンが dirty になる
 .mcp.json
+
+# Python のバイトコードのキャッシュ(Scripts/ の試作・補助スクリプトを実行すると作られる)
+__pycache__/
+*.pyc
