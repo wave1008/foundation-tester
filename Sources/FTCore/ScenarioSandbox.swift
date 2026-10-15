@@ -263,10 +263,13 @@ public enum ScenarioSandbox {
         "ANDROID_HOME", "ANDROID_SDK_ROOT", "ANDROID_AVD_HOME", "ANDROID_ADB_SERVER_PORT",
     ]
     static let inheritedEnvironmentPrefixes = ["FT_", "LC_"]
+    /// 接頭辞が `FT_` でも渡さない鍵 = 親(起こされた fleetest)だけが書く置き場(`DispatchRefusalReport`)
+    static let parentOnlyEnvironmentKeys: Set<String> = [DispatchRefusalReport.environmentKey]
 
     static func inheritedEnvironment(_ parent: [String: String]) -> [String: String] {
         parent.filter { key, _ in
-            inheritedEnvironmentKeys.contains(key) || inheritedEnvironmentPrefixes.contains { key.hasPrefix($0) }
+            !parentOnlyEnvironmentKeys.contains(key)
+                && (inheritedEnvironmentKeys.contains(key) || inheritedEnvironmentPrefixes.contains { key.hasPrefix($0) })
         }
     }
 
@@ -490,7 +493,8 @@ public enum ScenarioSandbox {
             // `services/` = `services up` の所有者プロセスのログ(親が開いて書く)。子が symlink を置けると親の書き先を向け替えられる。
             // `mcp-ask-offered.json` = 承認(ask)の提示済みの台帳(`ProjectScaffold`)。子が「提示済み」と書けると ask が足されない。
             // `services.lock/` = サービスの排他(固定ファイルの flock。`ServicesLock`)。子が消す・置き換えると別の inode を握った 2 者が同時に入る
-            ["hooks", "services", "services.lock", "mcp-ask-offered.json", "DerivedData", "DerivedData-device", "cleanup.log", "recording-probe"]
+            // `mcp-runs/` = MCP の ft_start_run のログと拒否の記録(`DispatchRefusalReport`)。子が記録を置けると緑の run が「始まらなかった」に化ける
+            ["hooks", "services", "services.lock", "mcp-ask-offered.json", "mcp-runs", "DerivedData", "DerivedData-device", "cleanup.log", "recording-probe"]
                 .map { root + "/.fleetest/" + $0 }
         } + ["ftbridge.apk", "dispatch.lock", "dispatch.queue", "retention-sweep.lock"]
             .map { scope.home + "/.fleetest/" + $0 }

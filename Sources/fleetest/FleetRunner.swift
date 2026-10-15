@@ -545,8 +545,8 @@ enum FleetRunner {
 
     /// 実行中の fleetest バイナリ自身の絶対パス(このプロセスを子として再起動する)
     static func selfBinaryPath() -> String {
-        if let url = Bundle.main.executableURL {
-            return url.resolvingSymlinksInPath().path
+        if let url = ExecutablePath.current {
+            return url.path
         }
         return CommandLine.arguments[0]
     }

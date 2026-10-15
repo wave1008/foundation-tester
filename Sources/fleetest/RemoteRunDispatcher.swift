@@ -595,6 +595,8 @@ struct RemoteRunDispatcher {
                     // 定型文(heldMessage)は unlock を勧めるので使わない(unlock も同じ理由で断る)
                     guard waitLock != nil else {
                         dequeueTicket(layout: layout, ticket: ticket)
+                        // 待機の状態を作らずに断る唯一の経路。記録は同じ形で書く(refused() と同じ意味 = 待たずに断った)
+                        DispatchRefusalReport.write(.init(limitSeconds: nil, waitedSeconds: elapsed))
                         throw RemoteDispatchError.remoteSetupFailed(
                             "the dispatch lock on \(host.sshTarget) belongs to an earlier dispatch of yours"
                             + " from this Mac that is no longer running here, so it was not released:"
@@ -618,7 +620,7 @@ struct RemoteRunDispatcher {
             guard let limitSeconds = waitLock else {
                 dequeueTicket(layout: layout, ticket: ticket)
                 throw RemoteDispatchError.remoteSetupFailed(
-                    status.refusalMessage)
+                    status.refused())
             }
             // **ログと NDJSON イベントは同じ式で出す**(判断を2つ持たない ―― 片方だけ刻みが
             // 変わると端末と拡張で見える回数が食い違う)。shouldLogProgress は elapsed == 0 でも
@@ -639,7 +641,7 @@ struct RemoteRunDispatcher {
                                          limitSeconds: limitSeconds) == .retry else {
                 dequeueTicket(layout: layout, ticket: ticket)
                 throw RemoteDispatchError.remoteSetupFailed(
-                    status.refusalMessage)
+                    status.refused())
             }
             Thread.sleep(forTimeInterval: Double(WaitLockPolling.pollIntervalSeconds))
             elapsed += WaitLockPolling.pollIntervalSeconds

@@ -398,12 +398,11 @@ extension MCPServer {
         // **照会が前面と答えても、こちらが送った事実は消えない**(実機で実際にそうなった。
         // `backgroundedByNavigate` の doc)。照会が既に言えているときは重ねない
         if backgroundNote.isEmpty, backgroundedByNavigate.contains(Self.engineKey(args)) {
-            let launched = launchedBundleIDs[Self.engineKey(args)]
-            backgroundNote = Self.sentToBackgroundNote(
-                launched ?? snapshot.sessionBundleID,
-                treeIsAppsOwn: snapshot.sessionBundleID != nil
-                    && snapshot.sessionBundleID != "com.apple.springboard"
-                    && (launched == nil || snapshot.sessionBundleID == launched))
+            let decision = Self.navigatedAwayNote(launched: launchedBundleIDs[Self.engineKey(args)],
+                                                  treeSession: snapshot.sessionBundleID,
+                                                  isAndroid: driver is AndroidDriver)
+            if decision.appIsBack { backgroundedByNavigate.remove(Self.engineKey(args)) }
+            backgroundNote = decision.note
         }
         // **すり替わりを先頭に置く**: これが起きているとき、以下の一覧は丸ごと別アプリのもので、
         // ghost 注記も scrollFrame 候補も読む意味が無い

@@ -46,7 +46,7 @@ final class RuntimeCommandsTests: XCTestCase {
         XCTAssertEqual(
             AppleContainerCommands.containerRun(launch: l, image: "img:1", envFile: "/env", hostsFile: "/h/hosts", detached: true),
             ["run", "-d", "--name", "p-api", "--network", "p", "-p", "127.0.0.1:18080:80",
-             "-v", "/real:/m:ro", "-v", "p-data:/d", "-v", "/h/hosts:/etc/hosts", "--env-file", "/env",
+             "-v", "/real:/m:ro", "-v", "p-data:/d", "-v", "/h/hosts:/etc/hosts", "--dns", "127.0.0.1", "--env-file", "/env",
              "--label", "a=1", "--label", "b=2", "-m", "512m", "-c", "1", "--init",
              "--user", "1000", "-w", "/w", "--platform", "linux/arm64", "--tmpfs", "/tmp",
              "--entrypoint", "/bin/app", "img:1", "--e", "serve", "--x"])
@@ -62,6 +62,7 @@ final class RuntimeCommandsTests: XCTestCase {
         let apple = AppleContainerCommands.containerRun(launch: launch(), image: "img:1", envFile: "/env", hostsFile: "/h/hosts", detached: false)
         XCTAssertEqual(Array(apple.prefix(3)), ["run", "--name", "p-api"])
         XCTAssertFalse(apple.contains("-d"))
+        XCTAssertFalse(docker.contains("--dns"), "Docker はサービス名を内蔵 DNS(--network-alias)で引くので DNS を差し替えない")
     }
 
     func testNetworkVolumeAndLifecycleCommands() {

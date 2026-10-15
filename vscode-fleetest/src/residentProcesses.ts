@@ -79,7 +79,7 @@ export interface ParseResidentOptions {
   readonly simulatorNames?: Record<string, string>;
   /** fleetest のビルド成果物ディレクトリ(絶対パス、例 .../.build/debug)。この配下の実行ファイルは
    *  名前を問わず fleetest 由来として拾う(新規追加バイナリのもれ防止)。monitorPanel が config から渡す。 */
-  readonly binaryDir?: string;
+  readonly binaryDir?: string | readonly string[];
   /** in-app ブリッジの UDID(大文字)→ ポート。`.fleetest/bridge-<port>.inapp`(ファイル名=ポート、
    *  1行目先頭=UDID)から作る。この UDID のシミュレータ内で走る注入アプリ本体を inapp-bridge 種別で
    *  拾い、ポートもここから解決する。 */
@@ -177,7 +177,7 @@ function remoteExecMachine(command: string): string {
  *  opts.binaryDir を渡すと、その配下の実行ファイルを名前を問わず fleetest 由来として拾う。 */
 export function classifyResident(
   command: string,
-  opts: { binaryDir?: string; inappBridges?: ReadonlyMap<string, string> } = {},
+  opts: { binaryDir?: string | readonly string[]; inappBridges?: ReadonlyMap<string, string> } = {},
 ): { type: ResidentType; detail: string } | null {
   const cmd = command.trim();
   if (!cmd) {
@@ -254,9 +254,11 @@ export function classifyResident(
 
   // 6. フォールバック: リポジトリのビルド成果物ディレクトリ配下の実行ファイルは、名前を問わず
   //    fleetest 由来として拾う(この repo から新規追加されたバイナリのもれ防止)。
-  if (opts.binaryDir) {
+  // 置き場は複数ありうる(実体と、リンクを経た設定上の置き場。binaryPathResolve.binaryDirs)
+  const binaryDirs = typeof opts.binaryDir === "string" ? [opts.binaryDir] : (opts.binaryDir ?? []);
+  for (const raw of binaryDirs) {
     const exe = cmd.split(/\s+/)[0] ?? "";
-    const dir = opts.binaryDir.replace(/\/+$/, "");
+    const dir = raw.replace(/\/+$/, "");
     if (dir && (exe === dir || exe.startsWith(`${dir}/`))) {
       return { type: "fleetest", detail: exe.split("/").pop() ?? "" };
     }

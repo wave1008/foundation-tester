@@ -155,7 +155,9 @@ public enum WebViewDOM {
               next = cursor.nextElementSibling;
               cursor = cursor.parentElement;
             }
-            if (!next) break;
+            // 後ろに兄弟が無い = 文書を歩き終えた。el を残すと末尾の truncated が「打ち切った」と嘘を言う
+            // (<script> で終わるページは全部これ)
+            if (!next) { el = null; break; }
             walker.currentNode = next;
             el = next;
             continue;
@@ -181,7 +183,7 @@ public enum WebViewDOM {
                 after = up.nextElementSibling;
                 up = up.parentElement;
               }
-              if (!after) break;
+              if (!after) { el = null; break; }   // 歩き終えた(上の skipSubtree と同じ)
               walker.currentNode = after;
               el = after;
               continue;

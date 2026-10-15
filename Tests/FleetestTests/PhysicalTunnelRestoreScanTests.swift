@@ -52,6 +52,10 @@ final class PhysicalTunnelRestoreScanTests: XCTestCase {
                           "the foreign-lease gate refuses before the (non-destructive) tunnel restore is tried")
         XCTAssertLessThan(restore.lowerBound, start.lowerBound,
                           "startDetached (which stops the runner on the same port) runs before the tunnel restore")
+        // ランナーの確認は排他を取った後(Codex 再レビュー)
+        guard let acquire = launch.range(of: "await tunnelLock.acquire()"),
+              let runnerCheck = launch.range(of: "runnersOnDevice(") else { return XCTFail("tunnel lock / runner check not found") }
+        XCTAssertLessThan(acquire.lowerBound, runnerCheck.lowerBound)
     }
 
     /// 張り直しは establish を呼ばない(launcher.bridgeToken で .endpoint を上書きすると、生きたランナーへ
@@ -72,5 +76,36 @@ final class PhysicalTunnelRestoreScanTests: XCTestCase {
             XCTAssertNotNil(try source(path).range(of: "RegionText.readerIsAlive()"),
                             "\(path) does not probe OCR with RegionText.readerIsAlive()")
         }
+    }
+
+    /// MCP の udid の宛先解決も、「居ない」と言う前に張り直しを試す(実機・何も待ち受けていないときだけ)。
+    /// 無いと生きたランナーに「no running bridge・bridge up しろ」と言い続ける(2026-10-15 の負荷テスト)
+    func testMCPRestoresTheTunnelBeforeSayingNoBridge() throws {
+        let text = try source("Sources/fleetest-mcp/MCPServer+Driver.swift")
+        let resolve = try body(of: text, from: "static func portForIOS(", to: "static func nothingListensFor(")
+        guard let restore = resolve.range(of: "restoreMissingPhysicalTunnel(udid: udid)"),
+              let last = resolve.range(of: "udidPorts: udidPorts, diagnosis: diagnosis)", options: .backwards) else {
+            return XCTFail("portForIOS no longer tries restoreMissingPhysicalTunnel before the no-bridge message")
+        }
+        XCTAssertLessThan(restore.lowerBound, last.lowerBound)
+        XCTAssertNotNil(resolve.range(of: "diagnosis.lookup == .physical"), "the restore is not limited to physical devices")
+        let helper = try body(of: text, from: "static func restoreMissingPhysicalTunnel(",
+                              to: "static func classifyAnsweredPorts(")
+        XCTAssertNotNil(helper.range(of: "restoreMissingTunnel("))
+        XCTAssertNotNil(helper.range(of: "try ProvisionLock("), "the restore runs without the provisioning lock when it cannot be opened")
+        // 排他は張り直しが終わるまで握る(予算で先に返すと、張り直しの途中で排他を手放す = Codex レビュー)
+        guard let restoreCall = helper.range(of: "restoreMissingTunnel("),
+              let release = helper.range(of: "lock.release()") else { return XCTFail("restore or release not found") }
+        XCTAssertLessThan(restoreCall.lowerBound, release.lowerBound)
+        XCTAssertNotNil(helper.range(of: "runOffCooperativePool("), "the restore must be awaited to completion, not budgeted")
+        XCTAssertNil(helper.range(of: "budgeted(Self.udidBridgeDiagnosisBudget, fallback: false)"), "a budget lets the lock go before the restore ends")
+        // 接続方式は起動した側の記録から(devicectl の照会の失敗を「USB ではない」に畳まない)
+        XCTAssertNotNil(helper.range(of: "BridgeEndpoint.recorded("))
+        // 宛先(ランナーのポート・記録)は排他を取った後に確かめる(待つ間に別の実機へ割り当て直される = Codex 再レビュー)
+        guard let acquire = helper.range(of: "await lock.acquire()"),
+              let runnerCheck = helper.range(of: "runnersOnDevice("),
+              let recordCheck = helper.range(of: "BridgeEndpoint.recorded(") else { return XCTFail("lock / checks not found") }
+        XCTAssertLessThan(acquire.lowerBound, runnerCheck.lowerBound)
+        XCTAssertLessThan(acquire.lowerBound, recordCheck.lowerBound)
     }
 }

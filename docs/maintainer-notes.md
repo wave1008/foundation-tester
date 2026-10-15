@@ -4342,3 +4342,98 @@ M2Ultra・M1Ultra の両方で起きた。
 - E2E 中のシミュレータのデーモン(`intelligencetasksd` 等)のクラッシュは XPC の権利検査の assert で、FM・ANE とは無関係
   (ANE に繋いだプロセスは名前の取れた全部が fleetest のプロセスだった)
 - `FT_OCCLUSION_OCR=off` が切るのはテキストの可視性検証の OCR の段だけ。findImage・分類器・打鍵の読み返しは Vision を使い続ける
+
+## 82. 10/15 の3時間負荷テスト(2026-10-15 06:40〜09:40)
+
+手元の Simulator 8 台・Emulator 6 台のフリート run(手元だけ = `--runner local`)+ ファズ用 Simulator 2 台(sim-09 = MCP・sim-10 = ライブ操作)・
+Emulator 1 台(emulator-5570 = MCP とライブ操作)+ 実機 3 台(SE3・Pixel 4a・Pixel 3a = MCP)+ サービス付きの sut-ec-mobile と
+`services up/down/reset` の並走。この Mac は開始時点で OCR が死に、Vision の特徴量・CMP の iOS の文字の描画・配信下の Emulator も
+劣化していた(§75.5・§78 と同じ状態)= フリートの赤の大半はこれ。
+
+### 82.1 MCP(Android): home の後に別のアプリを開くと「木は画面ではない」と誤って言い続けた
+`sentToBackgroundNote` を iOS の前提(XCUITest のセッションは背面化してもアプリに付いたまま)で Android にも組んでいた。Android の木は
+常に前面の窓なので、ランチャーから開いた Maps の木に「still Maps's own tree, NOT what is on screen」と言い、launch の記録が消えた後
+(terminate / clearAppData)は前面のパッケージを「戻すべきアプリ」と名指しした。launch したアプリがランチャーから前面へ戻っても注記が
+消えなかった。判定は `MCPServer.navigatedAwayNote`(Android は木 = 前面・戻っていれば記録を消す・iOS は従来どおり)
+
+### 82.2 サービス(Apple ランタイム): hosts に無い名前の解決が毎回 10〜20 秒の時間切れ
+`--internal` のネットワークの resolv.conf はゲートウェイを指すが誰も答えない。sut-ec-mobile の server(Ktor)のレート制限のキー
+`origin.remoteHost` が呼び手(ゲートウェイ)を逆引きし、ログイン・サインアップが毎回 10 秒 → シナリオの 5 秒待ちで赤。
+`container run --dns 127.0.0.1` で即座に失敗させる(実測: 逆引き 10,030ms → 4ms・ログイン 10.19 秒 → 0.01 秒・サービス名は hosts で 5ms)。
+`--no-dns` は 1.1.1.1 を指して 20〜40 秒待つ(不採用)。docs/remote-runner.md §17 の表を更新
+
+### 82.3 services の状態による拒否が「使い方の誤り」(終了コード 64・--help を見よ)だった
+run 中の `services reset --force`・所有者が生きている `reset` 等を `ValidationError` で投げていた。`ServicesRefused`(終了コード 1・文言だけ)へ。
+同型は `vision capture` の3件(画面が一色・要素が無い・切り抜けない)。run / api run の `message` 系は引数の組み合わせの検査で正しい
+
+### 82.4 WebView の DOM 走査が、歩き終えたのに「打ち切った」と申告していた(ブリッジ v182)
+JS の走査は文書の末尾が隠れた要素(`<script>` = display:none)か畳んだテキスト塊だと `break` で抜け、`el` が残って
+`truncated: el !== null` が true になる。**`<script>` で終わるページはほぼ全部**。ホストは `truncatedCount` に +1 し、MCP は「1 要素が上限で
+落ちた・maxElements: 120 で読み直せ」(実際は 21 行・天井 400 で読んでいた)、DSL は不在・件数の検証で「切り詰めた木では結論しない」の
+赤になりうる・不在のたびに天井で読み直す。既存のシナリオは WebView 画面で不在・件数を検証していないので表に出なかった。
+in-app が同じ JS を埋め込むので版上げ。JSC の検査に末尾2形と対照(本当に 400 で打ち切る)
+
+### 82.5 MCP: 実機のトンネル(iproxy)だけが消えると「no running bridge・bridge up しろ」と言い続けた
+§78.1 の張り直しは供給の引き取りとライブ操作の自動起動にだけ入り、MCP の udid の宛先解決には無かった(出口を片方にだけ配線する型 §45)。
+`portForIOS` は「居ない」と言う直前に、診断が完走して何も待ち受けておらず実機なら、その実機のランナーのポートのトンネルだけ張り直して
+本人確認する(`ProvisionLock` の内側。ランナーは止めない)。診断が予算切れの回は張り直さない(負荷下の1回目はそうなった)。
+陽性対照: SE3 の iproxy を kill した状態で「re-established」→ ランナーは pid のまま答えた
+
+### 82.6 NUL を含む文字列で fleetest-mcp が abort した
+`ft_open_url` の url `"\u0000"`(Android)が adb の引数へ流れ、`Process` が引数の NUL を ObjC 例外(`fileSystemRepresentation`)で
+投げて abort した(SIGABRT・MCP サーバごと落ちる)。`Shell.runRaw` の入口で `ShellError.argumentContainsNUL` を投げ、MCP の入口でも
+宣言した欄(配列の要素も)の NUL を断る(`ft_services` / `ft_start_run` は `Process` を直に起こす)。ライブ操作(Android)は
+install / launch / type の NUL で落ちないことを実物で確かめた
+
+### 82.7 ft_start_run が待機列に並べなかった(waitLockSeconds)
+別の run が手元を握っていると `ft_start_run` の run は即座に終わり、ログは CLI の「`--wait-lock` を渡せ」と案内したが、MCP にその引数が
+無かった(エージェントが実行できない出口)。`waitLockSeconds` を足して `--wait-lock` へ渡す(既定は従来どおり待たない)。`ft_run_status` は
+この失敗のとき MCP の引数名で案内する —— 判定は拒否の文を組み立てる側(`RemoteDispatchLock.heldMessage`)と同じ定数
+(`FTCore.DispatchLockWording`)を共有する(文言の一致に頼らない)。実物: 待たない形は案内が出て、付けた形は並んでから走り 1/1 緑
+
+### 82.8 `.build/debug` のリンクの作り直しの間、fleetest の起動が ENOENT になった
+SwiftPM はビルドのたびに `.build/debug`(→ `out/Products/Debug`)のリンクを消して作り直し、その間(実測 5.5 分で 8 回・各約 0.8ms・最大 7ms)
+リンク経由のパスは解決できない。run はシナリオの製品を毎回ビルドするので、拡張(binaryPath の既定 = `.build/debug/fleetest`)と fleetest 内部の
+子の起動(`Bundle.main.executableURL` はリンク経由で起動されるとリンクのパスのまま = 実測)が確率的に当たる(CLI ファズが1回踏んだ)。
+**子は実体のパスで起こす**: `FTCore.ExecutablePath`(実体へ解決できた値だけを使い回す・解決できなければ元のパス)。シナリオ実行バイナリ・Vision / FM の
+常駐・サービスの所有者・自分自身の再起動・スクリプトへ渡す中継コマンドの置き場。拡張は `resolveBinaryPath` で実体へ解決し、fleetest 由来の
+プロセスの見分け(「全て終了」の対象・名前で拾えない物の受け皿)は実体とリンクの両方の置き場を受ける(`binaryDirs`)。
+同一性の照合(FM の常駐の照合は印で比べ直す)・場所探し・サンドボックスの枠は触っていない(`ExecutablePathTests` の許可表)。
+実物: シナリオ実行バイナリが `.build/out/Products/Debug/...` で起動し、Seatbelt の中の run-setup.sh が中継コマンドを見つけて緑
+
+### 82.9 Codex レビューの反映(7件)
+- X5: 張り直しを予算つきで待つと、張り直しの途中で `ProvisionLock` を手放していた → 張り直しは終わるまで待ち、排他は握ったまま。
+  排他が作れなければ張り直さない(ライブ操作の張り直しも同じ。**ブリッジを起動する3か所の「排他が取れなくても進む」は理由つきの既存の判断なので据え置き**)。
+  接続方式は devicectl に聞き直さず、起動した側の記録(`BridgeEndpoint.recorded` のループバック = USB)から決める(照会の失敗を「USB ではない」に畳まない)
+- X6: `Process` を直に起こす経路(compose の初期化サービスの `runLong`・gateway の `execute`)にも NUL の拒否が要った → `FTCore.ProcessArguments`
+  を `Shell.runRaw` と共有
+- Y2(FM): リンク経由で名乗る常駐プロセスは、リンクの作り直しの瞬間に呼び手が印を読めず「古い」と判断されて止められうる → 常駐プロセスは実体のパスを
+  名乗り、印が読めない(空)回は止めずに版だけで決める
+- Y2(拡張): リンクが消えた瞬間に `resolveBinaryPath` が覚えた実体を使わず PATH の別の fleetest へ切り替わった → 覚えた実体を先に使う
+- Y1: ログの文言で判定していた(先に並んでいる人がいるだけの拒否は共有した句を含まず、案内が出なかった)→ 子が拒否の理由を
+  `DispatchRefusalReport`(環境変数で渡した置き場への JSON)へ書き、MCP はそれを読む。書くのは `DispatchWaitStatus.refused()` の1箇所
+  (手元・リモートの4経路。`DispatchRefusalReportTests`)。終了コードは変えない(拡張など他の呼び手に影響しない)
+- **再レビュー(4件)**: ①張り直しの宛先(ランナーのポート・記録)は排他を取った後に確かめる(待つ間に別の実機へ割り当て直されると、
+  別の実機の正常なトンネルを止めて張り替える。ライブ操作も同じ)②`BridgeEndpoint.recorded` は1回読んだ中身だけを解釈する(読み直すと、
+  その間に消えた記録が `load` の既定 = ループバック = USB に化ける。`load` は `recorded ?? 既定`)③状態を作らずに断るリモートの経路
+  (以前のディスパッチ元は居ないが向こうの run は生きている)も記録を書く ④**記録の意味を「起こされたプロセス自身が拒否で終わった」に揃えた** ——
+  機械分担の親が拒否を捕まえて続けるときは消す(`DispatchPrelock`)・fleetest が起こす子へは置き場を渡さない(`ParentDeathWatch.childEnvironment`)。
+  MCP は記録があれば時刻だけの照合(pid の無い run.json を同じ project / profile と時刻で拾う)をしない(別の run の合否を出していた)
+- **3回目(1件)**: シナリオ実行バイナリへ置き場が渡り、しかも書けた(`ScenarioHost.childEnvironment` は `ParentDeathWatch` を通らず、
+  サンドボックスの許可リストは `FT_` を通し、`.fleetest/mcp-runs` は書ける場所の中)= シナリオが記録を置くと緑の run が「始まらなかった」に化ける →
+  `ScenarioHost.childEnvironment` と許可リスト(`ScenarioSandbox.parentOnlyEnvironmentKeys`)で外し、`mcp-runs/` を `writeDeniedPaths` へ。
+  同型の掃討: `ParentDeathWatch` を通らない fleetest の常駐3種(services の所有者・FM の常駐・背景の掃除)も外す(今は拒否を書かない子だが約束④の穴)
+- 残す制約: `ExecutablePath.current` の最初の解決がリンクの作り直しの瞬間に当たった回の起動は落ちうる(解決できるまで毎回解決し直す)。
+  旧い実体が残ったまま置き場が変わる配置変更は検出しない
+
+### 82.10 記録だけの観察(直していない)
+- テキストの可視性検証の FM の段が、読める文字(Flutter・Android の WebView の `wv_result=-`)に空の転写を返し、OCR は死んで判定不能
+  → notRendered の誤った赤(切り抜き 50 枚中 1。残りは本当に描かれていない CMP iOS の白紙・古い絵)
+- run 前の凍結の判定が CMP iOS の白紙描画を 7 台拾って起こし直した(14 分)。判定は正しいが、この劣化には効かない
+- `ft_services` は `swift run` 経由なので中央値 15〜30 秒・最大 93 秒で、応答にビルドの進捗が混ざる(隣の fleetest が古いことがある設計)
+- 同時2本の `services up` で負けた所有者が同じログを O_TRUNC で開く(→ open-issues)
+- ランナーを kill した sim-09 は、MCP は「no running bridge」のまま・約 2 分後に拡張の watchdog が戻した(設計どおり)
+- 手動の障害注入: サービス付き run への SIGTERM(サービス停止・コンテナ残りなし・印とロック解放)/ services-owner の kill -9(status が孤児・
+  down が回収)/ 印のある端末への `bridge down`(MCP の印・run の印とも断る)はいずれも正常
+- **ハーネス側の誤り**: `id: null` の -32700 を読み捨てて HANG と記録した・CLI ファズの cwd・プロファイルがリモート機へ配った(`--runner local`)・
+  全シナリオが @Draft のクラスを名指しした

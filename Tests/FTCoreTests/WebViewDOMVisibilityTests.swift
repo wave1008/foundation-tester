@@ -178,6 +178,46 @@ final class WebViewDOMVisibilityTests: XCTestCase {
         XCTAssertNotNil(node(payload, id: "wv_visible"))
     }
 
+    // MARK: - 打ち切りの申告
+
+    /// **文書の末尾が隠れた要素(`<script>` = display:none)なら歩き終えている**。break で抜けて el が残ると
+    /// truncated: true を申告し、ホストは「1 要素が上限で落ちた」と言い、notExist は不在を結論できず赤になった
+    func testDocumentEndingInAHiddenElementIsNotTruncated() throws {
+        let payload = try scan(body: """
+        { tag: "body", rect: { left: 0, top: 0, width: 402, height: 650 }, children: [
+          { tag: "button", id: "wv_visible", text: "見えている", rect: { left: 16, top: 30, width: 97, height: 44 } },
+          { tag: "script", display: "none", rect: { left: 0, top: 0, width: 0, height: 0 } }
+        ] }
+        """)
+        XCTAssertNotNil(node(payload, id: "wv_visible"))
+        XCTAssertEqual(payload.truncated, false)
+    }
+
+    /// 末尾が畳んだテキスト塊でも同じ(もう一つの break)
+    func testDocumentEndingInATextBlockIsNotTruncated() throws {
+        let payload = try scan(body: """
+        { tag: "body", rect: { left: 0, top: 0, width: 402, height: 650 }, children: [
+          { tag: "p", id: "msg", text: "Hello ", rect: { left: 16, top: 40, width: 200, height: 20 },
+            children: [ { tag: "b", text: "world", display: "inline",
+                          rect: { left: 60, top: 40, width: 40, height: 20 } } ] }
+        ] }
+        """)
+        XCTAssertNotNil(node(payload, id: "msg"))
+        XCTAssertEqual(payload.truncated, false)
+    }
+
+    /// 対照: 上限(400)で本当に打ち切ったときは申告する
+    func testHittingTheNodeCapIsTruncated() throws {
+        let buttons = (0..<401).map { i in
+            "{ tag: \"button\", id: \"b\(i)\", text: \"b\(i)\", rect: { left: \(i % 40 * 10), top: \(i / 40 * 12), width: 8, height: 8 } }"
+        }.joined(separator: ",\n")
+        let payload = try scan(body: """
+        { tag: "body", rect: { left: 0, top: 0, width: 402, height: 650 }, children: [ \(buttons) ] }
+        """)
+        XCTAssertEqual(payload.nodes?.count, 400)
+        XCTAssertEqual(payload.truncated, true)
+    }
+
     // MARK: - stub
 
     /// JS が実際に触る DOM API だけの最小実装。**本番 JS は1行も持たない**

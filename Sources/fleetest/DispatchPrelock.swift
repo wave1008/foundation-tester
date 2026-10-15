@@ -120,6 +120,8 @@ final class DispatchPrelock {
                 markers[machine.machine] = marker
                 labelsByHost[machine.host, default: []].insert(machine.machine)
             } catch {
+                // 拒否の記録を取り消す: ここは捕まえて残りの機械で続けるので、このプロセスは拒否で終わらない(DispatchRefusalReport)
+                DispatchRefusalReport.clear()
                 if abortIfInterrupted() { return false }
                 // 理由は子が改めて取りに行くときに出す(同じ拒否文言を2回書かない)。
                 // **子は待たない**(`--wait-lock` は親だけが使う)ので「待機列に並ぶ」とは言わない ——

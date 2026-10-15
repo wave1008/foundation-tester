@@ -48,9 +48,15 @@ extension RuntimeCLI {
     func runLong(_ args: [String], label: String, interrupt: RunInterruptState?,
                  stallThreshold: Double = RunHookStall.silentWarningSeconds,
                  log: (String) -> Void) -> LongResult {
+        let command = argv(args)
+        if let index = ProcessArguments.firstNULIndex(command) {   // compose の command 等から届く(起こすと親ごと abort)
+            let reason = ProcessArguments.nulRefusal(index: index)
+            log("⚠️ services: refusing to start \(label): \(reason)")
+            return LongResult(status: 126, tail: [reason])
+        }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = argv(args)
+        process.arguments = command
         process.standardInput = FileHandle.nullDevice  // 対話しない
         let pipe = Pipe()
         process.standardOutput = pipe

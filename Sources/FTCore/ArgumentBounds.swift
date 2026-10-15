@@ -64,6 +64,8 @@ public enum ArgumentBounds {
                               max: Double(BridgeAPI.waitForSettleQuietRangeMs.upperBound) / 1000),
         // ft_run_status / ft_stop_run の pid(Int32 に収まる正の整数)
         "pid": Bound(min: 1, max: Double(Int32.max)),
+        // ft_start_run の待機列で待つ上限(秒)。`fleetest run --wait-lock` へそのまま渡す
+        "waitLockSeconds": Bound(min: 1),
         "repeat": Bound(min: 1),
         // ft_results の行数・最小標本数
         "limit": Bound(min: 1),

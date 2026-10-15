@@ -71,16 +71,24 @@ public struct BridgeEndpoint: Sendable, Hashable, Codable {
     /// `URL(string:)!` が強制開封でクラッシュし、そのポートを開く全プロセスが道連れになった実績があるため)。
     /// token は host が妥当なときだけ読む —— 1行目が壊れているファイルは2行目も含めて信用しない
     public static func load(port: UInt16, repoRoot: URL) -> BridgeEndpoint {
-        guard let raw = try? String(contentsOf: fileURL(port: port, repoRoot: repoRoot),
-                                    encoding: .utf8) else {
-            return BridgeEndpoint(port: port)
-        }
+        recorded(port: port, repoRoot: repoRoot) ?? BridgeEndpoint(port: port)
+    }
+
+    /// 記録があるときだけ返す(`load` は記録が無いときもループバックを補うので、「記録無し」と「USB のトンネル」を区別できない)。
+    /// 実機の接続方式を起動した側の記録から決めるのに使う(ループバック = USB の iproxy)。**1回読んだ中身だけを解釈する**
+    /// (読み直すと、その間に消えた・壊れた記録が `load` の既定 = ループバックに化ける)
+    public static func recorded(port: UInt16, repoRoot: URL) -> BridgeEndpoint? {
+        guard let raw = try? String(contentsOf: fileURL(port: port, repoRoot: repoRoot), encoding: .utf8) else { return nil }
+        return parse(raw, port: port)
+    }
+
+    /// 記録の中身の解釈(純粋)。host が使えなければ nil(壊れた1行目なら2行目も信用しない)
+    static func parse(_ raw: String, port: UInt16) -> BridgeEndpoint? {
         let lines = raw.components(separatedBy: "\n")
         let host = lines[0].trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isUsableHost(host) else { return BridgeEndpoint(port: port) }
+        guard isUsableHost(host) else { return nil }
         let token = lines.count > 1 ? lines[1].trimmingCharacters(in: .whitespacesAndNewlines) : nil
-        return BridgeEndpoint(host: host, port: port,
-                              token: (token?.isEmpty ?? true) ? nil : token)
+        return BridgeEndpoint(host: host, port: port, token: (token?.isEmpty ?? true) ? nil : token)
     }
 
     /// 「この文字列で `http://<host>:<port>` の URL が作れるか」。空/空白のみ・制御文字や

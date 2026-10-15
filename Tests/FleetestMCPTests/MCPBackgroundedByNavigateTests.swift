@@ -34,12 +34,40 @@ final class MCPBackgroundedByNavigateTests: XCTestCase {
         XCTAssertTrue(MCPServer.sentToBackgroundNote(nil, treeIsAppsOwn: false).contains("ft_launch"))
     }
 
-    /// 配線: 木の sessionBundleID が launch したアプリのままなら treeIsAppsOwn、springboard なら false
-    func testSnapshotBodyPassesWhoseTreeItIs() throws {
-        let source = try MCPServerSourceText.combined()
-        XCTAssertTrue(compact(source).contains(compact(
-            "treeIsAppsOwn: snapshot.sessionBundleID != nil && snapshot.sessionBundleID != \"com.apple.springboard\" && (launched == nil || snapshot.sessionBundleID == launched)")),
-                      "snapshotBody が木の持ち主を渡していない")
+    /// iOS: 木の sessionBundleID が launch したアプリのままなら「アプリ自身の木」、springboard なら「今の画面」。
+    /// 記録は ft_launch でだけ消す(木がアプリのままでも前面とは限らない)
+    func testIOSSaysWhoseTreeItIsAndNeverClearsTheRecord() {
+        let own = MCPServer.navigatedAwayNote(launched: "com.ftester.e2e.ios", treeSession: "com.ftester.e2e.ios", isAndroid: false)
+        XCTAssertTrue(own.note.contains("still com.ftester.e2e.ios's own tree"), own.note)
+        XCTAssertFalse(own.appIsBack)
+        let board = MCPServer.navigatedAwayNote(launched: "com.ftester.e2e.ios", treeSession: "com.apple.springboard", isAndroid: false)
+        XCTAssertTrue(board.note.contains("whatever is actually on screen now"), board.note)
+        XCTAssertFalse(board.appIsBack)
+    }
+
+    /// Android: 木は常に前面の窓。launch したアプリが前面に戻っていれば黙って記録を消す
+    /// (2026-10-15: ランチャーから開いた Maps の木を「画面ではない」と言い、Maps を戻すべきアプリと名指しした)
+    func testAndroidTreeIsAlwaysTheForegroundWindow() {
+        let back = MCPServer.navigatedAwayNote(launched: "com.ftester.e2e.android", treeSession: "com.ftester.e2e.android", isAndroid: true)
+        XCTAssertEqual(back.note, "")
+        XCTAssertTrue(back.appIsBack)
+        let other = MCPServer.navigatedAwayNote(launched: "com.ftester.e2e.android", treeSession: "com.google.android.apps.maps", isAndroid: true)
+        XCTAssertTrue(other.note.contains("whatever is actually on screen now"), other.note)
+        XCTAssertFalse(other.note.contains("own tree"), other.note)
+        XCTAssertTrue(other.note.contains("com.ftester.e2e.android"), other.note)
+        XCTAssertFalse(other.appIsBack)
+        // launch の記録が無い(terminate / clearAppData の後)ときに前面のパッケージを名指ししない
+        let unknown = MCPServer.navigatedAwayNote(launched: nil, treeSession: "com.google.android.apps.maps", isAndroid: true)
+        XCTAssertFalse(unknown.note.contains("com.google.android.apps.maps"), unknown.note)
+        XCTAssertFalse(unknown.appIsBack)
+    }
+
+    /// 配線: snapshotBody が判定に OS を渡し、戻っていれば記録を消す
+    func testSnapshotBodyWiresTheDecision() throws {
+        let source = compact(try MCPServerSourceText.combined())
+        XCTAssertTrue(source.contains(compact("isAndroid: driver is AndroidDriver)")), "snapshotBody が OS を渡していない")
+        XCTAssertTrue(source.contains(compact("if decision.appIsBack { backgroundedByNavigate.remove(Self.engineKey(args)) }")),
+                      "snapshotBody が戻ったときに記録を消していない")
     }
 
     // MARK: - 配線(ソース走査)

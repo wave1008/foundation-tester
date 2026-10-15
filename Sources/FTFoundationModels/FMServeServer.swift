@@ -70,7 +70,8 @@ public enum FMServeServer {
     /// 終わるまで戻らない。戻り値 = 終了コード
     public static func run(socketPath: String, shouldStop: @escaping @Sendable () -> Bool,
                            log: @escaping @Sendable (String) -> Void) -> Int32 {
-        let executable = Bundle.main.executableURL?.path ?? ""
+        // 実体のパスを名乗る(リンク経由のパスだと、リンクの作り直しの瞬間に呼び手が印を読めない = ExecutablePath)
+        let executable = ExecutablePath.current?.path ?? ""
         let stamp = FMServeWire.buildStamp(executable: executable)
         log("serving \(socketPath) (protocol \(FMServeWire.protocolVersion), \(executable) \(stamp))")
         warmSpare()

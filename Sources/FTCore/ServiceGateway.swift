@@ -227,6 +227,12 @@ public final class ServiceGatewayServer: @unchecked Sendable {
 
     private func execute(_ command: [String], stdin wantsStdin: Bool,
                          channel: GatewayChannel, reader: GatewayLineReader) {
+        // スクリプトの要求から届く引数(起こすと gateway を抱える親の run ごと abort する)
+        if let index = ProcessArguments.firstNULIndex(command) {
+            channel.send(["e": Data("refused: \(ProcessArguments.nulRefusal(index: index))\n".utf8).base64EncodedString()])
+            channel.send(["status": Int(ServiceGatewayWire.refusedStatus)])
+            return
+        }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = command

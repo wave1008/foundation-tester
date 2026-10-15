@@ -22,6 +22,13 @@ final class ScenarioHostChildEnvironmentTests: XCTestCase {
                        "解決できているのに子の環境へ載っていない(FTCoreSimShim が毎回 xcode-select を spawn する)")
     }
 
+    /// 拒否の記録の置き場はシナリオへ渡さない(サンドボックスを外したマシンでもここを通る)
+    func testChildEnvironmentDropsTheRefusalReportPath() {
+        let env = ScenarioHost.childEnvironment(base: [DispatchRefusalReport.environmentKey: "/r.json", "KEEP": "1"])
+        XCTAssertNil(env[DispatchRefusalReport.environmentKey])
+        XCTAssertEqual(env["KEEP"], "1")
+    }
+
     /// 親が明示指定していればそれを尊重する(別 Xcode を指したい検証を壊さない)
     func testChildEnvironmentInheritsTheRestOfTheParentEnvironment() {
         let parent = ProcessInfo.processInfo.environment

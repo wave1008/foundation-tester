@@ -35,13 +35,30 @@ public enum ProcessExitWait {
 /// **LocalizedError も名乗る** —— 名乗らないと `error.localizedDescription` が
 /// 「The operation couldn’t be completed. (FTCore.ShellError error 0.)」になり、どのコマンドが
 /// 何秒で切られたかが呼び手のログから消える
+/// `Process` の引数の検査。**NUL を含む引数は `Process` が ObjC 例外(`fileSystemRepresentation`)で abort させる** = 起こした側の
+/// プロセスごと落ちる(Swift の catch では拾えない)。`Process` を起こす直前に必ず通す(`Shell.runRaw`・services の長い CLI・gateway)
+public enum ProcessArguments {
+    public static func firstNULIndex(_ args: [String]) -> Int? {
+        args.firstIndex(where: { $0.contains("\u{0}") })
+    }
+
+    public static func nulRefusal(index: Int) -> String {
+        "argument #\(index) contains a NUL character (\\u0000): a process argument cannot carry it"
+    }
+}
+
 public enum ShellError: Error, CustomStringConvertible, LocalizedError {
     /// timeout 指定付き run で期限超過し子を kill した(wedge した adb/simctl 等)。
     case timedOut(args: [String], seconds: Double)
+    /// 引数に NUL がある。`Process` はそれを ObjC 例外(`fileSystemRepresentation`)で abort させる = 呼び手のプロセスごと落ちる
+    case argumentContainsNUL(index: Int)
     public var description: String {
         switch self {
         case let .timedOut(args, seconds):
             return "the command timed out after \(seconds)s (killed): \(args.joined(separator: " "))"
+        case let .argumentContainsNUL(index):
+            return "refusing to run a command whose argument #\(index) contains a NUL character (\\u0000):"
+                + " a process argument cannot carry it"
         }
     }
     public var errorDescription: String? { description }
@@ -135,6 +152,9 @@ public enum Shell {
     static func runRaw(_ args: [String], cwd: URL? = nil,
                        mergeStderr: Bool = true, timeout: Double? = nil,
                        stdin: Data? = nil) throws -> (Int32, Data) {
+        if let index = ProcessArguments.firstNULIndex(args) {
+            throw ShellError.argumentContainsNUL(index: index)
+        }
         // サンドボックスの中では simctl を親へ頼む(`SandboxGateway`。枠の外では素通し)
         if let forwarded = SandboxGateway.intercept(args, timeout: timeout, stdin: stdin) {
             return forwarded

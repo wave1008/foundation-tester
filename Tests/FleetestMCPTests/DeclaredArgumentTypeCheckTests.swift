@@ -178,4 +178,22 @@ final class DeclaredArgumentTypeCheckTests: XCTestCase {
         XCTAssertTrue(text.contains("ignored unknown argument"), text)
         XCTAssertFalse(text.contains("must be an integer"), text)
     }
+
+    // MARK: - NUL を含む文字列(2026-10-15 の負荷テスト: ft_open_url の url "\u0000" で fleetest-mcp が abort)
+
+    /// 入口で断る(Process は NUL を含む引数を ObjC 例外で abort させる = サーバごと落ちる)。配列の要素も見る
+    func testNULInADeclaredStringIsRejectedAtTheEntry() async {
+        for (tool, json) in [("ft_open_url", #"{"url":"\u0000"}"#),
+                             ("ft_start_run", #"{"profile":"android","scenario":["A\u0000"]}"#)] {
+            do {
+                _ = try await server.call(tool: tool, args: jsonArgs(json))
+                XCTFail("\(tool): a NUL character went through")
+            } catch {
+                XCTAssertTrue(error.localizedDescription.contains("NUL"), error.localizedDescription)
+            }
+        }
+        XCTAssertNil(MCPServer.nulCharacterRefusal(tool: "ft_open_url", args: jsonArgs(#"{"url":"fte2e://x"}"#)))
+        // 宣言していない欄は読まれないので断らない(型・値域の検査と同じ)
+        XCTAssertNil(MCPServer.nulCharacterRefusal(tool: "ft_status", args: jsonArgs(#"{"nope":"\u0000"}"#)))
+    }
 }

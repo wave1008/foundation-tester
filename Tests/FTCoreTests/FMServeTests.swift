@@ -80,6 +80,13 @@ final class FMServeTests: XCTestCase {
                                           buildStamp: "1", serverExecutableStamp: "9"), .leave, "版の違う別のクローンを止め合わない")
         XCTAssertEqual(FMServeHost.decide(status(executable: "/b/fleetest", stamp: "8"), executable: "/a/fleetest",
                                           buildStamp: "1", serverExecutableStamp: "9"), .replace, "自分の実行ファイルより古い相手は置き換える")
+        // 印が読めない(実行ファイルの属性が取れない = リンクの作り直しの瞬間など)は「古い」の根拠にしない(Codex レビュー 2026-10-15)
+        XCTAssertEqual(FMServeHost.decide(status(executable: "/b/fleetest", stamp: "9"), executable: "/a/fleetest",
+                                          buildStamp: "1", serverExecutableStamp: ""), .reuse)
+        XCTAssertEqual(FMServeHost.decide(status(executable: "/a/fleetest", stamp: "1"), executable: "/a/fleetest",
+                                          buildStamp: "", serverExecutableStamp: ""), .reuse)
+        XCTAssertEqual(FMServeHost.decide(status(version: v + 1, executable: "/b/fleetest", stamp: "9"), executable: "/a/fleetest",
+                                          buildStamp: "1", serverExecutableStamp: ""), .leave)
     }
 
     /// 常駐プロセスに `FT_PARENT_PID` を渡さない(渡すと親の死で終わり、拡張の孤児掃除にも殺される)

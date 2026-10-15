@@ -139,8 +139,10 @@ public enum ScenarioHost {
     /// 子プロセスへ渡す環境。**`DEVELOPER_DIR` を必ず載せる**: FTCoreSimShim は未設定だと
     /// `xcode-select -p` を spawn する(実測 65ms)。**シナリオ1本=1プロセス**なので
     /// 渡さないと毎回払う。ホストでは1回だけ解決する(resolvedDeveloperDir)
-    static func childEnvironment() -> [String: String] {
-        var env = ProcessInfo.processInfo.environment
+    static func childEnvironment(base: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
+        var env = base
+        // 拒否の記録の置き場は起こされた fleetest の分だけ(シナリオに書かせると、緑の run が「始まらなかった」に化ける)
+        env[DispatchRefusalReport.environmentKey] = nil
         if env["DEVELOPER_DIR"] == nil, let dir = resolvedDeveloperDir {
             env["DEVELOPER_DIR"] = dir
         }
@@ -273,10 +275,10 @@ public enum ScenarioHost {
             let debugBinary = root.appendingPathComponent(".build/debug")
                 .appendingPathComponent(project.productName)
             if FileManager.default.isExecutableFile(atPath: debugBinary.path) {
-                return debugBinary
+                return ExecutablePath.resolved(debugBinary)   // .build/debug はビルドのたびに作り直されるリンク
             }
         }
-        if let sibling = Bundle.main.executableURL?
+        if let sibling = ExecutablePath.current?
             .deletingLastPathComponent().appendingPathComponent(project.productName),
            FileManager.default.isExecutableFile(atPath: sibling.path) {
             return sibling
@@ -327,6 +329,7 @@ public enum ScenarioHost {
         // 直そうとしている当のもの)。自分で終わる有限(≤ 約 1.5 分)の子なので孤児の心配は無い。
         // 拡張の孤児掃除も `FT_PARENT_PID` の印を持つものだけを殺すので巻き込まれない
         var env = ProcessInfo.processInfo.environment
+        env[DispatchRefusalReport.environmentKey] = nil
         if env["DEVELOPER_DIR"] == nil, let dir = resolvedDeveloperDir { env["DEVELOPER_DIR"] = dir }
         process.environment = launch?.childEnvironment(base: env) ?? env
         process.standardOutput = FileHandle.nullDevice

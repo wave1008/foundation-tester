@@ -16,7 +16,8 @@ final class ScenarioSandboxTests: XCTestCase {
         let container = "home/Library/Developer/CoreSimulator/Devices/UDID-1/data/Containers"
         for sub in ["reports", "project/.fleetest", "repo/.fleetest/hooks", "tool/.fleetest/hooks",
                     "repo/.fleetest/services", "tool/.fleetest/services",
-                    "repo/.fleetest/services.lock", "tool/.fleetest/services.lock", "stills", "home/.ssh", "home/.config/fleetest", "home/.config/gh",
+                    "repo/.fleetest/services.lock", "tool/.fleetest/services.lock",
+                    "repo/.fleetest/mcp-runs", "tool/.fleetest/mcp-runs", "stills", "home/.ssh", "home/.config/fleetest", "home/.config/gh",
                     "home/Library/Caches/fleetest", "outside",
                     container + "/Data/Application/APP-1/Library", container + "/Bundle/Application/APP-1"] {
             try FileManager.default.createDirectory(
@@ -178,6 +179,22 @@ final class ScenarioSandboxTests: XCTestCase {
     }
 
     /// 親の環境は許可リストで絞ってから子へ渡す(トークンを継がせない)。入口が足す分は残る
+    /// `mcp-runs/` は MCP の ft_start_run の拒否の記録の置き場。子が記録を置けると、緑で終わった run を ft_run_status が「始まらなかった」と言う
+    func testMCPRunsDirectoryStaysReadOnlyInsideTheWritableStateDirectory() throws {
+        XCTAssertNotEqual(try touch("repo/.fleetest/mcp-runs/run-1.log.refusal.json"), 0)
+        XCTAssertNotEqual(try touch("tool/.fleetest/mcp-runs/run-1.log.refusal.json"), 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: path("repo/.fleetest/mcp-runs/run-1.log.refusal.json")))
+        XCTAssertEqual(try touch("repo/.fleetest/other.json"), 0, "隣は書ける(拒否は mcp-runs だけ)")
+    }
+
+    /// 拒否の記録の置き場は `FT_` で始まっても子へ渡さない(親だけが書く)
+    func testChildEnvironmentDropsTheRefusalReportPathThoughItIsAnFTKey() {
+        let launch = ScenarioHost.SandboxedLaunch(
+            executable: URL(fileURLWithPath: "/usr/bin/sandbox-exec"), arguments: [], environment: [:], broker: nil)
+        let env = launch.childEnvironment(base: [DispatchRefusalReport.environmentKey: "/r.json", "FT_PARENT_PID": "1"])
+        XCTAssertEqual(env, ["FT_PARENT_PID": "1"])
+    }
+
     func testChildEnvironmentDropsTheParentsSecretsAndKeepsWhatTheRunnerReads() {
         let launch = ScenarioHost.SandboxedLaunch(
             executable: URL(fileURLWithPath: "/usr/bin/sandbox-exec"), arguments: [],

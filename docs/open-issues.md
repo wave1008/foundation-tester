@@ -18,6 +18,15 @@
 
 ## デバイスで赤のまま・原因未調査
 
+- **テキストの可視性検証の FM の段が、読める文字に空の転写を返して notRendered の赤**(2026-10-15・maintainer-notes §82.10)
+  - 症状: Flutter・Android の WebView の `textIs "wv_result=*" == "wv_result=-"` が `[notRendered] … observed=""`。切り抜きには文字がはっきり写る。
+    注記は `ocr-shortcut-not-ready`(この Mac は OCR が死んでいた = 突き合わせの相手が居ない)
+  - 次に見るもの: 同じ切り抜きを FM に何度か渡して空が返る率。空の転写を「描かれていない」の根拠にしてよいか(インク量が十分ある絵で)
+
+- **同時2本の `services up` で、負けた所有者が同じログ(`.fleetest/services/<prefix>.log`)を O_TRUNC で開く**(2026-10-15)
+  - 勝った所有者のログの先頭が消え、負けた理由(already up)は残らない。負けた側の CLI は、勝った側がその後止められた回に勝った側のログを
+    自分の失敗理由として表示した。起動の調停そのものは正しい(片方が上げ、もう片方は already up)
+
 - **E2E-CMP の XCUITest で「テキスト入力が正しくechoされること」S0040 の `type(replace:)` の後の echo が空のまま**(2026-10-12・
   ios-xcuitest の記録 205 回中 20 回赤)
   - 症状: `type("#field_single", "abc")` → `type("#field_single", "xyz", replace: true)` がどちらも緑のまま、次の

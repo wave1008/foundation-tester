@@ -4,6 +4,7 @@
 // ssh 実行・sleep はここに置かない(呼び出し側 = Sources/fleetest/RemoteRunDispatcher.swift)。
 
 import Foundation
+import FTCore
 
 extension RemoteDispatchQueue {
 
@@ -74,6 +75,13 @@ public struct DispatchWaitStatus: Equatable, Sendable {
         var progress = "position \(position) of \(total), \(elapsedSeconds)s"
         if let limitSeconds { progress += " of \(limitSeconds)s" }
         return "==> still queued on \(target) (\(progress))"
+    }
+
+    /// 諦めて断るときの入口: 起こした側へ理由を構造化して書き出し(`DispatchRefusalReport`)、`refusalMessage` を返す。
+    /// **拒否の throw はここを通す**(手元の LocalDispatchLock とリモートの RemoteRunDispatcher の4経路)
+    public func refused(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
+        DispatchRefusalReport.write(.init(limitSeconds: limitSeconds, waitedSeconds: elapsedSeconds), environment: environment)
+        return refusalMessage
     }
 
     /// 取れずに諦めたときの1行(呼び手はこれをそのまま throw する)。

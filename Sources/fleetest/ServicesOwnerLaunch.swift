@@ -22,21 +22,26 @@ enum ServicesOwnerLaunch {
         return argv
     }
 
+    static func environment(base: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
+        var environment = base
+        environment[ParentDeathWatch.environmentKey] = nil   // 親(この CLI)の終了で死なない = 常駐
+        environment[DispatchRefusalReport.environmentKey] = nil
+        return environment
+    }
+
     /// 戻りの `exited` は所有者の終了までブロックする(`ProcessExitWait.prepareBlocking` = `waitUntilExit()` を使わない規律)
     static func spawn(executable: URL, project: String, profile: String, physical: Bool, serials: [String],
                       logURL: URL) throws -> (process: Process, exited: @Sendable () -> Void) {
         let process = Process()
         process.executableURL = executable
         process.arguments = arguments(project: project, profile: profile, physical: physical, serials: serials)
-        var environment = ProcessInfo.processInfo.environment
-        environment[ParentDeathWatch.environmentKey] = nil   // 親(この CLI)の終了で死なない = 常駐
-        process.environment = environment
+        process.environment = environment()
         process.standardInput = FileHandle.nullDevice
         try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         // symlink を辿らない(O_NOFOLLOW)・毎回空から。パスで開き直さず、この fd をそのまま子へ渡す
         let fd = open(logURL.path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0o644)
         guard fd >= 0 else {
-            throw ValidationError("cannot create the services log \(logURL.path): \(String(cString: strerror(errno)))")
+            throw ServicesRefused("cannot create the services log \(logURL.path): \(String(cString: strerror(errno)))")
         }
         let sink = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
         defer { try? sink.close() }   // 子は自分の複製を持つ

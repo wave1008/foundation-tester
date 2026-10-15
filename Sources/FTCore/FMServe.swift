@@ -176,7 +176,7 @@ public enum FMServeHost {
 
     /// 起こす実行ファイル: このプロセスと同じディレクトリの `fleetest`(`fleetest-mcp` からも同じ物を指す)。
     /// テスト(xctest)など fleetest の隣に居ないプロセスからは起こさない
-    static func serverExecutable(current: URL? = Bundle.main.executableURL) -> URL? {
+    static func serverExecutable(current: URL? = ExecutablePath.current) -> URL? {
         guard let current, ["fleetest", "fleetest-mcp"].contains(current.lastPathComponent) else { return nil }
         let sibling = current.deletingLastPathComponent().appendingPathComponent("fleetest")
         return FileManager.default.isExecutableFile(atPath: sibling.path) ? sibling : nil
@@ -199,6 +199,11 @@ public enum FMServeHost {
     static func decide(_ status: FMServeWire.Response, executable: String, buildStamp: String,
                        serverExecutableStamp: String) -> LiveServerDecision {
         let sameVersion = status.serverVersion == FMServeWire.protocolVersion
+        // 印が読めない(空 = 実行ファイルの属性が取れなかった。リンクの作り直しの瞬間など)は「古い」と言える根拠が無い ——
+        // 止めずに版だけで決める(読めないことを「違う」に畳むと、正常な常駐プロセスを止めて FM の載せ直しを起こす)
+        if buildStamp.isEmpty || serverExecutableStamp.isEmpty || status.buildStamp.isEmpty {
+            return sameVersion ? .reuse : .leave
+        }
         if status.executable == executable {
             if status.buildStamp != buildStamp { return .replace }   // 相手は作り直す前の版
             return sameVersion ? .reuse : .leave                       // 同じ版のはずが違う = 古いのはこちら
@@ -260,6 +265,7 @@ public enum FMServeHost {
         var env = base
         env[ParentDeathWatch.environmentKey] = nil
         env[FMServeWire.socketEnvironmentKey] = nil
+        env[DispatchRefusalReport.environmentKey] = nil
         return env
     }
 

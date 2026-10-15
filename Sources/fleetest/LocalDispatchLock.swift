@@ -197,7 +197,7 @@ final class LocalDispatchLock {
                 elapsedSeconds: elapsed, limitSeconds: waitLock, scope: .thisMachine)
             guard let limitSeconds = waitLock else {
                 dequeue(ticket)
-                throw LocalDispatchLockError(message: status.refusalMessage)
+                throw LocalDispatchLockError(message: status.refused())
             }
             // **ログの刻みはリモートと同じ式**(`WaitLockPolling.shouldLogProgress`)。
             // **ログと NDJSON イベントは同じ if を通す**(判断を2つ持たない —— 片方だけ刻みが
@@ -215,7 +215,7 @@ final class LocalDispatchLock {
             guard WaitLockPolling.decide(elapsedSeconds: elapsed,
                                          limitSeconds: limitSeconds) == .retry else {
                 dequeue(ticket)
-                throw LocalDispatchLockError(message: status.refusalMessage)
+                throw LocalDispatchLockError(message: status.refused())
             }
             sleepSeconds(WaitLockPolling.pollIntervalSeconds)
             elapsed += WaitLockPolling.pollIntervalSeconds

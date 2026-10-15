@@ -287,6 +287,22 @@ extension MCPServer {
         }
     }
 
+    /// 宣言した欄の文字列(配列の要素も)に NUL があれば断る(純粋)。URL・プロジェクト名・シナリオ名は外部コマンドの引数へ流れ、
+    /// `Process` は NUL を ObjC 例外で abort させる = MCP サーバごと落ちる(`Shell.runRaw` も断るが、`Process` を直に起こす経路がある)
+    static func nulCharacterRefusal(tool: String, args: [String: Any]) -> String? {
+        guard let definition = toolDefinitions.first(where: { $0["name"] as? String == tool }),
+              let schema = definition["inputSchema"] as? [String: Any],
+              let properties = schema["properties"] as? [String: Any] else { return nil }
+        func hasNUL(_ value: Any) -> Bool {
+            if let text = value as? String { return text.contains("\u{0}") }
+            if let list = value as? [Any] { return list.contains(where: hasNUL) }
+            if let object = value as? [String: Any] { return object.values.contains(where: hasNUL) }
+            return false
+        }
+        guard let key = args.keys.sorted().first(where: { properties[$0] != nil && hasNUL(args[$0]!) }) else { return nil }
+        return "\(key) must not contain a NUL character (\\u0000)"
+    }
+
     /// 型違いに**専用の文言**(直し方つき)を持つ引数。入口の汎用の文で先に断ると、その案内が消える
     static let argumentsWithTheirOwnTypeMessage: [String: Set<String>] = [
         "ft_batch": ["steps"],  // 配列形は「; で繋いだ1本の文字列へ」と書き換え方を返す
@@ -462,6 +478,7 @@ extension MCPServer {
         if let refusal = Self.renamedArgumentRefusal(tool: tool, args: cleaned) { throw MCPError(refusal) }
         let unknownArgumentNote = Self.unknownArgumentNote(tool: tool, args: cleaned)
         try Self.checkDeclaredArgumentTypes(tool: tool, args: cleaned)
+        if let refusal = Self.nulCharacterRefusal(tool: tool, args: cleaned) { throw MCPError(refusal) }
         // **値域は入口で1回だけ全数見る**(`intArgument`/`doubleArgument` の門だけでは足りない)
         // —— 条件付きでしか読まれない欄(`waitSeconds` は snapshotAfter のときだけ等)は、
         // 読まれない回に 0/負がそのまま通り、呼び手は「効いた」と誤解する

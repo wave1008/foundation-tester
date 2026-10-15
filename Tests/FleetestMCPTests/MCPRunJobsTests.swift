@@ -26,17 +26,17 @@ final class MCPRunJobsTests: XCTestCase {
     func testArgumentsWithEveryOption() {
         let args = MCPRunJobs.arguments(
             profile: "smoke", project: "Shop", runner: "M1Max", scenarios: ["Login", "Cart.add"],
-            folders: ["checkout"], failed: true, broadcast: true, fmAndVision: true)
+            folders: ["checkout"], failed: true, broadcast: true, fmAndVision: true, waitLockSeconds: 600)
         XCTAssertEqual(args, [
             "swift", "run", "fleetest", "run", "--project", "Shop", "--profile", "smoke", "--runner", "M1Max",
-            "--scenario", "Login", "Cart.add", "--folder", "checkout", "--failed", "--broadcast",
+            "--scenario", "Login", "Cart.add", "--folder", "checkout", "--failed", "--broadcast", "--wait-lock", "600",
         ])
     }
 
     func testArgumentsOmitUnsetOptionals() {
         let args = MCPRunJobs.arguments(
             profile: "smoke", project: nil, runner: nil, scenarios: [], folders: [], failed: false, broadcast: false,
-            fmAndVision: true)
+            fmAndVision: true, waitLockSeconds: nil)
         XCTAssertEqual(args, ["swift", "run", "fleetest", "run", "--profile", "smoke"])
     }
 
@@ -44,7 +44,7 @@ final class MCPRunJobsTests: XCTestCase {
     func testArgumentsTurnFMAndVisionOffByDefault() {
         let args = MCPRunJobs.arguments(
             profile: "smoke", project: nil, runner: nil, scenarios: [], folders: [], failed: false, broadcast: false,
-            fmAndVision: false)
+            fmAndVision: false, waitLockSeconds: nil)
         XCTAssertEqual(args, ["FT_OCCLUSION_OCR=off", "FT_FIND_IMAGE_PREWARM=off", "swift", "run", "fleetest", "run", "--profile", "smoke",
                               "--set", "fmTextVisibilityCheck=false", "--set", "screenLooksLike=false",
                               "--set", "ocrTextVisibilityCheck=false", "--set", "preferCheckStateClassifier=false"])
@@ -249,7 +249,7 @@ final class MCPRunJobsTests: XCTestCase {
             pid: 100, state: .exited(1), elapsedSeconds: 75, project: "Shop", profile: "smoke",
             logPath: "/log", logTail: ["last line"], progress: nil,
             meta: try XCTUnwrap(RunResultsStore.meta(runDir: runDir)), runDirPath: runDir.path,
-            failedScenarios: failures))
+            failedScenarios: failures, dispatchRefusal: nil))
         XCTAssertTrue(text.contains("finished with exit code 1 (elapsed 1m 15s)"), text)
         XCTAssertTrue(text.contains("1 passed / 2 failed / 3 total — interrupted"), text)
         XCTAssertTrue(text.contains("Results: \(runDir.path)"), text)
@@ -270,7 +270,7 @@ final class MCPRunJobsTests: XCTestCase {
             pid: 100, state: .exited(1), elapsedSeconds: 75, project: "Shop", profile: "smoke",
             logPath: "/log", logTail: [], progress: nil,
             meta: try XCTUnwrap(RunResultsStore.meta(runDir: runDir)), runDirPath: runDir.path,
-            failedScenarios: []))
+            failedScenarios: [], dispatchRefusal: nil))
         XCTAssertTrue(text.contains("1 passed / 1 failed / 2 skipped / 4 total"), text)
     }
 
@@ -278,7 +278,7 @@ final class MCPRunJobsTests: XCTestCase {
         func input(_ progress: RunProgressRecord?) -> MCPRunStatusInput {
             MCPRunStatusInput(pid: 7, state: .running, elapsedSeconds: 12, project: "Shop", profile: "smoke",
                               logPath: "/log", logTail: [], progress: progress, meta: nil,
-                              runDirPath: nil, failedScenarios: [])
+                              runDirPath: nil, failedScenarios: [], dispatchRefusal: nil)
         }
         let withProgress = MCPRunJobs.statusText(input(progress(pid: 7)))
         XCTAssertTrue(withProgress.contains("running (elapsed 12s)"), withProgress)
@@ -286,10 +286,25 @@ final class MCPRunJobsTests: XCTestCase {
         XCTAssertTrue(MCPRunJobs.statusText(input(nil)).contains("not available yet"))
     }
 
+    /// dispatch.lock で始まらなかった run は、子が書いた記録(`DispatchRefusalReport`)から ft_start_run の引数名で案内する
+    /// (2026-10-15: MCP に無い `--wait-lock` を案内していた。ログの文言では判定しない = Codex レビュー)
+    func testLockRefusalIsExplainedFromTheChildsRecord() {
+        func input(_ refusal: DispatchRefusalReport.Record?) -> MCPRunStatusInput {
+            MCPRunStatusInput(pid: 7, state: .exited(1), elapsedSeconds: 3, project: "Shop", profile: "smoke",
+                              logPath: "/log", logTail: ["Error: earlier request(s) are queued ahead of yours"], progress: nil,
+                              meta: nil, runDirPath: nil, failedScenarios: [], dispatchRefusal: refusal)
+        }
+        let busy = MCPRunJobs.statusText(input(.init(limitSeconds: nil, waitedSeconds: 0)))
+        XCTAssertTrue(busy.contains("Start it again with waitLockSeconds"), busy)
+        let expired = MCPRunJobs.statusText(input(.init(limitSeconds: 60, waitedSeconds: 60)))
+        XCTAssertTrue(expired.contains("waited 1m 0s") && expired.contains("larger waitLockSeconds"), expired)
+        XCTAssertFalse(MCPRunJobs.statusText(input(nil)).contains("waitLockSeconds"))
+    }
+
     func testSignaledAndNoRecordStatus() {
         let text = MCPRunJobs.statusText(MCPRunStatusInput(
             pid: 7, state: .signaled(15), elapsedSeconds: 3, project: "Shop", profile: "smoke",
-            logPath: "/log", logTail: [], progress: nil, meta: nil, runDirPath: nil, failedScenarios: []))
+            logPath: "/log", logTail: [], progress: nil, meta: nil, runDirPath: nil, failedScenarios: [], dispatchRefusal: nil))
         XCTAssertTrue(text.contains("stopped by signal 15"), text)
         XCTAssertTrue(text.contains("No run record was found"), text)
     }
@@ -301,7 +316,7 @@ final class MCPRunJobsTests: XCTestCase {
             logPath: "/log", logTail: [], progress: nil,
             meta: RunMetaRecord(runID: "r", project: "Shop", profile: "smoke", host: "h", trigger: "cli",
                                 startedAt: iso(0)),
-            runDirPath: "/r", failedScenarios: many))
+            runDirPath: "/r", failedScenarios: many, dispatchRefusal: nil))
         XCTAssertTrue(text.contains("(+5 more"), text)
         XCTAssertFalse(text.contains("- S20 "), text)
     }
@@ -342,7 +357,7 @@ final class MCPRunJobsTests: XCTestCase {
             logPath: "/log", logTail: [], progress: nil,
             meta: RunMetaRecord(runID: "r", project: "Shop", profile: "smoke", host: "h", trigger: "cli",
                                 startedAt: iso(0)),
-            runDirPath: "/r", failedScenarios: same))
+            runDirPath: "/r", failedScenarios: same, dispatchRefusal: nil))
         XCTAssertTrue(text.contains("- S (ios) on 30 devices: x"), text)
         XCTAssertFalse(text.contains("more —"), text)
     }

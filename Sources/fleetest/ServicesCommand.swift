@@ -122,8 +122,8 @@ struct ServicesCommand: AsyncParsableCommand {
                 Self.printPublished(existing)
                 return
             }
-            guard let executable = Bundle.main.executableURL else {
-                throw ValidationError("cannot locate the fleetest executable to start the services owner")
+            guard let executable = ExecutablePath.current else {
+                throw ServicesRefused("cannot locate the fleetest executable to start the services owner")
             }
             let logURL = ServicesOwnerLaunch.logURL(stateDir: target.stateDir, prefix: target.prefix)
             let (owner, ownerExited) = try ServicesOwnerLaunch.spawn(
@@ -200,7 +200,7 @@ struct ServicesCommand: AsyncParsableCommand {
                     .filter { !ServicesLeaseFile.isOrphan($0, isAlive: ServicesProcessIdentity.isAlive) }
                 guard let lease = live.first else { return nil }
                 switch decision(for: lease) {
-                case .refuse(let reason): throw ValidationError(reason)
+                case .refuse(let reason): throw ServicesRefused(reason)
                 case .alreadyUp: return lease
                 case .wait(let notice):
                     if announced.insert(notice).inserted { ConsoleOut.out(notice) }
@@ -241,7 +241,7 @@ struct ServicesCommand: AsyncParsableCommand {
                                 reaped += 1
                             }
                         } else if lease.kind == .run {
-                            throw ValidationError("\(lease.holderDescription) holds these services; they stop when that run finishes")
+                            throw ServicesRefused("\(lease.holderDescription) holds these services; they stop when that run finishes")
                         } else {
                             ConsoleOut.out("→ services: stopping \(lease.holderDescription)")
                             _ = kill(lease.pid, SIGTERM)
@@ -441,7 +441,7 @@ struct ServicesCommand: AsyncParsableCommand {
                     }
                 }
             } catch let error as ServicesError where error.phase == .lock {
-                throw ValidationError("\(error.detail); nothing was removed — stop that process (or wait for it) and rerun")
+                throw ServicesRefused("\(error.detail); nothing was removed — stop that process (or wait for it) and rerun")
             }
         }
 
@@ -499,20 +499,20 @@ struct ServicesCommand: AsyncParsableCommand {
                 case .removeNow:
                     return
                 case .blockedByRun(let lease):
-                    throw ValidationError("\(lease.holderDescription) holds these services; --force does not interrupt a run — wait for it to finish (or stop it) and rerun")
+                    throw ServicesRefused("\(lease.holderDescription) holds these services; --force does not interrupt a run — wait for it to finish (or stop it) and rerun")
                 case .blockedByUnreadable(let entry):
-                    throw ValidationError("the lease \(entry.url.lastPathComponent) cannot be read and its pid \(entry.pid) is still running;"
+                    throw ServicesRefused("the lease \(entry.url.lastPathComponent) cannot be read and its pid \(entry.pid) is still running;"
                         + " nothing was removed — stop it (or wait for it) and rerun")
                 case .stop(let owners):
                     let who = owners.map(\.holderDescription).joined(separator: ", ")
                     if lastRound {
-                        throw ValidationError("stopped the owners \(Self.forcedStopRounds) times and \(who) is still holding the services;"
+                        throw ServicesRefused("stopped the owners \(Self.forcedStopRounds) times and \(who) is still holding the services;"
                             + " nothing was removed — stop it first")
                     }
                     for lease in owners {
                         let budget = ServicesTeardown.teardownBudgetSeconds(lease: lease)
                         guard ServicesCommand.waitForExit(pid: lease.pid, startedAt: lease.pidStartedAt, budgetSeconds: budget) else {
-                            throw ValidationError("pid \(lease.pid) is still running \(Int(budget))s after SIGTERM; nothing was removed —"
+                            throw ServicesRefused("pid \(lease.pid) is still running \(Int(budget))s after SIGTERM; nothing was removed —"
                                 + " stop it (kill \(lease.pid)) and rerun `services reset --force`")
                         }
                     }
@@ -529,12 +529,12 @@ struct ServicesCommand: AsyncParsableCommand {
             for entry in ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix) {
                 switch entry.state {
                 case .unreadable(let reason):
-                    throw ValidationError("the lease \(entry.url.lastPathComponent) cannot be read (\(reason));"
+                    throw ServicesRefused("the lease \(entry.url.lastPathComponent) cannot be read (\(reason));"
                         + " rerun with --force to remove the services once its pid \(entry.pid) is no longer running")
                 case .readable(let lease):
                     if !ServicesLeaseFile.isOrphan(lease, isAlive: ServicesProcessIdentity.isAlive) {
                         let how = lease.kind == .owner ? "`fleetest services down`" : "wait for the run"
-                        throw ValidationError("\(lease.holderDescription) holds these services; stop it first (\(how)), or rerun with --force")
+                        throw ServicesRefused("\(lease.holderDescription) holds these services; stop it first (\(how)), or rerun with --force")
                     }
                 }
             }
@@ -587,4 +587,13 @@ struct ServicesCommand: AsyncParsableCommand {
             }
         }
     }
+}
+
+/// 状態による拒否(run が握っている・所有者が生きている 等)。`ValidationError` は使い方の誤りとして終了コード 64 と
+/// 「--help を見よ」を付けるので、引数の誤りでない拒否はこちらで投げる(終了コード 1・文言だけ。`UnlockRefused` と同じ形)。
+/// ServicesRefusalExitCodeTests.swift(ServicesResetDecisionTests の拡張)が ValidationError の残りを等号で固定する
+struct ServicesRefused: LocalizedError {
+    let message: String
+    init(_ message: String) { self.message = message }
+    var errorDescription: String? { message }
 }

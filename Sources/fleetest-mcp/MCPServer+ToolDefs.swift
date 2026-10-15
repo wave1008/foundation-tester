@@ -542,6 +542,8 @@ extension MCPServer {
             "broadcast": ["type": "boolean", "description": "Run each selected scenario on every device "
                 + "instead of splitting them"],
             "fmAndVision": fmAndVisionProperty,
+            "waitLockSeconds": ["type": "integer", "description": "If another run holds this Mac, queue behind it for "
+                + "up to this many seconds instead of exiting at once (= fleetest run --wait-lock; ft_stop_run cancels a queued run)"],
         ], required: ["profile"], scope: .project),
         tool("ft_run_status", "State of an ft_start_run run: progress while running; exit code, totals, "
             + "failed scenarios with report paths and the results directory once finished; plus the log tail", [

@@ -23,6 +23,8 @@ struct MCPRunJob {
     let profile: String
     let packageRoot: URL
     let resultsDir: URL
+    /// 子が dispatch.lock で始まらなかった理由を書く置き場(`DispatchRefusalReport`)
+    let refusalReportURL: URL
 }
 
 enum MCPRunJobState: Equatable {
@@ -90,6 +92,8 @@ struct MCPRunStatusInput {
     var meta: RunMetaRecord?
     var runDirPath: String?
     var failedScenarios: [MCPFailedScenario]
+    /// dispatch.lock で始まらなかったときの子の記録(`DispatchRefusalReport`)。無ければ nil
+    var dispatchRefusal: DispatchRefusalReport.Record?
 }
 
 struct MCPFailedScenario: Equatable {
@@ -106,7 +110,8 @@ enum MCPRunJobs {
     /// `fmAndVision`: false(MCP の既定)なら FM と Vision を使う4つのキーを `--set` で切り、run の開始時の
     /// OCR のコンパイルも止める(`FT_OCCLUSION_OCR=off`。`ScenarioHost.startOCRModelCompile` はプロファイルを見ない)
     static func arguments(profile: String, project: String?, runner: String?, scenarios: [String],
-                          folders: [String], failed: Bool, broadcast: Bool, fmAndVision: Bool) -> [String] {
+                          folders: [String], failed: Bool, broadcast: Bool, fmAndVision: Bool,
+                          waitLockSeconds: Int?) -> [String] {
         // 環境変数は手元の run とその子にだけ効く(別の機械へは `--set` だけが届き、OCR のコンパイルはそれで止まる)
         var args = fmAndVision ? [] : ["FT_OCCLUSION_OCR=off", "FT_FIND_IMAGE_PREWARM=off"]
         args += ["swift", "run", "fleetest", "run"]
@@ -117,6 +122,7 @@ enum MCPRunJobs {
         if !folders.isEmpty { args += ["--folder"] + folders }
         if failed { args.append("--failed") }
         if broadcast { args.append("--broadcast") }
+        if let waitLockSeconds { args += ["--wait-lock", String(waitLockSeconds)] }
         if !fmAndVision {
             for key in MCPServer.fmAndVisionProfileKeys { args += ["--set", "\(key)=false"] }
         }
@@ -329,6 +335,17 @@ enum MCPRunJobs {
 
     // MARK: - 文面
 
+    /// 子が dispatch.lock で始まらなかったときの案内(CLI の `--wait-lock` ではなく ft_start_run の引数名で言う)
+    static func dispatchRefusalText(_ refusal: DispatchRefusalReport.Record) -> String {
+        guard let limit = refusal.limitSeconds else {
+            return "This run did not start: another run holds the dispatch lock (or requests are queued ahead of it),"
+                + " and ft_start_run does not wait by default. Start it again with waitLockSeconds to queue behind them"
+                + " (ft_stop_run cancels a queued run)"
+        }
+        return "This run did not start: it waited \(durationText(refusal.waitedSeconds)) for the dispatch lock"
+            + " (waitLockSeconds: \(limit)) and gave up. Start it again with a larger waitLockSeconds, or after the other run ends"
+    }
+
     static func durationText(_ seconds: Int) -> String {
         seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s"
     }
@@ -364,6 +381,7 @@ enum MCPRunJobs {
                 if let path = input.runDirPath { lines.append("Results: \(path)") }
             } else {
                 lines.append("No run record was found (the run may have ended before recording — read the log)")
+                if let refusal = input.dispatchRefusal { lines.append(Self.dispatchRefusalText(refusal)) }
             }
             let groups = MCPRunJobs.groupedFailures(input.failedScenarios)
             if !groups.isEmpty {
@@ -427,7 +445,8 @@ extension MCPServer {
         let project = try ScenarioHost.project(named: args["project"] as? String)
         let arguments = MCPRunJobs.arguments(
             profile: profile, project: project.name, runner: runner, scenarios: scenarios, folders: folders,
-            failed: failed, broadcast: broadcast, fmAndVision: args["fmAndVision"] as? Bool == true)
+            failed: failed, broadcast: broadcast, fmAndVision: args["fmAndVision"] as? Bool == true,
+            waitLockSeconds: try Self.intArgument(args, "waitLockSeconds"))
 
         let logDir = packageRoot.appendingPathComponent(".fleetest").appendingPathComponent("mcp-runs")
         try FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
@@ -441,12 +460,14 @@ extension MCPServer {
             throw MCPError("cannot create the run log at \(logURL.path)")
         }
 
+        let refusalReportURL = logURL.appendingPathExtension("refusal.json")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = arguments
         process.currentDirectoryURL = packageRoot
-        process.environment = MCPRunJobs.childEnvironment(
-            packageRoot: packageRoot, toolRoot: try? RepoRoot.find())
+        var environment = MCPRunJobs.childEnvironment(packageRoot: packageRoot, toolRoot: try? RepoRoot.find())
+        environment[DispatchRefusalReport.environmentKey] = refusalReportURL.path
+        process.environment = environment
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = logHandle
         process.standardError = logHandle
@@ -467,7 +488,8 @@ extension MCPServer {
         let job = MCPRunJob(
             pid: process.processIdentifier, process: process, arguments: arguments, logURL: logURL,
             startedAt: spawnedAt, project: project.name, profile: profile, packageRoot: packageRoot,
-            resultsDir: RunResultsStore.resultsDir(projectRoot: project.rootURL))
+            resultsDir: RunResultsStore.resultsDir(projectRoot: project.rootURL),
+            refusalReportURL: refusalReportURL)
         runJobs.add(job)
         return text("Started a run in the background (pid \(job.pid)).\n"
             + "Command: \(MCPRunJobs.commandLine(arguments))\n"
@@ -501,14 +523,18 @@ extension MCPServer {
             elapsedSeconds: Int((endedAt ?? Date()).timeIntervalSince(job.startedAt)),
             project: job.project, profile: job.profile, logPath: job.logURL.path,
             logTail: MCPRunJobs.logTail(url: job.logURL), progress: nil, meta: nil,
-            runDirPath: nil, failedScenarios: [])
+            runDirPath: nil, failedScenarios: [], dispatchRefusal: nil)
+        // 拒否の記録は「この子がロックの拒否で終わった」(DispatchRefusalReport)。あれば時刻だけの照合をしない —— 同じ project /
+        // profile の別の run の結果を、この run の結果として出してしまう
+        let refusal = state == .running ? nil : DispatchRefusalReport.read(job.refusalReportURL)
+        input.dispatchRefusal = refusal
         if state == .running {
             let records = RunProgressLedger.readAll(
                 directory: RunProgressLedger.directory(), startTime: ProcessLiveness.startTime)
             input.progress = MCPRunJobs.matchProgress(
                 records, pid: job.pid, project: job.project, profile: job.profile,
                 spawnedAt: job.startedAt)
-        } else if let found = MCPRunJobs.matchRunMeta(
+        } else if refusal == nil, let found = MCPRunJobs.matchRunMeta(
             MCPRunJobs.candidateRuns(resultsDir: job.resultsDir, spawnedAt: job.startedAt),
             pid: job.pid, project: job.project, profile: job.profile, spawnedAt: job.startedAt) {
             input.meta = found.meta

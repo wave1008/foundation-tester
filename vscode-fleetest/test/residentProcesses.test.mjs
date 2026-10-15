@@ -128,6 +128,17 @@ test("classifyResident: binaryDir 配下の実行ファイルは名前を問わ�
   assert.equal(classifyResident("/opt/other/ftbridge-daemon --port 9000", { binaryDir }), null);
 });
 
+// 置き場は実体とリンクの両方を渡せる(拡張と fleetest 内部は実体のパスで起こし、端末の run はリンクのまま)
+test("classifyResident: binaryDir は複数の置き場を受ける(実体とリンク)", () => {
+  const dirs = ["/Users/w/ft/.build/out/Products/Debug", "/Users/w/ft/.build/debug"];
+  for (const dir of dirs) {
+    const r = classifyResident(`${dir}/ftbridge-daemon --port 9000`, { binaryDir: dirs });
+    assert.ok(r, dir);
+    assert.equal(r.type, "fleetest");
+  }
+  assert.equal(classifyResident("/opt/other/ftbridge-daemon --port 9000", { binaryDir: dirs }), null);
+});
+
 test("classifyResident: in-app ブリッジ(注入アプリ)を .inapp の UDID で拾う", () => {
   const udid = "26FB5C4F-28B3-42D0-BB3A-A7B4D63917FF";
   const cmd = `/Users/w/Library/Developer/CoreSimulator/Devices/${udid}/data/Containers/Bundle/Application/GUID/SampleApp.app/SampleApp`;

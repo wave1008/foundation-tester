@@ -466,7 +466,52 @@ extension MCPServer {
             return try reconcilePort(port, udid: udid, udidPorts: answered.confirmed)
         }
         diagnosis.answeredPorts = answered.unconfirmed
+        // **実機のランナーが生きていてトンネル(iproxy)だけが消えた**なら張り直してから本人確認する(供給の引き取り・
+        // ライブ操作の自動起動と同じ門 = maintainer-notes §78.1・§82.5)。ランナーは止めない。答えなければ下の文言へ
+        if Self.nothingListensFor(diagnosis), diagnosis.lookup == .physical,
+           let restored = await Self.restoreMissingPhysicalTunnel(udid: udid),
+           case .confirmedMatch = await Self.explicitPortIdentityProbe(port: restored, udid: udid,
+                                                                      repoRoot: try? RepoRoot.find()) {
+            return try reconcilePort(port, udid: udid, udidPorts: [restored])
+        }
         return try reconcilePort(port, udid: udid, udidPorts: udidPorts, diagnosis: diagnosis)
+    }
+
+    /// 診断が完走し、どのポートも待ち受けていなかったか(純粋)。busy・固まり・答えたが確かめられない・予算切れは
+    /// 「居ない」ではないので張り直しの対象にしない
+    static func nothingListensFor(_ diagnosis: UDIDBridgeDiagnosis) -> Bool {
+        !diagnosis.timedOut && diagnosis.answeredPorts.isEmpty && diagnosis.wedgedPorts.isEmpty
+            && diagnosis.listeningButUnresponsive.isEmpty
+    }
+
+    /// この実機を宛先に持つランナー(xcodebuild)が生きていれば、そのポートのトンネルだけを張り直す。張り直したポートを返す。
+    /// - 張り直しは `ProvisionLock` の内側(同じポートへ iproxy を2本起こさない)。排他が作れなければ張り直さない(任意の回復なので、
+    ///   排他なしで進めて供給の採番・停止と重ねるより、従来の文言で止まるほうが害が小さい)
+    /// - **宛先(どのポートにこの実機のランナーが居るか・接続方式)は排他を取った後に確かめる** —— 取る前に確かめると、待っている間に
+    ///   供給がそのポートを別の実機へ割り当て直したとき、`startIproxy` が別の実機の正常なトンネルを止めて張り替える
+    /// - 接続方式は起動した側の記録(`.endpoint` のホストがループバック = USB の iproxy)から決める。記録が無ければ不明 = 張り直さない
+    ///   (devicectl の照会の失敗を「USB ではない」に畳まない)
+    /// - 排他は**張り直しが実際に終わるまで**握る(予算で先に返すと、張り直しの途中で排他を手放す)
+    static func restoreMissingPhysicalTunnel(udid: String) async -> UInt16? {
+        guard let repoRoot = try? RepoRoot.find() else { return nil }
+        let lock: ProvisionLock
+        do {
+            lock = try ProvisionLock(stateDir: repoRoot.appendingPathComponent(".fleetest"))
+        } catch {
+            Self.logStderr("not re-establishing a USB tunnel for \(udid): the provisioning lock cannot be opened (\(error))")
+            return nil
+        }
+        await lock.acquire()
+        let restoredPort = await Self.runOffCooperativePool(name: "fleetest-mcp-tunnel-restore") { () -> UInt16? in
+            guard let ps = try? Shell.run(["ps", "-axo", "pid=,command="]), ps.status == 0,
+                  let port = BridgeLauncher.runnersOnDevice(psOutput: ps.output, device: udid, excludingPort: 0).first?.port,
+                  let endpoint = BridgeEndpoint.recorded(port: port, repoRoot: repoRoot), endpoint.isLoopback else { return nil }
+            let restored = IOSDeviceTransport.restoreMissingTunnel(port: port, deviceUDID: udid, wired: true,
+                                                                   repoRoot: repoRoot, log: { Self.logStderr($0) })
+            return restored ? port : nil
+        }
+        lock.release()
+        return restoredPort
     }
 
     /// 診断で答えたポートの本人確認の仕分け(純粋関数)。一致 = 採用・不明 = 「居ない」と言わない根拠・
@@ -1014,7 +1059,7 @@ extension MCPServer {
     /// **綴りの類似で判定しない**(3度踏んだ): `ref` → `fromRef` →
     /// `scrollFrame` と、名前からは ref だと分からない引数が毎回出てきた
     static let nonRefIntegerKeys = ["lastN", "limit", "lines", "maxElements", "maxSwipes", "maxWidth",
-                                    "minRuns", "pid", "port", "sinceSeconds"]
+                                    "minRuns", "pid", "port", "sinceSeconds", "waitLockSeconds"]
 
     static func usesRememberedDeviceState(_ args: [String: Any]) -> Bool {
         if Self.refBearingKeys.contains(where: { args[$0] != nil }) { return true }
@@ -1801,7 +1846,24 @@ extension MCPServer {
         }
         return "⚠️ This session sent home/appSwitcher and has not brought \(app) back:"
             + " the tree below is whatever is actually on screen now (home screen / app switcher /"
-            + " a system screen), not \(app)'s. Check with ft_screenshot, and ft_launch to return.\n"
+            + " another app / a system screen), not \(app)'s. Check with ft_screenshot, and ft_launch to return.\n"
+    }
+
+    /// 背面化の記録が残っているときの注記と、記録を消してよいか(`appIsBack`)。
+    /// **Android の木は常に前面の窓**(`treeSession` = 前面のパッケージ)なので、launch したアプリが前面に
+    /// 戻っていれば言うことは無い(ランチャーから開き直した等。ft_launch を経ない戻り方)。戻っていなければ
+    /// 木は「今の画面」で、前面のパッケージを「戻すべきアプリ」と名指ししない(launch の記録が無ければ "the app")。
+    /// iOS は木がアプリ自身のままでも前面とは限らないので、記録は ft_launch でだけ消す
+    static func navigatedAwayNote(launched: String?, treeSession: String?,
+                                  isAndroid: Bool) -> (note: String, appIsBack: Bool) {
+        if isAndroid {
+            if let launched, treeSession == launched { return ("", true) }
+            return (sentToBackgroundNote(launched, treeIsAppsOwn: false), false)
+        }
+        return (sentToBackgroundNote(
+            launched ?? treeSession,
+            treeIsAppsOwn: treeSession != nil && treeSession != "com.apple.springboard"
+                && (launched == nil || treeSession == launched)), false)
     }
 
     /// システムダイアログのパッケージ/バンドル ID。これらへの切り替わりは「別アプリに迷い込んだ」

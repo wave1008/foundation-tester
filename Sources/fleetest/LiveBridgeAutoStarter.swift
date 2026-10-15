@@ -191,15 +191,20 @@ actor LiveBridgeAutoStarter {
         // ランナーが居るときだけ張り直し、答えればそれで復帰とする(答えなければ従来どおり作り直す)。
         // **他のセッションの印より前に置く**: 張り直しは相手のブリッジを止めない(相手も同じトンネルで復帰する)。
         // 張り直しだけを ProvisionLock で囲む(同じポートへ iproxy を2本起こさない)
-        if physical, !stopFirst, let ps = try? Shell.run(["ps", "-axo", "pid=,command="]), ps.status == 0,
-           BridgeLauncher.runnersOnDevice(psOutput: ps.output, device: udid, excludingPort: 0)
-               .contains(where: { $0.port == port }) {
-            let tunnelLock = try? ProvisionLock(stateDir: repoRoot.appendingPathComponent(".fleetest"))
-            await tunnelLock?.acquire()
-            let restored = IOSDeviceTransport.restoreMissingTunnel(
-                port: port, deviceUDID: udid, wired: wired, repoRoot: repoRoot,
-                log: { ConsoleOut.err("[live serve] \($0)") })
-            tunnelLock?.release()
+        // 排他が作れなければ張り直さない(任意の回復。排他なしで iproxy を起こすと供給の採番・停止と重なる)。
+        // **このポートにこの実機のランナーが居るかは排他を取った後に確かめる**(待っている間に別の実機へ割り当て直されると、
+        // 別の実機の正常なトンネルを止めて張り替える)
+        if physical, !stopFirst, let tunnelLock = try? ProvisionLock(stateDir: repoRoot.appendingPathComponent(".fleetest")) {
+            await tunnelLock.acquire()
+            var restored = false
+            if let ps = try? Shell.run(["ps", "-axo", "pid=,command="]), ps.status == 0,
+               BridgeLauncher.runnersOnDevice(psOutput: ps.output, device: udid, excludingPort: 0)
+                   .contains(where: { $0.port == port }) {
+                restored = IOSDeviceTransport.restoreMissingTunnel(
+                    port: port, deviceUDID: udid, wired: wired, repoRoot: repoRoot,
+                    log: { ConsoleOut.err("[live serve] \($0)") })
+            }
+            tunnelLock.release()
             if restored, (try? await launcher.waitUntilReady(
                 timeout: BridgeLivenessBudget.logSilenceSeconds,
                 endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot),

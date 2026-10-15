@@ -32,7 +32,7 @@ public enum VisionHelperHost {
     public static func acquire(project: TestProject) -> Lease {
         let directory = VisionClassifier.directory(projectRoot: project.rootURL, name: DefaultClassifier.name)
         let hasTemplates = !FindImage.templateFiles(label: "", classifierDirectory: directory, isAndroid: false).isEmpty
-        let executable = Bundle.main.executableURL
+        let executable = ExecutablePath.current
         let wanted = shouldStart(hasTemplates: hasTemplates, executableName: executable?.lastPathComponent)
         state.withLock { state in
             state.references += 1

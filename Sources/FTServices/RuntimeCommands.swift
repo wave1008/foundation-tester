@@ -51,6 +51,11 @@ private enum RuntimeArgv {
             argv += ["-v", "\(m.source):\(m.target)" + (m.readOnly ? ":ro" : "")]
         }
         if !isDocker, let hostsFile { argv += ["-v", "\(hostsFile):/etc/hosts"] }
+        // Apple の --internal のネットワークではゲートウェイの DNS が答えず、hosts に無い名前・アドレスの解決が毎回時間切れまで
+        // 待つ(実測: 逆引き 10,030ms・外部名 19,748ms。Ktor の remoteHost の逆引きで全リクエストが 10 秒遅れた)。127.0.0.1 を
+        // 指すと即座に失敗する(1〜4ms)。hosts は引き続き効く。Docker は内蔵 DNS(alias)で引くので対象外。
+        // --no-dns は 1.1.1.1 を指して 20〜40 秒待つので使わない。compose の dns: は ComposeNormalizer が断る
+        if !isDocker { argv += ["--dns", "127.0.0.1"] }
         argv += ["--env-file", envFile]
         argv += sortedPairs(launch.labels, flag: "--label")
         if let mem = launch.memLimit { argv += [isDocker ? "--memory" : "-m", mem] }

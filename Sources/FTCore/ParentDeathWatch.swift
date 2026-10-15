@@ -17,6 +17,8 @@ public enum ParentDeathWatch {
     public static func childEnvironment(base: [String: String]? = nil) -> [String: String] {
         var env = base ?? ProcessInfo.processInfo.environment
         env[environmentKey] = String(getpid())
+        // 起こした側の「拒否で終わったか」の置き場は、このプロセスの分だけ(子の拒否は子の終わり方で、親の終わり方ではない)
+        env[DispatchRefusalReport.environmentKey] = nil
         return env
     }
 

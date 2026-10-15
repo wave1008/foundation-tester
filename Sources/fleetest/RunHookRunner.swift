@@ -222,7 +222,7 @@ enum RunHookRunner {
     }
 
     /// 中継コマンド `fleetest-services` の置き場(この実行ファイルの隣)。隣に無い(xctest 等)なら nil
-    static func gatewayToolDirectory(current: URL? = Bundle.main.executableURL) -> String? {
+    static func gatewayToolDirectory(current: URL? = ExecutablePath.current) -> String? {
         guard let current else { return nil }
         let dir = current.deletingLastPathComponent()
         return FileManager.default.isExecutableFile(atPath: dir.appendingPathComponent(ServiceGatewayWire.relayProductName).path) ? dir.path : nil

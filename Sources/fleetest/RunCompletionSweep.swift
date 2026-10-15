@@ -60,6 +60,7 @@ enum RunCompletionSweep {
         -> [String: String] {
         var env = base
         env.removeValue(forKey: ParentDeathWatch.environmentKey)
+        env.removeValue(forKey: DispatchRefusalReport.environmentKey)
         env["FT_PACKAGE_ROOT"] = roots.package.path
         env["FT_TOOL_ROOT"] = roots.tool.path
         return env

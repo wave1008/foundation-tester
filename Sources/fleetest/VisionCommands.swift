@@ -47,16 +47,16 @@ struct VisionCapture: AsyncParsableCommand {
         let step = FlowStep(assert: "exists", locator: parsed.primary,
                             fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks)
         guard let (element, _) = LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true) else {
-            throw ValidationError("no element matches \(selector) on the current screen")
+            throw CaptureRefused("no element matches \(selector) on the current screen")
         }
         let png = try await driver.screenshot()
         // 一色の絵は見本にしない(MCP の ft_capture_element と同じ判定。理由はそちら)
         if BlankFrameDetector.isUnjudgeable(pngData: png) {
-            throw ValidationError("nothing was saved: the app area of the screenshot is a single colour (nothing is"
+            throw CaptureRefused("nothing was saved: the app area of the screenshot is a single colour (nothing is"
                 + " drawn there yet, or the capture failed). Wait for the screen to draw, then capture again")
         }
         guard let image = VisionClassifier.crop(png: png, frame: element.frame, screen: snapshot.screen) else {
-            throw ValidationError("could not crop \(selector) from the screenshot (is it inside the screen?)")
+            throw CaptureRefused("could not crop \(selector) from the screenshot (is it inside the screen?)")
         }
         let file: URL
         do {
@@ -97,4 +97,11 @@ struct VisionCheck: AsyncParsableCommand {
             }
         }
     }
+}
+
+/// 画面の状態で保存しなかった理由(使い方の誤りではないので ValidationError = 終了コード 64・--help 案内にしない)
+private struct CaptureRefused: LocalizedError {
+    let message: String
+    init(_ message: String) { self.message = message }
+    var errorDescription: String? { message }
 }

@@ -122,6 +122,9 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
 - 子プロセスを起こす経路を足す → 中断のリレー(`InterruptRelay`)・fleetest を起こすなら
   `ParentDeathWatch.childEnvironment()`・ssh 越しなら非対話 PATH の補正・`-tt` の ssh は
   `ParentBoundCommand` で包む(process-lifecycle.md / remote.md)
+- fleetest 自身の実行ファイル(隣の製品を含む)を子として起こす → `ExecutablePath.current` / `.resolved`(実体のパス。`.build/debug` は
+  SwiftPM がビルドのたびに作り直すリンクで、その間 ENOENT。`Bundle.main.executableURL` の直読みは `ExecutablePathTests` の許可表)。拡張は
+  `resolveBinaryPath` が実体へ解決する → maintainer-notes §82.8・§82.9
 - 子プロセスのパイプを読む → `readDataToEndOfFile` を使わない・`availableData` のループは
   `autoreleasepool` で区切る・生死判定は `ProcessLiveness.isAlive`(process-lifecycle.md)
 - 外部コマンドの出力から値を作る → **終了コードを見る**(`Shell.run` は非ゼロで投げない。

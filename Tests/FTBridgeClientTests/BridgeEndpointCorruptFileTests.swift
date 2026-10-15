@@ -96,4 +96,20 @@ final class BridgeEndpointCorruptFileTests: XCTestCase {
         XCTAssertEqual(client.baseURL.host, BridgeEndpoint.loopbackHost)
         XCTAssertEqual(client.baseURL.port, 8156)
     }
+
+    // MARK: - recorded(記録があるときだけ。実機の接続方式の判定に使う = 2026-10-15 の Codex レビュー)
+
+    /// 記録が無い・壊れているなら nil(`load` の既定 = ループバックへ補わない)。LAN の記録は LAN のまま
+    func testRecordedDoesNotTurnAMissingOrBrokenRecordIntoLoopback() throws {
+        XCTAssertNil(BridgeEndpoint.recorded(port: 8160, repoRoot: root))
+        XCTAssertTrue(BridgeEndpoint.load(port: 8160, repoRoot: root).isLoopback, "load still supplies the loopback default")
+        try write("{\"broken\":", port: 8161)
+        XCTAssertNil(BridgeEndpoint.recorded(port: 8161, repoRoot: root))
+        try write("192.168.20.50\ntok", port: 8162)
+        let lan = try XCTUnwrap(BridgeEndpoint.recorded(port: 8162, repoRoot: root))
+        XCTAssertFalse(lan.isLoopback)
+        XCTAssertEqual(lan.token, "tok")
+        try write("127.0.0.1\ntok", port: 8163)
+        XCTAssertTrue(try XCTUnwrap(BridgeEndpoint.recorded(port: 8163, repoRoot: root)).isLoopback)
+    }
 }

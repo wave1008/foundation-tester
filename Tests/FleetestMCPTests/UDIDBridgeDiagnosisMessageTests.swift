@@ -442,4 +442,22 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
         let text = MCPServer.noResponsiveBridgeMessage(udid: "SIM-1", diagnosis: diagnosis)
         XCTAssertTrue(text.contains("no running bridge"), text)
     }
+
+    // MARK: - 実機のトンネルだけが消えたとき(2026-10-15 の負荷テスト)
+
+    /// 張り直しを試してよいのは「診断が完走し、何も待ち受けていない」ときだけ。busy・固まり・答えたが
+    /// 確かめられない・予算切れは「居ない」ではない
+    func testTunnelRestoreIsTriedOnlyWhenNothingListens() {
+        let quiet = MCPServer.UDIDBridgeDiagnosis(listeningButUnresponsive: [], heldByRunPID: nil, lookup: .physical)
+        XCTAssertTrue(MCPServer.nothingListensFor(quiet))
+        let busy = MCPServer.UDIDBridgeDiagnosis(listeningButUnresponsive: [8126], heldByRunPID: nil, lookup: .physical)
+        XCTAssertFalse(MCPServer.nothingListensFor(busy))
+        var wedged = quiet
+        wedged.wedgedPorts = [8126]
+        XCTAssertFalse(MCPServer.nothingListensFor(wedged))
+        var answered = quiet
+        answered.answeredPorts = [8126]
+        XCTAssertFalse(MCPServer.nothingListensFor(answered))
+        XCTAssertFalse(MCPServer.nothingListensFor(.diagnosisTimedOut))
+    }
 }

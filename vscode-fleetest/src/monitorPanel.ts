@@ -41,6 +41,7 @@ import { repairDisplay, repairWifi } from "./adbWifiRepair";
 import { childEnv } from "./childEnv";
 import type { FleetestCli } from "./cli";
 import { type FleetestConfig, resolveAdb, resolveProjectName } from "./config";
+import { binaryDirs } from "./binaryPathResolve";
 import { checkForDyldLaunchFailure } from "./dyldLaunchNotice";
 import { currentLocale, t } from "./i18n";
 import { type StreamFoldReason, streamVisibilityChange, streamVisible } from "./streamVisibilityLog";
@@ -1600,8 +1601,9 @@ export class MonitorPanelController implements vscode.Disposable {
       this.readInappBridges(),
       this.listAndroidBridges(),
     ]);
-    // config の binaryPath 配下(このリポジトリのビルド成果物)は名前を問わず fleetest 由来として拾う。
-    const binaryDir = path.dirname(this.getConfig().binaryPath);
+    // config の binaryPath 配下(このリポジトリのビルド成果物)は名前を問わず fleetest 由来として拾う
+    // (実体の置き場と、リンクを経た設定上の置き場の両方 = binaryDirs)。
+    const binaryDir = binaryDirs(this.getConfig().binaryPath);
     // 表示・掃除の対象外を取得段階で除外する: Android エミュ本体(qemu、「デバイスモニター」タブの領域)と
     // MCP サーバ(mcp、セッションを守るため掃討しない=表示もしない)。
     const host = parseResidentProcesses(stdout, { simulatorNames, binaryDir, inappBridges, locale: currentLocale() }).filter(
@@ -1730,8 +1732,7 @@ export class MonitorPanelController implements vscode.Disposable {
     if (command.includes(this.workspaceRoot)) {
       return true;
     }
-    const binaryDir = path.dirname(this.getConfig().binaryPath);
-    return path.isAbsolute(binaryDir) && command.includes(binaryDir);
+    return binaryDirs(this.getConfig().binaryPath).some((dir) => path.isAbsolute(dir) && command.includes(dir));
   }
 
   // 掃討本体(確認ダイアログは killAllResidentProcessesAndClose が持つ)。
