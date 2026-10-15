@@ -21,14 +21,9 @@ Don't modify any shell configuration files. There's no need to build the app.
 Check that container image ls lists sut-ec-mobile-server and postgres, report, and stop.
 ```
 
-- **Give the builder VM 3 GB of memory.** Apple Container builds inside a builder VM, and with the default 2 CPUs /
-  2 GB the server's build (Gradle) stalls (it failed after 25 minutes without output). The build succeeded with
-  2.5 GB and 3 GB, so 3 GB leaves 1 GB over the failing 2 GB and 0.5 GB over the passing 2.5 GB.
-- **CPUs: a quarter of the Mac's core count, rounded up** (see `sysctl -n hw.ncpu`: 2 for 8 cores, 3 for 10 cores,
-  4 for 16 cores).
-- Expect about 2.5 minutes with 2 CPUs. The build reaches the outside network to fetch dependencies.
+- **Give the builder VM 3 GB of memory.**
+- **CPUs: a quarter of the Mac's core count, rounded up** (2 for 8 cores, 3 for 10 cores, 4 for 16 cores).
 - When the build finishes you may stop the builder VM with `container builder stop` (the image stays).
-- `postgres:16` is pulled beforehand so the first run does not wait for the image.
 
 <details>
 <summary><b>Do it manually (click to show details)</b></summary>

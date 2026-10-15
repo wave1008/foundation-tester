@@ -33,20 +33,13 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md の手順でセットアップして。
 ```
 
-3. インストールが完了したら、VSCode で `Developer: Reload Window` を実行します。AIアシスタント(Claude Code を含む)も
-   一度終了し、このフォルダで新しいセッションを開きます。MCP サーバ `fleetest` の使用を確認されたら許可します
-   (インストールで登録した `ft_*` ツールとスキルは、新しいセッションから使えます)
+3. インストールが完了したら、VSCode で shift + command + P でコマンドパレットを開き `Developer: Reload Window` を実行します
 
 4. VSCode の左下のステータスバーに表示される **fleetest mobile** をクリックします。デバイスモニターが開きます
 
-5. **Claude Code 以外の AIアシスタント**を使う場合は、「MCP を登録して」と指示します。登録したら AIアシスタントを
-   再起動し、このフォルダで新しいセッションを開きます(画面の探索やシナリオの実行に使う `ft_*` ツールが使えるようになります)。
-   詳しくは [Claude Code 以外の AIアシスタント](reference/tools/other_agents_ja.md)の「MCP サーバを登録する」を参照してください
+5. **Claude Code 以外の AIアシスタント**を使う場合は、「MCP を登録して」と指示します。登録したら AIアシスタントを再起動します
 
 6. AIアシスタントへ「fleetest doctor を実行して結果を報告して」と指示し、エラーが出ないことを確かめます
-
-インストールすると、作業フォルダの隣に `foundation-tester` フォルダができ、**最新のリリース**が入ります。このドキュメントで手で打つコマンドの
-`../foundation-tester/.build/debug/fleetest` は、その中の `fleetest` を指します。
 
 インストールが済んだら、[サンプルアプリの準備](sample-app_ja.md)をして、[クイックスタート](quick-start_ja.md)でテストを作って実行してみましょう。
 

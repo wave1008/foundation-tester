@@ -33,20 +33,13 @@ Clone https://github.com/wave1008/foundation-tester next to this folder, then se
 following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
 ```
 
-3. When the installation finishes, run `Developer: Reload Window` in VSCode. Also quit your AI assistant (including
-   Claude Code) and open a new session in this folder. If asked whether to use the MCP server `fleetest`, allow it
-   (the `ft_*` tools and skills registered by the installation are available from the new session)
+3. When the installation finishes, open the Command Palette in VSCode with shift + command + P and run `Developer: Reload Window`.
 
 4. Click **fleetest mobile** in the status bar at the lower-left corner of VSCode. The device monitor opens.
 
-5. If you use an **AI assistant other than Claude Code**, ask it to "register the MCP server". Then restart the
-   assistant and open a new session in this folder (this enables the `ft_*` tools used to explore screens and run scenarios).
-   For details, see "Register the MCP server" in [AI Assistants Other Than Claude Code](reference/tools/other_agents.md).
+5. If you use an **AI assistant other than Claude Code**, ask it to "register the MCP server". Then restart the assistant.
 
 6. Ask your AI assistant to "run fleetest doctor and report the result", and confirm that no errors are reported
-
-The installation creates a `foundation-tester` folder next to your work folder, holding the **latest release**. In this documentation,
-`../foundation-tester/.build/debug/fleetest` in the commands you type by hand refers to the `fleetest` inside it.
 
 Once it is installed, prepare the sample app in [Preparing the Sample App](sample-app.md), then create and run a test in the [Quick start](quick-start.md).
 
