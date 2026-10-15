@@ -42,7 +42,7 @@ fleetest services reset    # remove containers, networks, named volumes and the 
 ```
 
 Images you built yourself and images that were pulled stay in the container runtime; remove them with
-`container image rm <name>` / `docker image rm <name>` if you no longer need them (for example `sut-ec-mobile-server:local`, `postgres:16`).
+`container image rm <name>` / `docker image rm <name>` if you no longer need them (for example `ghcr.io/wave1008/sut-ec-mobile-server:latest`, `postgres:16-alpine`).
 
 This stops every fleetest process on this Mac, whichever work folder it belongs to (fleetest in your
 other work folders stops too).

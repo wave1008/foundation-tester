@@ -42,7 +42,7 @@ fleetest services reset    # コンテナ・ネットワーク・名前付きボ
 ```
 
 自分でビルドしたイメージと取得したイメージはコンテナランタイム側に残るので、不要なら `container image rm <名前>` /
-`docker image rm <名前>` で消します(例: `sut-ec-mobile-server:local`・`postgres:16`)。
+`docker image rm <名前>` で消します(例: `ghcr.io/wave1008/sut-ec-mobile-server:latest`・`postgres:16-alpine`)。
 
 この Mac で動いている fleetest のプロセスを、作業フォルダに関係なくすべて止めます(他の作業フォルダで
 使っている fleetest も止まります)。

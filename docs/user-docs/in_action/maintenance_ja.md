@@ -77,8 +77,8 @@ Simulator の掃除は、fleetest を通して起動したときだけ走りま�
   アプリを自動でインストールする設定が無い場合は、アプリを入れ直してください。仮想デバイスごとの使用量は、
   結果ダッシュボードの「デバイスの健全性」で「ストレージ使用を更新」を押すと表示されます。
 - **compose.yaml のサービスが使うもの**: fleetest がビルドしたイメージ・中継のイメージ・名前付きボリュームは自動では消えません。
-  `fleetest services status` が大きさを出し、`fleetest services reset` で消します。自分でビルドしたイメージ(例 `sut-ec-mobile-server:local`)と
-  取得したイメージはランタイム側に残るので、`container image rm` / `docker image rm` で消します。失敗した run のサービスのログは
+  `fleetest services status` が大きさを出し、`fleetest services reset` で消します。自分でビルドしたイメージと
+  取得したイメージ(例 `ghcr.io/wave1008/sut-ec-mobile-server:latest`)はランタイム側に残るので、`container image rm` / `docker image rm` で消します。失敗した run のサービスのログは
   `results/runs/<月>/<runID>/services/<サービス>.log` に残ります。
 - **消えないもの**: 結果の記録(合否・所要時間の JSON)は削除されませんが、数千回の実行でも数十 MB 程度です。
   ビルドフォルダ(`.build`)は数 GB ありますが、使い続けても増え続けはしません。消すと、次に使うときに

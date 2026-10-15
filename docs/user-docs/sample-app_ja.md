@@ -4,26 +4,23 @@
 
 [はじめに(インストール)](getting-started_ja.md)が済んだ後、クイックスタートで使うサンプルアプリ
 ([sut-ec-mobile](https://github.com/wave1008/sut-ec-mobile)。Compose Multiplatform の EC 買い物アプリ)の
-サーバーをコンテナにして、fleetest に宣言するまでの手順です。
+サーバーのイメージを取得して、fleetest に宣言するまでの手順です。
 サーバーは Kotlin(Ktor)と PostgreSQL でできています。
 
-## 1. サーバーのイメージをビルドする
+## 1. サーバーのイメージを取得する
 
 ### AIへの指示文
 
 ```text
 https://github.com/wave1008/sut-ec-mobile をこのフォルダの隣に clone して。
 コンテナのランタイムは Apple Container を使う。無ければ Homebrew でインストールし、container system start --enable-kernel-install を1回実行して。
-ビルドの前に container builder stop && container builder start --cpus <N> --memory 3g を実行して。<N> は sysctl -n hw.ncpu の値の 1/4 を切り上げた数。
-sut-ec-mobile の直下で、server/Dockerfile からサーバーのイメージ sut-ec-mobile-server:local をビルドして。
-container image pull postgres:16 も実行して。
+container image pull ghcr.io/wave1008/sut-ec-mobile-server:latest と container image pull postgres:16-alpine を実行して。
 シェルの設定ファイルは変更しないで。アプリはビルドしなくてよい。
 container image ls に sut-ec-mobile-server と postgres が出ることを確かめて報告したら終わりにして。
 ```
 
-- **ビルダー VM のメモリは 3 GB にします。**
-- **CPU は Mac のコア数の 1/4 (切り上げ)とします**(8 コアなら 2、10 コアなら 3、16 コアなら 4)。
-- ビルドが終わったら `container builder stop` でビルダー VM を止めてかまいません(イメージは残ります)。
+- サーバーは GitHub Container Registry(GHCR)に公開済みのイメージを使うので、手元でビルドする必要はありません。
+- clone したリポジトリは、[クイックスタート](quick-start_ja.md)でアプリをビルドするときに使います。
 
 <details>
 <summary><b>手動で実行(クリックで詳細表示)</b></summary>
@@ -31,16 +28,12 @@ container image ls に sut-ec-mobile-server と postgres が出ることを確�
 ```bash
 brew install container
 container system start --enable-kernel-install    # Linux カーネルの取得。1回だけ
-sysctl -n hw.ncpu                                  # コア数。<N> はこの 1/4 を切り上げた数
-
-container builder stop && container builder start --cpus <N> --memory 3g
 
 cd ..                                              # 作業フォルダの隣に clone する
 git clone https://github.com/wave1008/sut-ec-mobile.git
-cd sut-ec-mobile
-container build -t sut-ec-mobile-server:local -f server/Dockerfile .
 
-container image pull postgres:16
+container image pull ghcr.io/wave1008/sut-ec-mobile-server:latest
+container image pull postgres:16-alpine
 container image ls
 ```
 
@@ -57,26 +50,27 @@ TestProjects/project1/workspace/scripts/compose.yaml を次の内容で作って
 
 ```yaml
 # sut-ec-mobile のバックエンド(PostgreSQL + サーバー)。fleetest が実行のたびに起動し、healthcheck を待ってからシナリオを動かし、終わったら止める。
-# server は「サンプルアプリの準備」でビルドしたイメージ(手元にあるので取得しない)。
+# server は GHCR に公開済みのイメージ(手元に無ければ fleetest が取得する)。
 # アプリの接続先はビルドに焼かれている(iOS Simulator = 127.0.0.1:8090 / Android Emulator = 10.0.2.2:8090)。
 services:
   db:
-    image: postgres:16
+    image: postgres:16-alpine
     environment:
       POSTGRES_DB: sutec
       POSTGRES_USER: sutec
       POSTGRES_PASSWORD: sutec
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sutec"]
-      interval: 2s
+      interval: 500ms
       timeout: 3s
-      retries: 30
+      retries: 120
 
   server:
-    image: sut-ec-mobile-server:local
+    image: ghcr.io/wave1008/sut-ec-mobile-server:latest
+    # サーバーは DB に接続できるまで自分で待つので、DB の準備完了を待たずに続けて起動する
     depends_on:
       db:
-        condition: service_healthy
+        condition: service_started
     environment:
       DATABASE_URL: jdbc:postgresql://db:5432/sutec
       DB_USER: sutec
@@ -86,18 +80,18 @@ services:
     ports:
       - "127.0.0.1:8090:8090"
     healthcheck:
-      # JRE のイメージに curl が無いので、bash の /dev/tcp で /health を読む
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8090 && printf 'GET /health HTTP/1.0\r\n\r\n' >&3 && grep -q '\"status\":\"ok\"' <&3"]
-      interval: 3s
+      # イメージは Alpine で bash と curl が無いので、BusyBox の wget で /health を読む
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8090/health | grep -q '\"status\":\"ok\"'"]
+      interval: 500ms
       timeout: 5s
-      retries: 60
+      retries: 360
       start_period: 10s
 ```
 ````
 
 - サーバーは実行のたびに fleetest が起動して止めます。Mac を再起動しても、起動し直す操作は要りません。
 - DB は実行のたびに空から作られ、初期データはサーバーが起動時に入れます。
-- サーバーを更新したら、同じ名前でビルドし直します(fleetest は手元のイメージを使います)。
+- サーバーの新しい版を取り込むには、作業フォルダで `fleetest services pull --refresh` を実行します(fleetest は手元にあるイメージを使い続けます)。
 - 宣言の書き方は[アプリが依存するサービス](reference/writing/services_ja.md)にあります。
 
 <details>

@@ -81,7 +81,7 @@ working. You can check with `fleetest doctor --fm-only` (it exits with code 1 wh
   "Device health" in the Results Dashboard.
 - **What compose.yaml services use**: images fleetest built, the relay image and named volumes are not deleted
   automatically. `fleetest services status` shows their sizes, and `fleetest services reset` removes them. Images you built
-  yourself (for example `sut-ec-mobile-server:local`) and pulled images stay in the runtime, so remove them with
+  yourself and pulled images (for example `ghcr.io/wave1008/sut-ec-mobile-server:latest`) stay in the runtime, so remove them with
   `container image rm` / `docker image rm`. The service logs of a failed run are kept in
   `results/runs/<month>/<runID>/services/<service>.log`.
 - **What stays**: The result records (the pass/fail and timing JSON) are never deleted, but even
