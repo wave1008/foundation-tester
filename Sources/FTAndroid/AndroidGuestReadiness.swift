@@ -19,9 +19,11 @@ public enum AndroidGuestReadiness {
     }
 
     /// adb shell が期限内に答えなかった(凍結・起動途中・極端な負荷)。`adb devices` には device のまま載る
-    public static func noAnswerMessage(serial: String, seconds: Double) -> String {
+    /// `consequence` = この断りで**何が起きなかったか**(呼び手ごとに違う事実。既定値を置かない = 新しい呼び手の渡し忘れを
+    /// コンパイルで止める。ブリッジ起動の文をドライバの命令の断りに使わない)
+    public static func noAnswerMessage(serial: String, seconds: Double, consequence: String) -> String {
         "\(serial) did not answer `adb shell` within \(Int(seconds))s (the device may be frozen or still"
-            + " booting; `adb devices` can still list it) — the bridge was not started. If it stays this way,"
+            + " booting; `adb devices` can still list it) — \(consequence). If it stays this way,"
             + " restart the device"
     }
 

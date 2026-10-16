@@ -174,3 +174,20 @@ final class MCPScrollToFilterInheritanceTests: XCTestCase {
         XCTAssertFalse(text.contains("inherited from an earlier call"), text)
     }
 }
+
+/// waitSeconds の値域は下限だけなので Int.max を超える値も届く。秒の印字が `Int(_:)` でトラップするとサーバごと落ちる
+extension MCPWaitTimeoutRemedyTests {
+    func testSecondsTextDoesNotTrapBeyondIntMax() {
+        XCTAssertEqual(MCPServer.secondsText(9_223_372_036_854_775_808), "9223372036854775808s")
+        XCTAssertEqual(MCPServer.secondsText(1e300).hasSuffix("s"), true)
+    }
+
+    /// 待ちの段の記録も同じ印字を通す(直の `Int(seconds)` が落ちた当の箇所)
+    func testWaitForWatchdogMarkUsesTheSafeSecondsText() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/fleetest-mcp/MCPServer+Driver.swift")
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertFalse(text.contains("(cap \\(Int(seconds))s)"), "待ちの段の記録が秒を Int へ直に変換している")
+        XCTAssertTrue(text.contains("(cap \\(secondsText(seconds)))"))
+    }
+}

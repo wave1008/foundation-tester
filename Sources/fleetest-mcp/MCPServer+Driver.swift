@@ -1749,7 +1749,7 @@ extension MCPServer {
             partialHint = hint
         }
         if matches(selector, in: first) { return (true, first, nil, "", false, nil) }
-        SlowCallWatchdog.mark("waiting for \(selector) (cap \(Int(seconds))s)")
+        SlowCallWatchdog.mark("waiting for \(selector) (cap \(secondsText(seconds)))")
         notePartial(first, elapsed: 0)
         let start = Date()
         let deadline = start.addingTimeInterval(seconds)

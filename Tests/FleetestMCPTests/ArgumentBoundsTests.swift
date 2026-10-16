@@ -325,6 +325,32 @@ final class ArgumentBoundsTests: XCTestCase {
         }
     }
 
+    /// Int のミリ秒に収まらない waitSeconds は断る(素通しすると待ちの秒の変換がトラップしてサーバごと落ちた)
+    func testSnapshotWaitForWithAnUnrepresentableWaitSecondsIsRejected() async {
+        _ = try? await server.call(tool: "ft_launch", args: ["bundleId": "com.example"])
+        do {
+            _ = try await server.call(tool: "ft_snapshot",
+                                      args: ["waitFor": "#nothing_here", "waitSeconds": 9_223_372_036_854_775_808.0])
+            XCTFail("waitSeconds 2^63 が通った")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("waitSeconds"), error.localizedDescription)
+        }
+    }
+
+    func testBatchStepWithAnUnrepresentableWaitSecondsIsRejected() async {
+        do {
+            _ = try await server.call(tool: "ft_batch", args: ["steps": "tap x: 10 y: 20 waitSeconds: 1e300"])
+            XCTFail("ft_batch の waitSeconds 1e300 が通った")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("waitSeconds must be"), error.localizedDescription)
+        }
+    }
+
+    func testWaitSecondsCeilingIsPinned() {
+        XCTAssertEqual(ArgumentBounds.numeric["waitSeconds"]?.max, 1e15)
+        XCTAssertLessThan(1e15 * 1000, Double(Int.max))
+    }
+
     func testDraftScenarioLastNZeroIsRejected() async {
         _ = try? await server.call(tool: "ft_launch", args: ["bundleId": "com.example"])
         do {

@@ -107,7 +107,7 @@ public final class AndroidDriver: AppDriver {
 
     /// 論理 px → 物理 px の倍率(DOM の CSS px を画面座標へ写すのに要る)
     func displayDensity() -> Double {
-        guard let out = try? adb(["shell", "wm", "density"]).outputIfSucceeded,
+        guard let out = try? adbProbe(["shell", "wm", "density"], timeout: Self.deviceAnswerTimeoutSeconds).outputIfSucceeded,
               let density = Self.parseDisplayDensity(out) else { return 1 }
         return density
     }
@@ -118,7 +118,7 @@ public final class AndroidDriver: AppDriver {
     /// ズームにならない(実測: 既定半径 238 px = 最大間隔 428 px で `zoom=-`、450 px で `zoom=in`)。
     /// 読めなければ nil(呼び手は既定のまま)
     public func minimumScalingSpanPx() -> Double? {
-        guard let out = try? adb(["shell", "wm", "density"]).outputIfSucceeded,
+        guard let out = try? adbProbe(["shell", "wm", "density"], timeout: Self.deviceAnswerTimeoutSeconds).outputIfSucceeded,
               let density = Self.parseDisplayDensity(out) else { return nil }
         return Self.minimumScalingSpanPx(densityPxPerDp: density)
     }
@@ -166,20 +166,26 @@ public final class AndroidDriver: AppDriver {
         do {
             return try adbProbe(args, timeout: Self.deviceAnswerTimeoutSeconds)
         } catch ShellError.timedOut {
-            throw noAnswerError()
+            // 命令そのものが期限で切られた = 端末側で効いたかどうかは分からない
+            throw noAnswerError(consequence: "the command was cut off, so whether it took effect is unknown")
         }
     }
 
     /// 端末が `adb shell` に答えるかを期限つきで1回確かめる。adb 自体の失敗(オフライン等)はここでは
     /// 断らず、続く本番の呼び出しにその理由を言わせる
     func requireDeviceAnswers() throws {
-        _ = try adbAnswering(["shell", "true"])
+        do {
+            _ = try adbProbe(["shell", "true"], timeout: Self.deviceAnswerTimeoutSeconds)
+        } catch ShellError.timedOut {
+            throw noAnswerError(consequence: "nothing was sent to it")
+        }
     }
 
-    func noAnswerError() -> DriverError {
+    func noAnswerError(consequence: String) -> DriverError {
         .bridgeUnreachable(context: androidContext(),
                            detail: AndroidGuestReadiness.noAnswerMessage(
-                               serial: serial ?? "?", seconds: Self.deviceAnswerTimeoutSeconds))
+                               serial: serial ?? "?", seconds: Self.deviceAnswerTimeoutSeconds,
+                               consequence: consequence))
     }
 
     /// 門を通さない素の adb。`adb(_:)` と `installSplitBundle` の門の内側からだけ呼ぶ
@@ -309,6 +315,7 @@ public final class AndroidDriver: AppDriver {
     }
 
     public func install(packagePath: String) async throws {
+        try requireDeviceAnswers()
         // .apks(App Bundle 由来のスプリット)は adb install に渡せない(単一 APK ではない)
         if ApksBundle.isApks(path: packagePath) {
             try installSplitBundle(apksPath: packagePath)
@@ -342,6 +349,7 @@ public final class AndroidDriver: AppDriver {
 
     public func uninstall(bundleID: String) async throws {
         try AndroidPackageName.require(bundleID)
+        try requireDeviceAnswers()
         let result = try adb(["uninstall", bundleID])
         guard result.output.contains("Success") else {
             throw DriverError.badResponse(status: Int(result.status),
@@ -424,6 +432,7 @@ public final class AndroidDriver: AppDriver {
     /// ランチャー intent を送る(起動中ならタスクが前面に来るだけ)。
     public func activate(bundleID: String) async throws {
         try AndroidPackageName.require(bundleID)
+        try requireDeviceAnswers()
         let result = try adb(["shell", "monkey", "-p", bundleID,
                               "-c", "android.intent.category.LAUNCHER", "1"])
         guard result.status == 0 else {
@@ -502,8 +511,8 @@ public final class AndroidDriver: AppDriver {
     /// 失敗は投げず除外なし側へ倒す(`AndroidBackGestureEdges.parse` 参照)
     public func backGestureEdgeWidths() async -> (left: Double, right: Double, bottom: Double)? {
         if let cachedBackGestureEdgeWidths { return cachedBackGestureEdgeWidths }
-        let result = try? adb(["shell", "dumpsys", "activity", "service",
-                               "com.android.systemui/.SystemUIService"])
+        let result = try? adbProbe(["shell", "dumpsys", "activity", "service",
+                                    "com.android.systemui/.SystemUIService"], timeout: Self.deviceAnswerTimeoutSeconds)
         // 下端の帯はダンプに高さが出ない版がある。フォールバックは AOSP の 3ボタンバー高(48dp)=
         // ジェスチャナビの帯(それ以下)の上限。実測した値ではない(尽きたら dump の値を読む側を足す)
         let bottomFallback = Self.bottomGestureBandFallbackDp * pointScale
@@ -1313,7 +1322,9 @@ public final class AndroidDriver: AppDriver {
         if ApksBundle.isApks(path: apkPath) {
             return installedSplitsAreCurrent(packageID: packageID, apksPath: apkPath)
         }
-        guard let pathResult = try? adb(["shell", "pm", "path", packageID]),
+        // md5sum は APK の大きさで所要が変わる = 入口で1回だけ応答を確かめる(答えなければ「要インストール」= install の門が名指しで断る)
+        guard (try? requireDeviceAnswers()) != nil,
+              let pathResult = try? adb(["shell", "pm", "path", packageID]),
               pathResult.status == 0 else { return false }
         guard let remote = pathResult.output.split(separator: "\n")
             .first(where: { $0.hasPrefix("package:") })
@@ -1334,6 +1345,7 @@ public final class AndroidDriver: AppDriver {
         let entries = ApksBundle.listEntries(apksPath: apksPath)
         guard !entries.isEmpty else { return false }
         guard let script = ApksBundle.installedFilesScript(packageID: packageID),
+              (try? requireDeviceAnswers()) != nil,
               let probe = try? adb(["shell", script]),
               probe.status == 0,
               let installed = ApksBundle.parseInstalledFiles(probe.output) else { return false }

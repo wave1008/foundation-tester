@@ -31,6 +31,40 @@ final class AndroidDeviceAnswerTimeoutScanTests: XCTestCase {
         XCTAssertTrue(text.contains("adbAnswering(["), "走査の前提(期限つきの呼び出し)が見つからない")
     }
 
+    /// 素の `adb([`(期限なし)の呼び出しを**全部拾い**、同じ関数の手前に `requireDeviceAnswers()` があるか、
+    /// 理由つきの免除表に載っているかを見る。禁止形の列挙だけだと新しい形(monkey・wm density・uninstall)が
+    /// すり抜けた(凍結しかけた Emulator への `ft_launch resume:true` が monkey で 240 秒返らなかった)
+    func testEveryUnboundedAdbCallInTheDriverIsGatedOrExempted() throws {
+        let text = try Self.source("AndroidDriver.swift")
+        // 免除 = 端末の応答を確かめずに撃つと決めたもの(等号で固定する。足すなら理由を書く)
+        let exempted: [String: String] = [
+            #"adb(["shell", "input", "swipe""#:
+                "ドラッグ・長押しのフォールバック(実機の主経路)。正当に長く、門の往復を毎ジェスチャに払わない(§65.6)",
+        ]
+        let regex = try NSRegularExpression(pattern: #"(?<![A-Za-z])adb\(\[[^\]\n]*"#)
+        let ns = text as NSString
+        var ungated: [String] = []
+        var exemptHits = Set<String>()
+        for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            let call = ns.substring(with: match.range)
+            if let key = exempted.keys.first(where: { call.hasPrefix($0) }) {
+                exemptHits.insert(key)
+                continue
+            }
+            let before = ns.substring(to: match.range.location)
+            guard let funcStart = before.range(of: "func ", options: .backwards) else {
+                ungated.append(call); continue
+            }
+            if !before[funcStart.lowerBound...].contains("requireDeviceAnswers()") {
+                ungated.append(call)
+            }
+        }
+        XCTAssertEqual(ungated, [], "期限なしの adb を門なしで撃つ経路がある(短い命令は adbAnswering、長い命令は入口で requireDeviceAnswers)")
+        XCTAssertEqual(exemptHits, Set(exempted.keys), "免除表に、もう存在しない呼び出しが残っている")
+        XCTAssertGreaterThan(regex.numberOfMatches(in: text, range: NSRange(location: 0, length: ns.length)), 5,
+                             "走査の前提(素の adb の呼び出し)が見つからない")
+    }
+
     /// `pm clear` は所要が読めないので、入口で1回 端末が答えるかを確かめること
     func testClearAppDataChecksTheDeviceAnswersFirst() throws {
         let text = try Self.source("AndroidDriver.swift")

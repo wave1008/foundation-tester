@@ -4437,3 +4437,49 @@ SwiftPM はビルドのたびに `.build/debug`(→ `out/Products/Debug`)のリ�
   down が回収)/ 印のある端末への `bridge down`(MCP の印・run の印とも断る)はいずれも正常
 - **ハーネス側の誤り**: `id: null` の -32700 を読み捨てて HANG と記録した・CLI ファズの cwd・プロファイルがリモート機へ配った(`--runner local`)・
   全シナリオが @Draft のクラスを名指しした
+
+## 83. 10/16 の3時間負荷テスト(2026-10-16 04:19〜07:19)
+
+§82 と同じ構成(手元のフリート run・sim-09 = MCP・sim-10 = ライブ操作・emulator-5570 = MCP・実機 3 台 = MCP・サービスの並走)に、
+Android のライブ操作(emulator-5572)・MCP からの `ft_start_run`(待機列)・CLI の `clean` / `api results-run` / `api results-compare` /
+`api retention` / `api install-ios-runtime`・障害注入の「実機ランナーの kill」「ライブ操作側 Android のブリッジ停止」を足した。
+この Mac は OCR が死に、Emulator はステータスバーまで真っ白・CMP iOS ほか iOS も白紙の描画(フリートの赤の大半)= §82 と同じ状態。
+フリート run 48(api run 12)・MCP 約 6.3 万・ライブ操作 約 1.27 万・CLI 約 2,000・サービス操作 93・障害注入 13 + 手動(VM 停止2回)。
+クラッシュ 1(83.4)・応答の無い呼び出し 1(83.1)。
+
+### 83.1 Android の activate(monkey)ほかが期限なしの adb で返らなかった
+負荷で応答しなくなった Emulator に `ft_launch resume:true` を撃つと「activating the app」の段で 240 秒返らず(ライブ操作の activate も 121 秒で
+watchdog)。§65.6 は禁止形の列挙(keyevent 等)で塞いでいたので、`monkey`・`uninstall`・`install`・`wm density`・`dumpsys activity service`・
+差分判定の `pm path` / `md5sum` が素の `adb(` のまま残っていた。所要の読める短いものは期限つき(`adbProbe`)、読めないものは入口で
+`requireDeviceAnswers()`。走査は**素の `adb([` の全呼び出しを拾い、門か理由つき免除(長押し・ドラッグの `input swipe` = §65.6)**へ変えた
+(`AndroidDeviceAnswerTimeoutScanTests.testEveryUnboundedAdbCallInTheDriverIsGatedOrExempted`)。陽性対照: emulator の VM を止めて
+(`adb emu avd stop`)HEAD は 140 秒応答なし・修正は 45 秒で「adb shell に答えない」。**残り(再現していない同型)**: 録画
+(`AndroidScreenVideoRecorder`)の kill / rm / `wm size` も期限なし(止まる型で、誤った成功ではない)
+
+### 83.2 「端末が答えない」の断りがドライバの命令にもブリッジ起動の文を出していた
+`AndroidGuestReadiness.noAnswerMessage` が「the bridge was not started」を持ち、keyevent・home・back の期限切れと入口の門にも同じ文が出た。
+帰結を呼び手が渡す(`consequence:`・既定値なし)= ブリッジ起動「the bridge was not started」/ 入口の門「nothing was sent to it」/
+命令の期限切れ「whether it took effect is unknown」(届いたかもしれない命令を「送っていない」と言わない)
+
+### 83.3 サービスの healthcheck が尽きたとき、検査そのものの失敗理由を捨てていた
+`probeEvent` が exec の終了コードと出力を捨て、失敗文にはコンテナのログ(`200 OK` が並ぶ)だけが載った。実地: sut-ec-mobile の
+イメージが Alpine(bash 無し)に変わり、作業フォルダの古い compose.yaml の `bash -c` の検査が毎回実行できずに 60 回失敗 →
+「サーバーは 200 を返しているのに失敗」としか見えなかった。最後に失敗した検査の事実(`last healthcheck: exit N: <出力の末尾3行>` /
+期限切れ)を失敗文に添える(`ServicesSession.lastHealthcheckFact`)
+
+### 83.4 巨大な waitSeconds で fleetest-mcp が落ちた
+`ft_snapshot` に `waitFor` と `waitSeconds: 2^63` で「Double value cannot be converted to Int」(待ちの段の記録の `Int(seconds)`)。
+`waitSeconds` の値域が下限だけだった。上限 `ArgumentBounds.waitSecondsCeiling`(1e15 秒 = Int のミリ秒に収まる範囲から1桁下げた値。
+MCP・`ft_batch` の DSL 行・ライブ操作が共有)と、秒の印字(`secondsText`)を `Int(exactly:)` に。DSL 側の同型(Android の
+hideKeyboard の待ち・type の読み返しの予算の `Int(x * 1000)`)も MCP からは値域で届かなくなった(シナリオの直書きは対象外)
+
+### 83.5 記録だけの観察(直していない)
+- `api results --project E2E-CMP` のキャッシュ外れ(新しい run が入るたび)が 35 秒・RSS 1.6GB(結果 6.8 万件・90 日窓)
+- `api results-run` / `api results-compare` の「run not found」が使い方の誤り(64・--help)= §82.3 と同型(渡した ID が無いだけ)
+- `api install-ios-runtime --version 1e400` は版の読みが緩く「1.400」と読んで SDK 不一致で断る(何も入れない)
+- `ft_batch` の `type '.button'` が Pixel 4a(RN)で門を通って「タップした欄に打てない」になった 1 件。ホーム画面での再現では
+  正しく断り、直前の右スワイプ(戻る)の遷移中に解決した可能性。原因未確定
+- 作業フォルダの sut-ec-mobile の compose.yaml が古く(clone からのビルド + bash の検査)、サービス付きの run は全部サービスの段で落ちた
+  → sut-ec-mobile の正本(`fleetest/compose.yaml` = GHCR のイメージ・BusyBox の wget の検査)へ差し替えた
+- **ハーネス側の誤り**: 実機ランナーの kill の後に起こし直しが無かった(MCP は実機のブリッジを起こさない = 設計どおり)・
+  別セッションの警告と同じ行に載った本文を `grep -v` で消して「空の応答」と見誤った

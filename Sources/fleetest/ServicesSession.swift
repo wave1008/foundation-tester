@@ -1015,7 +1015,7 @@ final class ServicesSession {
         return RuntimeListing.containerState(json: json, isDocker: cli.isDocker)
     }
 
-    private func probeEvent(_ launch: ContainerLaunch, policy: HealthcheckPolicy) -> ReadinessEvent {
+    private func probeEvent(_ launch: ContainerLaunch, policy: HealthcheckPolicy) -> (ReadinessEvent, RuntimeCLIResult) {
         let argv: [String]
         switch launch.healthcheck?.test {
         case .cmd(let list)?: argv = list
@@ -1026,12 +1026,22 @@ final class ServicesSession {
         let clearing = launch.proxyEnvironment.map(\.key)
         let result = cli.run(cli.commands.containerExec(launch.name, argv: argv, clearing: clearing), timeout: policy.timeoutSeconds)
         let at = Self.now()
-        if result.timedOut { return .probeTimedOut(at: at) }
-        return result.succeeded ? .probeSucceeded(at: at) : .probeFailed(at: at)
+        if result.timedOut { return (.probeTimedOut(at: at), result) }
+        return (result.succeeded ? .probeSucceeded(at: at) : .probeFailed(at: at), result)
+    }
+
+    /// 最後に失敗した healthcheck の事実(終了コード・出力の末尾 / 期限切れ)。**捨てるとコンテナのログしか
+    /// 残らず**、検査のコマンド自体が実行できない(イメージに bash が無い等)ときに「サーバーは 200 を返して
+    /// いるのに失敗」としか見えない。出力が空なら終了コードだけ
+    static func lastHealthcheckFact(_ result: RuntimeCLIResult) -> String {
+        if result.timedOut { return "last healthcheck: \(result.output)" }
+        let tail = result.tail(lines: 3).split(separator: "\n").joined(separator: " | ")
+        return "last healthcheck: exit \(result.status)" + (tail.isEmpty ? "" : ": \(tail)")
     }
 
     private func waitReady(_ launch: ContainerLaunch, kind: ReadinessKind) throws {
         var schedule = ReadinessSchedule(kind: kind, startedAt: Self.now())
+        var lastFailedProbe: RuntimeCLIResult?
         var action: ReadinessAction
         if let state = containerState(launch), state.exited {
             action = schedule.apply(.containerExited(code: state.exitCode, at: Self.now()))
@@ -1045,9 +1055,12 @@ final class ServicesSession {
                 return
             case .failed(let reason):
                 let logs = cli.run(cli.commands.containerLogs(launch.name, tail: 50)).tail(lines: 50)
-                throw ServicesError(phase: .wait, detail: "service \(launch.service): \(reason)", logTail: logs)
+                let probeFact = lastFailedProbe.map { " (\(Self.lastHealthcheckFact($0)))" } ?? ""
+                throw ServicesError(phase: .wait, detail: "service \(launch.service): \(reason)\(probeFact)", logTail: logs)
             case .probe:
-                action = schedule.apply(probeEvent(launch, policy: HealthcheckPolicy(launch.healthcheck)))
+                let (event, result) = probeEvent(launch, policy: HealthcheckPolicy(launch.healthcheck))
+                if !result.succeeded { lastFailedProbe = result }
+                action = schedule.apply(event)
             case .wait(let until):
                 let remaining = until - Self.now()
                 if remaining > 0 { Thread.sleep(forTimeInterval: min(remaining, Self.pollIntervalSeconds)) }

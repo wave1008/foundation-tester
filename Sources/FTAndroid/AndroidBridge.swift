@@ -282,7 +282,8 @@ extension AndroidDriver {
             throw DriverError.bridgeUnreachable(
                 context: androidContext(),
                 detail: AndroidGuestReadiness.noAnswerMessage(
-                    serial: serial ?? "?", seconds: Self.deviceAnswerTimeoutSeconds))
+                    serial: serial ?? "?", seconds: Self.deviceAnswerTimeoutSeconds,
+                    consequence: "the bridge was not started"))
         } catch {
             probe = nil
         }

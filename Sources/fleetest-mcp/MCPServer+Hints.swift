@@ -127,9 +127,11 @@ extension MCPServer {
         return finalHeight < beforeHeight - 1 ? .shrunk : .silent
     }
 
-    /// 待ちの秒数の印字。`5.0s` ではなく `5s`(既定値の桁が増えるだけで情報が無い)
+    /// 待ちの秒数の印字。`5.0s` ではなく `5s`(既定値の桁が増えるだけで情報が無い)。
+    /// **`Int(_:)` へ直に渡さない**: waitSeconds の値域は下限だけなので 2^63 以上も届き、変換がトラップしてサーバごと落ちる
     static func secondsText(_ seconds: Double) -> String {
-        seconds == seconds.rounded() ? "\(Int(seconds))s" : String(format: "%.1fs", seconds)
+        guard seconds == seconds.rounded() else { return String(format: "%.1fs", seconds) }
+        return Int(exactly: seconds).map { "\($0)s" } ?? String(format: "%.0fs", seconds)
     }
 
     /// 満額待って外れた回に、**払った場所で**上限の変え方を名指しする。

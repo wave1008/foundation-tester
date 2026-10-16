@@ -33,6 +33,11 @@ public enum ArgumentBounds {
     /// その相互検査は `gestureCapViolation`(表の単独検査では書けない)
     private static let gestureSecondsCeiling = BridgeAPI.gestureSecondsCeiling
 
+    /// `waitSeconds` の上限(秒)。待ちの呼び手は `.milliseconds(Int(seconds * 1000))` や秒の印字で Int へ変換するので、
+    /// Int のミリ秒で表せる範囲(約 9.2e15 秒)を超えると変換がトラップしてプロセスごと落ちる(MCP ならサーバごと)。
+    /// 境界ちょうどは浮動小数の丸めで Int.max を跨ぎうるので1桁下げる。実用の待ちを縛る値ではない(約 3,170 万年)
+    public static let waitSecondsCeiling: Double = 1e15
+
     /// 引数名 → 値域。**値域を持たない引数も `.unbounded` で必ず載せる** ——
     /// スキーマの数値プロパティ全部がここに載っていることを `ArgumentBoundsTests` が
     /// 走査で確かめる(載せ忘れは「値域が無いから」ではなく「まだ検討していないから」を
@@ -58,7 +63,7 @@ public enum ArgumentBounds {
         "radius": Bound(min: 0, minExclusive: true),
         "scale": Bound(min: 0, minExclusive: true),
         "port": Bound(min: 1, max: 65535),
-        "waitSeconds": Bound(min: 0),
+        "waitSeconds": Bound(min: 0, max: waitSecondsCeiling),
         // waitForSettle の静止の窓。範囲は BridgeAPI が定義元(ms)。ft_batch の DSL 行だけが使う鍵
         "quietSeconds": Bound(min: Double(BridgeAPI.waitForSettleQuietRangeMs.lowerBound) / 1000,
                               max: Double(BridgeAPI.waitForSettleQuietRangeMs.upperBound) / 1000),

@@ -56,3 +56,24 @@ final class AndroidGuestReadinessTests: XCTestCase {
         XCTAssertTrue(message.contains("cmd: Can't find service: package"))
     }
 }
+
+/// 「端末が答えない」の断り文は、何が起きなかったかを呼び手が渡す(ブリッジ起動の文がドライバの断りに出ていた)
+extension AndroidGuestReadinessTests {
+    func testNoAnswerMessageCarriesTheCallersConsequence() {
+        XCTAssertEqual(AndroidGuestReadiness.noAnswerMessage(serial: "emulator-5554", seconds: 15, consequence: "nothing was sent to it"),
+                       "emulator-5554 did not answer `adb shell` within 15s (the device may be frozen or still booting;"
+                       + " `adb devices` can still list it) — nothing was sent to it. If it stays this way, restart the device")
+    }
+
+    func testOnlyTheBridgeColdStartSaysTheBridgeWasNotStarted() throws {
+        let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/FTAndroid")
+        let driver = try String(contentsOf: dir.appendingPathComponent("AndroidDriver.swift"), encoding: .utf8)
+        let bridge = try String(contentsOf: dir.appendingPathComponent("AndroidBridge.swift"), encoding: .utf8)
+        XCTAssertFalse(driver.contains("the bridge was not started"), "ドライバの断りにブリッジ起動の文がある")
+        XCTAssertTrue(bridge.contains(#"consequence: "the bridge was not started""#))
+        let gate = try XCTUnwrap(driver.range(of: "func requireDeviceAnswers() throws {"))
+        XCTAssertTrue(driver[gate.upperBound...].prefix(300).contains(#"consequence: "nothing was sent to it""#),
+                      "入口の門が「何も送っていない」と言っていない")
+    }
+}
