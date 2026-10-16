@@ -78,6 +78,12 @@ fleetest remote setup <宛先> --project <プロジェクト>
 **初回は数分〜十数分かかる**(clone・xcodegen 導入・`swift build` のコールドビルド)。
 逐次1行ずつ出るので、無音でなければ進んでいる。
 
+align は発行側の実行ファイルを一時転送し、**FM の安全な退役・起動予約 → checkout・ビルド → 新常駐の起動元・版確認**
+を行う。発行側の現在の実行ファイル(約94MB)を各ランナーへSCPし、ランナー上で実行できることが前提。
+使用中の推論・暖機の終了を確認できなければ、停止・checkout・ビルドを行わず失敗する。
+FM が未起動ならビルドだけを行い、FM は起こさない。常駐を切り替えても古い監視プロセスは
+更新されないので、別クローンを使う VSCode 等が残っていれば、そちらも更新・再起動する。
+
 終了コードで分岐する:
 
 - **0** → ステップ4へ
@@ -188,6 +194,7 @@ profile=`<実行プロファイル>`)で始め、`ft_run_status` で結果を引
 | 症状 | 原因 | 対処 |
 |---|---|---|
 | `git revision mismatch` | 手元とランナー機の版が違う | 手元をコミット&push してから `fleetest remote setup <宛先>` を流し直す(align が合わせる)。**手元の未コミットの変更は届かない** |
+| `FM alignment failed` / `FM resident alignment failed` | FM 常駐の切替・確認が未完了 | 使用中・保守ロック取得失敗なら処理終了後に再実行。安全な切替に非対応の旧常駐(通信版2・3)は自動停止しない。古い呼び手を止めて FM の利用終了を確認し、人手で一度だけ旧常駐を終了してから再実行する。常駐が手元より新しい場合は手元も更新。詳しくは docs/remote-runner-setup.md ステップ3。強制停止で押し切らない |
 | `toolchain mismatch` | 発行側の製品版に一致する Xcode がランナーに1つも無い(macOS は照合しない。ベータの build 番号だけの違いはこのエラーにならず `remote status` の TOOLCHAIN 欄に ⚠️(advisory)が出るだけで、ディスパッチは止まらない) | **`remote setup` では直らない**(Xcode の導入は GUI と sudo が要る)。🧑 に発行側と同じ Xcode 製品版を**ランナーの `/Applications` へ追加で**入れてもらう(既存の Xcode を消す必要はない。入れれば自動で選ばれる)。既存を置き換える運用にする場合だけ、フリートでは1台だけ更新して検証してから残りへ広げる |
 | `could not tell which installed Xcode to dispatch with: … match this Mac's product version` | ランナーの `/Applications` に同じ製品版の Xcode が複数ある | 登録簿に pin する: `fleetest remote machines add <名前> --host <宛先> --developer-dir <使わせたい Xcode.app のパス>` |
 | `could not tell which installed Xcode to dispatch with: none of the …` | ランナーに手元と一致する Xcode が1つも無い | 🧑 にその製品版の Xcode の導入を依頼する(既存の Xcode は消さなくてよい)。**pin では直らない** |

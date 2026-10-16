@@ -61,7 +61,7 @@ final class FMServeIdentityTests: XCTestCase {
         }
     }
 
-    func testReplacingOldServerSendsShutdownWithThatServersVersion() async throws {
+    func testLegacyServerIsLeftRunningEvenAfterItsExecutableWasRebuilt() async throws {
         let socket = path()
         let requests = LockedValue<[FMServeWire.Request]>([])
         let acknowledged = LockedValue(false)
@@ -77,10 +77,9 @@ final class FMServeIdentityTests: XCTestCase {
         let identity = try await client.status()
         let decision = await FMServeHost.prepareExistingServer(identity, client: client, executable: "/a/fleetest",
                                                                buildStamp: "new", serverExecutableStamp: "new")
-        XCTAssertEqual(decision, .replace)
-        XCTAssertTrue(acknowledged.value, "the old server rejected a shutdown using the new protocol version")
-        XCTAssertEqual(requests.value.map(\.kind), [.status, .shutdown])
-        XCTAssertEqual(requests.value.map(\.version), [FMServeWire.protocolVersion, 2])
+        XCTAssertEqual(decision, .leave(.unsupportedRetirement))
+        XCTAssertFalse(acknowledged.value, "a server without safe retirement was stopped")
+        XCTAssertEqual(requests.value.map(\.kind), [.status])
     }
 
     func testOldClientLeavesNewServerRunningWithoutSendingShutdown() async throws {
@@ -97,7 +96,7 @@ final class FMServeIdentityTests: XCTestCase {
         let identity = try await client.status()
         let decision = await FMServeHost.prepareExistingServer(identity, client: client, executable: "/a/fleetest",
                                                                buildStamp: "new", serverExecutableStamp: "new")
-        XCTAssertEqual(decision, .leave)
+        XCTAssertEqual(decision, .leave(.versionMismatch))
         XCTAssertEqual(requests.value.map(\.kind), [.status])
         XCTAssertTrue(FramedUnixSocket.isServed(path: socket))
     }

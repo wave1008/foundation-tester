@@ -169,13 +169,81 @@ final class RemoteSetupTests: XCTestCase {
     func testAlignRevisionCommand() {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         XCTAssertEqual(
-            RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: "9655a21"),
-            "cd '/Users/ci/fleetest-runner/foundation-tester' && git fetch origin && "
-                + "git checkout '9655a21' && swift build --product fleetest"
+            RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: "9655a21",
+                                                  helperPath: "/tmp/fleetest-remote-align.12345678/fleetest"),
+            "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; "
+                + "ft_align_helper='/tmp/fleetest-remote-align.12345678/fleetest'; "
+                + "ft_align_helper_dir='/tmp/fleetest-remote-align.12345678'; "
+                + #"trap 'rm -f -- "$ft_align_helper"; rmdir -- "$ft_align_helper_dir"' EXIT; "#
+                + #"chmod 700 "$ft_align_helper" && cd '/Users/ci/fleetest-runner/foundation-tester' && git fetch origin && "#
+                + #""$ft_align_helper" api fm-align "#
+                + "--target-executable '/Users/ci/fleetest-runner/foundation-tester/.build/debug/fleetest' "
+                + #"--build-command 'git checkout '\''9655a21'\'' && swift build --product fleetest"#
                 + " && swift build --product fleetest-simstream"
                 + " && swift build --product fleetest-androidstream"
                 + " && swift build --product fleetest-devicepoll"
-                + " && swift build --product fleetest-services")
+                + " && swift build --product fleetest-services'")
+    }
+
+    func testAlignRevisionCommandRemovesHelperWhenFetchFails() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let layout = RemoteLayout(base: root.appendingPathComponent("runner").path, issuer: "alice", home: root.path)
+        try FileManager.default.createDirectory(atPath: layout.toolRoot, withIntermediateDirectories: true)
+        let helperDirectory = root.appendingPathComponent("maintenance")
+        try FileManager.default.createDirectory(at: helperDirectory, withIntermediateDirectories: true)
+        let helper = helperDirectory.appendingPathComponent("fleetest")
+        try Data("not invoked".utf8).write(to: helper)
+        let command = RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: "9655a21", helperPath: helper.path)
+
+        // toolRoot は Git リポジトリではない。fetch の失敗を保ち、helper へ進まず後片付けする。
+        let result = try Shell.run(["/bin/sh", "-c", command])
+
+        XCTAssertEqual(result.status, 128, result.output)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: helper.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: helperDirectory.path))
+    }
+
+    func testAlignRevisionCommandPreservesHeadAndBinaryWhenMaintenanceRefuses() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let layout = RemoteLayout(base: root.appendingPathComponent("runner").path, issuer: "alice", home: root.path)
+        try FileManager.default.createDirectory(atPath: layout.toolRoot, withIntermediateDirectories: true)
+        func git(_ arguments: [String]) throws -> String {
+            let result = try Shell.run(["/usr/bin/git", "-C", layout.toolRoot,
+                "-c", "user.name=Fleetest Tests", "-c", "user.email=fleetest@example.invalid",
+                "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null"] + arguments)
+            XCTAssertEqual(result.status, 0, result.output)
+            return result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        _ = try git(["init", "--quiet"])
+        let marker = URL(fileURLWithPath: layout.toolRoot).appendingPathComponent("revision-marker")
+        try Data("old source".utf8).write(to: marker)
+        _ = try git(["add", "revision-marker"])
+        _ = try git(["commit", "--quiet", "-m", "old"])
+        let oldRevision = try git(["rev-parse", "HEAD"])
+        try Data("new source".utf8).write(to: marker)
+        _ = try git(["commit", "--quiet", "-am", "new"])
+        let newRevision = try git(["rev-parse", "HEAD"])
+        _ = try git(["checkout", "--quiet", "--detach", oldRevision])
+        _ = try git(["remote", "add", "origin", layout.toolRoot])
+        let binary = URL(fileURLWithPath: layout.toolRoot).appendingPathComponent(".build/debug/fleetest")
+        try FileManager.default.createDirectory(at: binary.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("old executable".utf8).write(to: binary)
+        let helperDirectory = root.appendingPathComponent("maintenance")
+        try FileManager.default.createDirectory(at: helperDirectory, withIntermediateDirectories: true)
+        let helper = helperDirectory.appendingPathComponent("fleetest")
+        try Data("#!/bin/sh\nexit 73\n".utf8).write(to: helper)
+        let command = RemoteSetupPlan.alignRevisionCommand(
+            layout: layout, revision: newRevision, helperPath: helper.path)
+
+        let result = try Shell.run(["/bin/sh", "-c", command])
+
+        XCTAssertEqual(result.status, 73, result.output)
+        XCTAssertEqual(try git(["rev-parse", "HEAD"]), oldRevision)
+        XCTAssertEqual(try Data(contentsOf: marker), Data("old source".utf8))
+        XCTAssertEqual(try Data(contentsOf: binary), Data("old executable".utf8))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: helperDirectory.path))
     }
 
     // MARK: - RemoteSetupPlan.validateUninstallBase

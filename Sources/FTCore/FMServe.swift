@@ -16,8 +16,12 @@ import Foundation
 import Synchronization
 
 public enum FMServeWire {
-    /// 要求・応答の形の版。**欄や意味を変えたら +1**(古い常駐プロセスは起動し直される = `FMServeHost.ensureRunning`)
-    public static let protocolVersion = 3
+    /// 要求・応答の形の版。欄や意味を変えたら +1。不一致は推論を拒否し、置換には安全な退役の受諾を要する。
+    public static let protocolVersion = 4
+    // 引継ぎ制御は推論の版と独立。相手の版を偽装せず、将来の新版からも同じ安全な停止を頼める。
+    public static let retirementProtocolVersion = 1
+    /// 安全退役(retire)を初めて実装した推論契約の版。
+    public static let minimumRetirementServerVersion = 4
 
     /// シナリオのプロセスへソケットのパスを渡す環境変数(`ScenarioHost.childEnvironment` が載せる)
     public static let socketEnvironmentKey = "FT_FM_SERVE_SOCKET"
@@ -52,7 +56,7 @@ public enum FMServeWire {
         case probe
         /// 版と実行ファイルの問い合わせ(FM は呼ばない・寿命を延ばさない)
         case status
-        /// 終わらせる(版の違う常駐プロセスを置き換えるとき)
+        /// 旧制御。新版は呼び手の版を確認できない停止要求を拒否し、RetirementRequestだけを受け入れる。
         case shutdown
     }
 
@@ -128,6 +132,38 @@ public enum FMServeWire {
         }
     }
 
+    public struct RetirementRequest: Codable, Sendable, Equatable {
+        public enum Kind: String, Codable, Sendable { case retire }
+        public var kind: Kind
+        public var controlVersion: Int
+        public var target: Identity
+        public var replacementVersion: Int
+
+        public init(target: Identity, replacementVersion: Int = FMServeWire.protocolVersion,
+                    controlVersion: Int = FMServeWire.retirementProtocolVersion) {
+            kind = .retire
+            self.controlVersion = controlVersion
+            self.target = target
+            self.replacementVersion = replacementVersion
+        }
+    }
+
+    public struct RetirementResponse: Codable, Sendable, Equatable {
+        public enum Outcome: String, Codable, Sendable {
+            case retiring, busy, identityMismatch, newerServer, unsupported
+        }
+        public var controlVersion: Int
+        public var identity: Identity
+        public var outcome: Outcome
+
+        public init(controlVersion: Int = FMServeWire.retirementProtocolVersion,
+                    identity: Identity, outcome: Outcome) {
+            self.controlVersion = controlVersion
+            self.identity = identity
+            self.outcome = outcome
+        }
+    }
+
     /// 実行ファイルの版の印(変更時刻と大きさ)。作り直した `fleetest` は別の印になる。読めなければ空
     public static func buildStamp(executable: String) -> String {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: executable),
@@ -180,9 +216,38 @@ public struct FMServeClient: Sendable {
         try await control(FMServeWire.Request(kind: .status))
     }
 
-    /// 版の違う相手も停止できるよう、照会で得た相手自身の版を必ず送る。
+    /// 旧常駐の手動保守用。wire4以降は呼び手の版を検証できないため拒否される。自動更新はretireを使う。
     public func shutdown(serverVersion: Int) async throws -> FMServeWire.Identity {
         try await control(FMServeWire.Request(kind: .shutdown, version: serverVersion))
+    }
+
+    public func retire(_ request: FMServeWire.RetirementRequest) async throws -> FMServeWire.RetirementResponse {
+        let payload = try await exchange(request)
+        return try JSONDecoder().decode(FMServeWire.RetirementResponse.self, from: payload)
+    }
+
+    func waitForRetirement(target: FMServeWire.Identity, waitSeconds: Double) async throws -> FMServeWire.RetirementResponse {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(max(0, waitSeconds)))
+        while true {
+            try Task.checkCancellation()
+            let remaining = ContinuousClock.now.duration(to: deadline)
+            guard remaining > .zero else {
+                return FMServeWire.RetirementResponse(identity: target, outcome: .busy)
+            }
+            var attempt = self
+            attempt.deadlineSeconds = min(deadlineSeconds,
+                Double(remaining.components.seconds) + Double(remaining.components.attoseconds) / 1e18)
+            let response = try await attempt.retire(FMServeWire.RetirementRequest(target: target))
+            guard response.controlVersion == FMServeWire.retirementProtocolVersion,
+                  response.identity.serverVersion == target.serverVersion,
+                  response.identity.executable == target.executable,
+                  response.identity.buildStamp == target.buildStamp,
+                  response.outcome == .busy else { return response }
+            let left = ContinuousClock.now.duration(to: deadline)
+            guard left > .zero else { return response }
+            // 暖機終了後の1秒の隙間を照会する。照会はFM推論を起こさず、毎秒10回を上限とする。
+            try await Task.sleep(for: min(.milliseconds(100), left))
+        }
     }
 
     private func control(_ request: FMServeWire.Request) async throws -> FMServeWire.Identity {
@@ -194,7 +259,7 @@ public struct FMServeClient: Sendable {
         }
     }
 
-    private func exchange(_ request: FMServeWire.Request) async throws -> Data {
+    private func exchange(_ request: some Encodable) async throws -> Data {
         let payload: Data
         do {
             let frame = try FramedUnixSocket.encode(request)
@@ -228,12 +293,15 @@ public enum FMServeHost {
 
     /// 生きている常駐プロセスをどう扱うか
     enum LiveServerDecision: Equatable {
+        enum LeaveReason: Equatable {
+            case versionMismatch, unsupportedRetirement, retirementRejected, busy, retirementQueryFailed, cancelled
+        }
         /// そのまま使う
         case reuse
         /// 止めて起こし直す(相手が自分の実行ファイルより古い)
         case replace
         /// 使えないが止めない(古いのはこちら / 版の違う別のクローンの常駐プロセス)= この経路では FM を使わない
-        case leave
+        case leave(LeaveReason)
     }
 
     /// 判断(純粋関数)。`executable` / `buildStamp` はこちらの実行ファイルとディスク上の今の印、`serverExecutableStamp` は
@@ -242,30 +310,52 @@ public enum FMServeHost {
     /// 止めてしまい、毎分の死活の確かめのたびに入れ替え(= 載せ直し)を起こした。別のクローン同士も止め合わない
     static func decide(_ status: FMServeWire.Identity, executable: String, buildStamp: String,
                        serverExecutableStamp: String) -> LiveServerDecision {
+        guard status.serverVersion <= FMServeWire.protocolVersion else { return .leave(.versionMismatch) }
         let sameVersion = status.serverVersion == FMServeWire.protocolVersion
         // 印が読めない(空 = 実行ファイルの属性が取れなかった。リンクの作り直しの瞬間など)は「古い」と言える根拠が無い ——
         // 止めずに版だけで決める(読めないことを「違う」に畳むと、正常な常駐プロセスを止めて FM の載せ直しを起こす)
         if buildStamp.isEmpty || serverExecutableStamp.isEmpty || status.buildStamp.isEmpty {
-            return sameVersion ? .reuse : .leave
+            return sameVersion ? .reuse : .leave(.versionMismatch)
         }
         if status.executable == executable {
             if status.buildStamp != buildStamp { return .replace }   // 相手は作り直す前の版
-            return sameVersion ? .reuse : .leave                       // 同じ版のはずが違う = 古いのはこちら
+            return sameVersion ? .reuse : .leave(.versionMismatch)     // 同じ版のはずが違う = 古いのはこちら
         }
         if status.buildStamp != serverExecutableStamp { return .replace }   // 相手は自分の実行ファイルより古い
-        return sameVersion ? .reuse : .leave
+        return sameVersion ? .reuse : .leave(.versionMismatch)
     }
 
     static func prepareExistingServer(_ status: FMServeWire.Identity, client: FMServeClient,
                                       executable: String, buildStamp: String,
-                                      serverExecutableStamp: String) async -> LiveServerDecision {
+                                      serverExecutableStamp: String,
+                                      waitSeconds: Double = retirementWaitSeconds) async -> LiveServerDecision {
         let decision = decide(status, executable: executable, buildStamp: buildStamp,
                               serverExecutableStamp: serverExecutableStamp)
         if decision == .replace {
-            _ = try? await client.shutdown(serverVersion: status.serverVersion)
+            guard status.serverVersion >= FMServeWire.minimumRetirementServerVersion else {
+                return .leave(.unsupportedRetirement)
+            }
+            do {
+                let response = try await client.waitForRetirement(target: status, waitSeconds: waitSeconds)
+                guard response.controlVersion == FMServeWire.retirementProtocolVersion,
+                      response.identity.serverVersion == status.serverVersion,
+                      response.identity.executable == status.executable,
+                      response.identity.buildStamp == status.buildStamp else { return .leave(.retirementRejected) }
+                switch response.outcome {
+                case .retiring: return .replace
+                case .busy: return .leave(.busy)
+                case .identityMismatch, .newerServer, .unsupported: return .leave(.retirementRejected)
+                }
+            } catch {
+                return .leave(Task.isCancelled || error is CancellationError ? .cancelled : .retirementQueryFailed)
+            }
         }
         return decision
     }
+
+    /// 暖機の応答期限20秒＋制御の余裕5秒(既存のクライアント予算)だけ待つ。
+    /// 非協調な推論が残る場合も延長せず、尽きたら停止せずleaveしてFMのスキップ理由を表示する。
+    static let retirementWaitSeconds: Double = FMServeWire.clientDeadlineSeconds
 
     /// 起こしてから状態の問い合わせに答えるまで待つ上限[秒]。答えるのは bind の直後(FM の積み込みは待たない)なので
     /// 起動の所要(実測 0.1〜0.3 秒)の桁上。**尽きたとき**: nil = この run では FM を使わない(1 行言う)
@@ -278,32 +368,72 @@ public enum FMServeHost {
         guard let executable = serverExecutable() else { return nil }
         let stamp = FMServeWire.buildStamp(executable: executable.path)
         let client = FMServeClient(socketPath: path, deadlineSeconds: 3)
-        if let status = try? await client.status() {
+        return await ensureRunning(client: client, executable: executable, stamp: stamp,
+                                   initialStatus: try? await client.status(), log: log)
+    }
+
+    static func ensureRunning(client: FMServeClient, executable: URL, stamp: String,
+                              initialStatus: FMServeWire.Identity?,
+                              waitSeconds: Double = retirementWaitSeconds,
+                              spawn: (URL, String) -> Bool = FMServeHost.spawn,
+                              log: (String) -> Void) async -> String? {
+        let path = client.socketPath
+        guard !Task.isCancelled else { return nil }
+        if let status = initialStatus {
             switch await prepareExistingServer(status, client: client, executable: executable.path, buildStamp: stamp,
-                                              serverExecutableStamp: FMServeWire.buildStamp(executable: status.executable)) {
+                                              serverExecutableStamp: FMServeWire.buildStamp(executable: status.executable),
+                                              waitSeconds: waitSeconds) {
             case .reuse:
                 active.withLock { $0 = path }
                 return path
-            case .leave:
+            case .leave(.retirementQueryFailed):
+                // 別の呼び手が退役させた場合、例外だけでは生存も終了も言えない。身元と所有権を読み直す。
+                if let current = try? await client.status() {
+                    if current.status == .ok,
+                       decide(current, executable: executable.path, buildStamp: stamp,
+                              serverExecutableStamp: FMServeWire.buildStamp(executable: current.executable)) == .reuse {
+                        active.withLock { $0 = path }
+                        return path
+                    }
+                } else if !Task.isCancelled {
+                    break
+                }
+                log("⚠️ FM retirement query failed; neither a usable FM process nor a released socket could be confirmed;"
+                    + " FM checks are skipped here")
+                return nil
+            case .leave(.busy):
+                log("⚠️ The FM process stayed busy for \(Int(waitSeconds)) s; it was left running; FM checks are skipped here")
+                return nil
+            case .leave(.cancelled):
+                log("⚠️ FM process setup was cancelled; no replacement was started")
+                return nil
+            case .leave(.versionMismatch), .leave(.unsupportedRetirement), .leave(.retirementRejected):
                 log("⚠️ FM process (\(status.executable)) speaks protocol \(status.serverVersion), this process"
-                    + " \(FMServeWire.protocolVersion); FM checks are skipped here (restart this process to use it)")
+                    + " \(FMServeWire.protocolVersion); it was left running because safe reuse or retirement could not"
+                    + " be confirmed; FM checks are skipped here (align the FM process and its callers)")
                 return nil
             case .replace:
                 break
             }
             // 置き換え: 前の常駐プロセスがソケットを離すまで待つ
             let until = Date().addingTimeInterval(startupWaitSeconds)
-            while FramedUnixSocket.isServed(path: path), Date() < until {
+            while !FramedUnixSocket.isReleased(path: path), Date() < until {
                 try? await Task.sleep(for: .milliseconds(100))
             }
+            guard FramedUnixSocket.isReleased(path: path) else {
+                log("⚠️ The retiring FM process has not released its socket; FM checks are skipped here")
+                return nil
+            }
         }
-        guard spawn(executable: executable, socketPath: path) else {
+        guard !Task.isCancelled else { return nil }
+        guard spawn(executable, path) else {
             log("⚠️ FM process could not be started; FM checks are skipped in this run")
             return nil
         }
         let until = Date().addingTimeInterval(startupWaitSeconds)
         while Date() < until {
-            if (try? await client.status()) != nil {
+            if let status = try? await client.status(), status.status == .ok,
+               status.serverVersion == FMServeWire.protocolVersion {
                 active.withLock { $0 = path }
                 return path
             }
@@ -323,7 +453,7 @@ public enum FMServeHost {
         return env
     }
 
-    private static func spawn(executable: URL, socketPath: String) -> Bool {
+    static func spawn(executable: URL, socketPath: String) -> Bool {
         let process = Process()
         process.executableURL = executable
         process.arguments = ["api", "fm-serve", "--socket", socketPath]

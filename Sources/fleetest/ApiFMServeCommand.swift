@@ -1,7 +1,7 @@
 // FM の常駐プロセス `fleetest api fm-serve`: 画像を伴う FM の呼び出しを 1 つのプロセスに集め、Unix ドメインソケットで答える。
 // 起こすのは FTCore の `FMServeHost.ensureRunning`(run の開始・死活の確かめ・doctor)。設計は Sources/FTCore/FMServe.swift 冒頭。
 // 本体は Sources/FTFoundationModels/FMServeServer.swift。
-// 終了条件: どこからも要求が無いまま `FMServeWire.idleExitSeconds`・shutdown の要求・SIGTERM/SIGINT。ソケットのファイルは終了時に消す。
+// 終了条件: どこからも要求が無いまま `FMServeWire.idleExitSeconds`・安全な退役の受諾・SIGTERM/SIGINT。ソケットのファイルは終了時に消す。
 // **stdin・親の死では終わらない**(常駐 = 起こした run より長く生きる。stdin は /dev/null で起こされる)。
 // 孤児の監視(`ResidentProcessGuard.startOrphanWatchdog`)も付けない —— 親が居なくなるのが前提のプロセス。
 

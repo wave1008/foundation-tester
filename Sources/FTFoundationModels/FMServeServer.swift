@@ -69,6 +69,8 @@ public enum FMServeServer {
     private static let activity = FMServeActivity()
     private static let spareNeedsWarm = Mutex(false)
 
+    private static func requestStop() { stopRequested.withLock { $0 = true } }
+
     /// 終わるまで戻らない。戻り値 = 終了コード
     public static func run(socketPath: String, shouldStop: @escaping @Sendable () -> Bool,
                            log: @escaping @Sendable (String) -> Void) -> Int32 {
@@ -190,6 +192,7 @@ public enum FMServeServer {
         activity: FMServeActivity = FMServeServer.activity,
         deadlineSeconds: Double = FMServeWire.requestDeadlineSeconds,
         log: @escaping @Sendable (String) -> Void = { _ in },
+        requestStop: @escaping @Sendable () -> Void = FMServeServer.requestStop,
         operation: @escaping @Sendable (FMServeWire.Request) async throws -> Outcome = perform
     ) async -> Data? {
         func reply(_ status: FMServeWire.Response.Status, text: String? = nil, pass: Bool? = nil,
@@ -202,7 +205,26 @@ public enum FMServeServer {
             try? JSONEncoder().encode(FMServeWire.Identity(status: status, executable: executable, buildStamp: stamp))
         }
         guard let request = try? JSONDecoder().decode(FMServeWire.Request.self, from: payload) else {
-            return reply(.failed, error: "the request could not be decoded")
+            guard let retirement = try? JSONDecoder().decode(FMServeWire.RetirementRequest.self, from: payload) else {
+                return reply(.failed, error: "the request could not be decoded")
+            }
+            let current = FMServeWire.Identity(status: .ok, executable: executable, buildStamp: stamp)
+            let outcome: FMServeWire.RetirementResponse.Outcome
+            if retirement.controlVersion != FMServeWire.retirementProtocolVersion {
+                outcome = .unsupported
+            } else if retirement.target.serverVersion != current.serverVersion
+                        || retirement.target.executable != current.executable
+                        || retirement.target.buildStamp != current.buildStamp {
+                outcome = .identityMismatch
+            } else if retirement.replacementVersion < current.serverVersion {
+                outcome = .newerServer
+            } else if activity.tryRetireIfIdle() {
+                outcome = .retiring
+                requestStop()
+            } else {
+                outcome = .busy
+            }
+            return try? JSONEncoder().encode(FMServeWire.RetirementResponse(identity: current, outcome: outcome))
         }
         guard request.version == FMServeWire.protocolVersion else {
             if request.kind == .status || request.kind == .shutdown { return identity(.versionMismatch) }
@@ -212,8 +234,8 @@ public enum FMServeServer {
         case .status:
             return identity(.ok)
         case .shutdown:
-            stopRequested.withLock { $0 = true }
-            return identity(.ok)
+            // 旧呼び手は相手自身の版を送るため、ここでは新版を止める権限を確認できない。
+            return identity(.failed)
         case .transcribe, .screen, .probe:
             break
         }
@@ -232,6 +254,7 @@ public enum FMServeServer {
         case .refused(let description)?:
             return reply(.refused, error: description, retryCount: retryCount)
         case nil:
+            guard !context.wasRejectedForRetirement else { return nil }
             return reply(.failed, error: "no answer within \(Int(deadlineSeconds))s", retryCount: retryCount)
         }
     }

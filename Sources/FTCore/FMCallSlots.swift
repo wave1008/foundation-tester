@@ -164,6 +164,67 @@ public enum FMCallSlots {
         return tryAcquire(fds) != nil
     }
 
+    public final class MaintenanceLease: Sendable {
+        // fd の所有権はこの不変配列だけが持ち、deinit 以外から閉じない。
+        private let fds: [Int32]
+
+        fileprivate init(fds: [Int32]) {
+            self.fds = fds
+        }
+
+        deinit {
+            fds.forEach { close($0) }
+        }
+    }
+
+    private struct MaintenanceError: Error, CustomStringConvertible {
+        let description: String
+    }
+
+    // 全枠の保持だけでは idle を証明できない。overdue 等の判定はサーバーの retire に任せる。
+    public static func acquireForMaintenance() throws -> MaintenanceLease {
+        let directory = lockURL(slot: 0).deletingLastPathComponent()
+        let names: [String]
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        } catch {
+            let failure = error as NSError
+            throw MaintenanceError(description:
+                "Could not read FM maintenance lock directory at \(directory.path): \(failure.domain) (\(failure.code))")
+        }
+
+        var urls = Set((0..<max(1, concurrency)).map { lockURL(slot: $0) })
+        for name in names where name.hasPrefix("fm.lock.") {
+            let suffix = name.dropFirst("fm.lock.".count)
+            guard !suffix.isEmpty, suffix.allSatisfy({ $0 >= "0" && $0 <= "9" }) else { continue }
+            urls.insert(directory.appendingPathComponent(name))
+        }
+
+        var fds: [Int32] = []
+        defer { fds.forEach { close($0) } }
+        for url in urls.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            // 別 open で同一プロセスの保持も拒否し、起こす daemon にメンテナンス用の枠を継承させない。
+            let fd = open(url.path, O_CREAT | O_NOFOLLOW | O_RDWR | O_NONBLOCK | O_CLOEXEC, 0o644)
+            guard fd >= 0 else {
+                throw MaintenanceError(description:
+                    "Could not open FM maintenance lock at \(url.path): errno \(errno)")
+            }
+            fds.append(fd)
+            var info = stat()
+            guard fstat(fd, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else {
+                throw MaintenanceError(description: "FM maintenance lock is not a regular file: \(url.path)")
+            }
+            guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
+                throw MaintenanceError(description:
+                    "Could not acquire FM maintenance lock at \(url.path): errno \(errno)")
+            }
+        }
+        let lease = MaintenanceLease(fds: fds)
+        fds.removeAll()
+        return lease
+    }
+
     /// **同一プロセス内の排他も要る**: flock は open file description 単位なので、
     /// 同じ fd を共有する別スレッドからの LOCK_EX は既に保持済みとして即成功してしまう。
     /// 枠ごとに「このプロセスが既に持っているか」を heldSlots で見てから試す

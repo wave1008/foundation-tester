@@ -27,6 +27,7 @@ paths:
   - "Sources/FTFoundationModels/FMLivenessProbe.swift"
   - "Sources/fleetest/ProfileRunner.swift"
   - "Sources/fleetest/ApiFMServeCommand.swift"
+  - "Sources/fleetest/ApiFMAlignCommand.swift"
   - "Sources/FTCore/FramedUnixSocket.swift"
   - "Tests/**/*Occlusion*.swift"
   - "Tests/**/FM*.swift"
@@ -94,6 +95,17 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   `FMServeWire.protocolVersion` を +1。**止めるのは相手が自分の実行ファイルより古いときだけ**(`FMServeHost.decide`。版の違いだけで
   止めると、作り直す前から生きている host-metrics が新しい常駐プロセスを毎分止めた)⑦**安全判定による拒否は失敗に数えない**
   (`refused` → skip。失敗に数えると同じ画面で毎回起きる拒否が「死」を記録して FM を止めた)
+- **アラインはFM常駐の実体も確認する**(`FMServeAlignment`、`api fm-align`)。通常の呼び手から別クローンを置き換えず、
+  転送した不変コピーを親にして、ビルド前から全FM枠を保持し、常駐自身が `FMServeActivity` の同じMutex内で暖機・active・overdue・登録途中を含むadmissionsの
+  全空きを確認して受付を閉じる。**枠を取れたことだけでidleと判断しない**(期限後の推論は枠の返却後も残る)。
+  退役制御の版は推論の版と独立。対象の版・パス・buildStampを照合し、新版を旧版へ戻さない。応答の書込まで終えて所有ロックを
+  放した後に保守側が所有ロックをビルド中だけ保持し、checkout・ビルド後の新しい実体を起動して版・パス・buildStampの一致まで確認する。
+  退役の受諾前にはHEADを動かさない。拒否時に新HEADと旧バイナリの組合せを残すとリモートの適合判定をすり抜ける。
+  ビルド後だけの切替に戻さない(同じ実行ファイルの書換で稼働中のFMを中断し得る)。安全な退役に非対応の旧wire2/3は止めず、ビルド前に明示失敗にする。
+  常駐が無ければ起動しない。**通常の更新時も無条件shutdownを送らず、安全退役の受諾を待つ**。
+  通常更新とalignは共通の`retirementWaitSeconds`(25秒)内でbusyを再照会し、受諾後のソケット解放は別の`startupWaitSeconds`(5秒)で待つ。
+  退役により受付を断られた推論要求は無応答で閉じてunavailable(skip)とし、本当の期限切れのfailedとは分ける。
+  新サーバーは旧形式shutdownを常に拒否する(旧呼び手は相手の版を指定するため、新版を止める権限が確認できない)。
 - **FM の「死活」は回数とは別の軸**(`FTCore.FMLiveness` が唯一の定義元。
   `~/.fleetest/fm-liveness.json`)。回数は「使われたか」しか言えないので、**誰も呼んでいない間は
   死んでいても 0 件と同じ絵**になる。守る規律5つ: **①生 / 死 / 不明の3値**(記録が無い・

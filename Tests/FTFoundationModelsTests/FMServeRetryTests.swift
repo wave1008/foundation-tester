@@ -320,7 +320,7 @@ final class FMServeRetryTests: XCTestCase {
     }
 
     func testWireRequiresRetryCountAndPinsVersion() throws {
-        XCTAssertEqual(FMServeWire.protocolVersion, 3)
+        XCTAssertEqual(FMServeWire.protocolVersion, 4)
         let encoded = try JSONEncoder().encode(FMServeWire.Response(status: .failed, retryCount: 1,
                                                                   executable: "test", buildStamp: "test"))
         var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])

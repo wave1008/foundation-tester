@@ -148,20 +148,28 @@ public enum RemoteSetupPlan {
     private static let hexDigits = CharacterSet(charactersIn: "0123456789abcdefABCDEF")
 
     /// リモートのクローンを発行側と同じコミットへ合わせ、`fleetest` と**配信ヘルパー**を
-    /// 作り直す(docs/remote-runner.md §14 ステップ3 相当)。呼び出し側は `validateRevision` を
-    /// 先に通すこと(ここでは検証しない — 検証は1箇所、埋め込みは複数箇所から呼ばれ得るため
-    /// 分離してある)。
+    /// 作り直し、稼働中の FM 常駐プロセスも揃える(docs/remote-runner.md §14 ステップ3 相当)。
+    /// 呼び出し側は `validateRevision` を先に通し、独立した一時ディレクトリへ転送した現在の実行ファイルを
+    /// helperPath へ渡す。保守の親自身をビルドで差し替えず、FM の安全な退役から新版の身元確認まで枠を保持する。
     ///
     /// **ヘルパーを省かない** —— `fleetest` だけをビルドすると、そのランナーのタイルは状態は届くのに
     /// 映像が1枚も来ない(`api device-stream` が exec 対象を見つけられず即死し、拡張は
     /// 「映像なし」で諦める)。名前の定義元は `StreamHelpers`。**中継 `fleetest-services` も省かない** ——
     /// 無いとランナーで動く run-setup.sh / run-teardown.sh がサービスに触れない(`ServiceGatewayWire.relayProductName`)
-    public static func alignRevisionCommand(layout: RemoteLayout, revision: String) -> String {
+    public static func alignRevisionCommand(layout: RemoteLayout, revision: String, helperPath: String) -> String {
         let builds = (["fleetest"] + StreamHelpers.all + [ServiceGatewayWire.relayProductName])
             .map { "swift build --product \($0)" }
             .joined(separator: " && ")
-        return "cd \(RemoteShell.quote(layout.toolRoot)) && git fetch origin && "
-            + "git checkout \(RemoteShell.quote(revision)) && " + builds
+        let buildCommand = "git checkout \(RemoteShell.quote(revision)) && " + builds
+        let helperDirectory = URL(fileURLWithPath: helperPath).deletingLastPathComponent().path
+        let target = layout.toolRoot + "/.build/debug/fleetest"
+        return "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; "
+            + "ft_align_helper=\(RemoteShell.quote(helperPath)); "
+            + "ft_align_helper_dir=\(RemoteShell.quote(helperDirectory)); "
+            + #"trap 'rm -f -- "$ft_align_helper"; rmdir -- "$ft_align_helper_dir"' EXIT; "#
+            + "chmod 700 \"$ft_align_helper\" && cd \(RemoteShell.quote(layout.toolRoot)) && git fetch origin && "
+            + "\"$ft_align_helper\" api fm-align "
+            + "--target-executable \(RemoteShell.quote(target)) --build-command \(RemoteShell.quote(buildCommand))"
     }
 
     /// `remote teardown` が base ごと削除してよいかの判定(docs/remote-runner.md §14 撤去)。

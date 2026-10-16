@@ -36,8 +36,41 @@ private func runInheritedSSH(_ argv: [String]) throws -> Int32 {
     process.standardError = FileHandle.standardError
     let waitForExit = ProcessExitWait.prepareBlocking(process)
     try process.run()
+    let relay = InterruptRelay.forwarding(to: process)
+    defer { relay.stop() }
     waitForExit()
     return process.terminationStatus
+}
+
+private func runRemoteAlignment(hostSpec: RemoteHostSpec, layout: RemoteLayout, revision: String) throws -> Int32 {
+    guard let executable = ExecutablePath.current else {
+        throw RemoteDispatchError.remoteSetupFailed("could not resolve the local alignment executable")
+    }
+    let temporary = try Shell.run(setupSSHBase + [hostSpec.sshTarget,
+        "mktemp -d /tmp/fleetest-remote-align.XXXXXXXX"])
+    guard temporary.status == 0 else {
+        throw RemoteDispatchError.remoteSetupFailed(
+            "could not create a temporary alignment directory (exit \(temporary.status))\n\(temporary.tail)")
+    }
+    let directory = temporary.output.trimmingCharacters(in: .whitespacesAndNewlines)
+    let prefix = "/tmp/fleetest-remote-align."
+    let suffix = directory.dropFirst(prefix.count)
+    guard directory.hasPrefix(prefix), suffix.count == 8,
+          suffix.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) }) else {
+        throw RemoteDispatchError.remoteSetupFailed("the remote alignment directory could not be verified")
+    }
+    let helper = directory + "/fleetest"
+    // 転送失敗ではリモート側の EXIT trap へ到達しないため、こちらでも回収する。
+    defer {
+        _ = try? Shell.run(setupSSHBase + [hostSpec.sshTarget,
+            "rm -f -- \(RemoteShell.quote(helper)); rmdir -- \(RemoteShell.quote(directory)) 2>/dev/null || true"])
+    }
+    let transfer = try runInheritedSSH(setupSCPBase + [executable.path, "\(hostSpec.sshTarget):\(helper)"])
+    guard transfer == 0 else {
+        throw RemoteDispatchError.remoteSetupFailed("could not copy the alignment executable (scp exited \(transfer))")
+    }
+    return try runInheritedSSH(setupSSHBase + [hostSpec.sshTarget,
+        RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: revision, helperPath: helper)])
 }
 
 /// `echo $HOME; <RemoteProbe.consoleUserCommand>; id -un` の到達確認(RemoteRunDispatcher.resolveLayout
@@ -287,7 +320,7 @@ extension RemoteCommand {
 
             // MARK: align
 
-            say("==> align: fetching and building the remote clone...")
+            say("==> align: copying maintenance helper, safely retiring FM, and building the remote clone...")
             // 非ゼロの出力(「fatal: …」)をリビジョンとして扱わない
             guard let localRevision = (try? Shell.run(["git", "-C", repoRoot.path, "rev-parse", "HEAD"]).outputIfSucceeded)
                 .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) }), !localRevision.isEmpty else {
@@ -310,13 +343,18 @@ extension RemoteCommand {
                 emit("align", .fail, RemoteSetupPlan.unpublishedRevisionMessage(revision: localRevision))
                 try summarizeAndExit()
             }
-            let alignCmd = RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: localRevision)
-            let alignStatus = (try? runInheritedSSH(setupSSHBase + [hostSpec.sshTarget, alignCmd])) ?? -1
-            guard alignStatus == 0 else {
-                emit("align", .fail, "git fetch/checkout/build failed (exit \(alignStatus); see output above)")
+            let alignStatus: Int32
+            do {
+                alignStatus = try runRemoteAlignment(hostSpec: hostSpec, layout: layout, revision: localRevision)
+            } catch {
+                emit("align", .fail, error.localizedDescription)
                 try summarizeAndExit()
             }
-            emit("align", .ok, "aligned to \(localRevision.prefix(7)) and built")
+            guard alignStatus == 0 else {
+                emit("align", .fail, "git fetch/checkout/build or FM resident alignment failed (exit \(alignStatus); see output above)")
+                try summarizeAndExit()
+            }
+            emit("align", .ok, "aligned to \(localRevision.prefix(7)) and built; FM maintenance completed")
             releaseRemoteDispatchLock(hostSpec: hostSpec, layout: layout)
             dispatchLockHeld = false
 
@@ -500,14 +538,13 @@ extension RemoteCommand {
             }
             defer { releaseRemoteDispatchLock(hostSpec: hostSpec, layout: layout) }
 
-            say("==> align: fetching and building the remote clone...")
-            let alignCmd = RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: localRevision)
-            let alignStatus = (try? runInheritedSSH(setupSSHBase + [hostSpec.sshTarget, alignCmd])) ?? -1
+            say("==> align: copying maintenance helper, safely retiring FM, and building the remote clone...")
+            let alignStatus = try runRemoteAlignment(hostSpec: hostSpec, layout: layout, revision: localRevision)
             guard alignStatus == 0 else {
-                say("git fetch/checkout/build failed (exit \(alignStatus); see output above)")
+                say("git fetch/checkout/build or FM resident alignment failed (exit \(alignStatus); see output above)")
                 throw ExitCode(1)
             }
-            say("✅ aligned to \(localRevision.prefix(7)) and built")
+            say("✅ aligned to \(localRevision.prefix(7)) and built; FM maintenance completed")
         }
     }
 

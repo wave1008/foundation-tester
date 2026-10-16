@@ -5,6 +5,21 @@
 import Foundation
 
 public enum FramedUnixSocket {
+    final class Ownership: Sendable {
+        private let fd: Int32
+        init(fd: Int32) { self.fd = fd }
+        deinit { close(fd) }
+    }
+
+    static func acquireOwnership(path: String) -> Ownership? {
+        let directory = URL(fileURLWithPath: path).deletingLastPathComponent()
+        do { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
+        catch { return nil }
+        let fd = open(path + ".lock", O_CREAT | O_RDWR | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { return nil }
+        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { close(fd); return nil }
+        return Ownership(fd: fd)
+    }
     /// 1 フレームの上限[バイト]。要求は PNG 1 枚(全画面でも数 MB)・応答は特徴量 1 つ(約 10 KB 台)か短い文字列。
     /// 32 MiB はそのどれよりも桁で大きい = 正常な要求は弾かず、壊れた長さ(読み違い)でメモリを食い尽くさない
     public static let maxFrameBytes = 32 * 1024 * 1024
@@ -179,13 +194,11 @@ public enum FramedUnixSocket {
         // **1 つのパスに持ち主は 1 つ**: 「繋がるか」を見てから消して bind する間に、同時に起きた2つ目が先の持ち主の
         // ソケットファイルを消すと、先の持ち主は誰からも届かない孤児になる。生きている間ずっと flock を握って防ぐ
         // (プロセスが死ねば OS が放す = 残骸のロックは残らない)
-        let lockFD = open(socketPath + ".lock", O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
-        guard lockFD >= 0, flock(lockFD, LOCK_EX | LOCK_NB) == 0 else {
-            if lockFD >= 0 { close(lockFD) }
+        guard let ownership = acquireOwnership(path: socketPath) else {
             log("another process owns \(socketPath)")
             return 1
         }
-        defer { close(lockFD) }
+        defer { withExtendedLifetime(ownership) {} }
         if isServed(path: socketPath) {
             log("a live process already serves \(socketPath)")
             return 1
@@ -198,14 +211,19 @@ public enum FramedUnixSocket {
         guard bound == 0 else { log("bind \(socketPath): errno \(errno)"); return 1 }
         chmod(socketPath, 0o600)
         guard listen(listener, 32) == 0 else { log("listen: errno \(errno)"); return 1 }
+        let connections = DispatchGroup()
+        // 停止応答の書込より先に所有ロックを放すと、新しい常駐プロセスの起動と旧応答が競合する。
+        defer { connections.wait() }
         while !shouldStop() {
             autoreleasepool { onTick() }
             var pollFD = pollfd(fd: listener, events: Int16(POLLIN), revents: 0)
             guard poll(&pollFD, 1, tickMilliseconds) > 0 else { continue }
             let connection = accept(listener, nil, nil)
             guard connection >= 0 else { continue }
+            connections.enter()
             DispatchQueue.global(qos: .userInitiated).async {
                 autoreleasepool {
+                    defer { connections.leave() }
                     defer { close(connection) }
                     // 要求ごとの期限(読めない・遅いクライアントにスレッドを握らせない)
                     setTimeouts(connection, seconds: requestDeadlineSeconds)
@@ -226,6 +244,15 @@ public enum FramedUnixSocket {
         guard probe >= 0 else { return false }
         defer { close(probe) }
         return (withAddress(path: path) { connect(probe, $0, $1) } ?? -1) == 0
+    }
+
+    static func isReleased(path: String) -> Bool {
+        // 停止後のaccept待受へ接続を積まない。所有者が残る間は接続確認そのものが不要。
+        let fd = open(path + ".lock", O_RDWR | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { return errno == ENOENT && !isServed(path: path) }
+        defer { close(fd) }
+        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { return false }
+        return !isServed(path: path)
     }
 }
 

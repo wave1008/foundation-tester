@@ -8,6 +8,11 @@
 
 ## 再現の材料が要るもの(材料が無いまま直すと定数か推測を持ち込む)
 
+- **再実行した`remote setup`のinstall段は、FMの保守処理より前にツールをビルドする**(2026-10-17・ソース確認)
+  - 場所: `Sources/fleetest/RemoteSetupCommand.swift`のinstall→alignの順序。安全な退役とビルドを包む保護はalign段だけ
+  - 手がかり: 稼働中の実行ファイルを書き換えるビルドはプロセスを中断し得る(maintainer-notes §4.1)。この再setup経路でFMが中断する実例は未採取
+  - 要る材料: 再導入時のinstall範囲と稼働プロセスの観測。通常のツール更新には、ビルド前からFMを保守する`remote align`を使う
+
 - **キーボードで押し上げられてステータスバーの下に入った要素を、done のまま外す**(09-11・推測)
   - 場所: ステータスバーの帯を見る判定が MCP・`TapTargetGeometry`・`RefGuard` のどこにも無い
   - 確かめた範囲: Android Emulator の4つの SUT(View/XML・CMP・Flutter・RN)のテキスト入力画面で、いちばん下の欄に焦点を

@@ -9,6 +9,8 @@ final class FMServeActivity: Sendable {
             var retryCount = 0
             var closed = false
             var cancelled = false
+            // 後続のretireと競合しても、期限切れを退役拒否へ読み替えない。
+            var rejectedForRetirement = false
         }
 
         let id = UUID()
@@ -21,6 +23,7 @@ final class FMServeActivity: Sendable {
 
         var remainingSeconds: Double { Self.seconds(ContinuousClock.now.duration(to: deadline)) }
         var isCancelled: Bool { progress.withLock { $0.cancelled } }
+        var wasRejectedForRetirement: Bool { progress.withLock { $0.rejectedForRetirement } }
 
         fileprivate func startRetry(minimumRemainingSeconds: Double) -> Bool {
             progress.withLock { progress in
@@ -40,6 +43,7 @@ final class FMServeActivity: Sendable {
         }
 
         fileprivate func cancel() { progress.withLock { $0.cancelled = true } }
+        fileprivate func rejectForRetirement() { progress.withLock { $0.rejectedForRetirement = true } }
 
         static func seconds(_ duration: Duration) -> Double {
             Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
@@ -75,6 +79,7 @@ final class FMServeActivity: Sendable {
         var overdue: Set<UUID> = []
         var admissions: [UUID: Admission] = [:]
         var warming = false
+        var retiring = false
 
         var waitingRequests: Int {
             admissions.values.filter { if case .waiting = $0 { return true }; return false }.count
@@ -86,6 +91,16 @@ final class FMServeActivity: Sendable {
     var snapshot: Snapshot {
         state.withLock { Snapshot(activeRequests: $0.active.count, waitingRequests: $0.waitingRequests,
                                   warming: $0.warming, overdueRequests: $0.overdue.count) }
+    }
+
+    func tryRetireIfIdle() -> Bool {
+        state.withLock { state in
+            guard !state.warming, state.active.isEmpty, state.overdue.isEmpty,
+                  state.admissions.isEmpty else { return false }
+            // 新規要求の予約と同じ門で閉じる。空きを観測してから停止する形だと、その隙間に推論が始まる。
+            state.retiring = true
+            return true
+        }
     }
 
     func request<Value: Sendable>(
@@ -109,7 +124,15 @@ final class FMServeActivity: Sendable {
         operation: @escaping @Sendable (RequestContext) async throws -> Value
     ) async -> Value? {
         let id = context.id
-        state.withLock { $0.admissions[id] = .registering }
+        let accepted = state.withLock { state -> Bool in
+            guard !state.retiring else { return false }
+            state.admissions[id] = .registering
+            return true
+        }
+        guard accepted else {
+            context.rejectForRetirement()
+            return nil
+        }
         let result = await withTaskCancellationHandler {
             await DeadlineRace.first(seconds: max(0, context.remainingSeconds)) {
                 await beforeAdmission()
@@ -152,7 +175,7 @@ final class FMServeActivity: Sendable {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
                 let (decision, reason) = state.withLock { state -> (State.Admission, String) in
-                    guard state.admissions[id] != nil else { return (.cancelled, "") }
+                    guard !state.retiring, state.admissions[id] != nil else { return (.cancelled, "") }
                     if state.warming || !state.overdue.isEmpty {
                         state.admissions[id] = .waiting(continuation)
                         return (.waiting(continuation), state.warming ? "keep-warm" : "unfinished timed-out inference")
@@ -201,7 +224,7 @@ final class FMServeActivity: Sendable {
         operation: @escaping @Sendable () async throws -> Void
     ) -> Task<Void, Never>? {
         let admitted = state.withLock { state -> Bool in
-            guard !state.warming, state.active.isEmpty, state.admissions.isEmpty else { return false }
+            guard !state.retiring, !state.warming, state.active.isEmpty, state.admissions.isEmpty else { return false }
             state.warming = true
             return true
         }
@@ -246,7 +269,7 @@ final class FMServeActivity: Sendable {
     }
 
     private static func admitWaiting(_ state: inout State) -> [CheckedContinuation<Void, any Error>] {
-        guard !state.warming, state.overdue.isEmpty else { return [] }
+        guard !state.retiring, !state.warming, state.overdue.isEmpty else { return [] }
         let waiting = state.admissions.compactMap { id, admission -> (UUID, CheckedContinuation<Void, any Error>)? in
             guard case .waiting(let continuation) = admission else { return nil }
             return (id, continuation)

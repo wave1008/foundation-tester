@@ -37,10 +37,11 @@ final class StreamHelperNamingTests: XCTestCase {
     /// 中継が抜けると、ランナーで動く run-setup.sh から `fleetest-services: command not found` になる(M1Ultra の実測)
     func testAlignBuildsEveryProductTheRunnerNeeds() {
         let command = RemoteSetupPlan.alignRevisionCommand(
-            layout: RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci"), revision: "abc123")
-        let built = command.components(separatedBy: " && ")
-            .filter { $0.hasPrefix("swift build --product ") }
-            .map { $0.replacingOccurrences(of: "swift build --product ", with: "") }
-        XCTAssertEqual(built, ["fleetest", "fleetest-simstream", "fleetest-androidstream", "fleetest-devicepoll", "fleetest-services"])
+            layout: RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci"),
+            revision: "abc123", helperPath: "/tmp/fleetest-align/fleetest")
+        let builds = ["fleetest", "fleetest-simstream", "fleetest-androidstream", "fleetest-devicepoll", "fleetest-services"]
+            .map { "swift build --product \($0)" }.joined(separator: " && ")
+        let buildCommand = "git checkout 'abc123' && " + builds
+        XCTAssertTrue(command.hasSuffix("--build-command \(RemoteShell.quote(buildCommand))"))
     }
 }
