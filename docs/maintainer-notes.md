@@ -4570,6 +4570,30 @@ hosts にゲートウェイの IP(`fleetest-gateway`)を載せて逆引きを DN
   `/usr/bin/log` を使う。`grep "VM exhausted"` で数えると `log` コマンド自身の起動行(引数に同じ文字列)まで数えるので、
   `--predicate 'sender == "IODARTFamily" AND eventMessage CONTAINS "VM exhausted"'` で絞る
 
+**出どころの追加調査(2026-10-17。製品の挙動は変更していない)**:
+- 従来の修正後52件は、programHandle=0x440bの資源32件と、そのintermediateUnionHandle=0x4416の8件をFMサービスPID 1468へ帰属できた。
+  残る12件もFMの入出力バッファ作成とlength / usageType / 時刻が一致したが、失敗行にIOSurface IDが無いため確定には加えない。
+  **345.125 MiBは中間計算バッファの要求サイズで、モデルファイルの大きさではなかった**(`allocateIntermediateBuffer`の記録)
+- ユーザーによる再起動後、00:05:58〜00:21:09 JSTに同じ2シナリオを8台へbroadcastで3周。起動00:01:58.464141に対し、開始は239.538秒後
+  (ハーネスが秒部だけで240秒を待ったため予定より0.462秒早い。厳密な240.000秒条件ではない)。FM枠1・OCRの省略off・computeUnitsは変更していない。
+  シナリオ48/48成功、FMは121呼び出し・2失敗(`InferenceError(2008)`)・8スキップ。モデル資産の読み込み失敗0、終了後のdoctorはtext / vision成功。
+  **再起動まで戻らない死は今回も再現しなかった**
+- 本物のVM exhaustedは**ANE0=107件、ANE2=18件**。ANE0の96件とANE2の18件はFMサービスPID 1365 / 1372のプログラムまたは中間バッファへハンドルで帰属。
+  ANE0の残り11件は未確定(255.875 MiBのusageType=1が6件、127.884 MiBのusageType=9が4件、345.125 MiBが1件)。
+  主な要求は373.358 MiBのプログラム資源(ANE0=68 / ANE2=18)と345.125 MiBの中間バッファ(ANE0=15)。
+  **ログ件数にはカーネルの再試行が含まれる** —— 従来52件は初回26＋キャッシュ消去後26、新125件は初回63＋同62。推論の失敗回数と混ぜない
+- ANE_AddClientForProgramとPID表の照合では、fleetestの登録15件は3本の`fleetest-scenarios-E2EX-iOS compile-ocr`による各5件だった。
+  この条件では`ocrTextVisibilityCheck=false`でも準備用compile-ocrは動いた。シナリオ本体のVisionClassifier利用とは分けて数える。
+  ホスト側のmediaanalysisd・replayd・intelligenceflowd・localspeechrecognition・visualintelligencedもANEを利用していたが、失敗要求としての帰属は0件。
+  Simulator内のデーモンとして帰属した失敗要求も0件。ただし未確定分があり、利用・寄与が無いことを証明してはいない
+- **「どの要求が枯渇に当たったか」と「誰が空間を使い切ったか」は別**。最大番地は同時占有量ではない。
+  残件は未確定の資源と要求の連結、および全マッピングの寿命・占有量。FM内部の複数モデル、他の利用者、断片化・リークの寄与は未確定。
+  ANEから外す変更・暖機や先読みの挙動変更は行っていない
+- 採取は`/usr/bin/log stream --level debug`＋終了直後の`/usr/bin/log show`、psは0.25秒周期指定(実測最大間隔9.507秒)。
+  **生ログの124件に対し保存ログは125件**。壁時計には約0.8msのずれもあるため、machTimestampで結合し、欠けた1件を補完した
+  (実ホストのtimebase=125/3 ns、24MHz)。初期ロードのハンドル登録は生ログ開始前だったため、起動直後の保存ログも回収して結んだ。
+  詳細・各イベントのCSV・生ログ・PID表・抜粋は`reports/fm-m1ultra-20261016/attribution-20261016/`(git管理外)
+
 ### 83.5 記録だけの観察(直していない)
 - `api results --project E2E-CMP` のキャッシュ外れ(新しい run が入るたび)が 35 秒・RSS 1.6GB(結果 6.8 万件・90 日窓)
 - `api results-run` / `api results-compare` の「run not found」が使い方の誤り(64・--help)= §82.3 と同型(渡した ID が無いだけ)
