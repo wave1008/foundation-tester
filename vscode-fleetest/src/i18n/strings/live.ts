@@ -239,6 +239,10 @@ export const liveStrings = {
     ja: "[{prefix}] 画面録画の時間上限に達したので張り直します。",
     en: "[{prefix}] Screen recording reached its time limit. Restarting.",
   },
+  "live.stream.displaySwitchedRestart": {
+    ja: "[{prefix}] 表示中の画面が替わった(折りたたみの開閉)ので、新しい画面で張り直します。",
+    en: "[{prefix}] The shown display switched (fold/unfold). Restarting on the new display.",
+  },
   "live.stream.restarting": {
     ja: "[{prefix}] 予期しない終了({reason})。{delay}ms 後に再起動します。",
     en: "[{prefix}] Unexpected exit ({reason}). Restarting in {delay}ms.",

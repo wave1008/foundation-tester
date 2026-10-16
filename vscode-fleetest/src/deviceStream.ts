@@ -88,6 +88,11 @@ const CODEC_UNAVAILABLE_EXIT_CODE = 3;
  * 失敗ではないので連続失敗に数えず、「予期しない終了」とも言わずに張り直す */
 const TIME_LIMIT_EXIT_CODE = 6;
 
+/** iOS helper が「表示中の画面が替わった」(iPhone Duo の開閉)と判断して降りた正常終了。
+ * 契約の同期相手: Sources/fleetest-simstream/main.m の kFtExitDisplaySwitched。
+ * 失敗ではないので連続失敗に数えず、張り直し(helper が新しい画面を選ぶ) */
+const DISPLAY_SWITCHED_EXIT_CODE = 7;
+
 /** iOS/Android 共通のストリーミング helper 制御インターフェース(monitorLiveController.ts・
  * monitorDeviceStreamController.ts が両プラットフォームを1つのフィールド/Mapで扱えるようにする)。 */
 export interface LiveStreamPipeline {
@@ -249,6 +254,13 @@ export class StreamPipeline implements LiveStreamPipeline {
         this.options.outputChannel.appendLine(
           `[${this.options.logPrefix}] ${t("live.stream.codecUnavailable")}`);
         this.options.onCodecUnavailable();
+        return;
+      }
+      if (code === DISPLAY_SWITCHED_EXIT_CODE) {
+        this.options.outputChannel.appendLine(
+          t("live.stream.displaySwitchedRestart", { prefix: this.options.logPrefix }));
+        this.failureStreak = 0;
+        this.scheduleRestart();
         return;
       }
       if (code === TIME_LIMIT_EXIT_CODE) {

@@ -57,6 +57,11 @@ static const int kFtEncodeFailuresBeforeMJPEG = 2;
 // 「この機械では h264 でエンコードできない」を呼び出し側へ伝える exit code。
 // 契約の同期相手: vscode-fleetest/src/deviceStream.ts の CODEC_UNAVAILABLE_EXIT_CODE
 static const int kFtExitCodecUnavailable = 3;
+// 表示中の画面が替わった(iPhone Duo の開閉)ので降りる。消費側は失敗に数えずに張り直し、張り直しで新しい画面を選ぶ。
+// 契約の同期相手: vscode-fleetest/src/deviceStream.ts の DISPLAY_SWITCHED_EXIT_CODE
+static const int kFtExitDisplaySwitched = 7;
+// 表示中の画面を確かめる間隔(秒)。devicectl 1回 約 0.14 秒。開閉から最大この秒数 + 張り直し(1 秒)で追従する
+static const double kFtDisplayWatchSeconds = 2.0;
 
 static double ftNow(void) { return CACurrentMediaTime(); }
 
@@ -773,6 +778,32 @@ int main(int argc, char **argv) {
         if (gCodecH264) ftWritePing(); else ftEmitNow();
     });
     dispatch_resume(keepaliveSrc);
+
+    // 大きい画面が2枚以上の機種だけ: 開閉で表示中の画面が替わったら降りる(上の選び方は起動時の1回だけなので)。
+    // devicectl は待つ処理なので gQueue(フレームの処理)とは別のキューで撃つ。
+    // **タイマーは if の外の変数で持つ**(ブロック内の変数だと ARC がブロックの終わりで手放し、一度も発火しない = 実測)
+    dispatch_source_t watchSrc = nil;
+    if (largeDisplays >= 2) {
+        dispatch_queue_t watchQueue = dispatch_queue_create("com.foundation-tester.fleetest-simstream.display-watch",
+                                                            DISPATCH_QUEUE_SERIAL);
+        watchSrc = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, watchQueue);
+        dispatch_source_set_timer(watchSrc,
+                                  dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kFtDisplayWatchSeconds * NSEC_PER_SEC)),
+                                  (uint64_t)(kFtDisplayWatchSeconds * NSEC_PER_SEC), (uint64_t)(0.5 * NSEC_PER_SEC));
+        CGSize streamingSize = chosenSize;
+        dispatch_source_set_event_handler(watchSrc, ^{
+            @autoreleasepool {
+                CGSize active = ftActiveDisplaySize(udid);
+                // 読めない(CGSizeZero)ときは降りない(読めないことを「替わった」に倒さない)
+                if (active.width <= 0 || (active.width == streamingSize.width && active.height == streamingSize.height)) {
+                    return;
+                }
+                fprintf(stderr, "note: the shown display switched (fold/unfold); exiting so the stream restarts on it\n");
+                dispatch_async(gQueue, ^{ ftShutdown(kFtExitDisplaySwitched); });
+            }
+        });
+        dispatch_resume(watchSrc);
+    }
 
     dispatch_main();
 }

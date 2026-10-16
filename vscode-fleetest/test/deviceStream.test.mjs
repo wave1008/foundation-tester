@@ -305,6 +305,31 @@ test("exit 6(録画の時間上限の満了)は失敗に数えず、何度でも
   }
 });
 
+// iPhone Duo の開閉で表示中の画面が替わると、iOS helper は exit 7 で降りる(張り直しで新しい画面を選ぶ)。
+// 開閉は何度でも起きるので、失敗にも諦めにも数えない
+// contract: Sources/fleetest-simstream/main.m の kFtExitDisplaySwitched と同値
+test("exit 7(表示中の画面の切り替え)は失敗に数えず、何度でも張り直す", async () => {
+  const { dir, helper } = makeExitingHelper(7);
+  const lines = [];
+  let failures = 0;
+  const pipeline = new StreamPipeline({
+    command: helper, args: [], logPrefix: "ios-stream",
+    outputChannel: { appendLine(line) { lines.push(line); } }, codec: "h264",
+    onFrame: () => {}, onChunk: () => {}, onConnectionOk: () => {},
+    onFailure: () => { failures += 1; },
+    onCodecUnavailable: () => { assert.fail("codec のせいではない"); },
+  });
+  try {
+    pipeline.start();
+    assert.ok(await waitFor(() => lines.length >= 4, 8000), `張り直しが続くはず: ${lines.join(" | ")}`);
+    assert.equal(failures, 0, "画面の切り替えで諦めない");
+    assert.ok(lines.every((line) => !/予期しない終了|Unexpected exit/.test(line)), lines.join(" | "));
+  } finally {
+    pipeline.dispose();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // 1フレームも届かないまま wedge を繰り返すデバイスは諦める。
 // 実害(2026-08-17): 20 タイル同時配信でホストがエンコードをこなせなくなり(h264 は
 // kVTSessionMalfunctionErr、mjpeg は "JPEG encode failed")、**15秒ごとの再起動を無限に
