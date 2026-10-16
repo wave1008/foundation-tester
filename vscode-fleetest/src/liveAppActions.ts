@@ -91,6 +91,11 @@ export class LiveAppActions {
     return this.generating;
   }
 
+  /** レコーディングが開始待ち・記録中・生成中のいずれか(グリッドビューからのデバイス切り替えを断る判定)。 */
+  isRecordingInProgress(): boolean {
+    return this.recording || this.startingRecord || this.generating;
+  }
+
   /** コントローラ本体の runAction(操作成功後)から呼ばれる。対象アプリの上での操作だけを記録する
    * (operationBelongsToApp の doc)。 */
   recordStep(step: RecordedStep | undefined, appName: string | undefined): void {

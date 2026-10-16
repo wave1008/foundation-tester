@@ -35,6 +35,8 @@
 //   {"cmd":"terminate"}                                 対象アプリを終了
 //   {"cmd":"clearAppData","bundle":<String省略可>}       アプリは残しデータだけ消す(省略時は現在の
 //                                                        セッションが指すアプリ。iOS はシミュレータ専用)
+//   {"cmd":"fold","state":"fold"|"unfold"}              折りたたみ機を閉じる/開く(FoldControl。iPhone Duo の
+//                                                        Simulator・折りたたみの Android Emulator だけ。実機は断る)
 //   {"cmd":"install","path":<String>}                   パッケージファイル(iOS: .app / Android: .apk/.apks)
 //                                                        からインストール
 //   {"cmd":"refresh"}                                   操作は行わず観測のみ
@@ -412,21 +414,47 @@ struct ApiLiveServe: AsyncParsableCommand {
             // **待受が無い瞬間もある**(run のレーンの in-app ブリッジは、シナリオの合間のアプリの
             // 起こし直しの間だけ消える)。そのときポートの持ち主を言えるのは in-app の台帳だけ ——
             // 見ずに進むと自動起動がレーンのポートでランナーを起動し、レーンの操作がこのデバイスへ届く
+            // **既定ポートへのフォールバックなら、まずこの udid のブリッジを走査で探す** —— 既定ポートに何も居ない・
+            // 背面のアプリの in-app が答えないだけで、このデバイスの XCUITest が別のポートで生きていることがある
+            // (run の起動し直しで XCUITest と in-app のポートが入れ替わった後。見ずに進むと自動起動へ回り、使用中の印が
+            // あると起動も断られて生きたブリッジへ一度も届かない = 実地)。見つからなければ下の判定へ(従来どおり)
+            if driverOptions.port == nil,
+               let match = await BridgeDiscovery.scan(excluding: driverOptions.resolvedPort, repoRoot: repoRoot)
+                .first(where: { $0.udid == udid }) {
+                logStderr("port \(resolution.endpoint.port) did not answer /status — switching to port \(match.port)"
+                          + " where \(udid) has a bridge")
+                let rerouted = await XCUIBridgeResolver.resolve(
+                    preferred: match.port, repoRoot: repoRoot, autoStart: false,
+                    logger: { message in ConsoleOut.err("[live serve] " + message) })
+                return try await composeDriver(resolution: rerouted, physical: physical, repoRoot: repoRoot)
+            }
             let port = resolution.endpoint.port
             let heldByProcess = driverOptions.port == nil && resolution.endpoint.isLoopback
                 && PortHolder.isHeldByAnotherDevice(port: port, udid: udid)
             let recordedForAnother = driverOptions.port == nil && resolution.endpoint.isLoopback
                 && repoRoot.map { InAppBridgeState.isRecordedForAnotherDevice(
                     stateDir: $0.appendingPathComponent(".fleetest"), port: port, udid: udid) } == true
-            guard heldByProcess || recordedForAnother else {
+            // **このデバイスの in-app ブリッジも XCUITest の宛先ではない** —— アプリが背面で止まっていると
+            // in-app は答えず、掴むと home も前面追従も止まったアプリへ撃ち続ける(実地: run が
+            // 起動し直しで XCUITest を 8127・in-app を既定の 8123 へ入れ替えた後、アプリを背面へ回すと
+            // ライブ操作の全操作が「The network connection was lost」になった)。udid の走査で XCUITest へ乗り換える
+            let ownInApp = driverOptions.port == nil && resolution.endpoint.isLoopback
+                && repoRoot.map { InAppBridgeState.isRecordedForDevice(
+                    stateDir: $0.appendingPathComponent(".fleetest"), port: port, udid: udid) } == true
+            guard heldByProcess || recordedForAnother || ownInApp else {
                 return try await composeDriver(resolution: resolution, physical: physical,
                                                repoRoot: repoRoot)
             }
-            mismatch = heldByProcess
-                ? "port \(port) did not answer /status and is held by"
-                    + " another device's process, so it is not the bridge of \(udid)"
-                : "port \(port) did not answer /status and is recorded as the in-app bridge port of"
-                    + " another device, so it is not the bridge of \(udid)"
+            if ownInApp {
+                mismatch = "port \(port) did not answer /status and is this device's in-app bridge (the app is"
+                    + " probably in the background), not its XCUITest bridge"
+            } else {
+                mismatch = heldByProcess
+                    ? "port \(port) did not answer /status and is held by"
+                        + " another device's process, so it is not the bridge of \(udid)"
+                    : "port \(port) did not answer /status and is recorded as the in-app bridge port of"
+                        + " another device, so it is not the bridge of \(udid)"
+            }
         }
         guard driverOptions.port == nil else {
             // 利用者が --port で決めた宛先。勝手に変えず断る
@@ -1049,6 +1077,8 @@ struct ApiLiveServe: AsyncParsableCommand {
             }
             try await driver.clearAppData(bundleID: bundle)
             follower?.noteSessionDropped()
+        case "fold":
+            try await performFold(state: command.state, driver: driver)
         case "install":
             guard let path = command.path else {
                 throw ServeCommandError.invalidArguments("install requires path")
@@ -1091,6 +1121,68 @@ struct ApiLiveServe: AsyncParsableCommand {
                 "clearAppData requires bundle (no active session to infer it from)")
         }
         return sessionBundleID
+    }
+
+    /// fold コマンド。判定・手順は FTCore.FoldControl(DSL の fold / unfold・MCP の ft_fold と共有)。
+    /// iOS は observe が devicectl(最大15秒)なので**観測のたびに窓を張り直す**(窓は「進まない時間」を測る)。
+    /// 開閉で画面の大きさが変わるが、serve はこの後の観測(refresh)で木を撮り直すので控えは持たない
+    private func performFold(state: String?, driver: AppDriver) async throws {
+        let target: FoldTarget
+        switch state {
+        case "fold": target = .fold
+        case "unfold": target = .unfold
+        default: throw ServeCommandError.invalidArguments("fold state must be \"fold\" or \"unfold\"")
+        }
+        let observe: () async -> FoldObservation
+        if driverOptions.resolvedPlatform == "android" {
+            observe = {
+                ResidentProcessGuard.noteCommandProgress()
+                return await driver.foldObservation() ?? .unknown("the driver does not report the fold state")
+            }
+        } else {
+            guard let udid else { throw ServeCommandError.invalidArguments("fold needs --udid on iOS") }
+            ResidentProcessGuard.noteCommandProgress()
+            if SimulatorCatalog.isPhysical(udid: udid) == true {
+                throw ServeCommandError.invalidArguments(Self.foldPhysicalRefusal)
+            }
+            observe = {
+                ResidentProcessGuard.noteCommandProgress()
+                return FoldControl.observeIOSSimulator(udid: udid)
+            }
+        }
+        do {
+            _ = try await FoldControl.apply(target, waitSeconds: ApiLiveGestureDefaults.foldWaitSeconds,
+                                            send: { try await driver.setHingeAngle(degrees: $0) },
+                                            observe: observe, sent: { _ in })
+            // Android の折りたたみ機は閉じるとロック画面が出る(ドライバが外す。iOS は何もしない)
+            await driver.continueAfterFold()
+        } catch let failure as FoldControl.Failure {
+            throw ServeCommandError.invalidArguments(Self.foldFailureMessage(failure))
+        }
+    }
+
+    static let foldPhysicalRefusal = "This is a physical device — fold it by hand. The tool can fold the iPhone Duo simulator."
+
+    /// 操作パネルの利用者が読む文言(MCP の `foldFailureMessage` と事実は同じ・宛先が違うので文言は別)
+    static func foldFailureMessage(_ failure: FoldControl.Failure) -> String {
+        func format(_ value: Double) -> String { value == value.rounded() ? String(Int(value)) : String(value) }
+        switch failure {
+        case .outOfRange(let degrees):
+            return "The hinge angle must be between 0 and 180 (got \(format(degrees)))."
+        case .notFoldable:
+            return "This device is not foldable — fold/unfold works on the iPhone Duo simulator or a foldable"
+                + " Android Emulator. Nothing was sent."
+        case .unreadable(let detail):
+            return "Could not read whether the device is folded (\(detail)), so nothing was sent."
+        case .didNotSwitch(let expected, let observed, let waited):
+            let last: String
+            switch observed {
+            case .state(let state): last = "it stayed \(state.rawValue)"
+            case .notFoldable: last = "it no longer reports two built-in displays"
+            case .unknown(let detail): last = "the fold state could not be read: \(detail)"
+            }
+            return "The device did not become \(expected.rawValue) within \(format(waited)) s (\(last))."
+        }
     }
 
     /// スクリーンショット(ダウンスケール済み JPEG)とアクセシビリティツリーを観測イベントとして出す
@@ -1289,6 +1381,9 @@ enum ApiLiveGestureDefaults {
     static let dragDurationSeconds: Double = 0.3
     /// pinch の「変形にかける時間」既定[秒]
     static let pinchDurationSeconds: Double = 0.5
+    /// fold の「期待の状態になるまで待つ」既定[秒]。DSL・MCP と同じ `DefaultWait.seconds`
+    /// (perform と watchdogAllowanceSeconds が共有。観測の刻みごとに窓は張り直される)
+    static let foldWaitSeconds: Double = DefaultWait.seconds
 }
 
 /// stdin から受け取る1コマンド分(NDJSON 1行)。cmd 以外は全コマンド共通のオプショナルとし、
@@ -1310,6 +1405,8 @@ struct ApiLiveServeCommand {
     let direction: String?
     let bundle: String?
     let path: String?
+    /// fold コマンド専用("fold" / "unfold")。値の検査は perform(省略・他の値は invalidArguments)
+    let state: String?
     let fromX: Double?
     let fromY: Double?
     let toX: Double?
@@ -1373,6 +1470,10 @@ struct ApiLiveServeCommand {
             return duration ?? ApiLiveGestureDefaults.pinchDurationSeconds
         case "launch", "activate", "appSwitcher", "home", "terminate", "refresh", "frame":
             return BridgeClient.Timeout.session
+        case "fold":
+            // 観測ループが最大この秒数続く(観測のたびに窓は張り直される)。送信・観測1回は
+            // observationAllowanceSeconds(session)が覆う
+            return ApiLiveGestureDefaults.foldWaitSeconds
         case "clearAppData":
             return 2 * BridgeClient.Timeout.session
         case "install":
@@ -1392,6 +1493,7 @@ struct ApiLiveServeCommand {
         direction = Self.stringField(raw, "direction", error: &error)
         bundle = Self.stringField(raw, "bundle", error: &error)
         path = Self.stringField(raw, "path", error: &error)
+        state = Self.stringField(raw, "state", error: &error)
         fromX = Self.doubleField(raw, "fromX", error: &error)
         fromY = Self.doubleField(raw, "fromY", error: &error)
         toX = Self.doubleField(raw, "toX", error: &error)

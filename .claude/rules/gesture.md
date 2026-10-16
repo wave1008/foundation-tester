@@ -1,6 +1,7 @@
 ---
 paths:
   - "Runner/**/CoordinatePinch.swift"
+  - "Runner/**/DisplayRouting.swift"
   - "Sources/FTCore/Pinch*.swift"
   - "Sources/FTCore/PinchGesture.swift"
   - "Sources/FTCore/PinchRegion.swift"
@@ -35,3 +36,13 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   こちらは要素ピンチのような縮退先が無いので、この API が無い Xcode では **422**(501 ではない。
   501 はホストに「このエンジンでは不可」= XCUITest へのフォールバック判定と読まれ、ランナー自身の
   501 は `hideKeyboard` 専用)で断る
+- **主画面以外の画面(折りたたみの iPhone Duo の内側)へのタッチは `DisplayRouting` の1箇所で決める**
+  (`Runner/.../DisplayRouting.swift`)。XCUICoordinate のタッチと `XCUIScreen.main` のスクショは主画面(Duo = 外側)にしか
+  届かないので、アプリが内側に出ているときは `XCSynthesizedEventRecord initWithName:displayID:interfaceOrientation:` で送り、
+  座標は表示の向き → 本来の向きへ回す(`Target.nativePoint`。実測の根拠はファイル冒頭)。守る規律3つ:
+  **①タッチを送る経路を足したら `DisplayRouting.target(for:)` を通す**(`CoordinatePinch.synthesize` / `holdWithoutWaiting` の
+  `display:` は既定値を置かない = 渡し忘れをコンパイルで止める。XCUICoordinate で撃つ経路は先に target を見る)/
+  **②画面が1枚の端末では何も読まない**(`secondaryScreens` が空なら即 nil。毎回の AX の読みを足さない)/
+  **③画面が2枚以上の端末ではランナーが自分で撮らない**(`XCUIScreen.main` は開いている間 外側を撮る。どちらが表示中かは
+  ランナーの中から確かに言えない)—— `/screenshot` はホストが devicectl で確かめた `display=` を要求し(`BridgeClient.screenshot` が
+  `/status` の `multiDisplay` を見て付ける)、整定の画素比較(`settleFrame`)は撮らずに素通りする。大きさは `bounds` / `scale` から

@@ -124,7 +124,7 @@ final class BridgeRouter {
             case ("POST", "/hold"): response = try handleHold(request.body)
             // **mutatingPaths に入れない**(操作ではない)。settlePending はハンドラが自分で立てる
             case ("POST", "/waitForSettle"): response = try handleWaitForSettle(request.body)
-            case ("GET", "/screenshot"): response = handleScreenshot()
+            case ("GET", "/screenshot"): response = handleScreenshot(request)
             case ("POST", "/appswitcher"): response = try handleAppSwitcher()
             case ("POST", "/home"): response = try handleHome()
             case ("POST", "/hinge"): response = try handleHinge(request.body)
@@ -177,7 +177,9 @@ final class BridgeRouter {
             // 載っているシミュレータの UDID(H)。ホストが port ではなく udid で宛先を
             // 指せるようにするための申告。実機には SIMULATOR_UDID が無いので nil
             udid: ProcessInfo.processInfo.environment["SIMULATOR_UDID"],
-            orientation: XCUIDevice.shared.orientation.ftOrientation))
+            orientation: XCUIDevice.shared.orientation.ftOrientation,
+            // 画面が2枚以上なら /screenshot に display= が要る(DisplayRouting)。数えるのは bounds だけ = 撮らない
+            multiDisplay: DisplayRouting.isMultiDisplay ? true : nil))
     }
 
     private func handleLaunch(_ body: Data) throws -> BridgeHTTPServer.Response {
@@ -617,7 +619,14 @@ final class BridgeRouter {
         // 別 UIWindow の上部バナー(高さ180)の本体に触れた直後、root.frame が**そのバナー窓の
         // frame** に縮む(402x180)。そのまま使うと下の shouldInclude の `frame.intersects(screen)`
         // がアプリ本体を丸ごと画面外扱いして木から消す(XCUITest 固有。in-app は可視な窓を自分で歩く)
-        let screen = Self.screenBounds(root: root)
+        // 主画面以外の画面(DisplayRouting)では根が本来の向きの大きさ(縦長)で来て、木は表示の向き(横長)なので、
+        // 画面は表示の向きの大きさにする(根のままだと横長の木の右側が画面外として落ち、ホストの座標換算も縦横が逆になる)
+        let display = DisplayRouting.target(root: root, app: app)
+        if let display, display.treeInNative {
+            return captureOtherDisplay(root, display: display)
+        }
+        let screen = display.map { CGRect(origin: .zero, size: $0.interfaceSize) }
+            ?? Self.screenBounds(root: root)
         var elements: [ElementInfo] = []
         var frames: [Int: CGRect] = [:]
         var identities: [Int: (identifier: String?, label: String?, type: String)] = [:]
@@ -642,6 +651,43 @@ final class BridgeRouter {
                         truncatedTiers: truncatedTiers, bulkExempt: bulkExempt, screen: screen,
                         keyboardFrame: keyboardFrame, offscreen: offscreenHints,
                         overlayWindowFrames: overlayFrames)
+    }
+
+    /// 主画面以外の画面に出ている SpringBoard の木(`DisplayRouting.Target.treeInNative`)。**その画面の窓だけ**を採る
+    /// (SpringBoard は両方の画面に窓を持つ。混ぜると外側の並びの要素が内側の座標に載る)。窓の中の枠は本来の向きなので、
+    /// 可視判定は本来の向きの画面で行い、返す前に表示の向きへ回す。手前の窓の申告(overlayWindows)はしない
+    /// (窓の重なりの前提 = 奥から手前の並びを、画面ごとに分けた並びで確かめていない)
+    private func captureOtherDisplay(_ root: XCUIElementSnapshot, display: DisplayRouting.Target) -> Captured {
+        var elements: [ElementInfo] = []
+        var frames: [Int: CGRect] = [:]
+        var identities: [Int: (identifier: String?, label: String?, type: String)] = [:]
+        var truncated = 0
+        var truncatedTiers: [String: Int] = [:]
+        var bulkExempt = 0
+        var keyboardFrame: CGRect?
+        var offscreenHints: [ElementInfo] = []
+        lastContributingOverlayWindows = []
+        for window in root.children where DisplayRouting.displayID(ofSnapshot: window) == display.displayID {
+            collect(window, depth: 1, screen: display.nativeBounds,
+                    elements: &elements, frames: &frames, identities: &identities,
+                    truncated: &truncated,
+                    truncatedTiers: &truncatedTiers, bulkExempt: &bulkExempt,
+                    keyboardFrame: &keyboardFrame, offscreenHints: &offscreenHints,
+                    overlayWindowIndices: [])
+        }
+        func rotated(_ info: ElementInfo) -> ElementInfo {
+            var copy = info
+            let r = display.interfaceRect(CGRect(x: info.frame.x, y: info.frame.y,
+                                                 width: info.frame.width, height: info.frame.height))
+            copy.frame = FTRect(x: r.minX, y: r.minY, width: r.width, height: r.height)
+            return copy
+        }
+        return Captured(elements: elements.map(rotated), frames: frames.mapValues(display.interfaceRect),
+                        identities: identities, truncated: truncated,
+                        truncatedTiers: truncatedTiers, bulkExempt: bulkExempt,
+                        screen: CGRect(origin: .zero, size: display.interfaceSize),
+                        keyboardFrame: keyboardFrame.map(display.interfaceRect), offscreen: offscreenHints.map(rotated),
+                        overlayWindowFrames: [])
     }
 
     /// **アプリ本体の窓より手前の別 UIWindow**(キーウィンドウにしないアプリ内メッセージ・上部バナー等)。中身は木に載るが
@@ -685,11 +731,8 @@ final class BridgeRouter {
     /// ディスプレイの長辺・短辺(pt)。回転で縦横が入れ替わるので辺の長さだけを持つ。
     /// 採るのはプロセスで最初の1回(`static let` の初期化はスレッド安全)。XCUIScreen の
     /// スクショはアプリに触れない(`/screenshot` と同じ)。`UIImage.size` は pt
-    private static let displaySides: (long: CGFloat, short: CGFloat)? = {
-        let size = XCUIScreen.main.screenshot().image.size
-        guard size.width > 0, size.height > 0 else { return nil }
-        return (max(size.width, size.height), min(size.width, size.height))
-    }()
+    /// **表示していない画面を撮らない**(開いた Duo の主画面 = DisplayRouting のファイル冒頭)ので測り方は DisplayRouting が持つ
+    private static let displaySides: (long: CGFloat, short: CGFloat)? = DisplayRouting.mainScreenSides()
 
     /// frame は 1/scale pt 刻みの端数を持つので、ディスプレイちょうどの窓を落とさないよう 1pt 見逃す
     private static func fits(_ size: CGSize, within display: (long: CGFloat, short: CGFloat)) -> Bool {
@@ -704,6 +747,11 @@ final class BridgeRouter {
             throw refuseLandscapeSpringBoardTap()
         }
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
+        // アプリが主画面以外の画面(Duo の内側)に出ているときは XCUICoordinate が届かない(DisplayRouting)
+        if let display = DisplayRouting.target(for: app) {
+            try CoordinatePinch.tap(at: point, display: display, touchSeconds: Self.doubleTapTouchDuration)
+            return .json(OKResponse())
+        }
         // 計測: `tap()` は「イベント合成」と「暗黙の quiescence 待ち」の両方を含む1呼び出しで、
         // ホスト側の actionMs からは分解できない。quiescence 側だけ swizzle 経由で数え、
         // 残り(synth)を引き算で出す(QuiescenceWait.quiescenceMs の但し書きも読むこと)
@@ -913,6 +961,19 @@ final class BridgeRouter {
                                                                cap: BridgeAPI.gestureSecondsCeiling) {
             throw BridgeError(400, violation)
         }
+        // 主画面以外の画面(DisplayRouting)は合成イベントで送る。移動の所要は指定どおり(無ければ床)
+        if let display = DisplayRouting.target(for: app) {
+            let move = max(req.duration ?? BridgeRouter.gestureMinSeconds, BridgeRouter.gestureMinSeconds)
+            if let violation = BridgeAPI.gestureDurationViolation("drag", seconds: press + move,
+                                                                   cap: BridgeAPI.gestureSecondsCeiling) {
+                throw BridgeError(400, violation)
+            }
+            let start = CGPoint(x: req.fromX, y: req.fromY), end = CGPoint(x: req.toX, y: req.toY)
+            try CoordinatePinch.synthesize(
+                fingers: [[(point: start, offset: 0), (point: start, offset: press), (point: end, offset: press + move)]],
+                name: "fleetest drag", orientation: .portrait, display: display)
+            return .json(OKResponse())
+        }
         guard let requestedDuration = req.duration else {
             gestureQuiescence { from.press(forDuration: press, thenDragTo: to) }
             return .json(OKResponse())
@@ -949,7 +1010,10 @@ final class BridgeRouter {
         let req = try decode(TapRequest.self, body)
         let app = try requireForegroundAppForGesture()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
-        if CoordinatePinch.isAvailable {
+        // 主画面以外の画面(DisplayRouting)は API が無ければ縮退先も無い(XCUICoordinate は届かない)ので、
+        // synthesize の 422 をそのまま返す
+        let display = DisplayRouting.target(for: app)
+        if CoordinatePinch.isAvailable || display != nil {
             try CoordinatePinch.synthesize(
                 fingers: [
                     [(point: point, offset: 0), (point: point, offset: Self.doubleTapTouchDuration)],
@@ -957,7 +1021,7 @@ final class BridgeRouter {
                      (point: point, offset: Self.doubleTapSecondTouchDelay + Self.doubleTapTouchDuration)],
                 ],
                 name: "fleetest doubletap",
-                orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait)
+                orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait, display: display)
             return .json(OKResponse())
         }
         _ = QuiescenceWait.takeCapNote()
@@ -1036,7 +1100,8 @@ final class BridgeRouter {
                     finger.points.map { (point: CGPoint(x: $0.x, y: $0.y), offset: $0.t) }
                 },
                 name: "fleetest pinch",
-                orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait)
+                orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait,
+                display: DisplayRouting.target(for: app))
             return .json(OKResponse())
         }
         var target: XCUIElement = app
@@ -1081,9 +1146,9 @@ final class BridgeRouter {
     /// 座標ピンチが無い Xcode では 422 を返すだけ
     private func handleGesture(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(GestureRequest.self, body)
-        // 前面確認のみ(座標は CoordinatePinch が直接送るので `app` 自体は使わない。/pinch の
+        // 前面確認と送り先の画面の判定だけ(座標は CoordinatePinch が直接送る。/pinch の
         // 座標ピンチ経路と同じ —— coordinate(app, point) を経由しない)
-        _ = try requireForegroundAppForGesture()
+        let app = try requireForegroundAppForGesture()
         try validateFingers(req.fingers, what: "gesture")
         // **501 にしない** —— ホストは 501 を「このエンジンでは無理」と読んで typeDriver へ回すが、
         // XCUITest ランナー自身が回送先なので自分に戻る(501 は hideKeyboard の1箇所だけ)
@@ -1097,7 +1162,8 @@ final class BridgeRouter {
                 finger.points.map { (point: CGPoint(x: $0.x, y: $0.y), offset: $0.t) }
             },
             name: "fleetest gesture",
-            orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait)
+            orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait,
+            display: DisplayRouting.target(for: app))
         return .json(OKResponse())
     }
 
@@ -1115,6 +1181,8 @@ final class BridgeRouter {
             throw BridgeError(400, "degrees must be between 0 (folded) and 180 (unfolded), got \(req.degrees)")
         }
         try VirtualHID.sendHinge(degrees: req.degrees)
+        // 開閉で表示中の画面が替わる(ホストの次の報告まで、ホーム画面の判定はアイコンに戻る = DisplayRouting)
+        DisplayRouting.forgetReportedDisplay()
         return .json(OKResponse())
     }
 
@@ -1161,6 +1229,11 @@ final class BridgeRouter {
         }
         let app = try requireForegroundAppForGesture()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
+        if let display = DisplayRouting.target(for: app) {
+            try CoordinatePinch.synthesize(fingers: [[(point: point, offset: 0), (point: point, offset: req.duration)]],
+                                           name: "fleetest press", orientation: .portrait, display: display)
+            return .json(OKResponse())
+        }
         _ = QuiescenceWait.takeCapNote()
         try QuiescenceWait.around(skip: skipSettle, skipByDefault: true) {
             coordinate(app, point).press(forDuration: req.duration)
@@ -1178,18 +1251,31 @@ final class BridgeRouter {
                                                                cap: BridgeAPI.gestureSecondsCeiling) {
             throw BridgeError(400, violation)
         }
-        _ = try requireForegroundAppForGesture()
+        let app = try requireForegroundAppForGesture()
         guard CoordinatePinch.isAvailable else {
             throw BridgeError(422, "this Xcode has no coordinate gesture support (XCPointerEventPath /"
                 + " XCSynthesizedEventRecord are gone), so a finger cannot be left down")
         }
         try CoordinatePinch.holdWithoutWaiting(at: CGPoint(x: req.x, y: req.y), seconds: req.duration,
-                                               orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait)
+                                               orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait,
+                                               display: DisplayRouting.target(for: app))
         return .json(OKResponse())
     }
 
-    private func handleScreenshot() -> BridgeHTTPServer.Response {
-        .png(XCUIScreen.main.screenshot().pngRepresentation)
+    /// 画面が2枚以上の端末(Duo)は**ホストが確かめた表示中の画面**(`display=` = devicectl の displayId)だけを撮る。
+    /// 指定が無ければ断る —— XCUIScreen.main で撮ると開いている間は外側(表示していない画面)の絵を返す(DisplayRouting)。
+    /// 同期相手: FTBridgeClient の BridgeClient.screenshot(画面が2枚以上なら display= を付ける)
+    private func handleScreenshot(_ request: BridgeHTTPServer.Request) -> BridgeHTTPServer.Response {
+        guard DisplayRouting.isMultiDisplay else { return .png(XCUIScreen.main.screenshot().pngRepresentation) }
+        guard let raw = request.queryValue("display"), let id = UInt(raw),
+              let screen = DisplayRouting.screen(displayID: id) else {
+            return .error("this simulator has more than one built-in display: pass display=<displayId> of the"
+                + " display that is showing (devicectl device info displays). Without it the screenshot would be"
+                + " of the main display, which is not the one showing while the device is unfolded", status: 422)
+        }
+        // ホーム画面がどちらに出ているかの判定にも使う(DisplayRouting.homeScreenTarget)
+        DisplayRouting.noteReportedDisplay(id)
+        return .png(screen.screenshot().pngRepresentation)
     }
 
     // MARK: - waitForSettle
@@ -1272,6 +1358,9 @@ final class BridgeRouter {
     /// 1 枚撮って、比べる範囲だけを詰めた画素列にする。範囲が画面に掛からないときは画面全体(の内側)を比べる
     /// (見ていない所の「静止」を黙って返さない側)。画素が読めないときだけ PNG のバイト列にする
     private func settleFrame(region: FTRect?) -> SettleFrame {
+        // **画面が2枚以上の端末では撮らない**(どちらが表示中かランナーには言えず、主画面は外側を撮る = DisplayRouting)。空の画素列を返す
+        // = 比べると常に同じ = 画素では待たずに「静止」と答える(整定は木の比較だけになる)
+        if DisplayRouting.isMultiDisplay { return SettleFrame(bytes: Data(), layout: nil) }
         let shot = XCUIScreen.main.screenshot()
         let image = shot.image
         guard let cg = image.cgImage else { return SettleFrame(bytes: shot.pngRepresentation, layout: nil) }

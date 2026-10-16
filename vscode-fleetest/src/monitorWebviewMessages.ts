@@ -8,8 +8,8 @@
 import type { MonitorDeviceFilter } from "./config";
 import type { DashboardFromWebviewMessage, DashboardToWebviewMessage } from "./dashboardModel";
 import { isDashboardFromWebviewMessage } from "./dashboardModel";
-import type { LiveFromWebviewMessage, LiveToWebviewMessage } from "./liveModel";
-import { isLiveFromWebviewMessage } from "./liveModel";
+import type { GridLiveAction, LiveFromWebviewMessage, LiveToWebviewMessage } from "./liveModel";
+import { isGridLiveAction, isLiveFromWebviewMessage } from "./liveModel";
 import type {
   RecordingErrorEntry,
   RecordingScenarioDevice,
@@ -678,6 +678,22 @@ export type MonitorFromWebviewMessage =
         readonly serial?: string;
       };
     }
+  // グリッドビュー(1台だけ選択したときの拡大表示)のツールバー・修飾キー操作(送り手: gridLiveControls.js、
+  // 受け手: monitorPanel.ts → LiveTabHost の gridAction)。remote は openLiveForDevice と同じ
+  | {
+      readonly type: "gridLiveAction";
+      readonly id: string;
+      readonly action: GridLiveAction;
+      readonly remote?: {
+        readonly machine: string;
+        readonly name: string;
+        readonly platform: MonitorPlatform;
+        readonly state: MonitorDevice["state"];
+        readonly kind: MonitorDevice["kind"];
+        readonly udid?: string;
+        readonly serial?: string;
+      };
+    }
   // 「GPUで再起動」: CPU 描画フォールバックを解除して host GPU で再起動する手動操作。
   // webview 側は CPU バッジ(renderMode==='cpu')の Android タイルでのみメニューに出す。
   // machine: そのデバイスが居る機械(手元は省略)。**名前だけで受けない** —— リモートの
@@ -1104,6 +1120,11 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       );
     case "openLiveForDevice":
       return typeof value.id === "string" && value.id !== "" && (value.remote === undefined || isLiveRemoteTarget(value.remote));
+    case "gridLiveAction":
+      return (
+        typeof value.id === "string" && value.id !== "" && isGridLiveAction(value.action) &&
+        (value.remote === undefined || isLiveRemoteTarget(value.remote))
+      );
     case "copyText":
       return typeof value.text === "string" && value.text !== "";
     case "deviceRestartGpu":

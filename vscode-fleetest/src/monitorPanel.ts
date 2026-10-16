@@ -1117,6 +1117,9 @@ export class MonitorPanelController implements vscode.Disposable {
       case "openLiveForDevice":
         this.live.openForDevice(message.id, message.remote);
         break;
+      case "gridLiveAction":
+        this.live.gridAction(message.id, message.action, message.remote);
+        break;
       case "deviceRestartGpu":
         this.deviceOps.restartWithGpu(message.name, message.machine);
         break;

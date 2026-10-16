@@ -67,7 +67,7 @@ final class MonitorMachineScopeTests: XCTestCase {
             health: nil, renderMode: nil, inRun: false, kind: kind, host: nil, port: nil,
             recording: false, registered: true, machine: nil, frozen: false, wired: wired,
             streamedByOther: nil, bridgeRunning: nil, storage: nil,
-            storageMeasuring: false, storageRefreshId: nil)
+            storageMeasuring: false, storageRefreshId: nil, foldable: nil)
     }
 
     func testRemoteEntriesFillInForTheDevicesThisMachineCannotSee() {
@@ -163,7 +163,7 @@ extension MonitorMachineScopeTests {
             udid: nil, serial: nil, health: nil, renderMode: nil, inRun: false, kind: "virtual",
             host: nil, port: nil, recording: false, registered: true, machine: nil, frozen: false,
             wired: nil, streamedByOther: nil, bridgeRunning: nil, storage: nil,
-            storageMeasuring: false, storageRefreshId: nil)
+            storageMeasuring: false, storageRefreshId: nil, foldable: nil)
         info.machine = machine
         return info
     }

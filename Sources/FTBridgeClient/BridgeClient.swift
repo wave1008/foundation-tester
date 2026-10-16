@@ -17,8 +17,16 @@ public final class BridgeClient: AppDriver, Sendable {
         var atEdgeOnLastSwipe: Bool?
         var lastTapHitAreaMiss: TapHitAreaMiss?
         var originalOrientation: FTOrientation?
+        /// 撮り方(`screenshot`)。最初の1回に /status の multiDisplay で決めて使い回す(画面の枚数は機種で決まる)
+        var screenCapture: ScreenCapture?
     }
     private let mutable: Mutex<Mutable>
+
+    /// /screenshot の撮り方。multiDisplay(Duo)は撮るたびに表示中の画面を devicectl で確かめて `display=` を付ける
+    enum ScreenCapture: Equatable {
+        case single
+        case multiDisplay(udid: String)
+    }
 
     let baseURL: URL
     /// 接続先ポート。`.fleetest/bridge-<port>.device`(実機の記録)を読むために保持する
@@ -1116,9 +1124,40 @@ public final class BridgeClient: AppDriver, Sendable {
 
     public func screenshot() async throws -> Data {
         let (data, response) = try await request(path: "/screenshot", method: "GET", body: nil,
-                                                 timeout: sessionTimeout)
+                                                 query: try await screenshotQuery(), timeout: sessionTimeout)
         try Self.check(response: response, data: data)
         return data
+    }
+
+    /// 画面が2枚以上の Simulator(Duo)は**表示中の画面を devicectl で確かめてから** `display=` を付ける。ランナーは
+    /// どちらが表示中か確かに言えず、主画面を撮ると開いている間は外側の絵になる(Runner の DisplayRouting)。
+    /// 確かめられない(開閉の途中 = 表示中が1枚に決まらない)ときは撮らずに断る(推測で片方を撮らない)。
+    /// 同期相手: Runner/FleetestRunnerUITests/BridgeRouter.swift の handleScreenshot
+    private func screenshotQuery() async throws -> String? {
+        guard physicalUDID == nil else { return nil }
+        let capture: ScreenCapture
+        if let known = mutable.withLock({ $0.screenCapture }) {
+            capture = known
+        } else {
+            let current = try await status()
+            capture = Self.screenCapture(status: current, simulatorUDID: simulatorUDID)
+            mutable.withLock { $0.screenCapture = capture }
+        }
+        guard case .multiDisplay(let udid) = capture else { return nil }
+        guard let display = SimulatorActiveDisplay.resolve(udid: udid) else {
+            throw DriverError.badResponse(status: 422,
+                body: "this simulator has more than one built-in display and devicectl did not report exactly one"
+                    + " of them as showing (folding or unfolding right now?), so no screenshot was taken"
+                    + " (guessing would return the picture of a display that is not showing)")
+        }
+        return "display=\(display.displayID)"
+    }
+
+    /// 撮り方の決定(純粋関数)。multiDisplay なのに udid が分からないときも multiDisplay として扱えないので single に
+    /// 倒すと主画面を撮って壊すことになる —— 呼び手の udid を使い、それも無ければ udid の要る経路で断る(空文字)
+    static func screenCapture(status: StatusResponse, simulatorUDID: String?) -> ScreenCapture {
+        guard status.multiDisplay == true else { return .single }
+        return .multiDisplay(udid: status.udid ?? simulatorUDID ?? "")
     }
 
     /// 画面の静穏だけ待つ(状態は変えない)。**Android ブリッジ専用**(v19 以降)。

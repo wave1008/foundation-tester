@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 185
+    public static let bridgeProtocolVersion = 191
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -743,6 +743,10 @@ public struct StatusResponse: Codable, Sendable {
     /// Android's orientation is read via adb host-side (AndroidDriver), not through this field.
     /// Omitted by old bridges and by bridges that can't currently determine it → nil = unknown.
     public var orientation: FTOrientation?
+    /// 内蔵画面が2枚以上ある Simulator(折りたたみの iPhone Duo)の XCUITest ランナーだけ true。**true のとき
+    /// `/screenshot` は `display=<表示中の displayId>` を要求する**(ランナーはどちらが表示中か確かに言えず、主画面を撮ると
+    /// 開いている間は外側の絵になる。Runner/.../DisplayRouting.swift)。他は nil(= 1枚)
+    public var multiDisplay: Bool?
 
     public init(ready: Bool, device: String, osVersion: String, sessionBundleID: String?,
                 engine: String? = nil, protocolVersion: Int? = nil, applicationState: String? = nil,
@@ -751,7 +755,7 @@ public struct StatusResponse: Codable, Sendable {
                 quiescenceControlAvailable: Bool? = nil, unsupportedActions: [String]? = nil,
                 ownerRepo: String? = nil, ownerPid: Int? = nil, idleSeconds: Double? = nil,
                 timingEnabled: Bool? = nil, udid: String? = nil,
-                orientation: FTOrientation? = nil) {
+                orientation: FTOrientation? = nil, multiDisplay: Bool? = nil) {
         self.ready = ready
         self.device = device
         self.osVersion = osVersion
@@ -770,6 +774,7 @@ public struct StatusResponse: Codable, Sendable {
         self.timingEnabled = timingEnabled
         self.udid = udid
         self.orientation = orientation
+        self.multiDisplay = multiDisplay
     }
 }
 

@@ -23,6 +23,21 @@
 
 ## デバイスで赤のまま・原因未調査
 
+- **iPhone Duo の Simulator の開閉で、SpringBoard・testmanagerd・PosterBoard 等が `FBSDisplayMode` の検査で落ちる**(2026-10-17・Duo-01/02・新規作成の Duo)
+  - 症状: 開くたびに約半分の確率で PosterBoard・ウィジェットの拡張・InputUI・chronod が落ちる。ときどき SpringBoard と
+    **testmanagerd も落ち、XCUITest ランナーが道連れになる**(以後の操作は接続拒否 → 起動し直し)。スタックは全部
+    `CA::Display::Display::update` → `FBSDisplaySource` → `-[FBSDisplayMode _initWith…validityCheck:]`
+  - 確かめた範囲: ランナーの /hinge だけで開閉を4往復しても落ちる(撮影・木の読み・タップは一切無し)= 開閉そのものが引き金。
+    testmanagerd が落ちたのは開閉の直後に XCTest の撮影・木の読みが重なった回(ライブ操作の観測)。04:50〜05:35 は同じ操作を
+    何度しても1件も落ちず、それ以降は消去・新規作成した Duo でも・CoreSimulatorService を起動し直しても落ちる。
+    「表示していない画面を撮ると壊れる」と一度読んだが、撮らない対照でも落ちたので誤り(取り下げた)
+  - **ツールの変更とは無関係**: HEAD(2ff61b4e・ブリッジ v185)のランナーで同じ4往復をしても 17 件落ちた(SpringBoard 4・
+    testmanagerd 2 を含む)。**Mac を再起動しても戻らない**(再起動直後の4往復で 16 件)
+  - **ヒンジの送り方とも無関係**: DeviceHub の開閉ボタンで手で開閉しても同じように落ちた(Duo-02・SpringBoard 6・testmanagerd 3。
+    ただしその間も拡張が起こした XCUITest ランナーが付いていた = XCTest の付いていない対照は未確認)。Simulator(27.2 beta)側の問題として扱う。
+    Xcode の更新で直るかを、開閉だけの4往復(撮影・木の読み無し)で数えて確かめる
+  - 影響: DSL の `fold()` / `unfold()`・MCP の `ft_fold`・ライブ操作の開閉ボタンの全部
+
 - **FM が ANE の仮想メモリの枯渇(`VM exhausted` → `Code=53 no memory`)で死に、Mac を再起動するまで戻らない**(2026-10-16・M1Ultra)
   - 症状: E2EX の開始直後に text / vision とも死に、2 時間半戻らなかった。fm-serve の入れ替えでは戻らない
   - 確かめた範囲・再現の試み・修正の効果の比較・調べ方の罠は maintainer-notes §83.9。暖機・期限切れ推論の重なりを塞いだ d25923a8 で、

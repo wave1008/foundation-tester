@@ -177,6 +177,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             storeURL: MachineStateDirectory.url().appendingPathComponent("device-storage.json"),
             onMeasured: { key in storageBoard.publish(key: key) })
         storageBoard.attach(storageSampler)
+        // 折りたためるか(monitorDevices[].foldable)。計測は裏で回し、周期は控えを読むだけ
+        let foldabilitySampler = DeviceFoldabilitySampler()
 
         // run/recording lease の読み取り用(.fleetest/{run,recording}-<key>.lease で inRun/recording を
         // 判定)。best-effort: リポジトリ外実行等で root が取れない場合は両者 false に倒す
@@ -404,6 +406,10 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             storageBoard.publish(keys: scheduledStorageKeys)
             storageSampler.forget(keysNotIn: Set(states.compactMap { $0.iosUdid ?? $0.androidSerial }))
             let (storageCache, storageMeasuring) = storageSampler.progressSnapshot()
+            foldabilitySampler.forget(keysNotIn: Set(states.compactMap {
+                DeviceFoldabilitySampler.device(platform: $0.target.platform, id: $0.target.id,
+                                                udid: $0.iosUdid, serial: $0.androidSerial)?.key
+            }))
 
             // 手元の二重配信の判定に使う 1 周期ぶんのプロセス一覧(FTCore.LocalStreamHolder)。
             // デバイスごとに ps を撃たない
@@ -449,7 +455,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                                    bridgeRunning: bridgeRunning,
                                    storage: leaseKey.flatMap { storageCache[$0] },
                                    storageMeasuring: leaseKey.map { storageMeasuring.contains($0) } ?? false,
-                                   storageRefreshId: handledStorageRefreshId)
+                                   storageRefreshId: handledStorageRefreshId,
+                                   foldable: Self.foldable(state: state, sampler: foldabilitySampler))
             }
             emitLine(ApiMonitorDevicesEvent(devices: Self.mergedDevices(
                 listedTargets: listedTargets, observed: observedInfos,
@@ -751,7 +758,18 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             host: nil, port: nil, recording: false, registered: target.registered,
             machine: MachineDispatch.normalize(target.spec.machine), frozen: false, wired: nil,
             streamedByOther: nil, bridgeRunning: nil, storage: nil,
-            storageMeasuring: false, storageRefreshId: nil)
+            storageMeasuring: false, storageRefreshId: nil, foldable: nil)
+    }
+
+    /// devices[].foldable。実機はツールが折りたためないので測らず false。仮想は起動中
+    /// (connected / booted)のものだけ控えを読む(未起動は nil)。待たない(DeviceFoldabilitySampler)
+    static func foldable(state: DeviceRuntimeState, sampler: DeviceFoldabilitySampler) -> Bool? {
+        if state.target.spec.isPhysical { return false }
+        guard state.state == "connected" || state.state == "booted",
+              let device = DeviceFoldabilitySampler.device(
+                platform: state.target.platform, id: state.target.id,
+                udid: state.iosUdid, serial: state.androidSerial) else { return nil }
+        return sampler.foldable(for: device)
     }
 
     /// `MachineInventory.merge` へ渡す「そのデバイスの実体がこの機械にあるか」の述語。
@@ -911,7 +929,8 @@ struct DeviceRuntimeState {
                           bridgeRunning: Bool? = nil,
                           storage: DeviceStorageInfo? = nil,
                           storageMeasuring: Bool = false,
-                          storageRefreshId: Int? = nil) -> ApiMonitorDeviceInfo {
+                          storageRefreshId: Int? = nil,
+                          foldable: Bool? = nil) -> ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(id: target.id, name: target.name,
                              platform: target.platform, state: state, detail: detail,
                              udid: iosUdid, serial: androidSerial, health: health, renderMode: renderMode,
@@ -922,7 +941,8 @@ struct DeviceRuntimeState {
                              machine: MachineDispatch.normalize(target.spec.machine),
                              frozen: frozen, wired: wired, streamedByOther: streamedByOther,
                              bridgeRunning: bridgeRunning, storage: storage,
-                             storageMeasuring: storageMeasuring, storageRefreshId: storageRefreshId)
+                             storageMeasuring: storageMeasuring, storageRefreshId: storageRefreshId,
+                             foldable: foldable)
     }
 }
 

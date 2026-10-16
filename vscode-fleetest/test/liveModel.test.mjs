@@ -1170,6 +1170,7 @@ test("mcpCommandForServeCommand: 操作ごとに ft_* とその引数へ写す",
   assert.equal(f({ cmd: "pinch", scale: 2, duration: 0.5 }), 'ft_pinch {"scale":2,"durationSeconds":0.5}');
   assert.equal(f({ cmd: "home" }), 'ft_navigate {"target":"home"}');
   assert.equal(f({ cmd: "appSwitcher" }), 'ft_navigate {"target":"appSwitcher"}');
+  assert.equal(f({ cmd: "fold", state: "unfold" }), 'ft_fold {"state":"unfold"}');
   assert.equal(f({ cmd: "terminate" }), "ft_terminate {}");
   assert.equal(f({ cmd: "launch", bundle: "com.example.app" }), 'ft_launch {"bundleId":"com.example.app"}');
   assert.equal(f({ cmd: "install", path: "/tmp/App.app" }), 'ft_install {"packagePath":"/tmp/App.app"}');
@@ -1326,6 +1327,8 @@ test("serveCommandAllowanceMs: gesture は最後の点の時刻(秒→ms)・他�
 
 test("serveCommandAllowanceMs: press/drag/pinch は指定秒数そのもの(秒→ms)", () => {
   assert.equal(serveCommandAllowanceMs({ cmd: "press", x: 0, y: 0, duration: 5 }), 5000);
+  // fold は開閉の確かめの待ち(serve の既定 5 秒 = FTCore.DefaultWait.seconds)
+  assert.equal(serveCommandAllowanceMs({ cmd: "fold", state: "fold" }), 5000);
   assert.equal(
     serveCommandAllowanceMs({ cmd: "drag", fromX: 0, fromY: 0, toX: 1, toY: 1, press: 0.05, duration: 0.3 }),
     350,

@@ -119,6 +119,11 @@ export interface MonitorDevice {
    * pidof がたまたま失敗しただけの回にタイルの絵が消える(誤って「ブリッジが無い」と断定する)。
    * (契約は Sources/fleetest/ApiMonitorCommand.swift の ApiMonitorDeviceInfo.bridgeRunning) */
   readonly bridgeRunning?: boolean;
+  /** ツールが開閉できる折りたたみ機か(iPhone Duo の Simulator・折りたたみの Android Emulator = true)。
+   * 実機・単画面は false、まだ判定していない・判定できなかったは undefined(Swift は null)。
+   * **true のときだけ**開閉のボタンを出す(webview/monitor/foldButtons.js)。
+   * (契約は Sources/fleetest/ApiMonitorEvents.swift の ApiMonitorDeviceInfo.foldable) */
+  readonly foldable?: boolean;
   /** 直近のストレージ計測(devices サイクルに乗る。§3 の間隔・inRun 中は撃たない等の規律は
    * 送信側=Swift の話でここでは関与しない)。測れなかったデバイスは欠落(undefined)のまま —— 0 に
    * 正規化しない(ダッシュボードの「デバイスの健全性」表が「–」と 0 を区別するため)。 */
@@ -300,6 +305,10 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     // (「不明」)のまま保つ。false に丸めると bridgeNotRunning() が「未起動」と誤認し、
     // 生きているブリッジのフレームまで消してしまう。
     value.bridgeRunning = undefined;
+  }
+  if (value.foldable !== true && value.foldable !== false) {
+    // 欠落/null/型不正は「まだ分からない」(ボタンを出さない側)
+    value.foldable = undefined;
   }
   if (!Number.isSafeInteger(value.storageRefreshId)) {
     value.storageRefreshId = undefined;

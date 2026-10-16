@@ -1561,6 +1561,45 @@ html.select-all-guard * {
   height: auto;
   display: block;
 }
+/* グリッドビューのライブ操作(1台表示の拡大表示の下。gridLiveControls.js)。高さは
+   layoutSinglePreview が拡大表示の固定費として実測するので、ここで固定しない */
+.grid-live-controls {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.grid-live-error {
+  font-size: 11px;
+  text-align: center;
+  color: var(--vscode-errorForeground, #f48771);
+  overflow-wrap: anywhere;
+}
+.grid-live-error:empty { display: none; }
+/* 自動起動の進行中など、エラーではない知らせ(actionError の neutral) */
+.grid-live-error.neutral { color: var(--vscode-descriptionForeground, inherit); }
+/* 絵の上の操作(gridLiveControls.js)。軌跡の位置は絵の矩形に合わせて書く */
+.lanes-grid.single-device .lane-preview { position: relative; }
+.lanes-grid.single-device .lane-preview-media { cursor: var(--touch-cursor); }
+.grid-live-drag-overlay {
+  position: absolute;
+  display: none;
+  pointer-events: none;
+  overflow: visible;
+}
+.grid-live-drag-overlay.visible { display: block; }
+.grid-live-drag-overlay polyline {
+  fill: none;
+  stroke-linejoin: round;
+  stroke: var(--vscode-focusBorder, #007acc);
+  stroke-width: 3;
+  stroke-linecap: round;
+  opacity: 0.75;
+}
+.grid-live-drag-overlay circle {
+  fill: var(--vscode-focusBorder, #007acc);
+  opacity: 0.5;
+}
 .lane {
   display: flex;
   flex-direction: column;
@@ -2651,6 +2690,14 @@ input[type="radio"]:focus-visible {
   border-radius: 3px;
   background-color: var(--vscode-input-background, #1e1e1e);
 }
+/* 操作を受けるデバイス画面のカーソル(ライブ操作タブ #live-screenshot/#live-canvas と、グリッドビューの
+   1台表示 .lanes-grid.single-device .lane-preview-media で共用)。円形の薄い影(SVG data URI)。
+   ホットスポット 14 14=円中心がタップ座標。暗い画面でも見えるよう白の薄い縁取り付き。data: は CSP img-src で許可済み。 */
+:root {
+  --touch-cursor: url('data:image/svg+xml;utf8,<svg%20xmlns="http://www.w3.org/2000/svg"%20width="28"%20height="28"><defs><radialGradient%20id="g"><stop%20offset="55%25"%20stop-color="%23000"%20stop-opacity="0.30"/><stop%20offset="100%25"%20stop-color="%23000"%20stop-opacity="0"/></radialGradient></defs><circle%20cx="14"%20cy="14"%20r="12.5"%20fill="url(%23g)"%20stroke="%23fff"%20stroke-opacity="0.35"%20stroke-width="1"/></svg>')
+    14 14,
+    crosshair;
+}
 /* #live-canvas(liveTab.js が生成する h264 描画用 canvas)は img と同じ表示規則を共用する。 */
 #live-screenshot, #live-canvas {
   display: none;
@@ -2659,11 +2706,7 @@ input[type="radio"]:focus-visible {
   /* img 既定のネイティブドラッグ&選択を無効化(ドラッグ=スワイプ判定に必須。liveTab.js と対)。 */
   -webkit-user-drag: none;
   user-select: none;
-  /* 円形の薄い影カーソル(SVG data URI)。ホットスポット 14 14=円中心がタップ座標。
-     暗い画面でも見えるよう白の薄い縁取り付き。data: は CSP img-src で許可済み。 */
-  cursor: url('data:image/svg+xml;utf8,<svg%20xmlns="http://www.w3.org/2000/svg"%20width="28"%20height="28"><defs><radialGradient%20id="g"><stop%20offset="55%25"%20stop-color="%23000"%20stop-opacity="0.30"/><stop%20offset="100%25"%20stop-color="%23000"%20stop-opacity="0"/></radialGradient></defs><circle%20cx="14"%20cy="14"%20r="12.5"%20fill="url(%23g)"%20stroke="%23fff"%20stroke-opacity="0.35"%20stroke-width="1"/></svg>')
-    14 14,
-    crosshair;
+  cursor: var(--touch-cursor);
 }
 #live-screenshot.visible, #live-canvas.visible { display: block; }
 #live-screenshot.disconnected, #live-canvas.disconnected { filter: grayscale(1) brightness(0.75); }

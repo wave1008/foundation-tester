@@ -120,7 +120,7 @@ final class ApiLiveBridgeIdentityWiringTests: XCTestCase {
         guard let silentRange = code.range(of: "case .silent:") else {
             return XCTFail("無応答の分岐が無い")
         }
-        let branch = String(code[silentRange.upperBound...].prefix(1800))
+        let branch = String(code[silentRange.upperBound...].prefix(4000))
         XCTAssertTrue(branch.contains("driverOptions.port == nil"),
                       "--port 明示時は従来どおり進むこと(駆動中の busy は正常)")
         XCTAssertTrue(branch.contains("PortHolder.isHeldByAnotherDevice("),
@@ -135,6 +135,18 @@ final class ApiLiveBridgeIdentityWiringTests: XCTestCase {
         XCTAssertTrue(branch.contains("InAppBridgeState.isRecordedForAnotherDevice("),
                       "in-app の台帳が別のデバイスのものなら掴むのをやめること"
                       + " —— 見ないと run のレーンのポートへ自動起動がランナーを起動する")
+        // 既定ポートへのフォールバックで答えが無いなら、まずこの udid のブリッジを走査で探す(別ポートに生きた XCUITest が
+        // 居るのに自動起動へ回り、使用中の印で起動も断られて届かなかった)。占有者の判定より前に置く
+        guard let scanIndex = branch.range(of: "BridgeDiscovery.scan(excluding:"),
+              let holderIndexForScan = branch.range(of: "PortHolder.isHeldByAnotherDevice(") else {
+            return XCTFail("無応答の分岐で udid の走査をしていない")
+        }
+        XCTAssertTrue(scanIndex.upperBound < holderIndexForScan.lowerBound,
+                      "既定ポートの占有者を判定する前に、この udid のブリッジが別のポートに居ないか探すこと")
+        // 自分の in-app(アプリが背面で答えない)も XCUITest の宛先にしない —— 掴むと止まったアプリへ全操作を撃つ
+        // (実地: run が XCUITest を 8127・in-app を既定の 8123 へ入れ替えた後、背面のアプリを掴んだ)
+        XCTAssertTrue(branch.contains("InAppBridgeState.isRecordedForDevice("),
+                      "このデバイスの in-app の台帳なら掴まずに udid の走査へ回すこと")
         guard let loopbackIndex = branch.range(of: "resolution.endpoint.isLoopback"),
               let holderIndex = branch.range(of: "PortHolder.isHeldByAnotherDevice(") else {
             return XCTFail("無応答分岐の形が変わった — テストを見直すこと")

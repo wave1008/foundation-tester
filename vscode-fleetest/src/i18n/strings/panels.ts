@@ -97,6 +97,13 @@ export const panelsStrings = {
 
   "panels.devices.emptyMessage": { ja: "デバイスを待機しています", en: "Waiting for devices" },
   "panels.devices.selectDevices": { ja: "デバイスを選択して下さい", en: "Select a device" },
+  /// グリッドビューの tooltip。画面のダブルクリックは2回のタップ(選択の切り替えは画面の外側。laneLog.js)
+  "panels.devices.gridGestureHintTitle": {
+    ja: "クリック=タップ / Option(⌥)+クリック=ダブルタップ / Shift(⇧)+ドラッグ=軌跡どおりになぞる。"
+      + "素のドラッグはデバイスへ送りません。選択の切り替えは画面の外側をダブルクリック",
+    en: "Click = tap / Option(⌥)+click = double tap / Shift(⇧)+drag = trace the exact path."
+      + " Plain drags are not sent to the device. Double-click outside the screen to toggle the selection",
+  },
   "panels.devices.selectAllLabel": { ja: "すべて選択", en: "Select all" },
   "panels.runBoard.platformFilterAll": { ja: "すべて", en: "All" },
   "panels.runBoard.splitAriaLabel": { ja: "デバイスとステータスの分割境界線", en: "Divider between devices and status" },
@@ -456,6 +463,16 @@ export const panelsStrings = {
   "panels.live.traceModeTitle": {
     ja: "Shift(⇧)を押しながらドラッグすると、指の軌跡どおりに再生します",
     en: "Hold Shift(⇧) while dragging to replay the exact finger path",
+  },
+  "panels.live.foldButton": { ja: "折りたたむ", en: "Fold" },
+  "panels.live.foldTitle": {
+    ja: "折りたたみ機を閉じて外側の画面にします(iPhone Duo の Simulator・折りたたみの Android Emulator)",
+    en: "Fold the device to its outer screen (iPhone Duo simulator or a foldable Android Emulator)",
+  },
+  "panels.live.unfoldButton": { ja: "開く", en: "Unfold" },
+  "panels.live.unfoldTitle": {
+    ja: "折りたたみ機を開いて内側の大きい画面にします",
+    en: "Unfold the device to its larger inner screen",
   },
   "panels.live.appSwitcherButton": { ja: "タスク切替", en: "App Switcher" },
   "panels.live.appSwitcherTitle": {

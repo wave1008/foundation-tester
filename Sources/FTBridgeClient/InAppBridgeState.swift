@@ -35,6 +35,14 @@ public enum InAppBridgeState {
         return recorded.udid.caseInsensitiveCompare(udid) != .orderedSame
     }
 
+    /// このポートの台帳が**このデバイス**の in-app ブリッジのものか(台帳が無い・読めないは false = 言えない)。
+    /// in-app はアプリが背面へ回ると `/status` に答えないので、無応答の既定ポートが「このデバイスの XCUITest」か
+    /// 「このデバイスの in-app」かを分けられるのは台帳だけ(ApiLiveServe.makeLiveDriver)
+    public static func isRecordedForDevice(stateDir: URL, port: UInt16, udid: String) -> Bool {
+        guard let recorded = read(at: url(stateDir: stateDir, port: port)) else { return false }
+        return recorded.udid.caseInsensitiveCompare(udid) == .orderedSame
+    }
+
     /// 3 語目(sourceDigest)は digest を計算できない構成では書かれず(2 語)nil になる。
     /// 読み手は nil を「出所不明」として扱うこと(= 再利用しない側に倒す)。
     /// **udid と bundleID は文法で検める**(英数・`.`・`-`・`_`、先頭が `-` でない。子 = サンドボックスの中の

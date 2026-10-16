@@ -65,6 +65,14 @@ final class FreePortInAppLedgerTests: XCTestCase {
             stateDir: stateDir, port: 8124, udid: "SOME-OTHER-DEVICE"))
     }
 
+    /// 自分の台帳だけを「このデバイスの in-app」と言う(大文字小文字の違いは同じデバイス・台帳なしは言えない)
+    func testOwnLedgerIsRecognizedAsThisDevice() {
+        writeInApp(port: 8123)
+        XCTAssertTrue(InAppBridgeState.isRecordedForDevice(stateDir: stateDir, port: 8123, udid: "UDID-OF-A-RUN-LANE"))
+        XCTAssertFalse(InAppBridgeState.isRecordedForDevice(stateDir: stateDir, port: 8123, udid: "SOME-OTHER-DEVICE"))
+        XCTAssertFalse(InAppBridgeState.isRecordedForDevice(stateDir: stateDir, port: 8124, udid: "udid-of-a-run-lane"))
+    }
+
     /// 2段目(台帳の残るポート)は今だれも待ち受けていないものだけ —— run のレーンで生きている in-app ポートを採らない
     /// (負荷テスト: 1段目が残骸で尽きた回に、ライブ操作が run のレーンの 8147 でランナーを起動した)
     func testFallbackSkipsLedgerPortsThatAreStillListening() {

@@ -92,3 +92,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   の1箇所——2つ目の判定を作らない)。**一覧そのものが読めない(unreadable)は「居ない」に畳まず進む**
   ——ここで断らないと、実在しない udid は `xcodebuild build-for-testing` を2回(各約60秒)空撃ちしたあとに
   ようやく失敗し、その間 `bridgeStarting: true` と誤った接続断の説明を出し続ける
+  **既定ポートが無応答で、in-app の台帳がそのポートを「このデバイスの in-app」と記録していたら XCUITest として掴まない**
+  (`InAppBridgeState.isRecordedForDevice` → udid の走査で XCUITest のポートへ乗り換える)。背面で止まったアプリの in-app は
+  答えないので、掴むと home・前面追従を含む全操作が「The network connection was lost」になる(run の起動し直しで
+  XCUITest と in-app のポートが入れ替わった後に実地で踏んだ)

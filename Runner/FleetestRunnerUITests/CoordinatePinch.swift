@@ -36,6 +36,12 @@ import XCTest
     @objc(addPointerEventPath:) func add(_ path: AnyObject)
 }
 
+/// 同じクラスの画面を指定する初期化子(主画面以外の画面へ送るとき = DisplayRouting)
+@objc private protocol SynthesizedEventRecordDisplaySPI: NSObjectProtocol {
+    @objc(initWithName:displayID:interfaceOrientation:) init(name: String, displayID: UInt, interfaceOrientation: Int)
+    @objc(addPointerEventPath:) func add(_ path: AnyObject)
+}
+
 /// イベントを実際に送る口。
 /// **completion は引数を取らない形で受ける** —— 実際のブロックは先頭に BOOL を渡してくるので、
 /// `(Error?) -> Void` で受けると Swift の thunk がその 1 を objc_retain して**落ちる**
@@ -100,9 +106,40 @@ enum CoordinatePinch {
     /// 密度に補間してから1つのタッチ列として再生する。pinch / gesture / doubletap の実体
     /// (指の置き方はここでは決めない——呼び手が組んだキーフレームをそのまま運ぶ)
     /// - Parameter fingers: 各指のキーフレーム列。1本目の要素が touch down・最後が lift
+    /// - Parameter display: アプリが主画面以外の画面に出ているときの送り先(`DisplayRouting.target`)。
+    ///   **既定値を置かない** —— 渡し忘れると内側の画面に出ているアプリへ外側の画面で撃つ(黙って外れる)
     static func synthesize(fingers: [[(point: CGPoint, offset: TimeInterval)]], name: String,
-                           orientation: UIInterfaceOrientation) throws {
-        try send(fingers: fingers.map(resample), name: name, orientation: orientation)
+                           orientation: UIInterfaceOrientation, display: DisplayRouting.Target?) throws {
+        try send(fingers: fingers.map(resample), name: name, orientation: orientation, display: display)
+    }
+
+    /// 主画面以外の画面への単純なタップ(XCUICoordinate は主画面にしか届かない = DisplayRouting)。
+    /// 接触時間は doubletap の1回ぶんと同じ長さ(RN の PanResponder が拾った実測値。BridgeRouter.doubleTapTouchDuration)
+    static func tap(at point: CGPoint, display: DisplayRouting.Target, touchSeconds: TimeInterval) throws {
+        try send(fingers: [[(point: point, offset: 0), (point: point, offset: touchSeconds)]],
+                 name: "fleetest tap", orientation: .portrait, display: display)
+    }
+
+    /// 送る record を組む。display があればその画面へ・**本来の向き**(portrait)で組む —— 点は呼び手ではなく
+    /// ここで `nativePoint` に回す(送り口を1つにして変換の漏れを作らない)
+    private static func makeRecord(name: String, orientation: UIInterfaceOrientation,
+                                   display: DisplayRouting.Target?) throws -> SynthesizedEventRecordSPI {
+        guard let classes else {
+            throw BridgeError(422, "this Xcode has no coordinate gesture support"
+                + " (XCPointerEventPath / XCSynthesizedEventRecord are gone)")
+        }
+        guard let display else {
+            return classes.record.init(name: name, interfaceOrientation: orientation.rawValue)
+        }
+        let recordClass: AnyClass = classes.record
+        guard recordClass.instancesRespond(to: Selector(("initWithName:displayID:interfaceOrientation:"))) else {
+            throw BridgeError(422, "the app is on display \(display.displayID) (not the main screen), and this Xcode"
+                + " cannot send touches to another display (XCSynthesizedEventRecord has no displayID initializer)")
+        }
+        let displayType = unsafeBitCast(recordClass, to: SynthesizedEventRecordDisplaySPI.Type.self)
+        let record = displayType.init(name: name, displayID: display.displayID,
+                                      interfaceOrientation: UIInterfaceOrientation.portrait.rawValue)
+        return unsafeBitCast(record, to: SynthesizedEventRecordSPI.self)
     }
 
     /// キーフレームを XCTest が時間どおりに再生できる粒度へ揃える: ①`minimumSegment` 未満の間隔の点を
@@ -146,15 +183,15 @@ enum CoordinatePinch {
     /// 1本の指を置き、`seconds` 後に離す。**完了を待たずに戻る**(/hold。置いている間に木を読ませるため)。
     /// 失敗は呼び手に戻らない(完了ブロックは結果を読まない)= 押せていないことは、検証の失敗として現れる
     static func holdWithoutWaiting(at point: CGPoint, seconds: TimeInterval,
-                                   orientation: UIInterfaceOrientation) throws {
+                                   orientation: UIInterfaceOrientation, display: DisplayRouting.Target?) throws {
         guard let classes, let synthesizer else {
             // **422(501 ではない)**: 501 はホストが「このエンジンでは不可」= XCUITest へフォールバックと読むので、
             // XCUITest 自身が返すとフォールバック先が自分になる(docs/design.md §4.3)
             throw BridgeError(422, "this Xcode has no coordinate gesture support"
                 + " (XCPointerEventPath / XCSynthesizedEventRecord are gone)")
         }
-        let record = classes.record.init(name: "hold", interfaceOrientation: orientation.rawValue)
-        let path = classes.path.init(touchAt: point, offset: 0)
+        let record = try makeRecord(name: "hold", orientation: orientation, display: display)
+        let path = classes.path.init(touchAt: display?.nativePoint(point) ?? point, offset: 0)
         path.liftUp(atOffset: seconds)
         record.add(path)
         synthesizer.synthesize(record) { }
@@ -163,22 +200,23 @@ enum CoordinatePinch {
     /// **待つ送り方の唯一の場所**(pinch / gesture / doubletap が共有する。待たない送り方は holdWithoutWaiting)。フルに展開済みのキーフレームから
     /// 指1本につきパスを1本組み、全部を1つの record にまとめて送り、完了を待つ
     private static func send(fingers: [[(point: CGPoint, offset: TimeInterval)]], name: String,
-                             orientation: UIInterfaceOrientation) throws {
+                             orientation: UIInterfaceOrientation, display: DisplayRouting.Target?) throws {
         guard let classes, let synthesizer else {
             // **422(501 ではない)**: 501 はホストが「このエンジンでは不可」= XCUITest へフォールバックと読むので、
             // XCUITest 自身が返すとフォールバック先が自分になる(docs/design.md §4.3)
             throw BridgeError(422, "this Xcode has no coordinate gesture support"
                 + " (XCPointerEventPath / XCSynthesizedEventRecord are gone)")
         }
-        let record = classes.record.init(name: name, interfaceOrientation: orientation.rawValue)
+        let record = try makeRecord(name: name, orientation: orientation, display: display)
+        let place = { (point: CGPoint) in display?.nativePoint(point) ?? point }
         var totalDuration: TimeInterval = 0
         for keyframes in fingers {
             guard let first = keyframes.first else { continue }
-            let path = classes.path.init(touchAt: first.point, offset: first.offset)
+            let path = classes.path.init(touchAt: place(first.point), offset: first.offset)
             var lastOffset = first.offset
             for keyframe in keyframes.dropFirst() {
                 let offset = max(keyframe.offset, lastOffset + minimumOffsetStep)
-                path.move(to: keyframe.point, atOffset: offset)
+                path.move(to: place(keyframe.point), atOffset: offset)
                 lastOffset = offset
             }
             path.liftUp(atOffset: lastOffset)
@@ -195,3 +233,4 @@ enum CoordinatePinch {
         }
     }
 }
+

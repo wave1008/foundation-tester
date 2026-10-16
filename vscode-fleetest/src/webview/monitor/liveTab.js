@@ -10,6 +10,7 @@ import { createH264Renderer } from './h264Decoder.js';
 import { displayAspect, fitScreenSize } from './liveScreenFit.js';
 import { thinTracePoints } from './traceThinning.js';
 import { flashTip, setHoverTip } from './hoverTip.js';
+import { bindFoldButtons } from './foldButtons.js';
 
 function post(message) {
   vscode.postMessage({ type: 'live', message });
@@ -149,7 +150,7 @@ let settleRefreshRequested = false;
 const busyButtons = [
   'live-btn-refresh-devices', 'live-btn-refresh-snapshot',
   'live-btn-app-switcher', 'live-btn-home',
-  'live-btn-zoom-in', 'live-btn-zoom-out',
+  'live-btn-zoom-in', 'live-btn-zoom-out', 'live-btn-fold', 'live-btn-unfold',
 ].map((id) => document.getElementById(id));
 
 function setBusy(value) {
@@ -259,6 +260,7 @@ function applyDevices(devices, selectedId) {
   }
   if (selectedId) { deviceSelect.value = selectedId; }
   updateDeviceWarning();
+  refreshFoldButtons();
 }
 
 deviceSelect.addEventListener('change', () => {
@@ -271,6 +273,7 @@ deviceSelect.addEventListener('change', () => {
   disposeLiveH264();
   liveH264ErrorSent = false;
   post({ type: 'selectDevice', id: deviceSelect.value });
+  refreshFoldButtons();
 });
 
 // ---- レコーディング(対向: monitorLiveController.ts / liveModel.ts) --------------
@@ -645,11 +648,12 @@ function applySnapshot(message) {
 // 無効化必須(style.css の -webkit-user-drag: none と対)。
 screenshot.draggable = false;
 screenshot.addEventListener('dragstart', (event) => event.preventDefault());
-const DRAG_MIN_PX = 5;
+// export はグリッドビューの修飾キー操作(gridLiveControls.js)が同じ閾値を使うため
+export const DRAG_MIN_PX = 5;
 // 軌跡の再生時間の絶対上限(ms)。liveModel.ts の GESTURE_SECONDS_CEILING(= BridgeAPI.gestureSecondsCeiling)
 // と同値。**なぞっている最中に超えた時点で中止して言う**(離すまで気付けないと、それまでの操作が無駄になる)。
 // host 側の gestureCapFor も同じ上限で断る(こちらは早く知らせるための先回り)
-const TRACE_MAX_MS = 60000;
+export const TRACE_MAX_MS = 60000;
 const LONG_PRESS_MS = 500;
 let dragStart = null; // el: pointerdown を受けた要素(screenshot か liveCanvas)。以後の rect 計算に使う
 
@@ -1115,6 +1119,15 @@ document.getElementById('live-btn-home').addEventListener('click', () => {
   showActionError('');
   post({ type: 'home' });
 });
+// 折りたたみ機の開閉(折りたためるデバイスのときだけ出す。foldButtons.js)
+const refreshFoldButtons = bindFoldButtons(
+  [document.getElementById('live-btn-fold'), document.getElementById('live-btn-unfold')],
+  () => deviceSelect.value || null,
+  (state) => {
+    showActionError('');
+    post({ type: 'fold', state });
+  },
+);
 document.getElementById('live-btn-app-switcher').addEventListener('click', () => {
   showActionError('');
   post({ type: 'appSwitcher' });

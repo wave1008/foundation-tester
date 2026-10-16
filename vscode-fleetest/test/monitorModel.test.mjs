@@ -202,6 +202,19 @@ test("isMonitorEvent: monitorDevices の registered は true/false をそのま�
   assert.equal(value.devices[1].registered, false);
 });
 
+// foldable は true/false だけを保ち、null・欠落・型不正は undefined(まだ分からない = 開閉ボタンを出さない側)
+test("isMonitorEvent: monitorDevices の foldable は true/false を保ち、それ以外は undefined に寄せる", () => {
+  const event = {
+    kind: "monitorDevices",
+    devices: [true, false, null, "true", undefined].map((foldable, i) => ({
+      ...REQ, id: `d${i}`, name: `d${i}`, platform: "ios", state: "connected", detail: "",
+      ...(foldable === undefined ? {} : { foldable }),
+    })),
+  };
+  assert.equal(isMonitorEvent(event), true);
+  assert.deepEqual(event.devices.map((d) => d.foldable), [true, false, undefined, undefined, undefined]);
+});
+
 // bridgeRunning は registered と違い「欠落は true」ではなく「欠落は undefined(不明)」に
 // 正規化する —— false に丸めると、Android 実機のブリッジが生きているのに観測できなかった
 // 回にタイルの絵が消える(FTAndroid/AndroidBridge.swift の bridgeRunningVerdict と同じ規律)。

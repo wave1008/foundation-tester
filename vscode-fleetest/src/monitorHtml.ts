@@ -375,6 +375,25 @@ function renderDevicesPanel(): string {
       <div id="lanes-waiting" class="lanes-waiting" style="display: none;">${t("panels.devices.emptyMessage")}</div>
       <div id="preview-grid" class="lanes-grid"></div>
       <div id="preview-empty" class="pane-empty">${t("panels.devices.selectDevices")}</div>
+      <!-- グリッドビューのライブ操作。**1台だけ選択したときだけ** gridLiveControls.js が拡大表示の下へ移し、
+           それ以外はこの置き場(非表示)へ戻す。ボタンの文言・説明はライブ操作タブと同じキー -->
+      <div id="grid-live-parking" hidden>
+        <div id="grid-live-controls" class="grid-live-controls">
+          <div class="screenshot-actions">
+            <button id="grid-live-btn-home" class="secondary" type="button" title="${t("panels.live.homeButtonTitle")}">${t("panels.live.homeButton")}</button>
+            <button id="grid-live-btn-app-switcher" class="secondary" type="button" title="${t("panels.live.appSwitcherTitle")}">${t("panels.live.appSwitcherButton")}</button>
+            <button id="grid-live-btn-zoom-in" class="secondary" type="button" title="${t("panels.live.zoomInTitle")}">${t("panels.live.zoomInButton")}</button>
+            <button id="grid-live-btn-zoom-out" class="secondary" type="button" title="${t("panels.live.zoomOutTitle")}">${t("panels.live.zoomOutButton")}</button>
+            <button id="grid-live-btn-fold" class="secondary" type="button" data-fold="fold" hidden title="${t("panels.live.foldTitle")}">${t("panels.live.foldButton")}</button>
+            <button id="grid-live-btn-unfold" class="secondary" type="button" data-fold="unfold" hidden title="${t("panels.live.unfoldTitle")}">${t("panels.live.unfoldButton")}</button>
+            <!-- 押せない表示灯(Shift を押している間だけ点く)。ライブ操作タブの #live-trace-indicator と同じ -->
+            <span id="grid-live-trace-indicator" class="trace-indicator"
+              title="${t("panels.live.traceModeTitle")}">${t("panels.live.traceModeButton")}</span>
+            <span class="screenshot-hint" title="${t("panels.devices.gridGestureHintTitle")}">${t("panels.live.gestureHint")}</span>
+          </div>
+          <div id="grid-live-error" class="grid-live-error"></div>
+        </div>
+      </div>
     </div>
 
     <div id="splitter-log" class="splitter" role="separator" aria-orientation="horizontal" aria-label="${t("panels.devices.logSplitterAriaLabel")}"></div>
@@ -464,6 +483,9 @@ function renderLivePanel(): string {
           <button id="live-btn-app-switcher" class="secondary" title="${t("panels.live.appSwitcherTitle")}">${t("panels.live.appSwitcherButton")}</button>
           <button id="live-btn-zoom-in" class="secondary" title="${t("panels.live.zoomInTitle")}">${t("panels.live.zoomInButton")}</button>
           <button id="live-btn-zoom-out" class="secondary" title="${t("panels.live.zoomOutTitle")}">${t("panels.live.zoomOutButton")}</button>
+          <!-- 折りたためる端末(モニターの devices[].foldable)のときだけ出す(foldButtons.js) -->
+          <button id="live-btn-fold" class="secondary" data-fold="fold" hidden title="${t("panels.live.foldTitle")}">${t("panels.live.foldButton")}</button>
+          <button id="live-btn-unfold" class="secondary" data-fold="unfold" hidden title="${t("panels.live.unfoldTitle")}">${t("panels.live.unfoldButton")}</button>
           <!-- 押せない表示灯。Shift を押している間だけ点く(= 今ドラッグすると軌跡モード)。liveTab.js の setTraceIndicator -->
           <span id="live-trace-indicator" class="trace-indicator"
             title="${t("panels.live.traceModeTitle")}">${t("panels.live.traceModeButton")}</span>

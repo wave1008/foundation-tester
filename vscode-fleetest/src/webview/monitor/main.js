@@ -77,6 +77,7 @@ import { applyResidentMessage } from './processesTab.js';
 import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab.js';
 import { activateTab, currentTab, HIDDEN_AT_STARTUP, TAB_IDS, switchTab } from './tabs.js';
 import { applyLiveH264Chunk, applyLiveMessage, initLive, openLiveDevice, refreshLiveDevices, setLiveVisible } from './liveTab.js';
+import { applyGridLiveMessage } from './gridLiveControls.js';
 import { setTilePaneHeight, setFleetVisible, isFleetVisible, setLogPaneHeight, setRunBoardHeight, setLogViewVisible, setGridViewVisible } from './splitter.js';
 import { adoptTitleHoverTips } from './hoverTip.js';
 import { setDevicesWaiting } from './waitingNote.js';
@@ -343,6 +344,7 @@ window.addEventListener('message', (event) => {
       break;
     case 'live':
       applyLiveMessage(message.message);
+      applyGridLiveMessage(message.message);
       break;
     case 'liveH264Chunk':
       applyLiveH264Chunk(message);

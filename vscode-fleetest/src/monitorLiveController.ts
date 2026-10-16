@@ -57,6 +57,7 @@ import {
   locatorChainForElement,
   parseListDevicesResult,
   GESTURE_SECONDS_CEILING,
+  type GridLiveAction,
   gestureCapFor,
   parseLiveServeEvent,
   pointFromClick,
@@ -197,6 +198,8 @@ export class MonitorLiveController implements vscode.Disposable {
   /** 直近の snapshot の要素一覧。レコーディング中のヒットテスト・ref 解決に使う。 */
   private lastElements: readonly LiveElement[] = [];
   private busy = false;
+  /** busy が解けるのを待つ手(waitForIdle)。setBusy(false) の後もなお busy でなければ全件起こす。 */
+  private idleWaiters: Array<() => void> = [];
   /** 自動フレームの連続失敗回数(スキップ回はカウントしない)。3で connectionLost に切り替える
    * (単発の取りこぼしで誤検知しないためのデバウンス)。 */
   private frameFailureStreak = 0;
@@ -345,6 +348,35 @@ export class MonitorLiveController implements vscode.Disposable {
       this.openObservationPending = false;
       void this.refreshSnapshot();
     }
+    // 控えていた観測が busy を立て直した回は起こさない(その観測の終わりで起こす)
+    if (!this.busy && this.idleWaiters.length > 0) {
+      const waiters = this.idleWaiters;
+      this.idleWaiters = [];
+      for (const wake of waiters) {
+        wake();
+      }
+    }
+  }
+
+  /** busy が解けるまで待つ(上限 timeoutMs。尽きたら待たずに返る = 続く操作が busyRetry で断られる)。 */
+  private waitForIdle(timeoutMs: number): Promise<void> {
+    if (!this.busy) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const wake = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        const i = this.idleWaiters.indexOf(wake);
+        if (i >= 0) {
+          this.idleWaiters.splice(i, 1);
+        }
+        resolve();
+      }, timeoutMs);
+      this.idleWaiters.push(wake);
+    });
   }
 
   /** **booted(デバイスは起動済み・ブリッジ未接続)のデバイスへ切り替えたら観測を1回撃つ**。serve の自動起動
@@ -746,6 +778,40 @@ export class MonitorLiveController implements vscode.Disposable {
     } else {
       this.devices.push(option);
     }
+  }
+
+  /** グリッドビュー(1台表示)のツールバー・修飾キー操作(liveTabHost.ts の gridAction)。
+   * **ライブ操作と同じ serve へ流す** —— 選択中のデバイスが id と違えば、ライブ操作タブの選択ごと
+   * id へ切り替えてから撃つ(serve は1本だけ = 同じデバイスへ2本の常駐を立てない)。
+   * 座標の操作は画面サイズ(lastScreen)が要るので、切り替え直後の観測が済むのを待ってから撃つ。 */
+  async handleGridAction(id: string, action: GridLiveAction): Promise<void> {
+    if (this.selectedDeviceId !== id) {
+      if (this.appActions.isRecordingInProgress()) {
+        this.post({ type: "gridActionError", id, message: t("live.gridRecordingOtherDevice") });
+        return;
+      }
+      if (this.busy) {
+        this.post({ type: "gridActionError", id, message: t("live.busyRetry") });
+        return;
+      }
+      this.preferredPlatform = undefined; // 手動の選択(openDevice の経路と同じ)
+      await this.openDevice(id);
+      if (this.selectedDeviceId !== id) {
+        this.post({ type: "gridActionError", id, message: t("live.deviceNotOpenable", { id }) });
+        return;
+      }
+    }
+    if ((action.type === "tapPoint" || action.type === "doubleTapPoint" || action.type === "tracePoints")
+      && !this.lastScreen) {
+      // 上限は観測1回の応答待ち(sendServeCommand のタイムアウト)と同じ
+      await this.waitForIdle(SERVE_REQUEST_TIMEOUT_MS);
+      if (!this.lastScreen) {
+        await this.refreshSnapshot();
+      }
+    } else {
+      await this.waitForIdle(SERVE_REQUEST_TIMEOUT_MS);
+    }
+    this.handleWebviewMessage(action);
   }
 
   private async openDevice(id: string): Promise<void> {
@@ -1824,6 +1890,14 @@ export class MonitorLiveController implements vscode.Disposable {
       }
       case "home":
         void this.runAction({ cmd: "home" }, { action: "home" }, { logLabel: t("live.opLabel.home") });
+        break;
+      case "fold":
+        // 記録しない(gen-scenario のコード生成に fold / unfold が無い = ScenarioCodeGen)
+        void this.runAction(
+          { cmd: "fold", state: message.state },
+          undefined,
+          { logLabel: t(message.state === "fold" ? "live.opLabel.fold" : "live.opLabel.unfold") },
+        );
         break;
       case "appSwitcher":
         void this.runAction(

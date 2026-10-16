@@ -289,6 +289,8 @@ export type LiveServeCommand =
   | { readonly cmd: "pinch"; readonly scale: number; readonly duration: number }
   | { readonly cmd: "appSwitcher" }
   | { readonly cmd: "home" }
+  /** 折りたたみ機の開閉(FTCore.FoldControl。折りたためない端末は serve が何も送らずに断る) */
+  | { readonly cmd: "fold"; readonly state: "fold" | "unfold" }
   | { readonly cmd: "terminate" }
   | { readonly cmd: "refresh" }
   | { readonly cmd: "frame" }
@@ -387,6 +389,8 @@ export function mcpCommandForServeCommand(
     case "home":
     case "appSwitcher":
       return line("ft_navigate", { target: command.cmd });
+    case "fold":
+      return line("ft_fold", { state: command.state });
     case "terminate":
       return line("ft_terminate", {});
     case "launch":
@@ -420,6 +424,9 @@ const LAUNCH_ALLOWANCE_MS = 45_000;
 /** install の内側の上限(ms)。`BridgeClient.Timeout.physicalInstall`(実機 devicectl install の
  * 600秒。Sources/FTBridgeClient/BridgeClient.swift)と同値 —— 片方だけ変えない。 */
 const INSTALL_ALLOWANCE_MS = 600_000;
+/** fold の開閉の確かめを待つ上限(ms)。serve の既定(`FTCore.DefaultWait.seconds` = 5秒。
+ * ApiLiveServeCommand.watchdogAllowanceSeconds の fold)と同値 —— 片方だけ変えない。 */
+const FOLD_ALLOWANCE_MS = 5_000;
 
 /** serve がこのコマンドで正当に占有する時間(ms)。応答待ちの上限にこのぶんを足す。
  * Swift 側は `ApiLiveServeCommand.watchdogAllowanceSeconds`(Sources/fleetest/ApiLiveCommand.swift)
@@ -443,6 +450,8 @@ export function serveCommandAllowanceMs(command: LiveServeCommand): number {
       return LAUNCH_ALLOWANCE_MS;
     case "install":
       return INSTALL_ALLOWANCE_MS;
+    case "fold":
+      return FOLD_ALLOWANCE_MS;
     default:
       return 0;
   }
@@ -1045,7 +1054,10 @@ export type LiveToWebviewMessage =
   | { readonly type: "focusTypeInput" }
   // 「操作記録」1行(レコーディング機能とは無関係。受け手: liveTab.js の operationLog ハンドラ)。
   // mcp: 同じ操作を MCP で撃つコマンド(mcpCommandForServeCommand)。テスト実行由来の行(injectTestStep)には無い
-  | { readonly type: "operationLog"; readonly label: string; readonly ok: boolean; readonly mcp?: string };
+  | { readonly type: "operationLog"; readonly label: string; readonly ok: boolean; readonly mcp?: string }
+  // グリッドビューの操作(GridLiveAction)が、ライブ操作へ流す前に断られた(受け手: gridLiveControls.js)。
+  // 流した後の失敗は通常の actionError で届く(グリッド側は選択中のデバイスが id と一致するときだけ出す)
+  | { readonly type: "gridActionError"; readonly id: string; readonly message: string };
 
 export function toSnapshotMessage(snapshot: LiveSnapshot): LiveToWebviewMessage {
   return {
@@ -1118,6 +1130,8 @@ export type LiveFromWebviewMessage =
   | { readonly type: "typeText"; readonly text: string }
   | { readonly type: "appSwitcher" }
   | { readonly type: "home" }
+  /** 折りたたみ機の開閉。ボタンは折りたためる端末(MonitorDevice.foldable)にだけ出す */
+  | { readonly type: "fold"; readonly state: "fold" | "unfold" }
   | { readonly type: "visibility"; readonly visible: boolean }
   | { readonly type: "refreshAppProfiles" }
   | { readonly type: "selectAppProfile"; readonly appProfile: string }
@@ -1190,6 +1204,8 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
         typeof value.displayWidth === "number" &&
         typeof value.displayHeight === "number"
       );
+    case "fold":
+      return value.state === "fold" || value.state === "unfold";
     case "tapRef":
       return typeof value.ref === "number";
     case "typeText":
@@ -1205,6 +1221,22 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
     default:
       return false;
   }
+}
+
+/** グリッドビュー(1台だけ選択したときの拡大表示)から撃てる操作。ライブ操作と同じ命令へ流す
+ * (MonitorLiveController.handleGridAction。送り手: src/webview/monitor/gridLiveControls.js)。
+ * 素のドラッグ(スワイプ)・長押しは入れない(グリッドビューで受けるのはクリック・修飾キー付きの操作・ツールバーだけ)。 */
+export type GridLiveAction = Extract<
+  LiveFromWebviewMessage,
+  { readonly type: "home" | "appSwitcher" | "pinch" | "fold" | "tapPoint" | "doubleTapPoint" | "tracePoints" }
+>;
+
+const GRID_LIVE_ACTION_TYPES: ReadonlySet<string> = new Set([
+  "home", "appSwitcher", "pinch", "fold", "tapPoint", "doubleTapPoint", "tracePoints",
+] satisfies GridLiveAction["type"][]);
+
+export function isGridLiveAction(value: unknown): value is GridLiveAction {
+  return isLiveFromWebviewMessage(value) && GRID_LIVE_ACTION_TYPES.has(value.type);
 }
 
 // ---- host⇔webview封筒 -------------------------------------------------------------------

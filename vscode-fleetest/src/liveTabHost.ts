@@ -16,7 +16,7 @@ import type * as vscode from "vscode";
 import type { FleetestCli } from "./cli";
 import type { FleetestConfig } from "./config";
 import type { LiveDeps } from "./liveDeps";
-import { type LiveFromWebviewMessage, remoteDeviceOption } from "./liveModel";
+import { type GridLiveAction, type LiveFromWebviewMessage, remoteDeviceOption } from "./liveModel";
 import type { LiveRunTarget } from "./liveRunTarget";
 import { MonitorLiveController } from "./monitorLiveController";
 import type { MonitorFromWebviewMessage, MonitorToWebviewMessage } from "./monitorWebviewMessages";
@@ -165,6 +165,18 @@ export class LiveTabHost implements vscode.Disposable {
     } else {
       this.pendingOpenDeviceId = id;
     }
+  }
+
+  /** グリッドビュー(1台表示)のツールバー・修飾キー操作。remote は openForDevice と同じ(他の機械のタイル)。
+   * タブは切り替えない(デバイスモニターのまま操作する)。 */
+  gridAction(id: string, action: GridLiveAction, remote?: OpenLiveRemoteTarget): void {
+    if (remote) {
+      this.live.registerRemoteDevice(remoteDeviceOption({
+        id, name: remote.name, platform: remote.platform, state: remote.state, kind: remote.kind,
+        udid: remote.udid ?? null, serial: remote.serial ?? null, machine: remote.machine,
+      }));
+    }
+    void this.live.handleGridAction(id, action);
   }
 
   /** Run Test 実行前(runHandler.ts)から呼ばれる。機能 OFF なら即 undefined(呼び出し元が既存の

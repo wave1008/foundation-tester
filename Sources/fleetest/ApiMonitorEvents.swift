@@ -236,6 +236,12 @@ struct ApiMonitorDeviceInfo: Codable {
     /// このデバイスを観測しているモニターが最後に受け取った storageRefresh の id(受け取っていなければ nil)。
     /// 拡張は「自分の要求 id 以上 かつ storageMeasuring == false」を測り終えたと数える
     var storageRefreshId: Int?
+    /// 拡張が開閉のボタンを出してよいか。true = ツールが開閉できる(内蔵画面が2枚の iOS Simulator /
+    /// CLOSED を持つ Android Emulator)・false = できない(1枚・折りたたみでない・実機は測らず常に false)・
+    /// **nil = 未確定**(未計測・計測失敗・未起動。欄ごと省かれ、拡張は「出さない」側に読む)。
+    /// 計測は DeviceFoldabilitySampler(裏で回す)。
+    /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.foldable)
+    let foldable: Bool?
 }
 
 /// monitorFrame イベント: state == connected のデバイスのみ、スクリーンショットを添えて出す

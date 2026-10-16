@@ -152,6 +152,10 @@ export const liveStrings = {
     ja: "軌跡が長すぎるため再生しませんでした（{seconds} 秒。再生できるのは {max} 秒まで）。",
     en: "The trace was not replayed because it is too long ({seconds}s; up to {max}s can be replayed).",
   },
+  "live.gridRecordingOtherDevice": {
+    ja: "ライブ操作で別のデバイスをレコーディング中のため、このデバイスは操作できません。",
+    en: "Live Control is recording another device, so this device cannot be operated.",
+  },
   "live.refreshFirst": {
     ja: "先に要素一覧の「更新」で画面を取得してください。",
     en: 'Fetch the screen with "Refresh" first.',
@@ -175,6 +179,8 @@ export const liveStrings = {
   "live.opLabel.swipe": { ja: "スワイプ: {direction}", en: "Swipe: {direction}" },
   "live.opLabel.trace": { ja: "なぞる", en: "Trace" },
   "live.opLabel.home": { ja: "ホーム", en: "Home" },
+  "live.opLabel.fold": { ja: "折りたたむ", en: "Fold" },
+  "live.opLabel.unfold": { ja: "開く", en: "Unfold" },
   "live.opLabel.appSwitcher": { ja: "タスク切替", en: "App Switcher" },
   "live.opLabel.launch": { ja: "起動: {bundle}", en: "Launch: {bundle}" },
   "live.opLabel.install": { ja: "インストール: {name}", en: "Install: {name}" },

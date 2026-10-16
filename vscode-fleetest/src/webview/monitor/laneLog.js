@@ -16,6 +16,7 @@ import { computePreviewGrid, computeSinglePreviewWidth } from './previewGridMode
 // 循環(splitter → deviceTiles → laneLog)になるが、呼ぶのは関数の中だけなので評価順に依存しない
 import { setLogViewFoldedForSingleSelection } from './splitter.js';
 import { paintMachineBadge } from './machineColors.js';
+import { isGridLiveScreenTarget, syncGridLiveControls } from './gridLiveControls.js';
 
 // レーン id(worker id、または OVERALL_LANE_ID) -> DOM 要素・自動スクロール状態
 const lanes = new Map();
@@ -128,7 +129,12 @@ function ensureLane(id, name, platform, updateLabel, machine) {
   preview.style.display = 'none';
   // グリッドビューのダブルクリック: そのデバイスだけの選択にする(1台なら左に絵・右にログの複製)。
   // 「このデバイスのみ選択」の直後にもう一度押すと、その前の選択へ戻す(deviceTiles.js)
-  preview.addEventListener('dblclick', () => toggleSelectOnlyDevice(id));
+  // **1台表示の絵の上は除く** —— そこのクリックはタップ(gridLiveControls.js)なので、ダブルクリックは2回のタップ。
+  // 修飾キー付きも除く(Option+クリックを続けて押すと dblclick も来る)
+  preview.addEventListener('dblclick', (event) => {
+    if (event.altKey || event.shiftKey || isGridLiveScreenTarget(event.target)) { return; }
+    toggleSelectOnlyDevice(id);
+  });
   preview.addEventListener('contextmenu', (event) => {
     if (openDeviceOpMenuForDevice(id, event.clientX, event.clientY)) {
       // document の contextmenu リスナが開いた直後に閉じる(タイル側と同じ理由)。
@@ -327,6 +333,8 @@ export function updateLaneVisibility() {
   }
 
   previewGrid.classList.toggle('single-device', mirrorId !== null);
+  // 1台表示のときだけライブ操作のツールバーを付ける(段組みの実測より前 = 高さを固定費に数える)
+  syncGridLiveControls(mirrorId, mirrorId !== null ? lanes.get(mirrorId).previewEl : null);
   relayoutPreviewGrid(previewIds);
 
   renderSelectionCount();

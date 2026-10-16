@@ -422,7 +422,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 
 | ブリッジ | 共通コアへの追加 | 計 |
 |---|---|---|
-| XCUITest(Runner/) | `POST /drag`・`POST /gesture`・`POST /hold`・`POST /appswitcher`・`POST /home`・`POST /hinge`(折りたたみの Duo の Simulator のヒンジ角。仮想 HID・`FTCore.FoldControl`)・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/covering`・`GET /systemui/snapshot`・`POST /systemui/tap`・`POST /systemui/drag`・`POST /systemui/swipe`・`POST /waitForSettle`(§4.7) | 30 |
+| XCUITest(Runner/) | `POST /drag`・`POST /gesture`・`POST /hold`・`POST /appswitcher`・`POST /home`・`POST /hinge`(折りたたみの Duo の Simulator のヒンジ角。仮想 HID・`FTCore.FoldControl`)・`GET /screenshot?display=<id>`(内蔵画面が2枚以上 = `/status` の `multiDisplay` のとき必須。ホストが devicectl で確かめた表示中の画面を渡す。`DisplayRouting`)・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/covering`・`GET /systemui/snapshot`・`POST /systemui/tap`・`POST /systemui/drag`・`POST /systemui/swipe`・`POST /waitForSettle`(§4.7) | 30 |
 | Android(AndroidRunner/) | `POST /gesture`・`POST /hold`・`POST /locale`・`POST /settle`・`POST /scrollAction`(§4.5)・`POST /waitForSettle`(§4.7) | 19 |
 | InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate` | 16 |
 
@@ -5121,6 +5121,20 @@ backboardd のこのエラーは、モニターが画面を配信しているデ
   旗 ∧ グリッドビューが開いている)—— グリッドビューを畳んだときに旗のほうを捨てると、開き直した
   瞬間に同じログが上下へ出たまま次の選択変更まで戻らない。**見出しクリックは「見えている状態」を
   反転する**(旗が効いているかで分岐を変えると、押しても何も起きない空振りができる)
+- **1台表示のときだけ、拡大表示の下にライブ操作のツールバー**(ホーム・タスク切替・拡大・縮小・軌跡の表示灯・
+  修飾キーの案内。`gridLiveControls.js`。DOM は `monitorHtml.ts` の `#grid-live-controls` を置き場から移す)。
+  受けるのは **クリック(タップ)・Option+クリック(ダブルタップ)・Shift+ドラッグ(軌跡)だけ** —— 素のドラッグ・
+  長押しは送らない。**絵の上のダブルクリックは2回のタップで、選択の切り替えにしない**(`laneLog.js` が
+  `isGridLiveScreenTarget` と修飾キーで除く。切り替えは絵の外側のダブルクリック)。
+  送り先は `gridLiveAction` → `MonitorLiveController.handleGridAction` で、**ライブ操作タブと同じ serve を使う**
+  (同じデバイスへ常駐を2本立てない)。選択中が別のデバイスなら `openDevice` で切り替えてから撃ち、
+  **別のデバイスをレコーディング中は切り替えずに断る**(`gridActionError`)。座標の操作は切り替え直後の観測で
+  `lastScreen` が揃うのを待つ。失敗は**ライブ操作が今つないでいるデバイスが対象と一致するときだけ**グリッド側にも出す
+- **折りたたみ機の開閉ボタン**(「折りたたむ」「開く」。グリッドビューとライブ操作タブ)は**モニターの `devices[].foldable` が
+  true のデバイスだけ**に出す(`webview/monitor/foldButtons.js`。判定は `api monitor` の `DeviceFoldabilitySampler` が裏で1台1回 =
+  iOS Simulator は devicectl の内蔵画面の枚数・Android Emulator は device_state の CLOSED。実機は測らず false・未確定は欄ごと省く)。
+  押すと serve の `{"cmd":"fold","state":"fold"|"unfold"}`(`FoldControl.apply`。DSL の `fold()` / MCP の `ft_fold` と同じ判定)。
+  記録はしない(`ScenarioCodeGen` に fold / unfold が無い)
 - **選択0台は両ペインに「デバイスを選択して下さい」**。実行ログビュー側は**全体レーンに行があるときは
   出さない**(供給の進行と重なる)。**出し入れはクラス(CSS)で行い inline の `display` を書かない**
   —— inline は畳みの規則に勝つので、畳んでも消えない形が静かにできる(例外は `waitingNote.js` が

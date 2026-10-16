@@ -1284,16 +1284,11 @@ deviceOpMenuGpuBtn.addEventListener('click', (event) => {
   closeDeviceOpMenu();
 });
 
-// 受け手: monitorPanel.ts → liveTabHost.ts の openForDevice(「ライブ操作」タブへ切り替えて表示)。
-deviceOpMenuLiveBtn.addEventListener('click', (event) => {
-  event.stopPropagation();
-  if (!deviceOpMenuEntry) {
-    return;
-  }
-  const device = deviceOpMenuEntry.device;
-  // 他の機械のデバイスはこの Mac の list-devices に居ないので、開くのに要る属性を運ぶ
-  // (契約: monitorWebviewMessages.ts の openLiveForDevice)
-  const remote = device.machine
+// ライブ操作で開くときに運ぶ他の機械のデバイスの属性(手元のデバイスは undefined)。この Mac の
+// list-devices に居ないので、開くのに要る属性をタイルから運ぶ
+// (契約: monitorWebviewMessages.ts の openLiveForDevice / gridLiveAction の remote)
+function liveRemoteTarget(device) {
+  return device.machine
     ? {
         machine: device.machine, name: device.name, platform: device.platform, state: device.state,
         kind: device.kind === 'physical' ? 'physical' : 'virtual',
@@ -1301,6 +1296,22 @@ deviceOpMenuLiveBtn.addEventListener('click', (event) => {
         ...(device.serial ? { serial: device.serial } : {}),
       }
     : undefined;
+}
+
+// gridLiveControls.js から(タイルが無いデバイスは undefined)
+export function liveRemoteTargetFor(deviceId) {
+  const entry = tiles.get(deviceId);
+  return entry ? liveRemoteTarget(entry.device) : undefined;
+}
+
+// 受け手: monitorPanel.ts → liveTabHost.ts の openForDevice(「ライブ操作」タブへ切り替えて表示)。
+deviceOpMenuLiveBtn.addEventListener('click', (event) => {
+  event.stopPropagation();
+  if (!deviceOpMenuEntry) {
+    return;
+  }
+  const device = deviceOpMenuEntry.device;
+  const remote = liveRemoteTarget(device);
   vscode.postMessage({ type: 'openLiveForDevice', id: device.id, ...(remote ? { remote } : {}) });
   closeDeviceOpMenu();
 });
