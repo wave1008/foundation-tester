@@ -6,6 +6,8 @@
 services:
   db:
     image: postgres:16-alpine
+    # コンテナごとのメモリを固定する(Apple Container の既定は機械の設定で変わる。実測の使用量は約 150MB)
+    mem_limit: 1g
     environment:
       POSTGRES_DB: sutec
       POSTGRES_USER: sutec
@@ -18,6 +20,8 @@ services:
 
   server:
     image: ghcr.io/wave1008/sut-ec-mobile-server:latest
+    # 実測の使用量は約 250MB(JVM。負荷で増える)
+    mem_limit: 1g
     # サーバーは DB に接続できるまで自分で待つので、DB の準備完了を待たずに続けて起動する
     depends_on:
       db:
