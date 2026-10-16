@@ -20,9 +20,9 @@
 
 - **FM が ANE の仮想メモリの枯渇(`VM exhausted` → `Code=53 no memory`)で死に、Mac を再起動するまで戻らない**(2026-10-16・M1Ultra)
   - 症状: E2EX の開始直後に text / vision とも死に、2 時間半戻らなかった。fm-serve の入れ替えでは戻らない
-  - 確かめた範囲・再現の試み・調べ方の罠は maintainer-notes §83.9。暖機・期限切れ推論の重なりは d25923a8 で塞いだが、枯渇を防げたかは未測定
-  - 次に見るもの: 修正後の M1Ultra で修正前と同じ負荷(8周)を ANE の監視つきで回し、FM の失敗率と `VM exhausted` の件数を比べる。
-    再現手順の候補は E2EX-Flutter / ios-inapp の反復(単発の `VM exhausted` が2回ともここで出た)
+  - 確かめた範囲・再現の試み・修正の効果の比較・調べ方の罠は maintainer-notes §83.9。暖機・期限切れ推論の重なりを塞いだ d25923a8 で、
+    同じ負荷の FM の失敗は 3 周で 9 → 0 回・`VM exhausted` は 361 → 52 件に減った。**枯渇そのものは残る**
+  - 次に見るもの: 残った `VM exhausted` の出どころ(FM 以外に同じ時間帯に ANE を使っているもの)。「再起動まで戻らない死」の再現手順はまだ無い
 
 - **テキストの可視性検証の FM の段が、読める文字に空の転写を返して notRendered の赤**(2026-10-15・maintainer-notes §82.10)
   - 症状: Flutter・Android の WebView の `textIs "wv_result=*" == "wv_result=-"` が `[notRendered] … observed=""`。切り抜きには文字がはっきり写る。
