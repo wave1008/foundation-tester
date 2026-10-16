@@ -657,8 +657,8 @@ extension ApiMonitorCommand {
     private static func simctlScreenshot(udid: String) throws -> Data {
         let path = NSTemporaryDirectory() + "ft-monitor-\(udid).png"
         defer { try? FileManager.default.removeItem(atPath: path) }
-        guard let result = try? Shell.run(["xcrun", "simctl", "io", udid, "screenshot", path],
-                                          timeout: 15), result.status == 0 else {
+        guard let result = SimulatorActiveDisplay.simctlScreenshot(udid: udid, path: path, timeout: 15),
+              result.status == 0 else {
             throw MonitorError.simctlScreenshotFailed(udid: udid)
         }
         return try Data(contentsOf: URL(fileURLWithPath: path))

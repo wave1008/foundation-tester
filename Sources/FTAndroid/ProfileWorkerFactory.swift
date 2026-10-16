@@ -375,8 +375,8 @@ public enum ProfileWorkerFactory {
                 _ = try? Shell.run(["xcrun", "simctl", "launch", udid, bundleID], timeout: 20)
             }
         }
-        guard let result = try? Shell.run(["xcrun", "simctl", "io", udid, "screenshot", path],
-                                          timeout: 25), result.status == 0 else { return nil }
+        guard let result = SimulatorActiveDisplay.simctlScreenshot(udid: udid, path: path, timeout: 25),
+              result.status == 0 else { return nil }
         return try? Data(contentsOf: URL(fileURLWithPath: path))
     }
 

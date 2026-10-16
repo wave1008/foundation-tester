@@ -49,7 +49,8 @@ public enum HostRecordingProbe {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        process.arguments = ["simctl", "io", udid, "recordVideo", "--codec=h264", "--force", url.path]
+        process.arguments = ["simctl", "io", udid, "recordVideo"] + SimulatorActiveDisplay.simctlIOArguments(udid: udid)
+            + ["--codec=h264", "--force", url.path]
         process.standardOutput = FileHandle.nullDevice
         let stderrPipe = Pipe()
         process.standardError = stderrPipe

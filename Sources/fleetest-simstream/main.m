@@ -508,6 +508,48 @@ static NSString *ftXcodeSelectPath(void) {
     return [out stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 }
 
+// 内蔵画面が2枚以上の機種(折りたたみの iPhone Duo)で、いま表示中の画面の画素寸法を devicectl に訊く。
+// 決まらなければ CGSizeZero(呼び手は従来の「面積最大」へ倒す)。判定の規則は
+// Sources/FTCore/SimulatorActiveDisplay.swift の select と同じ(内蔵 > 1 枚・active がちょうど1枚)。
+// 出力はファイルで受ける(パイプの EOF 待ちは期限を置けない)。上限 10 秒(実測 0.14 秒)
+static CGSize ftActiveDisplaySize(NSString *udid) {
+    NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:
+                      [NSString stringWithFormat:@"ft-simstream-displays-%@.json", NSUUID.UUID.UUIDString]];
+    NSTask *task = [[NSTask alloc] init];
+    task.executableURL = [NSURL fileURLWithPath:@"/usr/bin/xcrun"];
+    task.arguments = @[@"devicectl", @"device", @"info", @"displays", @"--device", udid, @"--quiet",
+                       @"--json-output", path];
+    task.standardOutput = [NSFileHandle fileHandleWithNullDevice];
+    task.standardError = [NSFileHandle fileHandleWithNullDevice];
+    dispatch_semaphore_t done = dispatch_semaphore_create(0);
+    task.terminationHandler = ^(NSTask *t) { dispatch_semaphore_signal(done); };
+    if (![task launchAndReturnError:nil]) return CGSizeZero;
+    if (dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC)) != 0) {
+        [task terminate];
+        [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+        return CGSizeZero;
+    }
+    NSData *data = task.terminationStatus == 0 ? [NSData dataWithContentsOfFile:path] : nil;
+    [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+    if (!data) return CGSizeZero;
+    NSDictionary *root = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    NSArray *displays = [root isKindOfClass:NSDictionary.class] ? root[@"result"][@"displays"] : nil;
+    if (![displays isKindOfClass:NSArray.class]) return CGSizeZero;
+    int integrated = 0;
+    NSDictionary *active = nil;
+    int activeCount = 0;
+    for (NSDictionary *d in displays) {
+        if (![d isKindOfClass:NSDictionary.class] || ![d[@"type"] isKindOfClass:NSDictionary.class]
+            || d[@"type"][@"integrated"] == nil) continue;
+        integrated++;
+        if ([d[@"active"] isKindOfClass:NSNumber.class] && [d[@"active"] boolValue]) { active = d; activeCount++; }
+    }
+    if (integrated < 2 || activeCount != 1) return CGSizeZero;
+    NSArray *size = active[@"nativeSize"];
+    if (![size isKindOfClass:NSArray.class] || size.count != 2) return CGSizeZero;
+    return CGSizeMake([size[0] doubleValue], [size[1] doubleValue]);
+}
+
 int main(int argc, char **argv) {
 @autoreleasepool {
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -625,8 +667,13 @@ int main(int argc, char **argv) {
     }
     // 720x480のデフォルト表示や0x0のダミーもこれらのprotocolに適合するため、面積最大の
     // ディスクリプタを実画面として選ぶ(必須。最初に見つかったものを採用すると誤動作する)。
+    // **720x480 より大きい画面が2枚以上ある機種(iPhone Duo)だけ**は面積最大が閉じた側の黒い画面に
+    // なるので、devicectl が表示中と言う画面と寸法の一致するものを採る(決まらなければ面積最大のまま)。
+    // 開閉の追従はしない(配信の途中で開閉したら配信を張り直すまで旧い画面を映す)
+    NSMutableArray *candidates = [NSMutableArray array];
     id chosenDesc = nil;
     CGSize chosenSize = CGSizeZero;
+    int largeDisplays = 0;
     for (id port in ports) {
         if (![port respondsToSelector:sel_registerName("descriptor")]) continue;
         id desc = ftMsg0(port, "descriptor");
@@ -634,9 +681,22 @@ int main(int argc, char **argv) {
         if (![desc conformsToProtocol:renderableProto] || ![desc conformsToProtocol:displayProto]) continue;
         if (![desc respondsToSelector:sel_registerName("displaySize")]) continue;
         CGSize sz = ((CGSize (*)(id, SEL))objc_msgSend)(desc, sel_registerName("displaySize"));
+        [candidates addObject:desc];
+        if (sz.width * sz.height > 720.0 * 480.0) largeDisplays++;
         if (sz.width * sz.height > chosenSize.width * chosenSize.height) {
             chosenSize = sz;
             chosenDesc = desc;
+        }
+    }
+    if (largeDisplays >= 2) {
+        CGSize activeSize = ftActiveDisplaySize(udid);
+        for (id desc in candidates) {
+            CGSize sz = ((CGSize (*)(id, SEL))objc_msgSend)(desc, sel_registerName("displaySize"));
+            if (activeSize.width > 0 && sz.width == activeSize.width && sz.height == activeSize.height) {
+                chosenSize = sz;
+                chosenDesc = desc;
+                break;
+            }
         }
     }
     if (!chosenDesc) {

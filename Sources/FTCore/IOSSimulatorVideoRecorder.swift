@@ -64,7 +64,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
             case .hostRecordingBusy: .hostRecordingBusy
             case .emptyFile: .emptyTestRecording
             case .didNotStop: .testRecordingDidNotStop
-            case .cannotStart: .cannotLaunchRecorder
+            case .cannotStart, .refused: .cannotLaunchRecorder
             }
             switch failure {
             case .hostRecordingBusy:
@@ -83,6 +83,9 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
                      + " the next boot). Skipping recording for this device")
             case .cannotStart(let detail):
                 warn("cannot start the test recording: \(detail)")
+            case .refused(let status, let message):
+                warn("simctl recordVideo exited with status \(status) before recording"
+                     + (message.isEmpty ? "" : ": \(message)") + ". Skipping recording for this device")
             }
             return false
         }
@@ -120,7 +123,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         switch failure {
         case .emptyFile, .didNotStop: return true
         // 端末側のセッションは待っても解けない(シャットダウンが要る)/ simctl を起こせないのも同じ
-        case .hostRecordingBusy, .cannotStart: return false
+        case .hostRecordingBusy, .cannotStart, .refused: return false
         }
     }
 
@@ -137,6 +140,9 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         case didNotStop
         /// simctl を起こせなかった
         case cannotStart(String)
+        /// SIGINT を送る前に simctl が自分から非ゼロで終わった(画面の指定が要るのに無い等)。
+        /// message は simctl の stderr の末尾(言ったことだけ)
+        case refused(status: Int32, message: String)
     }
     private func smokeCheck() async -> SmokeFailure? {
         let url = workDir.appendingPathComponent("\(fileStem)-smoke.mov")
@@ -145,17 +151,23 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        process.arguments = ["simctl", "io", udid, "recordVideo", "--codec=h264", "--force", url.path]
+        process.arguments = ["simctl", "io", udid, "recordVideo"] + SimulatorActiveDisplay.simctlIOArguments(udid: udid)
+            + ["--codec=h264", "--force", url.path]
         process.standardOutput = FileHandle.nullDevice
         // **stderr を捨てない**: 「セッションが残っている」と「空だった」は原因も対処も違う
         let stderrPipe = Pipe()
         process.standardError = stderrPipe
         let stderrHandle = stderrPipe.fileHandleForReading
         let sawBusy = LockedFlag()
+        let stderrTail = LockedValue<[String]>([])
+        let stderrDone = AsyncStream<Void>.makeStream()
         Task.detached {
             for await line in ScenarioHost.lineStream(stderrHandle) {
                 if line.contains(HostRecordingProbe.busyMarker) { sawBusy.set() }
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty { stderrTail.withLock { $0 = Array(($0 + [trimmed]).suffix(4)) } }
             }
+            stderrDone.continuation.finish()
         }
         let exitStream = ProcessExitWait.prepare(process)
         do {
@@ -170,12 +182,18 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         // 以後の録画は "Host recording is already in progress" で全部落ち、ツール自身が
         // 「セッションが残っている」と警告する自作自演になっていた。止まらない個体は放置する
         // (次の recordVideo は busy で落ちるが、セッションを増やさない)
+        let exitedOnItsOwn = !process.isRunning
         if process.isRunning { process.interrupt() }
         await raceWithDeadline(seconds: Self.smokeStopGraceSeconds, onTimeout: ()) {
             for await _ in exitStream {}
         }
         if sawBusy.value { return .hostRecordingBusy }
         if process.isRunning { return .didNotStop }
+        if exitedOnItsOwn, process.terminationStatus != 0 {
+            // stderr の読み手が末尾まで読み切るのを短く待つ(終了済みなので EOF はすぐ来る)
+            await raceWithDeadline(seconds: 1, onTimeout: ()) { for await _ in stderrDone.stream {} }
+            return .refused(status: process.terminationStatus, message: stderrTail.value.joined(separator: " "))
+        }
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? nil
         return (size ?? 0) > 0 ? nil : .emptyFile
     }
@@ -204,7 +222,8 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
         // codec は h264 固定(再生側 Chromium が HEVC 非対応。hevc にしないこと)
-        process.arguments = ["simctl", "io", udid, "recordVideo", "--codec=h264", "--force", url.path]
+        process.arguments = ["simctl", "io", udid, "recordVideo"] + SimulatorActiveDisplay.simctlIOArguments(udid: udid)
+            + ["--codec=h264", "--force", url.path]
         // stdout は読まない(/dev/null に捨てる。Pipe のまま放置すると出力がバッファを埋めて
         // 子プロセスをブロックしかねない。ScenarioHost.swift の stderr 並行読みと同じ教訓)
         process.standardOutput = FileHandle.nullDevice
