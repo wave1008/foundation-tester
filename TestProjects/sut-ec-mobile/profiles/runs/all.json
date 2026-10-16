@@ -175,6 +175,7 @@
       "platform": "ios",
       "machine": "M1mini",
       "name": "iPhone 17 Pro(iOS 27.0)-02",
+      "enabled": false,
       "model": "iPhone 17 Pro",
       "osVersion": "iOS 27.0",
       "udid": "5E95BF7A-A29C-4244-B5F9-9C8611124AAD"
@@ -371,6 +372,7 @@
       "platform": "android",
       "machine": "M1mini",
       "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02",
+      "enabled": false,
       "avd": "Pixel_10_Android_14_API_34_arm64-v8a_-02"
     }
   ],
