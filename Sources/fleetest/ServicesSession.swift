@@ -862,9 +862,21 @@ final class ServicesSession {
     private func prepareHostsFile() throws -> URL? {
         guard cli.runtime.kind == .apple else { return nil }
         let url = privateDir.appendingPathComponent("hosts")
-        try ServicesFacts.writePrivateFile(Data("127.0.0.1\tlocalhost\n".utf8), to: url)
+        try ServicesFacts.writePrivateFile(Data(Self.initialHostsContent(gateway: internalAddresses?.gateway).utf8), to: url)
         return url
     }
+
+    /// hosts の最初の中身。**ゲートウェイの IP も載せる**: 公開ポート経由の要求は呼び手がゲートウェイに見え、サーバーが
+    /// 呼び手を逆引きする(Ktor のレート制限の `origin.remoteHost` 等)。誰も答えない DNS(`--dns 127.0.0.1`)への逆引きは、
+    /// glibc は即座に失敗するが **musl(Alpine)は時間切れまで 5 秒待つ**(実測: ログイン 5.1 秒 → hosts に載せて 0.03 秒)。
+    /// 名前は compose のサービス名と衝突しないもの
+    static func initialHostsContent(gateway: String?) -> String {
+        var text = "127.0.0.1\tlocalhost\n"
+        if let gateway, !gateway.isEmpty { text += "\(gateway)\t\(gatewayHostName)\n" }
+        return text
+    }
+
+    static let gatewayHostName = "fleetest-gateway"
 
     /// **O_APPEND で追記するだけ**(書き直し = 新しい inode は起動中のコンテナから見えない。§17 の実測)。
     private func appendHost(_ hostsFile: URL, address: String, names: [String]) throws {

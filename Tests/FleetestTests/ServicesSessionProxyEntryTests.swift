@@ -55,3 +55,23 @@ extension ServicesSessionProxyEntryTests {
         XCTAssertTrue(text.contains("if !result.succeeded { lastFailedProbe = result }"), "失敗した検査を控えていない")
     }
 }
+
+/// hosts にゲートウェイの IP を載せる(musl のイメージは、誰も答えない DNS への逆引きで時間切れまで 5 秒待つ)
+extension ServicesSessionProxyEntryTests {
+    func testTheHostsFileNamesTheGateway() {
+        XCTAssertEqual(ServicesSession.initialHostsContent(gateway: "192.168.128.1"),
+                       "127.0.0.1\tlocalhost\n192.168.128.1\tfleetest-gateway\n")
+        XCTAssertEqual(ServicesSession.initialHostsContent(gateway: nil), "127.0.0.1\tlocalhost\n")
+    }
+
+    /// ゲートウェイはネットワークを調べた後で分かる = hosts を作るのはその後
+    func testTheHostsFileIsPreparedAfterTheNetworkIsInspected() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/fleetest/ServicesSession.swift")
+        let text = try String(contentsOf: url, encoding: .utf8)
+        let inspect = try XCTUnwrap(text.range(of: "internalAddresses = inspectNetwork(plan.internalNetwork)"))
+        let hosts = try XCTUnwrap(text.range(of: "let hostsFile = try prepareHostsFile()"))
+        XCTAssertLessThan(inspect.lowerBound, hosts.lowerBound)
+        XCTAssertTrue(text.contains("Self.initialHostsContent(gateway: internalAddresses?.gateway)"))
+    }
+}
