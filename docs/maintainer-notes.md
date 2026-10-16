@@ -4536,6 +4536,24 @@ hosts にゲートウェイの IP(`fleetest-gateway`)を載せて逆引きを DN
 注入テスト9本を含む対象50テストが成功し、所有権・取り消し・優先順位・失敗ログを壊す変異9件はすべて動作の検証で検出した。
 この Mac の実モデル(text / vision)と、E2E-iOS の対象2本(OCR 有効 / 無効の両構成)も成功した。
 
+**再現の試み(同日・再起動後の M1Ultra。どれも FM は死ななかった = 再現手順は未確立)**:
+- ANE0 の窓(DART の仮想アドレス空間)は観測した上限から **3.5GB 前後**と推定(公開値ではない)。`dartMap[aneId=0]` の
+  `dartAddress` の最大は、16〜18 時(通常の E2E 程度)で 2.9〜3.0GB の頭打ち・19 時台に 3.44GB で枯渇・**再起動直後に FM を数回呼んだだけで
+  3.24GB**。再起動直後にも 24MB の要求で `VM exhausted` が1回出た(FM は無事)= 普段から窓の大半が埋まっている
+- シナリオのプロセスは画像判定のたびに aned へ接続して ANE のプログラムを5つ前後作り、終了時に解放する(VisionClassifier は
+  `MLModel(contentsOf:)` の既定 = computeUnits `.all`、FindImage の特徴量も計算装置の指定なし。ANE を避けるのは OCR だけ)。
+  **回避策として ANE から外すことはユーザーの判断で採らない**(再現手順を先に探す)
+- 特徴量を1回計算して終わる短命プロセスを 8 並列 × 3,000 回 → 上限 3.31GB で頭打ち・`VM exhausted` 0 件。
+  同じ入れ替わりに `doctor --fm-only` の連続呼び出しを重ねても死なない(FM 81 回・失敗 0)。§81 の外れた仮説と同じ結論
+- E2EX を ANE の監視つきで回すと、**E2EX-Flutter / ios-inapp の最中に `VM exhausted` が単発で出る**(19:09 と 22:38 の2回。
+  どちらも FM の読み込み失敗は伴わず持ち直した)。死ぬのはこの一時的な枯渇に大きいモデルの載せ直しが重なったとき、という見立て(未検証)
+- 次に試す候補: E2EX-Flutter / ios-inapp の反復・`doctor --fm-load --fm-load-vision --fm-load-image 1206x2622` の並列
+  (本番の可視性検証はスクショの切り抜きを縮小せずに渡す。暖機・プローブは 64x64)。修正の効果は修正前の8周
+  (FM 290 回中失敗 20・スキップ 26)と同じ負荷で比べる
+- **調べるときの罠**: M1Ultra へ ssh して素の `log show` を撃つと zsh で `log` が別の関数に化けて何も出ない(「0 件」に見える)。
+  `/usr/bin/log` を使う。`grep "VM exhausted"` で数えると `log` コマンド自身の起動行(引数に同じ文字列)まで数えるので、
+  `--predicate 'sender == "IODARTFamily" AND eventMessage CONTAINS "VM exhausted"'` で絞る
+
 ### 83.5 記録だけの観察(直していない)
 - `api results --project E2E-CMP` のキャッシュ外れ(新しい run が入るたび)が 35 秒・RSS 1.6GB(結果 6.8 万件・90 日窓)
 - `api results-run` / `api results-compare` の「run not found」が使い方の誤り(64・--help)= §82.3 と同型(渡した ID が無いだけ)
