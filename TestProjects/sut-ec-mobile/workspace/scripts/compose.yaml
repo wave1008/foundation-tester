@@ -1,33 +1,27 @@
-# sut-ec-mobile のバックエンド(PostgreSQL + サーバー)。fleetest が run ごとに起動し、healthcheck を待ってから run-setup.sh を
-# 実行し、run-teardown.sh の後に止める(docs/user-docs/reference/writing/services_ja.md)。
-#
-# server は sut-ec-mobile のリポジトリからビルドする。context は foundation-tester と並ぶ clone(../../../../sut-ec-mobile)。
-# ビルド元として許すために、この Mac の設定 ~/.config/fleetest/config.json に
-#   "services": { "buildSources": ["<その clone の絶対パス>"] }
-# を書く(無いと「build context outside allowed roots」で起動を断られる)。ビルドの入力が変わらなければ再ビルドしない。
-#
-# アプリの接続先はビルドに焼かれている(Android Emulator = 10.0.2.2:8090 / iOS Simulator = 127.0.0.1:8090)。
-# DB は run ごとに空から作り、シードはサーバーが起動時に行う(Flyway + CatalogSeed)= 毎回同じ状態で始まる。
+# fleetest に宣言する sut-ec-mobile のバックエンド(PostgreSQL + サーバー)。fleetest/prepare.sh が
+# <作業フォルダ>/TestProjects/<プロジェクト>/workspace/scripts/compose.yaml へ写す(正本はこのファイル)。
+# fleetest が実行のたびに起動し、healthcheck を待ってからシナリオを動かし、終わったら止める。
+# server は GHCR に公開済みのイメージ(手元に無ければ fleetest が取得する)。
+# アプリの接続先はビルドに焼かれている(iOS Simulator = 127.0.0.1:8090 / Android Emulator = 10.0.2.2:8090)。
 services:
   db:
-    image: postgres:16
+    image: postgres:16-alpine
     environment:
       POSTGRES_DB: sutec
       POSTGRES_USER: sutec
       POSTGRES_PASSWORD: sutec
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sutec"]
-      interval: 2s
+      interval: 500ms
       timeout: 3s
-      retries: 30
+      retries: 120
 
   server:
-    build:
-      context: ../../../../sut-ec-mobile
-      dockerfile: server/Dockerfile
+    image: ghcr.io/wave1008/sut-ec-mobile-server:latest
+    # サーバーは DB に接続できるまで自分で待つので、DB の準備完了を待たずに続けて起動する
     depends_on:
       db:
-        condition: service_healthy
+        condition: service_started
     environment:
       DATABASE_URL: jdbc:postgresql://db:5432/sutec
       DB_USER: sutec
@@ -37,9 +31,9 @@ services:
     ports:
       - "127.0.0.1:8090:8090"
     healthcheck:
-      # JRE のイメージに curl / wget は無いので、bash の /dev/tcp で /health を読む
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8090 && printf 'GET /health HTTP/1.0\r\n\r\n' >&3 && grep -q '\"status\":\"ok\"' <&3"]
-      interval: 3s
+      # イメージは Alpine で bash と curl が無いので、BusyBox の wget で /health を読む
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8090/health | grep -q '\"status\":\"ok\"'"]
+      interval: 500ms
       timeout: 5s
-      retries: 60
+      retries: 360
       start_period: 10s
