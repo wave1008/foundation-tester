@@ -23,8 +23,12 @@ final class FMServeServerTests: XCTestCase {
         XCTAssertTrue(keepAlive.contains("session.respond("), "暖機が生成を撃っていない(prewarm だけでは安全判定のモデルが降ろされる)")
         XCTAssertTrue(keepAlive.contains("Attachment("), "暖機が画像の部品を通っていない")
         let tick = try XCTUnwrap(PreloadSlotTests.functionBody(named: "tick", in: server))
-        XCTAssertTrue(tick.contains("Task.detached {") && tick.contains("await keepAlive()"),
-                      "合間の判断が暖機を裏で撃っていない(受け付けを塞ぐか、撃っていない)")
+        let activity = try String(contentsOf: root.appendingPathComponent("Sources/FTFoundationModels/FMServeActivity.swift"),
+                                  encoding: .utf8)
+        let startWarm = try XCTUnwrap(PreloadSlotTests.functionBody(named: "startWarm", in: activity))
+        XCTAssertTrue(tick.contains("activity.startWarm(") && tick.contains("try await keepAlive()")
+                      && startWarm.contains("Task.detached {"),
+                      "合間の判断が排他的な門を通して暖機を裏で撃っていない")
         XCTAssertEqual(FMServeServer.keepAliveTokens, 8)
     }
 
@@ -68,7 +72,7 @@ final class FMServeServerTests: XCTestCase {
         let server = (try? String(contentsOf: root.appendingPathComponent("Sources/FTFoundationModels/FMServeServer.swift"),
                                   encoding: .utf8)) ?? ""
         let tick = PreloadSlotTests.functionBody(named: "tick", in: server) ?? ""
-        XCTAssertTrue(tick.contains("if keepWarmStillUseful(recent:"), "合間の判断が暖機をやめる判断を通っていない")
+        XCTAssertTrue(tick.contains("let generate = keepWarmStillUseful(recent:"), "合間の判断が暖機をやめる判断を通っていない")
         XCTAssertTrue(tick.contains("history.append(took > slowKeepAliveSeconds)"), "暖機の所要を記録していない")
     }
 

@@ -66,7 +66,14 @@ final class PreloadSlotTests: XCTestCase {
         XCTAssertTrue(server.contains("spare.preload(instructions: OcclusionVerifier.instructions,"),
                       "暖機が共有の instructions 定数で撃たれていない")
         let transcribe = try XCTUnwrap(Self.functionBody(named: "transcribe", in: server))
-        XCTAssertTrue(transcribe.contains("defer { warmSpare() }"), "転写の後に予備を置き直していない(次の呼び出しが暖機なしになる)")
+        XCTAssertTrue(transcribe.contains("defer { warmSpare() }"), "転写の後に予備の置き直しを予約していない")
+        let warmSpare = try XCTUnwrap(Self.functionBody(named: "warmSpare", in: server))
+        XCTAssertTrue(warmSpare.contains("spareNeedsWarm.withLock { $0 = true }"), "予備の置き直しを予約していない")
+        XCTAssertFalse(warmSpare.contains("spare.preload("), "実要求の defer が先読みを直接始めている")
+        let tick = try XCTUnwrap(Self.functionBody(named: "tick", in: server))
+        let admission = try XCTUnwrap(tick.range(of: "activity.startWarm("))
+        let prewarm = try XCTUnwrap(tick.range(of: "prewarmSpare()"))
+        XCTAssertLessThan(admission.lowerBound, prewarm.lowerBound, "予備の先読みが背景処理の排他門の外にある")
     }
 
     static func functionBody(named name: String, in source: String) -> String? {

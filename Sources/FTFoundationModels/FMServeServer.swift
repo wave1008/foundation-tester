@@ -7,7 +7,7 @@
 //    3B の本体と画像エンコーダだけで、**安全判定のモデル(instruct_300m.safety)は生成のたびに読まれ、約 5 秒で降ろされる**。
 //    FM の死はその載せ直しで起きた(実測6回すべて。docs/maintainer-notes.md §81)。生成を休まず撃ち続けた形はデバイス実行の横でも
 //    死ななかった。予備のセッション(`spare`)の `prewarm` は本番の転写の prefill のために残す
-// ② **転写は予備のセッションを取り出して使い、直後に予備を置き直す**(PreloadSlot の規律。使ったセッションは捨てる)
+// ② **転写は予備のセッションを取り出して使い、実要求が終わった合間に予備を置き直す**(使ったセッションは捨てる)
 // ③ **FMHealth・FMUsageLedger・FMBreaker に記録しない** —— 記録は要求した側(シナリオ・プローブ)が自分の所要で行う。
 //    ここで記録すると run の結果 JSON(シナリオのプロセスの集計)と食い違い、プローブの「実仕事ではない」も崩れる
 // ④ **セッションに `model:` を渡さない**(オンデバイス固定。PCC は禁止。FTCore/FMCallAdmission.swift 冒頭)
@@ -66,6 +66,8 @@ public enum FMServeServer {
     }
     private static let clock = Mutex(Clock())
     private static let stopRequested = Mutex(false)
+    private static let activity = FMServeActivity()
+    private static let spareNeedsWarm = Mutex(false)
 
     /// 終わるまで戻らない。戻り値 = 終了コード
     public static func run(socketPath: String, shouldStop: @escaping @Sendable () -> Bool,
@@ -80,7 +82,7 @@ public enum FMServeServer {
             tickMilliseconds: tickMilliseconds,
             shouldStop: { shouldStop() || stopRequested.withLock { $0 } },
             onTick: { tick(log: log) },
-            handle: { payload in await handle(payload, executable: executable, stamp: stamp) },
+            handle: { payload in await handle(payload, executable: executable, stamp: stamp, log: log) },
             log: log)
         log("stopped (exit \(code))")
         return code
@@ -94,22 +96,18 @@ public enum FMServeServer {
             stopRequested.withLock { $0 = true }
             return
         }
-        if keepWarmStillUseful(recent: recentKeepAlives.withLock { $0 }),
-           shouldWarm(lastFMUse: state.lastFMUse, now: now, knownDead: FMLiveness.isKnownDead(.vision)),
-           keepAliveInFlight.withLock({ inFlight -> Bool in
-               if inFlight { return false }
-               inFlight = true
-               return true
-           }) {
-            // 受け付けのスレッドを塞がない(1回 約 1 秒)。終わった時刻を「最後の利用」にする = 次はそこから間隔を数える
-            // 起動直後(まだ一度も FM を使っていない)は間を数えない
-            let gap = state.lastFMUse == .distantPast ? 0 : now.timeIntervalSince(state.lastFMUse)
-            Task.detached {
-                let startedAt = Date()
-                await keepAlive()
-                let took = Date().timeIntervalSince(startedAt)
+        let knownDead = FMLiveness.isKnownDead(.vision)
+        let generate = keepWarmStillUseful(recent: recentKeepAlives.withLock { $0 })
+            && shouldWarm(lastFMUse: state.lastFMUse, now: now, knownDead: knownDead)
+        guard !knownDead, generate || spareNeedsWarm.withLock({ $0 }) else { return }
+        let gap = state.lastFMUse == .distantPast ? 0 : now.timeIntervalSince(state.lastFMUse)
+        activity.startWarm(deadlineSeconds: FMServeWire.requestDeadlineSeconds, log: log,
+                           onCompletion: { took in
+            clock.withLock { $0.lastFMUse = Date() }
+            if generate {
                 if took > slowKeepAliveSeconds || gap > slowKeepAliveSeconds {
-                    log(String(format: "slow keep-warm: the call took %.1fs after a %.1fs gap since the last FM use", took, gap))
+                    log(String(format: "slow keep-warm: the call took %.1fs after a %.1fs gap since the last FM use; %@",
+                               took, gap, activity.snapshot.description))
                 }
                 let recent = recentKeepAlives.withLock { history -> [Bool] in
                     history.append(took > slowKeepAliveSeconds)
@@ -122,30 +120,31 @@ public enum FMServeServer {
                         + " \(Int(slowKeepAliveSeconds))s, so this machine cannot keep the model loaded;"
                         + " FM is now loaded only when a request comes")
                 }
-                clock.withLock { $0.lastFMUse = Date() }
-                keepAliveInFlight.withLock { $0 = false }
             }
-        }
+        }, operation: {
+            if spareNeedsWarm.withLock({ needed -> Bool in
+                let result = needed
+                needed = false
+                return result
+            }) { prewarmSpare() }
+            if generate { try await keepAlive() }
+        })
     }
 
-    private static let keepAliveInFlight = Mutex(false)
     private static let recentKeepAlives = Mutex<[Bool]>([])
 
     /// 小さな画像の転写を1回(答えは見ない・記録しない = 規律③)。本番の転写と同じ instructions・prompt で撃ち、同じ部品
     /// (画像トークナイザ・mm_guard・安全判定)を載せたままにする。**毎回新しいセッション**(1 つのセッションで生成を繰り返すと
     /// 会話履歴が伸びて文脈長の上限に当たる)。期限は実呼び出しと同じ
-    static func keepAlive() async {
+    static func keepAlive() async throws {
         guard #available(macOS 27, *) else { return }
-        _ = await DeadlineRace.first(seconds: FMServeWire.requestDeadlineSeconds) { () -> Bool in
-            let session = LanguageModelSession(instructions: OcclusionVerifier.instructions)
-            _ = try await session.respond(
-                generating: DrawnTextTranscript.self,
-                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: keepAliveTokens)
-            ) {
-                OcclusionVerifier.prompt
-                Attachment(FMLoadGenerator.probeImage)
-            }
-            return true
+        let session = LanguageModelSession(instructions: OcclusionVerifier.instructions)
+        _ = try await session.respond(
+            generating: DrawnTextTranscript.self,
+            options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: keepAliveTokens)
+        ) {
+            OcclusionVerifier.prompt
+            Attachment(FMLoadGenerator.probeImage)
         }
     }
 
@@ -158,6 +157,11 @@ public enum FMServeServer {
     }
 
     static func warmSpare() {
+        spareNeedsWarm.withLock { $0 = true }
+    }
+
+    private static func prewarmSpare() {
+        // prewarm は非同期の先読みを始める API。門で守れるのは呼び出す瞬間までで、完了を待つ API は無い。
         spare.preload(instructions: OcclusionVerifier.instructions,
                       make: { LanguageModelSession(instructions: $0) },
                       warm: { session in
@@ -175,13 +179,19 @@ public enum FMServeServer {
 
     // MARK: - 要求の処理
 
-    private enum Outcome: Sendable {
+    enum Outcome: Sendable {
         case answered(text: String?, pass: Bool?, reason: String?)
         case failed(String)
         case refused(String)
     }
 
-    static func handle(_ payload: Data, executable: String, stamp: String) async -> Data? {
+    static func handle(
+        _ payload: Data, executable: String, stamp: String,
+        activity: FMServeActivity = FMServeServer.activity,
+        deadlineSeconds: Double = FMServeWire.requestDeadlineSeconds,
+        log: @escaping @Sendable (String) -> Void = { _ in },
+        operation: @escaping @Sendable (FMServeWire.Request) async throws -> Outcome = perform
+    ) async -> Data? {
         func reply(_ status: FMServeWire.Response.Status, text: String? = nil, pass: Bool? = nil,
                    reason: String? = nil, error: String? = nil) -> Data? {
             try? JSONEncoder().encode(FMServeWire.Response(status: status, text: text, pass: pass, reason: reason,
@@ -202,11 +212,11 @@ public enum FMServeServer {
         case .transcribe, .screen, .probe:
             break
         }
-        // 処理の間は暖機を撃たない(実呼び出しがモデルを載せている。並行に撃つと予備の作り直しと重なる)
-        clock.withLock { $0.lastRequest = Date(); $0.lastFMUse = Date() }
-        let outcome = await DeadlineRace.first(seconds: FMServeWire.requestDeadlineSeconds) { () -> Outcome in
+        clock.withLock { $0.lastRequest = Date() }
+        let outcome = await activity.request(deadlineSeconds: deadlineSeconds, log: log,
+                                             onCompletion: { clock.withLock { $0.lastFMUse = Date() } }) { () -> Outcome in
             do {
-                return try await perform(request)
+                return try await operation(request)
             } catch let error as LanguageModelSession.GenerationError {
                 if case .guardrailViolation = error { return .refused(FMHealth.describe(error)) }
                 return .failed(FMHealth.describe(error))
@@ -214,7 +224,6 @@ public enum FMServeServer {
                 return .failed(FMHealth.describe(error))
             }
         }
-        clock.withLock { $0.lastFMUse = Date() }
         switch outcome {
         case .answered(let text, let pass, let reason)?:
             return reply(.ok, text: text, pass: pass, reason: reason)
@@ -223,7 +232,7 @@ public enum FMServeServer {
         case .refused(let description)?:
             return reply(.refused, error: description)
         case nil:
-            return reply(.failed, error: "no answer within \(Int(FMServeWire.requestDeadlineSeconds))s")
+            return reply(.failed, error: "no answer within \(Int(deadlineSeconds))s")
         }
     }
 
@@ -258,7 +267,7 @@ public enum FMServeServer {
     static func transcribe(_ image: CGImage) async throws -> String {
         let session = spare.take(matching: OcclusionVerifier.instructions)
             ?? LanguageModelSession(instructions: OcclusionVerifier.instructions)
-        // 次の呼び出しのために予備を置き直す(使ったセッションは会話履歴を持つので捨てる = 規律②)
+        // 予備の置き直しを予約する。実要求どうしは並行に走るので、この defer から直接 prewarm を撃たない。
         defer { warmSpare() }
         return try await session.respond(
             generating: DrawnTextTranscript.self,
