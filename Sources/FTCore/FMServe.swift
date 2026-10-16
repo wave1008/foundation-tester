@@ -17,7 +17,7 @@ import Synchronization
 
 public enum FMServeWire {
     /// 要求・応答の形の版。**欄や意味を変えたら +1**(古い常駐プロセスは起動し直される = `FMServeHost.ensureRunning`)
-    public static let protocolVersion = 2
+    public static let protocolVersion = 3
 
     /// シナリオのプロセスへソケットのパスを渡す環境変数(`ScenarioHost.childEnvironment` が載せる)
     public static let socketEnvironmentKey = "FT_FM_SERVE_SOCKET"
@@ -72,17 +72,34 @@ public enum FMServeWire {
         }
     }
 
-    public struct Response: Codable, Sendable, Equatable {
-        public enum Status: String, Codable, Sendable {
-            case ok
-            /// FM が答えなかった(`error` に FMHealth.describe 済みの連鎖)・要求が壊れている
-            case failed
-            /// FM が安全判定で答えを拒んだ(`GenerationError.guardrailViolation`)。**FM は生きている** —— 失敗に数えると
-            /// 同じ画面の切り出しで毎回起きる拒否が連続 3 回で「死」を記録し、以後の呼び出しを全部止めた(実測)
-            case refused
-            /// 要求の版がサーバと違う(何もしていない)
-            case versionMismatch
+    public enum Status: String, Codable, Sendable {
+        case ok
+        /// FM が答えなかった(`error` に FMHealth.describe 済みの連鎖)・要求が壊れている
+        case failed
+        /// 安全判定による拒否は失敗に数えない。同じ画面での拒否の連続を「死」と誤認するため。
+        case refused
+        /// 要求の版がサーバと違う(何もしていない)
+        case versionMismatch
+    }
+
+    /// status / shutdown の固定契約。推論結果の必須欄が増えても、置換対象の身元を読める形を保つ。
+    public struct Identity: Codable, Sendable, Equatable {
+        public var status: Status
+        public var serverVersion: Int
+        public var executable: String
+        public var buildStamp: String
+
+        public init(status: Status, serverVersion: Int = FMServeWire.protocolVersion,
+                    executable: String, buildStamp: String) {
+            self.status = status
+            self.serverVersion = serverVersion
+            self.executable = executable
+            self.buildStamp = buildStamp
         }
+    }
+
+    public struct Response: Codable, Sendable, Equatable {
+        public typealias Status = FMServeWire.Status
         public var status: Status
         /// transcribe の転写
         public var text: String?
@@ -90,17 +107,21 @@ public enum FMServeWire {
         public var pass: Bool?
         public var reason: String?
         public var error: String?
+        /// 実際に開始した追加試行数(0 / 1)。期限切れ・拒否でも失わない。
+        public var retryCount: Int
         /// サーバの版・実行ファイル(置き換えの判断に使う)
         public var serverVersion: Int
         public var executable: String
         public var buildStamp: String
         public init(status: Status, text: String? = nil, pass: Bool? = nil, reason: String? = nil, error: String? = nil,
+                    retryCount: Int = 0,
                     serverVersion: Int = FMServeWire.protocolVersion, executable: String, buildStamp: String) {
             self.status = status
             self.text = text
             self.pass = pass
             self.reason = reason
             self.error = error
+            self.retryCount = retryCount
             self.serverVersion = serverVersion
             self.executable = executable
             self.buildStamp = buildStamp
@@ -147,6 +168,33 @@ public struct FMServeClient: Sendable {
 
     /// 届かなければ `FMServeError.unavailable`。届いたら応答をそのまま返す(`failed` の扱いは呼び手)
     public func send(_ request: FMServeWire.Request) async throws -> FMServeWire.Response {
+        let payload = try await exchange(request)
+        do {
+            return try JSONDecoder().decode(FMServeWire.Response.self, from: payload)
+        } catch {
+            throw FMServeError.unavailable("the answer could not be decoded: \(error)")
+        }
+    }
+
+    public func status() async throws -> FMServeWire.Identity {
+        try await control(FMServeWire.Request(kind: .status))
+    }
+
+    /// 版の違う相手も停止できるよう、照会で得た相手自身の版を必ず送る。
+    public func shutdown(serverVersion: Int) async throws -> FMServeWire.Identity {
+        try await control(FMServeWire.Request(kind: .shutdown, version: serverVersion))
+    }
+
+    private func control(_ request: FMServeWire.Request) async throws -> FMServeWire.Identity {
+        let payload = try await exchange(request)
+        do {
+            return try JSONDecoder().decode(FMServeWire.Identity.self, from: payload)
+        } catch {
+            throw FMServeError.unavailable("the identity could not be decoded: \(error)")
+        }
+    }
+
+    private func exchange(_ request: FMServeWire.Request) async throws -> Data {
         let payload: Data
         do {
             let frame = try FramedUnixSocket.encode(request)
@@ -154,11 +202,7 @@ public struct FMServeClient: Sendable {
         } catch let failure as FramedUnixSocketError {
             throw FMServeError.unavailable(failure.description)
         }
-        do {
-            return try JSONDecoder().decode(FMServeWire.Response.self, from: payload)
-        } catch {
-            throw FMServeError.unavailable("the answer could not be decoded: \(error)")
-        }
+        return payload
     }
 }
 
@@ -196,7 +240,7 @@ public enum FMServeHost {
     /// 相手の実行ファイルのディスク上の今の印。**止めるのは「相手が自分の実行ファイルより古い」ときだけ** ——
     /// 作り直す前から生きているプロセス(拡張の host-metrics)は、ディスク上の新しい版の常駐プロセスを「版が違う」と見て
     /// 止めてしまい、毎分の死活の確かめのたびに入れ替え(= 載せ直し)を起こした。別のクローン同士も止め合わない
-    static func decide(_ status: FMServeWire.Response, executable: String, buildStamp: String,
+    static func decide(_ status: FMServeWire.Identity, executable: String, buildStamp: String,
                        serverExecutableStamp: String) -> LiveServerDecision {
         let sameVersion = status.serverVersion == FMServeWire.protocolVersion
         // 印が読めない(空 = 実行ファイルの属性が取れなかった。リンクの作り直しの瞬間など)は「古い」と言える根拠が無い ——
@@ -212,6 +256,17 @@ public enum FMServeHost {
         return sameVersion ? .reuse : .leave
     }
 
+    static func prepareExistingServer(_ status: FMServeWire.Identity, client: FMServeClient,
+                                      executable: String, buildStamp: String,
+                                      serverExecutableStamp: String) async -> LiveServerDecision {
+        let decision = decide(status, executable: executable, buildStamp: buildStamp,
+                              serverExecutableStamp: serverExecutableStamp)
+        if decision == .replace {
+            _ = try? await client.shutdown(serverVersion: status.serverVersion)
+        }
+        return decision
+    }
+
     /// 起こしてから状態の問い合わせに答えるまで待つ上限[秒]。答えるのは bind の直後(FM の積み込みは待たない)なので
     /// 起動の所要(実測 0.1〜0.3 秒)の桁上。**尽きたとき**: nil = この run では FM を使わない(1 行言う)
     static let startupWaitSeconds: Double = 5
@@ -223,9 +278,9 @@ public enum FMServeHost {
         guard let executable = serverExecutable() else { return nil }
         let stamp = FMServeWire.buildStamp(executable: executable.path)
         let client = FMServeClient(socketPath: path, deadlineSeconds: 3)
-        if let status = try? await client.send(FMServeWire.Request(kind: .status)) {
-            switch decide(status, executable: executable.path, buildStamp: stamp,
-                          serverExecutableStamp: FMServeWire.buildStamp(executable: status.executable)) {
+        if let status = try? await client.status() {
+            switch await prepareExistingServer(status, client: client, executable: executable.path, buildStamp: stamp,
+                                              serverExecutableStamp: FMServeWire.buildStamp(executable: status.executable)) {
             case .reuse:
                 active.withLock { $0 = path }
                 return path
@@ -236,7 +291,6 @@ public enum FMServeHost {
             case .replace:
                 break
             }
-            _ = try? await client.send(FMServeWire.Request(kind: .shutdown))
             // 置き換え: 前の常駐プロセスがソケットを離すまで待つ
             let until = Date().addingTimeInterval(startupWaitSeconds)
             while FramedUnixSocket.isServed(path: path), Date() < until {
@@ -249,7 +303,7 @@ public enum FMServeHost {
         }
         let until = Date().addingTimeInterval(startupWaitSeconds)
         while Date() < until {
-            if (try? await client.send(FMServeWire.Request(kind: .status))) != nil {
+            if (try? await client.status()) != nil {
                 active.withLock { $0 = path }
                 return path
             }

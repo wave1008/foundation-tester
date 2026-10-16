@@ -37,6 +37,15 @@ To enable it, on macOS 27, turn Siri on in System Settings → Siri (Siri uses A
 All processing for these features is on-device; screen data from your app never leaves your Mac through them (the screen contents sent to your AI assistant when you create tests are a separate matter).
 Apple's cloud, Private Cloud Compute (PCC), is never used.
 
+Some interrupted FM image requests are retried once when enough time remains within the original 20-second deadline.
+Result JSON records the extra attempts in `fm.retries` and recovered answers in `fm.retrySuccesses`.
+Refusals and health checks are never retried.
+
+For a selected host and set of runs, the retry recovery rate is the sum of `fm.retrySuccesses` divided by the sum of
+`fm.retries`, multiplied by 100. With no retries, report it as unmeasured. Requests that were not retried and attempts
+whose server response was not received are excluded. This measures whether FM returned a valid answer, including a
+negative `screenLooksLike` verdict; it does not measure test pass rate or recovery of ANE address space.
+
 ### Limitations
 
 - **Experimental.**

@@ -41,9 +41,6 @@ final class FMServeServerTests: XCTestCase {
         func source(_ path: String) throws -> String {
             try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
         }
-        let server = try source("Sources/FTFoundationModels/FMServeServer.swift")
-        XCTAssertTrue(server.contains("if case .guardrailViolation = error { return .refused("),
-                      "常駐プロセスが拒否を失敗と区別していない")
         for path in ["Sources/FTFoundationModels/OcclusionVerifier.swift", "Sources/FTFoundationModels/ReplayAssist.swift"] {
             let text = try source(path)
             let branch = try XCTUnwrap(text.range(of: "case .refused, .versionMismatch:"), "\(path) が拒否を扱っていない")
@@ -92,11 +89,30 @@ final class FMServeServerTests: XCTestCase {
     }
 
     func testStatusAnswersWithoutCallingFMAndCarriesTheIdentity() async throws {
-        let response = try await answer(try JSONEncoder().encode(FMServeWire.Request(kind: .status)))
+        let raw = await FMServeServer.handle(try JSONEncoder().encode(FMServeWire.Request(kind: .status)),
+                                            executable: "/x/fleetest", stamp: "7-8")
+        let data = try XCTUnwrap(raw)
+        let response = try JSONDecoder().decode(FMServeWire.Identity.self, from: data)
         XCTAssertEqual(response.status, .ok)
         XCTAssertEqual(response.serverVersion, FMServeWire.protocolVersion)
         XCTAssertEqual(response.executable, "/x/fleetest")
         XCTAssertEqual(response.buildStamp, "7-8")
+        XCTAssertThrowsError(try JSONDecoder().decode(FMServeWire.Response.self, from: data))
+    }
+
+    func testVersionMismatchForControlStillCarriesFixedIdentity() async throws {
+        for kind in [FMServeWire.Kind.status, .shutdown] {
+            let request = FMServeWire.Request(kind: kind, version: FMServeWire.protocolVersion + 1)
+            let raw = await FMServeServer.handle(try JSONEncoder().encode(request), executable: "/x/fleetest", stamp: "7-8")
+            let data = try XCTUnwrap(raw)
+            let identity = try JSONDecoder().decode(FMServeWire.Identity.self, from: data)
+            XCTAssertEqual(identity.status, .versionMismatch)
+            XCTAssertEqual(identity.serverVersion, FMServeWire.protocolVersion)
+            XCTAssertEqual(identity.executable, "/x/fleetest")
+            XCTAssertEqual(identity.buildStamp, "7-8")
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            XCTAssertEqual(Set(object.keys), ["status", "serverVersion", "executable", "buildStamp"])
+        }
     }
 
     func testVersionMismatchDoesNothing() async throws {

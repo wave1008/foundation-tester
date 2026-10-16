@@ -68,6 +68,39 @@ final class FMAccountingAuditTests: XCTestCase {
                                     "実行時の FM 経路が3つ未満しか見えていない = 走査が壊れている")
     }
 
+    /// send の差し替え口が無いので、refused / timeout の return より前に計上する配線を守る
+    func testRuntimeRetryAccountingPrecedesEveryResponseBranch() throws {
+        for (file, kind, requestKind) in [
+            ("OcclusionVerifier.swift", "occlusion", "transcribe"),
+            ("ReplayAssist.swift", "screenLooksLike", "screen"),
+        ] {
+            let source = try String(contentsOf: agentSourceDir.appendingPathComponent(file), encoding: .utf8)
+            let functions = Self.functionBodies(containing: "FMServeWire.Request(kind: .\(requestKind)", in: source)
+            XCTAssertEqual(functions.count, 1, file)
+            let function = try XCTUnwrap(functions.first, file)
+            let body = Self.strippingComments(function.1)
+            let counter = try XCTUnwrap(body.range(of: "FMHealth.recordRetry("), file)
+            let branch = try XCTUnwrap(body.range(of: "switch response.status"), file)
+            XCTAssertLessThan(counter.lowerBound, branch.lowerBound,
+                              "\(file) が拒否・期限切れを返す前に撃ち直しを計上していない")
+            XCTAssertEqual(body.components(separatedBy: "FMHealth.recordRetry(").count - 1, 1, file)
+            let beforeBranch = String(body[..<branch.lowerBound])
+                .replacingOccurrences(of: #"\s+"#, with: "", options: .regularExpression)
+            XCTAssertTrue(beforeBranch.contains("FMHealth.recordRetry(kind:\"\(kind)\",count:response.retryCount,"),
+                          "\(file) が応答の実試行数を正しい用途へ渡していない")
+        }
+    }
+
+    func testRuntimeRetrySuccessRequiresFinalOKAndPresentPayload() throws {
+        for (file, payload) in [("OcclusionVerifier.swift", "text"), ("ReplayAssist.swift", "pass")] {
+            let source = try String(contentsOf: agentSourceDir.appendingPathComponent(file), encoding: .utf8)
+            let body = Self.strippingComments(source)
+                .replacingOccurrences(of: #"\s+"#, with: "", options: .regularExpression)
+            XCTAssertTrue(body.contains("succeeded:response.status==.ok&&response.\(payload)!=nil)"),
+                          "\(file) は .ok の有効payloadを成功とする(pass=falseもFMの有効な答え)")
+        }
+    }
+
     /// 行コメント(`//` 以降)を落とす。コメント中の記述に一致して監査が空振りするのを防ぐ。
     static func strippingComments(_ source: String) -> String {
         source.components(separatedBy: "\n")

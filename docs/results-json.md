@@ -381,10 +381,11 @@ Android の凍結事後判定(`AndroidHealthProbe.observeBlankAndRepair`)が試�
 
 | 欄 | 型 | 意味 |
 |---|---|---|
-| calls / failures | Int | FM 呼び出しの回数と、呼んで失敗した回数 |
-| totalMs | Int | FM に費やした合計時間(直列化するため、実行全体の下限時間の見積もりに使う) |
+| calls / failures | Int | FM の論理要求数と、その最終結果が失敗だった数。同じ要求の撃ち直しを別の呼び出し・失敗に数えない |
+| retries / retrySuccesses | Int | 実際に開始した追加試行数と、追加試行でFMの有効な応答を得た要求数。0でも必須。判定がfalseの応答もFMとしては成功。拒否・期限切れ・失敗になった追加試行も`retries`に残す |
+| totalMs | Int | FM に費やした合計時間。撃ち直しがあれば初回と追加試行の両方を含む(直列化するため、実行全体の下限時間の見積もりに使う) |
 | p50Ms / maxMs | Int | 1回あたりの所要の中央値と最大 |
-| byKind | [String: FMKindUsage] | 用途別の実測(キーは `occlusion` / `screenLooksLike`。値は `calls` / `failures` / `totalMs` / `p50Ms` / `maxMs`) |
+| byKind | [String: FMKindUsage] | 用途別の実測(キーは `occlusion` / `screenLooksLike`。値は `calls` / `failures` / `retries` / `retrySuccesses` / `totalMs` / `p50Ms` / `maxMs`)。`fm.retries` / `fm.retrySuccesses`は用途別の合計 |
 | firstError | String? | 最初の失敗の内容(以降は捨てる)。失敗が1件も無ければ省略 |
 | gateWaitTotalMs / gateWaitP50Ms / gateWaitMaxMs | Int | `FMCallSlots` で実際に待たされた合計 / 中央値 / 最大(次の段落) |
 | skipped | Int | FM の答えが無かった回数(下記) |
@@ -399,6 +400,37 @@ Android の凍結事後判定(`AndroidHealthProbe.observeBlankAndRepair`)が試�
 screenLooksLike がこの回数ぶん静かに素通りしたことを事後に確認する材料(自己修復は FM を
 呼ばないため対象外)。
 
+撃ち直しの後に拒否された要求は従来どおり`skipped`に数え、`calls` / `failures`を増やさない。
+その場合も`retries`は用途別と合計に残るため、`calls == 0`でも`byKind`に撃ち直しの実測を持ち得る。
+追加試行の開始前に期限などの門で止めた場合は`retries == 0`。FMサーバーに届かず応答を失った要求では、
+呼び手から追加試行の実施を確定できないため、この欄に推測を足さない。
+
+<a id="fm-retry-recovery-rate"></a>
+
+**撃ち直した要求の回復率**:
+
+対象run・期間・実行ホストを揃え、`scenarios/*.json`の集計を次の式で合算する。
+M1Ultraの負荷試験では、M1Ultraで実行したシナリオ記録だけを対象にする。
+
+```text
+回復率(%) = Σ fm.retrySuccesses / Σ fm.retries × 100
+```
+
+- 分母は、実際に追加試行を始め、呼び手がサーバー応答を受信できた要求数。追加試行は要求あたり最大1回。
+  初回に2008が出ても期限不足・キャンセル・別要求のoverdueで追加試行を見送った要求と、
+  追加試行を始めてもサーバー応答を受信できなかった要求は含まれない。
+- 分子は、同じ対象のうち追加試行でFMの有効な回答を得た要求数。`screenLooksLike`の判定falseも含む。
+  シナリオの合格率や、判定の正しさを測る率には使わない。
+- 分母が0なら「未測定(追加試行なし)」とする。0%とは扱わない。
+  用途別にも`fm.byKind.<用途>.retrySuccesses` / `retries`で同じ計算ができる。
+  シナリオ別の率を平均せず件数を合算し、`fm`直下と`byKind`を二重に足さない。
+- **2008全件に対する救済率は、このJSONだけでは求められない。** 2008の総発生数と再試行を見送った理由ごとの
+  件数を持たない。`failures`は最終失敗数、`skipped`には拒否やゲート待ち切れ等も混ざるため、分母の補完に使わない。
+
+ANE枯渇負荷での結果として報告するときは、負荷・起動時刻・採取時刻も保存し、fm-serveの要求ログと
+kernelの`IODARTFamily` / `VM exhausted`を時刻で照合する。2008だけではANE枯渇が原因と確定できず、
+上の率もANE仮想アドレス空間の枯渇が解消した割合を示さない。
+
 **`steps.guarded` / `guardSkipped` / `guardStaleFrame`(occlusion-guard がどれだけ効いたか)**:
 「緑の run」がどれだけ強い緑かを言うための欄。**分母は `guarded`(occlusionFlip に実際に入った
 ステップ数)であって、FM の判定を得た数ではない** —— `visibilityGuardActive` が true でも tap 等の
@@ -411,6 +443,34 @@ screenLooksLike がこの回数ぶん静かに素通りしたことを事後に�
 言えるのは**下限**(`guardSkipped + guardStaleFrame` は確実に判定を得ていない)であって、
 上限ではない。**この2つは `guarded` が1件以上あれば0件でも必ず書く**
 (欄が無い=一度もガードに入っていない、0=入ったが素通りは起きなかった、を混ぜない)。
+
+### 撃ち直し集計を追加した版へ更新するときの記録移行
+
+`retries` / `retrySuccesses`は`FMUsageRecord`と各`FMKindUsage`の必須欄(API契約47・FMサーバー契約3)。
+通常のdecodeで旧記録を0へ読み替えない。`schemaVersion`は1のまま、既存シナリオ記録を物理移行する。
+追加前の実装には撃ち直しが無いので、この2欄を0で補うことは実際の回数と一致する。
+
+更新先でrun・結果の読み手を止め、**新バイナリで結果を読む前**に、対象プロジェクトごとに次を一度実行する。
+リモートもalignによる版の切り替えと同時に行う。旧版と新版の読み手を同時に動かさない。
+
+```sh
+python3 Scripts/migrate-fm-retries.py --root /absolute/path/to/project/results/runs --dry-run
+python3 Scripts/migrate-fm-retries.py --root /absolute/path/to/project/results/runs
+```
+
+- 対象は明示したroot内の`<月>/<runID>/scenarios/*.json`と`superseded/*.json`。レポート・キャッシュは変更しない。
+  root自身のシンボリックリンクは拒否し、配下のリンクは追随せず`symlinksSkipped`で数える。
+- 全対象を事前検査し、破損JSON・対応外のschemaVersion・不正な集計・推測が必要な部分移行があれば書き込み前に中止する。
+  両欄が無い旧集計には0を追加し、既存の両欄は保持する。片欄だけ0の部分移行は不足分を0で補完するが、
+  非0の片欄しか無い場合や用途別合計と一致しない場合は自動修復しない。
+- 書き込みはファイルごとの一時ファイル＋renameで、モードを保持する。再実行しても移行済み記録は書き直さない。
+  全ファイルをまとめたトランザクションではないため、I/O失敗・中断時は原因を解消して同じコマンドを再実行する。
+  走査後の変更も検出して中止する。runが書き込み中の移行は行わない。
+- 完了runで記録を移行したときだけ、最後に`run.json`のmtimeを更新する。内容・`startedAt` / `finishedAt` / PIDは変えない。
+  `scenarios/`が`run.json`より新しいと進行中と判定されるため、通常のfinishと同じ更新順に戻す。未完了runと、再実行時の移行済みrunはtouchしない。
+- 終了時はJSONで`scanned` / `wouldChange` / `changed` / `finishedRunsTouched` / `symlinksSkipped`を返す。
+  移行後のdry-runで`wouldChange == 0`を確認し、`fleetest results list --project <P>`の読み飛ばし件数を移行前と比較する。
+  atomic renameと完了runのmtime更新で、結果の出力キャッシュ・レコードパックの入力指紋も更新される。
 
 ### FailedStepRecord
 

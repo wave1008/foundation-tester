@@ -33,6 +33,10 @@ final class FMHealthTests: XCTestCase {
         XCTAssertEqual(usage.calls, 2)
         XCTAssertEqual(usage.failures, 0)
         XCTAssertEqual(usage.totalMs, 2000)
+        XCTAssertEqual(usage.retries, 0)
+        XCTAssertEqual(usage.retrySuccesses, 0)
+        XCTAssertEqual(usage.byKind["occlusion"]?.retries, 0)
+        XCTAssertEqual(usage.byKind["occlusion"]?.retrySuccesses, 0)
     }
 
     /// 全滅: allFailed が立ち、警告に「無効でした」と最初のエラーが載る
@@ -103,6 +107,7 @@ final class FMHealthTests: XCTestCase {
 
     /// scenarioFinished に載せて NDJSON 経由で往復できること(親プロセスへの伝達経路)
     func testSurvivesScenarioEventNDJSONRoundTrip() throws {
+        FMHealth.recordRetry(kind: "occlusion", count: 1, succeeded: true)
         FMHealth.record(kind: "occlusion", path: .vision, ms: 9400, ok: true)
         var event = ScenarioEvent(kind: "scenarioFinished")
         event.fm = FMHealth.usage()
@@ -110,6 +115,9 @@ final class FMHealthTests: XCTestCase {
         let decoded = try XCTUnwrap(ScenarioEvent.decode(line: event.encodedLine()))
         XCTAssertEqual(decoded.fm?.calls, 1)
         XCTAssertEqual(decoded.fm?.totalMs, 9400)
+        XCTAssertEqual(decoded.fm?.retries, 1)
+        XCTAssertEqual(decoded.fm?.retrySuccesses, 1)
+        XCTAssertEqual(decoded.fm?.byKind["occlusion"]?.retries, 1)
     }
 
     /// FM 未使用のシナリオでは fm キーごと省略され、旧クライアントを壊さない
@@ -122,6 +130,7 @@ final class FMHealthTests: XCTestCase {
 
     /// runner → 親 → 結果 JSON まで届くこと(集計はこの JSON を舐めて行うため経路が命)
     func testReachesScenarioRunRecordViaBuilder() throws {
+        FMHealth.recordRetry(kind: "occlusion", count: 1, succeeded: true)
         FMHealth.record(kind: "occlusion", path: .vision, ms: 1200, ok: true)
         var finished = ScenarioEvent(kind: "scenarioFinished")
         finished.fm = FMHealth.usage()
@@ -140,6 +149,9 @@ final class FMHealthTests: XCTestCase {
         let json = try JSONEncoder().encode(record)
         let back = try JSONDecoder().decode(ScenarioRunRecord.self, from: json)
         XCTAssertEqual(back.fm?.byKind["occlusion"]?.calls, 1)
+        XCTAssertEqual(back.fm?.retries, 1)
+        XCTAssertEqual(back.fm?.retrySuccesses, 1)
+        XCTAssertEqual(back.fm?.byKind["occlusion"]?.retrySuccesses, 1)
     }
 
     /// 成功シナリオでも fm は残る(failedSteps 等と違い、コスト分析は成功実行こそ必要)
@@ -233,5 +245,132 @@ final class FMHealthTests: XCTestCase {
         let usage = try XCTUnwrap(FMHealth.usage())
         XCTAssertEqual(usage.skipped, 2)
         XCTAssertEqual(usage.skipped, FMHealth.snapshot().skipped)
+    }
+
+    func testRetrySuccessRemainsOneLogicalCallIncludingItsWholeCost() throws {
+        FMHealth.recordRetry(kind: "occlusion", count: 1, succeeded: true)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 13700, ok: true)
+
+        let usage = try XCTUnwrap(FMHealth.usage())
+        XCTAssertEqual(usage.calls, 1)
+        XCTAssertEqual(usage.failures, 0)
+        XCTAssertEqual(usage.retries, 1)
+        XCTAssertEqual(usage.retrySuccesses, 1)
+        XCTAssertEqual(usage.totalMs, 13700)
+        XCTAssertEqual(usage.byKind["occlusion"]?.totalMs, 13700)
+        XCTAssertEqual(FMHealth.snapshot().successes, 1)
+        XCTAssertNil(FMHealth.warningText())
+    }
+
+    func testRetryFailureRemainsOneFailure() throws {
+        FMHealth.recordRetry(kind: "occlusion", count: 1, succeeded: false)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 16400, ok: false, error: "second attempt failed")
+
+        let usage = try XCTUnwrap(FMHealth.usage())
+        XCTAssertEqual(usage.calls, 1)
+        XCTAssertEqual(usage.failures, 1)
+        XCTAssertEqual(usage.retries, 1)
+        XCTAssertEqual(usage.retrySuccesses, 0)
+        XCTAssertEqual(usage.byKind["occlusion"]?.failures, 1)
+        XCTAssertEqual(FMHealth.snapshot().failures, 1)
+        XCTAssertEqual(FMHealth.snapshot().firstError, "second attempt failed")
+    }
+
+    func testRetryFollowedBySkipRetainsKindWithoutInventingCallOrFailure() throws {
+        FMHealth.recordRetry(kind: "screenLooksLike", count: 1, succeeded: false)
+        FMHealth.recordSkip()
+
+        let usage = try XCTUnwrap(FMHealth.usage())
+        XCTAssertEqual(usage.calls, 0)
+        XCTAssertEqual(usage.failures, 0)
+        XCTAssertEqual(usage.skipped, 1)
+        XCTAssertEqual(usage.retries, 1)
+        XCTAssertEqual(usage.retrySuccesses, 0)
+        let kind = try XCTUnwrap(usage.byKind["screenLooksLike"])
+        XCTAssertEqual(kind.calls, 0)
+        XCTAssertEqual(kind.failures, 0)
+        XCTAssertEqual(kind.retries, 1)
+        XCTAssertEqual(kind.retrySuccesses, 0)
+        XCTAssertEqual(kind.totalMs, 0)
+        XCTAssertEqual(kind.p50Ms, 0)
+        XCTAssertEqual(kind.maxMs, 0)
+        XCTAssertEqual(FMHealth.snapshot().attempted, 0)
+    }
+
+    func testRetryTotalsAreExactlyTheSumOfKinds() throws {
+        FMHealth.recordRetry(kind: "occlusion", count: 1, succeeded: true)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 13000, ok: true)
+        FMHealth.recordRetry(kind: "occlusion", count: 1, succeeded: false)
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 16000, ok: false)
+        FMHealth.recordRetry(kind: "screenLooksLike", count: 1, succeeded: false)
+        FMHealth.recordSkip()
+
+        let usage = try XCTUnwrap(FMHealth.usage())
+        XCTAssertEqual(usage.retries, 3)
+        XCTAssertEqual(usage.retrySuccesses, 1)
+        XCTAssertEqual(usage.byKind["occlusion"]?.retries, 2)
+        XCTAssertEqual(usage.byKind["occlusion"]?.retrySuccesses, 1)
+        XCTAssertEqual(usage.byKind["screenLooksLike"]?.retries, 1)
+        XCTAssertEqual(usage.byKind["screenLooksLike"]?.retrySuccesses, 0)
+        XCTAssertEqual(usage.retries, usage.byKind.values.reduce(0) { $0 + $1.retries })
+        XCTAssertEqual(usage.retrySuccesses, usage.byKind.values.reduce(0) { $0 + $1.retrySuccesses })
+        XCTAssertEqual(usage.calls, 2)
+        XCTAssertEqual(usage.failures, 1)
+    }
+
+    func testZeroRetriesDoNotCreateUsageAndResetClearsRetryOnlyUsage() throws {
+        FMHealth.recordRetry(kind: "occlusion", count: 0, succeeded: true)
+        XCTAssertNil(FMHealth.usage())
+
+        FMHealth.recordRetry(kind: "occlusion", count: 1, succeeded: true)
+        XCTAssertEqual(FMHealth.usage()?.retrySuccesses, 1)
+        FMHealth.reset()
+        XCTAssertNil(FMHealth.usage())
+
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 100, ok: true)
+        let usage = try XCTUnwrap(FMHealth.usage())
+        XCTAssertEqual(usage.retries, 0)
+        XCTAssertEqual(usage.retrySuccesses, 0)
+        XCTAssertEqual(usage.byKind["occlusion"]?.retries, 0)
+        XCTAssertEqual(usage.byKind["occlusion"]?.retrySuccesses, 0)
+    }
+
+    func testRetryFieldsAreEncodedAtZeroAndRequiredOnDecode() throws {
+        FMHealth.record(kind: "occlusion", path: .vision, ms: 100, ok: true)
+        let data = try JSONEncoder().encode(XCTUnwrap(FMHealth.usage()))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let kinds = try XCTUnwrap(object["byKind"] as? [String: [String: Any]])
+        let kind = try XCTUnwrap(kinds["occlusion"])
+        for key in ["retries", "retrySuccesses"] {
+            XCTAssertEqual(object[key] as? Int, 0)
+            XCTAssertEqual(kind[key] as? Int, 0)
+            var missingTotal = object
+            missingTotal.removeValue(forKey: key)
+            XCTAssertThrowsError(try JSONDecoder().decode(FMUsageRecord.self,
+                from: JSONSerialization.data(withJSONObject: missingTotal)))
+
+            var missingKind = kind
+            missingKind.removeValue(forKey: key)
+            var missingKindObject = object
+            missingKindObject["byKind"] = ["occlusion": missingKind]
+            XCTAssertThrowsError(try JSONDecoder().decode(FMUsageRecord.self,
+                from: JSONSerialization.data(withJSONObject: missingKindObject)))
+        }
+    }
+
+    func testConcurrentRetryRecordingDoesNotLoseCounts() throws {
+        DispatchQueue.concurrentPerform(iterations: 500) { i in
+            FMHealth.recordRetry(kind: i.isMultiple(of: 2) ? "occlusion" : "screenLooksLike",
+                                 count: 1, succeeded: i.isMultiple(of: 2))
+        }
+        let usage = try XCTUnwrap(FMHealth.usage())
+        XCTAssertEqual(usage.calls, 0)
+        XCTAssertEqual(usage.failures, 0)
+        XCTAssertEqual(usage.retries, 500)
+        XCTAssertEqual(usage.retrySuccesses, 250)
+        XCTAssertEqual(usage.byKind["occlusion"]?.retries, 250)
+        XCTAssertEqual(usage.byKind["occlusion"]?.retrySuccesses, 250)
+        XCTAssertEqual(usage.byKind["screenLooksLike"]?.retries, 250)
+        XCTAssertEqual(usage.byKind["screenLooksLike"]?.retrySuccesses, 0)
     }
 }

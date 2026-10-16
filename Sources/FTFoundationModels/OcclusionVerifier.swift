@@ -159,6 +159,8 @@ public struct OcclusionVerifier {
             FMHealth.recordSkip()
             return nil
         }
+        FMHealth.recordRetry(kind: "occlusion", count: response.retryCount,
+                             succeeded: response.status == .ok && response.text != nil)
         switch response.status {
         case .ok:
             guard let text = response.text else { break }

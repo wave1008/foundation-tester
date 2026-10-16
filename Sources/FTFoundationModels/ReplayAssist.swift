@@ -45,6 +45,8 @@ public final class FMReplayDelegate: ReplayDelegate {
             FMHealth.recordSkip()
             return nil
         }
+        FMHealth.recordRetry(kind: "screenLooksLike", count: response.retryCount,
+                             succeeded: response.status == .ok && response.pass != nil)
         switch response.status {
         case .ok:
             guard let pass = response.pass else { break }

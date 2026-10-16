@@ -57,8 +57,8 @@ final class FMServeTests: XCTestCase {
         XCTAssertTrue(FMServeHost.needed(fmTextVisibilityCheck: false, screenLooksLike: true))
     }
 
-    private func status(version: Int = FMServeWire.protocolVersion, executable: String, stamp: String) -> FMServeWire.Response {
-        FMServeWire.Response(status: .ok, serverVersion: version, executable: executable, buildStamp: stamp)
+    private func status(version: Int = FMServeWire.protocolVersion, executable: String, stamp: String) -> FMServeWire.Identity {
+        FMServeWire.Identity(status: .ok, serverVersion: version, executable: executable, buildStamp: stamp)
     }
 
     /// 止めるのは「相手が自分の実行ファイルより古い」ときだけ。作り直す前から生きているプロセスが新しい常駐プロセスを止めない・
@@ -178,7 +178,7 @@ final class FMServeTests: XCTestCase {
     func testClientWithoutServerIsUnavailableNotAnFMFailure() async {
         let path = temporarySocketPath()
         do {
-            _ = try await FMServeClient(socketPath: path, deadlineSeconds: 1).send(FMServeWire.Request(kind: .status))
+            _ = try await FMServeClient(socketPath: path, deadlineSeconds: 1).status()
             XCTFail("居ないサーバから答えが返った")
         } catch let error as FMServeError {
             guard case .unavailable = error else { return XCTFail("\(error)") }

@@ -22,23 +22,32 @@ import Synchronization
 public struct FMKindUsage: Codable, Sendable {
     public var calls: Int
     public var failures: Int
+    public var retries: Int
+    public var retrySuccesses: Int
     public var totalMs: Int
     public var p50Ms: Int
     public var maxMs: Int
 
-    public init(calls: Int, failures: Int, totalMs: Int, p50Ms: Int, maxMs: Int) {
+    public init(calls: Int, failures: Int, totalMs: Int, p50Ms: Int, maxMs: Int,
+                retries: Int = 0, retrySuccesses: Int = 0) {
         self.calls = calls
         self.failures = failures
+        self.retries = retries
+        self.retrySuccesses = retrySuccesses
         self.totalMs = totalMs
         self.p50Ms = p50Ms
         self.maxMs = maxMs
     }
 }
 
-/// シナリオ1本ぶんの FM 実測。呼び出しが1件も無ければ記録しない(nil)
+/// シナリオ1本ぶんの FM 実測。呼び出しも撃ち直しも無ければ記録しない(nil)
 public struct FMUsageRecord: Codable, Sendable {
     public var calls: Int
     public var failures: Int
+    /// 実際に始めた追加試行数。calls / failures は撃ち直しを含む論理要求の最終結果を1回だけ数える
+    public var retries: Int
+    /// 撃ち直し後に有効な答えを得た要求数。screenLooksLike の false も有効な答え
+    public var retrySuccesses: Int
     /// FM に費やした合計時間。直列化するため、実行全体の下限時間の見積もりに使う
     public var totalMs: Int
     public var p50Ms: Int
@@ -60,9 +69,12 @@ public struct FMUsageRecord: Codable, Sendable {
     public init(calls: Int, failures: Int, totalMs: Int, p50Ms: Int, maxMs: Int,
                 byKind: [String: FMKindUsage],
                 gateWaitTotalMs: Int = 0, gateWaitP50Ms: Int = 0, gateWaitMaxMs: Int = 0,
-                skipped: Int = 0, firstError: String? = nil) {
+                skipped: Int = 0, firstError: String? = nil,
+                retries: Int = 0, retrySuccesses: Int = 0) {
         self.calls = calls
         self.failures = failures
+        self.retries = retries
+        self.retrySuccesses = retrySuccesses
         self.totalMs = totalMs
         self.p50Ms = p50Ms
         self.maxMs = maxMs
@@ -97,6 +109,8 @@ public enum FMHealth {
 
     private struct State {
         var samples: [String: [Sample]] = [:]
+        var retries: [String: Int] = [:]
+        var retrySuccesses: [String: Int] = [:]
         var firstError: String?
         var skipped = 0
         var gateWaitMs: [Double] = []
@@ -168,6 +182,15 @@ public enum FMHealth {
         state.withLock { $0.skipped += 1 }
     }
 
+    /// サーバー応答で確認できた追加試行だけを数える。拒否・期限切れでも残し、ブレーカや死活は動かさない
+    public static func recordRetry(kind: String, count: Int, succeeded: Bool) {
+        guard count > 0 else { return }
+        state.withLock {
+            $0.retries[kind, default: 0] += count
+            if succeeded { $0.retrySuccesses[kind, default: 0] += 1 }
+        }
+    }
+
     /// FMCallAdmission.enter() が FMCallSlots.acquire() で実際に待たされた時間。**取得できた回だけ**呼ぶ
     /// (timeout で諦めた回は recordSkip の役目 —— 待ち時間として混ぜない)
     public static func recordGateWait(ms: Double) {
@@ -184,18 +207,20 @@ public enum FMHealth {
         }
     }
 
-    /// 結果 JSON へ載せる実測。呼び出しが1件も無ければ nil(FM を使わない実行を汚さない)
+    /// 拒否で skip になった撃ち直しも結果 JSON に残す
     public static func usage() -> FMUsageRecord? {
         state.withLock { st in
             let all = st.samples.values.flatMap { $0 }
-            guard !all.isEmpty else { return nil }
+            guard !all.isEmpty || !st.retries.isEmpty else { return nil }
             var byKind: [String: FMKindUsage] = [:]
-            for (kind, list) in st.samples where !list.isEmpty {
+            for kind in Set(st.samples.keys).union(st.retries.keys) {
+                let list = st.samples[kind] ?? []
                 let ms = list.map { $0.ms }
                 byKind[kind] = FMKindUsage(
                     calls: list.count, failures: list.filter { !$0.ok }.count,
                     totalMs: Self.totalMs(ms), p50Ms: Self.percentileMs(ms, 0.5),
-                    maxMs: Self.maxMs(ms))
+                    maxMs: Self.maxMs(ms), retries: st.retries[kind] ?? 0,
+                    retrySuccesses: st.retrySuccesses[kind] ?? 0)
             }
             let allMs = all.map { $0.ms }
             return FMUsageRecord(
@@ -203,7 +228,9 @@ public enum FMHealth {
                 totalMs: Self.totalMs(allMs), p50Ms: Self.percentileMs(allMs, 0.5),
                 maxMs: Self.maxMs(allMs), byKind: byKind,
                 gateWaitTotalMs: Self.totalMs(st.gateWaitMs), gateWaitP50Ms: Self.percentileMs(st.gateWaitMs, 0.5),
-                gateWaitMaxMs: Self.maxMs(st.gateWaitMs), skipped: st.skipped, firstError: st.firstError)
+                gateWaitMaxMs: Self.maxMs(st.gateWaitMs), skipped: st.skipped, firstError: st.firstError,
+                retries: byKind.values.reduce(0) { $0 + $1.retries },
+                retrySuccesses: byKind.values.reduce(0) { $0 + $1.retrySuccesses })
         }
     }
 

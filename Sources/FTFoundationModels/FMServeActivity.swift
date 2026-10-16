@@ -4,6 +4,48 @@ import Synchronization
 
 // 呼び手は FMCallSlots を保持しているため、サーバー内の調停で同じ枠を取り直さない。
 final class FMServeActivity: Sendable {
+    final class RequestContext: Sendable {
+        private struct Progress: Sendable {
+            var retryCount = 0
+            var closed = false
+            var cancelled = false
+        }
+
+        let id = UUID()
+        let deadline: ContinuousClock.Instant
+        private let progress = Mutex(Progress())
+
+        init(deadlineSeconds: Double) {
+            deadline = ContinuousClock.now.advanced(by: .seconds(max(0, deadlineSeconds)))
+        }
+
+        var remainingSeconds: Double { Self.seconds(ContinuousClock.now.duration(to: deadline)) }
+        var isCancelled: Bool { progress.withLock { $0.cancelled } }
+
+        fileprivate func startRetry(minimumRemainingSeconds: Double) -> Bool {
+            progress.withLock { progress in
+                guard !progress.closed, !progress.cancelled, !Task.isCancelled,
+                      progress.retryCount == 0, remainingSeconds > 0,
+                      remainingSeconds >= minimumRemainingSeconds else { return false }
+                progress.retryCount = 1
+                return true
+            }
+        }
+
+        func closeResponse() -> Int {
+            progress.withLock { progress in
+                progress.closed = true
+                return progress.retryCount
+            }
+        }
+
+        fileprivate func cancel() { progress.withLock { $0.cancelled = true } }
+
+        static func seconds(_ duration: Duration) -> Double {
+            Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+        }
+    }
+
     struct Snapshot: Equatable, Sendable, CustomStringConvertible {
         let activeRequests: Int
         let waitingRequests: Int
@@ -53,28 +95,56 @@ final class FMServeActivity: Sendable {
         beforeAdmission: @escaping @Sendable () async -> Void = {},
         operation: @escaping @Sendable () async throws -> Value
     ) async -> Value? {
-        let id = UUID()
-        state.withLock { $0.admissions[id] = .registering }
-        let result = await DeadlineRace.first(seconds: deadlineSeconds) {
-            await beforeAdmission()
-            try await self.beginRequest(id: id, log: log)
-            defer {
-                onCompletion()
-                self.finishRequest(id: id)
-            }
-            // 期限が暖機待ちの間に過ぎた要求は、解放後に推論を始めない。
-            try Task.checkCancellation()
-            return try await operation()
+        await request(context: RequestContext(deadlineSeconds: deadlineSeconds), log: log,
+                      onCompletion: onCompletion, beforeAdmission: beforeAdmission) { _ in
+            try await operation()
         }
+    }
+
+    func request<Value: Sendable>(
+        context: RequestContext,
+        log: @escaping @Sendable (String) -> Void,
+        onCompletion: @escaping @Sendable () -> Void,
+        beforeAdmission: @escaping @Sendable () async -> Void = {},
+        operation: @escaping @Sendable (RequestContext) async throws -> Value
+    ) async -> Value? {
+        let id = context.id
+        state.withLock { $0.admissions[id] = .registering }
+        let result = await withTaskCancellationHandler {
+            await DeadlineRace.first(seconds: max(0, context.remainingSeconds)) {
+                await beforeAdmission()
+                try await self.beginRequest(id: id, log: log)
+                defer {
+                    onCompletion()
+                    self.finishRequest(id: id)
+                }
+                // 期限が暖機待ちの間に過ぎた要求は、解放後に推論を始めない。
+                try Task.checkCancellation()
+                guard !context.isCancelled, context.remainingSeconds > 0 else { throw CancellationError() }
+                return try await operation(context)
+            }
+        } onCancel: {
+            context.cancel()
+            self.cancelAdmission(id: id)
+        }
+        // 応答が確定した後に、非協調な初回推論が戻っても追加試行を始めない。
+        _ = context.closeResponse()
         if result == nil {
             state.withLock { state in
                 if state.active.contains(id) { state.overdue.insert(id) }
             }
             // op Task がまだ始まっていない場合も、期限切れの予約を残さない。
             cancelAdmission(id: id)
-            log("request timed out after \(deadlineSeconds)s; \(snapshot)")
+            log("request timed out; request=\(id), retryCount=\(context.closeResponse()); \(snapshot)")
         }
         return result
+    }
+
+    func startRetry(context: RequestContext, minimumRemainingSeconds: Double) -> Bool {
+        state.withLock { state in
+            guard state.active.contains(context.id), state.overdue.isEmpty else { return false }
+            return context.startRetry(minimumRemainingSeconds: minimumRemainingSeconds)
+        }
     }
 
     private func beginRequest(id: UUID, log: @escaping @Sendable (String) -> Void) async throws {

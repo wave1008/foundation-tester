@@ -193,46 +193,46 @@ public enum FMServeServer {
         operation: @escaping @Sendable (FMServeWire.Request) async throws -> Outcome = perform
     ) async -> Data? {
         func reply(_ status: FMServeWire.Response.Status, text: String? = nil, pass: Bool? = nil,
-                   reason: String? = nil, error: String? = nil) -> Data? {
+                   reason: String? = nil, error: String? = nil, retryCount: Int = 0) -> Data? {
             try? JSONEncoder().encode(FMServeWire.Response(status: status, text: text, pass: pass, reason: reason,
-                                                           error: error, executable: executable, buildStamp: stamp))
+                                                           error: error, retryCount: retryCount,
+                                                           executable: executable, buildStamp: stamp))
+        }
+        func identity(_ status: FMServeWire.Status) -> Data? {
+            try? JSONEncoder().encode(FMServeWire.Identity(status: status, executable: executable, buildStamp: stamp))
         }
         guard let request = try? JSONDecoder().decode(FMServeWire.Request.self, from: payload) else {
             return reply(.failed, error: "the request could not be decoded")
         }
         guard request.version == FMServeWire.protocolVersion else {
+            if request.kind == .status || request.kind == .shutdown { return identity(.versionMismatch) }
             return reply(.versionMismatch, error: "protocol \(request.version) != \(FMServeWire.protocolVersion)")
         }
         switch request.kind {
         case .status:
-            return reply(.ok)
+            return identity(.ok)
         case .shutdown:
             stopRequested.withLock { $0 = true }
-            return reply(.ok)
+            return identity(.ok)
         case .transcribe, .screen, .probe:
             break
         }
         clock.withLock { $0.lastRequest = Date() }
-        let outcome = await activity.request(deadlineSeconds: deadlineSeconds, log: log,
-                                             onCompletion: { clock.withLock { $0.lastFMUse = Date() } }) { () -> Outcome in
-            do {
-                return try await operation(request)
-            } catch let error as LanguageModelSession.GenerationError {
-                if case .guardrailViolation = error { return .refused(FMHealth.describe(error)) }
-                return .failed(FMHealth.describe(error))
-            } catch {
-                return .failed(FMHealth.describe(error))
-            }
+        let context = FMServeActivity.RequestContext(deadlineSeconds: deadlineSeconds)
+        let outcome = await activity.request(context: context, log: log,
+                                             onCompletion: { clock.withLock { $0.lastFMUse = Date() } }) { context in
+            await requestWithRetry(request, context: context, activity: activity, log: log, operation: operation)
         }
+        let retryCount = context.closeResponse()
         switch outcome {
         case .answered(let text, let pass, let reason)?:
-            return reply(.ok, text: text, pass: pass, reason: reason)
+            return reply(.ok, text: text, pass: pass, reason: reason, retryCount: retryCount)
         case .failed(let description)?:
-            return reply(.failed, error: description)
+            return reply(.failed, error: description, retryCount: retryCount)
         case .refused(let description)?:
-            return reply(.refused, error: description)
+            return reply(.refused, error: description, retryCount: retryCount)
         case nil:
-            return reply(.failed, error: "no answer within \(Int(deadlineSeconds))s")
+            return reply(.failed, error: "no answer within \(Int(deadlineSeconds))s", retryCount: retryCount)
         }
     }
 

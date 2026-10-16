@@ -227,7 +227,14 @@ export interface ScenarioFinishedEvent {
    *  FM を使わなかったシナリオでは欠落する。**モニターの FM グラフは hostMetrics ストリーム
    *  (host-metrics プロセスの fmCalls/fmFailures/fmTotalMs)から供給される**ので拡張側はこの欄を
    *  読まない —— NDJSON の受け手一般のために欄自体は保つ(protocolVersion.ts と同期)。 */
-  fm?: { calls: number; failures: number; totalMs: number };
+  fm?: {
+    calls: number; failures: number; totalMs: number;
+    retries: number; retrySuccesses: number;
+    byKind: Record<string, {
+      calls: number; failures: number; totalMs: number;
+      retries: number; retrySuccesses: number;
+    }>;
+  };
   /** 子が「この環境では成り立たない」と宣言した理由(passed は true のまま)。ある = スキップ
    *  (緑でも赤でもない)。無ければキーごと欠落(Sources/FTCore/ScenarioEvent.swift と同期)。 */
   notApplicableReason?: string;

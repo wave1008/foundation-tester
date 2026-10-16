@@ -4607,6 +4607,42 @@ hosts にゲートウェイの IP(`fleetest-gateway`)を載せて逆引きを DN
 - 次の3周より先に、IOVMアロケータの確保・解放と空き連続領域を採る診断口の確認が要る。Apple向けの診断依頼文を準備した(送信していない)。
   根拠・解析スクリプト・5秒の生トレースは`reports/fm-m1ultra-20261016/occupancy-20261017/`(git管理外)
 
+**2008の撃ち直し仕様(2026-10-17)**:
+- `InferenceError(2008)`を「回復可能」と断定しない。10/16の再起動が必要だった障害でも19:20:50のシナリオ失敗は2008で、
+  その後のプローブは2007へ変わった。一方、排他修正後の追加3周でも121要求中2回の2008が出て、終了後のtext / visionは成功した。
+  **エラーコードは撃ち直し候補を限定する材料で、ANE空間の回復を示す観測ではない**
+- 対象はfm-serveの`transcribe` / `screen`だけ、同じ入力を新しいセッションで最大1回追加する。NSErrorのドメイン・コードを
+  `NSUnderlyingErrorKey` / `NSMultipleUnderlyingErrorsKey`から循環を避けて辿り、`ModelManagerServices.InferenceError(2008)`を探す。
+  2007・SensitiveContentAnalysisMLの15・拒否・キャンセルがあれば候補より除外を優先し、文言では判定しない。
+  probe・暖機・先読み・textの下書き/命名・負荷計測は対象外
+- **固定の5秒待ちは置かない**。枯渇の塊の90%点5.07秒は塊の開始からの長さで、2008を受け取る約5.6秒後からの待ちを根拠づけない。
+  アロケータの空き領域を観測する口も無い。初回の実推論が終了してから追加試行し、`FMServeActivity`の所有権をその間も保持する。
+  活動待ちを含む元の20秒の単調時刻の期限に対し、残りが初回の実推論の実測所要以上あるときだけ開始する。
+  キャンセル・期限切れ・別要求のoverdueを開始前に再確認する。2回目も期限を超えて実推論が残れば、実際の終了までoverdueを保持する
+- 応答の必須`retryCount`(0 / 1)は2回目を実際に始めた時点で立て、2回目が期限切れ・拒否・失敗でも保持する。
+  結果JSONの`fm.retries` / `fm.retrySuccesses`と`byKind`の同名必須欄へ集計する。`calls`は論理要求1回、
+  `failures`は最終失敗1回、ブレーカも最終結果だけで動かす。拒否は従来どおりskipだが撃ち直しの回数は残す。
+  有効なFM応答であればscreenの判定falseも`retrySuccesses`に含め、所要は初回・追加試行の両方を含める
+- 回復率の算式・母集団・除外の定義は[結果JSONの「撃ち直した要求の回復率」](results-json.md#fm-retry-recovery-rate)。
+  応答を受信できた追加試行の回復率を測れる。2008全件の救済率には総発生数と見送り理由の記録が足りず、
+  ANE枯渇との対応付けには同時刻のkernelログも要る。M1Ultraの評価でこれらを混同しない
+- FMサーバー契約3・API契約47へ上げ、通常decodeの互換は置かない。レコードのschemaVersionは1を維持し、
+  `Scripts/migrate-fm-retries.py --root <project>/results/runs`で旧記録の両欄を0へ物理移行する。
+  新バイナリで結果を読む前、リモートはalignと同時に一度行う。dry-run・冪等・リンク非追随・事前全数検査・ファイル単位atomic rename。
+  `superseded/`の証跡も移行し、完了runだけ最後にrun.jsonのmtimeを更新する(内容は変えない。再実行時はtouchしない)。
+  これを省くとscenarios/のmtime更新で完了runが進行中と見なされ、レコードパックを使えなくなる。
+  非0の部分移行や用途別合計の不一致は推測で直さない。実行手順と集計の定義はdocs/results-json.md
+- 推論応答とは独立した制御用`Identity`(`status` / `serverVersion` / `executable` / `buildStamp`を必須)で常駐プロセスを識別する。
+  推論応答の必須retryCountを旧プロセスが持たなくても、身元と版を先に確かめられる。古い実行ファイルのプロセスだけ相手の版でshutdownし、
+  新版へ自動置換する。推論応答の欠落を既定値で吸わず、新しい常駐プロセスを旧い呼び手が止めない規律も維持する
+- これはANE枯渇の根治ではない。実地での追加試行の成功率・枠待ち・スキップ・モデル再ロード・全体所要への影響は未検証。
+  固定待ちを省いた効果も未測定で、同じ負荷で比較するまで改善したと扱わない。computeUnits・暖機周期・先読みの方針は変えない
+- 検証: 対象Swift187件・移行Python8件・契約/lock同期Node2件が成功。隔離worktreeでSwift9種と移行4種の変異を検出した。
+  手元18プロジェクトの210,053記録を検査し、5,333件を移行・再走査の変更予定0件を確認。E2EX-iOSの履歴一覧と集計は生成時刻/窓の起点以外一致し、読み飛ばしの診断0件。
+  M2UltraのiOS 27 SimulatorでclearAppDataから2本を回し、screen1回・転写2回が成功、覆いの対照は期待したocclusionの理由で赤。
+  新集計は両用途ともretries=0 / retrySuccesses=0。2008からの回復は注入テストで確認した範囲で、M1Ultraの枯渇負荷では未測定。
+  検証ログは`reports/fm-retry-20261017/`(git管理外)。拡張0.1.397をローカルへ導入済み
+
 ### 83.5 記録だけの観察(直していない)
 - `api results --project E2E-CMP` のキャッシュ外れ(新しい run が入るたび)が 35 秒・RSS 1.6GB(結果 6.8 万件・90 日窓)
 - `api results-run` / `api results-compare` の「run not found」が使い方の誤り(64・--help)= §82.3 と同型(渡した ID が無いだけ)
