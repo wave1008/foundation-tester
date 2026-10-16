@@ -40,9 +40,16 @@ enum OverlayWindow {
         overlay.windowLevel = .alert + 1
         overlay.backgroundColor = .clear
         if banner {
-            // 上端の帯だけを占める窓(下の画面はそのまま触れる)
-            overlay.frame = CGRect(x: 0, y: 0, width: scene.screen.bounds.width, height: 180)
-            overlay.rootViewController = UIHostingController(rootView: BannerCard())
+            // 上端の帯だけを占める窓(下の画面はそのまま触れる)。**高さは上の安全領域 + バナーの中身**で決める
+            // (窓は背景が透明でも範囲内のタッチを全部受ける)。180pt 固定だと、上の安全領域が無い画面
+            // (iPhone Duo の外側。ステータスバーが横にある)で下の画面の1つ目のボタンの中心が窓に入り、
+            // 「背面も触れる」の検証(15_別ウィンドウのモーダル S0030)が成り立たなかった
+            let width = scene.screen.bounds.width
+            let host = UIHostingController(rootView: BannerCard())
+            let content = host.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
+            let topInset = scene.windows.first?.safeAreaInsets.top ?? 0
+            overlay.frame = CGRect(x: 0, y: 0, width: width, height: topInset + content)
+            overlay.rootViewController = host
         } else {
             overlay.rootViewController = UIHostingController(rootView: OverlayCard())
         }
