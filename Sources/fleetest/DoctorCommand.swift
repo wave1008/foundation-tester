@@ -111,6 +111,22 @@ struct Doctor: AsyncParsableCommand {
         }
     }
 
+    /// FM の観測の履歴の直近(`FMHistory`)。上の2行は「今」しか言えないので、直前に死んでいたか・その理由を並べる。
+    /// 履歴が無ければ何も出さない。8 = 1回の死の型(失敗の塊・died・evidence・recovered の4行)が2回ぶん
+    static let fmHistoryLines = 8
+
+    static func printFMHistory() {
+        // 起動の識別子が取れないプロセスの観測は台帳に共有されない(FMLiveness.update)。黙らずに言う
+        if FMLiveness.Stamp.bootID == FMLiveness.Stamp.unknownBoot {
+            ConsoleOut.out("   ⚠️ This process cannot read the boot session id (kern.bootsessionuuid), so its FM observations"
+                + " are not shared with this machine's liveness ledger")
+        }
+        let events = FMHistory.recent(limit: fmHistoryLines)
+        guard !events.isEmpty else { return }
+        ConsoleOut.out("   Recent FM history (oldest first; \(FMLiveness.directory.appendingPathComponent(FMHistory.fileName).path)):")
+        for event in events { ConsoleOut.out("     " + FMHistory.describe(event)) }
+    }
+
     func run() async throws {
         if let bundle {
             try runBundle(outputPath: bundle)
@@ -143,6 +159,7 @@ struct Doctor: AsyncParsableCommand {
         // macOS が対応していないだけ(死ではない)のときは警告どまり、実呼び出しが落ちたら ❌
         let visionUnsupported = !FMVisionSupport.isSupported
         ConsoleOut.out(vision.available ? "✅ \(vision.detail)" : (visionUnsupported ? "⚠️ " : "❌ ") + vision.detail)
+        Self.printFMHistory()
         if fmOnly {
             // 可: 0 / 不可: 1。呼び出し側が理由文字列を stdout から読める。
             // **どちらの経路が死んでいても 1**(片方だけ死ぬのが常態で、片方しか見ないゲートは

@@ -84,7 +84,7 @@ public enum FMLivenessProbe {
         if !availability.available {
             for path in stale {
                 FMLiveness.record(path: path, state: .dead, source: .availability,
-                                  error: availability.detail, now: now)
+                                  error: availability.detail, now: now, observed: .now())
             }
             return FMLiveness.current(now: now)
         }
@@ -95,7 +95,7 @@ public enum FMLivenessProbe {
                 // 直前の死のエラーを引き継ぐ。ここで nil にすると、ブレーカが落ちている間
                 // 「死んでいる」だけが残って**なぜ死んだかが消える**
                 FMLiveness.record(path: path, state: .dead, source: .breaker,
-                                  error: previous?[path]?.error, now: now)
+                                  error: previous?[path]?.error, now: now, observed: .now())
             }
             return FMLiveness.current(now: now)
         }
@@ -154,14 +154,17 @@ public enum FMLivenessProbe {
                                       source: .availability, error: FMVisionSupport.requirement)
         }
         let outcome = await callOnce(path: path)
+        // 観測の刻印は応答を受けた直後(I/O の前)に採る。後で採ると、その間に別プロセスで起きた失敗を
+        // 「この成功より前」と扱って消す(FMLiveness.Stamp)
+        let observed = FMLiveness.Stamp.now()
         let ms = Int(Date().timeIntervalSince(startedAt) * 1000)
         switch outcome {
         case .answered:
             FMBreaker.recordSuccess()
-            return settle(path: path, error: nil, ms: ms)
+            return settle(path: path, error: nil, ms: ms, observed: observed)
         case .failed(let description):
             FMBreaker.recordFailure()
-            return settle(path: path, error: description, ms: ms)
+            return settle(path: path, error: description, ms: ms, observed: observed)
         case .unreachable(let description):
             // この回の観測だけ返す(doctor は exit 1 にする)。台帳は「不明」のまま = 次の refresh がまた確かめる
             return FMLiveness.Verdict(state: .dead, checkedAt: now.timeIntervalSince1970, source: .probe,
@@ -199,9 +202,14 @@ public enum FMLivenessProbe {
     /// doctor は「この1回の実呼び出しが落ちた」を exit 1 にする(それは台帳の死活とは別の事実)
     @discardableResult
     static func settle(path: FMLiveness.Path, error: String?, ms: Int,
-                       now: Date = Date()) -> FMLiveness.Verdict {
+                       now: Date = Date(), observed: FMLiveness.Stamp) -> FMLiveness.Verdict {
+        // 失敗は閾値未満でも1回ずつ履歴へ(台帳は閾値まで書かない。FMLiveness.record はプローブの失敗を書かない)
+        if let error {
+            FMHistory.recordFailure(path: path, source: .probe, error: error, ms: ms, now: now)
+        }
         if let state = ledgerState(afterProbe: path, failed: error != nil) {
-            FMLiveness.record(path: path, state: state, source: .probe, error: error, ms: ms, now: now)
+            FMLiveness.record(path: path, state: state, source: .probe, error: error, ms: ms, now: now,
+                              observed: observed)
         }
         return FMLiveness.Verdict(state: error == nil ? .alive : .dead,
                                   checkedAt: now.timeIntervalSince1970,

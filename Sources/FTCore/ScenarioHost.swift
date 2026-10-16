@@ -151,6 +151,9 @@ public enum ScenarioHost {
         env[VisionHelperWire.socketEnvironmentKey] = VisionHelperHost.activeSocketPath
         // FM の常駐プロセス(FMServeHost)。用意していない run には外の環境の古い値も持ち込ませない
         env[FMServeWire.socketEnvironmentKey] = FMServeHost.activeSocketPath
+        // 起動の識別子(FM の死活の台帳の刻印)。子のサンドボックスで sysctl が読めなくても同じ起動を名乗れるように
+        let boot = FMLiveness.Stamp.bootID
+        env[FMLiveness.Stamp.bootEnvironmentKey] = boot == FMLiveness.Stamp.unknownBoot ? nil : boot
         return env
     }
 

@@ -67,10 +67,10 @@ final class FMLivenessProbeThresholdTests: XCTestCase {
     /// settle の返り値は**この回の観測**(台帳に書かない回でも dead を返す = doctor の exit 1 を保つ)
     func testSettleReturnsThisCallsObservationEvenWhenNothingIsWritten() {
         let now = Date(timeIntervalSince1970: 1_000_000)
-        let verdict = FMLivenessProbe.settle(path: .text, error: "boom", ms: 12, now: now)
+        let verdict = FMLivenessProbe.settle(path: .text, error: "boom", ms: 12, now: now, observed: .now())
         XCTAssertEqual(verdict, FMLiveness.Verdict(state: .dead, checkedAt: 1_000_000, source: .probe,
                                                    error: "boom", ms: 12))
-        let ok = FMLivenessProbe.settle(path: .text, error: nil, ms: 7, now: now)
+        let ok = FMLivenessProbe.settle(path: .text, error: nil, ms: 7, now: now, observed: .now())
         XCTAssertEqual(ok, FMLiveness.Verdict(state: .alive, checkedAt: 1_000_000, source: .probe, ms: 7))
     }
 
@@ -84,6 +84,9 @@ final class FMLivenessProbeThresholdTests: XCTestCase {
                        "probeOnce が閾値を通さず dead を書いている")
         XCTAssertEqual(code.components(separatedBy: "FMLiveness.record(path: path, state: state, source: .probe").count - 1, 1,
                        "台帳への書き込みは settle の1箇所だけ")
+        // プローブの失敗は閾値未満でも履歴へ(台帳は閾値まで書かない)。刻印は応答の直後に採って渡す
+        XCTAssertTrue(code.contains("FMHistory.recordFailure(path: path, source: .probe"), "プローブの失敗を履歴に書いていない")
+        XCTAssertTrue(code.contains("let observed = FMLiveness.Stamp.now()"), "応答の直後に刻印を採っていない")
         // 期限切れは常駐プロセスが failed(「no answer within」)で返すので、失敗の道筋に含まれる
         XCTAssertEqual(code.components(separatedBy: "return settle(path: path").count - 1, 2,
                        "成功・失敗の2つが settle を通る")

@@ -12,6 +12,14 @@ import FTTestSupport
 import XCTest
 @testable import FTCore
 
+
+/// テスト用: 壁時計の時刻をそのまま刻印の順序へ写す(同じ起動・ns)。`now:` で順序を表すテストに使う
+fileprivate extension FMLiveness.Stamp {
+    static func at(_ date: Date) -> FMLiveness.Stamp {
+        FMLiveness.Stamp(boot: FMLiveness.Stamp.now().boot, mono: UInt64(max(0, date.timeIntervalSince1970) * 1_000_000_000))
+    }
+}
+
 final class FMCallAdmissionWaitWiringTests: XCTestCase {
 
     /// 待たせる時間。ロックのポーリング間隔(FMCallSlots.acquire の 30ms)より十分に長くとる ——
@@ -44,6 +52,8 @@ final class FMCallAdmissionWaitWiringTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        // 死に変わった記録は裏で証拠を取りに行く(FMHistory)。待ち切ってから置き場を戻す
+        FMHistory.waitForPendingEvidence()
         if let savedLivenessEnv { setenv("FT_FM_LIVENESS_DIR", savedLivenessEnv, 1) } else { unsetenv("FT_FM_LIVENESS_DIR") }
         if let savedUsageEnv { setenv("FT_FM_USAGE_DIR", savedUsageEnv, 1) } else { unsetenv("FT_FM_USAGE_DIR") }
         FMLiveness.resetWriteMemo()
@@ -134,7 +144,7 @@ final class FMCallAdmissionWaitWiringTests: XCTestCase {
     /// **死が新しいうちは門が閉じる**(枠を取らず・待たず・スキップに数える)。死んだ FM に全シナリオが
     /// 失敗の所要を払っていた対策の配線
     func testTheGateStaysClosedWhileThePathIsKnownDead() async throws {
-        FMLiveness.record(path: .vision, state: .dead, source: .probe, error: "boom")
+        FMLiveness.record(path: .vision, state: .dead, source: .probe, error: "boom", observed: .now())
         FMHealth.reset()
         let entered = await FMCallAdmission.enter(path: .vision)
         XCTAssertFalse(entered, "新しい死の経路は呼ばない")

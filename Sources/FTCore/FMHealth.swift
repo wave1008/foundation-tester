@@ -111,6 +111,8 @@ public enum FMHealth {
     /// 経路を分けて持つ理由は FMLiveness.swift 冒頭 ②
     public static func record(kind: String, path: FMLiveness.Path,
                               ms: Double, ok: Bool, error: String? = nil) {
+        // 観測の刻印は I/O の前に1回だけ採る(連続失敗の順序はこれで決める。FMLiveness.Stamp)
+        let observed = FMLiveness.Stamp.now()
         state.withLock {
             $0.samples[kind, default: []].append(Sample(ms: ms, ok: ok))
             if !ok, $0.firstError == nil, let error {
@@ -123,29 +125,19 @@ public enum FMHealth {
         if ok { FMBreaker.recordSuccess() } else { FMBreaker.recordFailure() }
         // ファイル I/O を伴うため必ずロックの外側で呼ぶ(FMUsageLedger.record の doc 参照)
         FMUsageLedger.record(ok: ok, ms: ms)
-        // 機械グローバルな死活台帳(FMLiveness)も実呼び出しから養う。**単発の失敗では死と
-        // 言わない** —— 機械全体へ配る値なので、連続 FMBreaker.threshold 回でようやく死とする
-        // (経路ごとに数える理由は consecutiveFailures の doc)
+        // 機械グローバルな死活台帳(FMLiveness)も実呼び出しから養う。**単発の失敗では死と言わない** —— 機械全体へ配る値なので、
+        // 連続 FMBreaker.threshold 回でようやく死とする。連続失敗は経路ごと・機械全体(台帳の根拠 FMLiveness.Basis)。
+        // FMBreaker のカウンタは経路を区別しないので流用できない(vision だけ死んで text が通る実測で、text の成功が毎回戻して
+        // vision の死を記録できない)。閾値は FMBreaker.threshold を共有する(「連続何回で死とみなすか」を2つ持たない)
         if ok {
-            resetConsecutiveFailures(path)
-            FMLiveness.record(path: path, state: .alive, source: .call, ms: Int(ms.rounded()))
-        } else if bumpConsecutiveFailures(path) >= FMBreaker.threshold {
-            FMLiveness.record(path: path, state: .dead, source: .call, error: error,
-                              ms: Int(ms.rounded()))
+            // 生の観測は台帳の根拠に足す(導く判定で、この刻印より前の失敗は数えなくなる)
+            FMLiveness.record(path: path, state: .alive, source: .call, ms: Int(ms.rounded()), observed: observed)
+        } else {
+            // 失敗は1回ずつ履歴へ(台帳は閾値まで書かないので、閾値未満の失敗はここにしか残らない)
+            FMHistory.recordFailure(path: path, source: .call, error: error, ms: Int(ms.rounded()))
+            // 根拠に足し、判定を導き直すのは同じ臨界区間(FMLiveness.recordCallFailure)
+            FMLiveness.recordCallFailure(path: path, error: error, ms: Int(ms.rounded()), observed: observed)
         }
-    }
-
-    /// 経路ごとの連続失敗数(**機械全体**。数え方と置き場は `FMLiveness.bumpFailureStreak`)。
-    /// **FMBreaker のカウンタは経路を区別しない**ので流用できない —— vision だけが死んで text が通り
-    /// 続ける状態(実測。[[fm-flap-ane-load-failure]])では text の成功がブレーカを毎回戻すため、
-    /// ブレーカは永久に落ちず vision の死を記録できない。
-    /// **閾値は増やさず FMBreaker.threshold を共有する**(「連続何回で死とみなすか」を2つ持たない)
-    private static func resetConsecutiveFailures(_ path: FMLiveness.Path) {
-        FMLiveness.resetFailureStreak(path)
-    }
-
-    private static func bumpConsecutiveFailures(_ path: FMLiveness.Path) -> Int {
-        FMLiveness.bumpFailureStreak(path)
     }
 
     /// NSError の入れ子(NSUnderlyingError / NSMultipleUnderlyingErrors)を辿って

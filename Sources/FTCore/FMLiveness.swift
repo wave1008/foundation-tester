@@ -75,29 +75,40 @@ public enum FMLiveness {
         /// 実際に呼んだ回(.call / .probe)の所要 ms。生きているのに遅い(= 実質使えない)を
         /// 後から見るため。呼ばずに判定した回(.breaker / .availability)は nil
         public var ms: Int?
+        /// 公表した判定の元になった観測の刻印(表示・診断用。順序は根拠 `Basis` の観測で決める)
+        public var stamp: Stamp?
 
         public init(state: State, checkedAt: Double, source: Source,
-                    error: String? = nil, ms: Int? = nil) {
+                    error: String? = nil, ms: Int? = nil, stamp: Stamp? = nil) {
             self.state = state
             self.checkedAt = checkedAt
             self.source = source
             self.error = error
             self.ms = ms
+            self.stamp = stamp
         }
 
+        /// `self` が `other` を上書きしてよいか。同じ起動の刻印どうしなら単調時刻で比べる(壁時計は補正で戻る)。
+        /// 起動が違えば上書きしてよい(書き手は今の起動のプロセス = 前の起動の記録より新しい)。
+        /// どちらかに刻印が無い・起動が識別できないときだけ壁時計で比べる
+        /// **未来の記録は新しいとみなさない**(壁時計が戻った後の記録は、鮮度の窓ぶんを超えて未来にあれば不明に倒す)
         public func isFresh(now: Date = Date(), maxAge: TimeInterval = FMLiveness.freshSeconds) -> Bool {
-            now.timeIntervalSince1970 - checkedAt < maxAge
+            let age = now.timeIntervalSince1970 - checkedAt
+            return age < maxAge && age > -maxAge
         }
     }
 
-    /// ディスク上の形。経路ごとに独立(②)
+    /// ディスク上の形。経路ごとに独立(②)。`text` / `vision` は**公表する判定**(読み手はこれだけを見る)、
+    /// `basis` はそれを導く根拠(書き手だけが使う = `derive`)
     public struct Record: Codable, Sendable, Equatable {
         public var text: Verdict?
         public var vision: Verdict?
+        var basis: [String: Basis]?
 
         public init(text: Verdict? = nil, vision: Verdict? = nil) {
             self.text = text
             self.vision = vision
+            self.basis = nil
         }
 
         public subscript(path: Path) -> Verdict? {
@@ -159,14 +170,13 @@ public enum FMLiveness {
 
     /// 状態が変わらない間、ディスクへ書き直す最短間隔。実呼び出しは1秒に数回あるので、
     /// 毎回書くと台帳が「現在の状態」ではなく書き込み負荷になる。**状態が変わった回は
-    /// この間隔を無視して即書く**(死んだ瞬間を遅らせない)
+    /// この間隔を無視して即書く**(死んだ瞬間を遅らせない)。**畳むのは公表する判定(表示)だけ**で、根拠は毎回更新する
+    /// (根拠まで畳むと、新しい刻印を捨てて古い観測に上書きを許す)
     static let writeCoalesceSeconds: TimeInterval = 5
 
-    /// `lastWritten`: このプロセスが最後にディスクへ書いた内容(経路ごと)。coalesce の判定にだけ使う。
-    /// `localStreak`: 書けないとき(テスト)のプロセス内の連続失敗数
+    /// 書けない(テスト・opt-in していない)ときの、プロセス内の根拠
     private struct Memo {
-        var lastWritten: [Path: Verdict] = [:]
-        var localStreak: [Path: Int] = [:]
+        var localBasis: [Path: Basis] = [:]
     }
     private static let memo = Mutex(Memo())
 
@@ -202,46 +212,82 @@ public enum FMLiveness {
 
     // MARK: - 書く
 
-    /// 観測1件を記録する。**書き込み失敗は握りつぶす** —— 台帳のために FM の実行も監視も
-    /// 止めない。ファイル I/O をするので、呼び出し側のロックの内側から呼ばないこと
+    /// 観測1件を記録する(プローブ・availability・ブレーカ・実呼び出しの成功)。実呼び出しの失敗は `recordCallFailure`。
+    /// 根拠(`Basis`)に足し、公表する判定を根拠から導き直す(`derive`)。**1つの臨界区間・1つのファイルで行う**
+    /// (根拠と判定を別々に持つと、遅れて着いた観測で両者が食い違う)。書き込み失敗は握りつぶす(台帳のために FM の実行も
+    /// 監視も止めない)。ファイル I/O をするので、呼び出し側のロックの内側から呼ばないこと
     public static func record(path: Path, state: State, source: Source,
                               error: String? = nil, ms: Int? = nil,
-                              now: Date = Date()) {
-        let verdict = Verdict(state: state, checkedAt: now.timeIntervalSince1970,
-                              source: source,
-                              // 生になったらエラーは捨てる(Verdict.error の doc)
-                              error: state == .dead ? error : nil,
-                              ms: ms)
-        let previous = memo.withLock { $0.lastWritten[path] }
-        // 状態が同じで、書いたばかりなら書かない(writeCoalesceSeconds の doc)
-        if let previous, previous.state == verdict.state,
-           verdict.checkedAt - previous.checkedAt < writeCoalesceSeconds {
-            return
+                              now: Date = Date(), observed: Stamp) {
+        // 実呼び出し(FMHealth)とプローブ(FMLivenessProbe.settle)の失敗は、それぞれが1回ずつ履歴へ書く
+        // (ここで書くと閾値の回が二重になる)。呼ばずに決めた死(availability・ブレーカ)はここで書く
+        if state == .dead, source == .availability || source == .breaker {
+            FMHistory.recordFailure(path: path, source: source, error: error, ms: ms, now: now)
         }
-        // **控えを進めるのは実際に着地した回だけ**。書けなかった判定(自分より新しい観測が
-        // 既に居た等)で控えを進めると、以後の同じ状態の書き込みが「書いたばかり」として
-        // 畳まれ、ディスクに1度も着地しない状態が続く
-        guard write(path: path, verdict: verdict) else { return }
-        memo.withLock { $0.lastWritten[path] = verdict }
+        let observation = Observation(stamp: observed, checkedAt: now.timeIntervalSince1970, source: source,
+                                      error: state == .dead ? error : nil, ms: ms)
+        let kind: ObservationKind = state == .alive ? .alive : (source == .call ? .callFailure : .deadDirect)
+        _ = update(path: path, observed: observed, now: now) { insert(observation, kind: kind, into: &$0) }
     }
 
-    @discardableResult
-    private static func write(path: Path, verdict: Verdict) -> Bool {
-        guard let url = writeURL else { return false }
+    /// 実呼び出しの失敗1件(FMHealth)。根拠の失敗に足し、閾値に達していれば導き直した判定が死になる
+    public static func recordCallFailure(path: Path, error: String?, ms: Int?, now: Date = Date(), observed: Stamp) {
+        let observation = Observation(stamp: observed, checkedAt: now.timeIntervalSince1970, source: .call,
+                                      error: error, ms: ms)
+        _ = update(path: path, observed: observed, now: now) { insert(observation, kind: .callFailure, into: &$0) }
+    }
+
+    /// 1つの臨界区間(`lockFileName` の flock)で 台帳を読み → 根拠を変え → 判定を導き直し → 1回の rename で書き、
+    /// 変わり目を履歴へ書く(台帳 → 履歴のロック順。履歴は台帳のロックを取らない)。**台帳を書けなかった回は変わり目を
+    /// 書かない**。返すのは変えた後の根拠。書けない(テスト・opt-in していない)ときはプロセスの中の根拠だけを変える
+    /// **起動が識別できない刻印の観測は共有しない**(順序を確定できない = 共有の根拠に混ぜると比較が循環し、前回の起動の失敗を
+    /// 今回へ引き継ぐ)。そのプロセスの中だけで持ち、台帳は書かない(台帳は他の書き手と監視のプローブが養う)。
+    /// `observed` が nil(無条件の消去)は共有とプロセス内の両方を変える
+    private static func update(path: Path, observed: Stamp?, now: Date, _ change: (inout Basis) -> Void) -> Basis {
+        func local() -> Basis {
+            memo.withLock { memo in
+                var basis = memo.localBasis[path] ?? Basis()
+                if let boot = observed?.boot { dropOtherBoots(&basis, boot: boot) }
+                change(&basis)
+                memo.localBasis[path] = basis
+                return basis
+            }
+        }
+        if observed == nil { _ = local() }
+        guard let url = writeURL, observed?.boot != Stamp.unknownBoot else { return observed == nil ? Basis() : local() }
         let dir = url.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        // 読み→畳み→rename をひとつの臨界区間にする(lockFileName の doc)。ロックを取れないときは
-        // 書かない —— 書き込み失敗と同じ扱い(握りつぶす)で、片方の経路を消す危険を冒さない
-        guard let lockFD = openLocked(dir.appendingPathComponent(lockFileName)) else { return false }
+        // ロックを取れないときは書かない —— 書き込み失敗と同じ扱い(握りつぶす)で、片方の経路を消す危険を冒さない
+        guard let lockFD = openLocked(dir.appendingPathComponent(lockFileName)) else { return Basis() }
         defer { close(lockFD) }  // close が flock も解放する
-        // ④ もう片方の経路を消さない・自分より新しい観測は上書きしない
+        // ④ もう片方の経路を消さない(読んでから変えて書く)
         var record = read(at: url) ?? Record()
-        if let existing = record[path], existing.checkedAt > verdict.checkedAt { return false }
-        record[path] = verdict
-        guard let data = try? JSONEncoder().encode(record) else { return false }
-        // 一時ファイル → 同一ディレクトリ内 rename(2)。読み手に途中まで書かれた JSON を見せない
+        var basis = record.basis?[path.rawValue] ?? Basis()
+        if let boot = observed?.boot { dropOtherBoots(&basis, boot: boot) }
+        change(&basis)
+        var bases = record.basis ?? [:]
+        bases[path.rawValue] = basis
+        record.basis = bases
+        let previous = record[path]
+        if let derived = derive(basis) {
+            // 表示の畳み: 同じ状態・同じ書き手で間隔の内なら前の公表を残す(根拠は上で更新済み)
+            let keep = previous.map { $0.state == derived.state && $0.source == derived.source
+                && abs(derived.checkedAt - $0.checkedAt) < writeCoalesceSeconds } ?? false
+            if !keep { record[path] = derived }
+        }
+        guard writeAtomically(record, to: url) else { return basis }
+        if let published = record[path], previous?.state != published.state {
+            FMHistory.recordTransition(path: path, from: previous?.state, to: published.state,
+                                       source: published.source, error: published.error, now: now)
+        }
+        return basis
+    }
+
+    /// 一時ファイル → 同一ディレクトリ内 rename(2)。読み手に途中まで書かれた JSON を見せない・リンクを辿らない
+    private static func writeAtomically<T: Encodable>(_ value: T, to url: URL) -> Bool {
+        guard let data = try? JSONEncoder().encode(value) else { return false }
         let tmp = url.deletingLastPathComponent().appendingPathComponent(
-            ".fm-liveness.\(ProcessInfo.processInfo.processIdentifier).\(UUID().uuidString).tmp")
+            ".\(url.lastPathComponent).\(ProcessInfo.processInfo.processIdentifier).\(UUID().uuidString).tmp")
         guard (try? data.write(to: tmp)) != nil else { return false }
         guard rename(tmp.path, url.path) == 0 else {
             try? FileManager.default.removeItem(at: tmp)
@@ -294,52 +340,162 @@ public enum FMLiveness {
         return verdict.state == .dead
     }
 
-    // MARK: - 連続失敗(機械全体)
+    // MARK: - 観測の刻印
 
-    /// 経路ごとの連続失敗数の置き場。**機械全体で数える**: シナリオは1本ごとに別プロセスで走り、
-    /// 1本が FM を撃つのは数回なので、プロセス内で数えると閾値(FMBreaker.threshold)に届かず、
-    /// 死を1度も記録しないまま全シナリオが失敗の所要(実測 16 秒)を払っていた
-    static let streakFileName = "fm-failure-streak.json"
+    // 連続失敗は**機械全体で数える**(台帳の根拠 `Basis.callFailures`): シナリオは1本ごとに別プロセスで走り、1本が FM を
+    // 撃つのは数回なので、プロセス内で数えると閾値(FMBreaker.threshold)に届かず、死を1度も記録しないまま全シナリオが
+    // 失敗の所要(実測 16 秒)を払っていた
 
-    /// 経路の連続失敗を 1 増やして新しい値を返す。書けない(テスト)ときはプロセス内で数える
-    public static func bumpFailureStreak(_ path: Path) -> Int {
-        updateStreak(path) { $0 + 1 }
-    }
+    /// 観測の刻印。**順序の判定にだけ使う**(表示・鮮度は壁時計の `checkedAt`)。`boot` は起動ごとの識別子
+    /// (`kern.bootsessionuuid`)、`mono` は起動からの単調な時刻(ns。`CLOCK_MONOTONIC` = 機械全体で共通・スリープも進む)。
+    /// 壁時計は補正で戻るので、順序に使うと新しい成功を古いと誤る
+    public struct Stamp: Codable, Sendable, Equatable {
+        public var boot: String
+        public var mono: UInt64
 
-    /// 経路の連続失敗を 0 に戻す(成功した)
-    public static func resetFailureStreak(_ path: Path) {
-        _ = updateStreak(path) { _ in 0 }
-    }
-
-    private static func updateStreak(_ path: Path, _ change: (Int) -> Int) -> Int {
-        guard let url = writeURL?.deletingLastPathComponent().appendingPathComponent(streakFileName) else {
-            return memo.withLock {
-                let next = change($0.localStreak[path] ?? 0)
-                $0.localStreak[path] = next
-                return next
-            }
+        public init(boot: String, mono: UInt64) {
+            self.boot = boot
+            self.mono = mono
         }
-        let dir = url.deletingLastPathComponent()
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        // 台帳と同じ flock の内側で 読む→変える→書く(書き手は複数プロセス)。取れなければ数えない側
-        guard let lockFD = openLocked(dir.appendingPathComponent(lockFileName)) else { return 0 }
-        defer { close(lockFD) }
-        var counts = (try? Data(contentsOf: url))
-            .flatMap { try? JSONDecoder().decode([String: Int].self, from: $0) } ?? [:]
-        let next = change(counts[path.rawValue] ?? 0)
-        guard counts[path.rawValue] != next else { return next }
-        counts[path.rawValue] = next
-        if let data = try? JSONEncoder().encode(counts) {
-            let tmp = dir.appendingPathComponent(
-                ".fm-failure-streak.\(ProcessInfo.processInfo.processIdentifier).\(UUID().uuidString).tmp")
-            if (try? data.write(to: tmp)) != nil, rename(tmp.path, url.path) != 0 {
-                try? FileManager.default.removeItem(at: tmp)
-            }
+
+        public static func now() -> Stamp { Stamp(boot: bootID, mono: clock_gettime_nsec_np(CLOCK_MONOTONIC)) }
+
+        /// 起動が識別できない印。**同じ起動の証拠として扱わない**(再起動をまたいで同じ値になる)=
+        /// 連続失敗はプロセスの中だけで数え、台帳の順序は壁時計で比べる
+        public static let unknownBoot = "unknown"
+
+        /// 起動の識別子を親から子へ渡す環境変数(`ScenarioHost.childEnvironment`)。子のサンドボックスが sysctl の読みを
+        /// 許さない形に変わっても、親(枠の外)が読んだ値で同じ起動を名乗れる
+        public static let bootEnvironmentKey = "FT_BOOT_SESSION_ID"
+
+        /// `kern.bootsessionuuid`(**全プロセスで同じ方式**。代替の方式と混ざると同じ起動を別と取り違え、互いの記録を捨て合う)。
+        /// 取れなければ親が渡した `bootEnvironmentKey`、それも無ければ `unknownBoot`。**取れたときだけ覚える**
+        /// (一過性の失敗を覚えると、そのプロセスは以後ずっと台帳を養わない)
+        public static var bootID: String {
+            if let cached = cachedBootID.withLock({ $0 }) { return cached }
+            guard let id = resolveBootID(sysctl: readBootSessionID(), environment: ProcessInfo.processInfo.environment)
+            else { return unknownBoot }
+            cachedBootID.withLock { $0 = id }
+            return id
         }
-        return next
+
+        /// sysctl の値を先に採る(親が渡した値はその代わり)。どちらも無ければ nil
+        static func resolveBootID(sysctl: String?, environment: [String: String]) -> String? {
+            if let sysctl, !sysctl.isEmpty { return sysctl }
+            guard let inherited = environment[bootEnvironmentKey], !inherited.isEmpty else { return nil }
+            return inherited
+        }
+
+        private static let cachedBootID = Mutex<String?>(nil)
+
+        static func readBootSessionID() -> String? {
+            var size = 0
+            guard sysctlbyname("kern.bootsessionuuid", nil, &size, nil, 0) == 0, size > 0 else { return nil }
+            var buffer = [CChar](repeating: 0, count: size)
+            guard sysctlbyname("kern.bootsessionuuid", &buffer, &size, nil, 0) == 0 else { return nil }
+            let id = String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+            return id.isEmpty ? nil : id
+        }
     }
 
-    /// テスト用。プロセス内の coalesce の記憶を捨てる(ディスクは触らない)
+    // MARK: - 根拠(観測の集合)と、そこから導く判定
+
+    /// 1件の観測。順序は `isAfter`。**共有の根拠に入るのは識別できる起動の刻印の観測だけ**(`update`)
+    struct Observation: Codable, Sendable, Equatable {
+        var stamp: Stamp
+        var checkedAt: Double
+        var source: Source
+        var error: String?
+        var ms: Int?
+    }
+
+    /// 経路ごとの根拠。**公表する判定はこれから毎回同じ規則で導く**(`derive`)= 観測の着く順に依らない
+    /// (どの順で足しても同じ集合になる: 最新の生・最新の自分で決めた死・新しい側の失敗)
+    struct Basis: Codable, Sendable, Equatable {
+        /// 最新の生の観測(書き手を問わない)
+        var lastAlive: Observation?
+        /// 最新の「自分で死と決めた」観測(プローブ = プロセス内の閾値の後・availability・ブレーカ)
+        var lastDeadDirect: Observation?
+        /// 実呼び出しの失敗の新しい側 `maxKeptFailures` 件(古い順)
+        var callFailures: [Observation] = []
+    }
+
+    enum ObservationKind {
+        case alive, deadDirect, callFailure
+    }
+
+    /// 持っておく失敗の上限。判定は「最新の生より後の失敗が FMBreaker.threshold 件以上か」だけなので、新しい側をそれだけ
+    /// 持てば足りる(閾値以上あれば新しい側の閾値件は全部その後ろにあり、無ければ後ろの件数は新しい側の中に全部ある)
+    static var maxKeptFailures: Int { FMBreaker.threshold }
+
+    /// `a` が `b` より新しいか = **単調時刻だけで比べる**(全順序)。根拠には同じ起動の識別できる刻印の観測しか入らない
+    /// (`dropOtherBoots` と unknown の隔離)ので比べられる。壁時計を混ぜると比較が循環し(単調時刻では a<b<c なのに
+    /// 壁時計では c<a)、着く順で判定が変わる
+    static func isAfter(_ a: Observation, _ b: Observation) -> Bool {
+        a.stamp.mono > b.stamp.mono
+    }
+
+    static func insert(_ observation: Observation, kind: ObservationKind, into basis: inout Basis) {
+        func newer(_ current: Observation?) -> Observation {
+            guard let current, !isAfter(observation, current) else { return observation }
+            return current
+        }
+        switch kind {
+        case .alive: basis.lastAlive = newer(basis.lastAlive)
+        case .deadDirect: basis.lastDeadDirect = newer(basis.lastDeadDirect)
+        case .callFailure:
+            basis.callFailures = Array((basis.callFailures + [observation]).sorted { isAfter($1, $0) }
+                .suffix(maxKeptFailures))
+        }
+    }
+
+    /// 別の起動の根拠を捨てる(前回の起動の失敗を引き継がない・単調時刻は起動ごとに 0 から始まる)
+    static func dropOtherBoots(_ basis: inout Basis, boot: String) {
+        if let alive = basis.lastAlive, alive.stamp.boot != boot { basis.lastAlive = nil }
+        if let dead = basis.lastDeadDirect, dead.stamp.boot != boot { basis.lastDeadDirect = nil }
+        basis.callFailures = basis.callFailures.filter { $0.stamp.boot == boot }
+    }
+
+    /// 公表する判定。候補 = 最新の生 / 最新の自分で決めた死 / 最新の生より後に閾値以上ある実呼び出しの失敗の最新。
+    /// **最も新しい候補を採る**(同じ新しさなら死 = 安全側)。候補が無ければ nil(公表を変えない)
+    static func derive(_ basis: Basis, threshold: Int = FMBreaker.threshold) -> Verdict? {
+        var candidates: [(observation: Observation, state: State)] = []
+        if let alive = basis.lastAlive { candidates.append((alive, .alive)) }
+        if let dead = basis.lastDeadDirect { candidates.append((dead, .dead)) }
+        let afterAlive = basis.callFailures.filter { failure in basis.lastAlive.map { isAfter(failure, $0) } ?? true }
+        if afterAlive.count >= threshold, let newest = afterAlive.max(by: { isAfter($1, $0) }) {
+            candidates.append((newest, .dead))
+        }
+        guard var best = candidates.first else { return nil }
+        for candidate in candidates.dropFirst()
+        where isAfter(candidate.observation, best.observation)
+            || (!isAfter(best.observation, candidate.observation) && candidate.state == .dead) {
+            best = candidate
+        }
+        return Verdict(state: best.state, checkedAt: best.observation.checkedAt, source: best.observation.source,
+                       error: best.state == .dead ? best.observation.error : nil, ms: best.observation.ms,
+                       stamp: best.observation.stamp)
+    }
+
+    /// 実呼び出しの失敗を1件足し(台帳の判定も導き直す)、最新の生より後の失敗の数を返す
+    public static func bumpFailureStreak(_ path: Path, at stamp: Stamp, now: Date = Date()) -> Int {
+        let observation = Observation(stamp: stamp, checkedAt: now.timeIntervalSince1970, source: .call)
+        let basis = update(path: path, observed: stamp, now: now) { insert(observation, kind: .callFailure, into: &$0) }
+        return basis.callFailures.filter { failure in basis.lastAlive.map { isAfter(failure, $0) } ?? true }.count
+    }
+
+    /// 生の観測(実呼び出し)を1件足す = その刻印より前の失敗を数えなくする。nil は**実呼び出しの失敗を無条件に消す**
+    /// (`FMHealth.reset` = テストと計測の区切り)
+    public static func resetFailureStreak(_ path: Path, observedAt stamp: Stamp? = nil, now: Date = Date()) {
+        guard let stamp else {
+            _ = update(path: path, observed: nil, now: now) { $0.callFailures = [] }
+            return
+        }
+        let observation = Observation(stamp: stamp, checkedAt: now.timeIntervalSince1970, source: .call)
+        _ = update(path: path, observed: stamp, now: now) { insert(observation, kind: .alive, into: &$0) }
+    }
+
+    /// テスト用。プロセス内の根拠を捨てる(ディスクは触らない)
     public static func resetWriteMemo() {
         memo.withLock { $0 = Memo() }
     }
