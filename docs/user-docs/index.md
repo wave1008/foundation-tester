@@ -98,7 +98,7 @@ scenarios the AI assistant wrote, or to write some yourself.
     - [installApp, removeApp, clearAppData](reference/commands/install_app.md)
     - [launchApp, restartApp, terminateApp, openURL](reference/commands/launch_app.md)
 - Navigation
-    - [home, back, appSwitcher, tapAppIcon, rotateTo](reference/commands/navigation.md)
+    - [home, back, appSwitcher, tapAppIcon, rotateTo, fold, unfold, hinge](reference/commands/navigation.md)
 - Swipe/Scroll screen
     - [swipe, swipePointToPoint, swipeElementToElement, swipeBy](reference/commands/swipe.md)
     - [scroll (scrollTo, scrollDown, withScrollDown, scrollFrame, ...)](reference/commands/scroll.md)

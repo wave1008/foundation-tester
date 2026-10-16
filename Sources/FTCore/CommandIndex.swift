@@ -162,6 +162,15 @@ public enum DSLCommandIndex {
               "rotateTo(.portrait / .landscape, settle:)",
               "Rotates the app UI to that orientation. Reverted automatically to "
                   + "the original orientation at the end of the scenario."),
+        .init("fold", "operation", "fold(waitSeconds:)",
+              "Folds a foldable device (iPhone Duo simulator / foldable Android Emulator) to the outer "
+                  + "screen and waits until it switches. Skipped as not applicable on other devices. "
+                  + "Reverted at the end of the scenario."),
+        .init("unfold", "operation", "unfold(waitSeconds:)",
+              "Unfolds a foldable device to the inner screen and waits until it switches. Same rules as fold."),
+        .init("hinge", "operation", "hinge(degrees)",
+              "Sets a foldable device's hinge to 0 (folded) - 180 (unfolded) degrees. Which screen shows "
+                  + "is not checked (it depends on the previous state at in-between angles)."),
         .init("swipePointToPoint", "operation",
               "swipePointToPoint(startX:, startY:, endX:, endY:, durationSeconds:, maxGestureSeconds:, settle:)",
               "Drags between two coordinates (iOS = pt / Android = px). durationSeconds is capped at "

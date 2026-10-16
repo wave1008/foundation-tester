@@ -15,7 +15,7 @@ final class RunnerQuiescenceCapCoverageTests: XCTestCase {
         "typeAndReadBack": "QuiescenceWait.capping(skipPostEvent: true) { try typeAndReadBack(body) }",
         "performTypeReadback": "QuiescenceWait.capping(skipPostEvent: true) { try typeAndReadBack(body) }",
         "clearFocusedInput": "QuiescenceWait.capping(skipPostEvent: false) { try clearFocusedInput(body) }",
-        "sendHomeGesture": "gestureQuiescence { sendHomeGesture(sb) }",
+        "sendHomeGesture": "gestureQuiescence { sendHomeGesture(sb, attempt: attempt) }",
     ]
 
     func testEveryRunnerInteractionRunsInsideAQuiescenceCap() throws {

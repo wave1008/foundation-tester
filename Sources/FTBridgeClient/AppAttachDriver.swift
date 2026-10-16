@@ -293,6 +293,9 @@ public final class AppAttachDriver: AppDriver {
     /// (XCUIDevice / springboard 座標。Runner の BridgeRouter.handleHome / handleAppSwitcher)。
     /// activate を挟まない = 対象アプリを前面に戻してしまわない
     public func home() async throws { try await client.home() }
+    public func setHingeAngle(degrees: Double) async throws { try await client.setHingeAngle(degrees: degrees) }
+    public func foldObservation() async -> FoldObservation? { await client.foldObservation() }
+    public func continueAfterFold() async { await client.continueAfterFold() }
     public func openAppSwitcher() async throws { try await client.openAppSwitcher() }
 
     public func screenshot() async throws -> Data { try await client.screenshot() }

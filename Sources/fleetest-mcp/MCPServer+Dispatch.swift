@@ -838,6 +838,9 @@ extension MCPServer {
         case "ft_rotate":
             return try await ftRotate(args)
 
+        case "ft_fold":
+            return try await ftFold(args)
+
         case "ft_navigate":
             return try await ftNavigate(args)
 

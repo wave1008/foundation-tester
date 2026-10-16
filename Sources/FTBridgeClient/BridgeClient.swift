@@ -1080,6 +1080,12 @@ public final class BridgeClient: AppDriver, Sendable {
         return response.orientation
     }
 
+    /// XCUITest ランナーの POST /hinge(Simulator だけ。in-app ブリッジはルートを持たない = 404 → 呼び手が回す)
+    public func setHingeAngle(degrees: Double) async throws {
+        let _: OKResponse = try await post("/hinge", body: HingeRequest(degrees: degrees),
+                                           timeout: interactionTimeout)
+    }
+
     public func restoreOrientationIfNeeded() async throws {
         guard let original = originalOrientation else { return }
         originalOrientation = nil

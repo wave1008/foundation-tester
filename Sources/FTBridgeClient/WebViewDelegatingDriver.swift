@@ -411,6 +411,13 @@ public final class WebViewDelegatingDriver: AppDriver {
     public func restoreOrientationIfNeeded() async throws {
         try await primary.restoreOrientationIfNeeded()
     }
+    /// 端末の状態を変える操作。in-app は 501 なので XCUITest 側で行う(home と同じ)
+    public func setHingeAngle(degrees: Double) async throws {
+        resetDelegation()
+        try await delegated.setHingeAngle(degrees: degrees)
+    }
+    public func foldObservation() async -> FoldObservation? { await primary.foldObservation() }
+    public func continueAfterFold() async { await primary.continueAfterFold() }
     /// 画面を離れる操作。in-app は 501 を返すので XCUITest 側で行う(委譲状態は畳む)
     public func home() async throws {
         resetDelegation()

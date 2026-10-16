@@ -187,6 +187,9 @@ public final class FastLaunchDriver: AppDriver {
         try await base.rotate(to: orientation)
     }
     public func restoreOrientationIfNeeded() async throws { try await base.restoreOrientationIfNeeded() }
+    public func setHingeAngle(degrees: Double) async throws { try await base.setHingeAngle(degrees: degrees) }
+    public func foldObservation() async -> FoldObservation? { await base.foldObservation() }
+    public func continueAfterFold() async { await base.continueAfterFold() }
     public func press(ref: Int, duration: Double) async throws { try await base.press(ref: ref, duration: duration) }
     public func press(x: Double, y: Double, duration: Double) async throws {
         try await base.press(x: x, y: y, duration: duration)

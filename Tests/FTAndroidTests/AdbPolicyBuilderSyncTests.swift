@@ -31,6 +31,8 @@ final class AdbPolicyBuilderSyncTests: XCTestCase {
         assertAllowed(try XCTUnwrap(AndroidWebViewDOM.probeCommand(packageID: "com.ftester.e2e")))
         assertAllowed(try XCTUnwrap(WebViewDOMFallback.probeCommand(packageID: "com.ftester.e2e")))
         assertAllowed(["shell", AndroidPhysicalDevice.screenCheckCommand])
+        assertAllowed(["shell", AdbPolicy.foldStateCommand])
+        for degrees in [0, 130, 180, 12.5] { assertAllowed(AndroidDriver.hingeArguments(degrees: degrees)) }
         assertAllowed(["shell", "pm path \(AndroidDriver.bridgePackage) 2>/dev/null; echo \(AndroidDriver.pmPathMarker)"])
         for ttl in [60, 3600] {
             for owner in [nil, "/Users/me/my repo"] as [String?] {

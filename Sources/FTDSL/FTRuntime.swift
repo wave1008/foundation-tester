@@ -217,6 +217,10 @@ public final class FTDriveCore {
     /// 実機か。白フレーム=画面凍結の推定はエミュレータ固有の病理(GPU 合成バッファ固着)なので、
     /// 実機では「画面が消灯しているだけ」を凍結と誤断しないためにこれで抑止する
     public let physical: Bool
+    /// iOS = udid / Android = シリアル(開閉の観測が使う。iOS Simulator の開閉は devicectl で読む)
+    let deviceIdentifier: String?
+    /// シナリオで最初に開閉を送る前の状態(シナリオの終わりに戻す。restoreFoldIfNeeded)。stateLock の下
+    private var _foldOriginalState: FoldState?
     let appBundleID: String
     let executor: StepExecutor
     let scenarioID: String
@@ -497,6 +501,7 @@ public final class FTDriveCore {
         self.driver = driver
         self.platform = platform
         self.physical = physical
+        self.deviceIdentifier = deviceIdentifier
         self.appBundleID = app
         self.homeScreenDriverOverride = homeScreenDriver
         // executor 既定の occlusionGuard(StepExecutor.init 引数)は渡さない = 常に false。
@@ -1089,6 +1094,42 @@ public final class FTDriveCore {
     /// (rotate(to:) を一度も呼んでいなければ AppDriver 側で no-op)
     public func restoreOrientationIfNeeded() async throws {
         try await driver.restoreOrientationIfNeeded()
+    }
+
+    /// 開閉の状態を読む(iOS Simulator = devicectl / Android = ドライバ)。iOS の実機は読まない(送れないので)
+    func observeFold() async -> FoldObservation {
+        if platform == "ios" {
+            guard !physical, let udid = deviceIdentifier else {
+                return .unknown("no simulator UDID for this run")
+            }
+            return FoldControl.observeIOSSimulator(udid: udid)
+        }
+        return await systemDriver.foldObservation() ?? .unknown("this driver cannot read the fold state")
+    }
+
+    /// 最初の開閉の前の状態だけを控える(2回目以降は上書きしない)
+    func rememberFoldOriginal(_ state: FoldState) {
+        stateLock.lock()
+        if _foldOriginalState == nil { _foldOriginalState = state }
+        stateLock.unlock()
+    }
+
+    /// シナリオの終わりに開閉を元へ戻す(fold / unfold / hinge を一度も呼んでいなければ何もしない = 往復なし)。
+    /// 戻さないと次のシナリオが開いた画面のまま始まる(rotateTo の向きと同じ理由)
+    public func restoreFoldIfNeeded() async throws {
+        let original: FoldState? = stateLock.withLock {
+            defer { _foldOriginalState = nil }
+            return _foldOriginalState
+        }
+        guard let original else { return }
+        let current: FoldState?
+        if case .state(let state) = await observeFold() { current = state } else { current = nil }
+        guard let target = FoldControl.restoreTarget(original: original, current: current) else { return }
+        let driver = systemDriver
+        _ = try await FoldControl.apply(target, waitSeconds: tunables.defaultTimeout,
+                                        send: { try await driver.setHingeAngle(degrees: $0) },
+                                        observe: { await self.observeFold() }, sent: { _ in })
+        await driver.continueAfterFold()
     }
 
     /// **シナリオ全体でアサーションが1本も無い**ときの警告。expectation 単位の警告

@@ -245,6 +245,10 @@ public final class SessionRecoveryDriver: AppDriver {
     public func restoreOrientationIfNeeded() async throws {
         try await withRecovery { try await base.restoreOrientationIfNeeded() }
     }
+    /// セッション不要(端末の状態)なので回復を挟まない(home と同じ)
+    public func setHingeAngle(degrees: Double) async throws { try await base.setHingeAngle(degrees: degrees) }
+    public func foldObservation() async -> FoldObservation? { await base.foldObservation() }
+    public func continueAfterFold() async { await base.continueAfterFold() }
 
     public func screenshot() async throws -> Data {
         try await withAccessibilityRetry { try await self.withRecovery { try await self.base.screenshot() } }

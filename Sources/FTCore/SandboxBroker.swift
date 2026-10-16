@@ -209,6 +209,10 @@ public enum DevicectlPolicy {
         case let a where a.count == 8 && Array(a[0..<4]) == ["device", "info", "details", "--device"]
                 && Array(a[5...]) == ["--json-output", "-", "-q"]:
             return device(a[4])
+        // 開閉の観測(FoldControl.observeIOSSimulator)。表示中の画面を読むだけ
+        case let a where a.count == 8 && Array(a[0..<4]) == ["device", "info", "displays", "--device"]
+                && Array(a[5...]) == ["--quiet", "--json-output", "-"]:
+            return device(a[4])
         case let a where a.count == 7 && Array(a[0..<4]) == ["device", "info", "processes", "--device"]
                 && a[5] == "--json-output":
             return device(a[4]) ?? output(a[6])

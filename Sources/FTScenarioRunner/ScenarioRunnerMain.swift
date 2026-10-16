@@ -691,6 +691,12 @@ struct RunScenario: AsyncParsableCommand {
         } catch {
             ConsoleOut.err("⚠️ failed to restore original orientation: \(ErrorText.user(error))")
         }
+        // 開閉も同じ(fold / unfold / hinge を呼んでいなければ往復なし)。戻さないと次のシナリオが開いた画面で始まる
+        do {
+            try await core.restoreFoldIfNeeded()
+        } catch {
+            ConsoleOut.err("⚠️ failed to restore the original fold state: \(ErrorText.user(error))")
+        }
 
         // 「否定側でしか使われず一度も解決できなかった #id」「最後まで不成立の ifCanSelect」
         // 「アサーションが1本も無い」を修正提案として残す(いずれも緑のまま腐る経路。docs/design.md §10)

@@ -208,6 +208,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | — | `home()` / `back()` | 🟢 OS 差を吸収した1コマンド |
 | — | `clearAppData(bundleID?)` | 🟢 再インストール不要でアプリデータ**と権限**を消す。初回起動・オンボーディング・権限ダイアログのテストが書ける(iOS はシミュレータ専用。キーチェーン/Keystore の値は残る) |
 | — | `openURL(url)` / `launchApp(url:)` | 🟢 2026-08-08 ディープリンク配送。**アプリを再起動せず**今の画面の上に遷移を積む(warm)。Shirates に対応物は無い |
+| — | `fold()` / `unfold()` / `hinge(_)` | 🟢 2026-10-16 折りたたみ端末の畳み/開き/ヒンジ角。**Shirates に対応物は無い**。対応は iPhone Duo の Simulator(Xcode 27.2+・XCUITest ブリッジ経由)と折りたたみ Android の Emulator。物理端末は非対応。折りたためないデバイスではシナリオを対象外(skipped)で記録する。`fold` / `unfold` は切り替わりを確かめる(待ちの上限 `waitSeconds:`)。`hinge` は確かめない(iOS は直前の状態に依存・Android は角度の範囲で姿勢が決まる)。シナリオ終了時に元へ戻る |
 | — | `rotateTo(.landscape)` | 🟢 2026-08-10 画面回転。**Shirates に対応物は無い**(src/doc を全文検索して確認)。向きは portrait / landscape の2値のみ —— 契約は「アプリの UI がその向きになること」で、物理的な左右はテストから観測できないため語彙に置かない。回転を使ったシナリオは終了時に元の向きへ自動で戻る |
 
 ## 記述子・レポート・テストフロー

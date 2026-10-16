@@ -63,6 +63,7 @@ these; naming a second device requires future calls to be explicit again.
 | `ft_scroll_to` | Scroll a container until a selector appears, then return the refreshed element list. `scrollFrame:` takes the selector of a container marked `scroll`, or the **ref of any element** (its frame becomes the swipe area — for Compose chip rows and carousels) |
 | `ft_batch` | Run several operation/scroll steps in one call under a single approval |
 | `ft_rotate` | Rotate the device and return the element list in the new orientation |
+| `ft_fold` | Fold / unfold a foldable device (state "fold" / "unfold", or hinge degrees) |
 | `ft_navigate` | Back / Home / app switcher |
 | `ft_hide_keyboard` | Close the soft keyboard (Android only; on iOS use `ft_type` with `pressEnter`) |
 | `ft_open_url` | Deliver a deep link without restarting the app |

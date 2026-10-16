@@ -184,6 +184,16 @@ public protocol AppDriver {
     /// scenario, if any (no-op — no round trip — if rotate was never called). Called unconditionally
     /// at scenario end. **Protocol requirement** (same reasoning as above).
     func restoreOrientationIfNeeded() async throws
+    /// 折りたたみ機のヒンジ角(`FoldControl.degreesRange`)を送る。送れたことだけを返し、画面の切り替わりは
+    /// `FoldControl.apply` が確かめる。**既定は 501**(折りたたみを送れないドライバ)。
+    /// **プロトコル要件として宣言すること**、包むドライバは必ず素通しする
+    func setHingeAngle(degrees: Double) async throws
+    /// 開閉の状態(Android の Emulator だけが実装する。iOS Simulator は `FoldControl.observeIOSSimulator`)。
+    /// **既定は nil** = このドライバは読めない。**プロトコル要件**(同じ理由)
+    func foldObservation() async -> FoldObservation?
+    /// 開閉の後、端末がアプリを覆った(Android の折りたたみ機は閉じるとロック画面 =「上にスワイプで続行」が出る)なら外す。
+    /// **既定は何もしない**(iOS の Duo は閉じてもアプリが外側の画面に出る)。**プロトコル要件**(同じ理由)
+    func continueAfterFold() async
     func press(ref: Int, duration: Double) async throws
     /// 座標指定のロングプレス(座標は snapshot の screen と同じ座標系)。
     func press(x: Double, y: Double, duration: Double) async throws
@@ -581,6 +591,14 @@ public extension AppDriver {
     }
 
     func restoreOrientationIfNeeded() async throws {}
+
+    func setHingeAngle(degrees: Double) async throws {
+        throw DriverError.badResponse(status: 501, body: "This driver cannot fold or unfold the device")
+    }
+
+    func foldObservation() async -> FoldObservation? { nil }
+
+    func continueAfterFold() async {}
 
     func pressEnter() async throws {
         throw DriverError.badResponse(status: 501, body: "This driver does not support pressing the Enter key")

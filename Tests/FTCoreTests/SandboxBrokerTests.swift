@@ -296,6 +296,7 @@ final class DevicectlPolicyTests: XCTestCase {
             ["device", "install", "app", "--device", "PHONE-1", "/Users/x/Build/App.app"],
             ["device", "uninstall", "app", "--device", "PHONE-1", "com.example.app"],
             ["device", "process", "openURL", "--device", "PHONE-1", "myapp://home"],
+            ["device", "info", "displays", "--device", "PHONE-1", "--quiet", "--json-output", "-"],
         ] {
             XCTAssertNil(refusal(arguments), arguments.joined(separator: " "))
         }
@@ -304,6 +305,7 @@ final class DevicectlPolicyTests: XCTestCase {
     func testAnotherDeviceIsRefused() {
         XCTAssertNotNil(refusal(["device", "process", "openURL", "--device", "PHONE-2", "x://"]))
         XCTAssertNotNil(refusal(["device", "info", "lockState", "--device", "PHONE-2", "--json-output", "-"]))
+        XCTAssertNotNil(refusal(["device", "info", "displays", "--device", "PHONE-2", "--quiet", "--json-output", "-"]))
     }
 
     /// 親に書かせる出力先は子が元々書ける場所だけ(親を使って任意の場所へ書かせない)
@@ -338,6 +340,7 @@ final class DevicectlPolicyTests: XCTestCase {
         let known: Set<String> = [
             "list devices --json-output", "device info apps", "device info lockState", "device info details",
             "device info processes", "device install app", "device uninstall app", "device process openURL",
+            "device info displays",
         ]
         var found: [String] = []
         for module in ["FTBridgeClient", "FTCore", "FTAndroid", "FTScenarioRunner", "FTDSL"] {

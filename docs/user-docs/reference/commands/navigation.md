@@ -1,8 +1,8 @@
-# home, back, appSwitcher, tapAppIcon, rotateTo
+# home, back, appSwitcher, tapAppIcon, rotateTo, fold, unfold, hinge
 
 [in Japanese(日本語)](navigation_ja.md)
 
-OS-level navigation: home screen, back, app switcher, home screen icon, and screen rotation.
+OS-level navigation: home screen, back, app switcher, home screen icon, screen rotation, and folding a foldable device.
 
 ## Functions
 
@@ -13,6 +13,9 @@ OS-level navigation: home screen, back, app switcher, home screen icon, and scre
 | `appSwitcher()` | Opens the app switcher. On a home-button iPhone (e.g. iPhone SE) the switcher is a hardware double-press that cannot be sent, so the scenario is recorded as skipped (not applicable) from that step on instead of failing. |
 | `tapAppIcon(name?)` | Finds and taps the app icon on the home screen. `name` defaults to the app profile's `appName` when omitted. |
 | `rotateTo(.portrait, settle:)` / `rotateTo(.landscape, settle:)` | Rotates the app UI to that orientation. Only these two values exist. |
+| `fold(waitSeconds:)` | Folds a foldable device to the outer screen and waits until the device reports it switched (up to `waitSeconds`, default = the run's default timeout). Fails if it does not switch. |
+| `unfold(waitSeconds:)` | Unfolds to the inner (large) screen. Same rules as `fold`. |
+| `hinge(_ degrees)` | Sets the hinge angle, 0 (folded) to 180 (unfolded); about 130 is the half-open book posture. Does not check which screen shows. |
 
 ## Example
 
@@ -25,6 +28,9 @@ tapAppIcon()             // find and tap the app icon by the app profile's name
 appSwitcher()
 rotateTo(.landscape)
 rotateTo(.portrait)
+fold()                  // foldable devices only
+unfold()
+hinge(130)              // half-open book posture
 ```
 
 ## Notes
@@ -57,6 +63,16 @@ rotateTo(.portrait)
 - Android disables auto-rotate while rotating through this command, since the angle would not
   otherwise hold.
 - **`settle: false`** skips this command's post-action wait for the screen to settle (the next step may see a moving screen). See [tap](./tap.md) for details.
+
+- **`fold` / `unfold` / `hinge` need a foldable device.**
+  - iOS: the iPhone Duo **simulator** (Xcode 27.2+), sent through the XCUITest bridge, so the engine must be `xcuitest` or `hybrid` (pure `inapp` cannot).
+  - Android: a foldable **Emulator** (an AVD with a hinge sensor, e.g. Pixel 9 Pro Fold).
+  - Physical devices are not supported (fold by hand); the step fails with that message.
+- **On a non-foldable device the scenario is recorded as skipped (not applicable), not failed**, from that step on (same treatment as `appSwitcher()` on a home-button iPhone). The reason reads: `fold / unfold / hinge need a foldable device (the iPhone Duo simulator or a foldable Android Emulator)`.
+- **The fold state is restored automatically at the end of the scenario** (like `rotateTo`'s orientation).
+- **A foldable Android device shows a lock screen ("swipe up to continue") over the app when it is folded.** `fold()` dismisses it so the app is on the outer screen before the next step (the same unlock fleetest does before each scenario; a PIN or pattern lock cannot be dismissed).
+- **`hinge` does not verify which screen shows.** On the iPhone Duo simulator the switch depends on the previous state (measured: opening switches between 120 and 150 degrees, closing between 20 and 10 degrees). On a foldable Android Emulator the posture follows angle ranges (Pixel 9 Pro Fold AVD: 0-30 closed, 30-150 half-opened, 150-180 opened). Use `fold()` / `unfold()` when the scenario needs a specific screen.
+- **iOS mechanism**: Apple provides no public API to fold the simulator, so fleetest sends the same undocumented hinge event as Xcode's DeviceHub. A future Xcode may stop accepting it; `fold` / `unfold` verify the switch, so they would then fail loudly, never pass silently.
 
 ### Link
 - [index](../../index.md)

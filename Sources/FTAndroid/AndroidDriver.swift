@@ -1074,6 +1074,42 @@ public final class AndroidDriver: AppDriver {
             + " display rotation: \(rotation)). The rotation fleetest set stays in effect, so the screen may still turn")
     }
 
+    /// Emulator のヒンジ角(`emu sensor set hinge-angle0`。折りたたみの AVD だけが持つセンサー)。
+    /// 0〜30° = 閉 / 30〜150° = 半開き / 150〜180° = 開(Pixel 9 Pro Fold の AVD の定義)
+    static func hingeArguments(degrees: Double) -> [String] {
+        let value = degrees == degrees.rounded() ? String(Int(degrees)) : String(format: "%.1f", degrees)
+        return ["emu", "sensor", "set", "hinge-angle0", value]
+    }
+
+    public func setHingeAngle(degrees: Double) async throws {
+        guard serial?.hasPrefix("emulator-") == true else {
+            throw DriverError.badResponse(status: 501, body: "folding a physical Android device is not supported"
+                + " (fold it by hand); it works on a foldable Android Emulator")
+        }
+        let result = try adbAnswering(Self.hingeArguments(degrees: degrees))
+        // emulator のコンソールは失敗を "KO: …" で返す(adb の終了コードは 0 のまま)
+        let answer = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard result.status == 0, !answer.hasPrefix("KO") else {
+            throw DriverError.badResponse(status: 422, body: "the emulator refused the hinge angle"
+                + (answer.isEmpty ? "" : ": \(answer)") + " (is this AVD foldable?)")
+        }
+    }
+
+    public func foldObservation() async -> FoldObservation? {
+        guard let output = try? adbAnswering(["shell", AdbPolicy.foldStateCommand]).outputIfSucceeded else {
+            return .unknown("adb did not answer the device_state query")
+        }
+        return FoldControl.observe(androidDeviceState: output)
+    }
+
+    /// 閉じた瞬間に出るロック画面(上にスワイプで続行)を外す。閉じた状態が読めた時点で既に出ている
+    /// (Pixel 9 Pro Fold の Emulator で 3/3。`fold_lock_behavior_setting` を変えても出た)。消灯・ロックの判定と解除は
+    /// シナリオの前と同じ `wakeIfAsleep`(ロックの信号は topResumedActivity の有無だけ)
+    public func continueAfterFold() async {
+        guard let serial else { return }
+        await AndroidPhysicalDevice.wakeIfAsleep(serial: serial)
+    }
+
     public func restoreOrientationIfNeeded() async throws {
         guard let original = originalRotationSettings else { return }
         originalRotationSettings = nil

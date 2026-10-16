@@ -127,6 +127,7 @@ final class BridgeRouter {
             case ("GET", "/screenshot"): response = handleScreenshot()
             case ("POST", "/appswitcher"): response = try handleAppSwitcher()
             case ("POST", "/home"): response = try handleHome()
+            case ("POST", "/hinge"): response = try handleHinge(request.body)
             case ("POST", "/terminate"): response = try handleTerminate()
             case ("POST", "/appstate"): response = try handleAppState(request.body)
             default:
@@ -1106,6 +1107,17 @@ final class BridgeRouter {
     /// **セッションがあるときは前面で生きていることを先に確かめる**(`requireForegroundAppForRotation`)——
     /// 判定はアプリの窓を読むので、落ちた・背面のアプリで読むとランナーごと消える
     /// (2026-09-19 負荷テスト: クラッシュ後の ft_rotate でブリッジが消え、以後 881 回「no running bridge」)
+    /// 折りたたみ機のヒンジ角を送る(セッション不要・端末の状態)。送れたことだけを返す ——
+    /// 画面が切り替わったかはホストの FoldControl が devicectl で確かめる(ランナーは表示中の画面を知らない)
+    private func handleHinge(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(HingeRequest.self, body)
+        guard HingeRequest.degreesRange.contains(req.degrees) else {
+            throw BridgeError(400, "degrees must be between 0 (folded) and 180 (unfolded), got \(req.degrees)")
+        }
+        try VirtualHID.sendHinge(degrees: req.degrees)
+        return .json(OKResponse())
+    }
+
     private func handleRotate(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(RotateRequest.self, body)
         if app != nil { _ = try requireForegroundAppForRotation() }
@@ -1410,7 +1422,7 @@ final class BridgeRouter {
         #endif
         let verifiable = app.map { $0.state == .runningForeground && sessionBundleID != "com.apple.springboard" } ?? false
         for attempt in 1...Self.homeAttempts {
-            sendHome(sb)
+            sendHome(sb, attempt: attempt)
             guard verifiable, let app else { break }
             let deadline = Date().addingTimeInterval(Self.homeSettleSeconds)
             var left = false
@@ -1430,12 +1442,15 @@ final class BridgeRouter {
         return .json(OKResponse())
     }
 
-    private func sendHome(_ sb: XCUIApplication) {
-        gestureQuiescence { sendHomeGesture(sb) }
+    private func sendHome(_ sb: XCUIApplication, attempt: Int = 1) {
+        gestureQuiescence { sendHomeGesture(sb, attempt: attempt) }
     }
 
-    private func sendHomeGesture(_ sb: XCUIApplication) {
+    private func sendHomeGesture(_ sb: XCUIApplication, attempt: Int = 1) {
         #if targetEnvironment(simulator)
+        // **1回目で前面のままだったときだけ**仮想 HID のホームボタンへ替える(iPhone Duo の Simulator は
+        // XCUIDevice.press(.home) が効かない。VirtualHID の冒頭)。効く機種の経路は変えない。押せなければ従来の口へ戻す
+        if attempt > 1, (try? VirtualHID.pressHomeButton()) != nil { return }
         XCUIDevice.shared.press(.home)
         #else
         // **速い短フリック**でないとアプリスイッチャーが開く(実測: 下端から画面の 1/4 強を

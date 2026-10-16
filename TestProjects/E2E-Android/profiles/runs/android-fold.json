@@ -1,0 +1,14 @@
+{
+  "app": "ft_e2e_android",
+  "devices": [
+    {
+      "platform": "android",
+      "machine": "local",
+      "name": "Pixel 9 Pro Fold(Android 16)",
+      "avd": "Pixel_9_Pro_Fold_Android_16_fleetest"
+    }
+  ],
+  "heal": true,
+  "iosInappEngine": false,
+  "wipeDataOnBloat": false
+}

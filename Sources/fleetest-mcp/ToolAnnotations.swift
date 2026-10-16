@@ -27,7 +27,7 @@ extension MCPServer {
         "ft_tap": .drivesDevice, "ft_double_tap": .drivesDevice, "ft_long_press": .drivesDevice,
         "ft_type": .drivesDevice, "ft_clear_input": .drivesDevice, "ft_swipe": .drivesDevice,
         "ft_drag": .drivesDevice, "ft_gesture": .drivesDevice, "ft_pinch": .drivesDevice,
-        "ft_rotate": .drivesDevice, "ft_hide_keyboard": .drivesDevice, "ft_navigate": .drivesDevice,
+        "ft_rotate": .drivesDevice, "ft_fold": .drivesDevice, "ft_hide_keyboard": .drivesDevice, "ft_navigate": .drivesDevice,
         "ft_scroll_to": .drivesDevice, "ft_launch": .drivesDevice, "ft_terminate": .drivesDevice,
         "ft_open_url": .drivesDevice, "ft_batch": .drivesDevice,
 

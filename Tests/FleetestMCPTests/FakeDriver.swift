@@ -293,6 +293,17 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         return orientation
     }
 
+    /// ft_fold 用。観測は台本を先頭から消費し、最後の1件は残し続ける(空なら notFoldable)
+    var scriptedFoldObservations: [FoldObservation] = []
+    func setHingeAngle(degrees: Double) async throws {
+        try record("setHingeAngle(\(degrees))", "setHingeAngle")
+    }
+    func foldObservation() async -> FoldObservation? {
+        guard let first = scriptedFoldObservations.first else { return .notFoldable }
+        if scriptedFoldObservations.count > 1 { scriptedFoldObservations.removeFirst() }
+        return first
+    }
+
     /// **既定実装(AppDriver extension)は no-op で記録しない**ので、上書きしないと
     /// 「portrait へ戻したときだけ呼ばれる」ことをテストできない
     func restoreOrientationIfNeeded() async throws {

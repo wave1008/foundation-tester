@@ -356,6 +356,17 @@ extension MCPServer {
             + "same connection", [
             "orientation": ["type": "string", "enum": ["portrait", "landscape"]],
         ], required: ["orientation"]),
+        tool("ft_fold", "Fold or unfold a foldable device and return the settled tree of the screen that "
+            + "is showing now (new coordinates; earlier refs no longer resolve). Give exactly one of state "
+            + "or degrees. state fold/unfold waits (waitSeconds) until the device reports it switched; "
+            + "degrees (0 = folded, 180 = unfolded) sets the hinge angle without checking which screen "
+            + "shows — in-between angles depend on the previous state. Needs a foldable device: the iPhone "
+            + "Duo simulator or a foldable Android Emulator (a physical iPhone cannot be folded by a tool)", [
+            "state": ["type": "string", "enum": ["fold", "unfold"]],
+            "degrees": ["type": "number", "description": "Hinge angle, 0 (folded) to 180 (unfolded)"],
+            "waitSeconds": ["type": "number",
+                            "description": "state only: max wait for the switch (default \(number(defaultWaitSeconds)))"],
+        ]),
         tool("ft_navigate", "Go back / to the home screen / to the app switcher", [
             "target": ["type": "string", "enum": ["back", "home", "appSwitcher"]],
         ], extra: afterActionProperties(), required: ["target"]),

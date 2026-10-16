@@ -151,14 +151,22 @@ final class TapTargetAdvisoryTests: XCTestCase {
     /// **ホームボタン機の判定**(`ft_navigate appSwitcher` がどのジェスチャを撃つかを決める)。
     /// 実測した実寸で固定する —— ホームボタン機で Face ID のジェスチャを撃つと
     /// **黙ってコントロールセンターが開いたまま ok を返す**(2026-08-28・iPhone SE3)
-    func testHomeButtonPhoneIsDecidedByTheMeasuredAspectRatios() {
-        // ホームボタン機(実測)
+    func testHomeButtonPhoneIsDecidedByTheClosedTableOfScreenSizes() {
+        // ホームボタン機(SE3 は実測)
         XCTAssertTrue(BridgeAPI.isHomeButtonPhoneScreen(width: 375, height: 667), "iPhone SE3")
         XCTAssertTrue(BridgeAPI.isHomeButtonPhoneScreen(width: 667, height: 375), "横向きでも同じ")
+        XCTAssertTrue(BridgeAPI.isHomeButtonPhoneScreen(width: 320, height: 568), "SE 第1世代・拡大表示の SE3")
+        XCTAssertTrue(BridgeAPI.isHomeButtonPhoneScreen(width: 414, height: 736), "8 Plus")
+        XCTAssertTrue(BridgeAPI.isHomeButtonPhoneScreen(width: 375.2, height: 666.8), "pt の端数は許す")
         // Face ID 機(実測)。従来どおりジェスチャを撃つ側
         XCTAssertFalse(BridgeAPI.isHomeButtonPhoneScreen(width: 393, height: 852), "iPhone 15 Pro")
         XCTAssertFalse(BridgeAPI.isHomeButtonPhoneScreen(width: 402, height: 874), "iPhone 17 Pro")
-        // **iPad は対象外**(短辺が上限以上)—— 縦横比だけで見ると 4:3 が誤ってホームボタン機になる
+        // **折りたたみの iPhone Duo の外側(実測 466x678 = 1.46)** —— ホームボタン無し(HomeButtonType=2)。
+        // 縦横比の閾値で見ると SE3(1.78)より小さいので誤ってホームボタン機になる
+        XCTAssertFalse(BridgeAPI.isHomeButtonPhoneScreen(width: 466, height: 678), "iPhone Duo(閉)")
+        XCTAssertFalse(BridgeAPI.isHomeButtonPhoneScreen(width: 669, height: 951), "iPhone Duo(開)")
+        XCTAssertFalse(BridgeAPI.isHomeButtonPhoneScreen(width: 375, height: 812), "iPhone 13 mini")
+        // **iPad は対象外** —— 縦横比だけで見ると 4:3 が誤ってホームボタン機になる
         XCTAssertFalse(BridgeAPI.isHomeButtonPhoneScreen(width: 820, height: 1180), "iPad")
         XCTAssertFalse(BridgeAPI.isHomeButtonPhoneScreen(width: 768, height: 1024), "旧 iPad")
         // 寸法が取れないときは従来動作へ倒す

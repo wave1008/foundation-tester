@@ -119,6 +119,9 @@ public enum AdbPolicy {
     static let instrumentPattern = #"^am instrument -w -e port 8123 -e ttl [0-9]+( -e owner '[^'\n]*')?( -e timing 1)? com\.example\.ftbridge/\.BridgeInstrumentation </dev/null >/data/local/tmp/ftbridge-instrument\.log 2>&1 &\z"#
     static let webViewSocketProbePattern = #"^pidof ([A-Za-z0-9_.]+); echo --ft-sockets--; cat /proc/net/unix \| grep devtools_remote\z"#
     static let debuggableProbePattern = #"^getprop ro\.debuggable; echo --ft-debuggable--; dumpsys package ([A-Za-z0-9_.]+) \| grep flags=\z"#
+    /// 開閉の状態の読み出し(FoldControl.observe(androidDeviceState:) が読む)
+    public static let foldStateCommand = "cmd device_state print-states; echo \(FoldControl.androidStateSeparator);"
+        + " cmd device_state print-state"
     static let logcatTimePattern = #"^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}\z"#
 
     /// 引数を持たない(または値が固定の)形
@@ -138,6 +141,7 @@ public enum AdbPolicy {
         ["shell", "settings", "get", "global", "verifier_verify_adb_installs"],
         ["shell", "settings", "delete", "global", "verifier_verify_adb_installs"],
         ["shell", screenCheckCommand], ["shell", bridgeCodePathCommand],
+        ["shell", foldStateCommand],
         ["forward", "tcp:0", "tcp:8123"], ["forward", "--list"],
         ["get-serialno"], ["get-state"],
     ]
@@ -189,6 +193,8 @@ public enum AdbPolicy {
             }
             if Array(c[0..<3]) == ["shell", "input", "keyevent"] { return keyEvents.contains(c[3]) }
         case 5:
+            // Emulator のヒンジ角(AndroidDriver.hingeArguments)
+            if Array(c[0..<4]) == ["emu", "sensor", "set", "hinge-angle0"] { return decimal(c[4]) }
             if Array(c[0..<4]) == ["shell", "pm", "list", "packages"] { return pkg(c[4]) || c[4] == "-3" || c[4] == "-s" }
             if Array(c[0..<4]) == ["shell", "settings", "get", "global"] { return animationKeys.contains(c[4]) }
         case 6:

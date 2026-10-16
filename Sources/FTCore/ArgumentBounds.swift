@@ -72,6 +72,8 @@ public enum ArgumentBounds {
         // ft_start_run の待機列で待つ上限(秒)。`fleetest run --wait-lock` へそのまま渡す
         "waitLockSeconds": Bound(min: 1),
         "repeat": Bound(min: 1),
+        // ft_fold のヒンジ角(度)。範囲は FoldControl が定義元
+        "degrees": Bound(min: FoldControl.degreesRange.lowerBound, max: FoldControl.degreesRange.upperBound),
         // ft_results の行数・最小標本数
         "limit": Bound(min: 1),
         "minRuns": Bound(min: 1),

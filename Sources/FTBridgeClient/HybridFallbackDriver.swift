@@ -188,6 +188,11 @@ public final class HybridFallbackDriver: AppDriver {
     }
     /// back は前面のままなので寄せ替えない
     public func back() async throws { try await withFallback { try await $0.back() } }
+    public func setHingeAngle(degrees: Double) async throws {
+        try await withFallback { try await $0.setHingeAngle(degrees: degrees) }
+    }
+    public func foldObservation() async -> FoldObservation? { await primary.foldObservation() }
+    public func continueAfterFold() async { await primary.continueAfterFold() }
     public func openAppSwitcher() async throws {
         try await withFallback { try await $0.openAppSwitcher() }
         appBackgrounded = true

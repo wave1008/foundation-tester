@@ -62,6 +62,7 @@ cwd(受け手パッケージ)とは別物です。
 | `ft_scroll_to` | セレクタが出るまでスクロールして、撮り直した要素一覧を返す。`scrollFrame:` には `scroll` 印の容器のセレクタのほか、**任意の要素の ref**(その frame を帯として使う。Compose のチップ列・カルーセル向け)も渡せる |
 | `ft_batch` | 複数の操作/スクロール手を1回の呼び出しにまとめ、1回の承認で実行する |
 | `ft_rotate` | デバイスを回転し、新しい向きの要素一覧を返す |
+| `ft_fold` | 折りたたみ端末を畳む/開く(状態 "fold" / "unfold"、またはヒンジ角) |
 | `ft_navigate` | 戻る / ホーム / タスク切替 |
 | `ft_hide_keyboard` | ソフトキーボードを閉じる(Android のみ。iOS は `ft_type` の `pressEnter`) |
 | `ft_open_url` | アプリを再起動せずディープリンクを配送する |

@@ -407,6 +407,10 @@ extension MCPServer {
             return "gesture takes a trailing closure of multi-finger, timed paths that does not fit a"
                 + " single DSL line — call ft_gesture directly instead."
         }
+        if ["fold", "unfold", "hinge"].contains(command) {
+            return "folding changes the device's screen and has no single-step translation — call ft_fold"
+                + " (state: fold|unfold, or degrees: 0-180) directly instead."
+        }
         if command.hasPrefix("with") {
             return "it wraps a block of other commands — ft_batch steps are flat; give the wrapped"
                 + " commands as their own steps instead."

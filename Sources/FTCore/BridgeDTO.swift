@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 182
+    public static let bridgeProtocolVersion = 185
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -53,16 +53,19 @@ public enum BridgeAPI {
     /// **黙って別の面が開いたまま ok を返す**(実機 iPhone SE 第3世代で実測。
     /// `ft_navigate appSwitcher` がコントロールセンターを開いていた)。
     ///
-    /// 実測値: iPhone SE3 = 375x667(1.78)/ iPhone 15 Pro = 393x852(2.17)/
-    /// iPhone 17 Pro = 402x874(2.17)。**2.0 で綺麗に割れる**。
-    /// **iPad は対象外**(短辺 500pt 以上で false)—— Face ID iPad は下端スワイプでスイッチャーが
+    /// **縦横比で判定しない** —— 折りたたみの iPhone Duo(外側 466x678 = 1.46)は Face ID 機と同じ
+    /// ホームボタン無し(`HomeButtonType=2`・Dynamic Island あり)なのに、比が SE3(1.78)より小さい。
+    /// ホームボタンの iPhone は製造が終わっているので**寸法の表は閉じている**: 320x480(4s)/
+    /// 320x568(5s・SE 第1世代・6〜8/SE2/SE3 の拡大表示)/ 375x667(6〜8・SE2/SE3・Plus の拡大表示)/
+    /// 414x736(6〜8 Plus)。Face ID 機に同じ寸法は無い(mini は 375x812・拡大表示でも 320x693)。
+    /// **iPad は対象外**(表に iPad の寸法が無い)—— Face ID iPad は下端スワイプでスイッチャーが
     /// 開くのでそのままでよく、ホームボタン iPad は未実測なので勝手に挙動を変えない。
     ///
     /// **XCUITest ランナーもこの定義を使う**(BridgeDTO.swift はランナーの入力集合に入っている)。
-    /// 2つ目の閾値を作らないこと
-    public static let homeButtonAspectThreshold = 2.0
-    /// iPhone とみなす短辺の上限(pt)。これ以上は iPad 扱いで挙動は変えない
-    public static let phoneShortSideLimit = 500.0
+    /// 2つ目の表を作らないこと
+    public static let homeButtonPhoneScreenSizes: [(short: Double, long: Double)] = [
+        (320, 480), (320, 568), (375, 667), (414, 736),
+    ]
 
     /// 横向き既定 swipe(XCUITest ランナーの `landscapeDefaultSwipe`)のマージン比。
     /// `Sources/FTCore/ScrollGeometry.swift` の `FTScrollDefaults` の `.search` と同じ値
@@ -169,11 +172,12 @@ public enum BridgeAPI {
     }
 
     public static func isHomeButtonPhoneScreen(width: Double, height: Double) -> Bool {
-        guard width > 0, height > 0 else { return false }
         let shortSide = min(width, height)
         let longSide = max(width, height)
-        guard shortSide < phoneShortSideLimit else { return false }
-        return longSide / shortSide < homeButtonAspectThreshold
+        // 枠は pt の浮動小数で来る(XCUITest の frame)ので 0.5pt まで許す
+        return homeButtonPhoneScreenSizes.contains {
+            abs($0.short - shortSide) < 0.5 && abs($0.long - longSide) < 0.5
+        }
     }
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
@@ -1180,6 +1184,15 @@ public enum FTOrientation: String, Codable, CaseIterable, Sendable {
 public struct RotateRequest: Codable {
     public var orientation: FTOrientation
     public init(orientation: FTOrientation) { self.orientation = orientation }
+}
+
+/// POST /hinge(XCUITest ランナー・**Simulator だけ**。実機は 501)。折りたたみの iPhone(Duo)のヒンジ角を送る。
+/// 応答は OKResponse = **送れたことだけ**(画面が切り替わったかはホストが `FoldControl` で確かめる)。
+/// 値域は `degreesRange`(0 = 閉 / 180 = 開。DeviceHub の Closed / Open。ランナーと FoldControl が共有する)
+public struct HingeRequest: Codable {
+    public static let degreesRange: ClosedRange<Double> = 0...180
+    public var degrees: Double
+    public init(degrees: Double) { self.degrees = degrees }
 }
 
 /// Response to POST /rotate. Only sent on success (settled within budget) — `orientation` always

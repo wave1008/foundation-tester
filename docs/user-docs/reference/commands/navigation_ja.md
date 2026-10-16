@@ -1,4 +1,4 @@
-# home, back, appSwitcher, tapAppIcon, rotateTo
+# home, back, appSwitcher, tapAppIcon, rotateTo, fold, unfold, hinge
 
 [in English](navigation.md)
 
@@ -13,6 +13,9 @@
 | `appSwitcher()` | アプリスイッチャーを開きます。ホームボタンの iPhone(iPhone SE など)ではスイッチャーがハードのダブルプレスで送れないため、失敗にせず、この step 以降を対象外(skipped)としてシナリオを記録します。 |
 | `tapAppIcon(name?)` | ホーム画面のアプリアイコンを探してタップします。`name` 省略時はアプリプロファイルの `appName` が使われます。 |
 | `rotateTo(.portrait, settle:)` / `rotateTo(.landscape, settle:)` | 画面をその向きへ回します。値はこの2つだけです。 |
+| `fold(waitSeconds:)` | 折りたたみ端末を外側の画面へ畳み、デバイスが切り替わったと報告するまで待ちます(上限 `waitSeconds`・省略時は実行の既定タイムアウト)。切り替わらなければ失敗します。 |
+| `unfold(waitSeconds:)` | 内側の(大きい)画面へ開きます。ルールは `fold` と同じです。 |
+| `hinge(_ degrees)` | ヒンジ角を 0(閉じる)〜180(全開)で設定します。約 130 が半開きのブック姿勢です。どちらの画面が出るかは確かめません。 |
 
 ## 例
 
@@ -25,6 +28,9 @@ tapAppIcon()             // アプリプロファイルの名前でアイコン�
 appSwitcher()
 rotateTo(.landscape)
 rotateTo(.portrait)
+fold()                  // 折りたたみ端末のみ
+unfold()
+hinge(130)              // 半開きのブック姿勢
 ```
 
 ## 注意点
@@ -52,6 +58,16 @@ rotateTo(.portrait)
   Android は前面のアプリがその向きを禁じていれば待たずに失敗し、理由にアプリの宣言を示します。
 - このコマンドで回すあいだ、Android は自動回転を切ります(切らないと角度が保持されません)。
 - **`settle: false`** を渡すと、このコマンドの操作後の「画面が落ち着くまでの待ち」を省きます(次のステップは動いている最中の画面を見ることがあります)。詳細は [tap](./tap_ja.md) 参照。
+
+- **`fold` / `unfold` / `hinge` は折りたたみ端末が必要です。**
+  - iOS: iPhone Duo の **Simulator**(Xcode 27.2 以降)。XCUITest ブリッジ経由で送るので、エンジンは `xcuitest` か `hybrid` にします(`inapp` 単独は不可)。
+  - Android: 折りたたみの **Emulator**(ヒンジセンサー付きの AVD。Pixel 9 Pro Fold など)。
+  - 物理端末は非対応です(手で畳んでください)。その旨の文言でステップが失敗します。
+- **折りたためないデバイスでは、失敗にせず、この step 以降を対象外(skipped)としてシナリオを記録します**(ホームボタンの iPhone での `appSwitcher()` と同じ扱い)。理由は `fold / unfold / hinge need a foldable device (the iPhone Duo simulator or a foldable Android Emulator)` です。
+- **折りたたみ状態はシナリオ終了時に自動で元へ戻ります**(`rotateTo` の向きと同じ)。
+- **Android の折りたたみ機は、閉じるとアプリの上にロック画面(「上にスワイプで続行」)が出ます。** `fold()` はそれを外してアプリを外側の画面に出してから次へ進みます(画面ロックの解除と同じ操作。PIN やパターンのロックは外せません)。
+- **`hinge` はどちらの画面が出るかを確かめません。** iPhone Duo の Simulator は切り替わりが直前の状態に依存します(実測: 開く方向は 120° と 150° の間、閉じる方向は 20° と 10° の間で切り替わる)。折りたたみ Android の Emulator は姿勢が角度の範囲で決まります(Pixel 9 Pro Fold の AVD: 0〜30 が閉じ・30〜150 が半開き・150〜180 が開き)。特定の画面が要るシナリオは `fold()` / `unfold()` を使ってください。
+- **iOS の仕組み**: Simulator を畳む公開 API は Apple にありません。fleetest は Xcode の DeviceHub と同じ非公開のヒンジイベントを送ります。将来の Xcode が受け付けなくなる可能性がありますが、`fold` / `unfold` は切り替わりを確かめるので、その場合は黙って通らず失敗として表に出ます。
 
 ### Link
 - [index](../../index_ja.md)

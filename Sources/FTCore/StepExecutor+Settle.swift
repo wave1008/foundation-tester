@@ -597,3 +597,12 @@ extension StepExecutor {
         }
     }
 }
+
+extension StepExecutor {
+    /// 端末の状態を変えた後(開閉)に木が静まるのを待つ(rotateTo と同じ待ち = 2回続けて同じ署名)。
+    /// 画面の大きさごと変わるので、直後の操作が変わる前の座標を撃たないように払う
+    public func settleAfterDeviceChange() async {
+        var phase = PhaseAccumulator()
+        _ = try? await settledSignature(phase: &phase)
+    }
+}

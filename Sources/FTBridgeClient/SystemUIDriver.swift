@@ -175,6 +175,9 @@ public final class SystemUIDriver: AppDriver {
         try await client.rotate(to: orientation)
     }
     public func restoreOrientationIfNeeded() async throws { try await client.restoreOrientationIfNeeded() }
+    public func setHingeAngle(degrees: Double) async throws { try await client.setHingeAngle(degrees: degrees) }
+    public func foldObservation() async -> FoldObservation? { await client.foldObservation() }
+    public func continueAfterFold() async { await client.continueAfterFold() }
     public func pinch(frame: FTRect?, identifier: String?, scale: Double,
                       durationSeconds: Double) async throws {
         try await client.pinch(frame: frame, identifier: identifier, scale: scale,
