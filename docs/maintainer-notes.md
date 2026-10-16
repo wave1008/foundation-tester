@@ -4675,7 +4675,7 @@ hosts にゲートウェイの IP(`fleetest-gateway`)を載せて逆引きを DN
   ANE枯渇の根治・実推論の回復率の検証とは別の、常駐プロセスの更新制御である
 - 検証: 対象Swift135件が成功。安全条件の変異25種を検出し、ビルド中断時のSIGTERMと後始末も実プロセスで確認した。
   コピーした実バイナリと専用ソケットで未起動・再利用・旧wire3の拒否・未来wire5の保護を確認し、旧wire3の拒否がビルド開始より前であることも確認した。
-  ログは`reports/fm-align-20261017/`(git管理外)。実リモートalignとANE枯渇負荷での評価は行っていない
+  ログは`reports/fm-align-20261017/`(git管理外)。初期検証では実リモートalignとANE枯渇負荷での評価は行っていない
 - レビュー修正後は指定14クラス136件(ビルド中断の後始末を含む)と、期限切れ・overdueの関連9件が成功。
   checkout先行・通常退役の1回打切り・解放待ちの予算共有・退役拒否のfailed化の4変異を隔離worktreeで検出した。
   実Git/shで退役拒否時のHEAD・ソース・旧バイナリの保持、実ソケットで受付拒否がunavailableとなることを確認。
@@ -4691,6 +4691,14 @@ hosts にゲートウェイの IP(`fleetest-gateway`)を載せて逆引きを DN
   busyの待ち予算は整数秒で表示し、CLIの表示をロケールに依存させない。
   関連5クラス55件が成功し、解放を1回だけ確認する実装へ戻す変異を遅延解放テストで検出した。
   追加ログは`reports/fm-align-20261017/review3-*`
+- 実地検証(2026-10-17、コード`a711fd7a`): M1Maxで実`remote align`のSCP・helper実行・fetchを通し、
+  旧wire3ではcheckout前に拒否、HEAD保持・旧常駐生存・helper回収を確認した。ユーザーが旧呼び手・常駐を手動で引き継いだ後、
+  未起動時のalignと、稼働中wire4の安全退役→予約→ビルド→再起動がともに成功。PIDは88891→90629、版・実行パス・buildStampの一致とhelper残存0を確認。
+  M1MaxのiOS 27.0 Simulator(`ios-m1max`、in-app)で`条件分岐とダイアログ操作が正しく働くこと.S0010`
+  (clearAppDataから開始)と`OCRで読める薄いテキスト.S0010`が成功。`ocrTextVisibilityCheck=false`を明示し、
+  後者の結果JSONはFM転写1回・失敗0・skip0・retry0、3,659ms。run IDは`20261016-184017Z-bf477990` / `20261016-184233Z-05f8edf2`。
+  前後の`doctor --fm-only`でtext / visionの実応答も成功し、引継ぎ用`fm-probe.off`を解除した。
+  ログと身元の前後記録は同ディレクトリの`remote-m1max-*`。2008の追加試行は発動しておらず、ANE枯渇負荷での回復率は引き続き未測定
 
 ### 83.5 記録だけの観察(直していない)
 - `api results --project E2E-CMP` のキャッシュ外れ(新しい run が入るたび)が 35 秒・RSS 1.6GB(結果 6.8 万件・90 日窓)
