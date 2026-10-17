@@ -12,6 +12,7 @@ final class AndroidScreenVideoRecorderTests: XCTestCase {
     func testStartConfirmConstantsArePinned() {
         XCTAssertEqual(AndroidScreenVideoRecorder.startConfirmSeconds, 10)
         XCTAssertEqual(AndroidScreenVideoRecorder.startConfirmPollSeconds, 0.2)
+        XCTAssertEqual(AndroidScreenVideoRecorder.adbAnswerSeconds, 10)
     }
 
     func testKillCommandSelectsByOwnOutputPrefix() {

@@ -45,6 +45,12 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
     private var startConfirmed = false
     /// 確かめの刻み(秒)。1回は adb shell stat 1本(数十 ms)。実測で撮り始めは起動から約 0.2〜0.3 秒
     static let startConfirmPollSeconds: Double = 0.2
+    /// 単発の adb(kill・rm・find・wm size)の期限と、pull が進まなくなってから諦めるまでの秒数。1回は数十 ms で返る。
+    /// 値は FTAndroid の単発の adb の締切(`AndroidDeviceCatalog.adbTimeoutSeconds`。FTCore からは参照できない)と同じ。
+    /// 尽きたら子を止めてその呼び出しを失敗として扱う(応答しない adbd に録画の開始・切り替え・停止を握らせない)
+    static let adbAnswerSeconds: Double = 10
+    /// 上の期限(テストは短くする。本番は adbAnswerSeconds)
+    private let adbAnswerLimit: Double
     /// pull 済みローカルセグメント(連結順)と各々の spawn 時刻(index.json の startedAt に使う)
     private var pulledSegments: [(url: URL, startedAt: Date, closedAt: Date)] = []
     private var currentProcess: Process?
@@ -57,8 +63,10 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
 
     init(serial: String, adbPath: String, workDir: URL, fileStem: String,
         bitrateKbps: Int = VideoRecordingConfig.defaultBitrateKbps, fullResolution: Bool = false,
-        startConfirmLimit: Double = AndroidScreenVideoRecorder.startConfirmSeconds) {
+        startConfirmLimit: Double = AndroidScreenVideoRecorder.startConfirmSeconds,
+        adbAnswerLimit: Double = AndroidScreenVideoRecorder.adbAnswerSeconds) {
         self.startConfirmLimit = startConfirmLimit
+        self.adbAnswerLimit = adbAnswerLimit
         self.serial = serial
         self.adbPath = adbPath
         self.workDir = workDir
@@ -117,7 +125,8 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
             // ホスト側 adb クライアントを kill してもデバイス上の screenrecord は止まらず
             // ファイルが壊れる。デバイス側プロセスへ直接 kill -2 を送る
             _ = try? Shell.run([adbPath, "-s", serial, "shell",
-                                Self.killOwnScreenrecordCommand(outputPathPrefix: Self.ownOutputPrefix(fileStem: fileStem))])
+                                Self.killOwnScreenrecordCommand(outputPathPrefix: Self.ownOutputPrefix(fileStem: fileStem))],
+                               timeout: adbAnswerLimit)
             if let watchTask {
                 _ = await raceWithDeadline(seconds: 20, onTimeout: ()) { await watchTask.value }
             }
@@ -233,7 +242,7 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
         if pullSegment(remotePath: remotePath, to: localURL) {
             pulledSegments.append((localURL, startedAt, exitedAt))
         }
-        _ = try? Shell.run([adbPath, "-s", serial, "shell", "rm", "-f", remotePath])
+        _ = try? Shell.run([adbPath, "-s", serial, "shell", "rm", "-f", remotePath], timeout: adbAnswerLimit)
         currentProcess = nil
         startConfirmed = false
         if unconfirmedPath == remotePath {
@@ -260,12 +269,39 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
         }
     }
 
+    /// **期限は置かず、進みで見る** —— 所要は大きさ(最大約 34MB)と経路(Emulator 約 150MB/s・USB の実機はそれより遅い)で決まり、
+    /// 根拠のある上限が無い。pull は手元のファイルへ逐次書く(実測で 50ms ごとに伸びる)ので、大きさが `adbAnswerLimit` 秒
+    /// 変わらなければ止めて失敗とする。**同期のまま待つ**(await にすると actor が空き、stop() の 20 秒の待ちが進んでいる pull の
+    /// 途中で切れて最後のセグメントを落とす)
     private func pullSegment(remotePath: String, to localURL: URL) -> Bool {
-        guard let result = try? Shell.run([adbPath, "-s", serial, "pull", remotePath, localURL.path]),
-              result.status == 0, FileManager.default.fileExists(atPath: localURL.path) else {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: adbPath)
+        process.arguments = ["-s", serial, "pull", remotePath, localURL.path]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        let waitExit = ProcessExitWait.prepareTimed(process)
+        do { try process.run() } catch { return false }
+        var lastSize: Int64 = -1
+        var lastProgress = Date()
+        while waitExit(.now() + Self.startConfirmPollSeconds) == .timedOut {
+            let size = ((try? FileManager.default.attributesOfItem(atPath: localURL.path))?[.size] as? NSNumber)?.int64Value ?? -1
+            if size != lastSize {
+                lastSize = size
+                lastProgress = Date()
+                continue
+            }
+            guard Date().timeIntervalSince(lastProgress) >= adbAnswerLimit else { continue }
+            warn("adb pull made no progress for \(Int(adbAnswerLimit))s — giving up on \(remotePath)")
+            process.terminate()
+            if waitExit(.now() + Shell.killGraceSeconds) == .timedOut {
+                kill(process.processIdentifier, SIGKILL)
+                _ = waitExit(.distantFuture)
+            }
+            try? FileManager.default.removeItem(at: localURL)
             return false
         }
-        return true
+        return process.terminationReason == .exit && process.terminationStatus == 0
+            && FileManager.default.fileExists(atPath: localURL.path)
     }
 
     /// 起動前に stale な screenrecord(前の run が残した ftrec-* のもの)を best-effort で止め、
@@ -273,8 +309,9 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
     /// ホストが途中で死んだ run(SIGKILL・クラッシュ・adb 切断)のセグメント(最大約 34MB)が溜まり続けた
     private func killStaleScreenrecord() {
         _ = try? Shell.run([adbPath, "-s", serial, "shell",
-                            Self.killOwnScreenrecordCommand(outputPathPrefix: Self.remoteOutputPrefix)])
-        _ = try? Shell.run([adbPath, "-s", serial, "shell", Self.staleSegmentCleanupCommand])
+                            Self.killOwnScreenrecordCommand(outputPathPrefix: Self.remoteOutputPrefix)],
+                           timeout: adbAnswerLimit)
+        _ = try? Shell.run([adbPath, "-s", serial, "shell", Self.staleSegmentCleanupCommand], timeout: adbAnswerLimit)
     }
 
     /// 置き去りのセグメントを消すデバイス側シェル。**更新が止まって `staleSegmentMinutes` 分より古いものだけ** ——
@@ -311,7 +348,7 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
 
     /// adb shell wm size の "Physical size: WxH" を半分(偶数丸め)にする。取得失敗時は nil(--size 省略)
     private func halvedPhysicalSize() -> String? {
-        guard let result = try? Shell.run([adbPath, "-s", serial, "shell", "wm", "size"]),
+        guard let result = try? Shell.run([adbPath, "-s", serial, "shell", "wm", "size"], timeout: adbAnswerLimit),
               result.status == 0 else { return nil }
         guard let line = result.output.split(separator: "\n").first(where: { $0.contains("Physical size:") }),
               let sizePart = line.split(separator: ":").last else { return nil }

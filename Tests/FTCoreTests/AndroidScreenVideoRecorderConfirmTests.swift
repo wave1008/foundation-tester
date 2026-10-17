@@ -25,17 +25,20 @@ final class AndroidScreenVideoRecorderConfirmTests: XCTestCase {
             if [ $n = 2 ]; then sleep 0.05; exit 0; fi
           fi
           if [ "$mode" = rollover ] && [ $n = 1 ]; then sleep 1; exit 0; fi
+          if { [ "$mode" = pullstall ] || [ "$mode" = pullslow ]; } && [ $n = 1 ]; then sleep 0.3; exit 0; fi
           exec sleep 60
         elif [ "$3" = shell ] && [ "$4" = stat ]; then
           remote="${!#}"; n="${remote##*-}"; n="${n%.mp4}"
           case "$mode" in
             hang) exec sleep 5 ;;
+            shellhang|pullstall|pullslow) echo 100 ;;
             rollover) if [ "$n" = 1 ]; then echo 100; else echo 0; fi ;;
             generation)
               [ "$n" = 3 ] && touch "$D/stat3"
               if [ "$n" = 1 ] || { [ "$n" = 3 ] && [ -f "$D/ready3" ]; }; then echo 100; else echo 0; fi ;;
           esac
         elif [ "$3" = shell ]; then
+          [ "$mode" = shellhang ] && [ -f "$D/hang" ] && exec sleep 30
           case "$4" in
             *pidof*)
               if [ "$mode" = generation ]; then
@@ -48,6 +51,11 @@ final class AndroidScreenVideoRecorderConfirmTests: XCTestCase {
               fi ;;
           esac
         elif [ "$3" = pull ]; then
+          n="${4##*-}"; n="${n%.mp4}"
+          if [ "$mode" = pullstall ] && [ "$n" = 1 ]; then printf x > "$5"; exec sleep 30; fi
+          if [ "$mode" = pullslow ] && [ "$n" = 1 ]; then
+            : > "$5"; for i in $(seq 1 16); do printf x >> "$5"; sleep 0.1; done; exit 0
+          fi
           touch "$5"
         fi
         exit 0
@@ -117,6 +125,48 @@ final class AndroidScreenVideoRecorderConfirmTests: XCTestCase {
         _ = await recorder.stop()
         _ = await checking.value
         XCTAssertEqual(result, true, "第3世代の確認成功で戻り、その録画の終了までは待たない")
+    }
+
+    /// 起動前の掃除(kill・find)と wm size の adb が応答しなくても、録画の開始は期限で戻るはず
+    func testStartIsBoundedEvenIfShellCommandsHang() async throws {
+        let (dir, adb) = try fakeADB(mode: "shellhang")
+        try Data().write(to: dir.appendingPathComponent("hang"))
+        let recorder = AndroidScreenVideoRecorder(serial: "fake", adbPath: adb, workDir: dir, fileStem: "src",
+                                                  adbAnswerLimit: 0.5)
+        let started = Date()
+        let ok = await recorder.start()
+        let elapsed = Date().timeIntervalSince(started)
+        try FileManager.default.removeItem(at: dir.appendingPathComponent("hang"))
+        _ = await recorder.stop()
+        XCTAssertTrue(ok, "掃除と wm size が答えなくても録画は始まるはず")
+        XCTAssertLessThan(elapsed, 6, "応答しない adb 3 本は各 0.5 秒 + 後始末で切れるはず(\(elapsed)s)")
+    }
+
+    /// pull が進まなくなったら諦めて次のセグメントへ進むはず(書きかけは残さない)
+    func testStalledPullIsAbandonedAndRecordingContinues() async throws {
+        let (dir, adb) = try fakeADB(mode: "pullstall")
+        let recorder = AndroidScreenVideoRecorder(serial: "fake", adbPath: adb, workDir: dir, fileStem: "src",
+                                                  fullResolution: true, adbAnswerLimit: 0.5)
+        addTeardownBlock { _ = await recorder.stop() }
+        let started = await recorder.start()
+        XCTAssertTrue(started)
+        try await waitForFile(dir.appendingPathComponent("pid-2"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("src-part1.mp4").path),
+                       "諦めた pull の書きかけは消すはず")
+    }
+
+    /// 遅くても大きさが伸び続ける pull は、期限の秒数を超えても止めないはず(大きいセグメント・遅い USB)
+    func testSlowButProgressingPullIsKept() async throws {
+        let (dir, adb) = try fakeADB(mode: "pullslow")
+        let recorder = AndroidScreenVideoRecorder(serial: "fake", adbPath: adb, workDir: dir, fileStem: "src",
+                                                  fullResolution: true, adbAnswerLimit: 0.5)
+        addTeardownBlock { _ = await recorder.stop() }
+        let started = await recorder.start()
+        XCTAssertTrue(started)
+        try await waitForFile(dir.appendingPathComponent("pid-2"))
+        let part = dir.appendingPathComponent("src-part1.mp4")
+        let size = (try? FileManager.default.attributesOfItem(atPath: part.path))?[.size] as? Int
+        XCTAssertEqual(size, 16, "1.6 秒かけて書き切った pull を途中で止めないはず")
     }
 
     func testConfirmationWaitEndsWhenItsSegmentDies() async throws {
