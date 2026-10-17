@@ -9,6 +9,11 @@ final class AndroidScreenVideoRecorderTests: XCTestCase {
 
     private static let blanketKill = "$(pidof screenrecord)"
 
+    func testStartConfirmConstantsArePinned() {
+        XCTAssertEqual(AndroidScreenVideoRecorder.startConfirmSeconds, 10)
+        XCTAssertEqual(AndroidScreenVideoRecorder.startConfirmPollSeconds, 0.2)
+    }
+
     func testKillCommandSelectsByOwnOutputPrefix() {
         let prefix = AndroidScreenVideoRecorder.ownOutputPrefix(fileStem: "src-abc")
         let command = AndroidScreenVideoRecorder.killOwnScreenrecordCommand(outputPathPrefix: prefix)

@@ -5,6 +5,16 @@ import XCTest
 @testable import FTCore
 
 final class VideoEncoderLivenessTests: XCTestCase {
+    func testConstantsArePinned() {
+        XCTAssertEqual(VideoEncoderLiveness.probeIntervalSeconds, 60)
+        XCTAssertEqual(VideoEncoderLiveness.freshSeconds, 120)
+        XCTAssertEqual(VideoEncoderLiveness.errorLimit, 200)
+        XCTAssertEqual(HardwareEncoderProbe.size, 256)
+        XCTAssertEqual(HardwareEncoderProbe.frames, 3)
+        XCTAssertEqual(HardwareEncoderProbe.deadlineSeconds, 10)
+        XCTAssertEqual(VideoEncoderHistory.maxBytes, 5_242_880)
+    }
+
     private func tempLedger() throws -> URL {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("fleetest-encoder-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

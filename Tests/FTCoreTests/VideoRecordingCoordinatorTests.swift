@@ -615,6 +615,11 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         XCTAssertEqual(VideoRecordingCoordinator.minHardwareSpeedWhileStreaming, 8)
     }
 
+    func testHardwareDeadlineConstantsArePinned() {
+        XCTAssertEqual(VideoRecordingCoordinator.hardwareDeadlineFloorSeconds, 10)
+        XCTAssertEqual(VideoRecordingCoordinator.hardwareMinSpeedRatio, 4)
+    }
+
     /// ハードウェアが固まったクリップの書きかけ(元の名前)は run の終わりに消すはず
     func testHungHardwareLeavesNoPartialFile() async throws {
         let tmp = try makeTempDir()
