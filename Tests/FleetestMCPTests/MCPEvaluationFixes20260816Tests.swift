@@ -103,7 +103,7 @@ final class MCPSheetRescueMarkerTests: XCTestCase {
     /// **1つの文字列で「起きたか」と「いくらかかったか」の両方が拾える**こと。
     /// 別々の語にすると、呼び出し元は救済の検出と所要時間の検出に2つのパターンを持つことになる
     func testTheMarkerIsTheSameWordAsTheTimingBreakdown() {
-        let timing = MCPServer.scrollTimingNote(totalMs: 3000, swipes: 2, rescueMs: 1400, timing: nil)
+        let timing = MCPServer.scrollTimingNote(totalMs: 3000, swipes: 2, slowDrags: nil, rescueMs: 1400, timing: nil)
         XCTAssertTrue(timing.contains("sheet-expand rescue"), timing)
         XCTAssertTrue(MCPServer.sheetRescueMarker.contains("sheet-expand rescue"),
                       MCPServer.sheetRescueMarker)

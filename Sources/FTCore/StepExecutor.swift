@@ -182,6 +182,10 @@ public struct StepOutcome: Sendable {
     /// スクロール探索で実際に撃ったスワイプ数(runScrollSearch を経由したときだけ非nil。
     /// scrollSwipesThisStep と同じ受け渡し形)。MCP の ft_scroll_to が所要時間の内訳に使う
     public let scrollSwipes: Int?
+    /// このステップで撃った `slowDrag`(フリングを出さない回復用のドラッグ。逆走査・見切れ回復)の本数。
+    /// scrollSwipes に数えないので、所要の内訳を分けて言うために運ぶ(1本 最大3秒。実機 Android は
+    /// adb input swipe になり1本 約3.5秒 = 2 スワイプの探索が 25 秒かかった時間をスワイプに帰属させていた)
+    public let slowDrags: Int?
     /// 失敗したときの素性(`StepFailureKind`)。**言えない失敗では nil のまま**。
     /// notes と同じ累積器方式(`failureKindThisStep`)で内側から立て、`execute` の出口で載せる
     public let failureKind: StepFailureKind?
@@ -201,7 +205,7 @@ public struct StepOutcome: Sendable {
                notes: [StepNote] = [], guardEntered: Bool = false,
                observedChecked: Bool? = nil, resolvedElement: ElementInfo? = nil,
                notVisibleSelection: ElementInfo? = nil,
-               scrollSwipes: Int? = nil, failureKind: StepFailureKind? = nil,
+               scrollSwipes: Int? = nil, slowDrags: Int? = nil, failureKind: StepFailureKind? = nil,
                evidenceImage: Data? = nil,
                imageMatches: [FindImage.Match]? = nil,
                ambiguousMatchCount: Int? = nil,
@@ -215,6 +219,7 @@ public struct StepOutcome: Sendable {
         self.resolvedElement = resolvedElement
         self.notVisibleSelection = notVisibleSelection
         self.scrollSwipes = scrollSwipes
+        self.slowDrags = slowDrags
         self.status = status
         self.healedStep = healedStep
         self.healedByFingerprint = healedByFingerprint
@@ -702,6 +707,7 @@ public final class StepExecutor {
         resolvedElementThisStep = nil
         notVisibleSelectionThisStep = nil
         scrollSwipesThisStep = nil
+        slowDragsThisStep = nil
         noteCodesThisStep = []
         firstFrameBlankObserved = false
         failureKindThisStep = nil
@@ -736,7 +742,7 @@ public final class StepExecutor {
                                        ? resolvedElementThisStep : nil,
                                    notVisibleSelection: Self.isSuccess(outcome.status)
                                        ? notVisibleSelectionThisStep : nil,
-                                   scrollSwipes: scrollSwipesThisStep,
+                                   scrollSwipes: scrollSwipesThisStep, slowDrags: slowDragsThisStep,
                                    failureKind: failureKind(for: outcome.status),
                                    evidenceImage: Self.isSuccess(status) ? nil : classifierScreenshotThisStep,
                                    imageMatches: Self.isSuccess(outcome.status) ? imageMatchesThisStep : nil,
@@ -761,7 +767,7 @@ public final class StepExecutor {
                                    guardEntered: guardEnteredThisStep,
                                    observedChecked: observedCheckedThisStep,
                                    resolvedElement: resolvedElementThisStep,
-                                   scrollSwipes: scrollSwipesThisStep,
+                                   scrollSwipes: scrollSwipesThisStep, slowDrags: slowDragsThisStep,
                                    failureKind: failureKind(for: status),
                                    evidenceImage: Self.isSuccess(status) ? nil : classifierScreenshotThisStep)
             }
@@ -778,7 +784,7 @@ public final class StepExecutor {
                                // stale/skipped を立てた後に例外が出ると、分子だけ数えて
                                // 分母が落ちる(guardStaleFrame > guarded が起こりうる)
                                guardEntered: guardEnteredThisStep,
-                               scrollSwipes: scrollSwipesThisStep,
+                               scrollSwipes: scrollSwipesThisStep, slowDrags: slowDragsThisStep,
                                // 投げられたエラーは**型で**仕分ける(文言一致で数えない)。
                                // 分からない型は nil のまま = 推測しない
                                failureKind: Self.failureKind(thrown: error)
@@ -896,6 +902,8 @@ public final class StepExecutor {
     /// recordedScrollSearchNote(StepExecutor+ScrollSearch.swift)が書く。
     /// resolvedElementThisStep と同じ受け渡し形
     var scrollSwipesThisStep: Int?
+    /// このステップで撃った slowDrag の本数(execute が StepOutcome.slowDrags に載せる)。slowDrag が書く
+    var slowDragsThisStep: Int?
     /// このステップで立った機械可読な注記(execute が StepOutcome.notes に載せる)。
     /// アクション/検証のどの return 経路から立てても拾えるようインスタンスで持つ
     /// (scrollSearchNote / observedCheckedThisStep と同じ受け渡し形)。

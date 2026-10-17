@@ -60,6 +60,25 @@ final class ForeignLeaseAutoRestartGateTests: XCTestCase {
         }
     }
 
+    /// 引き取り(.adopt)で答えないランナーを止める2分岐。操作の処理中で /status に答えないだけの他のセッションの
+    /// ランナーを止めていた(拡張の bridge-watch → start-device がライブ操作の back の最中に止めた)
+    func testAdoptChecksBeforeStoppingAnUnresponsiveRunner() throws {
+        try assertGate("RunnerAccessibilityHealth.hasForeignLeaseUnlessOwnRun(key: sim.udid, stateDir: fleetestStateDir)",
+                       precedes: ["log(message)", "try await stopAndRelaunch()"],
+                       inFunction: "stopUnresponsiveAndRelaunch", file: "Sources/FTBridgeClient/BridgeProvisioner.swift")
+        let text = compact(try source("Sources/FTBridgeClient/BridgeProvisioner.swift"))
+        for message in ["withoutansweringorlogging", "isnotresponding—stoppingandrestartingit"] {
+            guard let at = text.range(of: message) else {
+                return XCTFail("無応答の分岐の文言(\(message))が見当たらない — テストを見直すこと")
+            }
+            let windowStart: String.Index = text.index(at.lowerBound, offsetBy: -400, limitedBy: text.startIndex)
+                ?? text.startIndex
+            let before = String(text[windowStart..<at.lowerBound])
+            XCTAssertTrue(before.contains("stopUnresponsiveAndRelaunch(announcing:"),
+                          "無応答の分岐(\(message))が門を通らずに止めている")
+        }
+    }
+
     /// run 自身のレーンと MCP の測り直しが共有する起動し直し(run は引き取ったデバイスでも起動し直す版)
     func testRecheckRunnerChecksBeforeRestarting() throws {
         try assertGate("RunnerAccessibilityHealth.hasForeignLeaseUnlessOwnRun(key: udid, stateDir: fleetestStateDir)",

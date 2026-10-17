@@ -461,6 +461,7 @@ extension StepExecutor {
             // **driver.drag を直に呼ばない**(in-app は 501。StepExecutor+Settle の dragWithFallback)
             try await dragWithFallback(fromX: g.fromX, fromY: g.fromY, toX: g.toX, toY: g.toY,
                                        pressSeconds: 0.15, durationSeconds: duration)
+            slowDragsThisStep = (slowDragsThisStep ?? 0) + 1
             return true
         } catch {
             return false

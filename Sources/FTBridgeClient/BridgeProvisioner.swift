@@ -53,6 +53,9 @@ public enum BridgeProvisionerError: Error, LocalizedError {
     /// 別の実在するワークスペースの、再利用できないブリッジがこのデバイスに居る(EnginePlan.blockedByForeign)。
     /// 止めると相手の run を壊すので止めない
     case foreignBridgeInTheWay(name: String, port: UInt16, owner: String, reason: String)
+    /// 引き取ろうとしたランナーが答えないが、そのデバイスを他のセッション(run・MCP・ライブ操作)が使っている。
+    /// 操作の処理中で /status に答えないだけのことがあり、止めるとそのセッションの操作ごと落ちる(B5)
+    case unresponsiveBridgeHeldByAnotherSession(name: String, port: UInt16)
 
     public var errorDescription: String? {
         switch self {
@@ -92,6 +95,9 @@ public enum BridgeProvisionerError: Error, LocalizedError {
             return "\(name): the \(reason) on port \(port) belongs to another workspace (\(owner))"
                 + " — not stopping it, because that would break the other workspace's runs."
                 + " Stop it from there (`fleetest bridge down --port \(port)` in that workspace) and run again"
+        case .unresponsiveBridgeHeldByAnotherSession(let name, let port):
+            return RunnerAccessibilityHealth.deviceHeldByAnotherSessionMessage(
+                device: name, what: "restarting the bridge on port \(port), which is not answering right now")
         }
     }
 }
@@ -1336,6 +1342,17 @@ public struct BridgeProvisioner: Sendable {
             // ランナー(09-06 台帳 §3.1「XCUITest の座標ジェスチャが背面でランナーを殺す」)を
             // ここでは区別できない。judge/ログの文言は両方に当てはまる言い方にすること
             // (「起動中」「起動した側は諦めた」と断定しない)
+            // **答えない理由は「死んだ」と「他のセッションの操作を処理中」を区別できない**(XCUITest のランナーは
+            // 操作の最中 /status に答えない。実測: ライブ操作の back が 46 秒かかる間に拡張の bridge-watch が
+            // start-device を積み、ここで止めた)。他のセッションが持つデバイスは止めずに断る(.reuse の3分岐と同じ門。
+            // 回復はそのセッション自身の自動回復が持つ)。run が自分のレーンを供給するときは止めてよい
+            func stopUnresponsiveAndRelaunch(announcing message: String) async throws -> UInt16 {
+                if RunnerAccessibilityHealth.hasForeignLeaseUnlessOwnRun(key: sim.udid, stateDir: fleetestStateDir) {
+                    throw BridgeProvisionerError.unresponsiveBridgeHeldByAnotherSession(name: name, port: port)
+                }
+                log(message)
+                return try await stopAndRelaunch()
+            }
             func stopAndRelaunch() async throws -> UInt16 {
                 try? await launcher.stopAndWait()
                 return try await executeBridge(
@@ -1384,10 +1401,10 @@ public struct BridgeProvisioner: Sendable {
                StartingRunnerVerdict.decide(elapsed: elapsed, quietFor: launcher.logQuietFor(),
                                             simulatorBooted: simulatorBooted,
                                             budget: BridgeLauncher.startupTimeoutSeconds) == .restart {
-                log("⚠️ \(name): the bridge on port \(port) has been alive for \(Int(elapsed!))s"
+                return try await stopUnresponsiveAndRelaunch(announcing:
+                    "⚠️ \(name): the bridge on port \(port) has been alive for \(Int(elapsed!))s"
                     + " without answering or logging (past the \(Int(BridgeLauncher.startupTimeoutSeconds))s"
                     + " allowed for it to become ready) — stopping and restarting it")
-                return try await stopAndRelaunch()
             }
             let status: StatusResponse
             do {
@@ -1402,8 +1419,8 @@ public struct BridgeProvisioner: Sendable {
             } catch {
                 // 親を失ったゾンビ(再起動・kill で announce しないまま残ったランナー)。
                 // 放置すると同じデバイスで何度でも待たされるので、止めてから同じポートで立て直す
-                log("⚠️ \(name): the starting bridge (port \(port)) is not responding — stopping and restarting it")
-                return try await stopAndRelaunch()
+                return try await stopUnresponsiveAndRelaunch(announcing:
+                    "⚠️ \(name): the starting bridge (port \(port)) is not responding — stopping and restarting it")
             }
             // **引き取ったランナーの版は応答してから確かめる**(起動途中は /status に答えないので、
             // 再利用の判定=版一致を通らずにここへ来る)。旧ビルドのまま起動途中だったランナーを使うと、

@@ -298,6 +298,9 @@ final class MCPRunJobsTests: XCTestCase {
         XCTAssertTrue(busy.contains("Start it again with waitLockSeconds"), busy)
         let expired = MCPRunJobs.statusText(input(.init(limitSeconds: 60, waitedSeconds: 60)))
         XCTAssertTrue(expired.contains("waited 1m 0s") && expired.contains("larger waitLockSeconds"), expired)
+        // 始まらなかったと分かっている run に「記録前に終わったかも」の推測を並べない
+        XCTAssertFalse(busy.contains("No run record was found"), busy)
+        XCTAssertFalse(expired.contains("No run record was found"), expired)
         XCTAssertFalse(MCPRunJobs.statusText(input(nil)).contains("waitLockSeconds"))
     }
 

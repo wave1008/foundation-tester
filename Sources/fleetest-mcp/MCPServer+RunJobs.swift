@@ -380,8 +380,12 @@ enum MCPRunJobs {
                 if let reason = meta.abortReason { lines.append("Aborted: \(reason)") }
                 if let path = input.runDirPath { lines.append("Results: \(path)") }
             } else {
-                lines.append("No run record was found (the run may have ended before recording — read the log)")
-                if let refusal = input.dispatchRefusal { lines.append(Self.dispatchRefusalText(refusal)) }
+                // 始まらなかったと分かっているなら「記録前に終わったかも」と推測しない(事実だけ)
+                if let refusal = input.dispatchRefusal {
+                    lines.append(Self.dispatchRefusalText(refusal))
+                } else {
+                    lines.append("No run record was found (the run may have ended before recording — read the log)")
+                }
             }
             let groups = MCPRunJobs.groupedFailures(input.failedScenarios)
             if !groups.isEmpty {

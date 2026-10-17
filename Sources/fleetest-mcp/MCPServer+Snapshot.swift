@@ -1594,7 +1594,7 @@ extension MCPServer {
                 rescueMs = Int((timingClock.now - rescueStart) / .milliseconds(1))
                 outcome = StepOutcome(status: .passed, notes: outcome.notes,
                                       resolvedElement: alreadyThere,
-                                      scrollSwipes: outcome.scrollSwipes)
+                                      scrollSwipes: outcome.scrollSwipes, slowDrags: outcome.slowDrags)
                 sheetNote = Self.sheetRescueMarker
                     + "— the list had stopped moving inside a partially open sheet, so"
                     + " [\(grabber.ref)] \(RefGuard.describe(grabber)) was dragged up to expand it,"
@@ -1723,8 +1723,8 @@ extension MCPServer {
                 + truncatedDuringSearch
                 + Self.scrollTimingNote(totalMs: Int((timingClock.now - timingStart)
                                                      / .milliseconds(1)),
-                                        swipes: outcome.scrollSwipes, rescueMs: rescueMs,
-                                        timing: outcome.timing)
+                                        swipes: outcome.scrollSwipes, slowDrags: outcome.slowDrags,
+                                        rescueMs: rescueMs, timing: outcome.timing)
                 + "scrollTo \"\(selectorText)\" did not reach the element"
                 + " (\(reason))\(manualExpand)\(Self.truncationHint(after))."
                 + " \(Self.visibleLabelsHint(after))"
@@ -1820,6 +1820,7 @@ extension MCPServer {
         let collapsingBulk = treeArgs["expandBulk"] as? Bool != true
         let totalMs = Int((timingClock.now - timingStart) / .milliseconds(1))
         let timingNote = Self.scrollTimingNote(totalMs: totalMs, swipes: outcome.scrollSwipes,
+                                               slowDrags: outcome.slowDrags,
                                                rescueMs: rescueMs, timing: outcome.timing)
         // **ghostNote と render で ghostFlags を共有**: 同じ `after` に対する
         // 応答1回ぶんのキャッシュ。SnapshotAnnotationCache のコメント参照(寿命はこの呼び出しだけ)

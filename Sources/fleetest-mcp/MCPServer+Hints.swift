@@ -250,10 +250,17 @@ extension MCPServer {
 
     /// `timing` は探索の段階ごとの積算(木の読み・ジェスチャ・待ち)。遅い探索の時間がどこへ行ったかを言う
     /// (実測: 目的の語が無い探索が 3 スワイプで 15.9 秒・6 スワイプで 38 秒かかり、内訳が読めなかった)
-    static func scrollTimingNote(totalMs: Int, swipes: Int?, rescueMs: Int?, timing: StepTiming?) -> String {
+    /// `slowDrags` = スワイプに数えないフリング無しのドラッグ(逆走査・見切れ回復。1本 最大3秒)。分けて言わないと
+    /// その時間がスワイプに帰属して読まれる(実測: 実機 Android の「2 swipe(s)」の探索が逆走査7本で 25 秒)。
+    /// 既定値を置かない(新しい呼び手の渡し忘れをコンパイルで止める)
+    static func scrollTimingNote(totalMs: Int, swipes: Int?, slowDrags: Int?, rescueMs: Int?,
+                                 timing: StepTiming?) -> String {
         guard totalMs >= scrollTimingNoteThresholdMs || rescueMs != nil else { return "" }
         var parts: [String] = []
-        if let swipes { parts.append("\(swipes) swipe(s)") }
+        if let swipes {
+            let drags = slowDrags.map { $0 > 0 ? " + \($0) slow no-fling drag(s)" : "" } ?? ""
+            parts.append("\(swipes) swipe(s)\(drags)")
+        }
         if let timing {
             let phases = [("reading the tree", timing.snapshotMs), ("gestures", timing.actionMs), ("waiting", timing.waitMs)]
                 .compactMap { name, ms in ms.flatMap { $0 > 0 ? "\(name) \(Self.elapsedText(milliseconds: Double($0)))" : nil } }

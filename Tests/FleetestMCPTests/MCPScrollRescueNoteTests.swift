@@ -130,16 +130,25 @@ final class MCPScrollTimingNoteTests: XCTestCase {
 
     /// 救済ありなら、閾値未満でも必ず内訳を出す(遅さの主因を切り分けたい回だから)
     func testTimingNoteWithRescueAlwaysShows() {
-        let note = MCPServer.scrollTimingNote(totalMs: 15_600, swipes: 7, rescueMs: 9_100, timing: nil)
+        let note = MCPServer.scrollTimingNote(totalMs: 15_600, swipes: 7, slowDrags: nil, rescueMs: 9_100, timing: nil)
         XCTAssertTrue(note.contains("15.6s"), note)
         XCTAssertTrue(note.contains("7 swipe(s)"), note)
         XCTAssertTrue(note.contains("sheet-expand rescue"), note)
         XCTAssertTrue(note.contains("9.1s"), note)
     }
 
+    /// フリング無しのドラッグ(逆走査・見切れ回復)はスワイプと分けて言う —— 分けないとその時間がスワイプに
+    /// 帰属して読まれる(実機 Android の「2 swipe(s)」の探索が逆走査7本で 25 秒)。0 本なら何も足さない
+    func testTimingNoteSeparatesSlowDragsFromSwipes() {
+        let note = MCPServer.scrollTimingNote(totalMs: 25_800, swipes: 2, slowDrags: 7, rescueMs: nil, timing: nil)
+        XCTAssertTrue(note.contains("2 swipe(s) + 7 slow no-fling drag(s)"), note)
+        let none = MCPServer.scrollTimingNote(totalMs: 2_700, swipes: 3, slowDrags: 0, rescueMs: nil, timing: nil)
+        XCTAssertFalse(none.contains("drag"), none)
+    }
+
     /// 救済なし・閾値以上なら内訳だけ出す(rescue の言及は無い)
     func testTimingNoteWithoutRescueAboveThreshold() {
-        let note = MCPServer.scrollTimingNote(totalMs: 2_700, swipes: 3, rescueMs: nil, timing: nil)
+        let note = MCPServer.scrollTimingNote(totalMs: 2_700, swipes: 3, slowDrags: nil, rescueMs: nil, timing: nil)
         XCTAssertTrue(note.contains("2.7s"), note)
         XCTAssertTrue(note.contains("3 swipe(s)"), note)
         XCTAssertFalse(note.contains("rescue"), note)
@@ -147,13 +156,13 @@ final class MCPScrollTimingNoteTests: XCTestCase {
 
     /// **短い探索でうるさくしない**: 閾値未満・救済なしは空文字列
     func testTimingNoteBelowThresholdWithoutRescueIsSilent() {
-        XCTAssertEqual(MCPServer.scrollTimingNote(totalMs: 500, swipes: 1, rescueMs: nil, timing: nil), "")
+        XCTAssertEqual(MCPServer.scrollTimingNote(totalMs: 500, swipes: 1, slowDrags: nil, rescueMs: nil, timing: nil), "")
     }
 
     /// 閾値ちょうどは「未満」ではないので出す(境界値)
     func testTimingNoteAtExactThresholdShows() {
         let note = MCPServer.scrollTimingNote(
-            totalMs: MCPServer.scrollTimingNoteThresholdMs, swipes: 2, rescueMs: nil, timing: nil)
+            totalMs: MCPServer.scrollTimingNoteThresholdMs, swipes: 2, slowDrags: nil, rescueMs: nil, timing: nil)
         XCTAssertFalse(note.isEmpty, note)
     }
 
@@ -162,7 +171,7 @@ final class MCPScrollTimingNoteTests: XCTestCase {
     /// OR 条件が抜けても(totalMs だけを見るよう縮退しても)拾えない。ここで totalMs を
     /// 閾値未満に固定し、rescueMs だけがゲートを開けていることを直接確認する
     func testTimingNoteWithRescueShowsEvenBelowThreshold() {
-        let note = MCPServer.scrollTimingNote(totalMs: 500, swipes: 2, rescueMs: 300, timing: nil)
+        let note = MCPServer.scrollTimingNote(totalMs: 500, swipes: 2, slowDrags: nil, rescueMs: 300, timing: nil)
         XCTAssertFalse(note.isEmpty, note)
         XCTAssertTrue(note.contains("sheet-expand rescue"), note)
     }
@@ -170,7 +179,7 @@ final class MCPScrollTimingNoteTests: XCTestCase {
     /// swipes が nil でも壊れない(scrollSwipes は runScrollSearch を経由しない経路では nil)。
     /// 空の括弧にはしない
     func testTimingNoteHandlesNilSwipesWithoutCrashing() {
-        let note = MCPServer.scrollTimingNote(totalMs: 5_000, swipes: nil, rescueMs: nil, timing: nil)
+        let note = MCPServer.scrollTimingNote(totalMs: 5_000, swipes: nil, slowDrags: nil, rescueMs: nil, timing: nil)
         XCTAssertTrue(note.contains("5.0s"), note)
         XCTAssertFalse(note.contains("()"), note)
         XCTAssertFalse(note.contains("swipe(s)"), note)
@@ -178,7 +187,7 @@ final class MCPScrollTimingNoteTests: XCTestCase {
 
     /// swipes が nil でも救済ありなら救済区間は出る(片方だけ欠けても壊れない)
     func testTimingNoteHandlesNilSwipesWithRescue() {
-        let note = MCPServer.scrollTimingNote(totalMs: 9_000, swipes: nil, rescueMs: 4_000, timing: nil)
+        let note = MCPServer.scrollTimingNote(totalMs: 9_000, swipes: nil, slowDrags: nil, rescueMs: 4_000, timing: nil)
         XCTAssertTrue(note.contains("sheet-expand rescue"), note)
         XCTAssertTrue(note.contains("4.0s"), note)
         XCTAssertFalse(note.contains("swipe(s)"), note)

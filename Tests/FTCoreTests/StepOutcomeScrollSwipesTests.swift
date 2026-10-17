@@ -12,6 +12,9 @@ private final class ScriptedSwipeDriver: AppDriver {
     private let scripted: [[ElementInfo]]
     private var index = 0
     private(set) var swipeCount = 0
+    private(set) var dragCount = 0
+    /// false = drag が投げる(撃てなかったドラッグを「撃った」と数えないことの確認用)
+    var dragSucceeds = true
 
     init(scripted: [[ElementInfo]]) { self.scripted = scripted }
 
@@ -33,6 +36,11 @@ private final class ScriptedSwipeDriver: AppDriver {
     func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent, path: FTSwipePath?) async throws {
         swipeCount += 1
     }
+    func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
+              pressSeconds: Double, durationSeconds: Double) async throws {
+        guard dragSucceeds else { throw DriverError.badResponse(status: 500, body: "drag failed") }
+        dragCount += 1
+    }
     func snapshot() async throws -> SnapshotResponse {
         let elements = scripted[min(index, scripted.count - 1)]
         index += 1
@@ -43,6 +51,26 @@ private final class ScriptedSwipeDriver: AppDriver {
 }
 
 final class StepOutcomeScrollSwipesTests: XCTestCase {
+
+    /// slowDrag(フリング無しの回復ドラッグ)は scrollSwipes に数えないので別に数える。**撃てた本数だけ**
+    /// (投げたドラッグを数えると、時間を使っていない「drag」を MCP の所要の内訳に載せる)
+    func testSlowDragsCountsOnlyDragsThatWereSent() async throws {
+        let driver = ScriptedSwipeDriver(scripted: [[]])
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
+        var phase = StepExecutor.PhaseAccumulator()
+        let container = FTRect(x: 0, y: 100, width: 402, height: 600)
+        XCTAssertNil(executor.slowDragsThisStep)
+        _ = await executor.slowDrag(jump: 200, container: container, phase: &phase)
+        _ = await executor.slowDrag(jump: -200, container: container, phase: &phase)
+        XCTAssertEqual(executor.slowDragsThisStep, 2)
+        XCTAssertEqual(driver.dragCount, 2)
+        driver.dragSucceeds = false
+        _ = await executor.slowDrag(jump: 200, container: container, phase: &phase)
+        XCTAssertEqual(executor.slowDragsThisStep, 2, "撃てなかったドラッグを数えた")
+        // 次のステップの開始で消える(前のステップの本数を後続の内訳に載せない)
+        _ = await executor.execute(FlowStep(action: "scrollTo", locator: FlowLocator(id: "x"), maxSwipes: 0))
+        XCTAssertNil(executor.slowDragsThisStep)
+    }
 
     private func row(ref: Int, id: String, y: Double = 300) -> ElementInfo {
         ElementInfo(ref: ref, type: "clickable", identifier: id, label: nil, value: nil,
