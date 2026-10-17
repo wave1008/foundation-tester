@@ -445,34 +445,6 @@ kernelの`IODARTFamily` / `VM exhausted`を時刻で照合する。2008だけで
 上限ではない。**この2つは `guarded` が1件以上あれば0件でも必ず書く**
 (欄が無い=一度もガードに入っていない、0=入ったが素通りは起きなかった、を混ぜない)。
 
-### 撃ち直し集計を追加した版へ更新するときの記録移行
-
-`retries` / `retrySuccesses`は`FMUsageRecord`と各`FMKindUsage`の必須欄(API契約47・FMサーバー契約3)。
-通常のdecodeで旧記録を0へ読み替えない。`schemaVersion`は1のまま、既存シナリオ記録を物理移行する。
-追加前の実装には撃ち直しが無いので、この2欄を0で補うことは実際の回数と一致する。
-
-更新先でrun・結果の読み手を止め、**新バイナリで結果を読む前**に、対象プロジェクトごとに次を一度実行する。
-リモートもalignによる版の切り替えと同時に行う。旧版と新版の読み手を同時に動かさない。
-
-```sh
-python3 Scripts/migrate-fm-retries.py --root /absolute/path/to/project/results/runs --dry-run
-python3 Scripts/migrate-fm-retries.py --root /absolute/path/to/project/results/runs
-```
-
-- 対象は明示したroot内の`<月>/<runID>/scenarios/*.json`と`superseded/*.json`。レポート・キャッシュは変更しない。
-  root自身のシンボリックリンクは拒否し、配下のリンクは追随せず`symlinksSkipped`で数える。
-- 全対象を事前検査し、破損JSON・対応外のschemaVersion・不正な集計・推測が必要な部分移行があれば書き込み前に中止する。
-  両欄が無い旧集計には0を追加し、既存の両欄は保持する。片欄だけ0の部分移行は不足分を0で補完するが、
-  非0の片欄しか無い場合や用途別合計と一致しない場合は自動修復しない。
-- 書き込みはファイルごとの一時ファイル＋renameで、モードを保持する。再実行しても移行済み記録は書き直さない。
-  全ファイルをまとめたトランザクションではないため、I/O失敗・中断時は原因を解消して同じコマンドを再実行する。
-  走査後の変更も検出して中止する。runが書き込み中の移行は行わない。
-- 完了runで記録を移行したときだけ、最後に`run.json`のmtimeを更新する。内容・`startedAt` / `finishedAt` / PIDは変えない。
-  `scenarios/`が`run.json`より新しいと進行中と判定されるため、通常のfinishと同じ更新順に戻す。未完了runと、再実行時の移行済みrunはtouchしない。
-- 終了時はJSONで`scanned` / `wouldChange` / `changed` / `finishedRunsTouched` / `symlinksSkipped`を返す。
-  移行後のdry-runで`wouldChange == 0`を確認し、`fleetest results list --project <P>`の読み飛ばし件数を移行前と比較する。
-  atomic renameと完了runのmtime更新で、結果の出力キャッシュ・レコードパックの入力指紋も更新される。
-
 ### FailedStepRecord
 
 | フィールド | 型 | 意味 |

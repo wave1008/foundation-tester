@@ -4627,11 +4627,9 @@ hosts にゲートウェイの IP(`fleetest-gateway`)を載せて逆引きを DN
   応答を受信できた追加試行の回復率を測れる。2008全件の救済率には総発生数と見送り理由の記録が足りず、
   ANE枯渇との対応付けには同時刻のkernelログも要る。M1Ultraの評価でこれらを混同しない
 - FMサーバー契約3・API契約47へ上げ、通常decodeの互換は置かない。レコードのschemaVersionは1を維持し、
-  `Scripts/migrate-fm-retries.py --root <project>/results/runs`で旧記録の両欄を0へ物理移行する。
-  新バイナリで結果を読む前、リモートはalignと同時に一度行う。dry-run・冪等・リンク非追随・事前全数検査・ファイル単位atomic rename。
-  `superseded/`の証跡も移行し、完了runだけ最後にrun.jsonのmtimeを更新する(内容は変えない。再実行時はtouchしない)。
-  これを省くとscenarios/のmtime更新で完了runが進行中と見なされ、レコードパックを使えなくなる。
-  非0の部分移行や用途別合計の不一致は推測で直さない。実行手順と集計の定義はdocs/results-json.md
+  旧記録の両欄を0へ物理移行した(1回きりのスクリプト。全機で移行済みのため消した。`613fc1ed` に残っている)。
+  移行で記録を書き換えたら、完了runだけ最後にrun.jsonのmtimeを更新する(省くとscenarios/のmtime更新で完了runが
+  進行中と見なされ、レコードパックを使えなくなる)。集計の定義はdocs/results-json.md
 - 推論応答とは独立した制御用`Identity`(`status` / `serverVersion` / `executable` / `buildStamp`を必須)で常駐プロセスを識別する。
   推論応答の必須retryCountを旧プロセスが持たなくても、身元と版を先に確かめられる。停止は下記の安全退役に置き換えた。
   推論応答の欠落を既定値で吸わず、新しい常駐プロセスを旧い呼び手が止めない規律も維持する
