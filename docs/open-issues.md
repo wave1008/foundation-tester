@@ -23,6 +23,14 @@
 
 ## デバイスで赤のまま・原因未調査
 
+- **AppleAVE(ハードウェア動画エンコーダ)がマシン全体で壊れ、再起動まで戻らない**(2026-10-17〜18・M2 Ultra で3回)
+  - 症状: 切り出しが `-17691` で失敗/合成映像も固まる。Simulator の録画の試し撮りが空になり、iOS の h264 配信も巻き添え
+  - 確かめた範囲: 単独要因(切り出し・Simulator の録画・配信・Android の E2E・それらの組み合わせ)では再現しない(maintainer-notes §86)
+  - 要る材料: 次に壊れたときの `~/.fleetest/video-encoder-history.ndjson`(起動からの経過・直前の出来事)と、その日の run の並び
+- **ライブ更新の配信が多いと、Compose の画面でテキストの可視性検証が誤った赤になる**(2026-10-18・E2E-CMP iOS)
+  - 症状: iOS 8 台を h264 で配信しながら録画なしで回すと、12 run 中 7 run で1件ずつ `notRendered`(文字が描かれていない)。配信なしでは 10 run すべて緑
+  - 手がかり: 配信の古い絵による誤判定の既知の型(OCR だけの判定の赤)と同じ形に見える。未調査
+
 - **iPhone Duo の Simulator の開閉で、SpringBoard・testmanagerd・PosterBoard 等が `FBSDisplayMode` の検査で落ちる**(2026-10-17・Duo-01/02・新規作成の Duo)
   - 症状: 開くたびに約半分の確率で PosterBoard・ウィジェットの拡張・InputUI・chronod が落ちる。ときどき SpringBoard と
     **testmanagerd も落ち、XCUITest ランナーが道連れになる**(以後の操作は接続拒否 → 起動し直し)。スタックは全部

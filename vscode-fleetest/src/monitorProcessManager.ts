@@ -103,6 +103,11 @@ type HostMetricsRawEvent = {
   readonly fmVisionState: string | null;
   readonly fmDeadReason: string | null;
   readonly fmCheckedAt: number | null;
+  /** ハードウェア動画エンコーダーの死活("alive" / "dead" / null=不明)・理由(200 文字以内)・観測時刻(epoch 秒)。
+   *  FM と違い経路は1つ。Sources/FTCore の動画エンコーダー台帳と同期。 */
+  readonly videoEncoderState: string | null;
+  readonly videoEncoderError: string | null;
+  readonly videoEncoderCheckedAt: number | null;
   /** Vision / Core ML(OCR と画像分類器。FM 以外)呼び出しの実測。供給元は機械グローバルな控えで、このプロセスの
    *  実測ではない(fmCalls と同じ形。Sources 側は FTCore.VisionUsageLedger 相当)。null = 不明。 */
   readonly visionCalls: number | null;
@@ -138,6 +143,9 @@ function isHostMetricsEvent(value: unknown): value is HostMetricsRawEvent {
     stringOrNull(record.fmVisionState) &&
     stringOrNull(record.fmDeadReason) &&
     numberOrNull(record.fmCheckedAt) &&
+    stringOrNull(record.videoEncoderState) &&
+    stringOrNull(record.videoEncoderError) &&
+    numberOrNull(record.videoEncoderCheckedAt) &&
     numberOrNull(record.visionCalls) &&
     numberOrNull(record.visionFailures) &&
     numberOrNull(record.visionTotalMs) &&
@@ -171,6 +179,10 @@ export type HostMetricsToWebviewMessage =
       /** 死んでいる経路の理由(`text: …` / `vision: …`。CLI 側で 200 文字に切ってある)。 */
       readonly fmDeadReason: string | null;
       readonly fmCheckedAt: number | null;
+      /** HW 動画エンコーダーの死活。"dead" のときだけ webview がバッジを出す(alive/null は何も出さない)。 */
+      readonly videoEncoderState: string | null;
+      readonly videoEncoderError: string | null;
+      readonly videoEncoderCheckedAt: number | null;
       /** そのサンプリング間隔で完了した Vision / Core ML(OCR と画像分類器)呼び出し(その機械の全プロセス
        *  合計)。null = 控えを読めず不明、0 = 呼び出しが無かった(fmCalls と同じ区別)。 */
       readonly visionCalls: number | null;
@@ -888,7 +900,8 @@ export class MonitorProcessManager {
           // **run を回していない間は死んでいても無印**になる(FM 行が消したい絵そのもの)。
           // CLI から手で常駐させた host-metrics には FM を消費させたくないので既定 OFF ——
           // 渡すのはモニターだけ(Sources/fleetest/ApiHostMetricsCommand.swift 冒頭)。
-          ["api", "host-metrics", "--interval", "1", "--fm-probe"],
+          // --video-encoder-probe: HW エンコーダーの死活も同じ理由で(台帳が古いときだけ合成フレームで取り直す)。
+          ["api", "host-metrics", "--interval", "1", "--fm-probe", "--video-encoder-probe"],
         ),
         {
           cwd: this.deps.workspaceRoot,
@@ -943,6 +956,9 @@ export class MonitorProcessManager {
           fmVisionState: value.fmVisionState,
           fmDeadReason: value.fmDeadReason,
           fmCheckedAt: value.fmCheckedAt,
+          videoEncoderState: value.videoEncoderState,
+          videoEncoderError: value.videoEncoderError,
+          videoEncoderCheckedAt: value.videoEncoderCheckedAt,
           visionCalls: value.visionCalls,
           visionFailures: value.visionFailures,
           visionTotalMs: value.visionTotalMs,

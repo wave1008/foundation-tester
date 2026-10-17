@@ -1165,7 +1165,10 @@ public final class RunOrchestrator: Sendable {
         self.project = project
         self.debug = debug
         self.recorder = recorder
-        self.videoRecording = recordingConfig.map { VideoRecordingCoordinator(config: $0) }
+        self.videoRecording = recordingConfig.map {
+            VideoRecordingCoordinator(config: $0, probeHardwareEncoder: { await HardwareEncoderProbe.check() },
+                                      liveStreamsActive: { LiveEncodeStreams.anyActive() })
+        }
         self.isDeviceFrozen = isDeviceFrozen
         self.isDeviceUnreachable = isDeviceUnreachable
         self.bridgeLogSize = bridgeLogSize
@@ -1645,8 +1648,6 @@ public final class RunOrchestrator: Sendable {
                 await recordingLeases.acquire(leaseKey)
             }
         }
-        // 静止画方式の録画(物理 iPhone・動画を起動できなかったデバイス)は子が操作の直後に撮る(StillFrameRecorder)。動画で録るなら nil
-        let stillFramesDir = await videoRecording?.stillFramesDir(workerLabel: worker.label)
         // **シナリオの印(run ボードの経過・残りの起点)より前で待つ**。ScenarioHost.run の中で待つと、
         // 何も動いていない間にレーンの経過と残りの秒読みが進む(シナリオの所要の実績は待ちの後から計っている)
         if waitsForOCRCompile {
@@ -1674,6 +1675,9 @@ public final class RunOrchestrator: Sendable {
             // 録画の区間・進捗の開始より前に置く(消すのに掛かった時間をシナリオに数えない)。
             // 何をしたかは**そのシナリオのログ**に残す(結果のイベントログに載る = 権限を拒否で閉じた等が残る)
             let residualAlertNotice = await clearResidualSystemAlert?(worker)
+            // **録画が撮れていることを確かめてから始める**(止まっていれば撮り直して開始を確かめる・駄目なら静止画方式へ)。
+            // 静止画方式(物理 iPhone・動画を起動/撮り直しできなかったデバイス)は子が操作の直後に撮る置き場を返す。動画なら nil
+            let stillFramesDir = await videoRecording?.prepareScenario(workerLabel: worker.label)
             // 動画のシナリオ毎クリップ切り出し用の壁時計区間通知(録画無効時は no-op)。
             // ワーカーの録画プロセス自体は起動しっぱなしで、ここでは区間だけ記録する
             await videoRecording?.scenarioStarted(
@@ -1907,9 +1911,8 @@ public final class RunOrchestrator: Sendable {
         worker.connection.serial ?? worker.connection.udid
     }
 
-    /// RecordingLease の削除は停止指示と同時に行う(クリップ切り出し[AVFoundation のエクスポート]は
-    /// シナリオ数分繰り返され数秒〜数十秒かかりうるが、モニターの「録画中」表示は停止指示と同時に
-    /// 消してよい)。lease 削除後に videoRecording?.stop で実際の停止+クリップ切り出しへ進む
+    /// RecordingLease の削除は停止指示と同時に行う。lease 削除後に videoRecording?.stop で実際の停止へ進む
+    /// (クリップの切り出しは全ワーカーの終了後に videoRecording?.finish がまとめて行う)
     private func stopRecording(_ worker: RunWorker, leaseKey: String?) async {
         if let leaseKey {
             await recordingLeases.release(leaseKey)

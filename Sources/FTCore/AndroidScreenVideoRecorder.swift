@@ -32,8 +32,17 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
     private var segmentIndex = 0
     /// crashLoopThresholdSeconds 未満で終了したセグメントの連続回数(閾値以上で通常終了したらリセット)
     private var consecutiveShortSegments = 0
+    /// 撮り始めを確かめられずに止めたセグメントのデバイス側パス。handleSegmentExited は撮り直さない
+    /// (撮り直すかはシナリオの前の ensureRecording が決める = 確かめの上限ごとの撮り直しを無限に続けない)
+    private var unconfirmedPath: String?
+
+    /// 撮り始めの確かめの上限(秒)。iOS の "Recording started" 待ち(IOSSimulatorVideoRecorder の 10 秒)と同じ値。
+    /// screenrecord は最初のフレームを符号化してから mp4 を書き始めるので、端末上のファイルが大きさを持てば撮れている
+    static let startConfirmSeconds: Double = 10
+    /// 確かめの刻み(秒)。1回は adb shell stat 1本(数十 ms)。実測で撮り始めは起動から約 0.2〜0.3 秒
+    static let startConfirmPollSeconds: Double = 0.2
     /// pull 済みローカルセグメント(連結順)と各々の spawn 時刻(index.json の startedAt に使う)
-    private var pulledSegments: [(url: URL, startedAt: Date)] = []
+    private var pulledSegments: [(url: URL, startedAt: Date, closedAt: Date)] = []
     private var currentProcess: Process?
     /// 進行中セグメントの exit 監視タスク。stop 側はこれの完了(=最終 pull まで終わったこと)を待つ
     private var watchTask: Task<Void, Never>?
@@ -55,6 +64,25 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
     func start() async -> Bool {
         killStaleScreenrecord()
         size = fullResolution ? nil : halvedPhysicalSize()
+        guard await spawnNextSegment() else {
+            // 確かめられなかった録画を残さない(呼び手は静止画方式へ切り替え、stop を呼ばない)
+            if let source = await stop() {
+                for file in source.files { try? FileManager.default.removeItem(at: file) }
+            }
+            return false
+        }
+        return true
+    }
+
+    /// シナリオの直前(DeviceVideoRecorderSession.ensureRecording)。撮り始めを確かめた録画が動いていれば true。
+    /// 3 分ごとの切り替え・予期しない終了の後始末の途中ならその結果を待ち、止まったままなら撮り直して確かめる
+    func ensureRecording() async -> Bool {
+        guard !stopRequested else { return false }
+        if let process = currentProcess, process.isRunning, unconfirmedPath == nil { return true }
+        if let watchTask { await watchTask.value }
+        if let process = currentProcess, process.isRunning, unconfirmedPath == nil { return true }
+        guard !stopRequested, !gaveUp else { return false }
+        warn("the recording was not running before a scenario — starting it again")
         return await spawnNextSegment()
     }
 
@@ -69,25 +97,33 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
                 _ = await raceWithDeadline(seconds: 20, onTimeout: ()) { await watchTask.value }
             }
         }
-        guard !pulledSegments.isEmpty else { return nil }
+        return await source(of: pulledSegments)
+    }
+
+    private func source(of pulled: [(url: URL, startedAt: Date, closedAt: Date)]) async -> RecordingSource? {
+        guard !pulled.isEmpty else { return nil }
 
         // 各セグメントの実 duration だけ測る(連結+再エンコードはシナリオ毎のクリップ切り出し時に行う)。
         // 読めないセグメントはここで即座に掃除する(coordinator は返した files しか知らないため)
         var files: [URL] = []
         var segments: [RecordingIndexSegment] = []
-        for segment in pulledSegments {
+        var closedAt: [Date] = []
+        for segment in pulled {
             guard let duration = try? await AVURLAsset(url: segment.url).load(.duration),
                   duration.isNumeric, duration.seconds > 0 else {
+                // 黙って捨てない(screenrecord が SIGINT 以外で落ちると moov が無く読めない = その間のシナリオは撮り直した後の分だけ)
+                warn("discarding an unreadable recording segment (\(segment.url.lastPathComponent))")
                 try? FileManager.default.removeItem(at: segment.url)
                 continue
             }
             files.append(segment.url)
+            closedAt.append(segment.closedAt)
             segments.append(RecordingIndexSegment(
                 startedAt: ISO8601Millis.string(from: segment.startedAt),
                 durationMs: Int((duration.seconds * 1000).rounded())))
         }
         guard !files.isEmpty else { return nil }
-        return RecordingSource(files: files, segments: segments)
+        return RecordingSource(files: files, segments: segments, closedAt: closedAt)
     }
 
     @discardableResult
@@ -116,27 +152,59 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
             return false
         }
         currentProcess = process
+        unconfirmedPath = nil
         watchTask = Task { [weak self] in
             for await _ in exitStream {}
             await self?.handleSegmentExited(remotePath: remotePath, startedAt: spawnedAt)
         }
+        // **撮り始めを確かめてから戻る**(テストを録画より先に始めない)。currentProcess を書いた後に待つので、待ちの間に
+        // stop() が来ても止め忘れない(下の handleSegmentExited の排他の前提は currentProcess が nil の間だけに掛かる)
+        guard await confirmStarted(remotePath: remotePath, process: process) else {
+            warn("screenrecord did not start writing within \(Int(Self.startConfirmSeconds))s — stopping it")
+            lastStartFailure = .startNotConfirmed
+            unconfirmedPath = remotePath
+            _ = try? Shell.run([adbPath, "-s", serial, "shell",
+                                Self.killOwnScreenrecordCommand(outputPathPrefix: remotePath)])
+            return false
+        }
         return true
     }
 
+    /// 端末上のファイルが大きさを持つ(= 撮り始めた)まで待つ。停止が来たら確かめを打ち切って true(stop が後始末する)
+    private func confirmStarted(remotePath: String, process: Process) async -> Bool {
+        let deadline = Date().addingTimeInterval(Self.startConfirmSeconds)
+        while Date() < deadline, process.isRunning {
+            if stopRequested { return true }
+            if let result = try? Shell.run([adbPath, "-s", serial, "shell", "stat", "-c", "%s", remotePath]),
+               result.status == 0,
+               let bytes = Int(result.output.trimmingCharacters(in: .whitespacesAndNewlines)), bytes > 0 {
+                return true
+            }
+            try? await Task.sleep(nanoseconds: UInt64(Self.startConfirmPollSeconds * 1_000_000_000))
+        }
+        return stopRequested
+    }
+
     // **stop() との排他は actor の直列実行だけに頼る**(明示のロックが無い)。成立条件:
-    // このメソッドと spawnNextSegment() の中に**真の suspension が無い**こと(Process.run() は
-    // 同期・Task { } の生成も中断しない)。この前提が崩れる(内部に await を足す)と、
+    // currentProcess を nil にしてから spawnNextSegment() が新しいプロセスを currentProcess に書くまでに
+    // **真の suspension が無い**こと(Process.run() は同期・Task { } の生成も中断しない。撮り始めの確かめの待ちは
+    // currentProcess を書いた後)。この前提が崩れる(その間に await を足す)と、
     // currentProcess が nil の間に stop() が割り込めてしまい、再 spawn 後のプロセスを
     // 止め忘れて孤児 screenrecord を残す。stop() は先頭で同期的に stopRequested = true を
     // 書くので、actor が先にどちらのジョブ(このメソッド呼び出し列 / stop())を実行しても、
     // spawnNextSegment() 入口の guard がその時点の stopRequested を見て再 spawn を止められる
     private func handleSegmentExited(remotePath: String, startedAt: Date) async {
+        let exitedAt = Date()  // 閉じた時刻は pull の前に採る(pull の所要を静止画の末尾に足さない)
         let localURL = workDir.appendingPathComponent("\(fileStem)-part\(segmentIndex).mp4")
         if pullSegment(remotePath: remotePath, to: localURL) {
-            pulledSegments.append((localURL, startedAt))
+            pulledSegments.append((localURL, startedAt, exitedAt))
         }
         _ = try? Shell.run([adbPath, "-s", serial, "shell", "rm", "-f", remotePath])
         currentProcess = nil
+        if unconfirmedPath == remotePath {
+            unconfirmedPath = nil
+            return
+        }
 
         // クラッシュループ検知: 明示停止でないのに極端に短時間で終わったセグメントが連続したら、
         // それまで撮れた分(pulledSegments)は活かしつつ以降の再spawnを諦める

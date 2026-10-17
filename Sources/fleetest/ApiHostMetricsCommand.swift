@@ -45,6 +45,11 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
               + " FM. Off by default: without it those fields only reflect what real work observed."))
     var fmProbe = false
 
+    @Flag(name: .customLong("video-encoder-probe"),
+          help: ArgumentHelp("Keep the hardware video encoder verdict (videoEncoderState) fresh by encoding a few"
+              + " synthetic frames when the machine-wide ledger goes stale. Off by default."))
+    var videoEncoderProbe = false
+
     func run() async throws {
         // ストリーミング読み取りが前提のため常に行バッファにする(ApiMonitorCommand.swift と同じ理由)
         setvbuf(stdout, nil, _IOLBF, 0)
@@ -72,6 +77,8 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
         // ように切り離して走らせる。**重ねない** —— 前回がまだ返っていないなら撃たない
         // (FM の枠を掴んだまま次を並べると、死んでいる機械で待ち行列だけが伸びる)
         let probing = ProbeInFlight()
+        // エンコーダの確かめも重ねない・刻みを止めない(固着したら HardwareEncoderProbe が以後撃たない)
+        let encoderProbing = ProbeInFlight()
 
         while !stop.isSet {
             await ApiMonitorCommand.sleepInterruptible(seconds: interval, stop: stop)
@@ -82,6 +89,12 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
             let mem = memorySampler.sample()
             let fm = FMUsageLedger.drain(previous: &fmPrevious)
             let vision = VisionUsageLedger.drain(previous: &visionPrevious)
+            if videoEncoderProbe, encoderProbing.begin() {
+                Task.detached {
+                    await VideoEncoderLiveness.refreshIfStale()
+                    encoderProbing.end()
+                }
+            }
             if fmProbe, probing.begin() {
                 Task.detached {
                     await FMLivenessProbe.refresh()
@@ -96,7 +109,8 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
                 fmCalls: fm?.calls, fmFailures: fm?.failures, fmTotalMs: fm?.totalMs,
                 visionCalls: vision?.calls, visionFailures: vision?.failures, visionTotalMs: vision?.totalMs,
                 ocrCompiling: OCRModelCompileLedger.activeCount(),
-                fmLiveness: FMLiveness.current())
+                fmLiveness: FMLiveness.current(),
+                videoEncoder: VideoEncoderLiveness.current())
             if let line = sample.encodedLine() {
                 ConsoleOut.out(line)
                 logger?.append(line)

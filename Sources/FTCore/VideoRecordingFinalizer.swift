@@ -26,12 +26,13 @@ enum VideoRecordingFinalizer {
     /// 切り出し、bitrateKbps*1000 bps の H.264 .mp4 として書き出す。fullResolution:false(既定)なら
     /// shrinkThreshold より大きいソースだけ半分解像度にする(true なら常にソース解像度のまま)。
     /// clipStartMs/clipEndMs はソース内(gapless)の位置(RecordingWallClock.offsetMs 参照)。
-    /// **エンコーダはソフトウェア固定**: ハードウェア(AppleAVE)は AVAssetWriter の内部でセッションを
-    /// 閉じる `VTCompressionSessionInvalidate` から戻らないことがあり(実測: 12 秒クリップ
-    /// 16 本×8 回で 2 回・各 1 本)、そのたびに期限の 60 秒を払った。正常時の所要は同等
-    /// (1 本の中央値 1.35 秒 / 1.39 秒)で、出力サイズもソフトウェアのほうが指定ビットレートに近い
+    /// hardware: true = ハードウェアエンコーダ(AppleAVE)を**必須**にする(無ければ失敗 = 黙ってソフトウェアに落ちない)。
+    /// ハードウェアは AVAssetWriter の内部でセッションを閉じる `VTCompressionSessionInvalidate` から戻らないことがある
+    /// (実測: 12 秒クリップ 16 本×8 回で 2 回)ので、呼び手は短い期限を付けて固着したらソフトウェアへ切り替える
+    /// (VideoRecordingCoordinator.hardwareDeadline)。ソフトウェアは別プロセス(VTEncoderXPCService)で動き、
+    /// 総処理量が並列度でほぼ増えない(実測は VideoRecordingCoordinator.maxConcurrentExports)
     static func extractClip(sourceFiles: [URL], clipStartMs: Int, clipEndMs: Int,
-                            bitrateKbps: Int, fullResolution: Bool,
+                            bitrateKbps: Int, fullResolution: Bool, hardware: Bool,
                             to outputURL: URL) async -> Bool {
         guard clipEndMs > clipStartMs, !sourceFiles.isEmpty else { return false }
         try? FileManager.default.removeItem(at: outputURL)
@@ -81,7 +82,8 @@ enum VideoRecordingFinalizer {
             AVVideoScalingModeKey: AVVideoScalingModeResizeAspect,
             AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: bitrateKbps * 1000],
             AVVideoEncoderSpecificationKey: [
-                kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder as String: false,
+                kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder as String: hardware,
+                kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder as String: hardware,
             ],
         ]
         let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: outputSettings)

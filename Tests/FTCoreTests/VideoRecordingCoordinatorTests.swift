@@ -230,9 +230,12 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         }
         let orchestrator = try source("Sources/FTCore/RunOrchestrator.swift")
         guard let start = orchestrator.range(of: "if await videoRecording?.start(worker) == true {"),
-              let lookup = orchestrator.range(of: "let stillFramesDir = await videoRecording?.stillFramesDir(workerLabel: worker.label)")
-        else { return XCTFail("録画の起動か撮影先の取得が見つからない = 走査を見直す") }
+              let lookup = orchestrator.range(of: "let stillFramesDir = await videoRecording?.prepareScenario(workerLabel: worker.label)"),
+              let interval = orchestrator.range(of: "await videoRecording?.scenarioStarted(")
+        else { return XCTFail("録画の起動・シナリオ前の確かめ・区間の開始が見つからない = 走査を見直す") }
         XCTAssertTrue(start.lowerBound < lookup.lowerBound, "撮影先は録画を起動した後に引く")
+        XCTAssertTrue(lookup.lowerBound < interval.lowerBound,
+                      "録画の確かめ(撮り直しの待ち)はシナリオの区間を始める前に済ませる = 待ちをシナリオに数えない")
         XCTAssertTrue(orchestrator.contains("stillFramesDir: stillFramesDir,\n                onEvent:"),
                       "runOne へ撮影先を渡していない")
         XCTAssertTrue(orchestrator.contains("registerChildProcess: registerChildProcess, stillFramesDir: stillFramesDir)"),
@@ -263,7 +266,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         return data as Data
     }
 
-    /// 切り出しが期限超過したら、そこで断念する(残りのクリップは1件も試みない)はず
+    /// 切り出しが期限超過したら、そこで断念する(スロット待ちだった残りのクリップは1件も試みない)はず
     func testTimeoutAbandonsRemainingClips() async throws {
         let tmp = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: tmp) }
@@ -271,50 +274,106 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
             makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, _ in
+            extractClip: { _, _, _, _, _, _, _ in
                 await probe.began()
                 // 無応答エンコーダの再現(テスト終了まで返らない)
                 try? await Task.sleep(nanoseconds: 3_600_000_000_000)
                 return true
             },
-            exportDeadline: { _ in 0.2 })
+            exportDeadline: { _ in 0.2 },
+            hardwareFirst: false)
+        // 同時実行の上限 + 1 本 = 1本はスロット待ちになる
+        let workers = (1...3).map { makeWorker($0) }
+        for (n, worker) in workers.enumerated() {
+            let started = await coordinator.start(worker)
+            XCTAssertTrue(started)
+            await registerInterval(coordinator, worker: worker, scenarioID: "TimeoutTest.S00\(n)0")
+        }
+        for worker in workers { await coordinator.stop(worker) }
+
+        let finishStart = Date()
+        await coordinator.finish()
+        XCTAssertLessThan(Date().timeIntervalSince(finishStart), 5,
+                          "期限超過したら残りを待たずに断念するはず")
+        let calls = await probe.calls
+        XCTAssertEqual(calls, 2, "スロットの2本を1回ずつだけ試し(撮り直さない)、待っていた3本目は試さないはず")
+        let indexURL = tmp.appendingPathComponent("recordings/index.json")
+        let data = try Data(contentsOf: indexURL)
+        let decoded = try JSONDecoder().decode(RecordingIndex.self, from: data)
+        XCTAssertEqual(decoded.recordings.count, 0, "クリップは1本も取れないはず")
+        XCTAssertEqual(decoded.clipsAttempted, 3)
+        XCTAssertEqual(decoded.clipsFailed, 3)
+    }
+
+    /// 実在するソースファイルを返すセッションを生成する makeSession(ソースを消す/残すの観測用)
+    private func realFileSessionFactory()
+        -> @Sendable (RunWorker, URL, String) -> (any DeviceVideoRecorderSession)? {
+        let startedAt = ISO8601Millis.string(from: recordStart)
+        return { _, recordingsDir, sourceStem in
+            let url = recordingsDir.appendingPathComponent("\(sourceStem).mov")
+            FileManager.default.createFile(atPath: url.path, contents: Data([0]))
+            return FixedSourceSession(source: RecordingSource(
+                files: [url],
+                segments: [RecordingIndexSegment(startedAt: startedAt, durationMs: 60_000)]))
+        }
+    }
+
+    /// 切り出しは run の途中(stop)では行わず finish でまとめて行い、false(期限内の失敗)なら1回だけ切り出し直すはず。
+    /// 成功すればクリップは index に載り、ソースは消える
+    func testFailedClipIsRetriedOnceAtFinishAndSucceeds() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let probe = ExportProbe()
+        let failedOnce = LockedValue(false)
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp),
+            makeSession: realFileSessionFactory(),
+            extractClip: { _, _, _, _, _, _, outputURL in
+                await probe.began()
+                guard outputURL.lastPathComponent.contains("S0010") else { return true }
+                return failedOnce.withLock { failed in
+                    defer { failed = true }
+                    return failed  // S0010 は1回目だけ失敗させる
+                }
+            })
         let w1 = makeWorker(1)
         let w2 = makeWorker(2)
         let started1 = await coordinator.start(w1)
         let started2 = await coordinator.start(w2)
         XCTAssertTrue(started1)
         XCTAssertTrue(started2)
-        await registerInterval(coordinator, worker: w1, scenarioID: "TimeoutTest.S0010")
-        await registerInterval(coordinator, worker: w2, scenarioID: "TimeoutTest.S0020")
-
-        let stopStart = Date()
-        await coordinator.stop(w1)  // 期限超過し断念するはず
-        await coordinator.stop(w2)  // 断念済みなのでエクスポートに入らず即返るはず
-        XCTAssertLessThan(Date().timeIntervalSince(stopStart), 5,
-                          "期限超過したら残りを待たずに断念するはず")
-        let calls = await probe.calls
-        XCTAssertEqual(calls, 1, "1本目を1回だけ試し(撮り直さない)、2本目は試さないはず")
-
+        await registerInterval(coordinator, worker: w1, scenarioID: "RetryTest.S0010")
+        await registerInterval(coordinator, worker: w2, scenarioID: "RetryTest.S0020")
+        await coordinator.stop(w1)
+        await coordinator.stop(w2)
+        let callsBeforeFinish = await probe.calls
+        XCTAssertEqual(callsBeforeFinish, 0, "run の途中(stop)では切り出さないはず")
         await coordinator.finish()
-        let indexURL = tmp.appendingPathComponent("recordings/index.json")
-        let data = try Data(contentsOf: indexURL)
-        let decoded = try JSONDecoder().decode(RecordingIndex.self, from: data)
-        XCTAssertEqual(decoded.recordings.count, 0, "クリップは1本も取れないはず")
-        XCTAssertEqual(decoded.clipsAttempted, 1, "断念した1本だけ attempted に数え、2本目は試みていないはず")
-        XCTAssertEqual(decoded.clipsFailed, 1)
+
+        let calls = await probe.calls
+        XCTAssertEqual(calls, 3, "2本を切り出し、失敗した1本だけを1回切り出し直すはず")
+        let decoded = try JSONDecoder().decode(
+            RecordingIndex.self, from: Data(contentsOf: tmp.appendingPathComponent("recordings/index.json")))
+        XCTAssertEqual(Set(decoded.recordings.map(\.scenarioID)), ["RetryTest.S0010", "RetryTest.S0020"])
+        XCTAssertEqual(decoded.clipsAttempted, 2, "再試行は attempted に二重に数えないはず")
+        XCTAssertEqual(decoded.clipsFailed, 0)
+        let leftovers = try FileManager.default.contentsOfDirectory(
+            at: tmp.appendingPathComponent("recordings"), includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "mov" }
+        XCTAssertEqual(leftovers, [], "再試行で取れたらソースは消すはず")
     }
 
-    /// 切り出しが false(失敗)を返したら、撮り直さずに失敗として数え、次のクリップへ進むはず
-    func testFailedClipIsCountedWithoutRetryAndNextClipProceeds() async throws {
+    /// 再試行でも失敗したら失敗として数え、**そのソースだけ**診断用に残すはず(成功したワーカーのソースは消す)
+    func testClipFailingTwiceIsCountedAndKeepsItsSource() async throws {
         let tmp = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: tmp) }
         let probe = ExportProbe()
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
-            makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, outputURL in
+            makeSession: realFileSessionFactory(),
+            extractClip: { _, _, _, _, _, _, outputURL in
                 await probe.began()
-                return !outputURL.lastPathComponent.contains("S0010")  // 1本目だけ失敗させる
+                return !outputURL.lastPathComponent.contains("S0010")  // S0010 は毎回失敗させる
             })
         let w1 = makeWorker(1)
         let w2 = makeWorker(2)
@@ -329,18 +388,307 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         await coordinator.finish()
 
         let calls = await probe.calls
-        XCTAssertEqual(calls, 2, "失敗したクリップを撮り直さないはず")
-        let indexURL = tmp.appendingPathComponent("recordings/index.json")
-        let data = try Data(contentsOf: indexURL)
-        let decoded = try JSONDecoder().decode(RecordingIndex.self, from: data)
+        XCTAssertEqual(calls, 3, "失敗したクリップは1回だけ撮り直すはず")
+        let decoded = try JSONDecoder().decode(
+            RecordingIndex.self, from: Data(contentsOf: tmp.appendingPathComponent("recordings/index.json")))
         XCTAssertEqual(decoded.recordings.map(\.scenarioID), ["FailTest.S0020"], "失敗しても次のクリップは取るはず")
         XCTAssertEqual(decoded.clipsAttempted, 2)
         XCTAssertEqual(decoded.clipsFailed, 1)
+        let leftovers = try FileManager.default.contentsOfDirectory(
+            at: tmp.appendingPathComponent("recordings"), includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "mov" }
+        XCTAssertEqual(leftovers.count, 1, "2回とも失敗したワーカーのソースだけ残すはず")
     }
 
-    /// 本番の切り出しはハードウェアエンコーダを使わない(VideoRecordingFinalizer の宣言。
-    /// 条件分岐の中に入れると、ハードウェアの無応答で 60 秒待つ経路が戻る)
-    func testProductionExtractorDisablesHardwareEncoderUnconditionally() throws {
+    // MARK: ハードウェアエンコーダ(run 完了時)
+
+    /// ハードウェアが期限内に終わらなければ、この run の残りをソフトウェアへ切り替え、そのクリップも別名で切り出し直すはず
+    func testHardwareTimeoutSwitchesTheRestOfTheRunToSoftware() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let calls = LockedValue<[(hardware: Bool, file: String)]>([])
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp),
+            makeSession: fixedSessionFactory(tmp: tmp),
+            extractClip: { _, _, _, _, _, hardware, outputURL in
+                calls.withLock { $0.append((hardware, outputURL.lastPathComponent)) }
+                if hardware { try? await Task.sleep(nanoseconds: 3_600_000_000_000) }  // 固着の再現
+                return true
+            },
+            hardwareDeadline: { _ in 0.2 })
+        let workers = (1...3).map { makeWorker($0) }
+        for (n, worker) in workers.enumerated() {
+            let started = await coordinator.start(worker)
+            XCTAssertTrue(started)
+            await registerInterval(coordinator, worker: worker, scenarioID: "HwHang.S00\(n)0")
+        }
+        for worker in workers { await coordinator.stop(worker) }
+        await coordinator.finish()
+
+        let made = calls.withLock { $0 }
+        XCTAssertEqual(made.filter(\.hardware).count, 2, "固着を検知するまでに撃つのはスロットの2本だけのはず")
+        XCTAssertEqual(made.filter { !$0.hardware }.count, 3, "3本ともソフトウェアで取れるはず")
+        let swFiles = Set(made.filter { !$0.hardware }.map(\.file))
+        for hwFile in made.filter(\.hardware).map(\.file) {
+            XCTAssertFalse(swFiles.contains(hwFile), "固着したハードウェアの書き先へソフトウェアを書かないはず: \(hwFile)")
+        }
+        let decoded = try readIndex(tmp)
+        XCTAssertEqual(decoded.recordings.count, 3)
+        XCTAssertEqual(decoded.clipsFailed, 0)
+    }
+
+    /// ハードウェアが失敗(false)したら、ソフトウェアで1回やり直すはず
+    func testHardwareFailureIsRetriedWithSoftware() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let calls = LockedValue<[Bool]>([])
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp),
+            makeSession: fixedSessionFactory(tmp: tmp),
+            extractClip: { _, _, _, _, _, hardware, _ in
+                calls.withLock { $0.append(hardware) }
+                return !hardware
+            })
+        let worker = makeWorker(1)
+        let started = await coordinator.start(worker)
+        XCTAssertTrue(started)
+        await registerInterval(coordinator, worker: worker, scenarioID: "HwFail.S0010")
+        await coordinator.stop(worker)
+        await coordinator.finish()
+        XCTAssertEqual(calls.withLock { $0 }, [true, false])
+        let decoded = try readIndex(tmp)
+        XCTAssertEqual(decoded.recordings.map(\.scenarioID), ["HwFail.S0010"])
+        XCTAssertEqual(decoded.clipsFailed, 0)
+    }
+
+    /// ハードウェアが失敗したら台帳のための確かめを run につき1回だけ撃ち、残りはハードウェアを撃たないはず
+    func testHardwareFailureProbesOnceAndSkipsHardwareWhenTheEncoderIsDead() async throws {
+        let (hw, probes, recorded) = try await runWithFailingHardware(probe: .dead, clips: 4)
+        XCTAssertEqual(probes, 1, "確かめは run につき1回のはず")
+        XCTAssertLessThanOrEqual(hw, 2, "死と分かった後はハードウェアを撃たないはず(並走していた分だけ)")
+        XCTAssertEqual(recorded, 4, "全部ソフトウェアで取れるはず")
+    }
+
+    /// 確かめが生でも、ハードウェアの失敗が1回出たらその run の残りはソフトウェアのはず(壊れる前に手を引く)
+    func testSingleHardwareFailureSwitchesTheRunToSoftwareEvenIfTheProbeIsHealthy() async throws {
+        let (hw, probes, recorded) = try await runWithFailingHardware(probe: .alive, clips: 4)
+        XCTAssertEqual(probes, 1, "台帳のための確かめは1回だけのはず")
+        XCTAssertLessThanOrEqual(hw, 2, "失敗の後はハードウェアを撃たないはず(並走していた分だけ)")
+        XCTAssertEqual(recorded, 4)
+    }
+
+    private func runWithFailingHardware(probe state: VideoEncoderLiveness.State, clips: Int) async throws
+        -> (hardwareCalls: Int, probeCalls: Int, recorded: Int) {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let hardwareCalls = LockedValue(0)
+        let probeCalls = LockedValue(0)
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp),
+            makeSession: fixedSessionFactory(tmp: tmp),
+            extractClip: { _, _, _, _, _, hardware, _ in
+                if hardware { hardwareCalls.withLock { $0 += 1 } }
+                return !hardware
+            },
+            probeHardwareEncoder: {
+                probeCalls.withLock { $0 += 1 }
+                return .init(state: state, checkedAt: 1, source: .probe, error: state == .dead ? "broken" : nil)
+            })
+        let workers = (1...clips).map { makeWorker($0) }
+        for (n, worker) in workers.enumerated() {
+            let started = await coordinator.start(worker)
+            XCTAssertTrue(started)
+            await registerInterval(coordinator, worker: worker, scenarioID: "Probe.S00\(n)0")
+        }
+        for worker in workers { await coordinator.stop(worker) }
+        await coordinator.finish()
+        return (hardwareCalls.withLock { $0 }, probeCalls.withLock { $0 }, try readIndex(tmp).recordings.count)
+    }
+
+    // MARK: シナリオの前の録画の確認
+
+    /// 録画が撮れていれば、シナリオの前の確認は何も変えずに nil(動画のまま)を返すはず
+    func testPrepareScenarioKeepsAWorkingRecording() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let session = EnsureSession(recording: true, start: recordStart, dir: tmp)
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp), makeSession: { _, _, _ in session },
+            extractClip: { _, _, _, _, _, _, _ in true })
+        let worker = makeWorker(1)
+        let started = await coordinator.start(worker)
+        XCTAssertTrue(started)
+        let dir = await coordinator.prepareScenario(workerLabel: worker.label)
+        XCTAssertNil(dir)
+        let stops = await session.stops
+        XCTAssertEqual(stops, 0, "撮れている録画を止めないはず")
+    }
+
+    /// 撮り直しても録画が始まらなければ、そのワーカーの残りを静止画方式へ切り替え、それまでの動画も切り出すはず
+    func testPrepareScenarioFallsBackToStillFramesAndKeepsEarlierVideo() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let session = EnsureSession(recording: false, start: recordStart, dir: tmp)
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp), makeSession: { _, _, _ in session },
+            extractClip: { _, _, _, _, _, _, _ in true })
+        let worker = makeWorker(1)
+        let started = await coordinator.start(worker)
+        XCTAssertTrue(started)
+        await registerInterval(coordinator, worker: worker, scenarioID: "Before.S0010")
+        let stills = await coordinator.prepareScenario(workerLabel: worker.label)
+        XCTAssertNotNil(stills, "撮り直せなければ静止画の置き場を返すはず")
+        let again = await coordinator.prepareScenario(workerLabel: worker.label)
+        XCTAssertEqual(again, stills, "切り替えた後は同じ置き場のまま(撮り直しを繰り返さない)")
+        let ensures = await session.ensures
+        XCTAssertEqual(ensures, 1)
+        await coordinator.stop(worker)
+        await coordinator.finish()
+        let index = try readIndex(tmp)
+        XCTAssertEqual(index.recordings.map(\.scenarioID), ["Before.S0010"], "切り替える前の動画からも切り出すはず")
+        XCTAssertEqual(index.sourceIssues?.contains { $0.stillFramesFallback == true }, true)
+    }
+
+    // MARK: 配信中のハードウェアの余力
+
+    /// 配信中は1本目だけを先にハードウェアで切り出し、基準より遅ければ残りはソフトウェアのはず
+    func testSlowFirstHardwareClipWhileStreamingSwitchesTheRestToSoftware() async throws {
+        let flags = try await hardwareFlagsWhileStreaming(streaming: true, firstClipSeconds: 1)
+        XCTAssertEqual(flags.first, true)
+        XCTAssertEqual(Array(flags.dropFirst()), [false, false], "1本目が 4 秒のクリップに 1 秒 = 4 倍速 < 基準 → 残りはソフトウェア")
+    }
+
+    /// 1本目が速ければ残りもハードウェアのはず
+    func testFastFirstHardwareClipWhileStreamingKeepsHardware() async throws {
+        let flags = try await hardwareFlagsWhileStreaming(streaming: true, firstClipSeconds: 0)
+        XCTAssertEqual(flags, [true, true, true])
+    }
+
+    /// 配信が無ければ速さで判定しない(遅くてもハードウェアのまま)はず
+    func testWithoutStreamsTheFirstClipIsNotATrial() async throws {
+        let flags = try await hardwareFlagsWhileStreaming(streaming: false, firstClipSeconds: 1)
+        XCTAssertEqual(flags, [true, true, true])
+    }
+
+    private func hardwareFlagsWhileStreaming(streaming: Bool, firstClipSeconds: Double) async throws -> [Bool] {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let calls = LockedValue<[Bool]>([])
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp),
+            makeSession: fixedSessionFactory(tmp: tmp),
+            extractClip: { _, _, _, _, _, hardware, _ in
+                let first = calls.withLock { list -> Bool in
+                    list.append(hardware)
+                    return list.count == 1
+                }
+                if first, firstClipSeconds > 0 {
+                    try? await Task.sleep(nanoseconds: UInt64(firstClipSeconds * 1_000_000_000))
+                }
+                return true
+            },
+            liveStreamsActive: { streaming })
+        let workers = (1...3).map { makeWorker($0) }
+        for (n, worker) in workers.enumerated() {
+            let started = await coordinator.start(worker)
+            XCTAssertTrue(started)
+            await registerInterval(coordinator, worker: worker, scenarioID: "Stream.S00\(n)0")
+        }
+        for worker in workers { await coordinator.stop(worker) }
+        await coordinator.finish()
+        XCTAssertEqual(try readIndex(tmp).recordings.count, 3)
+        return calls.withLock { $0 }
+    }
+
+    /// 本番の配線: 配信の有無と合成映像の確かめは RunOrchestrator が本物を渡す(init の既定は「しない」= テスト用)
+    func testOrchestratorWiresLiveStreamsAndProbe() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let orchestrator = try String(contentsOf: root.appendingPathComponent("Sources/FTCore/RunOrchestrator.swift"),
+                                      encoding: .utf8)
+        XCTAssertTrue(orchestrator.contains("probeHardwareEncoder: { await HardwareEncoderProbe.check() }"))
+        XCTAssertTrue(orchestrator.contains("liveStreamsActive: { LiveEncodeStreams.anyActive() })"))
+    }
+
+    /// 基準値はソフトウェアの典型的な速さ(実測の中央値 約 8.5 倍)。リテラルで固定する
+    func testMinimumHardwareSpeedWhileStreamingIsPinned() {
+        XCTAssertEqual(VideoRecordingCoordinator.minHardwareSpeedWhileStreaming, 8)
+    }
+
+    /// ハードウェアが固まったクリップの書きかけ(元の名前)は run の終わりに消すはず
+    func testHungHardwareLeavesNoPartialFile() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let partials = LockedValue<[URL]>([])
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp),
+            makeSession: fixedSessionFactory(tmp: tmp),
+            extractClip: { _, _, _, _, _, hardware, outputURL in
+                guard hardware else { return true }
+                FileManager.default.createFile(atPath: outputURL.path, contents: Data([0]))
+                partials.withLock { $0.append(outputURL) }
+                try? await Task.sleep(nanoseconds: 3_600_000_000_000)
+                return true
+            },
+            hardwareDeadline: { _ in 0.2 })
+        let worker = makeWorker(1)
+        let started = await coordinator.start(worker)
+        XCTAssertTrue(started)
+        await registerInterval(coordinator, worker: worker, scenarioID: "Partial.S0010")
+        await coordinator.stop(worker)
+        await coordinator.finish()
+        let written = partials.withLock { $0 }
+        XCTAssertEqual(written.count, 1)
+        for url in written {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: url.path), "書きかけを残さないはず")
+        }
+        XCTAssertEqual(try readIndex(tmp).recordings.count, 1)
+    }
+
+    // MARK: 静止画の末尾
+
+    /// ファイルが閉じた時刻より前に終わっている(VFR = 最後に画面が変わった所で終わる)なら、
+    /// シナリオの終わりまで最終フレームを伸ばすはず(clipEndMs がソースを越え、index の segment も伸びる)
+    func testClipExtendsTheStillTailUpToTheScenarioEnd() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let ranges = LockedValue<[(Int, Int)]>([])
+        let start = recordStart
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp),
+            makeSession: { _, recordingsDir, stem in
+                FixedSourceSession(source: RecordingSource(
+                    files: [recordingsDir.appendingPathComponent("\(stem).mov")],
+                    segments: [RecordingIndexSegment(startedAt: ISO8601Millis.string(from: start), durationMs: 2000)],
+                    closedAt: [start.addingTimeInterval(5)]))
+            },
+            extractClip: { _, clipStart, clipEnd, _, _, _, _ in
+                ranges.withLock { $0.append((clipStart, clipEnd)) }
+                return true
+            })
+        let worker = makeWorker(1)
+        let started = await coordinator.start(worker)
+        XCTAssertTrue(started)
+        await coordinator.scenarioStarted(workerLabel: worker.label, scenarioID: "Tail.S0010",
+                                          at: start.addingTimeInterval(1))
+        await coordinator.scenarioFinished(workerLabel: worker.label, at: start.addingTimeInterval(4), passed: false)
+        await coordinator.stop(worker)
+        await coordinator.finish()
+        let got = ranges.withLock { $0 }
+        XCTAssertEqual(got.count, 1)
+        XCTAssertEqual(got.first?.0, 1000)
+        XCTAssertEqual(got.first?.1, 4000, "ファイルの終わり(2000)から閉じた時刻までは最終フレームで埋めるはず")
+        XCTAssertEqual(try readIndex(tmp).recordings.first?.segments.map(\.durationMs), [3000])
+    }
+
+    private func readIndex(_ tmp: URL) throws -> RecordingIndex {
+        try JSONDecoder().decode(
+            RecordingIndex.self, from: Data(contentsOf: tmp.appendingPathComponent("recordings/index.json")))
+    }
+
+    /// 本番の切り出しはハードウェアを「使ってよい」だけでなく「必須」にも同じ引数を渡す
+    /// (必須にしないと、ハードウェアが使えないときに黙ってソフトウェアへ落ち、期限がハードウェアの短い値のまま走る)
+    func testProductionExtractorRequiresHardwareWhenAsked() throws {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/FTCore/VideoRecordingFinalizer.swift")
@@ -351,8 +699,9 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         }
         let literal = String(code[settings.upperBound..<end.lowerBound])
         XCTAssertTrue(literal.contains(
-            "AVVideoEncoderSpecificationKey: [\n                kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder as String: false,"),
-            "ハードウェアエンコーダの無効化が outputSettings のリテラルに無い")
+            "kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder as String: hardware,"))
+        XCTAssertTrue(literal.contains(
+            "kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder as String: hardware,"))
         XCTAssertFalse(code.contains("outputSettings["), "outputSettings を後から書き換えない(条件付きの切り替えを戻さない)")
     }
 
@@ -365,7 +714,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp, failuresOnly: true),
             makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, _ in
+            extractClip: { _, _, _, _, _, _, _ in
                 await probe.began()
                 return true
             })
@@ -393,7 +742,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
             makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, _ in
+            extractClip: { _, _, _, _, _, _, _ in
                 await probe.began()
                 try? await Task.sleep(nanoseconds: 150_000_000)
                 await probe.ended()
@@ -410,6 +759,9 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
                 group.addTask { await coordinator.stop(worker) }
             }
         }
+        let callsBeforeFinish = await probe.calls
+        XCTAssertEqual(callsBeforeFinish, 0, "切り出しは finish でまとめて行うはず")
+        await coordinator.finish()
         let calls = await probe.calls
         let maxConcurrent = await probe.maxConcurrent
         XCTAssertEqual(calls, 4, "全ワーカーのクリップが切り出されるはず")
@@ -423,7 +775,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
             makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, _ in
+            extractClip: { _, _, _, _, _, _, _ in
                 await probe.began()
                 await probe.ended()
                 return true
@@ -498,4 +850,36 @@ private actor DeadSession: DeviceVideoRecorderSession {
 private actor EmptySourceSession: DeviceVideoRecorderSession {
     func start() async -> Bool { true }
     func stop() async -> RecordingSource? { nil }
+}
+
+/// シナリオの前の確認の代役。recording = ensureRecording の答え。stop は録画開始から 60 秒の実在ファイルを返す
+private actor EnsureSession: DeviceVideoRecorderSession {
+    let recording: Bool
+    let start: Date
+    let dir: URL
+    private(set) var ensures = 0
+    private(set) var stops = 0
+
+    init(recording: Bool, start: Date, dir: URL) {
+        self.recording = recording
+        self.start = start
+        self.dir = dir
+    }
+
+    func start() async -> Bool { true }
+
+    func ensureRecording() async -> Bool {
+        ensures += 1
+        return recording
+    }
+
+    func stop() async -> RecordingSource? {
+        stops += 1
+        guard stops == 1 else { return nil }
+        let url = dir.appendingPathComponent("ensure-\(UUID().uuidString).mov")
+        FileManager.default.createFile(atPath: url.path, contents: Data([0]))
+        return RecordingSource(
+            files: [url],
+            segments: [RecordingIndexSegment(startedAt: ISO8601Millis.string(from: start), durationMs: 60_000)])
+    }
 }

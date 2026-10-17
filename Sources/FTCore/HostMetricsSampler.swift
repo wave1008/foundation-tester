@@ -353,6 +353,11 @@ public struct HostMetricsSample: Encodable {
     public let fmDeadReason: String?
     /// 上の死活を観測した時刻(epoch 秒)。新しいほうの経路の時刻。null = 観測が無い
     public let fmCheckedAt: Double?
+    /// ハードウェア動画エンコーダの死活(FTCore.VideoEncoderLiveness)。"alive" / "dead" / **null = 不明**。
+    /// 理由は死のときだけ(errorLimit で切り詰め済み)。対向: vscode-fleetest/src/monitorProcessManager.ts の HostMetricsRawEvent
+    public let videoEncoderState: String?
+    public let videoEncoderError: String?
+    public let videoEncoderCheckedAt: Double?
 
     /// 1Hz で流す行に載せる理由の長さ。**原因の特定はここではやらない**(それは
     /// `fleetest doctor --fm-only` と結果 JSON の仕事)ので、どの種類の失敗かが分かれば足りる。
@@ -364,7 +369,8 @@ public struct HostMetricsSample: Encodable {
                 fmCalls: Int?, fmFailures: Int?, fmTotalMs: Int?,
                 visionCalls: Int?, visionFailures: Int?, visionTotalMs: Int?,
                 ocrCompiling: Int,
-                fmLiveness: FMLiveness.Reading = FMLiveness.Reading(text: nil, vision: nil)) {
+                fmLiveness: FMLiveness.Reading = FMLiveness.Reading(text: nil, vision: nil),
+                videoEncoder: VideoEncoderLiveness.Verdict? = nil) {
         self.ts = ts
         self.cpu = cpu
         self.gpu = gpu
@@ -384,12 +390,16 @@ public struct HostMetricsSample: Encodable {
         self.fmDeadReason = fmLiveness.deadSummary(limit: Self.deadReasonLimit)
         self.fmCheckedAt = [fmLiveness.text?.checkedAt, fmLiveness.vision?.checkedAt]
             .compactMap { $0 }.max()
+        self.videoEncoderState = videoEncoder?.state.rawValue
+        self.videoEncoderError = videoEncoder?.error
+        self.videoEncoderCheckedAt = videoEncoder?.checkedAt
     }
 
     private enum CodingKeys: String, CodingKey {
         case kind, ts, cpu, cpuCores, gpu, gpuCores, memUsedBytes, memTotalBytes, fmCalls, fmFailures, fmTotalMs
         case visionCalls, visionFailures, visionTotalMs, ocrCompiling
         case fmTextState, fmVisionState, fmDeadReason, fmCheckedAt
+        case videoEncoderState, videoEncoderError, videoEncoderCheckedAt
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -413,6 +423,9 @@ public struct HostMetricsSample: Encodable {
         try container.encode(fmVisionState, forKey: .fmVisionState)
         try container.encode(fmDeadReason, forKey: .fmDeadReason)
         try container.encode(fmCheckedAt, forKey: .fmCheckedAt)
+        try container.encode(videoEncoderState, forKey: .videoEncoderState)
+        try container.encode(videoEncoderError, forKey: .videoEncoderError)
+        try container.encode(videoEncoderCheckedAt, forKey: .videoEncoderCheckedAt)
     }
 
     /// JSONEncoder([.sortedKeys, .withoutEscapingSlashes]) で1行の NDJSON にする

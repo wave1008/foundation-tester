@@ -112,7 +112,7 @@ test("startHostMetricsProcess は `api host-metrics --interval 1` で spawnFn �
   assert.equal(calls[0].command, "/usr/local/bin/fleetest");
   // --fm-probe: 呼び出しが0件でも FM の死活が分かるようにする(誰も FM を使っていない
   // ときだけ実呼び出しで取り直す)。**既定 OFF なので渡す側の責任**
-  assert.deepEqual(calls[0].args, ["api", "host-metrics", "--interval", "1", "--fm-probe"]);
+  assert.deepEqual(calls[0].args, ["api", "host-metrics", "--interval", "1", "--fm-probe", "--video-encoder-probe"]);
   const { env, ...rest } = calls[0].options;
   assert.deepEqual(rest, { cwd: WORKSPACE_ROOT, shell: false, stdio: ["pipe", "pipe", "pipe"] });
   assert.equal(env.FT_PARENT_PID, String(process.pid));
@@ -296,7 +296,7 @@ test("リモート機のデバイスが居ると `remote exec <machine> -- api h
   const posts = [];
   const manager = new MonitorProcessManager(makeDeps({ post: (m) => posts.push(m) }), spawnFn);
   manager.startAll();
-  assert.deepEqual(calls[1], ["api", "host-metrics", "--interval", "1", "--fm-probe"], "手元のぶんは従来どおり");
+  assert.deepEqual(calls[1], ["api", "host-metrics", "--interval", "1", "--fm-probe", "--video-encoder-probe"], "手元のぶんは従来どおり");
 
   feedMonitorDevices(procs[0], [
     { id: "ios:local1", name: "local1" },
@@ -307,8 +307,8 @@ test("リモート機のデバイスが居ると `remote exec <machine> -- api h
 
   const remote = calls.filter((args) => args[0] === "remote");
   assert.deepEqual(remote, [
-    ["remote", "exec", "mac2", "--", "api", "host-metrics", "--interval", "1", "--fm-probe"],
-    ["remote", "exec", "mac3", "--", "api", "host-metrics", "--interval", "1", "--fm-probe"],
+    ["remote", "exec", "mac2", "--", "api", "host-metrics", "--interval", "1", "--fm-probe", "--video-encoder-probe"],
+    ["remote", "exec", "mac3", "--", "api", "host-metrics", "--interval", "1", "--fm-probe", "--video-encoder-probe"],
   ], "機械ごとに1本(同じ機械の台が複数あっても1本)");
 
   const machinesMsg = posts.filter((m) => m.type === "hostMetricsMachines").at(-1);
@@ -329,7 +329,7 @@ test("リモート機のサンプルには machine が付く(手元のサンプ�
 
   const sample = (cpu) => Buffer.from(JSON.stringify({
     kind: "hostMetrics", ts: 1, cpu, cpuCores: 8, gpu: 0.1, gpuCores: 10, memUsedBytes: 2, memTotalBytes: 4,
-    fmCalls: null, fmFailures: null, fmTotalMs: null, fmTextState: null, fmVisionState: null, fmDeadReason: null, fmCheckedAt: null, visionCalls: null, visionFailures: null, visionTotalMs: null, ocrCompiling: 0,
+    fmCalls: null, fmFailures: null, fmTotalMs: null, fmTextState: null, fmVisionState: null, fmDeadReason: null, fmCheckedAt: null, videoEncoderState: null, videoEncoderError: null, videoEncoderCheckedAt: null, visionCalls: null, visionFailures: null, visionTotalMs: null, ocrCompiling: 0,
   }) + "\n");
   procs[1].stdout.emit("data", sample(0.5)); // 手元の host-metrics
   procs[2].stdout.emit("data", sample(0.9)); // mac2 の host-metrics
@@ -357,7 +357,7 @@ test("hostMetrics は全欄を要求し(欠けた行は捨てる)、値と null(
   }) + "\n");
   const full = Buffer.from(JSON.stringify({
     kind: "hostMetrics", ts: 2, cpu: 0.6, cpuCores: 8, gpu: 0.2, gpuCores: 10, memUsedBytes: 3, memTotalBytes: 4,
-    fmCalls: 2, fmFailures: 1, fmTotalMs: 500, fmTextState: null, fmVisionState: null, fmDeadReason: null, fmCheckedAt: null, visionCalls: null, visionFailures: null, visionTotalMs: null, ocrCompiling: 0,
+    fmCalls: 2, fmFailures: 1, fmTotalMs: 500, fmTextState: null, fmVisionState: null, fmDeadReason: null, fmCheckedAt: null, videoEncoderState: null, videoEncoderError: null, videoEncoderCheckedAt: null, visionCalls: null, visionFailures: null, visionTotalMs: null, ocrCompiling: 0,
   }) + "\n");
   procs[1].stdout.emit("data", missingFields);
   procs[1].stdout.emit("data", full);
@@ -368,6 +368,34 @@ test("hostMetrics は全欄を要求し(欠けた行は捨てる)、値と null(
   assert.equal(samples[0].visionCalls, null);
   assert.equal(samples[0].cpuCores, 8, "コア数を webview へ素通しする");
   assert.equal(samples[0].gpuCores, 10);
+});
+
+test("hostMetrics はエンコーダー死活の欄が欠けた行を捨て、値を webview へ素通しする", () => {
+  const procs = [];
+  const spawnFn = () => {
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const posts = [];
+  const manager = new MonitorProcessManager(makeDeps({ post: (m) => posts.push(m) }), spawnFn);
+  manager.startAll();
+  const base = {
+    kind: "hostMetrics", ts: 1, cpu: 0.5, cpuCores: 8, gpu: 0.1, gpuCores: 10, memUsedBytes: 2, memTotalBytes: 4,
+    fmCalls: null, fmFailures: null, fmTotalMs: null, fmTextState: null, fmVisionState: null, fmDeadReason: null,
+    fmCheckedAt: null, visionCalls: null, visionFailures: null, visionTotalMs: null, ocrCompiling: 0,
+  };
+  procs[1].stdout.emit("data", Buffer.from(JSON.stringify(base) + "\n"));
+  procs[1].stdout.emit("data", Buffer.from(JSON.stringify({
+    ...base, videoEncoderState: "dead", videoEncoderError: "VT -12902", videoEncoderCheckedAt: 123,
+  }) + "\n"));
+
+  const samples = posts.filter((m) => m.type === "hostMetrics");
+  assert.equal(samples.length, 1, "エンコーダーの欄が無い行は送らない");
+  assert.deepEqual(
+    [samples[0].videoEncoderState, samples[0].videoEncoderError, samples[0].videoEncoderCheckedAt],
+    ["dead", "VT -12902", 123],
+  );
 });
 
 test("リモート機のデバイスが消えたらその機械の子を止め、行の集合からも外す", () => {

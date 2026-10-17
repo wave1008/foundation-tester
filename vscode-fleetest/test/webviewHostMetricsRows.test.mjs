@@ -995,3 +995,67 @@ test("hmCompilingBands はコンパイル中の tick を右詰めの x 範囲に
     { x0: 58.5, x1: 59 },
   ]);
 });
+
+/** HW エンコーダー故障バッジの文言。出ていなければ null。 */
+function encoderBadge(document, machine) {
+  const badge = rowFor(document, machine).querySelector(".hm-encoder-dead-badge");
+  return badge.classList.contains("hm-visible") ? badge.textContent : null;
+}
+const encoderTip = (document, machine) =>
+  tipOfEl(rowFor(document, machine).querySelector(".hm-encoder-dead-badge"));
+const withEncoder = (sample, videoEncoderState, videoEncoderError = null, videoEncoderCheckedAt = Date.now() / 1000) =>
+  ({ ...sample, videoEncoderState, videoEncoderError, videoEncoderCheckedAt });
+
+test("エンコーダーが dead のときだけバッジを出し、理由と経過をツールチップに載せる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  send(window, withEncoder(hostMetricsSample("mac2", 0.9), "dead", "VTCompressionSession -12902"));
+  send(window, hostMetricsSample(undefined, 0.1));
+
+  assert.equal(encoderBadge(document, "mac2"), "⚠︎HWE");
+  const tip = encoderTip(document, "mac2");
+  assert.match(tip, /^mac2 — この Mac のハードウェア動画エンコーダーが使えません/);
+  assert.match(tip, /VTCompressionSession -12902/);
+  assert.match(tip, /秒前/);
+});
+
+test("エンコーダーが alive / 不明ならバッジを出さず、死んだ後に alive へ戻れば消える", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  send(window, withEncoder(hostMetricsSample("mac2", 0.9), "alive"));
+  send(window, hostMetricsSample(undefined, 0.1));
+  assert.equal(encoderBadge(document, "mac2"), null, "alive は出さない");
+
+  send(window, withEncoder(hostMetricsSample("mac2", 0.9), "dead", "boom"));
+  send(window, hostMetricsSample(undefined, 0.1));
+  assert.ok(encoderBadge(document, "mac2"));
+  send(window, withEncoder(hostMetricsSample("mac2", 0.9), null, null, null));
+  send(window, hostMetricsSample(undefined, 0.1));
+  assert.equal(encoderBadge(document, "mac2"), null, "不明は出さない");
+  assert.equal(encoderTip(document, "mac2"), "");
+});
+
+test("欠測 tick になったらエンコーダーのバッジも消す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  send(window, withEncoder(hostMetricsSample("mac2", 0.9), "dead", "boom"));
+  send(window, hostMetricsSample(undefined, 0.1));
+  assert.ok(encoderBadge(document, "mac2"));
+  for (let i = 0; i < 4; i += 1) {
+    send(window, hostMetricsSample(undefined, 0.1));
+  }
+  assert.equal(encoderBadge(document, "mac2"), null);
+});
+
+test("新しい機械の行は、手元のエンコーダーが dead でも語を持たずに始まる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  send(window, withEncoder(hostMetricsSample(undefined, 0.1), "dead", "boom"));
+  assert.ok(encoderBadge(document, ""));
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  assert.equal(encoderBadge(document, "mac2"), null);
+  assert.equal(encoderTip(document, "mac2"), "");
+});

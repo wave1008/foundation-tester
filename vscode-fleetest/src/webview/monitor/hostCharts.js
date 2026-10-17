@@ -97,6 +97,8 @@ function hmMakeRow(rowEl, machine) {
     // FM が死んでいるときの語を出す枠(行の最後尾。監視の対象は FM だけなので entries には入れない。
     // Vision は死活を持たないのでバッジも無い)
     deadBadge: rowEl.querySelector('.hm-fm-dead-badge'),
+    // HW 動画エンコーダー故障の語(FM バッジの右。死んでいるときだけ出す)
+    encoderBadge: rowEl.querySelector('.hm-encoder-dead-badge'),
     entries,
     capacity: {}, // metric → 容量(CPU/GPU はコア数・MEM は GB)。未着はキー無し
     all: [entries.cpu, entries.gpu, entries.vision, entries.fm, entries.mem],
@@ -111,6 +113,7 @@ function hmMakeRow(rowEl, machine) {
     // 「今この機械で FM を呼べるか」という水準で、直近の1サンプルがそのまま答え。
     // 'alive' / 'dead' / null=不明。呼び出しが0件でも埋まるのが回数系列との違い。
     liveness: { text: null, vision: null, reason: null, checkedAt: null },
+    encoder: { state: null, error: null, checkedAt: null },
     // pending: 受信済みでまだ描いていないサンプル(1 tick の間に複数届いたら最後の1つだけ残る)。
     // latest: 直近に描いたサンプル(pending が無い tick はこれを使い回す)。missed はその回数。
     pending: undefined,
@@ -286,6 +289,11 @@ function hmEnsureRow(machine) {
   const clonedBadge = rowEl.querySelector('.hm-fm-dead-badge');
   clonedBadge.textContent = '';
   clonedBadge.classList.remove('hm-visible');
+  const clonedEncoderBadge = rowEl.querySelector('.hm-encoder-dead-badge');
+  clonedEncoderBadge.textContent = '';
+  clonedEncoderBadge.classList.remove('hm-visible');
+  clonedEncoderBadge.removeAttribute('data-hover-tip');
+  clonedEncoderBadge.removeAttribute('title');
   hmContainer.appendChild(rowEl);
   const row = hmMakeRow(rowEl, machine);
   hmRows.set(machine, row);
@@ -437,6 +445,27 @@ function hmRenderDeadBadge(row, { dead, deadPaths, stats }) {
     ? `${row.liveness.reason ?? ''}\n${hmFormatAge(row.liveness.checkedAt)}`.trim()
     : t('wvMonitor2.hostCharts.fmDeadLine', {
       seconds: String(HM_COUNT_RATE_WINDOW_TICKS), failures: String(stats.failures) }));
+}
+
+/** HW 動画エンコーダー故障の語。**dead のときだけ出す** —— alive と不明は何も出さない
+ *  (不明を出すとプローブの谷間で点滅する)。要素は作り直さず文字・クラス・ツールチップだけ書く。 */
+function hmRenderEncoderBadge(row) {
+  const badge = row.encoderBadge;
+  if (row.encoder.state !== 'dead') {
+    badge.textContent = '';
+    badge.classList.remove('hm-visible');
+    badge.removeAttribute('title');
+    badge.removeAttribute('data-hover-tip');
+    return;
+  }
+  // 日英とも同じ語なので辞書を通さない(FM の N/A と同じ)。意味はツールチップが持つ
+  badge.textContent = '⚠︎HWE';
+  badge.classList.add('hm-visible');
+  setHoverTip(badge, [
+    hmTitlePrefix(row) + t('wvMonitor2.hostCharts.encoderDeadLine'),
+    row.encoder.error ?? '',
+    hmFormatAge(row.encoder.checkedAt),
+  ].filter((line) => line !== '').join('\n'));
 }
 
 /** Vision(Vision / Core ML。OCR と画像分類器)呼び出し回数の表示。**死活・バッジは持たない**(FM と違う) —— FM の失敗は
@@ -760,6 +789,12 @@ function hmRenderRow(row, sample) {
     reason: sample && typeof sample.fmDeadReason === 'string' ? sample.fmDeadReason : null,
     checkedAt: sample && typeof sample.fmCheckedAt === 'number' ? sample.fmCheckedAt : null,
   };
+  // エンコーダーも欠測 tick は不明へ戻す(liveness と同じ理由)
+  row.encoder = {
+    state: sample && typeof sample.videoEncoderState === 'string' ? sample.videoEncoderState : null,
+    error: sample && typeof sample.videoEncoderError === 'string' ? sample.videoEncoderError : null,
+    checkedAt: sample && typeof sample.videoEncoderCheckedAt === 'number' ? sample.videoEncoderCheckedAt : null,
+  };
 
   hmPushSample(row.entries.cpu, cpu);
   hmPushSample(row.entries.gpu, gpu);
@@ -795,6 +830,7 @@ function hmRenderRow(row, sample) {
   setHoverTip(row.entries.gpu.el, prefix + t('wvMonitor2.hostCharts.gpuTitle', { value: hmFormatPercent(gpu) }));
   hmRenderVisionLabel(row);
   hmRenderFmLabel(row);
+  hmRenderEncoderBadge(row);
   setHoverTip(row.entries.mem.el, prefix + t('wvMonitor2.hostCharts.memTitle', {
     used: hmFormatGb(memUsedBytes),
     total: hmFormatGb(memTotalBytes),

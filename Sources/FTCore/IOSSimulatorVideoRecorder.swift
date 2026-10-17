@@ -45,7 +45,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     /// 進行中 part の exit 監視タスク。stop() 側はこれの完了(=最後の part の確定)を待つ
     private var watchTask: Task<Void, Never>?
     /// 確定済み(死亡+再spawn または通常停止)の part。files/segments と 1:1 対応する順で積む
-    private var parts: [(url: URL, startedAt: Date, durationMs: Int)] = []
+    private var parts: [(url: URL, startedAt: Date, durationMs: Int, closedAt: Date)] = []
 
     init(udid: String, workDir: URL, fileStem: String) {
         self.udid = udid
@@ -279,7 +279,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     /// 「予期しない死亡」の両方(区別は stopRequested で行う)
     private func handlePartExited(url: URL, startedAt: Date) async {
         process = nil
-        await finalizePart(url: url, startedAt: startedAt)
+        await finalizePart(url: url, startedAt: startedAt, closedAt: Date())
         guard !stopRequested else { return }
         guard restarts < Self.maxRestarts else {
             warn("the recording process keeps dying — giving up on restarts (\(Self.maxRestarts) times; "
@@ -295,14 +295,36 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     }
 
     /// 死亡時点のファイルは duration が読めれば parts に含め、読めなければ(録画が実質空)破棄する
-    private func finalizePart(url: URL, startedAt: Date) async {
+    private func finalizePart(url: URL, startedAt: Date, closedAt: Date) async {
         guard let duration = try? await AVURLAsset(url: url).load(.duration), duration.isNumeric,
               duration.seconds > 0 else {
             warn("discarding an unreadable recording file (\(url.lastPathComponent))")
             try? FileManager.default.removeItem(at: url)
             return
         }
-        parts.append((url, startedAt, Int((duration.seconds * 1000).rounded())))
+        parts.append((url, startedAt, Int((duration.seconds * 1000).rounded()), closedAt))
+    }
+
+    /// シナリオの直前(DeviceVideoRecorderSession.ensureRecording)。動いている録画があれば true。予期しない死亡からの
+    /// 撮り直しの途中ならその結果を待ち、止まったままなら撮り直して "Recording started" を確かめる(spawnNextPart)
+    func ensureRecording() async -> Bool {
+        guard !stopRequested else { return false }
+        if let process, process.isRunning { return true }
+        if let watchTask { await watchTask.value }
+        if let process, process.isRunning { return true }
+        guard !stopRequested else { return false }
+        warn("the recording was not running before a scenario — starting it again")
+        return await spawnNextPart()
+    }
+
+    private func source(of parts: [(url: URL, startedAt: Date, durationMs: Int, closedAt: Date)]) -> RecordingSource {
+        RecordingSource(
+            files: parts.map(\.url),
+            segments: parts.map {
+                RecordingIndexSegment(startedAt: ISO8601Millis.string(from: $0.startedAt),
+                                      durationMs: $0.durationMs)
+            },
+            closedAt: parts.map(\.closedAt))
     }
 
     func stop() async -> RecordingSource? {
@@ -333,12 +355,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
             }
         }
         guard !parts.isEmpty else { return nil }
-        return RecordingSource(
-            files: parts.map(\.url),
-            segments: parts.map {
-                RecordingIndexSegment(startedAt: ISO8601Millis.string(from: $0.startedAt),
-                                      durationMs: $0.durationMs)
-            })
+        return source(of: parts)
     }
 
     /// 同じ udid への stale な recordVideo(client プロセス)を起動前に best-effort で止める。
