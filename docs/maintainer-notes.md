@@ -4765,7 +4765,35 @@ E2E-CMP のジェスチャ S0010 が最初のガードだけ N・残り 49 回�
 `modelmanagerd` がその瞬間に起動し直され、新しいサービスが安全判定のモデル `instruct_300m.safety` を ANE に載せられない
 (`Code=53 Program load failed — no memory`)。メモリの逼迫が解けても(空き 54%)、fm-serve を起こし直しても戻らない = 今朝の再起動前
 (06:43〜07:01、同じ `SensitiveContentAnalysisML error 15 ← ModelManagerError 1001`)と同じで、OS の再起動まで戻らない型。
-**デバイス実行の負荷が無いときに起きた** = §83.9 の「死の再現手順は無い」に対する新しい実例(カーネルの `VM exhausted` は記録に無い)
+**デバイス実行の負荷が無いときに起きた** = §83.9 の「死の再現手順は無い」に対する新しい実例(カーネルの `VM exhausted` は記録に無い)。
+ただし**メモリは空いていなかった**(下の「JetsamEvent の中身」。「空き 54%」は死んだ後の値)
+
+**追加調査(10/17・M2Ultra)**: 起動し直された理由は OS のプロセス単位のメモリ上限。
+13:05:09.422 の launchd が `modelmanagerd[867]` の終了理由を
+`JETSAM_REASON_MEMORY_PERPROCESSLIMIT` と記録し、`/Library/Logs/DiagnosticReports/Retired/JetsamEvent-2026-10-17-130509.ips`
+も同じ PID を `reason: per-process-limit` の被終了プロセスとして記録している。配下の推論サービス 1454 / 1460 は
+親との接続を失い exit(1)。13:05:10.539 に modelmanagerd[86029] が起動し、13:05:11.560 に新しい推論サービス[86037]が
+`instruct_300m.safety` の読み込みで ANE Code=53 を返した。両経路の死の記録は 13:05:27。
+fm-serve は 13:10・13:31・13:46 の入れ替え後も回復せず、Mac の起動時刻 13:58:32 の後、13:59:19 / 21 に text / vision が回復。
+14:49:57 の `doctor --fm-only` でも text 302ms・vision 446ms、exit 0 を確認。
+**並列ビルドが上限超過を起こしたか・実際の上限値・ANE が再読み込み不能になった内部原因は未確定**。
+jetsam の理由だけから Mac 全体の RAM 枯渇や modelmanagerd のリークとは断定しない。
+原本・OS ログ・調査記録は `reports/fm-m2ultra-20261017-1305/`(git 管理外)。
+
+**JetsamEvent の中身と、その前の FM の負荷(10/17 の再調査・M2Ultra)**:
+- **終了の瞬間、Mac 全体が強く逼迫していた**: 192GB 中 空き 2.4GiB・圧縮器が 155GiB 分を 71GiB に格納(`memoryStatus`)・
+  最大のプロセス群は Emulator の qemu 8台で常駐 54GiB・Simulator 11台(SimRenderServer 11)。
+- **殺された modelmanagerd[867] の常駐は 15.9MB だけ**(`rpages=968`・`lifetimeMax=968`)。上限の判定に使う footprint は圧縮分を含むので、
+  中身の大半が圧縮側にあった可能性がある(footprint そのものは記録に無い)。launchd の plist(`com.apple.modelmanagerd.plist`)にも
+  上限の指定は無い = 既定の上限。
+- **fm-serve の keep-warm(§81・`FMServeServer.keepAlive`)が 11:02〜13:05 に毎分約 30 セッション(約 1.1 万)を modelmanagerd に通していた**
+  (OS ログの `ModelBundle: Creating ... fm_api_generic` を fleetest の PID ごとに数えた。11 時台 5,429・12 時台 5,670)。
+  **これが上限超過を起こしたとは言えない**: 再起動後の modelmanagerd の footprint(`top -stats mem`)は keep-warm が回る中で
+  5 分間 7.2〜7.3MB の横ばいで、セッションごとのリークは見えなかった(上限に届くまでの時間は測っていない)。
+- ANECompilerService の診断(`ANECompilerService_2026-10-17-130526_LDIPC96.diag`・disk writes)は、07:40〜13:04 に fleetest の
+  プロセス(PID 28143 / 54407 / 84520 = OCR の認識器)のために ANE 向けのコンパイルで 8.6GB 書いたと記録している。死への関与は未確認。
+- 朝の 06:43 の回は `fm-history.ndjson` の証拠の行に同じ Code=53 があるだけで、その時間帯の OS ログはもう残っていない(きっかけは追えない)。
+- **次に分けるには**: ホストの modelmanagerd の footprint と Mac 全体の空き・圧縮量を時系列で並べて採る(footprint の一部は root が要る)。
 
 ### 84.6 アラインの FM の保守ロックが、死活の確かめと重なっただけで即失敗した
 試験後のアラインで M1Max だけ `Could not acquire FM maintenance lock … errno 35`(2 回目は通った)。保守は全枠を `LOCK_NB` で押さえ、
