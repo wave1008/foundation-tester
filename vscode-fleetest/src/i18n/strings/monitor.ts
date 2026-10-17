@@ -232,6 +232,10 @@ export const monitorStrings = {
     ja: "実行中のためブリッジの修復を保留します。",
     en: "Deferring bridge repair because a run is in progress.",
   },
+  "monitor.bridgeWatch.repairDeferredInSession": {
+    ja: "MCP かライブ操作がこのデバイスを使用中のため、ブリッジの無応答を判定しません(操作の処理中は応答しないことがあります)。",
+    en: "Not judging the bridge as unresponsive because an MCP or live-control session is using this device (the bridge may not answer while it handles an operation).",
+  },
 
   // ---- monitorBridgeLogRotation.ts ----
   "monitor.bridgeLogRotation.restarting": {

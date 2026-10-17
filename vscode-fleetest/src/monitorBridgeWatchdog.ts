@@ -59,6 +59,8 @@ interface DeviceWatchEntry {
   degraded: boolean;
   /** inRun で保留中(保留に入った1回だけログするための印。inRun が解けたら下ろす)。 */
   heldInRun: boolean;
+  /** MCP・ライブ操作の使用中で保留中(入った1回だけログするための印)。 */
+  heldInSession: boolean;
 }
 
 /** **machine は手元のとき欄ごと省く**(「省略 = 手元」が monitorDevices / wipeStatus と共通の綴り)。
@@ -73,6 +75,7 @@ function watchMessage(name: string, machine: string | undefined,
 function freshEntry(): DeviceWatchEntry {
   return {
     bootedStreak: 0, attemptCount: 0, cooldownUntil: 0, failed: false, degraded: false, heldInRun: false,
+    heldInSession: false,
   };
 }
 
@@ -113,14 +116,15 @@ export class MonitorBridgeWatchdog {
       // ②同名衝突: 記録の鍵を device.id にした(id は machine 込みで一意。
       //   `DeviceMachineGrouping.workerID`)。name で持っていた頃は「向こうの connected が
       //   手元のハングを隠す / 向こうの booted が手元の健全なデバイスを再起動する」が起きた
-      this.observeOne(device.id, device.name, device.machine, device.state, device.inRun);
+      this.observeOne(device.id, device.name, device.machine, device.state, device.inRun, device.inSession);
     }
   }
 
   /** `id` は記録の鍵(machine 込みで一意)、`name`/`machine` は表示と操作の宛先。
    * **鍵と宛先を同じ文字列で兼ねない** —— 兼ねると、表示に出す名前を変えた日に記録が割れる */
   private observeOne(id: string, name: string, machine: string | undefined,
-                     state: MonitorDeviceState, inRun: boolean | undefined): void {
+                     state: MonitorDeviceState, inRun: boolean | undefined,
+                     inSession: boolean | undefined): void {
     const entry = this.entries.get(id);
     const label = machine === undefined ? name : `${machine}/${name}`;
 
@@ -165,6 +169,20 @@ export class MonitorBridgeWatchdog {
       return;
     }
     entry.heldInRun = false;
+
+    if (inSession) {
+      // **MCP・ライブ操作の使用中も数えない・撃たない**(inRun と同じ扱い)。XCUITest のランナーは操作の処理中
+      // /status に答えないので booted に見える(実測: ライブ操作の back 46 秒の間に「無応答」と判定して
+      // start-device を積み、ランナーを止めた)。使用中の端末は start-device が止めずに断るので、数えても
+      // 修復が失敗する誤警告にしかならない。回復はそのセッション自身の自動起動が持つ
+      if (!entry.heldInSession) {
+        this.deps.log(`[bridge-watch] ${label}: ${t("monitor.bridgeWatch.repairDeferredInSession")}`);
+      }
+      entry.heldInSession = true;
+      entry.bootedStreak = 0;
+      return;
+    }
+    entry.heldInSession = false;
 
     if (this.deps.isDeviceLifecycleQueueBusy()) {
       // **一括起動/停止の最中は数えない・宣言しない**(inRun と同じ扱い。実害: 供給中の

@@ -4758,6 +4758,9 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     `monitorBridgeWatchdog`): 供給中のデバイス(10 秒後に ready)へ「booted が5回連続したためブリッジ
     無応答とみなします」を出していた。修復は既存の門で止まっていたので実害は誤検知の警告だけだが、
     **検知は誤検知0が条件**なので `inRun` と同じく streak ごと 0 に戻す
+  - **MCP・ライブ操作の使用中もブリッジ無応答を数えない**(`inSession` = モニターが `MCPDeviceLease.holderPID` を読んで
+    デバイスイベントに載せる): XCUITest のランナーは操作の処理中に /status へ答えないので booted に見える。使用中の端末は
+    start-device の引き取り(`.adopt`)が止めずに断るので、数えると誤警告と失敗する修復だけが出る(maintainer-notes §84.8)
   - **ブリッジの定着待ちはデバイスごとに並列**(実測 2026-09-10。`awaitDurableAndroidBridges`):
     **直列にする理由は起こす側にしかない** —— `AndroidLaneRecovery.bootMissingDevices` が1台ずつ
     なのは「複数台の同時ブート描画が画面凍結の契機」だから。定着待ちは `/status` を叩くだけで

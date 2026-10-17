@@ -64,7 +64,7 @@ final class MonitorMachineScopeTests: XCTestCase {
                       kind: String = "virtual", wired: Bool? = nil) -> ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(
             id: id, name: id, platform: "ios", state: state, detail: "", udid: udid, serial: nil,
-            health: nil, renderMode: nil, inRun: false, kind: kind, host: nil, port: nil,
+            health: nil, renderMode: nil, inRun: false, inSession: false, kind: kind, host: nil, port: nil,
             recording: false, registered: true, machine: nil, frozen: false, wired: wired,
             streamedByOther: nil, bridgeRunning: nil, storage: nil,
             storageMeasuring: false, storageRefreshId: nil, foldable: nil)
@@ -160,7 +160,7 @@ extension MonitorMachineScopeTests {
     private func remoteInfo(id: String, name: String, machine: String) -> ApiMonitorDeviceInfo {
         var info = ApiMonitorDeviceInfo(
             id: id, name: name, platform: "ios", state: "connected", detail: "",
-            udid: nil, serial: nil, health: nil, renderMode: nil, inRun: false, kind: "virtual",
+            udid: nil, serial: nil, health: nil, renderMode: nil, inRun: false, inSession: false, kind: "virtual",
             host: nil, port: nil, recording: false, registered: true, machine: nil, frozen: false,
             wired: nil, streamedByOther: nil, bridgeRunning: nil, storage: nil,
             storageMeasuring: false, storageRefreshId: nil, foldable: nil)

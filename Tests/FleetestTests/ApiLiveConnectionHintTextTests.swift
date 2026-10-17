@@ -26,6 +26,8 @@ final class ApiLiveConnectionHintTextTests: XCTestCase {
         XCTAssertTrue(hint.lowercased().contains("busy"), hint)
         XCTAssertFalse(hint.contains("fleetest bridge up"),
                        "busy なだけの接続を固まりと同じ『起動し直せ』にしない")
+        XCTAssertFalse(hint.contains("not a dropped connection"),
+                       "時間切れのプローブは落ちる途中のランナーでも起きるので、切断ではないと言い切らない")
     }
 
     /// 誰も listen していない(probe 時点で消えていた): 固まりと同じく起動し直しを勧める

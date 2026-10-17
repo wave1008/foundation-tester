@@ -853,9 +853,13 @@ struct ApiLiveServe: AsyncParsableCommand {
                 + " screen locks, or it leaves USB/Wi-Fi range). This will not recover on its own:"
                 + " run `fleetest bridge up` for this device, then try again."
         case .timedOut:
-            return " The device is still connected and busy (for example, waiting for the screen to"
-                + " settle can take tens of seconds) — this is not a dropped connection. Wait a"
-                + " moment and try again."
+            // **「切断ではない」と言い切らない**: プローブが時間切れでも、元の失敗が「接続が切れた」なら
+            // ランナーが落ちる途中のことがある(実測: 約 10 秒後に接続拒否へ変わった = maintainer-notes §84.8)。
+            // 言えるのは「答えなかった」事実と、最も多い理由(忙しい)まで
+            return " The device is still connected, but its bridge did not answer a status check in time —"
+                + " most likely it is busy (for example, waiting for the screen to settle can take tens of"
+                + " seconds). Wait a moment and try again; if the next try reports the connection as refused,"
+                + " the bridge has exited."
         case .notBound:
             return " Nothing is listening on this device's bridge port anymore. Run"
                 + " `fleetest bridge up` for this device, then try again."

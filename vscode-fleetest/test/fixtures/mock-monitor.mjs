@@ -38,7 +38,7 @@ function runSuccess() {
   emit({
     kind: "monitorDevices",
     devices: [
-      { id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "connected", detail: "接続済み", kind: "virtual", inRun: false, recording: false, registered: true, frozen: false, storageMeasuring: false },
+      { id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "connected", detail: "接続済み", kind: "virtual", inRun: false, inSession: false, recording: false, registered: true, frozen: false, storageMeasuring: false },
       {
         id: "ios:シミュ2",
         name: "シミュ2",
@@ -47,6 +47,7 @@ function runSuccess() {
         detail: "ブリッジ未接続",
         kind: "virtual",
         inRun: false,
+        inSession: false,
         recording: false,
         registered: true,
         frozen: false,

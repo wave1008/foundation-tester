@@ -39,7 +39,7 @@ import {
 } from "../src/monitorModel";
 
 // CLI(ApiMonitorDeviceInfo)が必ず送る欄。欠けた行は不正として弾く(下の「欠落は false」のテスト)
-const REQ = { kind: "virtual", inRun: false, recording: false, registered: true, frozen: false, storageMeasuring: false };
+const REQ = { kind: "virtual", inRun: false, inSession: false, recording: false, registered: true, frozen: false, storageMeasuring: false };
 
 // ---- isMonitorEvent: 正常3種 ----
 
@@ -162,7 +162,7 @@ test("isMonitorEvent: monitorDevices は要素の platform が ios/android 以�
   assert.equal(isMonitorEvent(value), false);
 });
 
-test("isMonitorEvent: monitorDevices の必須欄(kind/inRun/recording/registered/frozen/storageMeasuring)の欠落・型不正は false", () => {
+test("isMonitorEvent: monitorDevices の必須欄(kind/inRun/inSession/recording/registered/frozen/storageMeasuring)の欠落・型不正は false", () => {
   for (const key of Object.keys(REQ)) {
     for (const raw of [undefined, null, "true", 1]) {
       const device = { ...REQ, id: "d1", name: "d1", platform: "ios", state: "connected", detail: "" };

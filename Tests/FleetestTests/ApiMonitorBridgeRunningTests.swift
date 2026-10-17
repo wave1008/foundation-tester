@@ -68,9 +68,9 @@ final class ApiMonitorBridgeRunningTests: XCTestCase {
     func testInfoCarriesBridgeRunningThrough() {
         let state = DeviceRuntimeState(target: androidPhysicalTarget(), state: "connected", detail: "",
                                        iosPort: nil, androidSerial: "14141JEC204922")
-        XCTAssertEqual(state.info(health: nil, renderMode: nil, inRun: false, recording: false,
+        XCTAssertEqual(state.info(health: nil, renderMode: nil, inRun: false, inSession: false, recording: false,
                                   bridgeRunning: true).bridgeRunning, true)
-        XCTAssertEqual(state.info(health: nil, renderMode: nil, inRun: false, recording: false,
+        XCTAssertEqual(state.info(health: nil, renderMode: nil, inRun: false, inSession: false, recording: false,
                                   bridgeRunning: false).bridgeRunning, false)
     }
 
@@ -78,7 +78,7 @@ final class ApiMonitorBridgeRunningTests: XCTestCase {
     func testInfoDefaultsBridgeRunningToNilNotFalse() {
         let state = DeviceRuntimeState(target: androidPhysicalTarget(), state: "connected", detail: "",
                                        iosPort: nil, androidSerial: "14141JEC204922")
-        XCTAssertNil(state.info(health: nil, renderMode: nil, inRun: false, recording: false).bridgeRunning)
+        XCTAssertNil(state.info(health: nil, renderMode: nil, inRun: false, inSession: false, recording: false).bridgeRunning)
     }
 
     func testInfoOnNonAndroidPhysicalIsNilByConstruction() {
@@ -87,6 +87,6 @@ final class ApiMonitorBridgeRunningTests: XCTestCase {
         // という info() 側の既定を固定する(呼び出し側の絞り込みは shouldProbeBridge のテストで守る)
         let state = DeviceRuntimeState(target: iosPhysicalTarget(), state: "connected", detail: "",
                                        iosPort: 8134, androidSerial: nil)
-        XCTAssertNil(state.info(health: nil, renderMode: nil, inRun: false, recording: false).bridgeRunning)
+        XCTAssertNil(state.info(health: nil, renderMode: nil, inRun: false, inSession: false, recording: false).bridgeRunning)
     }
 }

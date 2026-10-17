@@ -4729,7 +4729,7 @@ start-device を積み、供給の `.adopt`(起動中とみなした pid の引�
 他のセッションのデバイスなら止めずに `unresponsiveBridgeHeldByAnotherSession` で断る(回復はそのセッション自身の自動回復が持つ)。
 Simulator が止まっている・版が古い・ツールチェーン不一致の作り直しは門の外のまま。
 `ForeignLeaseAutoRestartGateTests.testAdoptChecksBeforeStoppingAnUnresponsiveRunner`。
-**残り**: bridge-watch 自体は MCP/ライブ操作の印を見ずに「無応答」と警告する(止めはしなくなった)
+**残り**: bridge-watch 自体は MCP/ライブ操作の印を見ずに「無応答」と警告する(止めはしなくなった)→ 84.8 で対処
 
 ### 84.2 ft_run_status: 始まらなかったと分かっている run に推測の行を並べていた
 子の記録(`DispatchRefusalReport`)でロック待ちの拒否と分かっていても「No run record was found (the run may have ended before
@@ -4777,7 +4777,7 @@ EWOULDBLOCK(`MaintenanceError.slotHeld`)だけ同じ秒数のあいだ取り直�
 ### 84.7 記録だけの観察(直していない)
 - ライブ操作の `type`/`clear` は ref が入力欄でなくても撃つ前に断らない(MCP・DSL は断る)。拡張は ref 付きで送らないので実害の経路なし
 - ライブ操作の失敗文: プローブが timedOut だと、元の失敗が「network connection was lost」(ランナーが落ちる途中)でも
-  「this is not a dropped connection」と言う(約 10 秒間)
+  「this is not a dropped connection」と言う(約 10 秒間)→ 84.8 で対処
 - ライブ操作の自動起動が run 4 の 8 台供給中に約 8 分「接続拒否」のまま(供給のロック待ち = 設計どおり。`bridgeStarting: true` は立つ)
 - ランナーの自死(ライブ操作の activate が main を 75 秒塞いだ = handlerTimeout)1 回。負荷 230 の下
 - xcuitest の run で録画が全台始まらない(emptyTestRecording / cannotLaunchRecorder)回が高負荷の時間帯に集中。静止画への縮退は設計どおり
@@ -4785,3 +4785,14 @@ EWOULDBLOCK(`MaintenanceError.slotHeld`)だけ同じ秒数のあいだ取り直�
 - **ハーネス側の誤り**: Monitor のパイプ末尾の `cut` がバッファして 1 件も届かなかった・`--wait-lock` なしのフリートが MCP の run の
   ロック中に 0.3 秒の拒否を約 225 本空回り・ft_batch の steps は `;` 区切りの文字列・services は `--profile` 必須・E2EX/E2EY の android は
   8 台 = MCP/ライブ操作の Emulator を引き取ってファズと相乗りした赤(設計どおり)
+
+### 84.8 小さな残りの対処(試験後)
+- **ブリッジ監視の誤警告**: 84.1 で使用中の端末を止めなくなった後も、拡張の bridge-watch は MCP・ライブ操作の印を見ずに
+  「booted 5 回 = 無応答」と警告し、失敗する修復を積んでいた → モニターがデバイスイベントに `inSession`(`MCPDeviceLease.holderPID`、
+  自分と親を除く)を載せ、bridge-watch は `inRun` と同じく数えない・撃たない(保留に入った1回だけログ)。プロトコル版 48 → 49。
+  Android の健康監視(`monitorHealthWatchdog`)は修復の種類ごとに run 中の扱いが分かれる設計なので今回は変えていない。
+  実物: MCP の印を付けた sim-01 だけ `inSession: true`
+- **ライブ操作の失敗文**: プローブが時間切れのとき「this is not a dropped connection」と言い切っていた(落ちる途中のランナーでも
+  時間切れになる)→「答えなかった・最も多い理由は忙しい・次に接続拒否なら終了している」の事実の範囲へ
+- **古い worktree** `ft-ltfix`(10/16 の未コミット分)は 76b5824c と全ファイル一致・docs の追記も本線に全行あることを確かめて削除
+

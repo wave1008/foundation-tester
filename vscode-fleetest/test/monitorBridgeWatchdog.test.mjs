@@ -378,3 +378,22 @@ test("無応答検知の後に run が始まったら修復を保留し(ログ�
   assert.equal(h.jobs.length, 2);
   assert.equal(h.posts.at(-1).phase, "repairing");
 });
+
+// **MCP・ライブ操作の使用中のデバイスも数えない**。XCUITest のランナーは操作の処理中 /status に答えず booted に見え、
+// 使用中の端末は start-device が止めずに断る(maintainer-notes §84.8)。数えると誤警告と失敗する修復だけが出る
+test("inSession の間は booted が連続しても unresponsive にも修復にもならず(ログは1回)、解けたら0から数え直す", () => {
+  const h = createHarness();
+  h.watchdog.observe([device("Sim1", "connected")]);
+  for (let i = 0; i < 8; i += 1) {
+    h.watchdog.observe([{ ...device("Sim1", "booted"), inSession: true }]);
+  }
+  assert.deepEqual(h.posts, []);
+  assert.deepEqual(h.jobs, []);
+  assert.equal(h.logs.filter((line) => line.includes("[bridge-watch]")).length, 1, h.logs.join("\n"));
+  for (let i = 0; i < 4; i += 1) {
+    h.watchdog.observe([{ ...device("Sim1", "booted"), inSession: false }]);
+  }
+  assert.deepEqual(h.posts, [], "解けた直後は0から数え直す(4回では閾値に届かない)");
+  h.watchdog.observe([{ ...device("Sim1", "booted"), inSession: false }]);
+  assert.equal(h.posts.filter((post) => post.phase === "unresponsive").length, 1);
+});
