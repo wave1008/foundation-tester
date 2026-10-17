@@ -3,8 +3,7 @@
 // ワーカー単位の生ソース(iOS: simctl の .mov 1本 / Android: screenrecord セグメント mp4 群)から、
 // シナリオ(テスト関数)ごとの壁時計区間を 1 クリップとして切り出す。
 // VFR ソース(simctl/screenrecord とも「画面が変化した時だけ」フレームを吐く)の罠:
-// 区間の開始時刻ちょうどにフレームが無いことがほとんどのため、reader は毎回ソース全域を
-// 読み直し(使い捨て。全域読みなおしのコストは許容)、区間開始より前の最後のサンプルを
+// 区間の開始時刻ちょうどにフレームが無い場合、区間開始より前の最後のサンプルを
 // 区間開始時刻に retime して先頭フレームとして追加する。writer の startSession/endSession で
 // 出力を 0 起点・区間長ちょうどに揃える(末尾静止保持の理屈は旧 transcode 実装から継承)。
 // 失敗はすべて false を返すのみ(呼び出し側が警告ログを出し、そのクリップを諦める。run は失敗させない)。
@@ -12,6 +11,17 @@
 import AVFoundation
 import CoreMedia
 import Foundation
+
+struct RecordingClipSource: Sendable {
+    let url: URL
+    /// 連結時の尺(ms)。録画終了までの静止末尾を含む。nil はファイルの尺を使う。
+    let durationMs: Int?
+
+    init(url: URL, durationMs: Int? = nil) {
+        self.url = url
+        self.durationMs = durationMs
+    }
+}
 
 enum VideoRecordingFinalizer {
 
@@ -31,7 +41,7 @@ enum VideoRecordingFinalizer {
     /// (実測: 12 秒クリップ 16 本×8 回で 2 回)ので、呼び手は短い期限を付けて固着したらソフトウェアへ切り替える
     /// (VideoRecordingCoordinator.hardwareDeadline)。ソフトウェアは別プロセス(VTEncoderXPCService)で動き、
     /// 総処理量が並列度でほぼ増えない(実測は VideoRecordingCoordinator.maxConcurrentExports)
-    static func extractClip(sourceFiles: [URL], clipStartMs: Int, clipEndMs: Int,
+    static func extractClip(sourceFiles: [RecordingClipSource], clipStartMs: Int, clipEndMs: Int,
                             bitrateKbps: Int, fullResolution: Bool, hardware: Bool,
                             to outputURL: URL) async -> Bool {
         guard clipEndMs > clipStartMs, !sourceFiles.isEmpty else { return false }
@@ -41,13 +51,23 @@ enum VideoRecordingFinalizer {
         guard let compositionTrack = composition.addMutableTrack(
             withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else { return false }
         var cursor = CMTime.zero
-        for url in sourceFiles {
-            let asset = AVURLAsset(url: url)
+        let lastFrameReach = CMTime(value: 1, timescale: 1000)
+        for source in sourceFiles {
+            let asset = AVURLAsset(url: source.url)
             guard let duration = try? await asset.load(.duration), duration.isNumeric, duration.seconds > 0,
-                  let track = try? await asset.loadTracks(withMediaType: .video).first else { continue }
+                  let track = try? await asset.loadTracks(withMediaType: .video).first else { return false }
             let range = CMTimeRange(start: .zero, duration: duration)
-            try? compositionTrack.insertTimeRange(range, of: track, at: cursor)
-            cursor = CMTimeAdd(cursor, duration)
+            do { try compositionTrack.insertTimeRange(range, of: track, at: cursor) }
+            catch { return false }
+            let covered = source.durationMs.map { CMTime(value: Int64($0), timescale: 1000) } ?? duration
+            if covered > duration {
+                // 次の素材を連結する前に、この素材の最後の1msを静止末尾の長さまで伸ばす。
+                let reach = CMTimeMinimum(lastFrameReach, duration)
+                let tailStart = CMTimeAdd(cursor, CMTimeSubtract(duration, reach))
+                compositionTrack.scaleTimeRange(CMTimeRange(start: tailStart, duration: reach),
+                                               toDuration: CMTimeAdd(reach, CMTimeSubtract(covered, duration)))
+            }
+            cursor = CMTimeAdd(cursor, CMTimeMaximum(duration, covered))
         }
         guard cursor.seconds > 0,
               let naturalSize = try? await compositionTrack.load(.naturalSize),
@@ -74,7 +94,10 @@ enum VideoRecordingFinalizer {
         // 二乗になる(実測: 1台で56本の run = 元録画 13 分で、終盤は1本 40 秒・切り出しだけで 15 分前後)。
         // 区間頭を覆うフレームは PTS を区間開始に揃えて1枚目に来る(静止区間でもその1枚)= 下の
         // pendingBeforeClip の付け替えと同じ結果(実録画で確認: 300 秒地点 12.4s → 0.56s・静止区間 34s → 0.03s)
-        reader.timeRange = CMTimeRange(start: clipStart, end: clipEnd)
+        // 区間の開始がソースの終わり以降(静止画の末尾だけに収まる区間 = 呼び手は clipStart/clipEnd をソースの外へ伸ばす)なら、
+        // 最後のフレームを覆う位置から読む = 下の pendingBeforeClip の付け替えでその1枚が区間の頭に来る。ソースの中では区間から読む
+        let readStart = clipStart < cursor ? clipStart : CMTimeMaximum(.zero, CMTimeSubtract(cursor, lastFrameReach))
+        reader.timeRange = CMTimeRange(start: readStart, end: CMTimeMaximum(clipEnd, CMTimeAdd(readStart, lastFrameReach)))
         let outputSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: scaledEven(naturalSize.width),
@@ -118,7 +141,7 @@ enum VideoRecordingFinalizer {
                         // フレームで静止クリップを作る(何も append しないと writer が失敗する)
                         if !state.enteredClip, let pending = state.pendingBeforeClip,
                            let retimed = retimed(pending, to: clipStart) {
-                            state.writerInput.append(retimed)
+                            state.appended += state.writerInput.append(retimed) ? 1 : 0
                         }
                         state.finished = true
                         state.writerInput.markAsFinished()
@@ -133,7 +156,7 @@ enum VideoRecordingFinalizer {
                     if !state.enteredClip {
                         state.enteredClip = true
                         if let pending = state.pendingBeforeClip, let retimed = retimed(pending, to: clipStart) {
-                            state.writerInput.append(retimed)
+                            state.appended += state.writerInput.append(retimed) ? 1 : 0
                         }
                     }
                     if pts >= clipEnd {
@@ -143,7 +166,7 @@ enum VideoRecordingFinalizer {
                         continuation.resume()
                         return
                     }
-                    state.writerInput.append(sample)
+                    state.appended += state.writerInput.append(sample) ? 1 : 0
                 }
             }
         }
@@ -156,6 +179,14 @@ enum VideoRecordingFinalizer {
                  + "error=\(String(describing: reader.error))")
             writer.cancelWriting()
             // cancelWriting はファイルの削除を保証しないため明示的に消す
+            try? FileManager.default.removeItem(at: outputURL)
+            return false
+        }
+        // 1 フレームも書けなかった(区間に覆うフレームが無い)出力は 0 バイトの mp4 になるのに writer は completed を返す
+        // = 成功と数えない(再生できないクリップを index に載せない)
+        guard state.appended > 0 else {
+            ConsoleOut.err("⚠️ [recording] extractClip wrote no frames for \(clipStartMs)..\(clipEndMs)ms")
+            writer.cancelWriting()
             try? FileManager.default.removeItem(at: outputURL)
             return false
         }
@@ -194,6 +225,8 @@ private final class ClipExtractionState: @unchecked Sendable {
     var enteredClip = false
     var reachedClipEnd = false
     var pendingBeforeClip: CMSampleBuffer?
+    /// 書けたサンプル数(0 なら失敗 = 空の mp4 を成功にしない)
+    var appended = 0
 
     init(writerInput: AVAssetWriterInput, readerOutput: AVAssetReaderTrackOutput) {
         self.writerInput = writerInput

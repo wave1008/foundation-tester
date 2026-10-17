@@ -310,7 +310,13 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     func ensureRecording() async -> Bool {
         guard !stopRequested else { return false }
         if let process, process.isRunning { return true }
-        if let watchTask { await watchTask.value }
+        // 撮り直しの途中の監視タスクは**入れ替わるたびに新しい方を待ち直す**(stop() と同じ形)。1つ待って自分で spawn すると、
+        // 待っている間に撮り直した part がすぐ死んだとき、その監視タスクの撮り直しと二重に spawn する
+        var awaited: Task<Void, Never>?
+        while process == nil || process?.isRunning == false, let pending = watchTask, pending != awaited {
+            awaited = pending
+            await pending.value
+        }
         if let process, process.isRunning { return true }
         guard !stopRequested else { return false }
         warn("the recording was not running before a scenario — starting it again")

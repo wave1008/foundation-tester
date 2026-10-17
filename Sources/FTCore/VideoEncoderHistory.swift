@@ -2,7 +2,9 @@
 // 「いつ・再起動から何分・何の直後に壊れたか」を後から突き合わせるためにここへ残す(故障の原因は未特定 =
 // 監視して改善する方針。~/.fleetest/video-encoder-history.ndjson)。
 // 書くのは: 切り出しのハードウェアの失敗・固まり(VideoRecordingCoordinator)/ 台帳の状態の変わり目(VideoEncoderLiveness.record)。
-// 1 行 = {"at","boot","uptimeSeconds","event","source","detail"}。maxBytes を超えたら新しい側の半分を残す
+// 1 行 = {"at","boot","uptimeSeconds","event","source","detail"}。maxBytes を超えたら新しい側の半分を残す。
+// **書き手は複数プロセス**(run・host-metrics)なので、追記も切り詰めも lockFileName の flock の内側で O_APPEND で書く
+// (seekToEnd → write だと同じ位置へ上書きし合い、8 プロセス × 1,000 回で 8,000 件中 2,673 件しか残らなかった)
 
 import Foundation
 
@@ -28,6 +30,7 @@ public enum VideoEncoderHistory {
     }
 
     static let fileName = "video-encoder-history.ndjson"
+    static let lockFileName = "video-encoder-history.lock"
     /// 上限(バイト)。1 行 約 200 バイト = 約 2.5 万件。故障は1日に数回の事象なので数年分
     static let maxBytes = 5 * 1024 * 1024
 
@@ -50,18 +53,24 @@ public enum VideoEncoderHistory {
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         guard var data = try? encoder.encode(line) else { return }
         data.append(0x0A)
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if !FileManager.default.fileExists(atPath: url.path) {
-            FileManager.default.createFile(atPath: url.path, contents: nil)
+        let dir = url.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let lock = open(dir.appendingPathComponent(lockFileName).path, O_CREAT | O_NOFOLLOW | O_RDWR, 0o644)
+        guard lock >= 0 else { return }
+        defer { close(lock) }  // close が flock も解放する
+        while flock(lock, LOCK_EX) != 0 {
+            if errno != EINTR { return }
         }
-        guard let handle = try? FileHandle(forWritingTo: url) else { return }
-        defer { try? handle.close() }
-        _ = try? handle.seekToEnd()
-        try? handle.write(contentsOf: data)
-        if let size = try? handle.offset(), size > UInt64(maxBytes) { trim(url) }
+        let fd = open(url.path, O_CREAT | O_NOFOLLOW | O_WRONLY | O_APPEND, 0o644)
+        guard fd >= 0 else { return }
+        let written = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+        var info = stat()
+        let size = fstat(fd, &info) == 0 ? Int(info.st_size) : 0
+        close(fd)
+        if written > 0, size > maxBytes { trim(url) }
     }
 
-    /// 新しい側の半分(行単位)を残す
+    /// 新しい側の半分(行単位)を残す。**呼ぶのは append の flock の内側だけ**(置き換えの間に他の書き手が旧 inode へ書かない)
     static func trim(_ url: URL) {
         guard let data = try? Data(contentsOf: url) else { return }
         let keepFrom = data.count - maxBytes / 2

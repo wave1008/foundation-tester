@@ -1,6 +1,8 @@
 // ハードウェア動画エンコーダの死活台帳(VideoEncoderLiveness)と、切り出しでの使い方(VideoRecordingCoordinator)。
 // 台帳は一時フォルダへ書く(本番の ~/.fleetest には触れない)。
 
+import AVFoundation
+import VideoToolbox
 import XCTest
 @testable import FTCore
 
@@ -113,6 +115,96 @@ final class VideoEncoderLivenessTests: XCTestCase {
         /repo/.build/out/Products/Debug/fleetest-simstream --udid C --codec h264
         """
         XCTAssertEqual(LiveEncodeStreams.count(psOutput: ps), 2)
+    }
+
+    /// 並行の追記で1件も失われないはず(flock + O_APPEND。seekToEnd → write は同じ位置へ上書きし合っていた)
+    func testConcurrentHistoryAppendsKeepEveryLine() throws {
+        let url = try tempLedger().deletingLastPathComponent().appendingPathComponent(VideoEncoderHistory.fileName)
+        DispatchQueue.concurrentPerform(iterations: 8) { worker in
+            for n in 0..<100 {
+                VideoEncoderHistory.append(event: .callFailed, source: .call, detail: "\(worker)-\(n)", to: url)
+            }
+        }
+        XCTAssertEqual(VideoEncoderHistory.read(at: url).count, 800)
+    }
+
+    /// 末尾の静止画だけに収まる区間(ソースの終わりより後)でも、最後のフレームでクリップを書くはず(0 フレームの成功を作らない)
+    func testExtractClipBeyondTheSourceEndHoldsTheLastFrame() async throws {
+        let dir = try tempLedger().deletingLastPathComponent()
+        let source = dir.appendingPathComponent("source.mp4")
+        try await Self.writeVideo(to: source, frames: 2, frameSeconds: 0.5)
+        let output = dir.appendingPathComponent("tail.mp4")
+        let ok = await VideoRecordingFinalizer.extractClip(sourceFiles: [RecordingClipSource(url: source)], clipStartMs: 2000, clipEndMs: 3000,
+                                                           bitrateKbps: 1000, fullResolution: false, hardware: false,
+                                                           to: output)
+        XCTAssertTrue(ok)
+        let duration = try await AVURLAsset(url: output).load(.duration).seconds
+        XCTAssertEqual(duration, 1.0, accuracy: 0.1, "区間長ぶん最後のフレームを保持するはず")
+    }
+
+    func testExtractClipKeepsTheStillTailBeforeTheNextSource() async throws {
+        let dir = try tempLedger().deletingLastPathComponent()
+        let first = dir.appendingPathComponent("first.mp4")
+        let second = dir.appendingPathComponent("second.mp4")
+        try await Self.writeVideo(to: first, frames: 2, frameSeconds: 1, fill: 64)
+        try await Self.writeVideo(to: second, frames: 2, frameSeconds: 1, fill: 255)
+        let output = dir.appendingPathComponent("joined.mp4")
+        let ok = await VideoRecordingFinalizer.extractClip(
+            sourceFiles: [RecordingClipSource(url: first, durationMs: 5000), RecordingClipSource(url: second, durationMs: 2000)],
+            clipStartMs: 3000, clipEndMs: 7000, bitrateKbps: 1000, fullResolution: false, hardware: false, to: output)
+        XCTAssertTrue(ok)
+        let asset = AVURLAsset(url: output)
+        let duration = try await asset.load(.duration).seconds
+        XCTAssertEqual(duration, 4.0, accuracy: 0.1)
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        let track = try XCTUnwrap(tracks.first)
+        let reader = try AVAssetReader(asset: asset)
+        let frames = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+        ])
+        reader.add(frames)
+        XCTAssertTrue(reader.startReading())
+        var pixels: [(at: Double, brightness: UInt8)] = []
+        while let sample = frames.copyNextSampleBuffer() {
+            let image = try XCTUnwrap(CMSampleBufferGetImageBuffer(sample))
+            CVPixelBufferLockBaseAddress(image, .readOnly)
+            let brightness = try XCTUnwrap(CVPixelBufferGetBaseAddress(image)).load(as: UInt8.self)
+            CVPixelBufferUnlockBaseAddress(image, .readOnly)
+            pixels.append((CMSampleBufferGetPresentationTimeStamp(sample).seconds, brightness))
+        }
+        XCTAssertEqual(reader.status, .completed)
+        XCTAssertEqual(Double(try XCTUnwrap(pixels.first).brightness), 64, accuracy: 15, "先頭は第1素材の静止末尾")
+        let changed = try XCTUnwrap(pixels.first { $0.brightness > 200 })
+        XCTAssertEqual(changed.at, 2.0, accuracy: 0.1, "第2素材は静止末尾2秒の後から始まる")
+    }
+
+    /// 単色のフレームを frames 枚、frameSeconds 間隔で書いた H.264 の mp4(ソフトウェアのエンコーダ)
+    static func writeVideo(to url: URL, frames: Int, frameSeconds: Double, fill: UInt8 = 0) async throws {
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 64, AVVideoHeightKey: 64,
+            AVVideoEncoderSpecificationKey: [
+                kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder as String: false],
+        ])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: nil)
+        writer.add(input)
+        XCTAssertTrue(writer.startWriting())
+        writer.startSession(atSourceTime: .zero)
+        for i in 0..<frames {
+            while !input.isReadyForMoreMediaData { try await Task.sleep(nanoseconds: 10_000_000) }
+            var buffer: CVPixelBuffer?
+            CVPixelBufferCreate(nil, 64, 64, kCVPixelFormatType_32BGRA, nil, &buffer)
+            let image = try XCTUnwrap(buffer)
+            CVPixelBufferLockBaseAddress(image, [])
+            memset(try XCTUnwrap(CVPixelBufferGetBaseAddress(image)), Int32(fill), CVPixelBufferGetDataSize(image))
+            CVPixelBufferUnlockBaseAddress(image, [])
+            XCTAssertTrue(adaptor.append(image, withPresentationTime: CMTime(seconds: Double(i) * frameSeconds,
+                                                                           preferredTimescale: 600)))
+        }
+        input.markAsFinished()
+        writer.endSession(atSourceTime: CMTime(seconds: Double(frames) * frameSeconds, preferredTimescale: 600))
+        await writer.finishWriting()
+        XCTAssertEqual(writer.status, .completed)
     }
 }
 

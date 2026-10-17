@@ -39,6 +39,10 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
     /// 撮り始めの確かめの上限(秒)。iOS の "Recording started" 待ち(IOSSimulatorVideoRecorder の 10 秒)と同じ値。
     /// screenrecord は最初のフレームを符号化してから mp4 を書き始めるので、端末上のファイルが大きさを持てば撮れている
     static let startConfirmSeconds: Double = 10
+    /// 確かめの上限(テストは短くする。本番は startConfirmSeconds)
+    private let startConfirmLimit: Double
+    /// 今の録画プロセス(currentProcess)の撮り始めを確かめたか。確かめの途中は false
+    private var startConfirmed = false
     /// 確かめの刻み(秒)。1回は adb shell stat 1本(数十 ms)。実測で撮り始めは起動から約 0.2〜0.3 秒
     static let startConfirmPollSeconds: Double = 0.2
     /// pull 済みローカルセグメント(連結順)と各々の spawn 時刻(index.json の startedAt に使う)
@@ -52,7 +56,9 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
     func startFailure() async -> RecordingStartFailure? { lastStartFailure }
 
     init(serial: String, adbPath: String, workDir: URL, fileStem: String,
-        bitrateKbps: Int = VideoRecordingConfig.defaultBitrateKbps, fullResolution: Bool = false) {
+        bitrateKbps: Int = VideoRecordingConfig.defaultBitrateKbps, fullResolution: Bool = false,
+        startConfirmLimit: Double = AndroidScreenVideoRecorder.startConfirmSeconds) {
+        self.startConfirmLimit = startConfirmLimit
         self.serial = serial
         self.adbPath = adbPath
         self.workDir = workDir
@@ -77,13 +83,32 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
     /// シナリオの直前(DeviceVideoRecorderSession.ensureRecording)。撮り始めを確かめた録画が動いていれば true。
     /// 3 分ごとの切り替え・予期しない終了の後始末の途中ならその結果を待ち、止まったままなら撮り直して確かめる
     func ensureRecording() async -> Bool {
-        guard !stopRequested else { return false }
-        if let process = currentProcess, process.isRunning, unconfirmedPath == nil { return true }
-        if let watchTask { await watchTask.value }
-        if let process = currentProcess, process.isRunning, unconfirmedPath == nil { return true }
-        guard !stopRequested, !gaveUp else { return false }
-        warn("the recording was not running before a scenario — starting it again")
-        return await spawnNextSegment()
+        var awaited: Task<Void, Never>?
+        var confirming: Process?
+        while !stopRequested, !gaveUp {
+            // 確認中の死亡はその確認の失敗。次の世代を待ち続けるループにしない。
+            if let confirming, currentProcess !== confirming || !confirming.isRunning {
+                return false
+            }
+            if let process = currentProcess, process.isRunning {
+                if startConfirmed { return true }
+                if unconfirmedPath != nil { return false }
+                confirming = process
+                // 生きた録画の終了監視は待たない。確認の完了・世代交代を読み直す。
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(Self.startConfirmPollSeconds * 1_000_000_000))
+                } catch { return false }
+                continue
+            }
+            if let pending = watchTask, pending != awaited {
+                awaited = pending
+                await pending.value
+                continue
+            }
+            warn("the recording was not running before a scenario — starting it again")
+            return await spawnNextSegment()
+        }
+        return false
     }
 
     func stop() async -> RecordingSource? {
@@ -153,29 +178,38 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
         }
         currentProcess = process
         unconfirmedPath = nil
+        startConfirmed = false
         watchTask = Task { [weak self] in
             for await _ in exitStream {}
             await self?.handleSegmentExited(remotePath: remotePath, startedAt: spawnedAt)
         }
         // **撮り始めを確かめてから戻る**(テストを録画より先に始めない)。currentProcess を書いた後に待つので、待ちの間に
         // stop() が来ても止め忘れない(下の handleSegmentExited の排他の前提は currentProcess が nil の間だけに掛かる)
-        guard await confirmStarted(remotePath: remotePath, process: process) else {
-            warn("screenrecord did not start writing within \(Int(Self.startConfirmSeconds))s — stopping it")
+        let confirmed = await confirmStarted(remotePath: remotePath, process: process)
+        // 確認中に監視が次のセグメントを起こしていたら、その状態を古い結果で書き換えない。
+        guard currentProcess === process else { return false }
+        guard confirmed else {
+            warn("screenrecord did not start writing within \(Int(startConfirmLimit))s — stopping it")
             lastStartFailure = .startNotConfirmed
             unconfirmedPath = remotePath
             _ = try? Shell.run([adbPath, "-s", serial, "shell",
-                                Self.killOwnScreenrecordCommand(outputPathPrefix: remotePath)])
+                                Self.killOwnScreenrecordCommand(outputPathPrefix: remotePath)],
+                               timeout: startConfirmLimit)
             return false
         }
-        return true
+        startConfirmed = !stopRequested
+        return startConfirmed
     }
 
     /// 端末上のファイルが大きさを持つ(= 撮り始めた)まで待つ。停止が来たら確かめを打ち切って true(stop が後始末する)
+    /// **adb にも残り時間を期限として渡す**(応答しない adb で同期の Shell.run から戻らないと、上限が効かず actor ごと止まる =
+    /// シナリオの前の確かめから run 全体が待ち続ける)
     private func confirmStarted(remotePath: String, process: Process) async -> Bool {
-        let deadline = Date().addingTimeInterval(Self.startConfirmSeconds)
+        let deadline = Date().addingTimeInterval(startConfirmLimit)
         while Date() < deadline, process.isRunning {
             if stopRequested { return true }
-            if let result = try? Shell.run([adbPath, "-s", serial, "shell", "stat", "-c", "%s", remotePath]),
+            if let result = try? Shell.run([adbPath, "-s", serial, "shell", "stat", "-c", "%s", remotePath],
+                                           timeout: max(0.1, deadline.timeIntervalSinceNow)),
                result.status == 0,
                let bytes = Int(result.output.trimmingCharacters(in: .whitespacesAndNewlines)), bytes > 0 {
                 return true
@@ -201,6 +235,7 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
         }
         _ = try? Shell.run([adbPath, "-s", serial, "shell", "rm", "-f", remotePath])
         currentProcess = nil
+        startConfirmed = false
         if unconfirmedPath == remotePath {
             unconfirmedPath = nil
             return

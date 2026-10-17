@@ -10,7 +10,9 @@ final class VideoClipTimeRangeScanTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/FTCore/VideoRecordingFinalizer.swift")
         let text = try String(contentsOf: url, encoding: .utf8)
-        let range = try XCTUnwrap(text.range(of: "reader.timeRange = CMTimeRange(start: clipStart, end: clipEnd)"),
+        XCTAssertTrue(text.contains("let readStart = clipStart < cursor ? clipStart :"),
+                      "ソースの中の区間は区間の開始から読む(先頭から読むとクリップ数 × 録画長の二乗になる)")
+        let range = try XCTUnwrap(text.range(of: "reader.timeRange = CMTimeRange(start: readStart,"),
                                   "extractClip が reader.timeRange を区間に絞っていない")
         let start = try XCTUnwrap(text.range(of: "reader.startReading()"))
         XCTAssertLessThan(range.lowerBound, start.lowerBound, "timeRange は startReading より前に設定する(後では効かない)")

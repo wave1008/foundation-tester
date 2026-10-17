@@ -72,6 +72,18 @@ private actor ExportProbe {
     func ended() { current -= 1 }
 }
 
+/// 切り出しの代役を包む: true を返したら出力ファイルを書く(本番の extractClip は成功時に必ず書く。
+/// コーディネータは一時フォルダの出力を recordings/ へ移すので、書かない代役は失敗になる)
+private func writing(_ extract: @escaping VideoRecordingCoordinator.ClipExtractor) -> VideoRecordingCoordinator.ClipExtractor {
+    { files, start, end, bitrate, full, hardware, outputURL in
+        let ok = await extract(files, start, end, bitrate, full, hardware, outputURL)
+        if ok, !FileManager.default.fileExists(atPath: outputURL.path) {
+            FileManager.default.createFile(atPath: outputURL.path, contents: Data([0]))
+        }
+        return ok
+    }
+}
+
 final class VideoRecordingCoordinatorExportTests: XCTestCase {
     /// 全テスト共通の録画開始時刻(壁時計はソース segments との相対関係だけが意味を持つ)
     private let recordStart = Date(timeIntervalSince1970: 1_700_000_000)
@@ -274,7 +286,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
             makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, _, _ in
+            extractClip: writing { _, _, _, _, _, _, _ in
                 await probe.began()
                 // 無応答エンコーダの再現(テスト終了まで返らない)
                 try? await Task.sleep(nanoseconds: 3_600_000_000_000)
@@ -328,7 +340,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
             makeSession: realFileSessionFactory(),
-            extractClip: { _, _, _, _, _, _, outputURL in
+            extractClip: writing { _, _, _, _, _, _, outputURL in
                 await probe.began()
                 guard outputURL.lastPathComponent.contains("S0010") else { return true }
                 return failedOnce.withLock { failed in
@@ -371,7 +383,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
             makeSession: realFileSessionFactory(),
-            extractClip: { _, _, _, _, _, _, outputURL in
+            extractClip: writing { _, _, _, _, _, _, outputURL in
                 await probe.began()
                 return !outputURL.lastPathComponent.contains("S0010")  // S0010 は毎回失敗させる
             })
@@ -410,8 +422,8 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
             makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, hardware, outputURL in
-                calls.withLock { $0.append((hardware, outputURL.lastPathComponent)) }
+            extractClip: writing { _, _, _, _, _, hardware, outputURL in
+                calls.withLock { $0.append((hardware, outputURL.path)) }
                 if hardware { try? await Task.sleep(nanoseconds: 3_600_000_000_000) }  // 固着の再現
                 return true
             },
@@ -445,7 +457,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
             makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, hardware, _ in
+            extractClip: writing { _, _, _, _, _, hardware, _ in
                 calls.withLock { $0.append(hardware) }
                 return !hardware
             })
@@ -486,7 +498,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
             makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, hardware, _ in
+            extractClip: writing { _, _, _, _, _, hardware, _ in
                 if hardware { hardwareCalls.withLock { $0 += 1 } }
                 return !hardware
             },
@@ -505,6 +517,96 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         return (hardwareCalls.withLock { $0 }, probeCalls.withLock { $0 }, try readIndex(tmp).recordings.count)
     }
 
+    /// 静止画の末尾だけに収まるシナリオは、ファイルの終わりより後の位置で切り出し、index の区間も末尾の1区間になるはず
+    /// (開始をファイルの終わりへ丸めると、末尾の手前の空白まで含んで長くなり、index の区間が空になっていた)
+    func testScenarioInsideTheStillTailGetsItsOwnRangeAndSegment() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let ranges = LockedValue<[(Int, Int)]>([])
+        let start = recordStart
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp),
+            makeSession: { _, recordingsDir, stem in
+                FixedSourceSession(source: RecordingSource(
+                    files: [recordingsDir.appendingPathComponent("\(stem).mov")],
+                    segments: [RecordingIndexSegment(startedAt: ISO8601Millis.string(from: start), durationMs: 2000)],
+                    closedAt: [start.addingTimeInterval(5)]))
+            },
+            extractClip: writing { _, clipStart, clipEnd, _, _, _, _ in
+                ranges.withLock { $0.append((clipStart, clipEnd)) }
+                return true
+            })
+        let worker = makeWorker(1)
+        let started = await coordinator.start(worker)
+        XCTAssertTrue(started)
+        await coordinator.scenarioStarted(workerLabel: worker.label, scenarioID: "TailOnly.S0010",
+                                          at: start.addingTimeInterval(3))
+        await coordinator.scenarioFinished(workerLabel: worker.label, at: start.addingTimeInterval(4), passed: false)
+        await coordinator.stop(worker)
+        await coordinator.finish()
+        XCTAssertEqual(ranges.withLock { $0.first?.0 }, 3000)
+        XCTAssertEqual(ranges.withLock { $0.first?.1 }, 4000)
+        let segments = try readIndex(tmp).recordings.first?.segments
+        XCTAssertEqual(segments?.map(\.durationMs), [1000])
+        XCTAssertEqual(segments?.first?.startedAt, ISO8601Millis.string(from: start.addingTimeInterval(3)))
+    }
+
+    func testScenarioCrossingPartsKeepsTheEarlierStillTailAndSkipsTheGap() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let ranges = LockedValue<[(Int, Int)]>([])
+        let durations = LockedValue<[Int?]>([])
+        let start = recordStart
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp),
+            makeSession: { _, recordingsDir, _ in
+                FixedSourceSession(source: RecordingSource(
+                    files: [recordingsDir.appendingPathComponent("first.mov"), recordingsDir.appendingPathComponent("second.mov")],
+                    segments: [
+                        RecordingIndexSegment(startedAt: ISO8601Millis.string(from: start), durationMs: 2000),
+                        RecordingIndexSegment(startedAt: ISO8601Millis.string(from: start.addingTimeInterval(7)), durationMs: 2000),
+                    ], closedAt: [start.addingTimeInterval(5), start.addingTimeInterval(9)]))
+            },
+            extractClip: writing { sources, clipStart, clipEnd, _, _, _, _ in
+                ranges.withLock { $0.append((clipStart, clipEnd)) }
+                durations.value = sources.map(\.durationMs)
+                return true
+            })
+        let worker = makeWorker(1)
+        _ = await coordinator.start(worker)
+        await coordinator.scenarioStarted(workerLabel: worker.label, scenarioID: "Parts.S0010", at: start.addingTimeInterval(3))
+        await coordinator.scenarioFinished(workerLabel: worker.label, at: start.addingTimeInterval(9), passed: false)
+        await coordinator.stop(worker)
+        await coordinator.finish()
+        XCTAssertEqual(ranges.value.first?.0, 3000)
+        XCTAssertEqual(ranges.value.first?.1, 7000)
+        XCTAssertEqual(durations.value, [5000, 2000])
+        let index = try readIndex(tmp)
+        let segments = try XCTUnwrap(index.recordings.first).segments
+        XCTAssertEqual(segments.map(\.durationMs), [2000, 2000])
+        XCTAssertEqual(segments.map(\.startedAt), [ISO8601Millis.string(from: start.addingTimeInterval(3)),
+                                                ISO8601Millis.string(from: start.addingTimeInterval(7))])
+    }
+
+    func testLongScenarioNameFitsTheTemporaryOutputAndFinalFile() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let scenarioID = String(repeating: "A", count: 220)
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp), makeSession: realFileSessionFactory(),
+            extractClip: writing { _, _, _, _, _, _, _ in true })
+        let worker = makeWorker(1)
+        _ = await coordinator.start(worker)
+        await registerInterval(coordinator, worker: worker, scenarioID: scenarioID)
+        await coordinator.stop(worker)
+        await coordinator.finish()
+        let index = try readIndex(tmp)
+        XCTAssertEqual(index.clipsFailed, 0)
+        let clip = try XCTUnwrap(index.recordings.first)
+        XCTAssertEqual(clip.file, "recordings/\(scenarioID).mp4")
+        XCTAssertEqual(try Data(contentsOf: tmp.appendingPathComponent(clip.file)), Data([0]))
+    }
+
     // MARK: シナリオの前の録画の確認
 
     /// 録画が撮れていれば、シナリオの前の確認は何も変えずに nil(動画のまま)を返すはず
@@ -514,7 +616,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let session = EnsureSession(recording: true, start: recordStart, dir: tmp)
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp), makeSession: { _, _, _ in session },
-            extractClip: { _, _, _, _, _, _, _ in true })
+            extractClip: writing { _, _, _, _, _, _, _ in true })
         let worker = makeWorker(1)
         let started = await coordinator.start(worker)
         XCTAssertTrue(started)
@@ -531,7 +633,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let session = EnsureSession(recording: false, start: recordStart, dir: tmp)
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp), makeSession: { _, _, _ in session },
-            extractClip: { _, _, _, _, _, _, _ in true })
+            extractClip: writing { _, _, _, _, _, _, _ in true })
         let worker = makeWorker(1)
         let started = await coordinator.start(worker)
         XCTAssertTrue(started)
@@ -577,7 +679,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
             makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, hardware, _ in
+            extractClip: writing { _, _, _, _, _, hardware, _ in
                 let first = calls.withLock { list -> Bool in
                     list.append(hardware)
                     return list.count == 1
@@ -620,15 +722,16 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         XCTAssertEqual(VideoRecordingCoordinator.hardwareMinSpeedRatio, 4)
     }
 
-    /// ハードウェアが固まったクリップの書きかけ(元の名前)は run の終わりに消すはず
-    func testHungHardwareLeavesNoPartialFile() async throws {
+    /// ハードウェアが固まったクリップの書きかけは recordings/ に残らないはず(一時フォルダへ書いて成功したときだけ移す =
+    /// 期限を過ぎた敗者 task が後から書いても recordings/ には現れない)
+    func testHungHardwareLeavesNoPartialFileInRecordings() async throws {
         let tmp = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: tmp) }
         let partials = LockedValue<[URL]>([])
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
             makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, hardware, outputURL in
+            extractClip: writing { _, _, _, _, _, hardware, outputURL in
                 guard hardware else { return true }
                 FileManager.default.createFile(atPath: outputURL.path, contents: Data([0]))
                 partials.withLock { $0.append(outputURL) }
@@ -645,9 +748,13 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let written = partials.withLock { $0 }
         XCTAssertEqual(written.count, 1)
         for url in written {
-            XCTAssertFalse(FileManager.default.fileExists(atPath: url.path), "書きかけを残さないはず")
+            XCTAssertFalse(url.path.hasPrefix(tmp.path), "書きかけを run の結果の中に書かないはず: \(url.path)")
+            try? FileManager.default.removeItem(at: url)
         }
-        XCTAssertEqual(try readIndex(tmp).recordings.count, 1)
+        let index = try readIndex(tmp)
+        XCTAssertEqual(index.recordings.count, 1)
+        let files = try FileManager.default.contentsOfDirectory(atPath: tmp.appendingPathComponent("recordings").path).sorted()
+        XCTAssertEqual(files, ["Partial-S0010.mp4", "index.json"], "recordings/ には切り出せたクリップと index だけ")
     }
 
     // MARK: 静止画の末尾
@@ -667,7 +774,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
                     segments: [RecordingIndexSegment(startedAt: ISO8601Millis.string(from: start), durationMs: 2000)],
                     closedAt: [start.addingTimeInterval(5)]))
             },
-            extractClip: { _, clipStart, clipEnd, _, _, _, _ in
+            extractClip: writing { _, clipStart, clipEnd, _, _, _, _ in
                 ranges.withLock { $0.append((clipStart, clipEnd)) }
                 return true
             })
@@ -719,7 +826,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp, failuresOnly: true),
             makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, _, _ in
+            extractClip: writing { _, _, _, _, _, _, _ in
                 await probe.began()
                 return true
             })
@@ -747,7 +854,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
             makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, _, _ in
+            extractClip: writing { _, _, _, _, _, _, _ in
                 await probe.began()
                 try? await Task.sleep(nanoseconds: 150_000_000)
                 await probe.ended()
@@ -780,7 +887,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
             makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, _, _ in
+            extractClip: writing { _, _, _, _, _, _, _ in
                 await probe.began()
                 await probe.ended()
                 return true

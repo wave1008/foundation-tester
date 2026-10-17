@@ -99,7 +99,7 @@ actor VideoRecordingCoordinator {
 
     /// クリップ切り出し関数(テスト注入用。既定は VideoRecordingFinalizer.extractClip)
     typealias ClipExtractor = @Sendable (
-        _ sourceFiles: [URL], _ clipStartMs: Int, _ clipEndMs: Int,
+        _ sourceFiles: [RecordingClipSource], _ clipStartMs: Int, _ clipEndMs: Int,
         _ bitrateKbps: Int, _ fullResolution: Bool, _ hardware: Bool, _ outputURL: URL) async -> Bool
 
     private let config: VideoRecordingConfig
@@ -182,6 +182,12 @@ actor VideoRecordingCoordinator {
             let fileEnd = start.addingTimeInterval(Double(segment.durationMs) / 1000)
             return max(fileEnd, closedAt ?? fileEnd)
         }
+
+        var coveredSegment: RecordingIndexSegment {
+            guard let start = wallStart, let end = wallEnd else { return segment }
+            return RecordingIndexSegment(startedAt: segment.startedAt,
+                                         durationMs: Int((end.timeIntervalSince(start) * 1000).rounded()))
+        }
     }
     /// key = worker.label。run の途中で静止画方式へ切り替えたワーカーの、それまでの動画(collect でその後の分と合わせる)
     private var retiredParts: [String: [Part]] = [:]
@@ -192,7 +198,7 @@ actor VideoRecordingCoordinator {
         let scenarioID: String
         let workerID: String
         let platform: String
-        let files: [URL]
+        let files: [RecordingClipSource]
         let clipStartMs: Int
         /// ソースの終わりを越えうる(静止画の末尾。writer の endSession が最終フレームを保持する)
         let clipEndMs: Int
@@ -205,8 +211,6 @@ actor VideoRecordingCoordinator {
     /// finish() で消す/残すソース
     private var pendingSources: Set<URL> = []
     private var keptSources: Set<URL> = []
-    /// ハードウェアが固まったクリップの書きかけ(元の名前)。run の終わりに消す
-    private var abandonedPartials: Set<URL> = []
 
     private enum ExtractOutcome { case ok, failed, timedOut, abandoned }
     private enum Encoder { case software, hardwareUnlessAbandoned }
@@ -439,9 +443,9 @@ actor VideoRecordingCoordinator {
                 guard let start = part.wallStart, let end = part.wallEnd else { return false }
                 return start < (interval.end ?? .distantFuture) && end > interval.start
             }
-            let segments = overlapping.map(\.segment)
-            guard let fileRange = RecordingWallClock.wallClockRange(of: segments),
-                  let wallEnd = overlapping.last?.wallEnd else {
+            // 位置計算と連結の両方で、素材ごとの静止末尾を含む同じ尺を使う。
+            let segments = overlapping.map(\.coveredSegment)
+            guard let fileRange = RecordingWallClock.wallClockRange(of: segments) else {
                 // そのワーカーの録画はあるのに、このシナリオに重なるファイルが1本も無い = 録画が失われた。**黙って飛ばさない**
                 clipsAttempted += 1
                 clipsFailed += 1
@@ -450,25 +454,21 @@ actor VideoRecordingCoordinator {
             }
 
             let clipWallStart = max(interval.start, fileRange.start)
-            let clipWallEnd = min(interval.end ?? wallEnd, wallEnd)
+            let clipWallEnd = min(interval.end ?? fileRange.end, fileRange.end)
             // 実長500ms未満はスキップ
             guard clipWallEnd.timeIntervalSince(clipWallStart) >= 0.5 else { continue }
 
             let clipStartMs = RecordingWallClock.offsetMs(segments, at: clipWallStart)
-            let tailMs = clipWallEnd > fileRange.end
-                ? Int((clipWallEnd.timeIntervalSince(fileRange.end) * 1000).rounded()) : 0
-            let clipEndMs = RecordingWallClock.offsetMs(segments, at: min(clipWallEnd, fileRange.end)) + tailMs
+            let clipEndMs = RecordingWallClock.offsetMs(segments, at: clipWallEnd)
             // シナリオ区間全体が録画の欠落(停止していた間)に落ちるとゼロ長になり得る
             guard clipEndMs > clipStartMs else { continue }
 
-            var clipSegments = RecordingWallClock.intersect(segments, range: (clipWallStart, clipWallEnd))
-            if tailMs > 0, let lastIndex = clipSegments.indices.last {
-                clipSegments[lastIndex].durationMs += tailMs
-            }
+            let clipSegments = RecordingWallClock.intersect(segments, range: (clipWallStart, clipWallEnd))
             clipsAttempted += 1
             clips.append(PendingClip(
                 scenarioID: interval.scenarioID, workerID: entry.workerID, platform: entry.platform,
-                files: overlapping.map(\.url), clipStartMs: clipStartMs, clipEndMs: clipEndMs,
+                files: zip(overlapping, segments).map { RecordingClipSource(url: $0.0.url, durationMs: $0.1.durationMs) },
+                clipStartMs: clipStartMs, clipEndMs: clipEndMs,
                 sourceTotalMs: segments.reduce(0) { $0 + $1.durationMs }, segments: clipSegments,
                 file: "\(RecordingIndexIO.directoryName)/\(uniqueClipStem(for: interval.scenarioID)).mp4"))
         }
@@ -501,7 +501,6 @@ actor VideoRecordingCoordinator {
             }
         }
         await hardwareProbe?.value
-        for file in abandonedPartials { try? FileManager.default.removeItem(at: file) }
         for file in pendingSources.subtracting(keptSources) { try? FileManager.default.removeItem(at: file) }
         if !keptSources.isEmpty {
             ConsoleOut.err("⚠️ [recording] kept the source recording(s) for diagnosis: "
@@ -515,7 +514,6 @@ actor VideoRecordingCoordinator {
     /// 戻り値: 1回目がハードウェアで成功したときの速さ(クリップ長 ÷ 所要。実時間の何倍か)。それ以外は nil
     @discardableResult
     private func extractFinal(_ clip: PendingClip) async -> Double? {
-        var clip = clip
         let started = Date()
         var (outcome, hardware) = await extract(clip, encoder: hardwareFirst ? .hardwareUnlessAbandoned : .software)
         let elapsed = Date().timeIntervalSince(started)
@@ -523,10 +521,6 @@ actor VideoRecordingCoordinator {
         let speed = hardware && outcome == .ok && elapsed > 0
             ? Double(clip.clipEndMs - clip.clipStartMs) / 1000 / elapsed : nil
         if outcome == .timedOut, hardware {
-            // 固着した敗者 task がまだ元のパスへ書いている可能性があるので別名へ書く(元の名前が一意なので `-sw` を付けても一意)。
-            // 書きかけの元の名前は run の終わりに消す(index は参照しないが recordings/ にゴミとして残っていた)
-            abandonedPartials.insert(config.runDir.appendingPathComponent(clip.file))
-            clip.file = String(clip.file.dropLast(".mp4".count)) + "-sw.mp4"
             hardware = false
             outcome = await extract(clip, encoder: .software).outcome
         }
@@ -543,7 +537,7 @@ actor VideoRecordingCoordinator {
             record(clip)
         case .failed:
             clipsFailed += 1
-            keptSources.formUnion(clip.files)
+            keptSources.formUnion(clip.files.map(\.url))
             ConsoleOut.err("⚠️ [recording] \(clip.scenarioID): clip extraction failed again on the retry")
         case .timedOut:
             giveUp(after: clip, deadline: exportDeadline(clip.sourceTotalMs))
@@ -610,12 +604,22 @@ actor VideoRecordingCoordinator {
     /// **エンコーダはスロットを取った後に決める** —— 待っている間に別のクリップがハードウェアを見限っていたら
     /// ソフトウェアで撃つ(先に決めると、待っていた分が壊れかけのエンコーダへもう一度撃つ)
     private func extract(_ clip: PendingClip, encoder: Encoder) async -> (outcome: ExtractOutcome, hardware: Bool) {
-        let outputURL = config.runDir.appendingPathComponent(clip.file)
+        let finalURL = config.runDir.appendingPathComponent(clip.file)
+        // **一時フォルダへ書いてから、成功したときだけ recordings/ へ移す** —— 期限を過ぎた敗者 task は待たずに放置するので
+        // (固着した VT セッションに触ると共倒れし得る)、後から書かれた出力が index の参照しないゴミとして recordings/ に残っていた
+        let temporaryDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fleetest-clip-\(UUID().uuidString)", isDirectory: true)
+        let outputURL = temporaryDir.appendingPathComponent(finalURL.lastPathComponent)
         await acquireExportSlot()
         if exportsAbandoned {  // スロット待ちの間に他のエクスポートが期限超過した場合
             releaseExportSlot()
             return (.abandoned, false)
         }
+        guard (try? FileManager.default.createDirectory(at: temporaryDir, withIntermediateDirectories: true)) != nil else {
+            releaseExportSlot()
+            return (.failed, false)
+        }
+        defer { try? FileManager.default.removeItem(at: temporaryDir) }
         let hardware = encoder == .hardwareUnlessAbandoned && !hardwareAbandoned
         let deadline = hardware ? hardwareDeadline(clip.clipEndMs - clip.clipStartMs) : exportDeadline(clip.sourceTotalMs)
         let extract = extractClip
@@ -626,9 +630,18 @@ actor VideoRecordingCoordinator {
         }
         releaseExportSlot()
         switch outcome {
-        case true?: return (.ok, hardware)
-        case false?: return (.failed, hardware)
-        case nil: return (.timedOut, hardware)
+        case true?:
+            try? FileManager.default.removeItem(at: finalURL)
+            guard (try? FileManager.default.moveItem(at: outputURL, to: finalURL)) != nil else {
+                try? FileManager.default.removeItem(at: outputURL)
+                return (.failed, hardware)
+            }
+            return (.ok, hardware)
+        case false?:
+            try? FileManager.default.removeItem(at: outputURL)
+            return (.failed, hardware)
+        case nil:
+            return (.timedOut, hardware)
         }
     }
 
