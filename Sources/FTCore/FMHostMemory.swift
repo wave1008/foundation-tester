@@ -25,16 +25,39 @@ public enum FMHostMemory {
         public var swapUsedBytes: Int64?
         /// ホストの modelmanagerd の footprint(`top` の mem。別ユーザーのプロセスなので proc_pid_rusage は EPERM)
         public var modelmanagerdFootprintBytes: Int64?
+        /// 書き手(fm-serve)が前の点からこの点までに撃った FM の呼び出し(`noteFMCall`)。書き手が数えていなければ nil
+        public var fmCalls: FMCalls?
 
         public init(at: Double, freeBytes: Int64? = nil, compressedBytes: Int64? = nil,
                     compressedSourceBytes: Int64? = nil, swapUsedBytes: Int64? = nil,
-                    modelmanagerdFootprintBytes: Int64? = nil) {
+                    modelmanagerdFootprintBytes: Int64? = nil, fmCalls: FMCalls? = nil) {
             self.at = at
             self.freeBytes = freeBytes
             self.compressedBytes = compressedBytes
             self.compressedSourceBytes = compressedSourceBytes
             self.swapUsedBytes = swapUsedBytes
             self.modelmanagerdFootprintBytes = modelmanagerdFootprintBytes
+            self.fmCalls = fmCalls
+        }
+    }
+
+    /// fm-serve が撃った FM の呼び出しの種類。暖機と実要求を分けて数える(modelmanagerd の伸びがどちらに比例するかを見る)
+    public enum FMCallKind: Sendable { case keepWarm, prewarm, transcribe, screen, probe }
+
+    /// 種類ごとの回数。**数えるのは fm-serve が FM を撃った回**(撃ち直しも1回。応答の成否は問わない)
+    public struct FMCalls: Codable, Sendable, Equatable {
+        public var keepWarm = 0
+        public var prewarm = 0
+        public var transcribe = 0
+        public var screen = 0
+        public var probe = 0
+
+        public init(keepWarm: Int = 0, prewarm: Int = 0, transcribe: Int = 0, screen: Int = 0, probe: Int = 0) {
+            self.keepWarm = keepWarm
+            self.prewarm = prewarm
+            self.transcribe = transcribe
+            self.screen = screen
+            self.probe = probe
         }
     }
 
@@ -227,6 +250,10 @@ public enum FMHostMemory {
         }
         if let swap = sample.swapUsedBytes { parts.append("swap=\(gib(swap))") }
         if let footprint = sample.modelmanagerdFootprintBytes { parts.append("modelmanagerd=\(mib(footprint))") }
+        if let calls = sample.fmCalls {
+            parts.append("fm-calls keepWarm=\(calls.keepWarm) prewarm=\(calls.prewarm) transcribe=\(calls.transcribe)"
+                         + " screen=\(calls.screen) probe=\(calls.probe)")
+        }
         return parts.joined(separator: " ")
     }
 
@@ -253,18 +280,44 @@ public enum FMHostMemory {
             return true
         }
         guard due else { return }
+        // 撃った点にだけ回数を渡して零に戻す = 飛ばした周期の回数は次の点へ繰り越す(取りこぼさない)
+        let calls = callCounts.withLock { counts -> FMCalls in
+            let taken = counts
+            counts = FMCalls()
+            return taken
+        }
         let capture = captureHook.withLock { $0 }
         let append = appendHook.withLock { $0 }
         samplerQueue.async {
-            append(capture(now), now)
+            var sample = capture(now)
+            sample.fmCalls = calls
+            append(sample, now)
             samplerState.withLock { $0.inFlight = false }
+        }
+    }
+
+    private static let callCounts = Mutex(FMCalls())
+
+    /// fm-serve が FM を撃つ直前に呼ぶ。次の点(`sampleIfDue`)まで溜める
+    public static func noteFMCall(_ kind: FMCallKind) {
+        callCounts.withLock { counts in
+            switch kind {
+            case .keepWarm: counts.keepWarm += 1
+            case .prewarm: counts.prewarm += 1
+            case .transcribe: counts.transcribe += 1
+            case .screen: counts.screen += 1
+            case .probe: counts.probe += 1
+            }
         }
     }
 
     static func waitForPendingSample() { samplerQueue.sync {} }
 
     /// テスト用。周期の状態を捨てる
-    static func resetSamplerState() { samplerState.withLock { $0 = SamplerState() } }
+    static func resetSamplerState() {
+        samplerState.withLock { $0 = SamplerState() }
+        callCounts.withLock { $0 = FMCalls() }
+    }
 
     // MARK: - JetsamEvent
 

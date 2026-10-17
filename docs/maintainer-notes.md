@@ -4803,8 +4803,11 @@ jetsam の理由だけから Mac 全体の RAM 枯渇や modelmanagerd のリー
   (24 時間のリング)へ書き、死に変わった回に `fm-history.ndjson` へ `memory`(直前 30 分は毎分・それより前は 1 時間に 1 点)と
   `jetsam`(直近 30 分の JetsamEvent の要約と殺されたプロセス)の行を足す。読み口は `doctor --fm-only`。
   footprint は `proc_pid_rusage` だと別ユーザー(`_modelmanagerd`)なので EPERM になり、root なしで読めるのは `top -stats mem` だけ
-  (jetsam の footprint と同じ量かは未照合。次の死で両方が並ぶ)。**まだ残していないもの**: 適用された上限・暖機と実要求の回数
-  (同じ時系列で要る。暖機の頻度やセッションの寿命を変えるのは、それを比べてから)。
+  (jetsam の footprint と同じ量かは未照合。次の死で両方が並ぶ)。同じ行に、fm-serve が前の点からその点までに撃った FM の回数を
+  種類ごとに載せる(`fmCalls` = 暖機 keepWarm・先読み prewarm・転写 transcribe・画面判定 screen・死活の確かめ probe。撃ち直しも1回ずつ。
+  `FMHostMemory.noteFMCall` を撃つ直前に置く)= modelmanagerd の伸びが暖機と実要求のどちらに比例するかを同じ時刻軸で比べられる。
+  **残していないもの**: 適用された上限(root なしで読む手段が見つかっていない・JetsamEvent にも値が無い)。
+  暖機の頻度やセッションの寿命を変えるのは、次の死の推移を比べてから。
   JetsamEvent はユーザーが `_analyticsusers` にいれば読める(居なければ `jetsam` の行が出ないだけ)。
   空き(`free`)は JetsamEvent の `memoryPages.free` と同じ量(ページキャッシュを含まない)なので、`memory_pressure` の「free percentage」とは比べない
 

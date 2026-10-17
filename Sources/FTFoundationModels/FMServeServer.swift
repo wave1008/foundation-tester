@@ -131,8 +131,14 @@ public enum FMServeServer {
                 let result = needed
                 needed = false
                 return result
-            }) { prewarmSpare() }
-            if generate { try await keepAlive() }
+            }) {
+                FMHostMemory.noteFMCall(.prewarm)
+                prewarmSpare()
+            }
+            if generate {
+                FMHostMemory.noteFMCall(.keepWarm)
+                try await keepAlive()
+            }
         })
     }
 
@@ -267,15 +273,19 @@ public enum FMServeServer {
         case .transcribe:
             guard #available(macOS 27, *) else { return .failed(FMVisionSupport.requirement) }
             guard let image = image(request.png) else { return .failed("the request has no readable PNG") }
+            // 回数はメモリの推移の記録用(FMHostMemory)。撃ち直し(requestWithRetry)も1回ずつ数える
+            FMHostMemory.noteFMCall(.transcribe)
             return .answered(text: try await transcribe(image), pass: nil, reason: nil)
         case .screen:
             guard #available(macOS 27, *) else { return .failed(FMVisionSupport.requirement) }
             guard let image = image(request.png), let expected = request.expected else {
                 return .failed("the request has no readable PNG or expected state")
             }
+            FMHostMemory.noteFMCall(.screen)
             let verdict = try await screen(image, expected: expected)
             return .answered(text: nil, pass: verdict.pass, reason: verdict.reason)
         case .probe:
+            FMHostMemory.noteFMCall(.probe)
             try await probe(request.path ?? .vision)
             return .answered(text: nil, pass: nil, reason: nil)
         case .status, .shutdown:

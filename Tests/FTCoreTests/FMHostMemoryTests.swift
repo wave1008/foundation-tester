@@ -156,6 +156,40 @@ final class FMHostMemoryTests: XCTestCase {
         }
     }
 
+    /// 回数は撃った点にだけ渡して零に戻す。撃たなかった周期の回数は次の点へ繰り越す
+    func testSampleCarriesFMCallsSincePreviousPointAndResets() {
+        let samples = LockedValue<[FMHostMemory.Sample]>([])
+        FMHostMemory.captureHook.withLock { $0 = { FMHostMemory.Sample(at: $0.timeIntervalSince1970) } }
+        FMHostMemory.appendHook.withLock { $0 = { sample, _ in samples.withLock { $0.append(sample) } } }
+        FMHostMemory.resetSamplerState()
+        FMHostMemory.noteFMCall(.keepWarm)
+        FMHostMemory.noteFMCall(.keepWarm)
+        FMHostMemory.noteFMCall(.transcribe)
+        let t0 = Date()
+        FMHostMemory.sampleIfDue(now: t0)
+        FMHostMemory.waitForPendingSample()
+        FMHostMemory.noteFMCall(.probe)
+        FMHostMemory.sampleIfDue(now: t0.addingTimeInterval(30))
+        FMHostMemory.waitForPendingSample()
+        FMHostMemory.noteFMCall(.screen)
+        FMHostMemory.noteFMCall(.prewarm)
+        FMHostMemory.sampleIfDue(now: t0.addingTimeInterval(60))
+        FMHostMemory.waitForPendingSample()
+        XCTAssertEqual(samples.value.map(\.fmCalls), [
+            FMHostMemory.FMCalls(keepWarm: 2, transcribe: 1),
+            FMHostMemory.FMCalls(prewarm: 1, screen: 1, probe: 1),
+        ])
+    }
+
+    func testDescribeShowsFMCalls() {
+        let now = Date()
+        let sample = FMHostMemory.Sample(at: now.timeIntervalSince1970,
+                                         fmCalls: FMHostMemory.FMCalls(keepWarm: 30, prewarm: 1, transcribe: 4, screen: 2, probe: 1))
+        XCTAssertTrue(FMHostMemory.describe(sample, now: now)
+            .hasSuffix("fm-calls keepWarm=30 prewarm=1 transcribe=4 screen=2 probe=1"))
+        XCTAssertFalse(FMHostMemory.describe(FMHostMemory.Sample(at: now.timeIntervalSince1970), now: now).contains("fm-calls"))
+    }
+
     func testSamplerFiresOncePerInterval() {
         let calls = LockedCounter()
         FMHostMemory.captureHook.withLock { $0 = { FMHostMemory.Sample(at: $0.timeIntervalSince1970) } }
