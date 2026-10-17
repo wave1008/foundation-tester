@@ -4783,21 +4783,28 @@ jetsam の理由だけから Mac 全体の RAM 枯渇や modelmanagerd のリー
 **JetsamEvent の中身と、その前の FM の負荷(10/17 の再調査・M2Ultra)**:
 - **終了の瞬間、Mac 全体が強く逼迫していた**: 192GB 中 空き 2.4GiB・圧縮器が 155GiB 分を 71GiB に格納(`memoryStatus`)・
   最大のプロセス群は Emulator の qemu 8台で常駐 54GiB・Simulator 11台(SimRenderServer 11)。
-- **殺された modelmanagerd[867] の常駐は 15.9MB だけ**(`rpages=968`・`lifetimeMax=968`)。上限の判定に使う footprint は圧縮分を含むので、
-  中身の大半が圧縮側にあった可能性がある(footprint そのものは記録に無い)。launchd の plist(`com.apple.modelmanagerd.plist`)にも
-  上限の指定は無い = 既定の上限。
-- **fm-serve の keep-warm(§81・`FMServeServer.keepAlive`)が 11:02〜13:05 に毎分約 30 セッション(約 1.1 万)を modelmanagerd に通していた**
-  (OS ログの `ModelBundle: Creating ... fm_api_generic` を fleetest の PID ごとに数えた。11 時台 5,429・12 時台 5,670)。
-  **これが上限超過を起こしたとは言えない**: 再起動後の modelmanagerd の footprint(`top -stats mem`)は keep-warm が回る中で
-  5 分間 7.2〜7.3MB の横ばいで、セッションごとのリークは見えなかった(上限に届くまでの時間は測っていない)。
-- ANECompilerService の診断(`ANECompilerService_2026-10-17-130526_LDIPC96.diag`・disk writes)は、07:40〜13:04 に fleetest の
-  プロセス(PID 28143 / 54407 / 84520 = OCR の認識器)のために ANE 向けのコンパイルで 8.6GB 書いたと記録している。死への関与は未確認。
+- **殺された modelmanagerd[867] は `rpages=968`・`lifetimeMax=968`(16KB ページ = 15.9MB)**。公開 XNU の jetsam snapshot はこの欄を
+  `get_task_phys_footprint`(圧縮分を含む footprint)から採る(このベータ版での一致は未確認)。内訳の `physicalPages.internal=[768,179]` でも
+  圧縮分は 179 ページ = 2.9MB で、**圧縮側に大きなメモリが隠れていたとは推定できない**。plist(`com.apple.modelmanagerd.plist`)に
+  上限の指定は無いが、それだけでは**実際に適用された上限の値も設定元も確定しない**。
+- **11:02〜13:05:09 に fleetest の fm-serve(PID 41334 → 82165)から FM の生成ログが続いていた**。OS ログの `fm_api_generic` を含む行を
+  種別ごとに数えると `ModelBundle: Creating` 3,862 件・`Creating ModelManagerSession` 7,720 件(11 時台 1,810 / 3,619・12 時台 1,890 / 3,780)。
+  **これは SDK 内部の生成ログの件数で、セッション数・暖機(keep-warm)の推論回数ではない**(暖機・実要求・先読みは呼び手で数えていない)。
+  **この負荷が上限超過を起こしたとは言えない**: 再起動後の modelmanagerd の `top -stats mem` は keep-warm が回る中で 5 分間 7.2〜7.3MB の
+  横ばいだった(原ログ `reports/fm-m2ultra-20261017-1305/claude-top-modelmanagerd-1508-1514.log`。jetsam の footprint と同じ量かは未照合・
+  上限に届くまでの時間は測っていない)。暖機によるリークは確定していない。
+- ANECompilerService の診断(`ANECompilerService_2026-10-17-130526_LDIPC96.diag`・disk writes)は 07:40〜13:04 に 8.6GB の書き込みを記録し、
+  起点に fleetest の PID 28143 / 54407 / 84520 を挙げる(診断自体の `On Behalf Of` は UNKNOWN [904] = aned)。OS ログで照合できたのは
+  84520 だけ(13:04:24 に TextRecognition を初期化 → 13:04:27〜47 に aned が ANECompilerService へコンパイルを依頼)。死への関与は未確認。
+- 再集計の原本: `reports/fm-m2ultra-20261017-1305/claude-review/`(`creating-fm-api-generic.log`・`counts-and-memory.json`)。
 - 朝の 06:43 の回は `fm-history.ndjson` の証拠の行に同じ Code=53 があるだけで、その時間帯の OS ログはもう残っていない(きっかけは追えない)。
 - **次に分けるために、死ぬ前の推移を残すようにした**(`FTCore/FMHostMemory`): fm-serve の周期が 60 秒ごとに Mac 全体の空き・
   圧縮量・スワップ(`host_statistics64` / `vm.swapusage`)とホストの modelmanagerd の footprint を `~/.fleetest/fm-host-memory.ndjson`
   (24 時間のリング)へ書き、死に変わった回に `fm-history.ndjson` へ `memory`(直前 30 分は毎分・それより前は 1 時間に 1 点)と
   `jetsam`(直近 30 分の JetsamEvent の要約と殺されたプロセス)の行を足す。読み口は `doctor --fm-only`。
-  footprint は `proc_pid_rusage` だと別ユーザー(`_modelmanagerd`)なので EPERM になり、root なしで読めるのは `top -stats mem` だけ。
+  footprint は `proc_pid_rusage` だと別ユーザー(`_modelmanagerd`)なので EPERM になり、root なしで読めるのは `top -stats mem` だけ
+  (jetsam の footprint と同じ量かは未照合。次の死で両方が並ぶ)。**まだ残していないもの**: 適用された上限・暖機と実要求の回数
+  (同じ時系列で要る。暖機の頻度やセッションの寿命を変えるのは、それを比べてから)。
   JetsamEvent はユーザーが `_analyticsusers` にいれば読める(居なければ `jetsam` の行が出ないだけ)。
   空き(`free`)は JetsamEvent の `memoryPages.free` と同じ量(ページキャッシュを含まない)なので、`memory_pressure` の「free percentage」とは比べない
 
