@@ -27,9 +27,14 @@
   - 症状: 切り出しが `-17691` で失敗/合成映像も固まる。Simulator の録画の試し撮りが空になり、iOS の h264 配信も巻き添え
   - 確かめた範囲: 単独要因(切り出し・Simulator の録画・配信・Android の E2E・それらの組み合わせ)では再現しない(maintainer-notes §86)
   - 要る材料: 次に壊れたときの `~/.fleetest/video-encoder-history.ndjson`(起動からの経過・直前の出来事)と、その日の run の並び
-- **ライブ更新の配信が多いと、Compose の画面でテキストの可視性検証が誤った赤になる**(2026-10-18・E2E-CMP iOS)
-  - 症状: iOS 8 台を h264 で配信しながら録画なしで回すと、12 run 中 7 run で1件ずつ `notRendered`(文字が描かれていない)。配信なしでは 10 run すべて緑
-  - 手がかり: 配信の古い絵による誤判定の既知の型(OCR だけの判定の赤)と同じ形に見える。未調査
+- **AppleAVE が壊れる直前の時間帯に、Compose Multiplatform の iOS アプリが文字だけを描かなくなる**(2026-10-17・E2E-CMP iOS・in-app)
+  - 症状: テキストの可視性検証が `notRendered` で赤(8 件)。失敗時のスクリーンショットは**ボタンの形は描かれ、アプリの文字だけが
+    画面全体で無い**(OS のキーボード・ステータスバーの文字はある)。**検証の誤りではない** —— CMP は形も文字も同じ Metal の1枚に描き、
+    in-app の撮影(`drawHierarchy`)はその1枚を写すので、文字だけを落とすことはできない = アプリの絵に文字が無かった
+  - 時期: 赤の塊は 13:58Z(1回目の故障の直前)と 16:45〜16:54Z(iOS 8 台の h264 配信を張った 12 run 中 7 run。その直前の配信なし
+    10 run は緑・直後の実験で3回目の故障)。**再起動後のきれいな状態では配信 8 本ありで 10 run・150 本とも緑**(2026-10-18 04:47〜04:58 JST)
+    = 配信だけでは起きず、壊れかけの状態に配信の負荷が重なったときに出た
+  - 要る材料: 次に起きたときの Simulator の実画面(`simctl io screenshot`)と `~/.fleetest/video-encoder-history.ndjson` の前後
 
 - **iPhone Duo の Simulator の開閉で、SpringBoard・testmanagerd・PosterBoard 等が `FBSDisplayMode` の検査で落ちる**(2026-10-17・Duo-01/02・新規作成の Duo)
   - 症状: 開くたびに約半分の確率で PosterBoard・ウィジェットの拡張・InputUI・chronod が落ちる。ときどき SpringBoard と
