@@ -150,7 +150,13 @@ public enum RegionText {
                 done.signal()
             }
             done.wait()
-            let (read, failure, attempts) = box.get()
+            var (read, failure, attempts) = box.get()
+            // 陽性対照の注入: 開始時の探りだけを「読めなかった」にする(探り直しの経路を緑の run で強制的に通す。
+            // 探り直し自体には効かない = 回復できることを確かめるための口)
+            if ProcessInfo.processInfo.environment[startupProbeUnreadyInjectionKey] == "1" {
+                read = []
+                failure = "injected (\(startupProbeUnreadyInjectionKey)=1)"
+            }
             recordModelCompileOutcome(lines: read, error: failure,
                                  ms: Int(Date().timeIntervalSince(started) * 1000), attempts: attempts)
             guard modelReady(probe: read) else { return }
@@ -176,6 +182,59 @@ public enum RegionText {
 
     private static let modelReadyState = Mutex(false)
     private static func markModelReady() { modelReadyState.withLock { $0 = true } }
+
+    /// 開始時の探りで読めなかったプロセスの探り直しの予定(純粋。時刻は呼び手が渡す)。
+    /// **需要があるときだけ撃つ**(`awaitModelCompile` が「終わったのに読めない」を返す回 = 近道を撃とうとした回)——
+    /// 背景で回し続けると、長く生きる MCP で Vision が本当に読めない間ずっと払い続ける。
+    /// 同時に 1 本まで・読めないたびに間隔を倍にする(`reprobeInitialInterval` から `reprobeMaxInterval` まで)
+    public struct ReprobeSchedule: Sendable, Equatable {
+        public private(set) var inFlight = false
+        public private(set) var notBefore: ContinuousClock.Instant?
+        public private(set) var interval: Duration = RegionText.reprobeInitialInterval
+        public init() {}
+
+        /// 今撃ってよいか。true を返したら撃った扱い(`inFlight`)にする
+        public mutating func start(now: ContinuousClock.Instant) -> Bool {
+            guard !inFlight else { return false }
+            if let notBefore, now < notBefore { return false }
+            inFlight = true
+            return true
+        }
+
+        /// 読めなかった探りの後。次は今の間隔だけ空け、間隔を倍にする(上限まで)
+        public mutating func finishedUnready(now: ContinuousClock.Instant) {
+            inFlight = false
+            notBefore = now + interval
+            interval = min(interval * 2, RegionText.reprobeMaxInterval)
+        }
+    }
+
+    /// 探り直しの最初の間隔。**根拠**: 探り 1 回は 130〜235ms(`modelCompileRetryBudget` の doc)。ガードは数秒おきに
+    /// 入るので、1 秒空ければ次のガードまでに 1 回は撃てる
+    public static let reprobeInitialInterval: Duration = .seconds(1)
+    /// 間隔の上限。**根拠**: 本当に読めない Vision でも探り 1 回 ≦ 235ms / 8 秒 ≒ 3% の 1 コア。
+    /// **尽きても止めない**(読めた時点で ready になり以後は撃たない。需要が無ければ撃たない)
+    public static let reprobeMaxInterval: Duration = .seconds(8)
+
+    private static let reprobeSchedule = Mutex(ReprobeSchedule())
+
+    /// 開始時の探りを「読めなかった」にする陽性対照の注入口(`modelCompileOnce`)。探り直しには効かない
+    public static let startupProbeUnreadyInjectionKey = "FT_FAKE_OCR_STARTUP_PROBE_UNREADY"
+
+    /// 探り直しを背景で 1 回頼む(待たない)。読めたら ready にする(以後のガードから近道を撃つ)
+    static func requestReprobeIfDue() {
+        let clock = ContinuousClock()
+        guard !isModelReady, reprobeSchedule.withLock({ $0.start(now: clock.now) }) else { return }
+        Task.detached(priority: .utility) {
+            var lines: [String]?
+            if let image = renderedProbe() { lines = try? await recognizeForModelCompile(image) }
+            if modelReady(probe: lines) {
+                markModelReady()
+            } else {
+                reprobeSchedule.withLock { $0.finishedUnready(now: clock.now) }
+            }
+        }
+    }
 
     /// コンパイルが「終わった」(成否を問わない)ことを async の待ち手へ知らせる信号。**待ち手は複数
     /// 許す**(occlusionFlip が並行に複数走っても壊れないため)。同期関数に閉じ込める
@@ -253,7 +312,13 @@ public enum RegionText {
         if isModelReady { return .alreadyReady }
         // コンパイルが終わったのに読めない(Vision が空を返す)状態では、ガードのたびに差し引きの窓を開けない
         // (待つものが無いのに子→親の deadlineExclusion を毎ステップ 2 行ずつ流すことになる)
-        if modelCompileFinishOverrideForTesting == nil, modelCompileFinishSignal.isFinished { return .finishedUnready(waited: .zero) }
+        // ただし**探り直しは頼む**(待たない)。開始時の探りは予算(modelCompileRetryBudget)内に読めなかっただけで、
+        // 負荷の下ではそれが普通に起きる(実測: 負荷の高い時間帯のシナリオの約 6 割が開始時に読めず、そのプロセスでは
+        // 一度も近道を撃てなかった = 可読の文字への FM の空振りがそのまま赤になった。maintainer-notes §84.4)
+        if modelCompileFinishOverrideForTesting == nil, modelCompileFinishSignal.isFinished {
+            requestReprobeIfDue()
+            return .finishedUnready(waited: .zero)
+        }
         compileModelIfNeeded(mode: mode)
         let clock = ContinuousClock()
         let start = clock.now

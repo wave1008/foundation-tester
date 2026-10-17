@@ -83,6 +83,28 @@ extension StepExecutorTests {
                        "訊いてすらいないので立たないはず: \(outcome.notes)")
     }
 
+    /// FM が空の転写で「見えない」と答え、要素の領域に構造がある(縦縞)ときは注記 `fm-empty-transcript-on-ink` と
+    /// 失敗文の事実を足す。**判定は変えない**(赤のまま)。一様な絵(白紙)では立てない = 白紙の真陽性に混ぜない。
+    /// インク閾値を上げて Tier-1 の素通りを止め、FM の段まで届かせる
+    func testEmptyFMTranscriptOnInkedAreaIsNotedWithoutChangingTheVerdict() async throws {
+        for (png, expectsNote) in [(Self.inkedPNG, true), (Self.blankPNG, false)] {
+            let log = CallLog()
+            let primary = FakeAppDriver(name: "primary", log: log,
+                                        snapshotElements: [[textElement(id: "msg", label: "こんにちは")]],
+                                        screenshots: [png])
+            let delegate = FakeVisibilityDelegate(visible: false)
+            let executor = StepExecutor(driver: primary, delegate: delegate, occlusionInkThreshold: 10_000,
+                                        occlusionOCRMode: .off, isAndroid: false, tunables: RunTunables())
+            let outcome = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                                                          timeout: 0, occlusionGuard: true))
+            guard case .failed(let message) = outcome.status else {
+                XCTFail("判定は変えないので赤のまま: \(outcome.status)"); continue
+            }
+            XCTAssertEqual(outcome.notes.contains(.fmEmptyTranscriptOnInk), expectsNote, "\(outcome.notes)")
+            XCTAssertEqual(message.contains("FM transcribed nothing"), expectsNote, message)
+        }
+    }
+
     /// FM が「見える」と判定したときも、先頭だけ読めた形(partiallyHidden / ellipsized)を注記に残す。
     /// fullyVisible なら何も付けない
     func testFMVisibleVerdictNotesPartialVisibility() async throws {

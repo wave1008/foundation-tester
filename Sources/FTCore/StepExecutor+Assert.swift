@@ -336,6 +336,18 @@ extension StepExecutor {
         // どちらも期待文字列を知らずに読んだ文字を同じ TranscriptMatch で照合するので、「読めた」は描かれている
         // 直接の証拠で、「読めなかった」は読み手の失敗でも起きる(OCR の短い文字列の誤読・FM の字形の取り違え)。
         // 根拠と実測は docs/poc-fm-occlusion-guard.md §5.22。measure は FM の判定を採取するので突き合わせない
+        // **FM の転写が空なのに要素の領域に構造がある**事実(判定は変えない。率を見る)。空の転写は呼び出しとしては
+        // 成功なので FMHealth / FMLiveness に出ず、OCR の近道が撃てない機械では FM の1回の空振りがそのまま赤になる
+        // (実測: 赤 157 件のうち 17 件が読める文字への空の転写 → maintainer-notes §84.4)。構造の有無は
+        // firstFrameBlankStdDevCeiling(「画素に構造が無い」の定義)で分ける = 白紙・一色の画面では立たない
+        var emptyTranscriptOnInk = ""
+        if !v.visible, v.observedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let ink = sd ?? RegionInk.luminanceStdDev(pngData: screenshot, frame: element.frame, screen: screen),
+           ink > Self.firstFrameBlankStdDevCeiling {
+            noteCodesThisStep.insert(.fmEmptyTranscriptOnInk)
+            emptyTranscriptOnInk = " — FM transcribed nothing, but the element's area is not blank"
+                + " (luminance stdDev \(String(format: "%.1f", ink)))"
+        }
         let merged = OCROnlyVisibility.merge(fmVisible: v.visible, fmState: TranscriptMatch.State(rawValue: v.state),
                                              ocr: occlusionOCRMode == .on ? ocrOnly.outcome : .undetermined)
         if let note = merged.disagreement { noteCodesThisStep.insert(note) }
@@ -349,6 +361,7 @@ extension StepExecutor {
         // 覆われていると答えた」= 純粋な判定誤り。これが無くて切り分けに窮した。
         return .failed("false positive (occlusion): present in the tree but not visually visible [\(v.state)] \(v.reason)"
                        + " observed=\"\(v.observedText)\""
+                       + emptyTranscriptOnInk
                        + Self.blankAppAreaFact(screenshot: screenshot, elements: elements, screen: screen))
     }
 

@@ -201,6 +201,11 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 緑にした。多ければ OCR の読み違い(短い文字列・字形)を疑う
     case fmReadWhatOCRMissed = "fm-read-what-ocr-missed"
 
+    /// occlusion-guard の FM が「見えない」と答え、**転写が空なのに要素の領域に構造があった**(輝度の stdDev が
+    /// `firstFrameBlankStdDevCeiling` を超える)。判定は変えない。**率を見たい注記**: 空の転写は呼び出しとしては成功なので
+    /// FM の失敗の集計に出ない。立った回の赤は、読める文字への空振り(誤った赤)か、文字の無い装飾だけが描かれた回
+    case fmEmptyTranscriptOnInk = "fm-empty-transcript-on-ink"
+
 
     /// **`iosAlertHandler` の登録が無い**のに、OS のシステムアラートがアプリの前面に出ていた
     /// (SpringBoard への1問 `GET /systemalert` で確認した事実)。in-app の操作は OS のイベント経路を
@@ -474,6 +479,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .textEllipsized: return "the text is truncated with an ellipsis"
         case .ocrReadWhatFMMissed: return "FM judged the text not visible but OCR read it, so it passed"
         case .fmReadWhatOCRMissed: return "OCR judged the text not visible but FM read it, so it passed"
+        case .fmEmptyTranscriptOnInk:
+            return "FM transcribed nothing although the element's area is not blank (the verdict was not changed)"
         case .healUnwritable:
             return "self-heal found a stand-in element but no selector picks it out uniquely on this"
                 + " screen, so the fix was not written back — give the element a stable id"

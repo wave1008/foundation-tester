@@ -4710,3 +4710,71 @@ hosts にゲートウェイの IP(`fleetest-gateway`)を載せて逆引きを DN
   → sut-ec-mobile の正本(`fleetest/compose.yaml` = GHCR のイメージ・BusyBox の wget の検査)へ差し替えた
 - **ハーネス側の誤り**: 実機ランナーの kill の後に起こし直しが無かった(MCP は実機のブリッジを起こさない = 設計どおり)・
   別セッションの警告と同じ行に載った本文を `grep -v` で消して「空の応答」と見誤った
+
+## 84. 10/17 の3時間負荷テスト(2026-10-17 07:37〜10:37)
+
+§83 と同じ構成(手元の Simulator 8 台・Emulator 6 台のフリート run(手元だけ)・sim-09 = MCP・sim-10 = ライブ操作・emulator-5554 = MCP・
+emulator-5556 = ライブ操作・実機 3 台(SE3・Pixel 4a・Pixel 3a)= MCP・サービスの並走)に、フリートへ sut-ec-mobile(サービス付き)と、
+MCP からの `ft_start_run` → `ft_run_status` → ときどき `ft_stop_run` のループを足した。OS 再起動の直後に開始。
+フリート run 60(api run 19)・MCP 約 8.5 万・ライブ操作 約 1.5 万・CLI 約 2,200・サービス操作 16・`ft_start_run` 20・障害注入 33。
+クラッシュ・応答の無い呼び出しは 0(CRASH 11 件はすべて注入した kill)。OCR の近道はシナリオのプロセスの約 6 割で撃てず(§84.4)、
+CMP iOS・Emulator の白紙/黒一色の描画がフリートの赤の大半 = §82 と同じ状態。
+
+### 84.1 拡張の bridge-watch → start-device が、ライブ操作の処理中のランナーを止めた
+ライブ操作の `back` が 46 秒かかる間、XCUITest のランナーは /status に答えない → 拡張の bridge-watch が「booted 5 回連続 = 無応答」として
+start-device を積み、供給の `.adopt`(起動中とみなした pid の引き取り)が「ログが 15 秒黙った」で止めて起動し直した。直後にライブ操作の
+自動起動とぶつかり、片方がもう片方の新しいランナーを残骸として片付け、prev.log は2回目の回転で空になった(落ちたランナーのログが消えた)。
+`.reuse` の3分岐・recheckRunner・MCP の自動回復は `hasForeignLease*` の門を持つのに、`.adopt` の無応答2分岐(沈黙で止める・待って
+答えなければ止める)だけが持っていなかった(B5 に反する)。→ `stopUnresponsiveAndRelaunch` で `hasForeignLeaseUnlessOwnRun` を見て、
+他のセッションのデバイスなら止めずに `unresponsiveBridgeHeldByAnotherSession` で断る(回復はそのセッション自身の自動回復が持つ)。
+Simulator が止まっている・版が古い・ツールチェーン不一致の作り直しは門の外のまま。
+`ForeignLeaseAutoRestartGateTests.testAdoptChecksBeforeStoppingAnUnresponsiveRunner`。
+**残り**: bridge-watch 自体は MCP/ライブ操作の印を見ずに「無応答」と警告する(止めはしなくなった)
+
+### 84.2 ft_run_status: 始まらなかったと分かっている run に推測の行を並べていた
+子の記録(`DispatchRefusalReport`)でロック待ちの拒否と分かっていても「No run record was found (the run may have ended before
+recording — read the log)」を先に出していた → 拒否の事実だけを出す
+
+### 84.3 ft_scroll_to の所要の内訳が、slowDrag の時間をスワイプに帰属させていた
+Pixel 4a で「2 swipe(s); … gestures 24.4s」= 1 本 12 秒に見えたが、logcat の実体は `adb shell input swipe … 3000` ×7(逆走査の
+`slowDrag`。フリング無し・1 本最大 3 秒。実機は gRPC のタッチ合成が無いので adb になり 1 本 約 3.5 秒)。スワイプに数えない回復の
+ドラッグを `StepOutcome.slowDrags` で運び「2 swipe(s) + 7 slow no-fling drag(s)」と分けて言う(撃てた本数だけ数える)。修正版を同じ
+Pixel 4a で実測して一致。逆走査そのもの(失敗経路だけの救済)は変えていない
+
+### 84.4 テキストの可視性検証: FM の「空の転写」は失敗に数えられない
+試験中の FM は 423 回呼ばれて失敗 0・死活は text/vision とも alive のまま(再起動前の 06:43〜07:01 は両経路とも
+`SensitiveContentAnalysisML error 15 ← ModelManagerError 1001` で全滅し、OS 再起動後の 07:03 に回復 = 台帳と履歴は正しく記録)。
+一方、可視性検証の赤 157 件(すべて notRendered)のうち、切り抜きの輝度が完全に一様な 135 件は本当に何も描かれていない(真陽性)が、
+濃淡のある 22 件中 **17 件は文字がはっきり描かれているのに FM が `observed=""` を返して赤**(`selected=row_40`・`notify=off`・
+`wv_result=hello123`・`tap=0` 等、iOS の Simulator と Flutter/RN の両方・時間帯は試験全体に散らばる・同じ端末で数秒内に 3 件続く回あり)。
+赤にならなかった反転(select・待ちの途中)にも同じ空振りが 10 件以上。空の転写は呼び出しとしては成功なので FMHealth・FMLiveness・
+fm-history のどれにも出ない(§82.10 と同じ型)。→ 注記 `fm-empty-transcript-on-ink` と失敗文の事実(インク量)を足した(判定は変えない。率を見る)。
+**誤った赤は全部、OCR の近道が撃てなかったステップで起きた**(可読の赤 19 本すべて `ocr-shortcut-not-ready`・OCR が撃てたステップでは 0)。
+近道が撃てるかは**シナリオのプロセスごとに全か無か**(全ステップ撃てた 91 本・全ステップ撃てなかった 122 本・途中で変わった 0 本)。
+開始時の探り(`modelCompileOnce`)の予算 `modelCompileRetryBudget` 2 秒が静かな機械の実測で、負荷の下では2秒内に1行も読めずに終わり、
+そのプロセスでは二度と探り直さない(開始直後の 20 分は全部撃てた・負荷が上がると混在・同じ run の中でもプロセスで割れる)。
+`ocr-shortcut-not-ready` は**撃たなかった回にだけ立つ**ので、注記の数だけを見て「OCR が死んでいる」と読まない(分母はステップの `ocrMs`)。
+→ **需要があるときだけ探り直す**(`RegionText.requestReprobeIfDue`。近道を撃とうとして「終わったのに読めない」が返る回に背景で 1 本・
+同時に 1 本まで・読めないたびに間隔を倍(1 秒 → 8 秒で頭打ち = `ReprobeSchedule`)。背景で回し続けないのは、長く生きる MCP で Vision が
+本当に読めない間ずっと払うため)。陽性対照の注入口 `FT_FAKE_OCR_STARTUP_PROBE_UNREADY=1`(開始時の探りだけを読めなかった扱い)で、
+E2E-CMP のジェスチャ S0010 が最初のガードだけ N・残り 49 回が R(近道を撃てた)に回復するのを確認。5 SUT の薄い文字の witness は
+ガードが 1 回で FM も死んでいたので、この確認には使えない(素通りの緑)。OS 再起動後(FM 生存)に同じ陽性対照を回し直して N → R 49 回・FM 1 回(失敗 0)、注入なしの E2E-CMP iOS 12 本も緑(FM 3 回・失敗 0)
+
+### 84.5 試験後の FM の死(13:05)
+試験の約 2.5 時間後、変異確認の並列ビルド中に FM が text / vision とも死んだ。OS の推論サービス(`TGOnDeviceInferenceProviderService`)と
+`modelmanagerd` がその瞬間に起動し直され、新しいサービスが安全判定のモデル `instruct_300m.safety` を ANE に載せられない
+(`Code=53 Program load failed — no memory`)。メモリの逼迫が解けても(空き 54%)、fm-serve を起こし直しても戻らない = 今朝の再起動前
+(06:43〜07:01、同じ `SensitiveContentAnalysisML error 15 ← ModelManagerError 1001`)と同じで、OS の再起動まで戻らない型。
+**デバイス実行の負荷が無いときに起きた** = §83.9 の「死の再現手順は無い」に対する新しい実例(カーネルの `VM exhausted` は記録に無い)
+
+### 84.6 記録だけの観察(直していない)
+- ライブ操作の `type`/`clear` は ref が入力欄でなくても撃つ前に断らない(MCP・DSL は断る)。拡張は ref 付きで送らないので実害の経路なし
+- ライブ操作の失敗文: プローブが timedOut だと、元の失敗が「network connection was lost」(ランナーが落ちる途中)でも
+  「this is not a dropped connection」と言う(約 10 秒間)
+- ライブ操作の自動起動が run 4 の 8 台供給中に約 8 分「接続拒否」のまま(供給のロック待ち = 設計どおり。`bridgeStarting: true` は立つ)
+- ランナーの自死(ライブ操作の activate が main を 75 秒塞いだ = handlerTimeout)1 回。負荷 230 の下
+- xcuitest の run で録画が全台始まらない(emptyTestRecording / cannotLaunchRecorder)回が高負荷の時間帯に集中。静止画への縮退は設計どおり
+- 使用中の端末への `bridge down` / `stop-device` / `wipe-device` / `restart-bridge` は `--force` なしで全部正しく断った
+- **ハーネス側の誤り**: Monitor のパイプ末尾の `cut` がバッファして 1 件も届かなかった・`--wait-lock` なしのフリートが MCP の run の
+  ロック中に 0.3 秒の拒否を約 225 本空回り・ft_batch の steps は `;` 区切りの文字列・services は `--profile` 必須・E2EX/E2EY の android は
+  8 台 = MCP/ライブ操作の Emulator を引き取ってファズと相乗りした赤(設計どおり)

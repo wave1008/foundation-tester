@@ -410,6 +410,41 @@ final class RegionTextProbeWithRetryTests: XCTestCase {
     /// **既定値(production が実際に使う値)をリテラルで固定する**。他のテストが budget/interval を
     /// 明示して呼ぶので、これが無いと既定を 0 に落とす変更(= 撃ち直しが production で1度も
     /// 起きない)が緑のまま通る(2026-09-16 の変異チェックで実際に生き残った)
+    /// 開始時の探りで読めなかったプロセスの探り直し(`ReprobeSchedule`): 同時に 1 本まで・読めなかった後は
+    /// 間隔を空ける・間隔は倍にして上限で止まる。既定の間隔はリテラルで固定する
+    func testReprobeScheduleRunsOneAtATimeAndBacksOffToTheCap() {
+        XCTAssertEqual(RegionText.reprobeInitialInterval, .seconds(1))
+        XCTAssertEqual(RegionText.reprobeMaxInterval, .seconds(8))
+        var schedule = RegionText.ReprobeSchedule()
+        let t0 = ContinuousClock.now
+        XCTAssertTrue(schedule.start(now: t0), "最初の需要では撃つ")
+        XCTAssertFalse(schedule.start(now: t0 + .seconds(5)), "撃っている間は2本目を撃たない")
+        schedule.finishedUnready(now: t0)
+        XCTAssertFalse(schedule.start(now: t0 + .milliseconds(999)), "1 秒空けるまでは撃たない")
+        XCTAssertTrue(schedule.start(now: t0 + .seconds(1)))
+        var now = t0 + .seconds(1)
+        var gaps: [Duration] = []
+        for _ in 0..<5 {
+            schedule.finishedUnready(now: now)
+            let next = schedule.notBefore!
+            gaps.append(next - now)
+            now = next
+            XCTAssertTrue(schedule.start(now: now))
+        }
+        XCTAssertEqual(gaps, [.seconds(2), .seconds(4), .seconds(8), .seconds(8), .seconds(8)])
+    }
+
+    /// 配線: 「コンパイルは終わったのに読めない」で即座に返す分岐が、探り直しを頼んでから返すこと
+    /// (頼まないと、開始時に読めなかったプロセスでは最後まで近道を撃てない = maintainer-notes §84.4)
+    func testFinishedUnreadyBranchRequestsAReprobe() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: root.appendingPathComponent("Sources/FTCore/RegionText.swift"), encoding: .utf8)
+        let compact = source.components(separatedBy: .whitespacesAndNewlines).joined()
+        XCTAssertTrue(compact.contains("modelCompileFinishSignal.isFinished{requestReprobeIfDue()return.finishedUnready(waited:.zero)}"),
+                      "awaitModelCompile の finishedUnready の即時返しが探り直しを頼んでいない")
+    }
+
     func testDefaultRetryBudgetAndIntervalArePinned() {
         XCTAssertEqual(RegionText.modelCompileRetryBudget, .seconds(2))
         XCTAssertEqual(RegionText.modelCompileRetryInterval, .milliseconds(50))

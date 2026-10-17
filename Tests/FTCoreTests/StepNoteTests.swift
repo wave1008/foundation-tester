@@ -26,6 +26,7 @@ final class StepNoteTests: XCTestCase {
         XCTAssertEqual(StepNote.guardRetaken.rawValue, "guard-retaken")
         XCTAssertEqual(StepNote.ocrShortcutNotReady.rawValue, "ocr-shortcut-not-ready")
         XCTAssertEqual(StepNote.ocrShortcutBusy.rawValue, "ocr-shortcut-busy")
+        XCTAssertEqual(StepNote.fmEmptyTranscriptOnInk.rawValue, "fm-empty-transcript-on-ink")
         XCTAssertEqual(StepNote.ocrCompileWaited.rawValue, "ocr-compile-waited")
         XCTAssertEqual(StepNote.ocrCompileCapped.rawValue, "ocr-compile-capped")
         XCTAssertEqual(StepNote.settledAfterKeyboard.rawValue, "settled-after-keyboard")
