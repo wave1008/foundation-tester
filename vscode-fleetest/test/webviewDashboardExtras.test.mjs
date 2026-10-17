@@ -874,13 +874,16 @@ test("デバイスの健全性: モニターの周期で表に出る値が変わ
   const devices = [monitorDevice({ id: "android:a", name: "a", state: "connected" })];
   sendToWebview({ type: "devices", filter: "all", devices });
   const first = window.document.querySelector('#table-device-health-body tr[data-worker="android:a"]');
+  const firstStorageCell = first.children[3];
   sendToWebview({ type: "devices", filter: "all", devices });
   assert.equal(window.document.querySelector('#table-device-health-body tr[data-worker="android:a"]'), first,
     "同じ内容の周期では行を作り直さない");
   sendToWebview({ type: "devices", filter: "all", devices: [monitorDevice({ id: "android:a", name: "a", state: "offline" })] });
   const after = window.document.querySelector('#table-device-health-body tr[data-worker="android:a"]');
-  assert.notEqual(after, first, "状態が変われば描き直す");
-  assert.match(after.children[2].textContent, /未起動/);
+  // 状態が変わっても行は残し、変わったセルだけ差し替える(マウスを載せている別のセルの説明を点滅させない)
+  assert.equal(after, first, "同じデバイスの行は残す");
+  assert.match(after.children[2].textContent, /未起動/, "状態のセルは描き直す");
+  assert.equal(after.children[3], firstStorageCell, "変わっていないセルは同じ要素のまま");
 });
 
 test("デバイスの健全性: 実機にはデバイスモニターと同じ「実機」バッジ(モニターに居ない台はプロファイルの kind で判断)", (t) => {

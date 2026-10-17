@@ -29,6 +29,15 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   出ない/約 1 秒待つので、`hoverTip.js` が mouseover で自前のツールチップ(0.2 秒)へ移す。**ネイティブの表示に
   頼る実装・テストを書かない**(テストは `data-hover-tip` か表示された `.hover-tip` を見る)。
   title を書いた箇所が毎回「説明が出ない」になっていた(`webviewHoverTip.test.mjs` が乗り換えを固定)
+- **周期的に描き直す webview(1Hz の host-metrics・約2秒の devices サイクル・refresh のたびの表)は要素を作り直さない**
+  —— マウスを載せている要素が消えるとツールチップが消えて 0.2 秒後に出直す = 周期ごとに点滅する(マシンの健全性・
+  レーン見出し・拡大表示で実際に踏んだ)。表は `monitor/rowSync.js` の `syncChildren`(挿入時点の outerHTML が同じなら残す・
+  リスナーを持つ行は元データを `data-sig` に載せる・リスナーの無いセルの行だけ `recurseWhen` で1段降りる)、見出し等は
+  「中身の鍵が前回と同じなら return」。**周期的に変わる説明は `setHoverTip` で書く**(`el.title =` は表示中の文言が古いまま・
+  ネイティブと二重になる)。**テストは `data-hover-tip` を読む** —— 移した後に `.title` を読むと常に空で、否定の assert が素通りする
+  → maintainer-notes §85
+- **状態の語**: タイルの「接続中」は**接続しようとしている途中**(Connecting)。繋がっている状態は「接続済み」(ライブ操作と同じ)。
+  同じ語を逆の意味で使うと「接続中のまま変わらない」に見える(ダッシュボードで実際に報告された)
 - エスケープ文脈が変わる逐語移動(テンプレートリテラル⇔実ファイル)では二重エスケープの残存を機械チェックする(`grep '\\\\[dswb]'` 等。過去に `\\d` が検証不能バグとして実害化)
 - 辞書は `src/i18n/strings/<namespace>.ts` に `{ "ns.key": { ja, en } } satisfies MessageDict`。**ja は表示文字列と byte 一致**(未初期化時の既定 locale が "ja"・既存テストが日本語をアサートするため)。プレースホルダは名前付き `{name}` で ja/en 同集合。namespace とファイルは1対1。
 - 拡張側: `import { t } from "./i18n"`(`MessageKey` 型で typo を tsc 検出)。activate 冒頭で `initI18n()`。webview 側: `import { t } from '../i18n.js'`(locale は `<html lang>` 経由)。静的 HTML(monitorHtml.ts 等)は拡張側 `t()` で描画する。

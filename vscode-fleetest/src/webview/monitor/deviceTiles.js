@@ -518,7 +518,7 @@ function renderFrame(entry) {
       && !upRunning && !offline;
     // **タイルの文言は短く**(幅は 60px 程度しかなく、長い文は1文字ずつ折り返して潰れる。
     // 実際に読めない表示になった実害あり)。理由と対処はツールチップと OUTPUT へ
-    entry.placeholderEl.title = wiping
+    setHoverTip(entry.placeholderEl, wiping
       ? t('wvMonitor.tile.wipingTip')
       : awaitingAction === 'unlock'
       ? t('wvMonitor.tile.unlockDeviceTip')
@@ -528,7 +528,7 @@ function renderFrame(entry) {
       ? t('wvMonitor.tile.monitorPausedTip')
       : streamUnavailable
       ? t('wvMonitor.tile.streamUnavailableTip')
-      : unobservableRemote ? t('wvMonitor.tile.stateUnknownTip') : t('wvMonitor.tile.title');
+      : unobservableRemote ? t('wvMonitor.tile.stateUnknownTip') : t('wvMonitor.tile.title'));
     labelSpan.textContent = wiping
       ? (entry.wipePhase === 'stopping'
         ? t('wvMonitor.tile.wipeStopping')
@@ -579,11 +579,23 @@ function renderMirror(entry) {
     return;
   }
   renderMirrorHeader(entry, mirror);
-  mirror.frameEl.textContent = '';
   if (entry.frameWrapEl.contains(entry.placeholderEl)) {
-    mirror.frameEl.appendChild(entry.placeholderEl.cloneNode(true));
+    // 中身が前回の複製と同じなら貼り直さない(devices サイクル・フレームのたびに呼ばれる。貼り直すと
+    // マウスを載せている説明が点滅する)
+    const html = entry.placeholderEl.outerHTML;
+    if (mirror.placeholderHtml === html && mirror.frameEl.firstElementChild
+        && mirror.frameEl.firstElementChild === mirror.placeholderClone) {
+      return;
+    }
+    mirror.frameEl.textContent = '';
+    mirror.placeholderClone = entry.placeholderEl.cloneNode(true);
+    mirror.placeholderHtml = html;
+    mirror.frameEl.appendChild(mirror.placeholderClone);
     return;
   }
+  mirror.placeholderHtml = null;
+  mirror.placeholderClone = null;
+  mirror.frameEl.textContent = '';
   if (entry.usingH264 && entry.canvasEl) {
     mirror.frameEl.appendChild(mirror.canvasEl);
     copyMirrorFrame(entry);
@@ -602,6 +614,13 @@ function renderMirror(entry) {
 // そのデバイスだけ絵の上端が下がって手元と高さが揃わない(ユーザー指摘)。
 // 手元のデバイスには**見えないダミーのバッジ**を入れて高さだけ合わせる(中身が空の段は高さ 0)。
 function renderMirrorHeader(entry, mirror) {
+  // devices サイクル・フレームのたびに呼ばれる。**複製元が前回と同じなら作り直さない**(マウスを載せている
+  // バッジのツールチップが点滅する)
+  const html = entry.machineRowEl.outerHTML + entry.headerEl.outerHTML;
+  if (mirror.headerHtml === html) {
+    return;
+  }
+  mirror.headerHtml = html;
   mirror.headerEl.textContent = '';
   // **タイルと同じ順**(機械名の段が上)。手元にも実体のあるバッジが出るので、段の高さを
   // 作るためのダミーは要らない
@@ -693,7 +712,7 @@ function renderRenderBadge(entry) {
   entry.renderBadgeEl.style.display = 'inline-block';
   entry.renderBadgeEl.className = 'badge badge-render render-cpu';
   entry.renderBadgeEl.textContent = 'CPU';
-  entry.renderBadgeEl.title = t('wvMonitor.tile.cpuBadgeTitle');
+  setHoverTip(entry.renderBadgeEl, t('wvMonitor.tile.cpuBadgeTitle'));
 }
 
 // renderDeviceOpMenuItem は内部で呼ぶ(opBusy・state 変化時の一括再描画)。
@@ -1941,17 +1960,17 @@ function refreshBulkButtons() {
   btnUp.textContent = cancelling
     ? t('wvMonitor.bulk.cancelling')
     : upCancelMode ? t('wvMonitor.bulk.cancelStart') : t('wvMonitor.bulk.startAll');
-  btnUp.title = cancelling
+  setHoverTip(btnUp, cancelling
     ? t('wvMonitor.bulk.cancellingTitle')
-    : blockedByFilter ? t('wvMonitor.bulk.startAllDisabledRunning') : '';
+    : blockedByFilter ? t('wvMonitor.bulk.startAllDisabledRunning') : '');
   // 起動キューが動いている間は畳む操作を出さない(「全て終了」は down の最中も同じ)。
   // 「モニター再起動」は monitor プロセスごと起動し直すので、起動の進行(bootBusy)を
   // 取りこぼして中断の導線が消える。
   btnDown.disabled = bulkBusy || testRunActive;
   btnRestart.disabled = upCancelMode || recordingsFinalizing;
-  btnRestart.title = upCancelMode
+  setHoverTip(btnRestart, upCancelMode
     ? t('wvMonitor.bulk.disabledWhileStarting')
-    : recordingsFinalizing ? t('wvMonitor.bulk.disabledWhileFinalizingRecordings') : '';
+    : recordingsFinalizing ? t('wvMonitor.bulk.disabledWhileFinalizingRecordings') : '');
   // 一括操作(起動・終了)が動いている間は対象そのものを動かさせない —— テストプロジェクト/
   // 実行プロファイルを変えると監視スコープが変わり(モニター再起動)、走っているキューは
   // 前の名簿のまま進む。**この2行は applyProfileInfo / applyProjectInfo の代入より後に効く
@@ -2075,22 +2094,22 @@ function refreshRunTestsButton() {
     btnRunTests.textContent = runCancelRequested
       ? t('wvMonitor.runTests.cancelling')
       : t('wvMonitor.runTests.cancel');
-    btnRunTests.title = runCancelRequested
+    setHoverTip(btnRunTests, runCancelRequested
       ? t('wvMonitor.runTests.cancellingTitle')
-      : t('wvMonitor.runTests.cancelTitle');
+      : t('wvMonitor.runTests.cancelTitle'));
     return;
   }
   btnRunTests.classList.remove('bulk-cancel', 'cancelling');
   btnRunTests.textContent = t('wvMonitor.runTests.run');
   const selectable = knownProfiles.has(profileSelect.value) && !bulkBusy;
   btnRunTests.disabled = !selectable;
-  btnRunTests.title = selectable
+  setHoverTip(btnRunTests, selectable
     ? t('wvMonitor.runTests.title')
     : bulkBusy
       ? bulkBusyOp === 'down'
         ? t('wvMonitor.runTests.disabledStoppingDevices')
         : t('wvMonitor.runTests.disabledStartingDevices')
-      : t('wvMonitor.runTests.disabledNoProfile');
+      : t('wvMonitor.runTests.disabledNoProfile'));
 }
 
 /** GUI 実行の開始/終了(host の RunEventBus 由来)。誰が起こした実行でも同じ扱いにする。 */

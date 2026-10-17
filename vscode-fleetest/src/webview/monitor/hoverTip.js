@@ -21,7 +21,12 @@ let current = null;
 export function setHoverTip(el, text) {
   if (!el) { return; }
   if (text) {
+    const changed = el.getAttribute(ATTR) !== text;
     el.setAttribute(ATTR, text);
+    // 表示中の要素の説明が周期的な更新で変わったら、その場で文言を差し替える(古い文言を出し続けない)
+    if (changed && current === el && tipEl && tipEl.style.display === 'block') {
+      placeTip(tipEl, el, text);
+    }
     // **ネイティブ title は必ず空にする**。自前ツールチップを付けた要素に title が残っていると、
     // 0.2 秒でこちらが出た約1秒後にネイティブも出て**同じ説明が二重に見える**(実害)。
     // 元は `if (!el.title)` だったが、それは「title を持つ要素」= 二重になる当の条件を素通しする。
@@ -144,6 +149,23 @@ document.addEventListener('mouseout', (e) => {
 
 // スクロール・クリック・ウィンドウ外れで即消す(残ると位置がずれたまま貼り付く)。
 // scroll は capture でないとスクロールコンテナ内の発火を拾えない
-document.addEventListener('scroll', hide, true);
+// ただし**マウスが載ったままの要素**(描き直しの scrollIntoView 等。利用者のスクロールでも要素がカーソルの下に
+// 残る場合)は消さずに置き直す —— 消すと周期的なスクロールのたびに点滅する
+// 「載ったまま」は最後のマウス位置の要素で判定する(:hover はスクロール直後に更新されていないことがある)。
+// 位置を引けない環境(elementFromPoint が無い・null)は従来どおり消す
+let lastPointer = null;
+document.addEventListener('mousemove', (e) => { lastPointer = { x: e.clientX, y: e.clientY }; }, true);
+function stillUnderPointer(el) {
+  if (!lastPointer || typeof document.elementFromPoint !== 'function') { return false; }
+  const hit = document.elementFromPoint(lastPointer.x, lastPointer.y);
+  return !!hit && el.contains(hit);
+}
+document.addEventListener('scroll', () => {
+  if (current && current.isConnected && tipEl && tipEl.style.display === 'block' && stillUnderPointer(current)) {
+    placeTip(tipEl, current, current.getAttribute(ATTR) || '');
+    return;
+  }
+  hide();
+}, true);
 document.addEventListener('mousedown', hide, true);
 window.addEventListener('blur', hide);

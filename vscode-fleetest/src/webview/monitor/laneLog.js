@@ -86,7 +86,14 @@ function setTileRunning(id, running) {
 // platform不明(全体レーンやフォールバック)は中立色のピル。
 // machine は複数の機械にまたがる実行でのみ付く。同名のデバイスが別の機械にも居るので、
 // これを出さないと見出しが同じレーンが並んで区別できない(タイルの .badge-remote と同じ見た目)。
+// devices サイクル(約2秒)ごとに呼ばれる。**中身が同じなら作り直さない** —— 作り直すとマウスを載せているピルが
+// 消えてツールチップが点滅する(hoverTip.js)
 function setLaneHeader(headerEl, name, platform, machine) {
+  const key = JSON.stringify([name, platform || '', machine || '']);
+  if (headerEl.dataset.headerKey === key) {
+    return;
+  }
+  headerEl.dataset.headerKey = key;
   headerEl.textContent = '';
   const pill = document.createElement('span');
   pill.className = 'lane-name ' + (platform ? 'tile-name-' + platform : 'lane-name-neutral');

@@ -14,6 +14,7 @@ import {
 } from './format.js';
 import { t } from '../i18n.js';
 import { clearChildren, td, tdMid, tdNum } from './domUtil.js';
+import { syncChildren } from '../monitor/rowSync.js';
 import { machineLabels } from './machineNames.js';
 import { requestRunDetail } from './runDetail.js';
 import { requestTrend } from './trend.js';
@@ -186,7 +187,7 @@ function groupResultCell(members) {
  * 同名関数(先頭の選択セル。ここから import しない = 循環を作らない)。 */
 export function renderRunsTable(groups, statsByRunID, selectCell) {
   const body = document.getElementById('table-runs-body');
-  clearChildren(body);
+  const rows = [];
   // 最大10行(呼び出し側で既に新しい順)。
   for (const members of groups.slice(0, 10)) {
     const stats = groupStats(members, statsByRunID);
@@ -198,15 +199,18 @@ export function renderRunsTable(groups, statsByRunID, selectCell) {
     row.className = 'row-clickable';
     row.title = members.map((r) => r.runID).join('\n');
     // 列構成はパフォーマンス表と同じ(ユーザー指示)
+    const entry = {
+      key: members[0].runGroup || members[0].runID,
+      runIDs: members.map((r) => r.runID),
+      startedAt: groupStartedAt(members),
+      profile: members[0].profile,
+      // 比較の「構成が違う」判定用。performance.js と同じく host の昇順で並べる
+      machines: machineLabels([...new Set(members.map((r) => r.host))].sort()).join(' + '),
+    };
+    // リスナー(選択・行クリック)が捕まえるデータ。同じなら残した古い行のリスナーも等価
+    row.dataset.sig = JSON.stringify([entry, members[0].runID]);
     row.append(
-      selectCell({
-        key: members[0].runGroup || members[0].runID,
-        runIDs: members.map((r) => r.runID),
-        startedAt: groupStartedAt(members),
-        profile: members[0].profile,
-        // 比較の「構成が違う」判定用。performance.js と同じく host の昇順で並べる
-        machines: machineLabels([...new Set(members.map((r) => r.host))].sort()).join(' + '),
-      }),
+      selectCell(entry),
       groupDateCell(members),
       td(groupMachinesText(members)),
       td(members[0].profile || '–'),
@@ -220,8 +224,9 @@ export function renderRunsTable(groups, statsByRunID, selectCell) {
       tdNum(stats.scenarioCount === null ? '–' : String(stats.scenarioCount)),
     );
     row.addEventListener('click', () => requestRunDetail(members[0].runID, members.map((r) => r.runID)));
-    body.appendChild(row);
+    rows.push(row);
   }
+  syncChildren(body, rows);
 }
 
 /** summaryTable.js/flaky テーブルで共用(クリックで requestTrend)。 */
@@ -236,19 +241,21 @@ export function scenarioIdCell(scenarioID) {
 export function renderFlakyTable(flaky) {
   const body = document.getElementById('table-flaky-body');
   const emptyEl = document.getElementById('flaky-empty');
-  clearChildren(body);
   emptyEl.style.display = flaky.length === 0 ? 'block' : 'none';
   document.getElementById('table-flaky').style.display = flaky.length === 0 ? 'none' : 'table';
+  const rows = [];
   for (const row of flaky) {
     const tr = document.createElement('tr');
+    tr.dataset.sig = JSON.stringify([row.scenarioID, row.recentResults]);
     tr.append(
       scenarioIdCell(row.scenarioID),
       // recentResults は新しい順: 先頭が「直近」列、残りが「履歴(新→旧)」列
       tdMid(recentResultsMarks(row.recentResults.slice(0, 1))),
       td(recentResultsMarks(row.recentResults.slice(1))),
     );
-    body.appendChild(tr);
+    rows.push(tr);
   }
+  syncChildren(body, rows);
 }
 
 export function deltaBadgeCell(deltaPct) {
@@ -275,10 +282,10 @@ function slowestSceneText(slowestScene, slowestSceneAvgMs) {
 export function renderSlowTable(slow) {
   const body = document.getElementById('table-slow-body');
   const emptyEl = document.getElementById('slow-empty');
-  clearChildren(body);
   const hasRows = slow.length > 0;
   document.getElementById('table-slow').style.display = hasRows ? 'table' : 'none';
   emptyEl.style.display = hasRows ? 'none' : 'block';
+  const rows = [];
   for (const row of slow) {
     const tr = document.createElement('tr');
     tr.append(
@@ -290,7 +297,8 @@ export function renderSlowTable(slow) {
       deltaBadgeCell(row.deltaPct),
       td(slowestSceneText(row.slowestScene, row.slowestSceneAvgMs)),
     );
-    body.appendChild(tr);
+    rows.push(tr);
   }
+  syncChildren(body, rows);
 }
 

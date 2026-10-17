@@ -7,7 +7,8 @@
 
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
-import { clearChildren, td, tdNum } from './domUtil.js';
+import { td, tdNum } from './domUtil.js';
+import { syncChildren } from '../monitor/rowSync.js';
 import { deltaBadgeCell } from './render.js';
 import { formatDurationHuman, formatLocalDateTime } from './format.js';
 
@@ -100,16 +101,20 @@ export function syncRunsSelectionProject(project) {
   if (selectedProject === project) return;
   selectedProject = project;
   selected = [];
+  // 行は描き直しで残ることがある(rowSync.js: 中身が同じなら作り直さない)。checked は属性ではなく状態なので、
+  // 選択を空にしたら残った行のチェックも外す
+  syncCheckboxes();
   update();
 }
 
 export function showRunsCompare(previousRunIDs, latestRunIDs, comparison) {
   if (requestKey(previousRunIDs, latestRunIDs) !== pendingKey) return;
-  clearChildren(bodyEl);
   if (comparison.length === 0) {
+    syncChildren(bodyEl, []);
     showStatus(t('wvDashboard.perf.selectedEmpty'), false);
     return;
   }
+  const rows = [];
   for (const row of comparison) {
     const tr = document.createElement('tr');
     tr.append(
@@ -119,8 +124,9 @@ export function showRunsCompare(previousRunIDs, latestRunIDs, comparison) {
       tdNum(formatDurationHuman(row.latestMs)),
       deltaBadgeCell(row.deltaPct),
     );
-    bodyEl.appendChild(tr);
+    rows.push(tr);
   }
+  syncChildren(bodyEl, rows);
   statusEl.style.display = 'none';
   tableEl.style.display = 'table';
 }

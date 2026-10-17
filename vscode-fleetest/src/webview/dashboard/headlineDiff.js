@@ -5,6 +5,7 @@
 
 import { t } from '../i18n.js';
 import { clearChildren } from './domUtil.js';
+import { syncChildren } from '../monitor/rowSync.js';
 import { requestTrend } from './trend.js';
 
 export { computeHeadlineDiff, selectComparisonGroups } from './headlineDiffLogic.js';
@@ -12,6 +13,8 @@ export { computeHeadlineDiff, selectComparisonGroups } from './headlineDiffLogic
 function listSection(heading, entries) {
   const wrap = document.createElement('div');
   wrap.className = 'headline-diff-group';
+  // span のリスナーが捕まえる scenarioID を含む元データ
+  wrap.dataset.sig = JSON.stringify([heading, entries]);
   const h = document.createElement('div');
   h.className = 'headline-diff-heading';
   h.textContent = heading;
@@ -43,14 +46,12 @@ export function renderHeadlineDiff(diff) {
   if (!container) {
     return;
   }
-  clearChildren(container);
-  if (!diff || (diff.newFailures.length === 0 && diff.recovered.length === 0)) {
-    return;
+  const sections = [];
+  if (diff && diff.newFailures.length > 0) {
+    sections.push(listSection(t('wvDashboard.headlineDiff.newFailuresHeading'), diff.newFailures));
   }
-  if (diff.newFailures.length > 0) {
-    container.appendChild(listSection(t('wvDashboard.headlineDiff.newFailuresHeading'), diff.newFailures));
+  if (diff && diff.recovered.length > 0) {
+    sections.push(listSection(t('wvDashboard.headlineDiff.recoveredHeading'), diff.recovered));
   }
-  if (diff.recovered.length > 0) {
-    container.appendChild(listSection(t('wvDashboard.headlineDiff.recoveredHeading'), diff.recovered));
-  }
+  syncChildren(container, sections);
 }

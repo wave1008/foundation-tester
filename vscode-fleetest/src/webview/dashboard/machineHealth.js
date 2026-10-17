@@ -7,7 +7,8 @@
 // 「集計期間」は「–」(0 や健康で埋めない)。モニターの最新サンプルが無い行は、履歴が無ければ出さない。
 
 import { t } from '../i18n.js';
-import { clearChildren, td, tdNum } from './domUtil.js';
+import { td, tdNum } from './domUtil.js';
+import { syncChildren } from '../monitor/rowSync.js';
 import { formatLocalDateTime } from './format.js';
 import { machineLabel } from './machineNames.js';
 import { hostMetricsMachines, onHostMetricsCommitted } from '../monitor/hostCharts.js';
@@ -238,9 +239,7 @@ function rowElement(row) {
   tr.dataset.machine = row.label;
   tr.append(
     machineCell(row.label),
-    fmCell(live),
-    visionCell(live),
-    loadCell(live),
+    ...LIVE_CELL_BUILDERS.map((build) => build(live)),
     withTip(tdNum(health ? String(health.runs) : '–'),
       health && health.lastRunAt ? t('wvDashboard.machineHealth.lastRunTitle', { time: timeText(health.lastRunAt) }) : ''),
     warn(withTip(tdNum(health ? String(health.fmDeadRuns) : '–'), health ? fmDeadTip(health.lastFMDead) : ''),
@@ -258,10 +257,8 @@ function rowElement(row) {
 }
 
 function renderRows(rows) {
-  clearChildren(body);
-  for (const row of rows) {
-    body.appendChild(rowElement(row));
-  }
+  // 表を描き直すとき(結果の取り直し・マシンの増減)も、同じ位置が同じマシンなら行を残して変わったセルだけ差し替える
+  syncChildren(body, rows.map(rowElement), { recurseWhen: (old, next) => old.dataset.machine === next.dataset.machine });
   emptyEl.textContent = historySeen && liveSeen ? noRecordsText : t('wvDashboard.machineHealth.checking');
   emptyEl.style.display = rows.length === 0 ? 'block' : 'none';
 }
@@ -295,6 +292,33 @@ function liveSignature(rows) {
   }));
 }
 
+const LIVE_CELL_BUILDERS = [fmCell, visionCell, loadCell];
+// 「今」の列は rowElement の中でマシンの列の直後(rowElement もこの一覧から作る)
+const LIVE_CELL_OFFSET = 1;
+
+/** 行の並びが同じなら「今」の列だけを**同じ td の中身の差し替え**で更新する。行を作り直すと、マウスを載せている
+ *  セル(集計期間の列を含む)が消えてツールチップが出直す = 1Hz で点滅する。並びが変わったら false(呼び手が作り直す) */
+function patchLiveCells(rows) {
+  const trs = [...body.children];
+  if (trs.length !== rows.length || trs.some((tr, i) => tr.dataset.machine !== rows[i].label)) {
+    return false;
+  }
+  rows.forEach((row, i) => {
+    LIVE_CELL_BUILDERS.forEach((build, j) => {
+      const cell = trs[i].children[LIVE_CELL_OFFSET + j];
+      const next = build(row.live);
+      if (cell.outerHTML === next.outerHTML) {
+        return;
+      }
+      cell.className = next.className;
+      cell.replaceChildren(...next.childNodes);
+      const tip = next.getAttribute('data-hover-tip');
+      setHoverTip(cell, tip || '');
+    });
+  });
+  return true;
+}
+
 onHostMetricsCommitted(() => {
   const first = !liveSeen;
   liveSeen = true;
@@ -304,5 +328,7 @@ onHostMetricsCommitted(() => {
     return;
   }
   lastSignature = signature;
-  renderRows(rows);
+  if (first || !patchLiveCells(rows)) {
+    renderRows(rows);
+  }
 });

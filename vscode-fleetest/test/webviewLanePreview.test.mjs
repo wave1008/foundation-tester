@@ -526,3 +526,28 @@ test("機械付きのレーンが1つでもあれば #lanes-grid に with-machin
   const hosts = [...document.querySelectorAll("#lanes-grid .lane-host")].map((el) => el.textContent);
   assert.deepEqual(hosts, ["m1max"], "機械バッジは機械付きのレーンにだけ出る(段は全レーンで確保)");
 });
+
+test("devices サイクルで中身が変わらなければ、拡大表示のタグ段・代わりの表示・実行ログの見出しを作り直さない(ツールチップが点滅しない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, [{ state: "booted" }, { state: "booted" }]);
+  clickTile(document, 0);
+  const preview = visiblePreviews(document)[0];
+  assert.ok(preview, "拡大表示が出ている");
+  const pill = preview.querySelector(".lane-preview-header .tile-name");
+  const placeholder = preview.querySelector(".lane-preview-frame .frame-placeholder");
+  const laneName = visibleLogs(document)[0].querySelector(".lane-name");
+  assert.ok(pill && placeholder && laneName);
+
+  sendDevices(window, [{ state: "booted" }, { state: "booted" }]);
+  sendDevices(window, [{ state: "booted" }, { state: "booted" }]);
+  assert.equal(preview.querySelector(".lane-preview-header .tile-name"), pill, "タグ段は同じ要素のまま");
+  assert.equal(preview.querySelector(".lane-preview-frame .frame-placeholder"), placeholder, "代わりの表示も同じ要素のまま");
+  assert.equal(visibleLogs(document)[0].querySelector(".lane-name"), laneName, "実行ログの見出しも同じ要素のまま");
+
+  // 中身が変われば貼り直す(古い表示を出し続けない)
+  sendDevices(window, [{ state: "offline" }, { state: "booted" }]);
+  const after = preview.querySelector(".lane-preview-frame .frame-placeholder");
+  assert.notEqual(after, placeholder);
+  assert.equal(after.textContent, document.querySelector("#grid .tile .frame-placeholder").textContent);
+});

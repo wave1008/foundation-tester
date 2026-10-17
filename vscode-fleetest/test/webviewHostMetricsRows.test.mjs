@@ -19,6 +19,9 @@ import { before, test } from "node:test";
 import * as esbuild from "esbuild";
 import { JSDOM } from "jsdom";
 
+// 説明は自前ツールチップ(hoverTip.js の data-hover-tip)に載る。ネイティブ title は空
+const tipOfEl = (el) => el.getAttribute("data-hover-tip") ?? "";
+
 const require2 = createRequire(import.meta.url);
 
 let panelHtml;
@@ -107,12 +110,12 @@ function visionCell(document, machine) {
  *  ラベルは直近 1 tick の回数なので、窓の不変条件(欠測を分母に入れない・古い tick を落とす)は
  *  こちらでしか検証できない。 */
 function fmTitle(document, machine) {
-  return rowFor(document, machine).querySelector('[data-metric="fm"]').title;
+  return tipOfEl(rowFor(document, machine).querySelector('[data-metric="fm"]'));
 }
 
 /** Vision のツールチップ。fmTitle と同じ理由(窓の集計はここでしか検証できない)。 */
 function visionTitle(document, machine) {
-  return visionCell(document, machine).title;
+  return tipOfEl(visionCell(document, machine));
 }
 
 /** fm/vision 省略時は calls:0(既知の0件、欠測ではない)。欠測にしたいテストは { calls: null } … を
@@ -686,7 +689,7 @@ test("台帳由来の死を FM チャートの右に語で出す", (t) => {
 
   assert.equal(fmDeadBadge(document, "mac2"), "N/A");
   assert.match(
-    rowFor(document, "mac2").querySelector(".hm-fm-dead-badge").title,
+    tipOfEl(rowFor(document, "mac2").querySelector(".hm-fm-dead-badge")),
     /ModelManagerError\(1001\)/,
     "語の上にカーソルを置いた人も理由が読める",
   );
@@ -971,7 +974,7 @@ test("OCR のコンパイルの印(ocrCompiling)が来ると Vision のチャー
   assert.equal(texts.filter((x) => cell.contains(x.canvas)).length, 0);
   assert.ok(rects.filter((c) => cell.contains(c)).length > 0, "コンパイル中の帯が塗られていない");
   assert.equal(cell.querySelector(".hm-value").textContent, "3");
-  assert.doesNotMatch(cell.title, /コンパイル|[Cc]ompil/);
+  assert.doesNotMatch(tipOfEl(cell), /コンパイル|[Cc]ompil/);
 
   // 印が窓(60 tick)から抜ければ帯も消える
   for (let i = 0; i < 60; i++) {

@@ -4,7 +4,8 @@
 // チェックをこのファイルに閉じる(列の順序は monitorHtml.ts の #table-summary の見出しと1:1)。
 
 import { t } from '../i18n.js';
-import { clearChildren, td, tdMid, tdNum } from './domUtil.js';
+import { td, tdMid, tdNum } from './domUtil.js';
+import { syncChildren } from '../monitor/rowSync.js';
 import { scenarioIdCell } from './render.js';
 import { formatDurationSeconds, formatLocalDateTime, formatPercentInteger, passFailMark } from './format.js';
 
@@ -59,6 +60,8 @@ function sortRows(rows) {
 
 function summaryRow(row) {
   const tr = document.createElement('tr');
+  // scenarioIdCell のリスナーが捕まえる scenarioID を含め、行の元データを署名にする
+  tr.dataset.sig = JSON.stringify(row);
   // 列の順序は monitorHtml.ts renderDashboardPanel() の #table-summary の見出しと1:1
   // (位置で対応するので片方だけ並べ替えると値が別の見出しの下に出る)
   tr.append(
@@ -74,10 +77,7 @@ function summaryRow(row) {
 
 function renderRows() {
   const filtered = sortRows(applyFilters(currentRows));
-  clearChildren(body);
-  for (const row of filtered) {
-    body.appendChild(summaryRow(row));
-  }
+  syncChildren(body, filtered.map(summaryRow));
   if (countEl) {
     countEl.textContent = t('wvDashboard.summary.countText', {
       shown: String(filtered.length),

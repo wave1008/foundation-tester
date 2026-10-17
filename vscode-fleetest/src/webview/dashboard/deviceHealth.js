@@ -18,8 +18,9 @@
 
 import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
-import { clearChildren, td, tdNum } from './domUtil.js';
+import { td, tdNum } from './domUtil.js';
 import { revealSection } from './domUtil.js';
+import { syncChildren } from '../monitor/rowSync.js';
 import { formatLocalDateTime } from './format.js';
 import { machineLabel } from './machineNames.js';
 import { monitorDevices, onMonitorDevicesChanged } from '../monitor/deviceTiles.js';
@@ -450,19 +451,21 @@ function visibleRows() {
 }
 
 function renderRows() {
-  clearChildren(body);
   const shown = visibleRows();
   const rows = expanded ? shown : shown.slice(0, COLLAPSE_LIMIT);
   let previousMachine = null;
-  for (const row of rows) {
+  const trs = rows.map((row) => {
     const tr = rowElement(row);
     // 機械が変わる行に区切り(並びは sortRows が機械ごとにまとめている)
     if (previousMachine !== null && row.machine !== previousMachine) {
       tr.classList.add('dh-machine-start');
     }
     previousMachine = row.machine;
-    body.appendChild(tr);
-  }
+    return tr;
+  });
+  // 1台の状態が変わっただけで全行を作り直すと、マウスを載せている別の行の説明まで点滅する。同じ位置が同じデバイスなら
+  // 行を残して変わったセルだけ差し替える(セルはリスナーを持たない。行のクリックは無い = revealWorkerRow は dataset で引く)
+  syncChildren(body, trs, { recurseWhen: (old, next) => old.dataset.rowKey === next.dataset.rowKey });
   if (shown.length > COLLAPSE_LIMIT) {
     toggleBtn.style.display = 'inline-block';
     toggleBtn.textContent = expanded

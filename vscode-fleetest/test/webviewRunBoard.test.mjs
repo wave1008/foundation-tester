@@ -125,7 +125,7 @@ test("1行 = 1機械。run のある機械は同じ行に範囲と進捗、無�
   assert.equal(idleRows(document)[0].querySelector(".run-board-scope").textContent, "",
     "run の無い機械はバッジだけ(範囲は出さない)");
   const unknown = [...document.querySelectorAll(".run-board-machine-state-unknown")][0];
-  assert.equal(unknown.title, "実行状況を観測できていません", "ダッシュの意味は title で言う");
+  assert.equal(unknown.getAttribute("data-hover-tip"), "実行状況を観測できていません", "ダッシュの意味はツールチップで言う");
   assert.equal(document.getElementById("run-board-machines"), null, "ヘッダの要約は置かない");
 });
 

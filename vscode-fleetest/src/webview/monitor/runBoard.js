@@ -328,10 +328,10 @@ function updateIdleRow(row, entry) {
   row.statusEl.className = 'run-board-idle-machine-status run-board-machine-state-' + entry.status;
   if (entry.status === 'unknown') {
     row.statusEl.textContent = t('runBoard.remainingUnknown');
-    row.statusEl.title = t('runBoard.machineUnknown');
+    setHoverTip(row.statusEl, t('runBoard.machineUnknown'));
   } else {
     row.statusEl.textContent = t('runBoard.machineIdle');
-    row.statusEl.title = '';
+    setHoverTip(row.statusEl, '');
   }
   const expandable = renderDevices(row, machineKey(entry.machine), undefined);
   applyRowExpansion(row, expandable);

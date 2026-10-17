@@ -9,6 +9,7 @@
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
 import { clearChildren, revealSection, td, tdNum } from './domUtil.js';
+import { syncChildren } from '../monitor/rowSync.js';
 import { machineLabel } from './machineNames.js';
 import {
   formatDurationHuman,
@@ -71,12 +72,11 @@ export function showTrendData(scenarioID, records) {
   if (titleEl.textContent !== titleFor(scenarioID)) {
     return; // 別シナリオのリクエスト後に古い応答が届いた場合は無視する
   }
-  clearChildren(bodyEl);
   if (records.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'section-empty';
     empty.textContent = t('wvDashboard.trend.empty');
-    bodyEl.appendChild(empty);
+    syncChildren(bodyEl, [empty]);
     return;
   }
   // 新しい順(startedAt 降順)。
@@ -106,5 +106,6 @@ export function showTrendData(scenarioID, records) {
     tbody.appendChild(recordRow(record));
   }
   table.append(thead, tbody);
-  bodyEl.appendChild(table);
+  // 表・行ともリスナー無し。同じ内容なら表ごと残す
+  syncChildren(bodyEl, [table]);
 }

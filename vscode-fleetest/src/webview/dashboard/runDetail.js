@@ -8,6 +8,7 @@
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
 import { clearChildren, revealSection, td, tdNum } from './domUtil.js';
+import { syncChildren } from '../monitor/rowSync.js';
 import { machineLabel } from './machineNames.js';
 import { requestTrend } from './trend.js';
 import {
@@ -321,6 +322,8 @@ function scenariosTableHeadings() {
 function scenariosTable(scenarios) {
   const wrap = document.createElement('div');
   wrap.className = 'detail-subsection';
+  // 行・ボタンのリスナーが捕まえる scenario(reportPath・scenarioID・file/line 等)を含む元データ
+  wrap.dataset.sig = JSON.stringify(scenarios);
   const h = document.createElement('h3');
   h.textContent = t('wvDashboard.runDetail.headingScenarios');
   const table = document.createElement('table');
@@ -354,16 +357,17 @@ export function showRunDetailData(payloads) {
   if (titleEl.textContent !== titleFor(payloads[0].run.runID)) {
     return; // 別 run のリクエスト後に古い応答が届いた場合は無視する
   }
-  clearChildren(bodyEl);
+  const blocks = [];
   for (const payload of payloads) {
     if (payloads.length > 1) {
       const heading = document.createElement('h3');
       heading.className = 'detail-machine-heading';
       heading.textContent = machineLabel(payload.run.host);
-      bodyEl.appendChild(heading);
+      blocks.push(heading);
     }
-    bodyEl.appendChild(renderMeta(payload.run));
-    bodyEl.appendChild(renderAnomalies(payload.run));
-    bodyEl.appendChild(scenariosTable(payload.scenarios));
+    blocks.push(renderMeta(payload.run));
+    blocks.push(...renderAnomalies(payload.run).childNodes);
+    blocks.push(scenariosTable(payload.scenarios));
   }
+  syncChildren(bodyEl, blocks);
 }

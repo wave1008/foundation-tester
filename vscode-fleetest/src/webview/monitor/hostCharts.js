@@ -409,7 +409,7 @@ function hmRenderFmLabel(row) {
       successes: String(stats.calls - stats.failures),
     });
   }
-  entry.el.title = title;
+  setHoverTip(entry.el, title);
   hmRenderDeadBadge(row, { dead, deadPaths, stats });
 }
 
@@ -433,10 +433,10 @@ function hmRenderDeadBadge(row, { dead, deadPaths, stats }) {
   badge.classList.add('hm-visible');
   // 語だけでは「なぜ・いつから」が分からない。理由はここにも付ける(FM セルのツールチップと
   // 同じ内容だが、**語の上にカーソルを置いた人が読めない**のは不親切)
-  badge.title = deadPaths.length > 0
+  setHoverTip(badge, deadPaths.length > 0
     ? `${row.liveness.reason ?? ''}\n${hmFormatAge(row.liveness.checkedAt)}`.trim()
     : t('wvMonitor2.hostCharts.fmDeadLine', {
-      seconds: String(HM_COUNT_RATE_WINDOW_TICKS), failures: String(stats.failures) });
+      seconds: String(HM_COUNT_RATE_WINDOW_TICKS), failures: String(stats.failures) }));
 }
 
 /** Vision(Vision / Core ML。OCR と画像分類器)呼び出し回数の表示。**死活・バッジは持たない**(FM と違う) —— FM の失敗は
@@ -450,13 +450,13 @@ function hmRenderVisionLabel(row) {
   const latest = row.vision.window.length > 0 ? row.vision.window[row.vision.window.length - 1] : null;
   const callsText = latest && latest.calls !== null ? String(latest.calls) : '–';
   entry.value.textContent = callsText;
-  entry.el.title = hmTitlePrefix(row) + t('wvMonitor2.hostCharts.visionTitle', {
+  setHoverTip(entry.el, hmTitlePrefix(row) + t('wvMonitor2.hostCharts.visionTitle', {
     seconds: String(HM_COUNT_RATE_WINDOW_TICKS),
     rate: stats ? stats.rate.toFixed(1) : '–',
     calls: stats ? String(stats.calls) : '–',
     failures: stats ? String(stats.failures) : '–',
     totalSec: stats ? (stats.totalMs / 1000).toFixed(1) : '–',
-  });
+  }));
 }
 
 function hmPushSample(entry, ratio) {
@@ -791,15 +791,15 @@ function hmRenderRow(row, sample) {
   row.entries.mem.value.textContent = hmFormatPercent(memRatio);
 
   const prefix = hmTitlePrefix(row);
-  row.entries.cpu.el.title = prefix + t('wvMonitor2.hostCharts.cpuTitle', { value: hmFormatPercent(cpu) });
-  row.entries.gpu.el.title = prefix + t('wvMonitor2.hostCharts.gpuTitle', { value: hmFormatPercent(gpu) });
+  setHoverTip(row.entries.cpu.el, prefix + t('wvMonitor2.hostCharts.cpuTitle', { value: hmFormatPercent(cpu) }));
+  setHoverTip(row.entries.gpu.el, prefix + t('wvMonitor2.hostCharts.gpuTitle', { value: hmFormatPercent(gpu) }));
   hmRenderVisionLabel(row);
   hmRenderFmLabel(row);
-  row.entries.mem.el.title = prefix + t('wvMonitor2.hostCharts.memTitle', {
+  setHoverTip(row.entries.mem.el, prefix + t('wvMonitor2.hostCharts.memTitle', {
     used: hmFormatGb(memUsedBytes),
     total: hmFormatGb(memTotalBytes),
     percent: hmFormatPercent(memRatio),
-  });
+  }));
 }
 
 // テーマ切替(body の class に vscode-light 等が付け外しされる)を検知して全グラフを再描画する。

@@ -511,13 +511,13 @@ test("recordingsFinalizing: 「テストを実行」ボタンの右に「録画�
   assert.equal(runButton.style.display, "none", "編集中は「テストを実行」「テストを中断」ボタンを出さない");
   const restartButton = window.document.getElementById("btn-restart");
   assert.equal(restartButton.disabled, true, "編集中はモニター再起動を押せない");
-  assert.equal(restartButton.title, "録画の編集中は使えません(編集の完了を待ってください)。");
+  assert.equal(restartButton.getAttribute("data-hover-tip"), "録画の編集中は使えません(編集の完了を待ってください)。");
 
   sendToWebview({ type: "recordingsFinalizing", active: false });
   assert.equal(note.hidden, true);
   assert.equal(runButton.style.display, "", "編集が終わったら戻す");
   assert.equal(restartButton.disabled, false, "編集が終わったら押せる");
-  assert.equal(restartButton.title, "");
+  assert.equal(restartButton.getAttribute("data-hover-tip") ?? "", "");
 });
 
 // プロジェクト選択(ダッシュボードと同じ形。対向: monitorRecordingsController.ts の refreshSessions)

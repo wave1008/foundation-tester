@@ -4840,3 +4840,20 @@ EWOULDBLOCK(`MaintenanceError.slotHeld`)だけ同じ秒数のあいだ取り直�
   時間切れになる)→「答えなかった・最も多い理由は忙しい・次に接続拒否なら終了している」の事実の範囲へ
 - **古い worktree** `ft-ltfix`(10/16 の未コミット分)は 76b5824c と全ファイル一致・docs の追記も本線に全行あることを確かめて削除
 
+## 85. ダッシュボード「マシンの健全性」と webview の点滅(2026-10-17)
+
+- **委譲の前提の誤りがテストごと緑で通った**: 注記の列(OCR/Vision)を、JSON の `notes` のキー(StepNote の rawValue
+  `ocr-budget-exhausted`)ではなく Swift の case 名(`ocrBudgetExhausted`)で数えていた。テストも同じ case 名で書かれており緑のまま、
+  実データでは常に 0 になるところだった。レビューで拾い、Swift の集合と JS の表を rawValue で突き合わせる
+  `machineHealthNotesSync.test.mjs` を足した(型の効かない境界の写しは往復のテストで縛る)
+- **周期的な描き直しで点滅**: 1Hz の更新で表を `clearChildren` から作り直していたため、集計期間の列(Vision 注記)にマウスを載せると
+  毎秒ツールチップが出直した。同型の掃討で、レーン見出し(`laneLog.js setLaneHeader`)と拡大表示のタグ段・代わりの表示
+  (`deviceTiles.js renderMirror*`)が約2秒ごとに作り直していたこと、ダッシュボードの全表・常駐プロセス・録画の一覧が状態変化/refresh の
+  たびに作り直していたこと、周期的に `el.title =` を書いて表示中の文言が古いまま残る箇所(hostCharts・タイル・run ボード)を見つけて直した。
+  共通の差し替えは `monitor/rowSync.js`
+- **`hoverTip.js` が消す条件**: mouseout・別の `data-hover-tip` 要素への mouseover・capture の scroll/mousedown/blur。**要素が DOM から
+  外れただけでは消えない**(マウスの下に新しい要素が来た mouseover で消える)。スクロールで消すのは、最後のマウス位置の要素
+  (`elementFromPoint`)がもう対象の中に無いときだけ(`:hover` は jsdom で常に真に見え、スクロール直後のブラウザでも当てにならない)
+- **テストの罠**: `rowSync.test.mjs` のように src を import するテストは `node esbuild.mjs --tests` で**同梱**されるので、src に変異を入れても
+  作り直すまで反映されない(webview を実行時に esbuild するテストとは違う)。最初の変異測定で「生き残った」と出たのはこれ
+- **「FM 停止」列の意味**: run を閉じた時点の `fmDead`(途中で止まって戻った run は数えない)。欄は 2026-09-03(`ec93241b`)から記録

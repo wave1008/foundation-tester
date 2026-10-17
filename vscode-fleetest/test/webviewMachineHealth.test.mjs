@@ -138,9 +138,9 @@ test("FM チップ: 生存・停止・不明を文字と記号で出し、停止
   const m2 = byLabel.m2.children[1];
   const chips = [...m2.querySelectorAll(".mh-chip")];
   assert.equal(chips.length, 2);
-  assert.match(chips[0].textContent, /●.*(生存)/);
+  assert.equal(chips[0].textContent, "● Text alive");
   assert.ok(chips[0].classList.contains("mh-fm-alive"));
-  assert.match(chips[1].textContent, /✕.*(停止)/);
+  assert.equal(chips[1].textContent, "✕ Image dead");
   assert.ok(chips[1].classList.contains("mh-fm-dead"));
   assert.match(tipOf(m2), /no memory/);
   const m3 = [...byLabel.m3.children[1].querySelectorAll(".mh-chip")];
@@ -258,4 +258,21 @@ test("見出し「集計期間」に窓の開始(since)と集計時刻(generated
   // run が0件でも付ける(健全性は期間に関わらず出すので、どの期間の集計かは常に要る)
   loadData(send, { ...payload([]), runs: [], since: "2026-08-31T23:02:00Z" });
   assert.equal(header.textContent, `集計期間（${local("2026-08-31T23:02:00Z")} - ${local("2026-09-01T00:02:00Z")}）`);
+});
+
+test("1Hz の更新では行を作り直さず「今」の列だけを同じセルで差し替える(ホバー中のツールチップが点滅しない)", (t) => {
+  const { window, document, send } = createWebview();
+  t.after(() => window.close());
+  loadData(send, payload([health("H", { notes: { "vision-helper-rescued": 2 } })], [{ host: "H", machine: "local" }]));
+  send(sample("", { cpu: 0.2 }));
+  const tr = rowsOf(document)[0];
+  const notesCell = tr.children[10];
+  const loadCellEl = tr.children[3];
+  assert.match(loadCellEl.textContent, /20%/);
+  send(sample("", { cpu: 0.55 }));
+  const after = rowsOf(document)[0];
+  assert.equal(after, tr, "行は同じ要素のまま");
+  assert.equal(after.children[10], notesCell, "集計期間のセル(ホバー中かもしれない)は同じ要素のまま");
+  assert.equal(after.children[3], loadCellEl, "今の列も同じ td の中身だけを差し替える");
+  assert.match(loadCellEl.textContent, /55%/);
 });

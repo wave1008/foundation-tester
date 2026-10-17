@@ -8,6 +8,7 @@
 
 import { t } from '../i18n.js';
 import { clearChildren, td, tdNum } from './domUtil.js';
+import { syncChildren } from '../monitor/rowSync.js';
 import { machineLabels } from './machineNames.js';
 import { renderRunsTable } from './render.js';
 import { requestRunDetail } from './runDetail.js';
@@ -66,20 +67,23 @@ function rowMachinesText(row) {
 
 // 列構成は render.js の renderRunsTable と同じ(monitorHtml.ts の #table-runs の見出しが唯一)
 function renderPerfRunsTable(runs) {
-  clearChildren(runsBody);
+  const rows = [];
   for (const row of runs) {
     // runIDs は昇順。詳細の鍵は「すべて」の行と揃えて新しい順(先頭 = 最新の構成 run)
     const runIDs = row.runIDs && row.runIDs.length > 0 ? [...row.runIDs].reverse() : [row.runID];
     const tr = document.createElement('tr');
     tr.className = 'row-clickable';
+    const entry = {
+      key: row.runID,
+      runIDs,
+      startedAt: row.startedAt,
+      profile: row.profile,
+      machines: rowMachinesText(row),
+    };
+    // リスナー(選択・行クリック)が捕まえるデータ。同じなら残した古い行のリスナーも等価
+    tr.dataset.sig = JSON.stringify(entry);
     tr.append(
-      selectCell({
-        key: row.runID,
-        runIDs,
-        startedAt: row.startedAt,
-        profile: row.profile,
-        machines: rowMachinesText(row),
-      }),
+      selectCell(entry),
       td(formatLocalDateTime(row.startedAt)),
       td(rowMachinesText(row)),
       td(row.profile || '–'),
@@ -94,8 +98,9 @@ function renderPerfRunsTable(runs) {
     );
     tr.title = runIDs.join('\n');
     tr.addEventListener('click', () => requestRunDetail(runIDs[0], runIDs));
-    runsBody.appendChild(tr);
+    rows.push(tr);
   }
+  syncChildren(runsBody, rows);
 }
 
 // 計測無効 run の注記(表の上の「最新 run の1行サマリ」は置かない = 表の先頭行と二重表示。ユーザー決定)

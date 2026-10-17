@@ -6,6 +6,7 @@
 
 import { vscode } from './vscodeApi.js';
 import { formatDateTime, t } from '../i18n.js';
+import { syncChildren } from './rowSync.js';
 
 const processesPanel = document.getElementById('panel-processes');
 const residentKillCloseBtn = document.getElementById('resident-kill-close');
@@ -59,7 +60,9 @@ function sortForDisplay(items) {
 
 function renderResidentList(items) {
   lastItems = items;
-  residentTbody.textContent = '';
+  const rows = [];
+  // 行もセルもリスナー無し = セル単位で差し替えてよい(PID 等の1セルだけ変わった行でホバー中の他セルを残す)
+  const sync = () => syncChildren(residentTbody, rows, { recurseWhen: () => true });
   if (items.length === 0) {
     const row = document.createElement('tr');
     const cell = document.createElement('td');
@@ -67,7 +70,8 @@ function renderResidentList(items) {
     cell.className = 'resident-empty';
     cell.textContent = t('wvMonitor2.process.empty');
     row.appendChild(cell);
-    residentTbody.appendChild(row);
+    rows.push(row);
+    sync();
     return;
   }
   for (const item of sortForDisplay(items)) {
@@ -137,8 +141,9 @@ function renderResidentList(items) {
     noteCell.title = item.note;
     row.appendChild(noteCell);
 
-    residentTbody.appendChild(row);
+    rows.push(row);
   }
+  sync();
 }
 
 export function applyResidentMessage(message) {

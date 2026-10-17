@@ -229,3 +229,20 @@ test("title=\"\" は祖先の説明を打ち切る(ネイティブと同じ)", a
   await new Promise((r) => setTimeout(r, 260));
   assert.equal(tipVisible(document), false);
 });
+
+test("表示中の要素の説明が更新されたら、ツールチップの文言もその場で差し替える", async (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  applyDevices(window, [device(LONG_NAME)]);
+  const placeholder = document.querySelector("#grid .tile .frame-placeholder");
+  hover(window, placeholder);
+  await new Promise((r) => setTimeout(r, 260));
+  assert.equal(tipVisible(document), true);
+  const before = tip(document).textContent;
+  // 同じデバイスが「観測できない」状態になる = 代わりの表示の説明が変わる
+  applyDevices(window, [{ ...device(LONG_NAME), state: "unknown", detail: "held by run" }]);
+  assert.equal(document.querySelector("#grid .tile .frame-placeholder"), placeholder, "代わりの表示は同じ要素");
+  assert.equal(tipVisible(document), true, "消えない");
+  assert.notEqual(tip(document).textContent, before);
+  assert.equal(tip(document).textContent, placeholder.getAttribute("data-hover-tip"));
+});

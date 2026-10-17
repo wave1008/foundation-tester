@@ -13,6 +13,7 @@
 
 import { vscode, persistedState } from './vscodeApi.js';
 import { formatDateTime, t } from '../i18n.js';
+import { syncChildren } from './rowSync.js';
 import { onMachineOrderChanged, orderMachinesLikeSettings, paintMachineBadge } from './machineColors.js';
 
 const listView = document.getElementById('recordings-list-view');
@@ -203,16 +204,19 @@ let renderedSessions = null;
 
 function renderSessions(sessions) {
   renderedSessions = sessions;
-  sessionsList.textContent = '';
   if (sessions.length === 0) {
+    syncChildren(sessionsList, []);
     sessionsEmpty.textContent = t('recordings.sessions.empty');
     sessionsEmpty.style.display = 'flex';
     return;
   }
   sessionsEmpty.style.display = 'none';
+  const rows = [];
   for (const session of sessions) {
     const row = document.createElement('div');
     row.className = 'recordings-session-item';
+    // クリック/Enter のリスナーが捕まえる project/runID を含む元データ(同じなら残した古い行のリスナーも等価)
+    row.dataset.sig = JSON.stringify([session, sessionMachines(session)]);
     row.tabIndex = 0;
     row.setAttribute('role', 'button');
 
@@ -295,8 +299,9 @@ function renderSessions(sessions) {
         open();
       }
     });
-    sessionsList.appendChild(row);
+    rows.push(row);
   }
+  syncChildren(sessionsList, rows);
 }
 
 // 「(すべて)」の option 値。プロジェクト名(TestProjects/ のディレクトリ名)と衝突しない値
