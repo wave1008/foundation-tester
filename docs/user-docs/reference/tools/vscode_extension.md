@@ -154,8 +154,8 @@ Command **"fleetest: Open Results Dashboard"** shows, in the device monitor's **
 - **Machine health**: one row per Mac, showing the health of FM (Foundation Models, text and image) and
   OCR / Vision. The "Current state" columns show FM alive / dead / unknown (marked with a symbol and text), the recent
   Vision call and failure counts, whether the OCR model is compiling, and CPU / MEM load. The "Period" columns come from
-  run history: runs, runs with FM dead, FM call failures, skipped visibility checks, FM slot waits, OCR / Vision notes and
-  slowdowns caused by load (hover for breakdowns and reasons). Cells with failures or stops turn to a warning color.
+  run history, in the order things happen: runs, slowdowns caused by load, OCR / Vision notes, FM slot waits, FM call
+  failures, skipped visibility checks and runs with FM dead (hover for breakdowns and reasons). Cells with failures or stops turn to a warning color.
   Values the monitor cannot observe, or that the records do not carry, show as "–" rather than 0
 - **Device health**: one row per device, grouped by a Machine column. Shows the Device Monitor's current
   state (color-coded) and storage usage alongside counts from run history (excluded from run, requeued,

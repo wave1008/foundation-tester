@@ -206,13 +206,13 @@ export const exploreHealStrings = {
   },
   "exploreHeal.dashboard.colMhFmFail": { ja: "FM 失敗", en: "FM failures" },
   "exploreHeal.dashboard.colMhFmFailTitle": {
-    ja: "FM 呼び出しの失敗数 / 呼び出し数(マウスを載せると再試行・スキップ・所要時間・最後のエラー)。FM の記録が無い間は「–」",
-    en: "FM failures / calls (hover for retries, skips, durations and the last error). Shows – when there is no FM record",
+    ja: "失敗数 / FM の呼び出し数。再試行で成功した呼び出しは失敗に数えない。",
+    en: "Failures / FM calls. A call that succeeded on retry is not counted as a failure.",
   },
   "exploreHeal.dashboard.colMhGuard": { ja: "判定の素通り", en: "Guard skipped" },
   "exploreHeal.dashboard.colMhGuardTitle": {
-    ja: "テキストの可視性検証が素通りした数 / 検証した数。FM が答えず可視性を確かめられなかった判定です。記録を持たない間は「–」",
-    en: "Text visibility checks that were skipped / checks made. Skipped means FM gave no answer so visibility was not verified. Shows – when nothing is recorded",
+    ja: "テキストの可視性検証で FM が呼び出されたがエラー等で回答できず、OCR または a11y の結果で判定が確定したステップの数 / 検証したステップの数。多いときは FM の不調を疑ってください。記録が無い間は「–」",
+    en: "Steps where the text visibility check called FM but FM could not answer (an error or similar), so the result was settled by OCR or by the accessibility tree / steps checked. Many of these suggest FM is not working well. Shows – when nothing is recorded",
   },
   "exploreHeal.dashboard.colMhGate": { ja: "FM 枠待ち", en: "FM gate wait" },
   "exploreHeal.dashboard.colMhGateTitle": {
@@ -221,18 +221,18 @@ export const exploreHealStrings = {
   },
   "exploreHeal.dashboard.colMhOcrNotes": { ja: "OCR 注記", en: "OCR notes" },
   "exploreHeal.dashboard.colMhOcrNotesTitle": {
-    ja: "OCR に関する注記が付いたステップの数(マウスを載せると内訳)",
-    en: "Steps that carry an OCR note (hover for the breakdown)",
+    ja: "テキストの可視性検証で、OCR(画面の文字の読み取り)に思わしくないことが起きたステップの数。時間内に読み終わらなかった・文字認識モデルの準備を待った・OCR と FM で読めた結果が食い違った、など(マウスを載せると内訳)",
+    en: "Steps where something went wrong with OCR (reading text on screen) during the text visibility check: it did not finish in time, it waited for the text recognition model to get ready, OCR and FM disagreed on what they read, and so on (hover for the breakdown)",
   },
   "exploreHeal.dashboard.colMhVisionNotes": { ja: "Vision 注記", en: "Vision notes" },
   "exploreHeal.dashboard.colMhVisionNotesTitle": {
-    ja: "Vision(画像判定)に関する注記が付いたステップの数(マウスを載せると内訳)",
-    en: "Steps that carry a Vision (image judgement) note (hover for the breakdown)",
+    ja: "画像の照合や ON/OFF の画像判定(Vision)で、思わしくないことが起きたステップの数。画像処理の異常を検知してやり直した・補助プロセスが使えなかった・判定に使う分類器が使えなかった、など(マウスを載せると内訳)",
+    en: "Steps where something went wrong with image matching or ON/OFF image classification (Vision): an image-processing anomaly was detected and retried, the helper process was unavailable, the classifier could not be used, and so on (hover for the breakdown)",
   },
   "exploreHeal.dashboard.colMhPaced": { ja: "減速", en: "Paced" },
   "exploreHeal.dashboard.colMhPacedTitle": {
-    ja: "ホストの CPU 負荷が高いために操作の直前で減速したステップの数(マウスを載せると減速の合計秒)",
-    en: "Steps slowed before the action because host CPU load was high (hover for the total seconds)",
+    ja: "CPU 負荷が高すぎる時に負荷抑制機構によって減速が発生した件数(マウスを載せると減速の合計秒)",
+    en: "Times the load-throttling mechanism slowed things down because CPU load was too high (hover for the total seconds)",
   },
   "exploreHeal.dashboard.machinesEmpty": { ja: "マシンの記録がありません。", en: "No machine records." },
   "exploreHeal.dashboard.summaryFilterPlaceholder": { ja: "シナリオIDで絞り込み", en: "Filter by scenario ID" },

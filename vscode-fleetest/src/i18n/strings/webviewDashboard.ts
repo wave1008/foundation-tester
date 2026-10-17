@@ -177,10 +177,10 @@ export const webviewDashboardStrings = {
     en: "Last error ({time} · {scenarioID}): {message}",
   },
   "wvDashboard.machineHealth.guardTitle": {
-    ja: "FM が答えず可視性検証が素通りした数 / 検証した数(visibility-guard-skipped)",
-    en: "Checks where FM gave no answer and the visibility check was skipped / checks made (visibility-guard-skipped)",
+    ja: "FM が呼び出されたがエラー等で回答できず、OCR または a11y の結果で判定が確定したステップの数 / 検証したステップの数",
+    en: "Steps where FM was called but could not answer (an error or similar), so the result was settled by OCR or by the accessibility tree / steps checked",
   },
-  "wvDashboard.machineHealth.guardStaleFrame": { ja: "古い絵で見送った: {count}", en: "Stale frame: {count}" },
+  "wvDashboard.machineHealth.guardStaleFrame": { ja: "画面の絵が古いままで確かめられなかった: {count}", en: "Could not confirm because the screenshot was stale: {count}" },
   "wvDashboard.machineHealth.gateTotalTitle": { ja: "合計: {seconds} 秒", en: "Total: {seconds} s" },
   "wvDashboard.machineHealth.pacedTitle": {
     ja: "ホスト CPU 負荷による操作前の減速。合計 {seconds} 秒",

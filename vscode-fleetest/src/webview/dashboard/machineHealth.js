@@ -240,18 +240,20 @@ function rowElement(row) {
   tr.append(
     machineCell(row.label),
     ...LIVE_CELL_BUILDERS.map((build) => build(live)),
+    // 集計期間の列は発生順(monitorHtml.ts の見出しと同じ順): 実行 → 操作前の減速 → OCR → Vision → FM の枠待ち →
+    // FM の呼び出し → 素通り → run を閉じた時点の FM 停止
     withTip(tdNum(health ? String(health.runs) : '–'),
       health && health.lastRunAt ? t('wvDashboard.machineHealth.lastRunTitle', { time: timeText(health.lastRunAt) }) : ''),
-    warn(withTip(tdNum(health ? String(health.fmDeadRuns) : '–'), health ? fmDeadTip(health.lastFMDead) : ''),
-      !!health && health.fmDeadRuns > 0),
-    warn(withTip(tdNum(fm ? fm.failures + ' / ' + fm.calls : '–'), fm ? fmUsageTip(fm) : ''), !!fm && fm.failures > 0),
-    guardCell(health),
-    withTip(tdNum(fm ? seconds(fm.gateWaitMaxMs) : '–'),
-      fm ? t('wvDashboard.machineHealth.gateTotalTitle', { seconds: seconds(fm.gateWaitTotalMs) }) : ''),
-    notesCell(health, OCR_NOTES),
-    notesCell(health, VISION_NOTES),
     withTip(tdNum(health && nz(health.pacedSteps) ? String(health.pacedSteps) : '–'),
       health && nz(health.pacedMs) ? t('wvDashboard.machineHealth.pacedTitle', { seconds: seconds(health.pacedMs) }) : ''),
+    notesCell(health, OCR_NOTES),
+    notesCell(health, VISION_NOTES),
+    withTip(tdNum(fm ? seconds(fm.gateWaitMaxMs) : '–'),
+      fm ? t('wvDashboard.machineHealth.gateTotalTitle', { seconds: seconds(fm.gateWaitTotalMs) }) : ''),
+    warn(withTip(tdNum(fm ? fm.failures + ' / ' + fm.calls : '–'), fm ? fmUsageTip(fm) : ''), !!fm && fm.failures > 0),
+    guardCell(health),
+    warn(withTip(tdNum(health ? String(health.fmDeadRuns) : '–'), health ? fmDeadTip(health.lastFMDead) : ''),
+      !!health && health.fmDeadRuns > 0),
   );
   return tr;
 }

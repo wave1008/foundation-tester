@@ -105,8 +105,8 @@ test("行の集合は履歴とモニターの和集合で、local が先頭・�
   assert.equal(alpha.children[3].textContent, "–", "モニターに居ない行の負荷は「–」");
   const zeta = rowsOf(document)[3];
   assert.equal(zeta.children[4].textContent, "–", "履歴に居ない行の実行は「–」");
-  assert.equal(zeta.children[5].textContent, "–");
   assert.equal(zeta.children[11].textContent, "–");
+  assert.equal(zeta.children[5].textContent, "–");
 });
 
 test("履歴の 0 と欠けている値(nil)を区別する", (t) => {
@@ -116,12 +116,12 @@ test("履歴の 0 と欠けている値(nil)を区別する", (t) => {
   loadData(send, payload([health("H", { runs: 0 }), health("X")]));
   const [h, x] = rowsOf(document).filter((tr) => ["H", "X"].includes(labelOf(tr)));
   for (const tr of [h, x]) {
-    assert.equal(tr.children[5].textContent, "0", "fmDeadRuns 0");
-    assert.equal(tr.children[6].textContent, "–", "fm が nil なら FM 失敗は「–」");
-    assert.equal(tr.children[7].textContent, "–", "guard が nil なら「–」");
+    assert.equal(tr.children[11].textContent, "0", "fmDeadRuns 0");
+    assert.equal(tr.children[9].textContent, "–", "fm が nil なら FM 失敗は「–」");
+    assert.equal(tr.children[10].textContent, "–", "guard が nil なら「–」");
     assert.equal(tr.children[8].textContent, "–");
-    assert.equal(tr.children[9].textContent, "0", "注記は 0 件と表示");
-    assert.equal(tr.children[11].textContent, "–", "pacedSteps が nil なら「–」");
+    assert.equal(tr.children[6].textContent, "0", "注記は 0 件と表示");
+    assert.equal(tr.children[5].textContent, "–", "pacedSteps が nil なら「–」");
   }
   assert.equal(h.children[4].textContent, "0");
 });
@@ -182,27 +182,27 @@ test("集計期間の列: 失敗・停止・素通り・要注意の注記で警
   ]));
   const byLabel = Object.fromEntries(rowsOf(document).map((tr) => [labelOf(tr), tr]));
   const h = byLabel.H;
-  assert.ok(h.children[5].classList.contains("mh-warn"));
-  assert.match(tipOf(h.children[5]), /ane down/);
-  assert.equal(h.children[6].textContent, "2 / 20");
-  assert.ok(h.children[6].classList.contains("mh-warn"));
-  assert.match(tipOf(h.children[6]), /boom/);
-  assert.equal(h.children[7].textContent, "2 / 10");
-  assert.ok(h.children[7].classList.contains("mh-warn"));
-  assert.equal(h.children[8].textContent, "2.5");
-  assert.equal(h.children[9].textContent, "5", "OCR 群の合計(未知の mystery は数えない)");
+  assert.ok(h.children[11].classList.contains("mh-warn"));
+  assert.match(tipOf(h.children[11]), /ane down/);
+  assert.equal(h.children[9].textContent, "2 / 20");
   assert.ok(h.children[9].classList.contains("mh-warn"));
-  assert.match(tipOf(h.children[9]), /OCR の予算切れ: 3/);
-  assert.match(tipOf(h.children[9]), /OCR のコンパイルを待った: 2/);
-  assert.equal(h.children[10].textContent, "4");
-  assert.equal(h.children[10].classList.contains("mh-warn"), false, "情報の注記だけなら警告色にしない");
-  assert.equal(h.children[11].textContent, "5");
-  assert.match(tipOf(h.children[11]), /2\.5/);
+  assert.match(tipOf(h.children[9]), /boom/);
+  assert.equal(h.children[10].textContent, "2 / 10");
+  assert.ok(h.children[10].classList.contains("mh-warn"));
+  assert.equal(h.children[8].textContent, "2.5");
+  assert.equal(h.children[6].textContent, "5", "OCR 群の合計(未知の mystery は数えない)");
+  assert.ok(h.children[6].classList.contains("mh-warn"));
+  assert.match(tipOf(h.children[6]), /OCR の予算切れ: 3/);
+  assert.match(tipOf(h.children[6]), /OCR のコンパイルを待った: 2/);
+  assert.equal(h.children[7].textContent, "4");
+  assert.equal(h.children[7].classList.contains("mh-warn"), false, "情報の注記だけなら警告色にしない");
+  assert.equal(h.children[5].textContent, "5");
+  assert.match(tipOf(h.children[5]), /2\.5/);
 
   const quiet = byLabel.Quiet;
-  assert.equal(quiet.children[7].textContent, "0 / 5");
-  assert.equal(quiet.children[7].classList.contains("mh-warn"), false);
-  assert.equal(quiet.children[9].classList.contains("mh-warn"), false);
+  assert.equal(quiet.children[10].textContent, "0 / 5");
+  assert.equal(quiet.children[10].classList.contains("mh-warn"), false);
+  assert.equal(quiet.children[6].classList.contains("mh-warn"), false);
 });
 
 test("両方が届くまでは空の文言が「確認中」で、行が無ければ記録なしの文言になる", (t) => {
@@ -266,13 +266,20 @@ test("1Hz の更新では行を作り直さず「今」の列だけを同じセ�
   loadData(send, payload([health("H", { notes: { "vision-helper-rescued": 2 } })], [{ host: "H", machine: "local" }]));
   send(sample("", { cpu: 0.2 }));
   const tr = rowsOf(document)[0];
-  const notesCell = tr.children[10];
+  const notesCell = tr.children[7];
   const loadCellEl = tr.children[3];
   assert.match(loadCellEl.textContent, /20%/);
   send(sample("", { cpu: 0.55 }));
   const after = rowsOf(document)[0];
   assert.equal(after, tr, "行は同じ要素のまま");
-  assert.equal(after.children[10], notesCell, "集計期間のセル(ホバー中かもしれない)は同じ要素のまま");
+  assert.equal(after.children[7], notesCell, "集計期間のセル(ホバー中かもしれない)は同じ要素のまま");
   assert.equal(after.children[3], loadCellEl, "今の列も同じ td の中身だけを差し替える");
   assert.match(loadCellEl.textContent, /55%/);
+});
+
+test("集計期間の列は発生順(実行 → 減速 → OCR → Vision → FM 枠待ち → FM 失敗 → 判定の素通り → FM 停止)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  const heads = [...document.querySelectorAll("#table-machine-health thead tr:nth-child(2) th")].map((th) => th.textContent);
+  assert.deepEqual(heads.slice(3), ["実行", "減速", "OCR 注記", "Vision 注記", "FM 枠待ち", "FM 失敗", "判定の素通り", "FM 停止"]);
 });

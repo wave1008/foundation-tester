@@ -142,14 +142,15 @@ function renderDashboardPanel(): string {
             <th title="${t("exploreHeal.dashboard.colMhFmTitle")}">${t("exploreHeal.dashboard.colMhFm")}</th>
             <th title="${t("exploreHeal.dashboard.colMhVisionTitle")}">${t("exploreHeal.dashboard.colMhVision")}</th>
             <th>${t("exploreHeal.dashboard.colMhLoad")}</th>
+            <!-- 集計期間の列は発生順(操作前の減速 → OCR → Vision → FM の枠待ち → FM の呼び出し → 素通り → run を閉じた時点の FM 停止)。machineHealth.js の rowElement と同じ順 -->
             <th class="num mh-period-start" title="${t("exploreHeal.dashboard.colMhRunsTitle")}">${t("exploreHeal.dashboard.colMhRuns")}</th>
-            <th class="num" title="${t("exploreHeal.dashboard.colMhFmDeadTitle")}">${t("exploreHeal.dashboard.colMhFmDead")}</th>
-            <th class="num" title="${t("exploreHeal.dashboard.colMhFmFailTitle")}">${t("exploreHeal.dashboard.colMhFmFail")}</th>
-            <th class="num" title="${t("exploreHeal.dashboard.colMhGuardTitle")}">${t("exploreHeal.dashboard.colMhGuard")}</th>
-            <th class="num" title="${t("exploreHeal.dashboard.colMhGateTitle")}">${t("exploreHeal.dashboard.colMhGate")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colMhPacedTitle")}">${t("exploreHeal.dashboard.colMhPaced")}</th>
             <th class="num" title="${t("exploreHeal.dashboard.colMhOcrNotesTitle")}">${t("exploreHeal.dashboard.colMhOcrNotes")}</th>
             <th class="num" title="${t("exploreHeal.dashboard.colMhVisionNotesTitle")}">${t("exploreHeal.dashboard.colMhVisionNotes")}</th>
-            <th class="num" title="${t("exploreHeal.dashboard.colMhPacedTitle")}">${t("exploreHeal.dashboard.colMhPaced")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colMhGateTitle")}">${t("exploreHeal.dashboard.colMhGate")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colMhFmFailTitle")}">${t("exploreHeal.dashboard.colMhFmFail")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colMhGuardTitle")}">${t("exploreHeal.dashboard.colMhGuard")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colMhFmDeadTitle")}">${t("exploreHeal.dashboard.colMhFmDead")}</th>
           </tr>
         </thead>
         <tbody id="table-machine-health-body"></tbody>
