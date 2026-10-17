@@ -3,6 +3,7 @@
 // 置き場は FMLivenessTests と同じく FT_FM_LIVENESS_DIR へ逃がし、SharedResource.hostCaches で直列化する。
 
 import FTTestSupport
+import Synchronization
 import XCTest
 @testable import FTCore
 
@@ -30,6 +31,8 @@ final class FMHistoryTests: XCTestCase {
         // 裏の証拠取得を待ち切ってから戻す(戻した後に走ると本番の置き場・取得口を使いうる)
         FMHistory.waitForPendingEvidence()
         FMHistory.evidenceProvider.withLock { $0 = { FMHistory.aneLogEvidence() } }
+        FMHistory.memoryEvidenceProvider.withLock { $0 = { FMHostMemory.memoryEvidence() } }
+        FMHistory.jetsamEvidenceProvider.withLock { $0 = { FMHostMemory.jetsamEvidence() } }
         if let savedEnv { setenv("FT_FM_LIVENESS_DIR", savedEnv, 1) } else { unsetenv("FT_FM_LIVENESS_DIR") }
         FMLiveness.resetWriteMemo()
         try? FileManager.default.removeItem(at: dir)
@@ -120,7 +123,7 @@ final class FMHistoryTests: XCTestCase {
             .appendingPathComponent("Sources/FTCore/FMHistory.swift")
         let text = try String(contentsOf: url, encoding: .utf8)
         let start = try XCTUnwrap(text.range(of: "private static func pruneIfNeeded"))
-        let end = try XCTUnwrap(text.range(of: "private static func openLocked"))
+        let end = try XCTUnwrap(text.range(of: "static func openLocked"))
         let body = text[start.upperBound..<end.lowerBound]
         XCTAssertTrue(body.contains("rename(tmp.path, url.path)"))
         XCTAssertFalse(body.contains("truncate(atOffset: 0)"))
@@ -315,6 +318,35 @@ final class FMHistoryTests: XCTestCase {
             XCTAssertEqual(evidence.first?.lines, ["aned: Program load failed — no memory"])
             XCTAssertEqual(evidence.first?.path, .vision)
         }
+    }
+
+    /// 死に変わった回は、ホストのメモリの推移と JetsamEvent も別の行で足す。生き続ける・戻る回は取りに行かない
+    func testDeathAddsMemoryAndJetsamLinesButOtherTransitionsDoNot() throws {
+        try SharedResource.hostCaches.locked {
+            let asked = Mutex<Int>(0)
+            FMHistory.evidenceProvider.withLock { $0 = { nil } }
+            FMHistory.memoryEvidenceProvider.withLock { $0 = { asked.withLock { $0 += 1 }; return ["13:04:00 free=2.4GiB"] } }
+            FMHistory.jetsamEvidenceProvider.withLock { $0 = { asked.withLock { $0 += 1 }; return ["killed modelmanagerd[867]"] } }
+            FMLiveness.record(path: .vision, state: .alive, source: .probe, observed: .now())
+            FMLiveness.record(path: .vision, state: .alive, source: .probe, observed: .now())
+            FMHistory.waitForPendingEvidence()
+            XCTAssertEqual(asked.withLock { $0 }, 0, "alive → alive では呼ばない")
+            FMLiveness.record(path: .vision, state: .dead, source: .probe, error: "boom", observed: .now())
+            FMHistory.waitForPendingEvidence()
+            XCTAssertEqual(events().filter { $0.kind == .memory }.first?.lines, ["13:04:00 free=2.4GiB"])
+            XCTAssertEqual(events().filter { $0.kind == .jetsam }.first?.lines, ["killed modelmanagerd[867]"])
+            XCTAssertEqual(asked.withLock { $0 }, 2)
+            FMLiveness.record(path: .vision, state: .alive, source: .probe, observed: .now())
+            FMHistory.waitForPendingEvidence()
+            XCTAssertEqual(asked.withLock { $0 }, 2, "recovered では呼ばない")
+        }
+    }
+
+    func testDescribeMemoryAndJetsamEvents() {
+        let memory = FMHistory.Event(kind: .memory, path: .vision, at: 0, lines: ["a", "b"])
+        let jetsam = FMHistory.Event(kind: .jetsam, path: .vision, at: 0, lines: ["c"])
+        XCTAssertTrue(FMHistory.describe(memory).hasSuffix("vision host memory before death: a | b"))
+        XCTAssertTrue(FMHistory.describe(jetsam).hasSuffix("vision JetsamEvent: c"))
     }
 
     func testEvidenceLinesKeepOnlyTheDeathMarks() {

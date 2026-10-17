@@ -10,7 +10,8 @@
 //  ④ **死に変わった回だけ OS 側の証拠を添える**(ANE の `no memory` / `Code=53` の行)。OS のログは後から
 //     読めないことがある。`log show` は数秒かかるので別スレッドで撃ち、別の行(`evidence`)として足す。
 //     撃ったプロセスが先に終わると欠ける(監視のプローブは長く生きるのでそこで拾える)。子は自分の期限を持つ
-//     (`selfBounded`)= 親が先に終わっても残るのは期限まで
+//     (`selfBounded`)= 親が先に終わっても残るのは期限まで。同じ回に、ホストのメモリの推移(`memory` = `FMHostMemory`)と
+//     直近の JetsamEvent(`jetsam`)も別の行で足す
 //  ⑤ **保持は `maxAgeSeconds` か `maxBytes` の早いほう**。超えたら古い行から捨てる(書き込みのついでに)。
 //     捨てるときは一時ファイルに書いて rename(途中で死んでも元の履歴は残る)
 //  ⑥ **リンクを辿らない**。`~/.fleetest` はシナリオのプロセス(サンドボックスの中)も書けるので、履歴をリンクに
@@ -32,6 +33,10 @@ public enum FMHistory {
         case recovered
         /// 死に変わったときの OS 側のログの抜き出し
         case evidence
+        /// 死に変わったときのホストのメモリの推移(`FMHostMemory`)
+        case memory
+        /// 死に変わったときの直近の JetsamEvent(OS がプロセスを終了させた記録)
+        case jetsam
     }
 
     public struct Event: Codable, Sendable, Equatable {
@@ -143,11 +148,17 @@ public enum FMHistory {
                      error: kind == .died ? error.map { truncated($0, maxBytes: errorLimit) } : nil,
                      at: now.timeIntervalSince1970), to: url, now: now, collapsingWith: nil)
         guard kind == .died else { return }
-        let provider = evidenceProvider.withLock { $0 }
+        let providers: [(Kind, @Sendable () -> [String]?)] = [
+            (.evidence, evidenceProvider.withLock { $0 }),
+            (.memory, memoryEvidenceProvider.withLock { $0 }),
+            (.jetsam, jetsamEvidenceProvider.withLock { $0 }),
+        ]
         evidenceQueue.async {
-            guard let lines = provider(), !lines.isEmpty else { return }
-            append(Event(kind: .evidence, path: path, at: Date().timeIntervalSince1970, lines: lines),
-                   to: url, now: Date(), collapsingWith: nil)
+            for (kind, provider) in providers {
+                guard let lines = provider(), !lines.isEmpty else { continue }
+                append(Event(kind: kind, path: path, at: Date().timeIntervalSince1970, lines: lines),
+                       to: url, now: Date(), collapsingWith: nil)
+            }
         }
     }
 
@@ -206,7 +217,7 @@ public enum FMHistory {
     }
 
     /// `O_NOFOLLOW` で開き、通常のファイルだけを返す(⑥)。リンク・ディレクトリ等は nil(書かない)
-    private static func openRegularFile(_ url: URL) -> FileHandle? {
+    static func openRegularFile(_ url: URL) -> FileHandle? {
         let fd = open(url.path, O_CREAT | O_RDWR | O_NOFOLLOW | O_CLOEXEC, 0o644)
         guard fd >= 0 else { return nil }
         var info = stat()
@@ -305,7 +316,7 @@ public enum FMHistory {
         return true
     }
 
-    private static func openLocked(_ lockURL: URL) -> Int32? {
+    static func openLocked(_ lockURL: URL) -> Int32? {
         let fd = open(lockURL.path, O_CREAT | O_NOFOLLOW | O_RDWR | O_CLOEXEC, 0o644)
         guard fd >= 0 else { return nil }
         while flock(fd, LOCK_EX) != 0 {
@@ -320,6 +331,10 @@ public enum FMHistory {
 
     /// 証拠を取りに行く口。テストは差し替える(`log show` を撃たない)
     public static let evidenceProvider = Mutex<@Sendable () -> [String]?>({ aneLogEvidence() })
+    /// ホストのメモリの推移の取得口(既定 = `FMHostMemory` のリング)。テストは差し替える
+    public static let memoryEvidenceProvider = Mutex<@Sendable () -> [String]?>({ FMHostMemory.memoryEvidence() })
+    /// 直近の JetsamEvent の取得口(既定 = `FMHostMemory.jetsamEvidence`)。テストは差し替える
+    public static let jetsamEvidenceProvider = Mutex<@Sendable () -> [String]?>({ FMHostMemory.jetsamEvidence() })
     /// 証拠の取得を直列に回す(record の呼び手を数秒待たせない)。テストは `waitForPendingEvidence` で待つ
     static let evidenceQueue = DispatchQueue(label: "fleetest.fm-history.evidence")
 
@@ -401,6 +416,10 @@ public enum FMHistory {
             return "\(at) \(event.path.rawValue) recovered\(source)"
         case .evidence:
             return "\(at) \(event.path.rawValue) OS log at death: " + (event.lines ?? []).joined(separator: " | ")
+        case .memory:
+            return "\(at) \(event.path.rawValue) host memory before death: " + (event.lines ?? []).joined(separator: " | ")
+        case .jetsam:
+            return "\(at) \(event.path.rawValue) JetsamEvent: " + (event.lines ?? []).joined(separator: " | ")
         }
     }
 }

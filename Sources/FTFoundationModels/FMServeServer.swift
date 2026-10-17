@@ -98,6 +98,9 @@ public enum FMServeServer {
             stopRequested.withLock { $0 = true }
             return
         }
+        // FM を使っているあいだ生きているのはこのプロセス = 死の直前のメモリの推移を確実に持てる。
+        // 取得は専用キューで即戻る(この周期の中で `top` を待たない)
+        FMHostMemory.sampleIfDue(now: now)
         let knownDead = FMLiveness.isKnownDead(.vision)
         let generate = keepWarmStillUseful(recent: recentKeepAlives.withLock { $0 })
             && shouldWarm(lastFMUse: state.lastFMUse, now: now, knownDead: knownDead)

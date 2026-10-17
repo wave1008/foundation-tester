@@ -4793,7 +4793,13 @@ jetsam の理由だけから Mac 全体の RAM 枯渇や modelmanagerd のリー
 - ANECompilerService の診断(`ANECompilerService_2026-10-17-130526_LDIPC96.diag`・disk writes)は、07:40〜13:04 に fleetest の
   プロセス(PID 28143 / 54407 / 84520 = OCR の認識器)のために ANE 向けのコンパイルで 8.6GB 書いたと記録している。死への関与は未確認。
 - 朝の 06:43 の回は `fm-history.ndjson` の証拠の行に同じ Code=53 があるだけで、その時間帯の OS ログはもう残っていない(きっかけは追えない)。
-- **次に分けるには**: ホストの modelmanagerd の footprint と Mac 全体の空き・圧縮量を時系列で並べて採る(footprint の一部は root が要る)。
+- **次に分けるために、死ぬ前の推移を残すようにした**(`FTCore/FMHostMemory`): fm-serve の周期が 60 秒ごとに Mac 全体の空き・
+  圧縮量・スワップ(`host_statistics64` / `vm.swapusage`)とホストの modelmanagerd の footprint を `~/.fleetest/fm-host-memory.ndjson`
+  (24 時間のリング)へ書き、死に変わった回に `fm-history.ndjson` へ `memory`(直前 30 分は毎分・それより前は 1 時間に 1 点)と
+  `jetsam`(直近 30 分の JetsamEvent の要約と殺されたプロセス)の行を足す。読み口は `doctor --fm-only`。
+  footprint は `proc_pid_rusage` だと別ユーザー(`_modelmanagerd`)なので EPERM になり、root なしで読めるのは `top -stats mem` だけ。
+  JetsamEvent はユーザーが `_analyticsusers` にいれば読める(居なければ `jetsam` の行が出ないだけ)。
+  空き(`free`)は JetsamEvent の `memoryPages.free` と同じ量(ページキャッシュを含まない)なので、`memory_pressure` の「free percentage」とは比べない
 
 ### 84.6 アラインの FM の保守ロックが、死活の確かめと重なっただけで即失敗した
 試験後のアラインで M1Max だけ `Could not acquire FM maintenance lock … errno 35`(2 回目は通った)。保守は全枠を `LOCK_NB` で押さえ、
