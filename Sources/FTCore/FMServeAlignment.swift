@@ -118,6 +118,7 @@ public enum FMServeAlignment {
             guard ContinuousClock.now < releaseDeadline else {
                 throw Failure("the retiring FM process has not released its socket; alignment was not completed")
             }
+            // 刻みは期限(startupWaitSeconds = 5 秒)より十分短ければよい。尽きたら上の Failure
             try await Task.sleep(for: .milliseconds(100))
         }
         let artifact: Artifact
@@ -139,6 +140,7 @@ public enum FMServeAlignment {
                 log("FM process aligned: protocol \(status.serverVersion), \(status.executable) \(status.buildStamp)")
                 return .replaced
             }
+            // 刻みは期限(startupWaitSeconds = 5 秒)より十分短ければよい。尽きたら下の Failure
             try await Task.sleep(for: .milliseconds(100))
         }
         throw Failure("the replacement FM process did not answer within \(Int(FMServeHost.startupWaitSeconds))s")

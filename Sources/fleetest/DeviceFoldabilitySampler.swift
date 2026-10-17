@@ -7,6 +7,7 @@ import FTAndroid
 import FTCore
 import Foundation
 
+/// `@unchecked Sendable`: 可変の欄(answers・inFlight・lastAttemptAt)は `lock` の中でだけ読み書きする
 final class DeviceFoldabilitySampler: @unchecked Sendable {
     /// 観測が unknown(読めなかった・起動途中)だった端末を撃ち直すまでの間隔(秒)。
     /// 観測1回が最大15秒(devicectl / adb の timeout)なので、毎周期(約2秒)撃ち直すと背景の

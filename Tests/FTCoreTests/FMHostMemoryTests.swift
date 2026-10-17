@@ -30,8 +30,11 @@ final class FMHostMemoryTests: XCTestCase {
         XCTAssertEqual(FMHostMemory.sampleIntervalSeconds, 60)
         XCTAssertEqual(FMHostMemory.ringMaxAgeSeconds, 24 * 3600)
         XCTAssertEqual(FMHostMemory.evidenceRecentSeconds, 30 * 60)
+        XCTAssertEqual(FMHostMemory.evidenceBucketSeconds, 3600)
         XCTAssertEqual(FMHostMemory.jetsamWindowSeconds, 30 * 60)
+        XCTAssertEqual(FMHostMemory.jetsamMaxFiles, 2)
         XCTAssertEqual(FMHostMemory.jetsamMaxKilledLines, 5)
+        XCTAssertEqual(FMHostMemory.topTimeoutSeconds, 10)
     }
 
     func testParseTopMemory() {

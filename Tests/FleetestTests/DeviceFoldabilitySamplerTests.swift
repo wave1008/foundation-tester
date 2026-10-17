@@ -25,6 +25,10 @@ final class DeviceFoldabilitySamplerTests: XCTestCase {
 
     private let ios = DeviceFoldabilitySampler.Device(key: "ios:U1", probe: .iosSimulator(udid: "U1"))
 
+    func testRetryIntervalIsPinned() {
+        XCTAssertEqual(DeviceFoldabilitySampler.retryIntervalSeconds, 60)
+    }
+
     func testForegroundCallDoesNotWaitForTheProbe() {
         let sampler = DeviceFoldabilitySampler(probe: { _ in
             Thread.sleep(forTimeInterval: 1.0)
