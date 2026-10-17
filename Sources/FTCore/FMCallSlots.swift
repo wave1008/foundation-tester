@@ -177,8 +177,11 @@ public enum FMCallSlots {
         }
     }
 
-    private struct MaintenanceError: Error, CustomStringConvertible {
+    struct MaintenanceError: Error, CustomStringConvertible {
         let description: String
+        /// 枠を別の呼び手(FM の呼び出し・死活の確かめ)が今握っている(flock の EWOULDBLOCK)。数秒で空くので
+        /// 呼び手は待って取り直してよい。それ以外(開けない・通常ファイルでない)は待っても直らない
+        var slotHeld = false
     }
 
     // 全枠の保持だけでは idle を証明できない。overdue 等の判定はサーバーの retire に任せる。
@@ -216,8 +219,10 @@ public enum FMCallSlots {
                 throw MaintenanceError(description: "FM maintenance lock is not a regular file: \(url.path)")
             }
             guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
+                let code = errno
                 throw MaintenanceError(description:
-                    "Could not acquire FM maintenance lock at \(url.path): errno \(errno)")
+                    "Could not acquire FM maintenance lock at \(url.path): errno \(code)",
+                    slotHeld: code == EWOULDBLOCK)
             }
         }
         let lease = MaintenanceLease(fds: fds)

@@ -38,6 +38,43 @@ final class FMServeAlignmentTests: XCTestCase {
         }
     }
 
+    /// 枠を呼び手が握っている間は待って取り直し、空けば押さえる。待ち切ったら理由を言って断る(プロセスは止めない)
+    func testHeldSlotIsRetriedWithinTheWaitAndThenRefusedWithAReason() async throws {
+        let attempts = LockedValue(0)
+        let lease = try await FMServeAlignment.holdMaintenance(within: 3) {
+            attempts.withLock { $0 += 1 }
+            if attempts.value < 3 { throw FMCallSlots.MaintenanceError(description: "held", slotHeld: true) }
+            return 7
+        }
+        XCTAssertEqual(lease as? Int, 7)
+        XCTAssertEqual(attempts.value, 3)
+        let start = ContinuousClock.now
+        do {
+            _ = try await FMServeAlignment.holdMaintenance(within: 0.3) {
+                throw FMCallSlots.MaintenanceError(description: "held", slotHeld: true)
+            }
+            XCTFail("握られたままなのに押さえられた")
+        } catch let failure as FMServeAlignment.Failure {
+            XCTAssertTrue(failure.description.contains("kept holding an FM slot"), failure.description)
+            XCTAssertGreaterThanOrEqual(ContinuousClock.now - start, .milliseconds(300))
+        }
+    }
+
+    /// 待っても直らない失敗(開けない・通常ファイルでない)は待たずにそのまま返す
+    func testNonContentionMaintenanceErrorIsNotRetried() async {
+        let attempts = LockedValue(0)
+        do {
+            _ = try await FMServeAlignment.holdMaintenance(within: 3) {
+                attempts.withLock { $0 += 1 }
+                throw FMCallSlots.MaintenanceError(description: "not a regular file")
+            }
+            XCTFail("投げるはず")
+        } catch {
+            XCTAssertTrue(error is FMCallSlots.MaintenanceError, "\(error)")
+        }
+        XCTAssertEqual(attempts.value, 1)
+    }
+
     func testNoServerDoesNotAcquireSlotsOrLoadAModel() async throws {
         let result = try await FMServeAlignment.align(socketPath: path(), executable: executable, stamp: "new",
                                                       holdMaintenance: { XCTFail("slots acquired"); return 0 },

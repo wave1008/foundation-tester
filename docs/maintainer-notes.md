@@ -4767,7 +4767,14 @@ E2E-CMP のジェスチャ S0010 が最初のガードだけ N・残り 49 回�
 (06:43〜07:01、同じ `SensitiveContentAnalysisML error 15 ← ModelManagerError 1001`)と同じで、OS の再起動まで戻らない型。
 **デバイス実行の負荷が無いときに起きた** = §83.9 の「死の再現手順は無い」に対する新しい実例(カーネルの `VM exhausted` は記録に無い)
 
-### 84.6 記録だけの観察(直していない)
+### 84.6 アラインの FM の保守ロックが、死活の確かめと重なっただけで即失敗した
+試験後のアラインで M1Max だけ `Could not acquire FM maintenance lock … errno 35`(2 回目は通った)。保守は全枠を `LOCK_NB` で押さえ、
+1 枠でも握られていれば待たずに落ちていた。握っていたのは拡張のモニターの `host-metrics --fm-probe`(1 分おき・1 秒前後)。
+busy の再照会は `retirementWaitSeconds`(25 秒)待つのに、枠の取得だけ待たない食い違い。→ `FMServeAlignment.holdMaintenance(within:)`:
+EWOULDBLOCK(`MaintenanceError.slotHeld`)だけ同じ秒数のあいだ取り直し、尽きたら「呼び出し・確かめが握り続けた。止めていない」と断る。
+開けない等は即座に返す。手元で枠 0 を 3 秒握った状態の `api fm-align` が 3.2 秒で入れ替えに成功
+
+### 84.7 記録だけの観察(直していない)
 - ライブ操作の `type`/`clear` は ref が入力欄でなくても撃つ前に断らない(MCP・DSL は断る)。拡張は ref 付きで送らないので実害の経路なし
 - ライブ操作の失敗文: プローブが timedOut だと、元の失敗が「network connection was lost」(ランナーが落ちる途中)でも
   「this is not a dropped connection」と言う(約 10 秒間)

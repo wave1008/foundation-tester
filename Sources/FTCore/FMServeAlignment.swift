@@ -33,6 +33,26 @@ public enum FMServeAlignment {
                                stamp: FMServeWire.buildStamp(executable: resolved.path), build: buildOperation, log: log)
     }
 
+    /// 全枠を押さえる。**1 枠でも呼び手(FM の呼び出し・モニターの死活の確かめ)が握っていれば待って取り直す**
+    /// (busy の再照会と同じ `waitSeconds`)。待たずに落とすと、1 分おきの確かめ(1 秒前後)と重なっただけで
+    /// アラインが失敗した(実測: M1Max で `errno 35`。2 回目は通った)。開けない等の待っても直らない失敗は即座に返す
+    static func holdMaintenance(within waitSeconds: Double,
+                                hold: () throws -> any Sendable) async throws -> any Sendable {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(waitSeconds))
+        while true {
+            do {
+                return try hold()
+            } catch let error as FMCallSlots.MaintenanceError where error.slotHeld {
+                guard ContinuousClock.now < deadline else {
+                    throw Failure("an FM call or liveness probe kept holding an FM slot for \(Int(waitSeconds))s;"
+                        + " no process was stopped. Retry alignment after it finishes (\(error.description))")
+                }
+                // 刻みは確かめ 1 回(約 1 秒)より十分短ければよい(空いた直後に取りにいくため)
+                try await Task.sleep(for: .milliseconds(100))
+            }
+        }
+    }
+
     struct Artifact: Sendable {
         let executable: URL
         let stamp: String
@@ -55,7 +75,7 @@ public enum FMServeAlignment {
                 throw Failure("the FM socket could not be confirmed as free and its identity could not be read; no process was stopped")
             }
             if let build {
-                let maintenance = try holdMaintenance()
+                let maintenance = try await Self.holdMaintenance(within: waitSeconds, hold: holdMaintenance)
                 defer { withExtendedLifetime(maintenance) {} }
                 let artifact = try await buildWhileReserved(socketPath: socketPath, build: build)
                 guard !artifact.stamp.isEmpty else { throw Failure("the built FM executable's build stamp could not be read") }
@@ -76,7 +96,7 @@ public enum FMServeAlignment {
                 + " confirm that all inference has finished; no process was stopped. Stop its old callers and"
                 + " arrange a one-time manual handover, then retry alignment")
         }
-        let maintenance = try holdMaintenance()
+        let maintenance = try await Self.holdMaintenance(within: waitSeconds, hold: holdMaintenance)
         defer { withExtendedLifetime(maintenance) {} }
         // 枠は起動競争を防ぐだけ。期限を過ぎた推論まで終わったことは常駐プロセス自身が判定する。
         let response = try await client.waitForRetirement(target: initial, waitSeconds: waitSeconds)
