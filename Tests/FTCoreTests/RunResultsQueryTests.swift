@@ -357,6 +357,178 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertEqual(RunResultsQuery.deviceHealth(runs: runs, records: []).count, 0)
     }
 
+    // MARK: - machineHealth
+
+    private func fmUsage(calls: Int = 0, failures: Int = 0, totalMs: Int = 0, maxMs: Int = 0,
+                         retries: Int = 0, retrySuccesses: Int = 0, skipped: Int = 0,
+                         gateWaitTotalMs: Int = 0, gateWaitMaxMs: Int = 0,
+                         firstError: String? = nil) -> FMUsageRecord {
+        FMUsageRecord(calls: calls, failures: failures, totalMs: totalMs, p50Ms: 0, maxMs: maxMs,
+                      byKind: [:], gateWaitTotalMs: gateWaitTotalMs, gateWaitMaxMs: gateWaitMaxMs,
+                      skipped: skipped, firstError: firstError,
+                      retries: retries, retrySuccesses: retrySuccesses)
+    }
+
+    /// host ごとに束ね、host 昇順。runs と lastRunAt は run.json だけから数える
+    func testMachineHealthGroupsByHostSortedAndCountsRuns() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", host: "mac2"),
+            makeMeta(runID: "R2", startedAt: "2026-01-03T00:00:00Z", host: "mac1"),
+            makeMeta(runID: "R3", startedAt: "2026-01-02T00:00:00Z", host: "mac1"),
+        ]
+        let rows = RunResultsQuery.machineHealth(runs: runs, records: [])
+        XCTAssertEqual(rows.map(\.host), ["mac1", "mac2"])
+        XCTAssertEqual(rows[0].runs, 2)
+        XCTAssertEqual(rows[0].lastRunAt, "2026-01-03T00:00:00Z")
+        XCTAssertEqual(rows[1].runs, 1)
+    }
+
+    /// 欄を持つ run が無ければ nil(0 で埋めない)。1つでもあれば合計(他の run の nil は 0 扱い)
+    func testMachineHealthNilVersusZeroForGuardFMAndPaced() {
+        let none = RunResultsQuery.machineHealth(
+            runs: [makeMeta(runID: "R1", host: "mac1")],
+            records: [makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z",
+                                 durationMs: 1, host: "mac1")])[0]
+        XCTAssertNil(none.guarded)
+        XCTAssertNil(none.guardSkipped)
+        XCTAssertNil(none.guardStaleFrame)
+        XCTAssertNil(none.fm)
+        XCTAssertNil(none.pacedSteps)
+        XCTAssertNil(none.pacedMs)
+        XCTAssertEqual(none.notes, [:])
+
+        let runs = [
+            makeMeta(runID: "R1", host: "mac1", guarded: 10, guardSkipped: 0, guardStaleFrame: 0),
+            makeMeta(runID: "R2", host: "mac1", guarded: 5, guardSkipped: 2, guardStaleFrame: 1),
+            makeMeta(runID: "R3", host: "mac1"),
+        ]
+        let zero = RunResultsQuery.machineHealth(
+            runs: runs,
+            records: [makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z",
+                                 durationMs: 1,
+                                 steps: StepCountsRecord(total: 1, passed: 1, paced: 0, pacedMs: 0),
+                                 host: "mac1", fm: fmUsage())])[0]
+        XCTAssertEqual(zero.guarded, 15)
+        XCTAssertEqual(zero.guardSkipped, 2)
+        XCTAssertEqual(zero.guardStaleFrame, 1)
+        XCTAssertEqual(zero.pacedSteps, 0)
+        XCTAssertEqual(zero.pacedMs, 0)
+        XCTAssertEqual(zero.fm?.scenarios, 1)
+        XCTAssertEqual(zero.fm?.calls, 0)
+    }
+
+    /// fmDead が nil・空の run は数えない。lastFMDead は startedAt 最大の run のもの
+    func testMachineHealthFMDeadRunsAndLastPicksLatest() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-02T00:00:00Z", host: "mac1",
+                     fmDead: ["text"], fmDeadReason: "text: late"),
+            makeMeta(runID: "R2", startedAt: "2026-01-01T00:00:00Z", host: "mac1",
+                     fmDead: ["text", "vision"], fmDeadReason: "text: early"),
+            makeMeta(runID: "R3", startedAt: "2026-01-03T00:00:00Z", host: "mac1", fmDead: []),
+            makeMeta(runID: "R4", startedAt: "2026-01-04T00:00:00Z", host: "mac1"),
+        ]
+        let row = RunResultsQuery.machineHealth(runs: runs, records: [])[0]
+        XCTAssertEqual(row.fmDeadRuns, 2)
+        XCTAssertEqual(row.lastFMDead?.at, "2026-01-02T00:00:00Z")
+        XCTAssertEqual(row.lastFMDead?.paths, ["text"])
+        XCTAssertEqual(row.lastFMDead?.reason, "text: late")
+        XCTAssertEqual(row.runs, 4)
+
+        let clean = RunResultsQuery.machineHealth(runs: [makeMeta(runID: "R5", host: "mac2")], records: [])[0]
+        XCTAssertEqual(clean.fmDeadRuns, 0)
+        XCTAssertNil(clean.lastFMDead)
+    }
+
+    /// 合計・最大・lastError(firstError を持つ記録のうち startedAt 最大)
+    func testMachineHealthFMUsageSumsMaxesAndLastError() {
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-02T00:00:00Z", durationMs: 1,
+                       host: "mac1",
+                       fm: fmUsage(calls: 10, failures: 1, totalMs: 1000, maxMs: 300, retries: 2,
+                                   retrySuccesses: 1, skipped: 3, gateWaitTotalMs: 400, gateWaitMaxMs: 250,
+                                   firstError: "late error")),
+            makeRecord(scenarioID: "Foo.b", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 1,
+                       host: "mac1",
+                       fm: fmUsage(calls: 5, failures: 2, totalMs: 500, maxMs: 700, retries: 1,
+                                   retrySuccesses: 0, skipped: 1, gateWaitTotalMs: 100, gateWaitMaxMs: 90,
+                                   firstError: "early error")),
+            makeRecord(scenarioID: "Foo.c", passed: true, startedAt: "2026-01-03T00:00:00Z", durationMs: 1,
+                       host: "mac1", fm: fmUsage(calls: 1, totalMs: 10, maxMs: 10)),
+            makeRecord(scenarioID: "Foo.d", passed: true, startedAt: "2026-01-04T00:00:00Z", durationMs: 1,
+                       host: "mac1"),
+        ]
+        let fm = RunResultsQuery.machineHealth(runs: [], records: records)[0].fm
+        XCTAssertEqual(fm?.scenarios, 3)
+        XCTAssertEqual(fm?.calls, 16)
+        XCTAssertEqual(fm?.failures, 3)
+        XCTAssertEqual(fm?.retries, 3)
+        XCTAssertEqual(fm?.retrySuccesses, 1)
+        XCTAssertEqual(fm?.skipped, 4)
+        XCTAssertEqual(fm?.totalMs, 1510)
+        XCTAssertEqual(fm?.maxMs, 700)
+        XCTAssertEqual(fm?.gateWaitTotalMs, 500)
+        XCTAssertEqual(fm?.gateWaitMaxMs, 250)
+        XCTAssertEqual(fm?.lastError?.at, "2026-01-02T00:00:00Z")
+        XCTAssertEqual(fm?.lastError?.scenarioID, "Foo.a")
+        XCTAssertEqual(fm?.lastError?.message, "late error")
+    }
+
+    /// 注記はステップ1つにつき +1(同じステップの重複は1回)。2群を数え、追跡しない注記は無視。
+    /// rawValue はリテラルで書く
+    func testMachineHealthCountsTrackedNotesPerStep() {
+        func step(_ index: Int, _ notes: [String]?) -> TimelineStepRecord {
+            TimelineStepRecord(index: index, description: "s", status: "passed", notes: notes)
+        }
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 1,
+                       host: "mac1", timeline: [
+                step(1, ["ocr-budget-exhausted"]),
+                step(2, ["ocr-budget-exhausted", "vision-helper-unavailable", "settle-capped"]),
+                step(3, ["vision-anomaly-retried", "vision-anomaly-retried"]),
+                step(4, ["settle-capped", "held-value"]),
+                step(5, nil),
+            ]),
+            makeRecord(scenarioID: "Foo.b", passed: true, startedAt: "2026-01-02T00:00:00Z", durationMs: 1,
+                       host: "mac1", timeline: [
+                step(1, ["fm-empty-transcript-on-ink", "check-state-classifier-failed"]),
+            ]),
+            makeRecord(scenarioID: "Foo.c", passed: true, startedAt: "2026-01-02T00:00:00Z", durationMs: 1,
+                       host: "mac2", timeline: [step(1, ["ocr-compile-capped"])]),
+        ]
+        let rows = RunResultsQuery.machineHealth(runs: [], records: records)
+        XCTAssertEqual(rows[0].notes, [
+            "ocr-budget-exhausted": 2, "vision-helper-unavailable": 1, "vision-anomaly-retried": 1,
+            "fm-empty-transcript-on-ink": 1, "check-state-classifier-failed": 1,
+        ])
+        XCTAssertEqual(rows[1].notes, ["ocr-compile-capped": 1])
+    }
+
+    /// 追跡する2群の集合をリテラルで固定する(StepNote の case の増減が黙って集計に入らない)
+    func testMachineHealthNoteGroupsArePinned() {
+        XCTAssertEqual(Set(MachineHealthNotes.ocr.map(\.rawValue)), [
+            "ocr-budget-exhausted", "ocr-compile-capped", "ocr-compile-waited", "ocr-shortcut-not-ready",
+            "ocr-shortcut-busy", "ocr-read-what-fm-missed", "fm-read-what-ocr-missed",
+            "fm-empty-transcript-on-ink",
+        ])
+        XCTAssertEqual(Set(MachineHealthNotes.vision.map(\.rawValue)), [
+            "vision-anomaly-retried", "vision-helper-rescued", "vision-helper-unavailable",
+            "vision-classifier-unavailable", "check-state-classifier-failed",
+        ])
+    }
+
+    /// 事象が全部 0 でも、窓に run か記録がある host は行を出す(deviceHealth と逆)
+    func testMachineHealthKeepsHostWithOnlyZeroEvents() {
+        let rows = RunResultsQuery.machineHealth(
+            runs: [makeMeta(runID: "R1", host: "mac1")],
+            records: [makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z",
+                                 durationMs: 1, host: "mac2")])
+        XCTAssertEqual(rows.map(\.host), ["mac1", "mac2"])
+        XCTAssertEqual(rows[1].runs, 0)
+        XCTAssertNil(rows[1].lastRunAt)
+        XCTAssertEqual(rows[1].fmDeadRuns, 0)
+        XCTAssertEqual(RunResultsQuery.machineHealth(runs: [], records: []).count, 0)
+    }
+
     // MARK: - slowTests
 
     func testSlowTestsComputesAvgP90AndSortsDescending() {
@@ -1347,7 +1519,9 @@ final class RunResultsQueryTests: XCTestCase {
         profile: String? = nil, host: String = "testmachine",
         performanceMode: Bool? = nil, measurementInvalid: Bool? = nil,
         passed: Int? = nil, failed: Int? = nil, runGroup: String? = nil,
-        workerAnomalies: [WorkerAnomalyRecord]? = nil
+        workerAnomalies: [WorkerAnomalyRecord]? = nil,
+        fmDead: [String]? = nil, fmDeadReason: String? = nil,
+        guarded: Int? = nil, guardSkipped: Int? = nil, guardStaleFrame: Int? = nil
     ) -> RunMetaRecord {
         RunMetaRecord(
             runID: runID, project: "SampleApp", profile: profile, host: host,
@@ -1355,7 +1529,9 @@ final class RunResultsQueryTests: XCTestCase {
             passed: passed, failed: failed,
             measurementInvalid: measurementInvalid,
             workerAnomalies: workerAnomalies, runGroup: runGroup,
-            performanceMode: performanceMode)
+            performanceMode: performanceMode,
+            fmDead: fmDead, fmDeadReason: fmDeadReason,
+            guarded: guarded, guardSkipped: guardSkipped, guardStaleFrame: guardStaleFrame)
     }
 
     private func makeRecord(
@@ -1365,14 +1541,16 @@ final class RunResultsQueryTests: XCTestCase {
         failedSteps: [FailedStepRecord]? = nil, errorLogs: [String]? = nil,
         runID: String = "", title: String? = nil,
         fixSuggestions: [FixSuggestionRecord]? = nil,
-        appCrash: AppCrashRecord? = nil
+        appCrash: AppCrashRecord? = nil,
+        host: String = "testmachine", fm: FMUsageRecord? = nil,
+        timeline: [TimelineStepRecord]? = nil
     ) -> ScenarioRunRecord {
         ScenarioRunRecord(
             runID: runID, scenarioID: scenarioID, title: title, platform: platform, worker: worker,
-            host: "testmachine",
+            host: host,
             passed: passed, timedOut: timedOut, startedAt: startedAt, durationMs: durationMs,
             scenes: scenes, steps: steps ?? StepCountsRecord(total: 1, passed: passed ? 1 : 0, failed: passed ? 0 : 1),
             failedSteps: failedSteps, fixSuggestions: fixSuggestions, errorLogs: errorLogs,
-            appCrash: appCrash)
+            fm: fm, timeline: timeline, appCrash: appCrash)
     }
 }

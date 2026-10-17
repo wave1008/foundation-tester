@@ -1,0 +1,261 @@
+// ダッシュボード「マシンの健全性」(dashboard/machineHealth.js)を実 HTML+実バンドルで動かす DOM テスト(jsdom)。
+// 履歴(api results の machineHealth)とモニター(hostCharts.js の最新サンプル)の結合・「–」と 0 の区別・
+// FM チップ・警告色・内訳ツールチップを見る。方式は webviewDashboardExtras.test.mjs / webviewHostMetricsRows.test.mjs と同じ。
+
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { before, test } from "node:test";
+import * as esbuild from "esbuild";
+import { JSDOM } from "jsdom";
+
+const require2 = createRequire(import.meta.url);
+
+let panelHtml;
+let webviewBundle;
+
+before(async () => {
+  const htmlBuild = await esbuild.build({
+    entryPoints: [path.resolve("src/monitorHtml.ts")],
+    bundle: true, platform: "node", format: "cjs", target: "node18",
+    write: false, external: ["vscode"], logLevel: "silent",
+  });
+  const vscodeStub = { Uri: { joinPath: (_base, ...segs) => ({ path: `/${segs.join("/")}` }) } };
+  const patchedRequire = (id) => (id === "vscode" ? vscodeStub : require2(id));
+  const mod = { exports: {} };
+  new Function("module", "exports", "require", htmlBuild.outputFiles[0].text)(mod, mod.exports, patchedRequire);
+  panelHtml = mod.exports.renderHtml(
+    { asWebviewUri: (uri) => `https://localhost${uri.path}`, cspSource: "https://localhost" },
+    { path: "" },
+  );
+  const mainBuild = await esbuild.build({
+    entryPoints: [path.resolve("src/webview/monitor/main.js")],
+    bundle: true, platform: "browser", format: "iife", target: "es2022",
+    write: false, logLevel: "silent",
+  });
+  webviewBundle = mainBuild.outputFiles[0].text;
+});
+
+function createWebview() {
+  const dom = new JSDOM(panelHtml, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://localhost/" });
+  const { window } = dom;
+  const noop = () => {};
+  window.HTMLCanvasElement.prototype.getContext = () => ({
+    setTransform: noop, clearRect: noop, beginPath: noop, moveTo: noop, lineTo: noop,
+    closePath: noop, fillRect: noop, stroke: noop, fill: noop, globalAlpha: 1, fillStyle: "", strokeStyle: "",
+    lineWidth: 0, lineJoin: "", lineCap: "",
+  });
+  window.acquireVsCodeApi = () => ({ postMessage: noop, setState: noop, getState: () => undefined });
+  window.HTMLElement.prototype.scrollIntoView = noop;
+  window.Element.prototype.setPointerCapture = noop;
+  window.Element.prototype.releasePointerCapture = noop;
+  window.eval(webviewBundle);
+  window.document.getElementById("tab-dashboard").click();
+  const send = (data) => window.dispatchEvent(new window.MessageEvent("message", { data }));
+  return { window, document: window.document, send };
+}
+
+const RUN = {
+  schemaVersion: 1, runID: "20260901-000000Z-abcd1234", project: "P", profile: "ios-inapp",
+  host: "H", trigger: "cli", startedAt: "2026-09-01T00:00:00Z", finishedAt: "2026-09-01T00:01:00Z",
+  total: 3, passed: 2, failed: 1,
+};
+
+function payload(machineHealth, machines = []) {
+  return {
+    schemaVersion: 1, project: "P", generatedAt: "2026-09-01T00:02:00Z", since: "2026-06-03T00:00:00Z",
+    runs: [RUN], summary: [], flaky: [], deviceHealth: [], machineHealth,
+    slow: [], insights: [], performance: { runs: [], invalidCount: 0 }, machines, runStats: [],
+  };
+}
+
+function health(host, overrides = {}) {
+  return { host, runs: 2, fmDeadRuns: 0, notes: {}, ...overrides };
+}
+
+function sample(machine, extra = {}) {
+  return {
+    type: "hostMetrics", ...(machine ? { machine } : {}),
+    cpu: 0.34, cpuCores: 8, gpu: 0.1, gpuCores: 38,
+    memUsedBytes: 61 * 1024 ** 3, memTotalBytes: 100 * 1024 ** 3,
+    fmCalls: 0, fmFailures: 0, fmTotalMs: 0, fmTextState: null, fmVisionState: null, fmDeadReason: null,
+    fmCheckedAt: Date.now() / 1000, visionCalls: 0, visionFailures: 0, visionTotalMs: 0, ocrCompiling: 0,
+    ...extra,
+  };
+}
+
+function loadData(send, p) {
+  send({ type: "dashboard", message: { type: "data", payload: p } });
+}
+
+const rowsOf = (document) => [...document.querySelectorAll("#table-machine-health-body tr")];
+const labelOf = (tr) => tr.children[0].textContent;
+const tipOf = (cell) => cell.getAttribute("data-hover-tip") || "";
+
+test("行の集合は履歴とモニターの和集合で、local が先頭・残りは名前昇順", (t) => {
+  const { window, document, send } = createWebview();
+  t.after(() => window.close());
+  send({ type: "hostMetricsMachines", machines: ["zeta"] });
+  send(sample("zeta"));
+  send(sample(""));
+  loadData(send, payload([health("alpha-host"), health("H")], [{ host: "alpha-host", machine: "alpha" }]));
+  assert.deepEqual(rowsOf(document).map(labelOf), ["local", "H", "alpha", "zeta"]);
+  const alpha = rowsOf(document)[2];
+  assert.equal(alpha.children[1].textContent.includes("?"), true, "モニターに居ない行の FM は不明");
+  assert.equal(alpha.children[3].textContent, "–", "モニターに居ない行の負荷は「–」");
+  const zeta = rowsOf(document)[3];
+  assert.equal(zeta.children[4].textContent, "–", "履歴に居ない行の実行は「–」");
+  assert.equal(zeta.children[5].textContent, "–");
+  assert.equal(zeta.children[11].textContent, "–");
+});
+
+test("履歴の 0 と欠けている値(nil)を区別する", (t) => {
+  const { window, document, send } = createWebview();
+  t.after(() => window.close());
+  send(sample(""));
+  loadData(send, payload([health("H", { runs: 0 }), health("X")]));
+  const [h, x] = rowsOf(document).filter((tr) => ["H", "X"].includes(labelOf(tr)));
+  for (const tr of [h, x]) {
+    assert.equal(tr.children[5].textContent, "0", "fmDeadRuns 0");
+    assert.equal(tr.children[6].textContent, "–", "fm が nil なら FM 失敗は「–」");
+    assert.equal(tr.children[7].textContent, "–", "guard が nil なら「–」");
+    assert.equal(tr.children[8].textContent, "–");
+    assert.equal(tr.children[9].textContent, "0", "注記は 0 件と表示");
+    assert.equal(tr.children[11].textContent, "–", "pacedSteps が nil なら「–」");
+  }
+  assert.equal(h.children[4].textContent, "0");
+});
+
+test("FM チップ: 生存・停止・不明を文字と記号で出し、停止は理由と確認時刻をツールチップに載せる", (t) => {
+  const { window, document, send } = createWebview();
+  t.after(() => window.close());
+  send({ type: "hostMetricsMachines", machines: ["m2", "m3"] });
+  send(sample("m2", { fmTextState: "alive", fmVisionState: "dead", fmDeadReason: "no memory" }));
+  send(sample("m3"));
+  send(sample(""));
+  loadData(send, payload([]));
+  const byLabel = Object.fromEntries(rowsOf(document).map((tr) => [labelOf(tr), tr]));
+  const m2 = byLabel.m2.children[1];
+  const chips = [...m2.querySelectorAll(".mh-chip")];
+  assert.equal(chips.length, 2);
+  assert.match(chips[0].textContent, /●.*(生存)/);
+  assert.ok(chips[0].classList.contains("mh-fm-alive"));
+  assert.match(chips[1].textContent, /✕.*(停止)/);
+  assert.ok(chips[1].classList.contains("mh-fm-dead"));
+  assert.match(tipOf(m2), /no memory/);
+  const m3 = [...byLabel.m3.children[1].querySelectorAll(".mh-chip")];
+  assert.ok(m3.every((c) => c.classList.contains("mh-fm-unknown") && c.textContent.includes("?")));
+});
+
+test("今の列: Vision の件数・失敗(>0 で警告色)・コンパイル中・負荷", (t) => {
+  const { window, document, send } = createWebview();
+  t.after(() => window.close());
+  send(sample("", { visionCalls: 4, visionFailures: 1, ocrCompiling: 1 }));
+  loadData(send, payload([]));
+  const local = rowsOf(document)[0];
+  const vision = local.children[2];
+  assert.match(vision.textContent, /4/);
+  assert.match(vision.textContent, /1/);
+  assert.ok(vision.classList.contains("mh-warn"));
+  assert.ok(vision.querySelector(".mh-chip-compiling"));
+  assert.match(tipOf(vision), /1/, "窓の秒数");
+  assert.equal(local.children[3].textContent, "CPU 34% · MEM 61%");
+});
+
+test("集計期間の列: 失敗・停止・素通り・要注意の注記で警告色になり、内訳ツールチップが出る", (t) => {
+  const { window, document, send } = createWebview();
+  t.after(() => window.close());
+  send(sample(""));
+  const fm = {
+    scenarios: 3, calls: 20, failures: 2, retries: 1, retrySuccesses: 1, skipped: 0, totalMs: 4000, maxMs: 900,
+    gateWaitTotalMs: 6000, gateWaitMaxMs: 2500,
+    lastError: { at: "2026-09-01T00:00:00Z", scenarioID: "Foo.S0010", message: "boom" },
+  };
+  loadData(send, payload([
+    health("H", {
+      fmDeadRuns: 1, lastFMDead: { at: "2026-09-01T00:00:00Z", paths: ["text"], reason: "ane down" },
+      guarded: 10, guardSkipped: 2, guardStaleFrame: 1, fm,
+      notes: { "ocr-budget-exhausted": 3, "ocr-compile-waited": 2, "vision-helper-rescued": 4, mystery: 9 },
+      pacedSteps: 5, pacedMs: 2500,
+    }),
+    health("Quiet", { guarded: 5, guardSkipped: 0, notes: { "ocr-compile-waited": 1, "vision-helper-rescued": 1 } }),
+  ]));
+  const byLabel = Object.fromEntries(rowsOf(document).map((tr) => [labelOf(tr), tr]));
+  const h = byLabel.H;
+  assert.ok(h.children[5].classList.contains("mh-warn"));
+  assert.match(tipOf(h.children[5]), /ane down/);
+  assert.equal(h.children[6].textContent, "2 / 20");
+  assert.ok(h.children[6].classList.contains("mh-warn"));
+  assert.match(tipOf(h.children[6]), /boom/);
+  assert.equal(h.children[7].textContent, "2 / 10");
+  assert.ok(h.children[7].classList.contains("mh-warn"));
+  assert.equal(h.children[8].textContent, "2.5");
+  assert.equal(h.children[9].textContent, "5", "OCR 群の合計(未知の mystery は数えない)");
+  assert.ok(h.children[9].classList.contains("mh-warn"));
+  assert.match(tipOf(h.children[9]), /OCR の予算切れ: 3/);
+  assert.match(tipOf(h.children[9]), /OCR のコンパイルを待った: 2/);
+  assert.equal(h.children[10].textContent, "4");
+  assert.equal(h.children[10].classList.contains("mh-warn"), false, "情報の注記だけなら警告色にしない");
+  assert.equal(h.children[11].textContent, "5");
+  assert.match(tipOf(h.children[11]), /2\.5/);
+
+  const quiet = byLabel.Quiet;
+  assert.equal(quiet.children[7].textContent, "0 / 5");
+  assert.equal(quiet.children[7].classList.contains("mh-warn"), false);
+  assert.equal(quiet.children[9].classList.contains("mh-warn"), false);
+});
+
+test("両方が届くまでは空の文言が「確認中」で、行が無ければ記録なしの文言になる", (t) => {
+  const { window, document, send } = createWebview();
+  t.after(() => window.close());
+  const empty = document.getElementById("machines-empty");
+  loadData(send, payload([]));
+  assert.match(empty.textContent, /確認/);
+  send(sample(""));
+  assert.equal(rowsOf(document).length, 1);
+  assert.equal(empty.style.display, "none");
+});
+
+test("期間内の run が0件でも健全性の2セクションは出し、他のセクションだけ隠す", async (t) => {
+  const { window, document, send } = createWebview();
+  t.after(() => window.close());
+  // jsdom は外部 CSS を読まないので、隠す側は「#content に dash-no-runs が付く」+「CSS にその規則がある」で見る
+  const visible = (id) => document.getElementById(id).style.display !== "none";
+  const content = document.getElementById("content");
+  loadData(send, { ...payload([health("H")]), runs: [] });
+  assert.equal(visible("content"), true);
+  assert.equal(visible("status-empty"), true);
+  assert.equal(content.classList.contains("dash-no-runs"), true);
+  assert.deepEqual(rowsOf(document).map(labelOf), ["H"]);
+  const { readFile } = await import("node:fs/promises");
+  const css = await readFile(path.resolve("src/webview/dashboard/style.css"), "utf8");
+  assert.match(css, /#content\.dash-no-runs > \.dash-section:not\(#section-machines\):not\(#section-devices\)\s*\{\s*display: none !important;/);
+  // 文言は健全性の2セクションの直後(他のセクションより前)にある
+  const order = [...content.children].map((el) => el.id);
+  assert.ok(order.indexOf("status-empty") > order.indexOf("section-devices"));
+  assert.ok(order.indexOf("status-empty") < order.indexOf("section-headline"));
+
+  // run が戻れば隠しを外し、0件の文言は消える
+  loadData(send, payload([health("H")]));
+  assert.equal(visible("status-empty"), false);
+  assert.equal(content.classList.contains("dash-no-runs"), false);
+});
+
+test("見出し「集計期間」に窓の開始(since)と集計時刻(generatedAt)を手元の時刻で付ける", (t) => {
+  const { window, document, send } = createWebview();
+  t.after(() => window.close());
+  const header = document.getElementById("mh-period-header");
+  assert.equal(header.textContent, "集計期間");
+  loadData(send, payload([health("H")]));
+  const stamp = "\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}";
+  assert.match(header.textContent, new RegExp(`^集計期間（${stamp} - ${stamp}）$`));
+  const pad = (n) => String(n).padStart(2, "0");
+  const local = (iso) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  };
+  assert.equal(header.textContent, `集計期間（${local("2026-06-03T00:00:00Z")} - ${local("2026-09-01T00:02:00Z")}）`);
+  // run が0件でも付ける(健全性は期間に関わらず出すので、どの期間の集計かは常に要る)
+  loadData(send, { ...payload([]), runs: [], since: "2026-08-31T23:02:00Z" });
+  assert.equal(header.textContent, `集計期間（${local("2026-08-31T23:02:00Z")} - ${local("2026-09-01T00:02:00Z")}）`);
+});

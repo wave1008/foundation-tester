@@ -13,7 +13,7 @@ import {
   recentResultsMarks,
 } from './format.js';
 import { t } from '../i18n.js';
-import { clearChildren, td, tdNum } from './domUtil.js';
+import { clearChildren, td, tdMid, tdNum } from './domUtil.js';
 import { machineLabels } from './machineNames.js';
 import { requestRunDetail } from './runDetail.js';
 import { requestTrend } from './trend.js';
@@ -243,7 +243,9 @@ export function renderFlakyTable(flaky) {
     const tr = document.createElement('tr');
     tr.append(
       scenarioIdCell(row.scenarioID),
-      td(recentResultsMarks(row.recentResults)),
+      // recentResults は新しい順: 先頭が「直近」列、残りが「履歴(新→旧)」列
+      tdMid(recentResultsMarks(row.recentResults.slice(0, 1))),
+      td(recentResultsMarks(row.recentResults.slice(1))),
     );
     body.appendChild(tr);
   }

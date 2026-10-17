@@ -122,8 +122,8 @@ the comparison with the previous run, recent runs, a filterable/sortable
 per-scenario summary, flaky scenarios, and device health (current state/storage from the Device
 Monitor combined with run-history counts: excluded from run, requeued, pre-run exclude/repair,
 recovery operations, app crashes) — backed by the
-same `fleetest results` data (a toolbar control switches the aggregation period between 7/30/90
-days). See the Results Dashboard section of
+same `fleetest results` data (a toolbar control switches the aggregation period between the last 5/10
+minutes, 1/3/8/16 hours, and 1/2/3/7/30/90 days). See the Results Dashboard section of
 [VS Code Extension](../tools/vscode_extension.md).
 
 ## CI

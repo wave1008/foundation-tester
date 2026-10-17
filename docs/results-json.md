@@ -301,6 +301,7 @@ FM を呼ぶ構成だったかは `fmTextVisibilityCheck || screenLooksLike` で
 | fmTextState / fmVisionState | String? | `"alive"` / `"dead"` / **null = 不明**(観測が無い・`FMLiveness.freshSeconds` より古い)。**呼び出しが0件でも埋まる**のが回数欄との決定的な違い —— 誰も FM を使っていない間、回数だけでは「使われていない」と「死んでいる」が同じ絵になる |
 | fmDeadReason | String? | 死んでいる経路と理由(`text: … / vision: …`)。**1Hz で流れる行なので 200 文字で切る**(全文は `fleetest doctor --fm-only` と `scenarios/*.json` の `fm.firstError`) |
 | fmCheckedAt | Double? | 上の死活を観測した epoch 秒(新しいほうの経路)。**いつの観測かを必ず見る** —— 最大 120 秒古くなりうる |
+| ocrCompiling | Int | その時点で OCR モデルをコンパイル中のプロセス数(`OCRModelCompileLedger.activeCount()`。**必須欄**)。0 = コンパイル中ではない。初回の OCR はコンパイルが終わるまで FM へ倒れる(`ocr-shortcut-not-ready`)ので、FM 死活とは別に見る |
 
 死活の供給元は2つ: **①実仕事の FM 呼び出しの成否**(連続 `FMBreaker.threshold` 回の失敗で死。
 経路ごとに数える)と **②死活プローブ**(`api host-metrics --fm-probe`。拡張のモニターだけが渡す。
@@ -607,6 +608,37 @@ LC_UUID が入るので再ビルドでコールドに戻る。docs/performance-t
 モニターの `monitorDevices` から出す)。**`--since` の窓は `fleetest api results` の他の集計と同じ**
 (呼び手が既に絞った `runs`/`records` を渡す。`deviceHealth` 自身は日付を見ない)。
 **worker 欄の無い記録・host が空の記録は数えない**(古い記録・`--port` 等の非プロファイル経路。どのデバイスか言えない)。
+
+## マシンの健全性(`fleetest api results` の `machineHealth`)
+
+`machineHealth: [MachineHealthRow]`(必須欄。プロトコル版 49→50)。**1行 = 1台の Mac(host)**で、FM・OCR・Vision の
+集計期間(`--since` の窓)の事実を並べる(判定・総合点は置かない)。**窓に run.json か scenarios 記録が1つでもある host は、
+事象が全部 0 でも出す**(`deviceHealth` と逆)。host 昇順。**欠けている値は 0 で埋めず null**。
+
+| フィールド | 型 | 意味 |
+|---|---|---|
+| host | String | run.json / 記録の `host`(表示は `machines` で読み替える) |
+| runs | Int | 窓内のその host の run.json の数 |
+| lastRunAt | String? | その host の run の `startedAt` の最大。run が無ければ null |
+| fmDeadRuns | Int | `fmDead` が非空の run の数 |
+| lastFMDead | {at, paths, reason?}? | `fmDead` を持つ run のうち `startedAt` 最大のもの(`at` = run.startedAt・`paths` = fmDead・`reason` = fmDeadReason)。無ければ null |
+| guarded / guardSkipped / guardStaleFrame | Int? | run.json の同名欄の合計。**どの run も欄を持たなければ null** |
+| fm | MachineFMUsage? | scenarios 記録の `fm` の合算。**fm を持つ記録が1つも無ければ null** |
+| notes | [String: Int] | 追跡する `StepNote` の rawValue → 出現したステップ数(0 のキーは入れない)。数え方: 記録の `timeline[].notes` に含まれるステップ1つにつき +1 |
+| pacedSteps / pacedMs | Int? | 記録の `steps.paced` / `steps.pacedMs` の合計(どれも null なら null) |
+
+`MachineFMUsage`: `scenarios`(fm を持つ記録の数)・`calls` / `failures` / `retries` / `retrySuccesses` / `skipped` / `totalMs` /
+`gateWaitTotalMs`(合計)・`maxMs` / `gateWaitMaxMs`(記録ごとの最大)・`lastError`
+(`{at, scenarioID, message}`。`firstError` を持つ記録のうち `startedAt` 最大のもの。無ければ null)。
+
+**追跡する注記**(`FTCore.MachineHealthNotes`。`StepNote` の case から作る):
+- OCR 群(`MachineHealthNotes.ocr`): `ocr-budget-exhausted` / `ocr-compile-capped` / `ocr-compile-waited` /
+  `ocr-shortcut-not-ready` / `ocr-shortcut-busy` / `ocr-read-what-fm-missed` / `fm-read-what-ocr-missed` /
+  `fm-empty-transcript-on-ink`
+- Vision 群(`MachineHealthNotes.vision`): `vision-anomaly-retried` / `vision-helper-rescued` /
+  `vision-helper-unavailable` / `vision-classifier-unavailable` / `check-state-classifier-failed`
+
+ダッシュボードの「マシンの健全性」は、この集計(期間)とモニターの host-metrics(今)を1行にまとめる。
 
 ## `fleetest api results` の出力キャッシュ
 

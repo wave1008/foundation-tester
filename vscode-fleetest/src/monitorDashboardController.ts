@@ -4,7 +4,7 @@
 // monitorPanel.ts から MonitorDashboardControllerDeps 経由でのみ連携する(他のサブコントローラを
 // 直接参照しない。monitorPanel.ts 冒頭コメントの分割方針と同じ)。
 //
-// - データは `fleetest api results --project <名> --since 90d --min-runs 3` を1発叩いて得る
+// - データは `fleetest api results --project <名> --since <期間> --min-runs 3` を1発叩いて得る
 //   1行 JSON(dashboardModel.ts の ApiResultsPayload / Sources/fleetest/ApiResultsCommand.swift と同期)。
 //   ビルドを伴わない読み取り専用コマンドなので cli.ts の FleetestCli(直列キュー)には乗せず
 //   oneShotCli.ts の runOneShot() で単発 spawn する。
@@ -23,6 +23,7 @@ import {
   type DashboardFromWebviewMessage,
   type DashboardToWebviewMessage,
   type SinceOption,
+  initialSince,
   isApiResultsPayload,
   isApiResultsComparePayload,
   isApiResultsRunPayload,
@@ -56,6 +57,8 @@ export interface MonitorDashboardControllerDeps {
   isPanelActive(): boolean;
   /** モニターに全台のストレージを測り直させる(stdin の storageRefresh。id は進捗の突き合わせ用) */
   refreshStorage(id: number): void;
+  /** 集計期間の記憶(workspaceState の DASHBOARD_SINCE_STATE_KEY)。get は検証前の生の値 */
+  readonly sinceStore: { get(): unknown; set(since: SinceOption): void };
 }
 
 function errorMessage(error: unknown): string {
@@ -88,10 +91,12 @@ export class MonitorDashboardController {
    * refresh() の冒頭で即座に再送できる(再取得の 15〜20 秒を待たせない)。 */
   private readonly resultsCache = new Map<string, ApiResultsPayload>();
   /** 集計期間。webview 再読込(言語切替)で選択が既定へ戻るのを防ぐため、'projects' 送信時に
-   * 毎回載せて webview に合わせさせる。既定は従来と同じ 90d。 */
-  private since: SinceOption = "90d";
+   * 毎回載せて webview に合わせさせる。前回の選択は deps.sinceStore に記憶する(初期値は initialSince)。 */
+  private since: SinceOption;
 
-  constructor(private readonly deps: MonitorDashboardControllerDeps) {}
+  constructor(private readonly deps: MonitorDashboardControllerDeps) {
+    this.since = initialSince(deps.sinceStore.get());
+  }
 
   /** パネル dispose 時に results 系の実行中プロセス全部を止める(oneShotCli.ts 呼び出し側
    * 共通の SIGTERM→2秒後 SIGKILL。1本運用時と同じ挙動を各プロセスへ適用する)。 */
@@ -159,6 +164,7 @@ export class MonitorDashboardController {
         break;
       case "setSince":
         this.since = message.since;
+        this.deps.sinceStore.set(message.since);
         void this.refresh();
         break;
       case "refreshStorage":

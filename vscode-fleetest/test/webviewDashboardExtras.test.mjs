@@ -62,6 +62,7 @@ function basePayload(overrides = {}) {
     summary: [],
     flaky: [],
     deviceHealth: [],
+    machineHealth: [],
     slow: [], insights: [],
     performance: { runs: [], invalidCount: 0 },
     machines: [], runStats: [],
@@ -103,6 +104,10 @@ test("insights: severity ごとに見出しを分ける(critical→warn→info �
   // critical/warn/info の日本語ラベルがこの順で並ぶ
   const order = headings.map((h) => (h.includes("重大") ? "critical" : h.includes("警告") ? "warn" : "info"));
   assert.deepEqual(order, ["critical", "warn", "info"]);
+  // 文字色は重大度のクラスで付ける(style.css の .insight-severity-<severity>)
+  const classes = [...window.document.querySelectorAll("#insights-list .insight-severity-heading")]
+    .map((h) => [...h.classList].find((c) => c !== "insight-severity-heading"));
+  assert.deepEqual(classes, ["insight-severity-critical", "insight-severity-warn", "insight-severity-info"]);
 });
 
 test("insights: scenarioID を持つ行は本文クリックで実行履歴、worker は一致する行があるときだけ別のリンクを添える", (t) => {
@@ -781,7 +786,7 @@ test("デバイスの健全性: 今の状態は色の点+文字、実行中・�
 
   const a = cellOf("a");
   assert.ok(a.querySelector(".dh-state-dot.dh-state-connected"));
-  assert.match(a.textContent, /接続中/, "色だけでなく文字も出す");
+  assert.match(a.textContent, /接続済み/, "色だけでなく文字も出す");
   assert.ok(a.querySelector(".dh-chip-running"));
   assert.match(a.querySelector(".dh-chip-frozen").textContent, /❄️/);
   const flags = [...a.querySelectorAll(".dh-chip-health")].map((c) => c.textContent);
@@ -1048,4 +1053,19 @@ test("直近の実行: 選択はフィルター切り替えで保たれ、パフ
   const status = doc.getElementById("runs-compare-status");
   assert.equal(status.textContent, "boom");
   assert.ok(status.classList.contains("status-error"));
+});
+
+test("flaky: 最新の結果は「直近」列、それ以前は「履歴(新→旧)」列に分けて出す", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  const flaky = [
+    { scenarioID: "A", runs: 7, failureRate: 14.3, flakinessScore: 0.3, recentResults: [false, true, false, true] },
+    { scenarioID: "B", runs: 1, failureRate: 0, flakinessScore: 0, recentResults: [true] },
+  ];
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({ flaky }) } });
+  const rows = [...window.document.querySelectorAll("#table-flaky-body tr")].map((tr) => [...tr.children].map((c) => c.textContent));
+  assert.deepEqual(rows, [["A", "❌", "✅❌✅"], ["B", "✅", ""]]);
+  const headers = [...window.document.querySelectorAll("#table-flaky thead th")].map((th) => th.textContent);
+  assert.equal(headers.length, 3);
+  assert.deepEqual(headers.slice(1), ["直近", "履歴(新→旧)"]);
 });

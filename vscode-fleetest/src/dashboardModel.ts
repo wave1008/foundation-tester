@@ -2,7 +2,7 @@
 // 結果ダッシュボード(モニターパネル「ダッシュボード」タブ)の
 // vscode 非依存の型・ペイロード型ガード。ホスト側の実体は monitorDashboardController.ts。
 //
-// 契約(Sources/fleetest/ApiResultsCommand.swift): `fleetest api results --project <名> --since 90d
+// 契約(Sources/fleetest/ApiResultsCommand.swift): `fleetest api results --project <名> --since <期間>
 // --min-runs 3` の stdout は下記形状の 1 行 JSON(schemaVersion=1)。Swift 側は Codable の nil
 // Optional をキー省略でエンコードするため、値が無いフィールドは undefined(null ではない)で
 // 届く想定だが、型ガードは null も許容し双方に耐える。
@@ -99,6 +99,37 @@ export interface DeviceHealthRow {
   readonly recoveredByKind: Readonly<Record<string, number>>;
   readonly appCrashes: number;
   readonly lastEventAt?: string | null;
+}
+
+/** マシンの健全性(§api results の machineHealth)。host 昇順。nil の欄は JSON から省かれる(= 不明。0 ではない)。 */
+export interface MachineHealthRow {
+  readonly host: string;
+  readonly runs: number;
+  readonly lastRunAt?: string | null;
+  readonly fmDeadRuns: number;
+  readonly lastFMDead?: { readonly at: string; readonly paths: readonly string[]; readonly reason?: string | null } | null;
+  readonly guarded?: number | null;
+  readonly guardSkipped?: number | null;
+  readonly guardStaleFrame?: number | null;
+  readonly fm?: MachineFMUsage | null;
+  /** 追跡する StepNote の rawValue → ステップ数(0 のキーは無い) */
+  readonly notes: Readonly<Record<string, number>>;
+  readonly pacedSteps?: number | null;
+  readonly pacedMs?: number | null;
+}
+
+export interface MachineFMUsage {
+  readonly scenarios: number;
+  readonly calls: number;
+  readonly failures: number;
+  readonly retries: number;
+  readonly retrySuccesses: number;
+  readonly skipped: number;
+  readonly totalMs: number;
+  readonly maxMs: number;
+  readonly gateWaitTotalMs: number;
+  readonly gateWaitMaxMs: number;
+  readonly lastError?: { readonly at: string; readonly scenarioID: string; readonly message: string } | null;
 }
 
 export interface SceneResultRecord {
@@ -290,6 +321,8 @@ export interface ApiResultsPayload {
   readonly flaky: readonly FlakyRow[];
   /** デバイスの健全性(§4)。期間内に事象が1つも無いデバイスは含まれない(0件は空配列)。 */
   readonly deviceHealth: readonly DeviceHealthRow[];
+  /** マシンの健全性。host 昇順。 */
+  readonly machineHealth: readonly MachineHealthRow[];
   readonly trend?: readonly ScenarioRunRecord[];
   /** avgDurationMs 降順、最大10件。 */
   readonly slow: readonly SlowScenarioRow[];
@@ -325,11 +358,19 @@ export interface RunStatsRow {
   readonly maxScenarioID?: string | null;
 }
 
-/** 集計期間の選択肢(webview の許可リスト)。既定 "90d" は MonitorDashboardController.since。 */
-export type SinceOption = "7d" | "30d" | "90d";
+/** 集計期間の選択肢(webview の許可リスト)。初期値は initialSince。 */
+const SINCE_OPTIONS = ["5m", "10m", "1h", "3h", "8h", "16h", "1d", "2d", "3d", "7d", "30d", "90d"] as const;
+export type SinceOption = (typeof SINCE_OPTIONS)[number];
 
 export function isSinceOption(value: unknown): value is SinceOption {
-  return value === "7d" || value === "30d" || value === "90d";
+  return typeof value === "string" && (SINCE_OPTIONS as readonly string[]).includes(value);
+}
+
+/** workspaceState に記憶した前回の集計期間(DASHBOARD_SINCE_STATE_KEY)から初期値を決める。
+ *  記憶が無い・選択肢から消えた値なら既定の "16h" */
+export const DASHBOARD_SINCE_STATE_KEY = "dashboard.since";
+export function initialSince(stored: unknown): SinceOption {
+  return isSinceOption(stored) ? stored : "16h";
 }
 
 // ---- webview ⇔ 拡張のメッセージ契約 ----------------------------------------------------
@@ -481,6 +522,45 @@ function isDeviceHealthRow(value: unknown): value is DeviceHealthRow {
     isStringNumberRecord(value.recoveredByKind) &&
     typeof value.appCrashes === "number" &&
     isOptString(value.lastEventAt)
+  );
+}
+
+function isMachineFMUsage(value: unknown): value is MachineFMUsage {
+  if (!isRecord(value)) return false;
+  const numbers = [
+    "scenarios", "calls", "failures", "retries", "retrySuccesses", "skipped",
+    "totalMs", "maxMs", "gateWaitTotalMs", "gateWaitMaxMs",
+  ];
+  if (!numbers.every((key) => typeof value[key] === "number")) return false;
+  const last = value.lastError;
+  return (
+    last === undefined ||
+    last === null ||
+    (isRecord(last) &&
+      typeof last.at === "string" &&
+      typeof last.scenarioID === "string" &&
+      typeof last.message === "string")
+  );
+}
+
+function isMachineHealthRow(value: unknown): value is MachineHealthRow {
+  if (!isRecord(value)) return false;
+  const dead = value.lastFMDead;
+  return (
+    typeof value.host === "string" &&
+    typeof value.runs === "number" &&
+    isOptString(value.lastRunAt) &&
+    typeof value.fmDeadRuns === "number" &&
+    (dead === undefined ||
+      dead === null ||
+      (isRecord(dead) && typeof dead.at === "string" && isStringArray(dead.paths) && isOptString(dead.reason))) &&
+    isOptNumber(value.guarded) &&
+    isOptNumber(value.guardSkipped) &&
+    isOptNumber(value.guardStaleFrame) &&
+    (value.fm === undefined || value.fm === null || isMachineFMUsage(value.fm)) &&
+    isStringNumberRecord(value.notes) &&
+    isOptNumber(value.pacedSteps) &&
+    isOptNumber(value.pacedMs)
   );
 }
 
@@ -712,6 +792,7 @@ export function isApiResultsPayload(value: unknown): value is ApiResultsPayload 
   if (!Array.isArray(value.summary) || !value.summary.every(isScenarioSummaryRow)) return false;
   if (!Array.isArray(value.flaky) || !value.flaky.every(isFlakyRow)) return false;
   if (!Array.isArray(value.deviceHealth) || !value.deviceHealth.every(isDeviceHealthRow)) return false;
+  if (!Array.isArray(value.machineHealth) || !value.machineHealth.every(isMachineHealthRow)) return false;
   if (!Array.isArray(value.slow) || !value.slow.every(isSlowScenarioRow)) return false;
   if (!Array.isArray(value.insights) || !value.insights.every(isInsightRecord)) return false;
   if (

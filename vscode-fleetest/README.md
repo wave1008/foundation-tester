@@ -687,10 +687,10 @@ SPM のビルドロック対策として同時に2プロセス走らせない設
 (サブコントローラ `src/monitorDashboardController.ts`。webview 資産は `src/webview/monitor/dashboardTab.js` が
 `src/webview/dashboard/` のモジュールを読む)。
 
-- データは `fleetest api results --project <project> --since <7d|30d|90d> --min-runs 3` を1発叩いて
+- データは `fleetest api results --project <project> --since <5m|10m|1h|3h|8h|16h|1d|2d|3d|7d|30d|90d> --min-runs 3` を1発叩いて
   得る1行 JSON(`src/dashboardModel.ts` の `ApiResultsPayload`。ビルドを伴わない読み取り専用コマンド
   なので `FleetestCli` の直列キューには乗せず `src/oneShotCli.ts` の `runOneShot()` で単発 spawn
-  します)。集計期間はツールバーの選択(`SinceOption`)で切り替え、選んだ値は
+  します)。集計期間はツールバーの選択(`SinceOption`。既定は直近16時間。選択は workspaceState の `dashboard.since` に記憶)で切り替え、選んだ値は
   `MonitorDashboardController` がメモリに保持して 'projects' メッセージで webview へ返す
   (webview 再読込で既定へ戻るのを防ぐ)。
 - 表示内容: 直近の実行一覧(`runs`)、シナリオ別の成功率・平均/中央実行時間サマリ(`summary`。
@@ -700,7 +700,11 @@ SPM のビルドロック対策として同時に2プロセス走らせない設
   今の状態・ストレージは同じ webview のモニター(`monitor/deviceTiles.js` の
   `monitorDevices()`/`onMonitorDevicesChanged()` を読み取り専用で参照)から、
   run から除外された回数・振り直し・run 前の除外/修復・回復操作・アプリのクラッシュは
-  `deviceHealth` から取り、無い側の値は 0 で埋めず「–」にする)、実行時間が長い
+  `deviceHealth` から取り、無い側の値は 0 で埋めず「–」にする)、
+  マシンの健全性(`machineHealth`。`machineHealth.js`。1行 = 1台の Mac。「今」の列(FM の死活・Vision の件数・
+  OCR コンパイル中・負荷)は `monitor/hostCharts.js` の `hostMetricsMachines()`/`onHostMetricsCommitted()` を
+  読み取り専用で参照し、「集計期間」の列は `machineHealth` から取る。行は両者の和集合で、
+  無い側は 0 で埋めず「–」)、実行時間が長い
   シナリオ(`slow`)、注意喚起(`insights`。重大度→
   種類でグルーピングし4件以上は折りたたむ。`insights.js`)、前回(同じ profile の直前の実行)との
   差分(新規失敗・回復したシナリオ。`headlineDiff.js`/`headlineDiffLogic.js`。判定は
@@ -717,7 +721,7 @@ SPM のビルドロック対策として同時に2プロセス走らせない設
   配下・`.swift` であることを検証してから開く。`handleOpenReport` と検証ロジックを共有)。
 - webview 資産は `src/webview/dashboard/`(`main.js`/`render.js`/`format.js`/
   `domUtil.js`/`machineNames.js`/`runDetail.js`/`trend.js`/`performance.js`/`summaryTable.js`/
-  `deviceHealth.js`/`insights.js`/`headlineDiff.js`/`headlineDiffLogic.js`/`style.css`)。
+  `deviceHealth.js`/`machineHealth.js`/`insights.js`/`headlineDiff.js`/`headlineDiffLogic.js`/`style.css`)。
 
 ## 手動確認チェックリスト
 
@@ -1109,7 +1113,7 @@ vscode-fleetest/
 │   └── webview/
 │       ├── i18n.js                # webview 側 i18n ランタイム(locale は <html lang> 経由)
 │       ├── monitor/               # デバイスモニターの webview 資産(main.js/tabs.js/deviceTiles.js/liveTab.js/各プロファイルタブ/h264Decoder.js 等。liveTab.js が「ライブ操作」タブの UI 本体)
-│       ├── dashboard/             # 結果ダッシュボードの webview モジュール(render.js/format.js/summaryTable.js/deviceHealth.js/insights.js/headlineDiff.js/headlineDiffLogic.js/style.css 等。monitor/dashboardTab.js が読む)
+│       ├── dashboard/             # 結果ダッシュボードの webview モジュール(render.js/format.js/summaryTable.js/deviceHealth.js/machineHealth.js/insights.js/headlineDiff.js/headlineDiffLogic.js/style.css 等。monitor/dashboardTab.js が読む)
 │       └── healReview/            # 自己修復の確認パネルの webview 資産(main.js/style.css。healModel.ts を直接 import する)
 └── test/
     ├── ndjson.test.mjs           # NdjsonParser のユニットテスト(node:test)

@@ -39,12 +39,35 @@
 .dash-title {
   font-weight: 600;
 }
-select.dash-project, select.dash-since {
+select.dash-project {
   background: var(--vscode-dropdown-background);
   color: var(--vscode-dropdown-foreground);
   border: 1px solid var(--vscode-dropdown-border, transparent);
   border-radius: 2px;
   padding: 1px 4px;
+}
+/* 集計期間: ラベルは控えめな文字だけ、選択欄はアクセント色(ボタンの色)の枠で目を引かせる(地は塗らない) */
+.dash-since-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.dash-since-label {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+select.dash-since {
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-button-background);
+  border-radius: 3px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+select.dash-since:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
 }
 /* 更新中はデータを隠さず、ここだけ出す(更新エラーは #dash-update-error) */
 .dash-updating {
@@ -81,6 +104,10 @@ select.dash-project, select.dash-since {
   white-space: pre-wrap;
 }
 
+/* 期間内の run が0件: 健全性の2セクション以外を隠す(dashboardTab.js の showState('empty')) */
+#content.dash-no-runs > .dash-section:not(#section-machines):not(#section-devices) {
+  display: none !important;
+}
 .dash-section {
   margin-bottom: 28px;
 }
@@ -117,6 +144,10 @@ select.dash-project, select.dash-since {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.92em;
+}
+/* 幅が足りないときは表だけを横スクロールさせる(セルは nowrap なので縮まない。健全性の2表・直近の実行・比較・実行時間が長いシナリオ) */
+.dash-table-scroll {
+  overflow-x: auto;
 }
 .dash-table th, .dash-table td {
   text-align: left;
@@ -166,6 +197,16 @@ select.dash-project, select.dash-since {
 .insight-severity-heading {
   font-weight: 600;
   margin-top: 4px;
+}
+/* 重大度の見出しの文字色はテーマの診断色(エディタの波線・問題パネルと同じ系統) */
+.insight-severity-critical {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+.insight-severity-warn {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+}
+.insight-severity-info {
+  color: var(--vscode-editorInfo-foreground, #3794ff);
 }
 .insight-severity-heading:first-child {
   margin-top: 0;
@@ -410,6 +451,20 @@ select.dash-project, select.dash-since {
 .dh-state-booted { color: var(--vscode-editorWarning-foreground, #cca700); }
 .dh-state-offline,
 .dh-state-unknown { color: var(--vscode-descriptionForeground); }
+/* マシンの健全性。色は補助(記号と文字を必ず出す)。警告は文字色+太字、状態は dh-state と同じトークン */
+.mh-group { text-align: center; }
+.mh-period-start { border-left: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35)); }
+.mh-fm { white-space: nowrap; }
+.mh-chip { margin-right: 8px; }
+.mh-fm-alive { color: var(--vscode-testing-iconPassed, var(--vscode-charts-green, #388a34)); }
+.mh-fm-dead { color: var(--vscode-errorForeground, #f14c4c); font-weight: bold; }
+.mh-fm-unknown { color: var(--vscode-descriptionForeground); }
+.mh-chip-compiling {
+  margin-left: 6px;
+  background-color: var(--vscode-charts-blue, #0078d4);
+  color: #ffffff;
+}
+td.mh-warn { color: var(--vscode-editorWarning-foreground, #cca700); font-weight: bold; }
 .dh-storage-carried-over { color: var(--vscode-descriptionForeground); }
 .dh-storage-measuring,
 .dh-storage-progress { color: var(--vscode-descriptionForeground); }
@@ -430,12 +485,35 @@ select.dash-project, select.dash-since {
   font-size: 10px;
   color: #ffffff;
 }
+/* 「すべて表示(N行)」を表の最終行から離す */
+#devices-toggle-all {
+  margin-top: 8px;
+}
 #table-device-health tr.dh-machine-start td {
   border-top: 2px solid var(--vscode-panel-border, var(--vscode-editorGroup-border));
 }
-.dh-toolbar {
+/* 見出し(#panel-dashboard h2 = 枠の左上に負 margin で貼り付く帯)と操作を1行に並べ、操作は見出しのすぐ右に左寄せ
+   (デバイスの健全性・直近の実行・シナリオ別サマリ)。h2 の右 margin は auto(monitor/style.css)のままだと操作が右端へ寄るので、
+   この行の中だけ固定値にする。操作の上下 margin は h2 と同じ値にして帯の高さで中央を揃える(h2 の margin を変えたらここも直す) */
+.dash-heading-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+#panel-dashboard .dash-heading-row > h2 {
+  margin-right: 16px;
+}
+/* 直近の実行は見出しの直後がボタン(すべて / パフォーマンス計測のみ)で、帯の斜めの切り口と近く見えるので広めに取る */
+#panel-dashboard #section-runs-table .dash-heading-row > h2 {
+  margin-right: calc(28px + 1em);
+}
+.dash-heading-tools {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 6px;
+  margin: -10px 0 10px;
 }
+/* 単独の行に置いていたときの余白は、見出しの行では gap が持つ */
+.dash-heading-tools .runs-filter { margin-bottom: 0; }
+.dash-heading-tools .runs-compare-hint { margin-left: 0; }
+.dash-heading-tools .summary-count { margin-left: 0; }

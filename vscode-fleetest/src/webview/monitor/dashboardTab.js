@@ -23,6 +23,7 @@ import { applyDeviceCatalog, renderDeviceHealth, resetStorageProgress } from '..
 import { renderRecentRuns } from '../dashboard/performance.js';
 import { showRunsCompare, showRunsCompareError, syncRunsSelectionProject } from '../dashboard/runsCompare.js';
 import { setMachineAliases } from '../dashboard/machineNames.js';
+import { renderMachineHealth } from '../dashboard/machineHealth.js';
 import { showRunDetailData, showRunDetailError } from '../dashboard/runDetail.js';
 import { showTrendData, showTrendError } from '../dashboard/trend.js';
 import {
@@ -52,11 +53,14 @@ let hasRenderedData = false;
 // (別のデータに対する応答)を捨てるための鍵。
 let expectedHeadlineDiffRunID = null;
 
+// 'empty'(期間内の run が0件)でも本文は出す: マシンの健全性・デバイスの健全性は集計期間に関わらず常に出し、
+// それ以外のセクションだけ .dash-no-runs で隠す(style.css)。#status-empty は本文の中(健全性の直後)にある
 function showState(state) {
   statusLoading.style.display = state === 'loading' ? 'block' : 'none';
   statusError.style.display = state === 'error' ? 'block' : 'none';
   statusEmpty.style.display = state === 'empty' ? 'block' : 'none';
-  content.style.display = state === 'data' ? 'block' : 'none';
+  content.style.display = state === 'data' || state === 'empty' ? 'block' : 'none';
+  content.classList.toggle('dash-no-runs', state === 'empty');
 }
 
 function setUpdating(active) {
@@ -115,13 +119,18 @@ function applyData(payload) {
   }
   generatedAtLabel.textContent = t('wvDashboard.main.generatedAt', { time: formatLocalDateTime(payload.generatedAt) });
 
+  // 各セクションの host 表示を machine へ読み替えるため、描画より先に対応表を差し替える
+  setMachineAliases(payload.machines || []);
   if (payload.runs.length === 0) {
     showState('empty');
+    // 健全性の2セクションだけ描く(他のセクションは隠れているので描かない。前回比の古い応答も捨てる)
+    expectedHeadlineDiffRunID = null;
+    renderMachineHealth(payload.machineHealth, payload);
+    renderDeviceHealth(payload.deviceHealth);
     return;
   }
   showState('data');
-  // 各セクションの host 表示を machine へ読み替えるため、描画より先に対応表を差し替える
-  setMachineAliases(payload.machines || []);
+  renderMachineHealth(payload.machineHealth, payload);
   // 直近の実行も実行(runGroup)単位に畳む(パフォーマンス一覧と同じ規則)
   const runGroups = groupRuns(payload.runs);
   const statsByRunID = new Map((payload.runStats || []).map((s) => [s.runID, s]));

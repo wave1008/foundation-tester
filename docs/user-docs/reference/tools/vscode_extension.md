@@ -151,13 +151,12 @@ compile it is parked under `scenarios/_disabled/` instead of being added to the 
 Command **"fleetest: Open Results Dashboard"** shows, in the device monitor's **Dashboard** tab, a summary of
 `fleetest api results` for the project. Sections, top to bottom:
 
-- **Latest run**: scenarios newly failing and scenarios recovered since the previous run of the same profile
-- **Recent runs**: click a row to open run detail; a failed step's file:line opens that line in the editor.
-  The "All / Performance runs only" toggle lists only runs made with `--performance`. Check 2 rows at the left edge to compare their per-scenario durations
-  (the earlier run is the baseline; only scenarios that passed in both are listed, largest slowdown first; a note appears
-  when the 2 runs differ in profile or machine)
-- **Notable issues** (insights): grouped by severity, collapsed when 4 or more of the same kind appear
-- **Flaky scenarios** and scenario history
+- **Machine health**: one row per Mac, showing the health of FM (Foundation Models, text and image) and
+  OCR / Vision. The "Current state" columns show FM alive / dead / unknown (marked with a symbol and text), the recent
+  Vision call and failure counts, whether the OCR model is compiling, and CPU / MEM load. The "Period" columns come from
+  run history: runs, runs with FM dead, FM call failures, skipped visibility checks, FM slot waits, OCR / Vision notes and
+  slowdowns caused by load (hover for breakdowns and reasons). Cells with failures or stops turn to a warning color.
+  Values the monitor cannot observe, or that the records do not carry, show as "–" rather than 0
 - **Device health**: one row per device, grouped by a Machine column. Shows the Device Monitor's current
   state (color-coded) and storage usage alongside counts from run history (excluded from run, requeued,
   pre-run exclude/repair, recovery operations, app crashes). Missing values show as "–". While
@@ -165,10 +164,17 @@ Command **"fleetest: Open Results Dashboard"** shows, in the device monitor's **
   Storage usage is never measured automatically —
   all running virtual devices are measured only when you click **Refresh storage** (physical devices are not
   measured). Values measured before the monitor started are shown in gray until remeasured
+- **Latest run**: scenarios newly failing and scenarios recovered since the previous run of the same profile
+- **Recent runs**: click a row to open run detail; a failed step's file:line opens that line in the editor.
+  The "All / Performance runs only" toggle lists only runs made with `--performance`. Check 2 rows at the left edge to compare their per-scenario durations
+  (the earlier run is the baseline; only scenarios that passed in both are listed, largest slowdown first; a note appears
+  when the 2 runs differ in profile or machine)
+- **Notable issues** (insights): grouped by severity, collapsed when 4 or more of the same kind appear
+- **Flaky scenarios** and scenario history
 - **Slow scenarios**
 - **Scenario summary**: filterable by scenario ID, a "failures only" checkbox, sortable by clicking column headers
 
-A toolbar control switches the aggregation period (last 7/30/90 days). Refreshing keeps the current view
+A toolbar control switches the aggregation period (last 5/10 minutes, 1/3/8/16 hours, or 1/2/3/7/30/90 days; the default is the last 16 hours, and the period you pick is remembered). Machine health and device health are always shown, even when the period has no runs. Refreshing keeps the current view
 visible while it re-fetches in the background.
 
 ## Rerunning Failures and Reports

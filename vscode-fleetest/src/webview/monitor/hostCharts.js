@@ -616,6 +616,40 @@ function hmCommitTick() {
     hmCommitRow(row);
   }
   hmDrawAllRows();
+  for (const listener of hmCommitListeners) {
+    listener();
+  }
+}
+
+// ダッシュボード「マシンの健全性」(dashboard/machineHealth.js)が読む読み取り専用の口。可変状態はこのモジュールに残す
+const hmCommitListeners = new Set();
+
+/** tick の描画が終わるたび(1Hz)に呼ぶ。戻り値は解除関数。 */
+export function onHostMetricsCommitted(listener) {
+  hmCommitListeners.add(listener);
+  return () => hmCommitListeners.delete(listener);
+}
+
+/** 機械ごとの最新サンプルの写し(machine '' = 手元)。stale = 最新サンプルが無い(途絶・未着)。
+ *  visionCalls/visionFailures は窓内が全て欠測なら null(0 と区別する)。windowTicks は窓の tick 数 = 秒数(1Hz)。 */
+export function hostMetricsMachines() {
+  return [...hmRows.entries()].map(([machine, row]) => {
+    const sample = row.latest;
+    const stats = hmWindowStats(row.vision.window);
+    const used = sample && typeof sample.memUsedBytes === 'number' ? sample.memUsedBytes : null;
+    const total = sample && typeof sample.memTotalBytes === 'number' ? sample.memTotalBytes : null;
+    return {
+      machine,
+      stale: sample === null,
+      cpu: sample && typeof sample.cpu === 'number' ? sample.cpu : null,
+      memRatio: used !== null && total !== null && total > 0 ? used / total : null,
+      liveness: { ...row.liveness },
+      visionCalls: stats ? stats.calls : null,
+      visionFailures: stats ? stats.failures : null,
+      windowTicks: row.vision.window.length,
+      ocrCompiling: row.vision.compiling.length > 0 && row.vision.compiling[row.vision.compiling.length - 1],
+    };
+  });
 }
 
 /** 容量付きの名札(CPU n / GPU n / MEM n)の系列と素の名前。行ごとに桁が変わるので幅を揃える対象 */

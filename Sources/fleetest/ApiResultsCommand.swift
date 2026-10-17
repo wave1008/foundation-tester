@@ -97,6 +97,7 @@ struct ApiResultsCommand: AsyncParsableCommand {
             flaky: RunResultsQuery.flakyScenarios(
                 records, minRuns: minRuns, recentRuns: RunResultsQuery.recentScenarioRunsWindow),
             deviceHealth: RunResultsQuery.deviceHealth(runs: runs, records: records),
+            machineHealth: RunResultsQuery.machineHealth(runs: runs, records: records),
             slow: RunResultsQuery.slowTests(records, limit: 10),
             insights: RunResultsQuery.insights(records: records, runs: runs,
                                                definedClasses: definedScenarioClasses(of: testProject)),
@@ -218,6 +219,7 @@ private struct ApiResultsBody: Encodable {
     let summary: [RunResultsQuery.ScenarioSummaryRow]
     let flaky: [RunResultsQuery.FlakyRow]
     let deviceHealth: [RunResultsQuery.DeviceHealthRow]
+    let machineHealth: [RunResultsQuery.MachineHealthRow]
     let slow: [RunResultsQuery.SlowTestRow]
     let insights: [RunResultsQuery.InsightRow]
     let performance: RunResultsQuery.PerformanceReport
@@ -228,7 +230,7 @@ private struct ApiResultsBody: Encodable {
     let runStats: [RunResultsQuery.RunStatsRow]
 
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, project, runs, summary, flaky, deviceHealth,
+        case schemaVersion, project, runs, summary, flaky, deviceHealth, machineHealth,
              slow, insights, performance, machines, runStats
     }
 
@@ -240,6 +242,7 @@ private struct ApiResultsBody: Encodable {
         try container.encode(summary, forKey: .summary)
         try container.encode(flaky, forKey: .flaky)
         try container.encode(deviceHealth, forKey: .deviceHealth)
+        try container.encode(machineHealth, forKey: .machineHealth)
         try container.encode(slow, forKey: .slow)
         try container.encode(insights, forKey: .insights)
         try container.encode(performance, forKey: .performance)

@@ -58,6 +58,7 @@ import {
 import { type MachineLock, bulkDownGate, streamFoldMachines } from "./machineLockModel";
 import { MonitorBridgeLogRotation } from "./monitorBridgeLogRotation";
 import { MonitorBridgeWatchdog } from "./monitorBridgeWatchdog";
+import { DASHBOARD_SINCE_STATE_KEY } from "./dashboardModel";
 import { MonitorDashboardController } from "./monitorDashboardController";
 import { MonitorDeviceOps } from "./monitorDeviceOps";
 import { MonitorDeviceStreamController } from "./monitorDeviceStreamController";
@@ -476,6 +477,10 @@ export class MonitorPanelController implements vscode.Disposable {
       post: (message) => this.post({ type: "dashboard", message }),
       isPanelActive: () => this.panel !== undefined,
       refreshStorage: (id) => this.processManager.writeMonitorControl({ cmd: "storageRefresh", id }),
+      sinceStore: {
+        get: () => this.workspaceState.get(DASHBOARD_SINCE_STATE_KEY),
+        set: (since) => void this.workspaceState.update(DASHBOARD_SINCE_STATE_KEY, since),
+      },
     });
     this.live = new LiveTabHost(
       {

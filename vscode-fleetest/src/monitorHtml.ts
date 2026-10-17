@@ -99,11 +99,24 @@ function renderDashboardPanel(): string {
   <div id="dash-toolbar" class="dash-toolbar">
     <span class="dash-title">${t("exploreHeal.dashboard.title")}</span>
     <select id="dash-project-select" class="dash-project" title="${t("exploreHeal.dashboard.projectSelectTitle")}"></select>
-    <select id="dash-since-select" class="dash-since" title="${t("exploreHeal.dashboard.sinceSelectTitle")}">
+    <!-- 集計期間は表の中身を丸ごと決めるので、選択欄に色を付けて目立たせる(style.css の .dash-since-field) -->
+    <label class="dash-since-field" title="${t("exploreHeal.dashboard.sinceSelectTitle")}">
+    <span class="dash-since-label">${t("exploreHeal.dashboard.sinceLabel")}</span>
+    <select id="dash-since-select" class="dash-since">
+      <option value="5m">${t("exploreHeal.dashboard.sinceOption5m")}</option>
+      <option value="10m">${t("exploreHeal.dashboard.sinceOption10m")}</option>
+      <option value="1h">${t("exploreHeal.dashboard.sinceOption1h")}</option>
+      <option value="3h">${t("exploreHeal.dashboard.sinceOption3h")}</option>
+      <option value="8h">${t("exploreHeal.dashboard.sinceOption8h")}</option>
+      <option value="16h" selected>${t("exploreHeal.dashboard.sinceOption16h")}</option>
+      <option value="1d">${t("exploreHeal.dashboard.sinceOption1d")}</option>
+      <option value="2d">${t("exploreHeal.dashboard.sinceOption2d")}</option>
+      <option value="3d">${t("exploreHeal.dashboard.sinceOption3d")}</option>
       <option value="7d">${t("exploreHeal.dashboard.sinceOption7d")}</option>
       <option value="30d">${t("exploreHeal.dashboard.sinceOption30d")}</option>
       <option value="90d">${t("exploreHeal.dashboard.sinceOption90d")}</option>
     </select>
+    </label>
     <button id="btn-refresh" type="button">${t("exploreHeal.dashboard.refreshButton")}</button>
     <span id="dash-updating" class="dash-updating" style="display: none;">${t("exploreHeal.dashboard.updating")}</span>
     <span id="dash-generated-at" class="dash-generated-at"></span>
@@ -113,9 +126,75 @@ function renderDashboardPanel(): string {
 
   <div id="status-loading" class="status-message" style="display: none;">${t("exploreHeal.dashboard.loading")}</div>
   <div id="status-error" class="status-message status-error" style="display: none;"></div>
-  <div id="status-empty" class="status-message" style="display: none;">${t("exploreHeal.dashboard.empty")}</div>
 
   <div id="content" class="content" style="display: none;">
+    <section id="section-machines" class="dash-section">
+      <h2>${t("exploreHeal.dashboard.headingMachines")}</h2>
+      <div class="dash-table-scroll">
+      <table id="table-machine-health" class="dash-table">
+        <thead>
+          <tr>
+            <th rowspan="2">${t("exploreHeal.dashboard.colMachine")}</th>
+            <th colspan="3" class="mh-group">${t("exploreHeal.dashboard.colGroupMachineNow")}</th>
+            <th colspan="8" id="mh-period-header" class="mh-group mh-period-start">${t("exploreHeal.dashboard.colGroupMachinePeriod")}</th>
+          </tr>
+          <tr>
+            <th title="${t("exploreHeal.dashboard.colMhFmTitle")}">${t("exploreHeal.dashboard.colMhFm")}</th>
+            <th title="${t("exploreHeal.dashboard.colMhVisionTitle")}">${t("exploreHeal.dashboard.colMhVision")}</th>
+            <th>${t("exploreHeal.dashboard.colMhLoad")}</th>
+            <th class="num mh-period-start" title="${t("exploreHeal.dashboard.colMhRunsTitle")}">${t("exploreHeal.dashboard.colMhRuns")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colMhFmDeadTitle")}">${t("exploreHeal.dashboard.colMhFmDead")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colMhFmFailTitle")}">${t("exploreHeal.dashboard.colMhFmFail")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colMhGuardTitle")}">${t("exploreHeal.dashboard.colMhGuard")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colMhGateTitle")}">${t("exploreHeal.dashboard.colMhGate")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colMhOcrNotesTitle")}">${t("exploreHeal.dashboard.colMhOcrNotes")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colMhVisionNotesTitle")}">${t("exploreHeal.dashboard.colMhVisionNotes")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colMhPacedTitle")}">${t("exploreHeal.dashboard.colMhPaced")}</th>
+          </tr>
+        </thead>
+        <tbody id="table-machine-health-body"></tbody>
+      </table>
+      </div>
+      <div id="machines-empty" class="section-empty" style="display: none;">${t("exploreHeal.dashboard.machinesEmpty")}</div>
+    </section>
+
+    <section id="section-devices" class="dash-section">
+      <!-- 見出しと同じ行に操作を左寄せで置く(.dash-heading-row) -->
+      <div class="dash-heading-row">
+      <h2>${t("exploreHeal.dashboard.headingDevices")}</h2>
+      <!-- 見た目はデバイスモニターの「ライブ更新」と同じ(.header-toggle + .toggle-switch)。絞り込みは deviceHealth.js -->
+      <div class="dash-heading-tools">
+        <label class="profile-label header-toggle" title="${t("exploreHeal.dashboard.deviceHealthActiveOnlyTitle")}"><input type="checkbox" class="toggle-switch" role="switch" id="chk-device-health-active-only" checked>${t("exploreHeal.dashboard.deviceHealthActiveOnly")}</label>
+        <button id="btn-device-health-refresh-storage" type="button" title="${t("exploreHeal.dashboard.refreshStorageTitle")}">${t("exploreHeal.dashboard.refreshStorage")}</button>
+        <span id="dh-storage-progress" class="dh-storage-progress" aria-live="polite"></span>
+      </div>
+      </div>
+      <div class="dash-table-scroll">
+      <table id="table-device-health" class="dash-table">
+        <thead>
+          <tr>
+            <th>${t("exploreHeal.dashboard.colMachine")}</th>
+            <th>${t("exploreHeal.dashboard.colDevice")}</th>
+            <th>${t("exploreHeal.dashboard.colDeviceState")}</th>
+            <th>${t("exploreHeal.dashboard.colStorage")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colRemovedTitle")}">${t("exploreHeal.dashboard.colRemoved")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colRequeuedTitle")}">${t("exploreHeal.dashboard.colRequeued")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colPreRunTitle")}">${t("exploreHeal.dashboard.colPreRun")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colRecoveredTitle")}">${t("exploreHeal.dashboard.colRecovered")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colAppCrashesTitle")}">${t("exploreHeal.dashboard.colAppCrashes")}</th>
+            <th title="${t("exploreHeal.dashboard.colLastEventTitle")}">${t("exploreHeal.dashboard.colLastEvent")}</th>
+          </tr>
+        </thead>
+        <tbody id="table-device-health-body"></tbody>
+      </table>
+      </div>
+      <button id="devices-toggle-all" type="button" style="display: none;"></button>
+      <div id="devices-empty" class="section-empty" style="display: none;">${t("exploreHeal.dashboard.devicesEmpty")}</div>
+    </section>
+
+    <!-- run が0件のときの文言。健全性の2セクション(期間に関わらず常に出す)の直後に置く(dashboardTab.js の showState) -->
+    <div id="status-empty" class="status-message" style="display: none;">${t("exploreHeal.dashboard.empty")}</div>
+
     <section id="section-headline" class="dash-section">
       <h2>${t("exploreHeal.dashboard.headingLatestRun")}</h2>
       <div id="headline-latest" class="headline-latest"></div>
@@ -123,30 +202,39 @@ function renderDashboardPanel(): string {
     </section>
 
     <section id="section-runs-table" class="dash-section">
+      <!-- 見出しと同じ行に操作を左寄せで置く(.dash-heading-row) -->
+      <div class="dash-heading-row">
       <h2>${t("exploreHeal.dashboard.headingRecentRuns")}</h2>
-      <div id="runs-filter" class="runs-filter" role="group">
-        <button type="button" data-filter="all" aria-pressed="true">${t("exploreHeal.dashboard.runsFilterAll")}</button>
-        <button type="button" data-filter="performance" aria-pressed="false">${t("exploreHeal.dashboard.runsFilterPerformance")}</button>
+      <div class="dash-heading-tools">
+        <div id="runs-filter" class="runs-filter" role="group">
+          <button type="button" data-filter="all" aria-pressed="true">${t("exploreHeal.dashboard.runsFilterAll")}</button>
+          <button type="button" data-filter="performance" aria-pressed="false">${t("exploreHeal.dashboard.runsFilterPerformance")}</button>
+        </div>
+        <span class="runs-compare-hint">${t("exploreHeal.dashboard.runsCompareHint")}</span>
       </div>
-      <span class="runs-compare-hint">${t("exploreHeal.dashboard.runsCompareHint")}</span>
+      </div>
       <div id="perf-summary"></div>
+      <div class="dash-table-scroll">
       <table id="table-runs" class="dash-table">
         <thead>
           <tr><th class="select-col"></th><th>${t("exploreHeal.dashboard.colDateTime")}</th><th>${t("exploreHeal.dashboard.colMachine")}</th><th>${t("exploreHeal.dashboard.colProfile")}</th><th>${t("exploreHeal.dashboard.colPassedFailed")}</th><th class="num">${t("exploreHeal.dashboard.colWallClock")}</th><th class="num">${t("exploreHeal.dashboard.colTestTime")}</th><th class="num">${t("exploreHeal.dashboard.colScenarioTotal")}</th><th class="num">${t("exploreHeal.dashboard.colLaneCount")}</th><th class="num">${t("exploreHeal.dashboard.colLaneUtilisation")}</th><th class="num">${t("exploreHeal.dashboard.colMaxScenario")}</th><th class="num">${t("exploreHeal.dashboard.colRuns")}</th></tr>
         </thead>
         <tbody id="table-runs-body"></tbody>
       </table>
+      </div>
       <div id="perf-empty" class="section-empty" style="display: none;">${t("exploreHeal.dashboard.perfEmpty")}</div>
       <div id="runs-compare" class="runs-compare" style="display: none;">
         <h3 id="runs-compare-heading"></h3>
         <div id="runs-compare-note" class="perf-summary-note" style="display: none;"></div>
         <div id="runs-compare-status" class="section-empty" style="display: none;"></div>
+        <div class="dash-table-scroll">
         <table id="table-runs-compare" class="dash-table" style="display: none;">
           <thead>
             <tr><th>${t("exploreHeal.dashboard.colScenario")}</th><th>${t("exploreHeal.dashboard.colPlatform")}</th><th class="num">${t("exploreHeal.dashboard.colPrevious")}</th><th class="num">${t("exploreHeal.dashboard.colLatest")}</th><th class="num">Δ%</th></tr>
           </thead>
           <tbody id="table-runs-compare-body"></tbody>
         </table>
+        </div>
       </div>
     </section>
 
@@ -166,7 +254,7 @@ function renderDashboardPanel(): string {
       <h2>${t("exploreHeal.dashboard.headingFlaky")}</h2>
       <table id="table-flaky" class="dash-table">
         <thead>
-          <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th>${t("exploreHeal.dashboard.colRecentResults")}</th></tr>
+          <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th class="mid">${t("exploreHeal.dashboard.colLatestResult")}</th><th>${t("exploreHeal.dashboard.colResultHistory")}</th></tr>
         </thead>
         <tbody id="table-flaky-body"></tbody>
       </table>
@@ -179,52 +267,28 @@ function renderDashboardPanel(): string {
       <div id="trend-body"></div>
     </section>
 
-    <section id="section-devices" class="dash-section">
-      <h2>${t("exploreHeal.dashboard.headingDevices")}</h2>
-      <!-- 見た目はデバイスモニターの「ライブ更新」と同じ(.header-toggle + .toggle-switch)。絞り込みは deviceHealth.js -->
-      <div class="dh-toolbar">
-        <label class="profile-label header-toggle" title="${t("exploreHeal.dashboard.deviceHealthActiveOnlyTitle")}"><input type="checkbox" class="toggle-switch" role="switch" id="chk-device-health-active-only" checked>${t("exploreHeal.dashboard.deviceHealthActiveOnly")}</label>
-        <button id="btn-device-health-refresh-storage" type="button" title="${t("exploreHeal.dashboard.refreshStorageTitle")}">${t("exploreHeal.dashboard.refreshStorage")}</button>
-        <span id="dh-storage-progress" class="dh-storage-progress" aria-live="polite"></span>
-      </div>
-      <table id="table-device-health" class="dash-table">
-        <thead>
-          <tr>
-            <th>${t("exploreHeal.dashboard.colMachine")}</th>
-            <th>${t("exploreHeal.dashboard.colDevice")}</th>
-            <th>${t("exploreHeal.dashboard.colDeviceState")}</th>
-            <th>${t("exploreHeal.dashboard.colStorage")}</th>
-            <th class="num" title="${t("exploreHeal.dashboard.colRemovedTitle")}">${t("exploreHeal.dashboard.colRemoved")}</th>
-            <th class="num" title="${t("exploreHeal.dashboard.colRequeuedTitle")}">${t("exploreHeal.dashboard.colRequeued")}</th>
-            <th class="num" title="${t("exploreHeal.dashboard.colPreRunTitle")}">${t("exploreHeal.dashboard.colPreRun")}</th>
-            <th class="num" title="${t("exploreHeal.dashboard.colRecoveredTitle")}">${t("exploreHeal.dashboard.colRecovered")}</th>
-            <th class="num" title="${t("exploreHeal.dashboard.colAppCrashesTitle")}">${t("exploreHeal.dashboard.colAppCrashes")}</th>
-            <th title="${t("exploreHeal.dashboard.colLastEventTitle")}">${t("exploreHeal.dashboard.colLastEvent")}</th>
-          </tr>
-        </thead>
-        <tbody id="table-device-health-body"></tbody>
-      </table>
-      <button id="devices-toggle-all" type="button" style="display: none;"></button>
-      <div id="devices-empty" class="section-empty" style="display: none;">${t("exploreHeal.dashboard.devicesEmpty")}</div>
-    </section>
-
     <section id="section-slow" class="dash-section">
       <h2>${t("exploreHeal.dashboard.headingSlow")}</h2>
+      <div class="dash-table-scroll">
       <table id="table-slow" class="dash-table">
         <thead>
           <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th>${t("exploreHeal.dashboard.colPlatform")}</th><th class="num">${t("exploreHeal.dashboard.colRuns")}</th><th class="num">${t("exploreHeal.dashboard.colAverage")}</th><th class="num">p90</th><th class="num">${t("exploreHeal.dashboard.colRegressionRate")}</th><th>${t("exploreHeal.dashboard.colSlowestScene")}</th></tr>
         </thead>
         <tbody id="table-slow-body"></tbody>
       </table>
+      </div>
       <div id="slow-empty" class="section-empty" style="display: none;">${t("exploreHeal.dashboard.slowEmpty")}</div>
     </section>
 
     <section id="section-summary" class="dash-section">
+      <!-- 見出しと同じ行に操作を左寄せで置く(.dash-heading-row) -->
+      <div class="dash-heading-row">
       <h2>${t("exploreHeal.dashboard.headingSummary")}</h2>
-      <div id="summary-toolbar" class="summary-toolbar">
+      <div id="summary-toolbar" class="summary-toolbar dash-heading-tools">
         <input type="text" id="summary-filter" class="summary-filter" placeholder="${t("exploreHeal.dashboard.summaryFilterPlaceholder")}">
         <label class="summary-failures-only-label"><input type="checkbox" id="summary-failures-only">${t("exploreHeal.dashboard.summaryFailuresOnlyLabel")}</label>
         <span id="summary-count" class="summary-count"></span>
+      </div>
       </div>
       <table id="table-summary" class="dash-table">
         <thead>

@@ -52,7 +52,9 @@ function insightLine(insight) {
 
 function severityHeadingItem(severity) {
   const li = document.createElement('li');
-  li.className = 'insight-severity-heading';
+  // 文字色は重大度ごと(style.css の .insight-severity-<severity>)。未知の重大度は info と同じ扱い(severityLabel と揃える)
+  const known = severity === 'critical' || severity === 'warn' ? severity : 'info';
+  li.className = 'insight-severity-heading insight-severity-' + known;
   li.textContent = severityLabel(severity);
   return li;
 }

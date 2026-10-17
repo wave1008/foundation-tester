@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isApiResultsComparePayload, isApiResultsPayload, isApiResultsRunPayload, isDashboardFromWebviewMessage, isSinceOption } from "../src/dashboardModel";
+import { isApiResultsComparePayload, isApiResultsPayload, isApiResultsRunPayload, initialSince, isDashboardFromWebviewMessage, isSinceOption } from "../src/dashboardModel";
 
 function validPayload(overrides = {}) {
   return {
@@ -47,6 +47,15 @@ function validPayload(overrides = {}) {
         recoveredByKind: { runnerRestart: 1 },
         appCrashes: 0,
         lastEventAt: "2026-07-16T00:00:00Z",
+      },
+    ],
+    machineHealth: [
+      {
+        host: "M2Ultra", runs: 3, lastRunAt: "2026-07-16T00:00:00Z", fmDeadRuns: 1,
+        lastFMDead: { at: "2026-07-16T00:00:00Z", paths: ["text"], reason: "x" },
+        guarded: 4, guardSkipped: 1, guardStaleFrame: 0,
+        fm: { scenarios: 2, calls: 10, failures: 1, retries: 0, retrySuccesses: 0, skipped: 0, totalMs: 100, maxMs: 50, gateWaitTotalMs: 5, gateWaitMaxMs: 3, lastError: { at: "2026-07-16T00:00:00Z", scenarioID: "A", message: "m" } },
+        notes: { ocrBudgetExhausted: 2 }, pacedSteps: 1, pacedMs: 200,
       },
     ],
     // CLI(ApiResultsBody)が必ず送る欄
@@ -229,6 +238,23 @@ test("isApiResultsPayload: deviceHealth が欠落していれば false", () => {
   assert.equal(isApiResultsPayload(payload), false);
 });
 
+test("isApiResultsPayload: machineHealth が欠落していれば false", () => {
+  const payload = validPayload();
+  delete payload.machineHealth;
+  assert.equal(isApiResultsPayload(payload), false);
+});
+
+test("isApiResultsPayload: machineHealth[] の必須欄(notes)欠落・fm の数値欠落は false、nil 欄の省略は true", () => {
+  const noNotes = validPayload();
+  delete noNotes.machineHealth[0].notes;
+  assert.equal(isApiResultsPayload(noNotes), false);
+  const badFm = validPayload();
+  delete badFm.machineHealth[0].fm.calls;
+  assert.equal(isApiResultsPayload(badFm), false);
+  const minimal = validPayload({ machineHealth: [{ host: "H", runs: 0, fmDeadRuns: 0, notes: {} }] });
+  assert.equal(isApiResultsPayload(minimal), true);
+});
+
 test("isApiResultsPayload: deviceHealth が配列でなければ false", () => {
   const payload = validPayload({ deviceHealth: "not-an-array" });
   assert.equal(isApiResultsPayload(payload), false);
@@ -352,20 +378,21 @@ test("isDashboardFromWebviewMessage: headlineDiff は配列でない・要素が
 
 // ---- setSince -------------------------------------------------------------------
 
-test("isSinceOption: 7d/30d/90d のみ true", () => {
-  assert.equal(isSinceOption("7d"), true);
-  assert.equal(isSinceOption("30d"), true);
-  assert.equal(isSinceOption("90d"), true);
-  assert.equal(isSinceOption("1d"), false);
+test("isSinceOption: 5m/10m/1h/3h/8h/16h/1d/2d/3d/7d/30d/90d のみ true", () => {
+  for (const since of ["5m", "10m", "1h", "3h", "8h", "16h", "1d", "2d", "3d", "7d", "30d", "90d"]) {
+    assert.equal(isSinceOption(since), true, since);
+  }
+  assert.equal(isSinceOption("14d"), false);
+  assert.equal(isSinceOption("5"), false);
   assert.equal(isSinceOption(90), false);
   assert.equal(isSinceOption(undefined), false);
 });
 
-test("isDashboardFromWebviewMessage: setSince は since が 7d/30d/90d のときのみ true", () => {
-  assert.equal(isDashboardFromWebviewMessage({ type: "setSince", since: "7d" }), true);
-  assert.equal(isDashboardFromWebviewMessage({ type: "setSince", since: "30d" }), true);
+test("isDashboardFromWebviewMessage: setSince は since が許可リストのときのみ true", () => {
+  assert.equal(isDashboardFromWebviewMessage({ type: "setSince", since: "5m" }), true);
+  assert.equal(isDashboardFromWebviewMessage({ type: "setSince", since: "1d" }), true);
   assert.equal(isDashboardFromWebviewMessage({ type: "setSince", since: "90d" }), true);
-  assert.equal(isDashboardFromWebviewMessage({ type: "setSince", since: "1d" }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "setSince", since: "14d" }), false);
   assert.equal(isDashboardFromWebviewMessage({ type: "setSince", since: 90 }), false);
   assert.equal(isDashboardFromWebviewMessage({ type: "setSince" }), false);
 });
@@ -635,4 +662,12 @@ test("isApiResultsComparePayload: results-compare の出力を受理し、欄の
   assert.equal(isApiResultsComparePayload({ ...valid, comparison: undefined }), false);
   assert.equal(isApiResultsComparePayload({ ...valid, latestRunIDs: undefined }), false);
   assert.equal(isApiResultsComparePayload({ ...valid, comparison: [{ ...valid.comparison[0], deltaPct: "100" }] }), false);
+});
+
+test("initialSince: 記憶した集計期間を使い、無い・選択肢に無い値なら直近16時間", () => {
+  assert.equal(initialSince("3h"), "3h");
+  assert.equal(initialSince("90d"), "90d");
+  assert.equal(initialSince(undefined), "16h");
+  assert.equal(initialSince("14d"), "16h");
+  assert.equal(initialSince(7), "16h");
 });
