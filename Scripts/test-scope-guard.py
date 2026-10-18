@@ -24,17 +24,32 @@ CLASS = re.compile(r"^\s*(?:final\s+)?(?:public\s+)?class\s+(\w+)\s*:\s*([\w.]+)
 NEW_TEST = re.compile(r"^\+\s*(?:@MainActor\s+)?(?:func|public func)\s+test\w*\s*\(", re.M)
 
 
-def test_classes():
-    """{クラス名: ファイル}。XCTestCase の子孫(名前が …Tests / …TestCase の基底も含む)"""
+def repo_root_for(path):
+    """path を含む git 作業ツリーの最上位。**ROOT と同じリポジトリの作業ツリー(git worktree)だけ**を返し、それ以外は None
+    (別のリポジトリの Tests でクラス名を集めると、名前を揃えるだけで検査を外せる)"""
+    def git(where, *args):
+        r = subprocess.run(["git", "-C", where, *args], capture_output=True, text=True)
+        return r.stdout.strip() if r.returncode == 0 else None
+    top = git(path, "rev-parse", "--show-toplevel")
+    common = git(path, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    mine = git(ROOT, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    if not top or not common or not mine or os.path.realpath(common) != os.path.realpath(mine):
+        return None
+    return top
+
+
+def test_classes(root=ROOT):
+    """{クラス名: ファイル}。XCTestCase の子孫(名前が …Tests / …TestCase の基底も含む)。
+    root は swift test を撃つ作業ツリー(別の git worktree で足したテストクラスは本線の Tests に無い)"""
     found = {}
-    for path in glob.glob(os.path.join(ROOT, "Tests", "**", "*.swift"), recursive=True):
+    for path in glob.glob(os.path.join(root, "Tests", "**", "*.swift"), recursive=True):
         try:
             text = open(path, encoding="utf-8", errors="replace").read()
         except OSError:
             continue
         for name, base in CLASS.findall(text):
             if base.endswith("XCTestCase") or base.endswith("TestCase") or name.endswith("Tests"):
-                found[name] = os.path.relpath(path, ROOT)
+                found[name] = os.path.relpath(path, root)
     return found
 
 
@@ -82,15 +97,15 @@ def option_value(tokens, name):
     return None
 
 
-def new_tests_in(files):
-    """未コミットの差分(追跡済み + 未追跡)で、その files に新しく足したテスト関数の数"""
+def new_tests_in(files, root=ROOT):
+    """未コミットの差分(追跡済み + 未追跡)で、その files に新しく足したテスト関数の数。root = 変異を撃つ作業ツリー"""
     count = 0
     for f in files:
-        full = os.path.join(ROOT, f)
-        tracked = subprocess.run(["git", "-C", ROOT, "ls-files", "--error-unmatch", f],
+        full = os.path.join(root, f)
+        tracked = subprocess.run(["git", "-C", root, "ls-files", "--error-unmatch", f],
                                  capture_output=True).returncode == 0
         if tracked:
-            diff = subprocess.run(["git", "-C", ROOT, "diff", "HEAD", "-U0", "--", f],
+            diff = subprocess.run(["git", "-C", root, "diff", "HEAD", "-U0", "--", f],
                                   capture_output=True, text=True).stdout
         else:
             try:
@@ -101,7 +116,7 @@ def new_tests_in(files):
     return count
 
 
-def mutation_problems(json_path, classes):
+def mutation_problems(json_path, classes, root=ROOT):
     # **読めなければ断る**(通さない)。フックはシェルを通る前の文字列を見るので、`$S/mut.json` のような変数のパスは
     # 開けない —— 「読めなければ判定しない」にしていた間、変数で書いた変異テストは1度も検査されなかった(2026-10-11)
     if "$" in json_path:
@@ -123,7 +138,7 @@ def mutation_problems(json_path, classes):
         groups.setdefault(key, []).append(m.get("label"))
     for key, labels in groups.items():
         files = sorted({classes[c] for c in key})
-        allowed = max(new_tests_in(files), 1)
+        allowed = max(new_tests_in(files, root), 1)
         if len(labels) > allowed:
             problems.append(
                 f"filter {'|'.join(sorted(key))} に向けた変異が {len(labels)} 件ある({labels})が、そのテストファイルで"
@@ -274,22 +289,35 @@ def device_run_problems(words, env, full_ok, depth):
     return reasons
 
 
-def check(command, env=None, full_ok=None, depth=0):
-    """断る理由の一覧(空 = 通す)"""
+def check(command, env=None, full_ok=None, depth=0, cwd=None):
+    """断る理由の一覧(空 = 通す)。cwd = コマンドを撃つ場所(フックの入力の cwd)。`cd <dir>` を追ってテストクラスを集める作業ツリーを決める"""
     outer = strip_heredocs(command)
     segs = segments(outer)
     if segs is None:
         return []
     full_ok = full_ok or "FT_FULL_TEST=1" in outer
     env = {**(env or {}), **assignments(outer)}
-    classes = None
+    cwd = cwd or os.getcwd()
+    class_cache = {}
+
+    def root_here():
+        return (repo_root_for(cwd) if os.path.isdir(cwd) else None) or ROOT
+
+    def classes_here():
+        root = root_here()
+        if root not in class_cache:
+            class_cache[root] = test_classes(root)
+        return class_cache[root]
+
     reasons = []
     for tokens in segs:
         words = [t for t in tokens if not re.match(r"^\w+=", t)]  # 先頭の VAR=value を飛ばす
+        if len(words) >= 2 and words[0] == "cd":
+            cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(expand(words[1], env))))
         # **`bash -c '<コマンド>'` の中も検査する**(引用の中は1つの語に見えるので、そのままだと素通りする)
         for i, tok in enumerate(words[:-1]):
             if os.path.basename(tok) in SHELLS and words[i + 1] == "-c" and i + 2 < len(words):
-                reasons.extend(check(words[i + 2], env, full_ok, depth))  # 中身は打ったコマンドそのもの = 同じ深さ
+                reasons.extend(check(words[i + 2], env, full_ok, depth, cwd))  # 中身は打ったコマンドそのもの = 同じ深さ
         reasons.extend(device_run_problems(words, env, full_ok, depth))
         if len(words) >= 2 and os.path.basename(words[0]) == "swift" and words[1] == "test":
             if "--help" in words or "-h" in words:
@@ -301,8 +329,7 @@ def check(command, env=None, full_ok=None, depth=0):
                                    "変更が通るテストクラスを --filter '<Class>|<Class>' で名指しする"
                                    "(ユーザーが全体テストを頼んだときだけ FT_FULL_TEST=1 を書く)")
             else:
-                classes = classes if classes is not None else test_classes()
-                bad = filter_problems(value, classes)
+                bad = filter_problems(value, classes_here())
                 if bad:
                     reasons.append(f"--filter の語がテストクラスの正確な名前でない: {bad}。部分一致の語は無関係なクラスまで拾う"
                                    "—— クラス名(または Class/testMethod)を正確に書く")
@@ -316,8 +343,7 @@ def check(command, env=None, full_ok=None, depth=0):
                            "(ユーザーが全体テストを頼んだときだけ FT_FULL_TEST=1 を書く)")
         for i, tok in enumerate(words):
             if os.path.basename(tok) == "mutation-check.sh" and i + 1 < len(words) and words[i + 1] != "--purge":
-                classes = classes if classes is not None else test_classes()
-                reasons.extend(mutation_problems(words[i + 1], classes))
+                reasons.extend(mutation_problems(words[i + 1], classes_here(), root_here()))
     if depth < MAX_DEPTH:
         for body in heredoc_scripts(command):
             reasons.extend(script_text_problems(body, env, full_ok, depth + 1))
@@ -332,7 +358,7 @@ if __name__ == "__main__":
         print(__doc__ or "usage: test-scope-guard.py --hook | --check '<command>'")
         sys.exit(0)
     data = json.load(sys.stdin)
-    reasons = check((data.get("tool_input") or {}).get("command", ""))
+    reasons = check((data.get("tool_input") or {}).get("command", ""), cwd=data.get("cwd"))
     if reasons:
         print(json.dumps({"hookSpecificOutput": {
             "hookEventName": "PreToolUse",
