@@ -4,14 +4,23 @@
 
 ## Supported environment
 
+### What you prepare and install
+
 | Target | Requirement |
 |---|---|
-| Common | A Mac with Apple silicon, macOS 26+ (Intel Macs are not supported) |
-| If you test iOS | Xcode 26+, iOS Simulator, [xcodegen](https://github.com/yonaskolb/XcodeGen) |
-| If you test Android | Android SDK (adb), Emulator or physical device |
-| If your app needs a server, DB or stub | Apple Container (the `container` command on macOS; Docker also works) |
-| Installing the VSCode extension | VSCode, Node.js v24 or newer, npm v11 or newer (to build and install the extension) |
+| Machine and OS | A Mac with Apple silicon, macOS 26+ |
+| Xcode | Xcode 26+ (<https://apps.apple.com/app/xcode/id497799835>) |
+| Homebrew | Homebrew (<https://brew.sh/>) |
+| VSCode | VSCode (<https://code.visualstudio.com/docs/setup/mac>) |
+| Android SDK | Android SDK (adb, Command-line Tools) (<https://developer.android.com/studio/install>) |
 
+### What is installed automatically
+
+- xcodegen
+- Node.js
+- VSCode extension (fleetest mobile)
+- iOS Simulator runtime and Simulator
+- Android system image and Emulator
 
 ## UI frameworks verified to work
 
@@ -24,32 +33,14 @@
 | View/XML | Android |
 
 
-## Features that use Foundation Models (optional)
+## Features that use Foundation Models (macOS 27+)
 
-On an Apple silicon Mac with macOS 27+, enabling Apple Intelligence lets your tests use the features that rely on Foundation Models (FM).
-To enable it, on macOS 27, turn Siri on in System Settings → Siri (Siri uses Apple Intelligence); on macOS 26, turn on "Apple Intelligence" in System Settings → Apple Intelligence & Siri.
-
-- **`screenLooksLike`**
-  - Visual verification of the screen against a natural-language description.
-- **Text visibility check**
-  - Visually checks whether a text is actually displayed and not hidden behind something else, which makes test verdicts more accurate.
-
-All processing for these features is on-device; screen data from your app never leaves your Mac through them (the screen contents sent to your AI assistant when you create tests are a separate matter).
-Apple's cloud, Private Cloud Compute (PCC), is never used.
-
-Some interrupted FM image requests are retried once when enough time remains within the original 20-second deadline.
-Result JSON records the extra attempts in `fm.retries` and recovered answers in `fm.retrySuccesses`.
-Refusals and health checks are never retried.
-
-For a selected host and set of runs, the retry recovery rate is the sum of `fm.retrySuccesses` divided by the sum of
-`fm.retries`, multiplied by 100. With no retries, report it as unmeasured. Requests that were not retried and attempts
-whose server response was not received are excluded. This measures whether FM returned a valid answer, including a
-negative `screenLooksLike` verdict; it does not measure test pass rate or recovery of ANE address space.
+On macOS 27+, enabling Apple Intelligence lets your tests use the features that rely on Foundation Models (FM).
+To enable it, turn Siri on in System Settings → Siri.
 
 ### Limitations
 
 - **Experimental.**
-- FM features are not available on macOS 26.
 - When FM is unavailable, `screenLooksLike` is **skipped**, not failed.
 
 Next: [Quick start](../quick-start.md)

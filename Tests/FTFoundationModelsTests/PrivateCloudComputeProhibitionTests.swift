@@ -4,7 +4,7 @@
 //   SystemLanguageModel                 … オンデバイス。本ツールが使う唯一のモデル
 //   PrivateCloudComputeLanguageModel    … Apple のクラウドで動く別バリアント(32K ctx)
 // 後者を使うとアプリの画面情報が Mac の外へ出る。受け手向けドキュメント
-// (docs/user-docs/overview/environments.md / about.md と各 _ja)が「画面情報は Mac の外に
+// (docs/user-docs/overview/about.md と about_ja.md)が「画面情報は Mac の外に
 // 出ない」と断定しているので、これは表現ではなく**守るべき不変条件**。
 //
 // **この走査が門として完全な理由**: PCC のセッションは `PrivateCloudComputeLanguageModel` を

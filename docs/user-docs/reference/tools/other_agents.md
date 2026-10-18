@@ -47,9 +47,9 @@ Prerequisites are covered in [Quick start](../../quick-start.md), updating in
 
 ## 2. Register the MCP server
 
-The easiest way is to ask your AI assistant to "**register the MCP server**". The assistant
-registers it with its own CLI (for Codex, the command below; registering the same name again
-overwrites it and keeps your other servers). Afterwards, restart the assistant and open a new
+During the setup, the AI assistant asks whether to register the MCP server. If you answer yes, it
+registers it with its own CLI. If you declined then, ask it to "**register the MCP server**" later and it registers it the same way.
+For Codex, it uses the command below (registering the same name again overwrites it and keeps your other servers). Afterwards, restart the assistant and open a new
 session in your test folder.
 
 ```bash

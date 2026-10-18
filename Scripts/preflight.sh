@@ -394,7 +394,13 @@ kv folder_name "$(basename "$WORK_DIR" | tr -cd 'A-Za-z0-9_-')"
 check_core_toolchain
 # 以下は install.sh が自動導入・スキップできるので blocked にはしない
 check_xcodegen || missing+=("xcodegen (install.sh installs it via brew)")
-command -v npm >/dev/null 2>&1 && kv npm yes || { kv npm no; missing+=("npm (needed to build the VSCode extension)"); }
+# 拡張のビルドに使う固定版の Node.js(install.sh の NODE_MAJOR と同じ値。片方だけ変えない)
+PREFLIGHT_NODE_FORMULA="node@26"
+if command -v brew >/dev/null 2>&1 && "$(brew --prefix "$PREFLIGHT_NODE_FORMULA" 2>/dev/null)/bin/node" -v 2>/dev/null | grep -q '^v26\.'; then
+  kv node yes
+else
+  kv node no; missing+=("$PREFLIGHT_NODE_FORMULA (install.sh installs it via brew)")
+fi
 check_adb
 check_container_runtime
 command -v claude >/dev/null 2>&1 && kv claude_cli yes || kv claude_cli no

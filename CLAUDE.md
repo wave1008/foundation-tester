@@ -405,7 +405,7 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
 - **PCC(Private Cloud Compute)は完全に禁止**(ユーザー決定 2026-09-07)。FM で使ってよいのは
   **オンデバイスの `SystemLanguageModel` だけ** —— `PrivateCloudComputeLanguageModel` を使うと
   アプリの画面情報が Mac の外へ出る。受け手向けドキュメント(docs/user-docs/overview/
-  environments・about の en/ja)が「画面情報は Mac の外に出ない」と**断定している**ので、
+  about の en/ja)が「画面情報は Mac の外に出ない」と**断定している**ので、
   これは表現ではなく不変条件。**利用者向けのトグルも置かない**(選べる形にしない)。
   **守っているのは型ではなく `LanguageModelSession` の init の既定値** —— `model:` を省くと
   `SystemLanguageModel = .default` に束縛されるが、**汎用 init(`model: some LanguageModel`)には

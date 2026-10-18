@@ -7,44 +7,48 @@ You do not write scenarios by hand.
 
 ## 1. Environment
 
-For the supported macOS, Xcode, Android SDK and other requirements, see [Environment](overview/environments.md).
+fleetest runs on a Mac with Apple silicon and macOS 26+. For details, see [Environment](overview/environments.md).
 
 ## 2. Before you start
 
-- **If you test iOS**
-  - Install Xcode and the iOS Simulator runtime
-- **If you test Android**
-  - Install Android Studio (Android SDK)
-- **VSCode and Node.js**
-  - Install VSCode and Node.js v24 or newer (npm v11 or newer), which are needed to build and install the VSCode extension
-- **If you run the sample app or your app's server in containers** (optional)
-  - Install Apple Container (`brew install container`). You can also have the AI assistant install it in [4. Preparing the sample app](#4-preparing-the-sample-app)
-- **AI assistant**
-  - Install an AI assistant that supports MCP (Claude Code, Codex, Cline, Cursor, Copilot, and so on).
-    With any of them, you have the assistant carry out the installation.
+Install the following.
+
+- **Xcode 26+**
+  - <https://apps.apple.com/app/xcode/id497799835>
+  - After installing it, launch the Xcode app once and finish downloading its components.
+- **Homebrew**
+  - <https://brew.sh/>
+- **VSCode**
+  - <https://code.visualstudio.com/docs/setup/mac>
+- **Android SDK (adb, Command-line Tools)** (if you test Android)
+  - <https://developer.android.com/studio/install>
+- **AI assistant (Claude Code, etc.)**
+  - Install an AI assistant that supports MCP. Claude Code and Codex can be installed as VSCode extensions.
 
 ## 3. Installing fleetest
 
-1. Create a **new, test-only folder** in Finder and open it in VSCode
+1. Create a **new, test-only folder** in Finder
 
-2. Start your AI assistant and give it this instruction:
+2. Open the folder you created in VSCode
+
+3. Start your AI assistant (the Claude Code extension, for example) and give it this instruction:
 
 ```text
 Clone https://github.com/wave1008/foundation-tester next to this folder, then set it up by
 following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
 ```
 
-3. When the installation finishes, open the Command Palette in VSCode with shift + command + P and run `Developer: Reload Window`.
+4. If you use an **AI assistant other than Claude Code**, the setup asks whether to register the MCP server; choose to register it.
 
-4. Click **fleetest mobile** in the status bar at the lower-left corner of VSCode. The device monitor opens.
+5. When the installation finishes, restart VSCode.
 
-5. If you use an **AI assistant other than Claude Code**, ask it to "register the MCP server". Then restart the assistant.
+6. Click **fleetest mobile** in the status bar at the lower-left corner of VSCode. The device monitor opens.
 
-6. Ask your AI assistant to "run fleetest doctor and report the result", and confirm that no errors are reported
+7. Ask your AI assistant to "run fleetest doctor and report the result", and confirm that no errors are reported
 
 ## 4. Preparing the sample app
 
-Prepare the sample app used in the rest of this page
+Prepare the sample app
 ([sut-ec-mobile](https://github.com/wave1008/sut-ec-mobile), a Compose Multiplatform shopping app)
 and declare its server to fleetest. The server is built with Kotlin (Ktor) and PostgreSQL.
 
@@ -52,26 +56,7 @@ and declare its server to fleetest. The server is built with Kotlin (Ktor) and P
 
 ```text
 Clone https://github.com/wave1008/sut-ec-mobile next to this folder, then run bash ../sut-ec-mobile/fleetest/prepare.sh in this folder.
-Don't modify any shell configuration files. When it finishes, report the last lines of the script's output.
 ```
-
-The script (`sut-ec-mobile/fleetest/prepare.sh`) goes through these steps and skips the ones already done, so you can run it
-as many times as you like.
-
-1. Checks that this is an Apple Silicon Mac and that it runs in your work folder
-2. Installs Apple Container with Homebrew if it is missing
-3. Starts the container runtime (the first time, it fetches the Linux kernel)
-4. Pulls the server and PostgreSQL images (the server is an image published on GitHub Container Registry, so nothing is
-   built on your Mac)
-5. Creates the test project `project1` if it does not exist, and puts the server declaration (`compose.yaml`) in
-   `TestProjects/project1/workspace/scripts/`
-
-- fleetest starts and stops the server on every run. Even after you restart your Mac, there is nothing to start again.
-- The DB is created empty on every run, and the server seeds the initial data at startup.
-- To pick up a newer server, run `git pull` in `sut-ec-mobile` and run the same script again.
-- The cloned repository is also used to build the app in [5. Prepare the profiles](#5-prepare-the-profiles).
-- The declaration is in [sut-ec-mobile/fleetest/compose.yaml](https://github.com/wave1008/sut-ec-mobile/blob/main/fleetest/compose.yaml),
-  and how to write one is in [Services the app depends on](reference/writing/services.md).
 
 <details>
 <summary><b>Do it manually (click to show details)</b></summary>
@@ -97,14 +82,14 @@ For iOS:
 
 ```text
 Build the sut-ec-mobile iOS app and create its profiles. The app's display name is "SUT Store". Use two devices.
-The build needs JDK 17; if it is missing, you can install it with Homebrew. Don't modify any shell configuration files.
+The build needs JDK 17 to 24; if none is installed, you can install JDK 17 with Homebrew. Don't modify any shell configuration files.
 ```
 
 For Android:
 
 ```text
 Build the sut-ec-mobile Android app and create its profiles. The app's display name is "SUT Store". Use two devices.
-The build needs JDK 17; if it is missing, you can install it with Homebrew. Don't modify any shell configuration files.
+The build needs JDK 17 to 24; if none is installed, you can install JDK 17 with Homebrew. Don't modify any shell configuration files.
 ```
 
 <details>
@@ -125,7 +110,7 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 ```
 
 Go back to your work folder and run the following. The installation creates no test project, so create one first
-(when you ask the AI assistant, it is created automatically; the VSCode extension also creates it on startup after Reload Window).
+(when you ask the AI assistant, it is created automatically; the VSCode extension also creates it on startup after VSCode restarts).
 
 ```bash
 ../foundation-tester/.build/debug/fleetest project create project1

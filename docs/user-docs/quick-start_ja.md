@@ -7,44 +7,48 @@ fleetest をインストールし、サンプルアプリを対象にシナリ�
 
 ## 1. 環境
 
-対応する macOS・Xcode・Android SDK などの要件は [環境](overview/environments_ja.md) を参照してください。
+本ツールは Apple silicon の Mac、macOS 26+ で動作します。環境の詳細は[環境](overview/environments_ja.md)を参照してください。
 
 ## 2. 事前準備
 
-- **iOS をテストする場合**
-  - Xcode と iOS Simulator のランタイムをインストールしておく
-- **Android をテストする場合**
-  - Android Studio(Android SDK)をインストールしておく
-- **VSCode と Node.js**
-  - VSCode と、Node.js v24 以降(npm v11 以降)をインストールしておく(VSCode 拡張をビルドして入れるため)
-- **サンプルアプリやアプリのサーバーをコンテナで動かす場合**(任意)
-  - Apple Container(`brew install container`)をインストールしておく。[4. サンプルアプリの準備](#4-サンプルアプリの準備)で AIアシスタントに入れさせることもできる
-- **AIアシスタント**
-  - MCP に対応した AIアシスタント(Claude Code・Codex・Cline・Cursor・Copilot など)を
-    インストールしておく。どの AIアシスタントでも、インストールは AIアシスタントへ指示して進めます。
+以下をインストールしてください。
+
+- **Xcode 26+**
+  - <https://apps.apple.com/jp/app/xcode/id497799835>
+  - インストールしたら Xcode のアプリを一度起動し、コンポーネントのダウンロードを済ませてください。
+- **Homebrew**
+  - <https://brew.sh/ja/>
+- **VSCode**
+  - <https://code.visualstudio.com/docs/setup/mac>
+- **Android SDK(adb・Command-line Tools)**(Android をテストする場合)
+  - <https://developer.android.com/studio/install?hl=ja>
+- **AIアシスタント(Claude Code など)**
+  - MCP に対応した AIアシスタントをインストールしてください。Claude Code や Codex の場合は VSCode 拡張からインストールできます。
 
 ## 3. fleetest のインストール
 
-1. Finder で**テスト専用の新規フォルダ**を作成し、VSCode で開きます
+1. Finder で**テスト専用の新規フォルダ**を作成します
 
-2. AIアシスタントを起動して次のように指示します
+2. 作成したフォルダを VSCode で開きます
+
+3. AIアシスタント(Claude Code 拡張など)を起動して次のように指示します
 
 ```text
 https://github.com/wave1008/foundation-tester をこのフォルダの隣に clone して
 ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md の手順でセットアップして。
 ```
 
-3. インストールが完了したら、VSCode で shift + command + P でコマンドパレットを開き `Developer: Reload Window` を実行します
+4. **Claude Code 以外の AIアシスタント**を使う場合は、セットアップの途中で MCP を登録するか聞かれるので、登録してください
 
-4. VSCode の左下のステータスバーに表示される **fleetest mobile** をクリックします。デバイスモニターが開きます
+5. インストールが完了したら、VSCode を再起動します
 
-5. **Claude Code 以外の AIアシスタント**を使う場合は、「MCP を登録して」と指示します。登録したら AIアシスタントを再起動します
+6. VSCode の左下のステータスバーに表示される **fleetest mobile** をクリックします。デバイスモニターが開きます
 
-6. AIアシスタントへ「fleetest doctor を実行して結果を報告して」と指示し、エラーが出ないことを確かめます
+7. AIアシスタントへ「fleetest doctor を実行して結果を報告して」と指示し、エラーが出ないことを確かめます
 
 ## 4. サンプルアプリの準備
 
-以降で使うサンプルアプリ
+サンプルアプリ
 ([sut-ec-mobile](https://github.com/wave1008/sut-ec-mobile)。Compose Multiplatform の EC 買い物アプリ)を
 セットアップします。
 
@@ -52,24 +56,7 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 
 ```text
 https://github.com/wave1008/sut-ec-mobile をこのフォルダの隣に clone して、このフォルダで bash ../sut-ec-mobile/fleetest/prepare.sh を実行して。
-シェルの設定ファイルは変更しないで。終わったらスクリプトの最後の出力を報告して。
 ```
-
-スクリプト(`sut-ec-mobile/fleetest/prepare.sh`)は次の順に進め、済んでいる段は飛ばします。何度実行してもかまいません。
-
-1. Apple Silicon の Mac と、作業フォルダで実行していることを確かめる
-2. Apple Container が無ければ Homebrew でインストールする
-3. コンテナのランタイムを起動する(初回は Linux カーネルを取得します)
-4. サーバーと PostgreSQL のイメージを取得する(サーバーは GitHub Container Registry に公開済みのイメージなので、手元でビルドしません)
-5. テストプロジェクト `project1` が無ければ作り、サーバーの宣言(`compose.yaml`)を
-   `TestProjects/project1/workspace/scripts/` に置く
-
-- サーバーは実行のたびに fleetest が起動して止めます。Mac を再起動しても、起動し直す操作は要りません。
-- DB は実行のたびに空から作られ、初期データはサーバーが起動時に入れます。
-- サーバーの新しい版を取り込むには、`sut-ec-mobile` で `git pull` してから、同じスクリプトをもう一度実行します。
-- clone したリポジトリは、[5. プロファイルを用意する](#5-プロファイルを用意する)でアプリをビルドするときにも使います。
-- 宣言の中身は [sut-ec-mobile/fleetest/compose.yaml](https://github.com/wave1008/sut-ec-mobile/blob/main/fleetest/compose.yaml)、
-  書き方は[アプリが依存するサービス](reference/writing/services_ja.md)にあります。
 
 <details>
 <summary><b>手動で実行(クリックで詳細表示)</b></summary>
@@ -95,14 +82,14 @@ iOS の場合:
 
 ```text
 sut-ec-mobile の iOS アプリをビルドし、プロファイルを作成して。アプリの表示名は「SUT Store」。デバイスは2台にして。
-ビルドには JDK 17 が必要。無ければ Homebrew でインストールしてよい。シェルの設定ファイルは変更しないで。
+ビルドには JDK 17〜24 が必要。無ければ Homebrew で JDK 17 をインストールしてよい。シェルの設定ファイルは変更しないで。
 ```
 
 Android の場合:
 
 ```text
 sut-ec-mobile の Android アプリをビルドし、プロファイルを作成して。アプリの表示名は「SUT Store」。デバイスは2台にして。
-ビルドには JDK 17 が必要。無ければ Homebrew でインストールしてよい。シェルの設定ファイルは変更しないで。
+ビルドには JDK 17〜24 が必要。無ければ Homebrew で JDK 17 をインストールしてよい。シェルの設定ファイルは変更しないで。
 ```
 
 <details>
@@ -123,7 +110,7 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 ```
 
 作業フォルダに戻って実行します。テストプロジェクトはインストールでは作られないので、最初に作ります
-(AIアシスタントへ指示したときは自動で作られます。VSCode 拡張も Reload Window 後の起動時に作ります)。
+(AIアシスタントへ指示したときは自動で作られます。VSCode 拡張も VSCode の再起動後の起動時に作ります)。
 
 ```bash
 ../foundation-tester/.build/debug/fleetest project create project1

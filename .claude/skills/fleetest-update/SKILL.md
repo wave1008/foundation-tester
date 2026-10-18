@@ -148,8 +148,10 @@ fleetest doctor
 
 ### 5. VSCode 拡張の再インストール（TOOL_ROOT）
 
+ビルドに使う Node.js は Homebrew の `node@26` に固定する（無ければ先に `brew install node@26`）:
+
 ```
-cd <TOOL_ROOT>/vscode-fleetest && npm install && npm run install-local
+cd <TOOL_ROOT>/vscode-fleetest && PATH="$(brew --prefix node@26)/bin:$PATH" npm install && PATH="$(brew --prefix node@26)/bin:$PATH" npm run install-local
 ```
 
 （clone 構成なら `cd vscode-fleetest && ...`。）`install-local` はパッケージ→インストール→到達確認まで一括。

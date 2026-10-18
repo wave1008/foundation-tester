@@ -291,10 +291,13 @@ MCP のデバイス操作・`/fleetest-scenario` のシナリオ作成・dry-run
 
 ### 7. VSCode 拡張のインストール
 
-**TOOL_ROOT の拡張を**ビルド・インストールする（外部構成でも拡張は TOOL_ROOT 側から入れる）:
+**TOOL_ROOT の拡張を**ビルド・インストールする（外部構成でも拡張は TOOL_ROOT 側から入れる）。
+ビルドに使う Node.js は Homebrew の `node@26` に固定する（無ければ `brew install node@26`。受け手の既存の
+node は書き換えず、このコマンドの中でだけ PATH の先頭に置く）:
 
 ```
-cd ../foundation-tester/vscode-fleetest && npm install && npm run install-local
+brew install node@26
+cd ../foundation-tester/vscode-fleetest && PATH="$(brew --prefix node@26)/bin:$PATH" npm install && PATH="$(brew --prefix node@26)/bin:$PATH" npm run install-local
 ```
 
 （clone 構成なら `cd vscode-fleetest && ...`。）`install-local` はパッケージ→インストール→到達確認まで
@@ -415,8 +418,10 @@ Claude Code は v2.1.277 から AGENTS.md を読むが、同じ場所か上に C
 インストーラが用意するのは Claude Code の規約位置だけ。受け手が Codex・Cline などを使うなら、
 `ft_*` を使うには **MCP サーバの登録**が別に要る（登録先はそのクライアントの設定 = 受け手のグローバル設定）。
 
-- **自分の判断で登録しない**。ステップ9の完了報告で「**『MCP を登録して』と頼めば登録する**」と案内し、
-  🧑 に頼まれたときだけ登録する（受け手の設定ファイルはセキュリティ境界なので、本人の依頼が条件）。
+- **自分の判断で登録しない**。このステップで選択ダイアログ(Claude Code なら AskUserQuestion)を出し、
+  「fleetest の MCP サーバをこのAIアシスタントに登録しますか」と 🧑 に聞く。**「はい」のときだけ登録する**
+  （受け手の設定ファイルはセキュリティ境界なので、本人の同意が条件）。「いいえ」なら登録せず、ステップ9で
+  「『MCP を登録して』と頼めば後から登録する」と案内する。
 - 登録は**そのクライアントの CLI で行う**。Codex なら(`<ABS_TOOL_ROOT>` = クローンの絶対パス。2箇所とも同じ値):
 
   ```
@@ -470,9 +475,9 @@ Claude Code 以外のエージェントは、このコピーを使わずクロ�
   `foundation-tester` フォルダ）
 - `Developer: Reload Window` を実行（インストール・設定だけでは反映されない）
 - 左下のステータスバーの **fleetest mobile** からデバイスモニターを開く
-- **Claude Code 以外の AIアシスタント**のときだけ: `ft_*` を使うには MCP サーバの登録が要る。
-  「**『MCP を登録して』と頼めば登録します**。登録後は AIアシスタントを再起動して、このフォルダで
-  新しいセッションを開いてください」と案内する（ステップ7.7。手で設定する手順を先に並べない）
+- **Claude Code 以外の AIアシスタント**のときだけ: ステップ7.7 で登録したなら「AIアシスタントを再起動して、
+  このフォルダで新しいセッションを開いてください(再起動後に `ft_*` が使えます)」と案内する。登録を断られたなら
+  「**『MCP を登録して』と頼めば登録します**」と案内する（手で設定する手順を先に並べない）
 - **テストプロジェクトとプロファイルの作成はまだ**。続けて `/fleetest-profiles` を実行する
   （iOS/Android とアプリIDを聞いて `TestProjects/project1/` とプロファイルを作る）。最初のシナリオ作成は
   `/fleetest-scenario`。流れはクイックスタート(`<TOOL_ROOT>/docs/user-docs/quick-start_ja.md`。

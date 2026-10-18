@@ -4,7 +4,7 @@
 
 自分のアプリが使うサーバー・DB・スタブをコンテナにして、fleetest に宣言する一般的な流れです。
 仕様の細部は[アプリが依存するサービス](../reference/writing/services_ja.md)にあります。
-サンプルアプリでの実例は[クイックスタート](../quick-start_ja.md#4-サンプルアプリの準備)の「サンプルアプリの準備」です。
+サンプルアプリでの実例は [sut-ec-mobile/fleetest/compose.yaml](https://github.com/wave1008/sut-ec-mobile/blob/main/fleetest/compose.yaml) です([クイックスタート](../quick-start_ja.md)で使うサンプルアプリのサーバーの宣言)。
 
 ## 考え方
 

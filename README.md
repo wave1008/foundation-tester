@@ -132,7 +132,7 @@ swift run fleetest doctor
 #    (fleetest profile setup --auto-device に任せてもよい)
 ```
 
-VSCode 拡張(デバイスモニター・ライブ操作・結果ダッシュボードなどの UI)を使う場合は、続けて拡張をビルド・インストールする(Node.js v24 系 / npm v11 系):
+VSCode 拡張(デバイスモニター・ライブ操作・結果ダッシュボードなどの UI)を使う場合は、続けて拡張をビルド・インストールする(Node.js は Homebrew の `node@26` に固定。`brew install node@26` で入れ、`PATH="$(brew --prefix node@26)/bin:$PATH"` を通してから実行する):
 
 ```bash
 cd vscode-fleetest

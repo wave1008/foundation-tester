@@ -823,14 +823,38 @@ PYLANG
 }
 
 # ---- 7. VSCode 拡張(SKILL ステップ7) -----------------------------------------
+# 拡張のビルドに使う Node.js は Homebrew の node@<NODE_MAJOR> に固定する(導入時点の最新版。不具合が出たら
+# 見直す = ユーザー決定)。受け手の既存の node(nodebrew・nvm 等)は書き換えず、ビルドのサブシェルでだけ
+# PATH の先頭へ置く(PATH の先に古い node があっても固定版でビルドされる)。
+# node@26 は最新版の間は `node` の別名で、次の版が出ると別の formula(keg-only になりうる)へ分かれるので、
+# 置き場は常に `brew --prefix` で引く。成否は brew の終了コードでなく入った node の版で見る(link だけの失敗で止めない)。
+# 対の記述: 両スキルの拡張の手作業手順(fleetest-setup / fleetest-update)・preflight.sh・docs/user-docs/overview/environments
+NODE_MAJOR=26
+NODE_FORMULA="node@${NODE_MAJOR}"
+node_bin_dir=""
+if [ "$DO_EXTENSION" = "1" ] && command -v brew >/dev/null 2>&1; then
+  node_bin_dir="$(brew --prefix "$NODE_FORMULA" 2>/dev/null)/bin"
+  if ! "$node_bin_dir/node" -v 2>/dev/null | grep -q "^v${NODE_MAJOR}\."; then
+    echo "==> brew install $NODE_FORMULA"
+    brew install "$NODE_FORMULA" >>"$RAW_SINK" 2>&1 || true
+    node_bin_dir="$(brew --prefix "$NODE_FORMULA" 2>/dev/null)/bin"
+    if "$node_bin_dir/node" -v 2>/dev/null | grep -q "^v${NODE_MAJOR}\."; then
+      record "node" ok "installed $NODE_FORMULA via brew ($("$node_bin_dir/node" -v))"
+    else
+      node_bin_dir=""
+    fi
+  else
+    record "node" skip "$NODE_FORMULA already installed ($("$node_bin_dir/node" -v))"
+  fi
+fi
 if [ "$DO_EXTENSION" = "0" ]; then
   record "extension" skip "--skip-extension"
-elif ! command -v npm >/dev/null 2>&1; then
-  soft_fail "extension" "npm is missing (install Node.js, then run npm run install-local in vscode-fleetest)" 7
+elif [ -z "$node_bin_dir" ]; then
+  soft_fail "extension" "could not install Node.js $NODE_MAJOR (brew install $NODE_FORMULA; Homebrew is required), so the VSCode extension was not installed" 7
 else
   echo "==> Building and installing the VSCode extension"
   step_started=$SECONDS
-  if ( cd "$TOOL_ROOT/vscode-fleetest" && npm install && npm run install-local ) >>"$RAW_SINK" 2>&1; then
+  if ( cd "$TOOL_ROOT/vscode-fleetest" && export PATH="$node_bin_dir:$PATH" && npm install && npm run install-local ) >>"$RAW_SINK" 2>&1; then
     record "extension" ok "installed (takes effect after Reload Window; $(elapsed_since $step_started))"
     # 書き先は install-local.sh が入れる VSCode(~/.vscode/extensions)のユーザー設定
     if ! command -v python3 >/dev/null 2>&1; then
