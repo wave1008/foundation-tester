@@ -1,5 +1,7 @@
-# 「レスポンス計測」のページの図(images/response_measurement/{ja,en}/*.png)を作り直す。文言は T の ja/en を対で直す。
-# 実行: python3 docs/user-docs/images/response_measurement/gen_diagrams.py(Google Chrome のヘッドレスで 2 倍の PNG を書く)
+# 「レスポンス計測」(リファレンス)と「アプリの反応の速さを測る」のページの図(images/response_measurement/{ja,en}/*.png)を
+# 作り直す。文言は T の ja/en を対で直す。
+# 実行: python3 docs/user-docs/images/response_measurement/gen_diagrams.py [図の名前 …](Google Chrome のヘッドレスで 2 倍の PNG を書く。
+# 名前を渡すとその図だけ書く = 触っていない PNG に差分を出さない)
 # 部品と配色は images/fleet/gen_diagrams.py と揃える(あちらは import すると描画まで走るので写している)
 import subprocess, os, tempfile
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -59,6 +61,13 @@ T={
    m_early="揃っても数えない", m_wait="揃っていない", m_ok="押せる",
    m_shade="最後の注入より前",
    m_note="1つの操作で何度も注入するステップ(繰り返しフリック等)は、最初の注入から測り、条件は最後の注入より後で揃ったものだけを数える",
+   q_head="計測の run(fleetest run --profile android-response)で起きること",
+   q_install="実機用の APK を\n端末に入れる", q_server="サーバーを起動\n(compose.yaml)",
+   q_scn="同じシナリオを 5 回続けて回す", q_repeat="1回目 → 2回目 → … → 5回目(responseRepeat)",
+   q_wait="操作のたびに描画が止まるのを待つ(最長 10 秒)・アニメーションは残す",
+   q_res="レポートに値が付く\nresults response で集計",
+   q_n1="合否はふだんの実行と同じに付く(失敗したシナリオの、失敗より後のステップは測れない)",
+   q_n2="run の間、デバイスモニターの観測と配信は止まる(終わると戻る)",
  ),
  "en":dict(
    r_op="Scenario actions", r_fr="App frames", r_fr_sub="Pictures presented",
@@ -82,6 +91,13 @@ T={
    m_early="Met, but not counted", m_wait="Not met", m_ok="Can be pressed",
    m_shade="Before the last injection",
    m_note="A step that injects input several times (repeated flicks, …) is measured from the first injection; only conditions met after the last injection count",
+   q_head="What happens in a measurement run (fleetest run --profile android-response)",
+   q_install="Install the APK\non the device", q_server="Start the servers\n(compose.yaml)",
+   q_scn="Run the same scenario 5 times back to back", q_repeat="1st → 2nd → … → 5th (responseRepeat)",
+   q_wait="Before every action, wait for drawing to stop (≤ 10 s); animations stay on",
+   q_res="Values in the report;\nresults response aggregates",
+   q_n1="Pass/fail is given as in a normal run (steps after a failure cannot be measured)",
+   q_n2="The device monitor's observation and streaming are held during the run (released afterwards)",
  ),
 }
 
@@ -148,6 +164,24 @@ def multi(t):
     b+=text(30,385,t["m_note"],13,C["sub"])
     return svg(W,H,b)
 
+def quickstart_run(t):
+    W,H=1200,300
+    boxes=[(30,260,C["fileBg"],C["line"],t["q_install"]),(290,500,C["fileBg"],C["line"],t["q_server"]),
+           (530,900,C["ftBg"],C["ft"],t["q_scn"]),(930,1170,C["devBg"],C["dev"],t["q_res"])]
+    b=text(30,40,t["q_head"],15,C["ink"],700)
+    for i,(x1,x2,fill,stroke,label) in enumerate(boxes):
+        b+=seg(x1,x2,70,70,fill,stroke)
+        lines=label.split("\n")
+        for j,l in enumerate(lines):
+            b+=text((x1+x2)/2,110+(j-(len(lines)-1)/2)*18,l,14,stroke,700,"middle")
+        if i<len(boxes)-1:
+            b+=f'<line x1="{x2+4}" y1="105" x2="{boxes[i+1][0]-6}" y2="105" stroke="{C["line"]}" stroke-width="2" marker-end="url(#ah)"/>'
+    b+=text(715,172,t["q_repeat"],13,C["ft"],700,"middle")
+    b+=text(715,194,t["q_wait"],13,C["sub"],400,"middle")
+    b+=text(30,250,t["q_n1"],14,C["ink"])
+    b+=text(30,278,t["q_n2"],14,C["sub"])
+    return svg(W,H,b)
+
 def render(name,lang,svgtext,w,h):
     os.makedirs(f"{OUT}/{lang}",exist_ok=True)
     html=f"<html><body style='margin:0;background:#fff'>{svgtext}</body></html>"
@@ -155,7 +189,10 @@ def render(name,lang,svgtext,w,h):
     out=f"{OUT}/{lang}/{name}.png"
     subprocess.run([CHROME,"--headless=new","--disable-gpu","--hide-scrollbars","--force-device-scale-factor=2",f"--window-size={w},{h}",f"--screenshot={out}",f"file://{p}"],check=True,capture_output=True)
     print(out)
+import sys
+only=set(sys.argv[1:])
 for lang,t in T.items():
-    render("timeline",lang,timeline(t),1200,520)
-    render("steps",lang,steps(t),1200,450)
-    render("multi_injection",lang,multi(t),1200,400)
+    for name,fn,w,h in [("timeline",timeline,1200,520),("steps",steps,1200,450),
+                        ("multi_injection",multi,1200,400),("quickstart_run",quickstart_run,1200,300)]:
+        if only and name not in only: continue
+        render(name,lang,fn(t),w,h)

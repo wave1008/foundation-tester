@@ -29,7 +29,7 @@ try? "name,price\n".write(to: csv, atomically: true, encoding: .utf8)
 let work = TestLog.directoryForTemp.appendingPathComponent("unzipped")     // deleted at the end of the scenario
 ```
 
-Details: [Output folder and temporary folder (TestLog)](../reference/commands/test_log.md)
+Details: [Output folder and temporary folder (TestLog)](../commands/test_log.md)
 
 ## Accounts and test data (account, data)
 
@@ -42,7 +42,7 @@ type("#login_id", account("[account1].id"))
 type("#login_password", account("[account1].password"))
 ```
 
-Details: [Test data and accounts (account, data)](../reference/commands/dataset.md)
+Details: [Test data and accounts (account, data)](../commands/dataset.md)
 
 ## Using files (dataFile) and adding photos (addMedia)
 
@@ -56,7 +56,7 @@ addMedia("img/avatar.png")   // for testing photo pickers (not possible on a phy
 
 `addMedia` can send only files inside the dataset folder.
 
-Details: [Test data and accounts (account, data)](../reference/commands/dataset.md)
+Details: [Test data and accounts (account, data)](../commands/dataset.md)
 
 ## Talking to servers (httpRequest, fleetestURLSession)
 
@@ -72,14 +72,14 @@ response.status.thisIs(201)
 When you use `URLSession` yourself, use `fleetestURLSession` instead of `URLSession.shared` (a `URLSession` with the
 proxy already set).
 
-Details: [HTTP request (httpRequest)](../reference/commands/http_request.md), [Network access from scenarios](../reference/writing/network_access.md)
+Details: [HTTP request (httpRequest)](../commands/http_request.md), [Network access from scenarios](network_access.md)
 
 ## Passing values between scenarios (memo)
 
 Pass values prepared in `setUpDevice()` to other scenarios on the same device. You do not need to write and exchange
 files yourself.
 
-Details: [Memo (writeMemo, readMemo, clearMemo, memoTextAs)](../reference/commands/memo.md)
+Details: [Memo (writeMemo, readMemo, clearMemo, memoTextAs)](../commands/memo.md)
 
 ## Keeping secrets out of reports (redactAccountValues)
 
@@ -87,7 +87,7 @@ By default, the value in `type(account("[account1].password"))` stays as is in s
 reports. Writing `"redactAccountValues": true` in this Mac's `~/.config/fleetest/config.json` replaces values from
 `account()` with `***`. Text captured in screenshots cannot be redacted.
 
-Details: [Test data and accounts (account, data)](../reference/commands/dataset.md)
+Details: [Test data and accounts (account, data)](../commands/dataset.md)
 
 ## Using external Swift packages
 
@@ -95,7 +95,7 @@ Packages for generating one-time passwords, processing JSON and so on can be imp
 them in two places in `Package.swift`: `dependencies:` and `fleetestScenarioDependencies`. Library code you import runs
 inside the same sandbox as the scenario (only building the dependencies runs outside, so add only packages you trust).
 
-Details: [Creating a test project](../reference/project/creating_project.md)
+Details: [Creating a test project](../project/creating_project.md)
 
 ## Running something around a run (run-setup.sh, run-teardown.sh)
 
@@ -104,20 +104,20 @@ Processing to run at the start and end of a run goes in
 The scripts also run inside a sandbox of their own: they can write only to `<workspace>/data/` and `hooks.writablePaths`, and
 connect only to the ports compose.yaml publishes and to the allowed domains through the proxy. Declare the DB or stub
 server the app under test depends on in `scripts/compose.yaml` and fleetest starts and stops it
-([Declaring services](../reference/writing/services.md)). Operate inside a container with `fleetest-services`.
+([Declaring services](services.md)). Operate inside a container with `fleetest-services`.
 
-Details: [Adding your own features](../reference/writing/extending.md)
+Details: [Adding your own features](extending.md)
 
 ## Use DSL commands to operate devices
 
 If a scenario calls `adb`, `simctl` or `devicectl` directly, fleetest itself runs only fixed forms on its behalf and
 refuses the rest. For installing, launching, clearing data or opening URLs, use the DSL commands
-([installApp](../reference/commands/install_app.md), [launchApp](../reference/commands/launch_app.md), ...).
+([installApp](../commands/install_app.md), [launchApp](../commands/launch_app.md), ...).
 
 ## Related
 
-- [Accessible folders and destinations](access.md) — writable places, unreadable places, destinations, settings file
-- [The sandbox](sandbox.md)
+- [Sandbox defaults (writable places, unreadable places, destinations)](../running/sandbox_access.md) — writable places, unreadable places, destinations, settings file
+- [Checking the sandbox and opening the holes you need](../../security/sandbox.md)
 
 ### Link
-- [index](../index.md)
+- [index](../../index.md)

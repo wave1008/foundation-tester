@@ -48,10 +48,10 @@ There are mechanisms that limit the risk if harmful code gets mixed into test co
 
 - **Tests always run inside a sandbox.**
   fleetest limits which files a test can read and write, whom it can talk to and what it can do
-  ([The sandbox](../security/sandbox.md)).
+  ([Checking the sandbox and opening the holes you need](../security/sandbox.md)).
 - **Tests can reach only the destinations you allow.**
   A test can talk to the internet only at the destinations listed in the `allowedDomains` setting
-  ([Accessible folders and destinations](../security/access.md)).
+  ([Sandbox defaults](../reference/running/sandbox_access.md)).
 
 ## Privacy
 

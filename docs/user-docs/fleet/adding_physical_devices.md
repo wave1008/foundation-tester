@@ -71,6 +71,12 @@ A physical device needs a **build signed for devices** (an `.ipa` or an `.app`).
 Put the path of the device build in `appPathPhysical` in the app profile ("Package Path (Physical Device)" in the
 VS Code extension). It sits next to `appPath`, which is for the Simulator ([Profiles](../reference/project/profiles.md)).
 
+#### Prompt for the AI
+
+```text
+Build My Shop signed for iOS physical devices (the Team ID is <your Team ID>). Then write its path to appPathPhysical in the ios-app app profile.
+```
+
 If your app has a server address built in, remember that `127.0.0.1` on the device is the device itself. To reach a
 server running on your Mac, use a build with the Mac's LAN address built in.
 
@@ -115,6 +121,27 @@ Use your usual APK as is. Release-signed APKs can be installed too.
 
 ## 4. Add it to a run profile
 
+### Prompt for the AI
+
+For iOS:
+
+```text
+Register the iPhone 15 connected over USB in the fleetest run profile ios-physical.
+```
+
+For Android:
+
+```text
+Register the Android physical device connected over USB in the fleetest run profile android-physical.
+```
+
+The AI assistant looks up the UDID (iOS) or serial (Android) from the connected devices and registers it. Also tell it
+the path of the app for the device (on iOS, the build signed for a physical device; Step 3). For a device connected to a
+runner machine, give the machine name too.
+
+<details>
+<summary><b>If you do it manually (click to show details)</b></summary>
+
 ### In the VS Code extension
 
 1. In the device monitor's "Profiles" tab, open the run profile and press "+" next to "Add devices".
@@ -142,11 +169,25 @@ Add the device to the run profile's `devices` with `"kind": "physical"` and its 
   (`ios.physicalDevices` / `android.physicalDevices`).
 - `machine` is the machine name of the Mac the device is connected to (`"local"` for your own Mac).
 
+</details>
+
 ## 5. Try it
+
+### Prompt for the AI
+
+```text
+Run the scenario <scenario name> with the run profile ios-physical.
+```
+
+<details>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 ```bash
 fleetest run --profile <run profile> --scenario <scenario ID>
 ```
+
+</details>
+<br>
 
 In the device monitor, a physical device's tile has a "Device" badge. You can also start only the bridge, without
 running a test, with "Start bridge" in the tile's right-click menu.

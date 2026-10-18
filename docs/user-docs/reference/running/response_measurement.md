@@ -159,7 +159,7 @@ In the following cases there is neither a time until ready nor a reason (the ste
   number of reads the judgement could use).
 - The device's Reduce Motion setting cannot be changed by the tool; the device is measured with its own setting.
 
-Related: [Run profile](../project/run_profile.md) / [Analysing results](./results_analysis.md) / [Running scenarios](./running_scenarios.md)
+Related: [Measuring app responsiveness (procedure)](../../response/measuring_app_response.md) / [Run profile](../project/run_profile.md) / [Analysing results](./results_analysis.md) / [Running scenarios](./running_scenarios.md)
 
 ### Link
 - [index](../../index.md)

@@ -67,6 +67,12 @@ AIアシスタントは代わりに行いません。
 アプリプロファイルの `appPathPhysical` に、実機用のビルドのパスを書きます(VSCode 拡張では「実機用パッケージパス」)。
 Simulator 用の `appPath` と並べて書けます([プロファイル](../reference/project/profiles_ja.md))。
 
+#### AIへの指示文
+
+```text
+My Shop を iOS の実機向けに署名してビルドして(Team ID は <あなたの Team ID>)。できたら、アプリプロファイル ios-app の appPathPhysical にそのパスを書いて。
+```
+
 アプリが接続先のサーバを焼き込む場合、実機から見た `127.0.0.1` は端末自身です。Mac で動くサーバに繋がせるなら、
 Mac の LAN のアドレスを焼き込んだビルドを使います。
 
@@ -110,6 +116,27 @@ Android SDK(adb)があれば、追加の準備は要りません。`adb devices`
 
 ## 4. 実行プロファイルに入れる
 
+### AIへの指示文
+
+iOS の場合:
+
+```text
+USB でつないだ iPhone 15 を、fleetest の実行プロファイル ios-physical に登録して。
+```
+
+Android の場合:
+
+```text
+USB でつないだ Android の実機を、fleetest の実行プロファイル android-physical に登録して。
+```
+
+AIアシスタントは、つながっている実機から UDID(iOS)や serial(Android)を調べて登録します。実機用のアプリのパス
+(iOS は実機向けに署名したビルド。ステップ3)も、あわせて伝えてください。ランナー機につないだ実機のときは、
+マシン名も伝えます。
+
+<details>
+<summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
+
 ### VSCode 拡張で入れる
 
 1. デバイスモニターの「プロファイル」タブで実行プロファイルを開き、「デバイスを追加」の「+」を押します。
@@ -135,11 +162,25 @@ Android SDK(adb)があれば、追加の準備は要りません。`adb devices`
 - つながっている実機と識別子は、`fleetest api installed-devices` でも一覧できます(`ios.physicalDevices` / `android.physicalDevices`)。
 - `machine` は、実機をつないだ Mac のマシン名です(手元なら `"local"`)。
 
+</details>
+
 ## 5. 動かしてみる
+
+### AIへの指示文
+
+```text
+実行プロファイル ios-physical で、シナリオ <シナリオ名> を実行して。
+```
+
+<details>
+<summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 ```bash
 fleetest run --profile <実行プロファイル> --scenario <シナリオID>
 ```
+
+</details>
+<br>
 
 デバイスモニターでは、実機のタイルに「実機」のバッジが付きます。右クリックの「ブリッジを起動」で、テストを
 流さずにブリッジだけを起動することもできます。

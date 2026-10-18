@@ -151,7 +151,7 @@ fleetest results response [--project <name>] [--since <期間>] [--json]
   判定に使えた読みの回数です)。
 - 端末の「視差効果を減らす」(Reduce Motion)の設定は、ツールからは変えられません。端末の設定のまま測ります。
 
-関連: [実行プロファイル](../project/run_profile_ja.md) / [結果の分析](./results_analysis_ja.md) / [シナリオの実行](./running_scenarios_ja.md)
+関連: [アプリの反応の速さを測る(手順)](../../response/measuring_app_response_ja.md) / [実行プロファイル](../project/run_profile_ja.md) / [結果の分析](./results_analysis_ja.md) / [シナリオの実行](./running_scenarios_ja.md)
 
 ### Link
 - [index](../../index_ja.md)

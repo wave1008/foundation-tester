@@ -48,6 +48,12 @@ Simulator の掃除は、fleetest を通して起動したときだけ走りま�
 - Xcode を更新したあと、iOS の Simulator のランタイムが無いと言われたら、`xcodebuild -downloadPlatform iOS` で
   入れます。
 
+#### AIへの指示文
+
+```text
+macOS と Xcode を更新した。fleetest のクローンと作業フォルダの .build を消して、update.sh --force でビルドし直して。iOS の Simulator のランタイムが無ければ入れて。
+```
+
 ### FM(Foundation Models)が止まったとき
 
 テストの最後に `FM is dead on this machine` と出たら、この Mac の FM(オンデバイスのモデル)が止まっています。
@@ -59,6 +65,12 @@ Simulator の掃除は、fleetest を通して起動したときだけ走りま�
   `visibility-guard-skipped` の注記が付きます)。
 - 止まっていると分かっている間は、fleetest は FM を呼びません(止まった FM を呼ぶと 1 回に十数秒かかるため)。
   2 分ごとに 1 回だけ確かめ直すので、戻ればそのまま使われます。
+
+#### AIへの指示文
+
+```text
+fleetest doctor --fm-only を実行して、この Mac の FM が使えるか確かめて。使えなければ、理由と直し方を教えて。
+```
 
 ### ディスクの空きを確保する
 
@@ -84,6 +96,12 @@ Simulator の掃除は、fleetest を通して起動したときだけ走りま�
   ビルドフォルダ(`.build`)は数 GB ありますが、使い続けても増え続けはしません。消すと、次に使うときに
   数分かけて作り直されます。
 
+#### AIへの指示文
+
+```text
+fleetest clean --dry-run で消える量を見せて、問題なければ fleetest clean を実行して。使っていないブリッジが動いていたら止めて。compose.yaml のサービスが使っている容量も fleetest services status で教えて。
+```
+
 ### リモートのランナー機
 
 ランナー機の結果・レポート・録画の掃除は[リモート実行](../fleet/remote_runners_ja.md)の「ランナー機の保守」にあります。
@@ -93,11 +111,23 @@ Simulator の掃除は、fleetest を通して起動したときだけ走りま�
 `findImage` などで使う画像の見本は、OS の版ごとに見え方が変わります。テストに使う端末の OS を更新したら、
 新しい OS で見本を採り足してください([画像で探す](../reference/commands/find_image_ja.md))。
 
+#### AIへの指示文
+
+```text
+テストに使う iOS の Simulator を新しい OS にした。findImage で使っている見本画像を、新しい OS の画面から採り足して。
+```
+
 ### 自己修復の提案
 
 自己修復を使っている場合は、テストのあとに出る修正の提案を確認して適用してください
 ([自己修復](../reference/running/self_healing_ja.md))。fleetest はシナリオのソースを自動では書き換えないので、
 適用するまでは、実行のたびに同じ提案が出続けます。
+
+#### AIへの指示文
+
+```text
+直近の実行で出た自己修復の提案を一覧にして。問題なければシナリオに反映して、dry-run で確かめて。
+```
 
 ### Link
 - [index](../index_ja.md)

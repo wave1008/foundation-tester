@@ -24,8 +24,10 @@ fleetest uses Docker (Rancher Desktop, Docker Desktop and so on, through the uni
 }
 ```
 
-`runtime` is `"docker"` or `"apple"`. When it is not set, fleetest uses Docker if Docker is available and Apple
-Container otherwise (it starts Apple's system service automatically only when Docker is not available).
+`runtime` is `"docker"` or `"apple"`. When it is not set, fleetest looks for Docker and then Apple Container, and uses
+the one that is usable **only if exactly one is**. When both are usable (Docker is running and Apple Container's
+system service is started too), it does not pick one silently: it stops and asks you to name one with `runtime`.
+It starts Apple's system service automatically only when Docker is not usable.
 
 ## Example
 

@@ -25,16 +25,16 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 - [アプリが依存するサーバーを用意する](tutorial/preparing_app_server_ja.md)
 - [テストを作る](tutorial/creating_tests_ja.md)
 - [テストを実行する](tutorial/running_tests_ja.md)
+- [スモークと回帰を分けて回す](tutorial/smoke_and_regression_ja.md)
 - [結果を読み、失敗を調べる](tutorial/investigating_failures_ja.md)
 - [アプリの変更にテストを追従させる](tutorial/keeping_up_with_app_changes_ja.md)
 - [VSCode で見る](tutorial/watching_in_vscode_ja.md)
 
 ## セキュリティ
 
+- [サンドボックスを確かめて、必要な穴をあける](security/sandbox_ja.md)
+- [テスト結果に何が残るかを確かめる](security/test_outputs_ja.md)
 - [ネットワークの露出とセキュリティ](security/network_security_ja.md)
-- [サンドボックスの考え方](security/sandbox_ja.md)
-- [アクセスできるフォルダと通信先](security/access_ja.md)
-- [テストコードを書くときの便利機能](security/helpers_ja.md)
 - [注意事項と制限事項](security/limitations_ja.md)
 
 ## フリートを拡張する
@@ -44,17 +44,23 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 - [実機を追加する](fleet/adding_physical_devices_ja.md)
 - [リモート実行](fleet/remote_runners_ja.md)
 
+## レスポンス計測
+
+- [アプリの反応の速さを測る](response/measuring_app_response_ja.md)
+
 ## 運用
 
 - [更新](update_ja.md)
 - [アンインストール](uninstall_ja.md)
 - [CI で回す](in_action/ci_ja.md)
+- [テストプロジェクトを共有し、2人目が回すまで](in_action/sharing_project_ja.md)
 - [トラブルシューティング](in_action/troubleshooting_ja.md)
 - [長く使うためのメンテナンス](in_action/maintenance_ja.md)
 
 ## Appendix
 
 - [品質特性(非機能要件)](overview/quality_ja.md)
+- [用語集](overview/glossary_ja.md)
 
 ## 開発者向けリファレンス
 
@@ -66,6 +72,7 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 - [テストプロジェクトの作成](reference/project/creating_project_ja.md)
 - [プロファイル(アプリ / 実行)](reference/project/profiles_ja.md)
 - [実行プロファイルの設定項目](reference/project/run_profile_ja.md)
+- [マシン設定(config.json)](reference/project/machine_settings_ja.md)
 
 ### テストクラスの作成
 
@@ -151,9 +158,12 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 - [並列実行](reference/running/parallel_execution_ja.md)
 - [結果の分析(fleetest results・ダッシュボード)](reference/running/results_analysis_ja.md)
 - [レスポンス計測](reference/running/response_measurement_ja.md)
+- [テストベースとシナリオの下書き(draft-scenario)](reference/running/testbases_ja.md)
+- [サンドボックスの既定(書ける場所・読めない場所・通信先)](reference/running/sandbox_access_ja.md)
 
 ### ツール
 
+- [CLI リファレンス(fleetest のサブコマンド)](reference/tools/cli_ja.md)
 - [VSCode 拡張](reference/tools/vscode_extension_ja.md)
 - [MCP サーバ](reference/tools/mcp_server_ja.md)
 - [Claude Code のスキル](reference/tools/claude_code_skills_ja.md)
@@ -166,6 +176,7 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 - [UI 部品ごとの書き方と癖](reference/writing/ui_component_patterns_ja.md)
 - [シナリオから外部へ通信する](reference/writing/network_access_ja.md)
 - [アプリが依存するサービス(compose.yaml)](reference/writing/services_ja.md)
+- [テストコードを書くときの便利機能](reference/writing/helpers_ja.md)
 - [自分で機能を足す](reference/writing/extending_ja.md)
 
 ### 仕様

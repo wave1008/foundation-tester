@@ -20,6 +20,12 @@ Most steps can be done either in the terminal (CLI) or in the VS Code extension.
 
 In the examples below, the runner is `<user@192.168.xxx.xxx>` and its machine name is `M1Max`.
 
+You can hand the work on your Mac (Steps 1–6) to an AI assistant; give it the "Prompt for the AI" of each step. In
+Claude Code, the `/fleetest-remote-setup` skill asks for the values it needs (the runner's destination, the machine name
+and the project), leaves the mechanical work to `fleetest remote setup`, hands you the parts that need a person, and
+reports the result at the end. The AI assistant does not do the work on the runner (Step 0) or anything else only a
+person can do, such as typing an SSH password.
+
 ## Before you start
 
 - **Your Mac**: fleetest is set up and you have a test project
@@ -117,12 +123,18 @@ If anything is still missing, `fleetest remote setup` in Step 3 lists it for you
 Set up SSH so that I can connect to user@192.168.xxx.xxx
 ```
 
-To do it by hand, run this in the terminal:
+Typing the password is needed, so the AI assistant may stop partway and ask you to enter it.
+
+<details>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 ```bash
 ssh-copy-id <user@192.168.xxx.xxx>                       # enter the password once, the first time only
 ssh -o BatchMode=yes <user@192.168.xxx.xxx> 'echo ok'    # printing ok means you are ready
 ```
+
+</details>
+<br>
 
 fleetest connects without entering a password, so the second line must succeed without one.
 Also accept the host key here, the first time you connect.
@@ -135,6 +147,15 @@ router)" in [Remote Runners](remote_runners.md)).
 
 Give the runner a name known only on this Mac (a machine name). The later steps and your profiles
 refer to the runner by this name.
+
+### Prompt for the AI
+
+```text
+Register the machine M1Max (user@192.168.xxx.xxx) in fleetest.
+```
+
+<details>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 ### Register with the CLI
 
@@ -185,10 +206,24 @@ fleetest remote machines        # check the registration
 The CLI and the extension read and write the same registry (`~/.config/fleetest/config.json`),
 so either way gives the same result.
 
+</details>
+
 ## Step 3: Install fleetest on the runner (on your Mac)
 
-**This cannot be done from the VS Code extension.** Run the following command in the terminal.
+**This cannot be done from the VS Code extension.** Ask the AI assistant, or run the following command in the terminal.
 You do not need to log in to the runner over SSH yourself.
+
+### Prompt for the AI
+
+```text
+Set up fleetest remote runs on M1Max (ssh user@192.168.xxx.xxx). The project is project1.
+```
+
+If something from Step 0 is still missing, the AI assistant lists the missing items and stops. Finish them on the
+runner, then give the same prompt again.
+
+<details>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 ```bash
 fleetest remote setup M1Max --project <project>
@@ -219,11 +254,22 @@ The exit code tells you how it ended:
 | `2` | The required checks passed, but some items are not finished: a person still has to do something, or the final test-run check was skipped (no `--profile`, or `--skip-verify`) | Fix the listed items and run the same command again. If only the check was skipped, running a real test in Steps 4–6 is enough |
 | `1` | Failed | Read the message and fix it (see "Troubleshooting" below) |
 
+</details>
+
 ## Step 4: Add the runner's devices to your run profile (on your Mac)
 
 Which devices run your tests is decided by the run profile's `devices` list — each device names
 its own machine directly. You edit profiles on your Mac; they are sent to the runner
 automatically on every run. You never need to edit files on the runner.
+
+### Prompt for the AI
+
+```text
+Find the devices on M1Max and add them to the run profile ios-run.
+```
+
+<details>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 ### Add them in the VS Code extension
 
@@ -253,6 +299,8 @@ automatically on every run. You never need to edit files on the runner.
          "osVersion": "iOS 27.0", "model": "iPhone 17 Pro", "udid": "<UDID>" } ] }
    ```
 
+</details>
+
 ### Things to keep in mind
 
 - **Write `"machine": "local"` for devices on your own Mac**. Devices added in the extension get
@@ -263,6 +311,15 @@ automatically on every run. You never need to edit files on the runner.
   your Mac to the runner automatically on every run. You do not need to build the app on the runner.
 
 ## Step 5: Check the connection (on your Mac)
+
+### Prompt for the AI
+
+```text
+Check the state of the runner M1Max and whether it can be reached.
+```
+
+<details>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 ### Check with the CLI
 
@@ -294,10 +351,21 @@ with a badge showing the machine name.
   the SSH connection is not working. Run Step 3 again, then press "Restart Monitor" in the toolbar.
 - The toolbar graphs (MEM/CPU and so on) get one row per machine.
 
+</details>
+
 ## Step 6: Run your first test (on your Mac)
 
 The first run takes a few minutes to start, because the runner builds the scenarios and so on.
 Later runs start within seconds. Reports, recordings and logs are brought back to your Mac.
+
+### Prompt for the AI
+
+```text
+Run the scenario <scenario name> on M1Max with the run profile ios-run.
+```
+
+<details>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 ### Run with the CLI
 
@@ -332,14 +400,27 @@ your Mac.
   cannot be updated from here." with the reason, and the run does not start. **A difference in
   Xcode beta build number alone does not stop the run** — it is only a warning.
 
+</details>
+
 ## After you update fleetest
 
 After updating fleetest on your Mac, bring the runner to the same version. Runs do not start
 until the versions match.
 
+### Prompt for the AI
+
+```text
+Bring fleetest on the runner M1Max to the same version as my Mac.
+```
+
+<details>
+<summary><b>If you do it manually (click to show details)</b></summary>
+
 - **CLI**: run `fleetest remote setup M1Max` again. To align the version only,
   `fleetest remote align M1Max` also works.
 - **VS Code extension**: use "Update and run", which appears when you start a run.
+
+</details>
 
 ## When several people share one runner
 

@@ -4,7 +4,7 @@
 
 A summary for explaining to IT/security what this tool opens and where, when running on a
 corporate LAN that does not reach the internet. It is not a setup guide.
-How the files and destinations that test code (scenarios) can reach are restricted is covered in [The sandbox](sandbox.md).
+How the files and destinations that test code (scenarios) can reach are restricted is covered in [Checking the sandbox and opening the holes you need](sandbox.md).
 
 ## What listens where
 
@@ -61,7 +61,7 @@ How the files and destinations that test code (scenarios) can reach are restrict
   from a container registry (docker.io etc.) when they are not on the Mac; the relay image is also built from alpine on docker.io.
   An image you built yourself and wrote in `image:` is not pulled. On a closed network, load images first with
   `fleetest services pull` or `fleetest services load <tar>`. With nothing listed in `allowedDomains`, a scenario cannot reach
-  anything outside the Mac. See [Accessible folders and destinations](access.md)).
+  anything outside the Mac. See [Sandbox defaults](../reference/running/sandbox_access.md)).
 
 | What is fetched | Destination | When |
 |---|---|---|
@@ -75,6 +75,39 @@ How the files and destinations that test code (scenarios) can reach are restrict
 
 **By volume the Swift dependencies dominate** — not the fleetest repository itself. The Android
 bridge APK ships inside the repository, so no Android build tooling is needed.
+
+## Firewall settings
+
+### The sandbox is what narrows a scenario's outbound traffic
+
+The macOS firewall (System Settings → Network → Firewall) stops **incoming** connections per app; it cannot narrow
+traffic a scenario sends out. What allows a scenario's outbound traffic per destination is `sandbox.allowedDomains`
+(see "Destinations" in [Sandbox defaults](../reference/running/sandbox_access.md)).
+**If you write nothing, a scenario cannot reach the outside at all**, so you do not need an extra firewall.
+
+- The actual connection to an allowed destination is made by fleetest itself (this Mac). The restrictions of the Mac's
+  and your company network's firewalls and proxies still apply. If the destination is allowed but unreachable from
+  the Mac, the proxy returns `502 Bad Gateway`.
+- If **a local proxy runs on this Mac's localhost** (a traffic analysis tool, a corporate proxy agent, SSH port
+  forwarding), a scenario can go through it to destinations outside `allowedDomains`. Stop it on Macs that run
+  untrusted scenarios ([Notes and limitations](limitations.md)).
+
+### Keep the macOS firewall on
+
+- **fleetest opens no externally reachable port on this Mac.** The CLI, the MCP server and the monitor talk over
+  standard input/output, and the bridges and the proxy listen only on loopback (`127.0.0.1`). Loopback is outside the
+  firewall's scope, so fleetest works with the firewall on and without adding per-app permissions.
+- When you use a physical iOS device over Wi-Fi, the device listens and the Mac connects to it. No setting is needed
+  on the Mac.
+- **Only on a Mac you use as a remote runner**, turn off the firewall's "Block all incoming connections" (when it is
+  on, SSH is blocked too; the firewall itself can stay on). The steps are in
+  [Adding a Mac](../fleet/adding_mac.md).
+
+### Company firewalls
+
+While tests run, fleetest itself does not go outside (except for scenarios connecting to `allowedDomains`). It goes
+outside only for installation and updates; the destinations are in "Outbound traffic" above, and how to run in a closed
+network is in "Closed networks (no internet access)" below.
 
 ## Closed networks (no internet access)
 
@@ -135,6 +168,108 @@ runner machines too.
    under "Closed networks" above). If not, set up an internal mirror (Option B). **Decide one of
    them before you start — otherwise neither setup nor updates work.**
 4. **Never write production credentials into scenarios or profiles.**
+
+## Check it on your own Mac
+
+These steps check that what is described above actually holds on your own Mac. All of them only read; none changes a setting.
+
+### 1. See which ports are listening
+
+The ports fleetest uses are the bridge ports, 8123-8154. Check that none is open in a form reachable from outside (on all interfaces).
+
+#### Instruction for your AI assistant
+
+```text
+Check the TCP listeners on this Mac. Split the result of lsof -nP -iTCP:8123-8154 -sTCP:LISTEN into those whose address is 127.0.0.1 (loopback) and those with * or 0.0.0.0 (all interfaces). Also run fleetest doctor and tell me about any warning.
+```
+
+<details>
+<summary><b>Run it manually (click to expand)</b></summary>
+
+```bash
+lsof -nP -iTCP:8123-8154 -sTCP:LISTEN    # the bridge ports
+lsof -nP -iTCP -sTCP:LISTEN | grep -i fleetest    # fleetest's own listeners
+fleetest doctor
+```
+
+</details>
+<br>
+
+What you should see:
+
+- The first command prints a line for each running bridge, and nothing if no bridge is running. An address (the `NAME`
+  column) such as `127.0.0.1:8123` or `localhost:8123` means loopback only. `*:8123` is the LAN path of a physical iOS
+  device connected over Wi-Fi (token required). A physical device used over USB, a Simulator and an Emulator do not show it.
+- The second prints fleetest's own listeners. Normally nothing. Only while a scenario runs with `allowedDomains` set, a line
+  for the proxy on `127.0.0.1` appears (the port changes each time).
+- `fleetest doctor` warns about leftover old bridges and about Docker's API being published on TCP. If nothing is printed,
+  neither warning applies.
+
+### 2. See that outbound traffic is narrowed to `allowedDomains`
+
+Read this Mac's `sandbox.allowedDomains` and check that the list is the only set of destinations a scenario can reach.
+
+#### Instruction for your AI assistant
+
+```text
+Tell me what ~/.config/fleetest/config.json has in sandbox.allowedDomains. If the file or the sandbox key does not exist, say so. Do not edit anything.
+```
+
+<details>
+<summary><b>Run it manually (click to expand)</b></summary>
+
+```bash
+cat ~/.config/fleetest/config.json
+```
+
+</details>
+<br>
+
+What you should see:
+
+- Only the destinations listed in `allowedDomains` are reachable from a scenario. If the file does not exist, or
+  `allowedDomains` is missing or empty, a scenario cannot reach the outside at all.
+- Even a listed destination is not reachable by a connection the scenario makes directly with a `URLSession` it created (only
+  `httpRequest` and `fleetestURLSession`, which go through the proxy, reach it). Connecting to a destination that is not listed
+  returns `403 Forbidden` from the proxy. How to confirm it by actually connecting, and how to read failures, are in
+  [Network access from scenarios](../reference/writing/network_access.md).
+- The meaning of each key is in [Machine settings (config.json)](../reference/project/machine_settings.md). Changing a value is
+  done by hand by the person at this Mac (do not have the AI write it).
+
+### 3. Check that the closed-network setup works
+
+On a closed network, check that either Option A (allow the destinations) or Option B (an internal mirror) goes through.
+
+#### Instruction for your AI assistant
+
+```text
+I want to check that the closed-network setup works. Check git's insteadOf settings, a git ls-remote of foundation-tester on github.com, and HTTPS reachability (status codes) of raw.githubusercontent.com, github.com, registry.npmjs.org and dl.google.com, and tell me the results. Do not change any settings.
+```
+
+<details>
+<summary><b>Run it manually (click to expand)</b></summary>
+
+```bash
+git config --global --get-regexp '^url\..*\.insteadof$'
+git ls-remote https://github.com/wave1008/foundation-tester.git HEAD
+for h in raw.githubusercontent.com github.com registry.npmjs.org dl.google.com; do
+  curl -sS -m 10 -o /dev/null -w "$h %{http_code}\n" https://$h/
+done
+```
+
+</details>
+<br>
+
+What you should see:
+
+- (1) is the Option B setting. A line such as `url.https://<internal-mirror>/.insteadof https://github.com/` means git traffic
+  to GitHub goes to the mirror. Nothing means no redirect (you run with Option A).
+- (2) returns a commit hash and a `HEAD` line when fetching fleetest itself works (with Option B, through the mirror). It
+  ends with `Could not resolve host` or `Connection timed out` when it does not.
+- (3) prints an HTTP status code per destination. A number (such as `200` or `301`) means the destination is reachable;
+  `000` with an error means it is not. With Option B, `raw.githubusercontent.com` and `github.com` need not be reachable
+  (you clone first and run `Scripts/install.sh` directly). Homebrew's distribution hosts are not included here; ask your
+  IT team which hosts you use.
 
 ### Link
 - [index](../index.md)

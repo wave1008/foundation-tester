@@ -121,7 +121,7 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
 
 - **シナリオは常に fleetest のサンドボックス(macOS の Seatbelt)の中で動きます。** MCP からでも、CLI からでも、
   拡張からでも同じです。書ける場所・読めない場所・通信先と、その設定(この Mac の `~/.config/fleetest/config.json` の
-  `sandbox`)は[アクセスできるフォルダと通信先](../../security/access_ja.md)にあります。サンドボックスが止めないもの
+  `sandbox`)は[サンドボックスの既定](../running/sandbox_access_ja.md)にあります。サンドボックスが止めないもの
   (localhost のサービス・他のデバイスのブリッジなど)は
   [注意事項と制限事項](../../security/limitations_ja.md)にあります。
 - **承認を省く範囲は、何を外で動かすかで選んでください。**

@@ -152,7 +152,7 @@ project's workspace. **Servers, databases and stubs are not started by a script*
 |---|---|
 | New kinds of operations on the device, or new information read from it | These are driver and bridge features, so fleetest itself has to change. Only what can be written by combining built-in commands is in your hands |
 | Write arbitrary files or read secrets in your home folder from a scenario | Scenarios run inside a sandbox. Write through [`TestLog.directoryForLog` / `directoryForTemp`](../commands/test_log.md) |
-| Start other apps or use adb / simctl directly from a scenario | fleetest itself performs a fixed set of operations on the scenario's behalf. adb can be opened with `allowDirectAdb` in this Mac's settings (see [Accessible folders and destinations](../../security/access.md)) |
+| Start other apps or use adb / simctl directly from a scenario | fleetest itself performs a fixed set of operations on the scenario's behalf. adb can be opened with `allowDirectAdb` in this Mac's settings (see [Sandbox defaults](../running/sandbox_access.md)) |
 | Run a custom command through `ft_batch` | `ft_batch` only runs built-in commands. Write custom commands in a scenario `.swift` file and run that |
 | Read shell environment variables (tokens and so on) in a scenario | Scenarios only receive the variables fleetest uses. Put secrets in this Mac's `account()` files |
 

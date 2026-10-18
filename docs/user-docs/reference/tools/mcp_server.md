@@ -123,7 +123,7 @@ in `scripts/compose.yaml`.
 - **Scenarios always run inside fleetest's sandbox (macOS Seatbelt)**, whether they are started from MCP, the CLI or
   the extension. Where a scenario can write, what it cannot read, where it can connect, and the settings for all of
   this (`sandbox` in this Mac's `~/.config/fleetest/config.json`) are in
-  [Accessible folders and destinations](../../security/access.md). What the sandbox does not stop (services on
+  [Sandbox defaults](../running/sandbox_access.md). What the sandbox does not stop (services on
   localhost, other devices' bridges and so on) is in
   [Notes and limitations](../../security/limitations.md).
 - **Choose what to approve by what runs outside the sandbox.**

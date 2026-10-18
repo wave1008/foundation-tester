@@ -25,19 +25,7 @@ The sandbox exists to protect this Mac. It does not stop the following.
   ([compose.yaml](../reference/writing/services.md)) could reach it and mount this Mac's files. fleetest refuses to
   start services while it is so, and `fleetest doctor` warns
 
-## What scenarios cannot do
-
-| Cannot do | Instead |
-|---|---|
-| Write files to the temporary folder (`NSTemporaryDirectory()`) or anywhere else | [`TestLog.directoryForLog` / `directoryForTemp`](../reference/commands/test_log.md) |
-| Rewrite the scenario sources, the project or fleetest itself | — (they are assumed not to be rewritable) |
-| Talk to the outside with a `URLSession` you created | `fleetestURLSession` or [`httpRequest`](../reference/commands/http_request.md). List the destination in `allowedDomains` |
-| Traffic that does not go through the proxy (UDP, clients without proxy support) | Cannot reach the outside. Use HTTP(S) or a client that supports `CONNECT` |
-| Read shell environment variables (tokens and so on) | Put them in this Mac's file for [`account()`](../reference/commands/dataset.md) |
-| Start other apps (`open -a` and so on) | — |
-| Use `adb`, `simctl` or `devicectl` freely | Use DSL commands. Only adb can be opened with the `allowDirectAdb` setting |
-| Rewrite fleetest's settings (`~/.config/fleetest`) | — (a person on this Mac edits them) |
-| Add photos to a physical iOS device's library (`addMedia`) | Run on a Simulator or add them on the device by hand (this is an iOS limitation, not the sandbox) |
+What scenarios cannot do (writing to the temporary folder, reading environment variables and so on) and what to use instead you can try step by step in [Checking the sandbox and opening the holes you need](sandbox.md).
 
 ## Operational notes
 
@@ -48,7 +36,7 @@ The sandbox exists to protect this Mac. It does not stop the following.
 - **Use `allowDirectAdb` only when needed.** Once open, a scenario can reach the outside through the shell inside an
   Emulator and reach every connected Android device. Speed is almost the same as with delegation.
 - **`sandbox.disabled` is for temporarily isolating a cause.** If a scenario works without the sandbox, it is doing
-  something the sandbox refuses; rewrite it with the "Instead" column above and restore the setting.
+  something the sandbox refuses; rewrite it with the fixed doors in steps 3 and 4 of [Checking the sandbox and opening the holes you need](sandbox.md) and restore the setting.
 - **Runs from MCP go through approval.** In Claude Code, the installer writes settings that ask for confirmation only
   for `ft_start_run` (the full run, including the scripts before and after it) and `ft_services` (starting the services). How to choose the approval scope is in
   [MCP server](../reference/tools/mcp_server.md).
@@ -66,13 +54,13 @@ The sandbox exists to protect this Mac. It does not stop the following.
 | Writing a file fails with "You don’t have permission" | Only the two `TestLog` folders are writable |
 | Outbound requests time out or return `403 Forbidden` | The troubleshooting table in [Network access from scenarios](../reference/writing/network_access.md) |
 | The scenario does not start and an error about the settings file appears | The JSON in `~/.config/fleetest/config.json` and whether it has unknown keys |
-| An environment variable looks empty | Only the variables fleetest uses are passed to scenarios ([Accessible folders and destinations](access.md)) |
+| An environment variable looks empty | Only the variables fleetest uses are passed to scenarios ([Sandbox defaults (writable places, unreadable places, destinations)](../reference/running/sandbox_access.md)) |
 
 ## Related
 
 - [Network Exposure and Security](network_security.md) — the ports fleetest opens, outbound traffic, and running on a closed network
-- [The sandbox](sandbox.md)
-- [Accessible folders and destinations](access.md)
+- [Checking the sandbox and opening the holes you need](sandbox.md)
+- [Sandbox defaults (writable places, unreadable places, destinations)](../reference/running/sandbox_access.md)
 
 ### Link
 - [index](../index.md)

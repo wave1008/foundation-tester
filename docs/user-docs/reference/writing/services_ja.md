@@ -23,8 +23,9 @@ Docker(Rancher Desktop・Docker Desktop など。unix ソケット経由)か、A
 }
 ```
 
-`runtime` は `"docker"` か `"apple"` です。未設定なら、Docker が使えれば Docker、使えなければ Apple Container を使います
-(Apple のシステムサービスを自動で起こすのは、Docker が使えないときだけです)。
+`runtime` は `"docker"` か `"apple"` です。未設定なら Docker → Apple Container の順に探し、**使えるものがちょうど1つ**ならそれを
+使います。両方が使える(Docker が動いていて、Apple Container のシステムサービスも起動している)ときは黙って選ばず、
+`runtime` で名指しするよう求めて止まります。Apple のシステムサービスを自動で起こすのは、Docker が使えないときだけです。
 
 ## 例
 

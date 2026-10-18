@@ -29,7 +29,7 @@ try? "name,price\n".write(to: csv, atomically: true, encoding: .utf8)
 let work = TestLog.directoryForTemp.appendingPathComponent("unzipped")     // シナリオの終わりに消える
 ```
 
-詳細: [出力フォルダと一時フォルダ(TestLog)](../reference/commands/test_log_ja.md)
+詳細: [出力フォルダと一時フォルダ(TestLog)](../commands/test_log_ja.md)
 
 ## アカウントとテストデータ(account, data)
 
@@ -42,7 +42,7 @@ type("#login_id", account("[account1].id"))
 type("#login_password", account("[account1].password"))
 ```
 
-詳細: [テストデータ・アカウント(account, data)](../reference/commands/dataset_ja.md)
+詳細: [テストデータ・アカウント(account, data)](../commands/dataset_ja.md)
 
 ## ファイルを使う(dataFile)・写真を入れる(addMedia)
 
@@ -56,7 +56,7 @@ addMedia("img/avatar.png")   // 写真を選ぶ画面のテストに(iOS 実機�
 
 `addMedia` で送れるのはデータセットのフォルダの中のファイルだけです。
 
-詳細: [テストデータ・アカウント(account, data)](../reference/commands/dataset_ja.md)
+詳細: [テストデータ・アカウント(account, data)](../commands/dataset_ja.md)
 
 ## 外部と通信する(httpRequest, fleetestURLSession)
 
@@ -72,13 +72,13 @@ response.status.thisIs(201)
 `URLSession` を自分で使うときは、`URLSession.shared` ではなく `fleetestURLSession` を使います
 (プロキシが設定済みの `URLSession` です)。
 
-詳細: [HTTP リクエスト(httpRequest)](../reference/commands/http_request_ja.md)・[シナリオから外部へ通信する](../reference/writing/network_access_ja.md)
+詳細: [HTTP リクエスト(httpRequest)](../commands/http_request_ja.md)・[シナリオから外部へ通信する](network_access_ja.md)
 
 ## シナリオ間で値を渡す(memo)
 
 `setUpDevice()` で用意した値を、同じデバイスの他のシナリオへ渡します。ファイルを自分で書いて受け渡す必要はありません。
 
-詳細: [メモ(writeMemo, readMemo, clearMemo, memoTextAs)](../reference/commands/memo_ja.md)
+詳細: [メモ(writeMemo, readMemo, clearMemo, memoTextAs)](../commands/memo_ja.md)
 
 ## 秘密をレポートに残さない(redactAccountValues)
 
@@ -86,7 +86,7 @@ response.status.thisIs(201)
 この Mac の `~/.config/fleetest/config.json` に `"redactAccountValues": true` を書くと、`account()` の値を `***` に伏せます。
 スクリーンショットに写った文字は伏せられません。
 
-詳細: [テストデータ・アカウント(account, data)](../reference/commands/dataset_ja.md)
+詳細: [テストデータ・アカウント(account, data)](../commands/dataset_ja.md)
 
 ## 外部の Swift パッケージを使う
 
@@ -94,7 +94,7 @@ response.status.thisIs(201)
 `fleetestScenarioDependencies` の2箇所に書くとシナリオから import できます。読み込んだライブラリのコードも、
 シナリオと同じサンドボックスの中で動きます(依存のビルドだけは外で動くので、信頼できるパッケージだけを足してください)。
 
-詳細: [テストプロジェクトの作成](../reference/project/creating_project_ja.md)
+詳細: [テストプロジェクトの作成](../project/creating_project_ja.md)
 
 ## run の前後で処理を走らせる(run-setup.sh, run-teardown.sh)
 
@@ -102,20 +102,20 @@ run の開始時と終了時に走らせる処理は、`TestProjects/<プロジ�
 (MCP の `ft_run_scenario` では走りません)。スクリプトも自分用のサンドボックスの中で走ります。書けるのは `<workspace>/data/` と
 `hooks.writablePaths` だけで、繋げるのは compose.yaml で公開したポートとプロキシ経由の許可ドメインだけです。
 テスト対象のアプリが依存する DB・スタブサーバは `scripts/compose.yaml` に宣言すると、fleetest が起動・停止します
-([サービスの宣言](../reference/writing/services_ja.md))。コンテナの中の操作は `fleetest-services` で行います。
+([サービスの宣言](services_ja.md))。コンテナの中の操作は `fleetest-services` で行います。
 
-詳細: [自分で機能を足す](../reference/writing/extending_ja.md)
+詳細: [自分で機能を足す](extending_ja.md)
 
 ## デバイスの操作は DSL のコマンドで
 
 `adb`・`simctl`・`devicectl` をシナリオから直接呼ぶと、fleetest 本体が決まった形のものだけを代わりに実行し、
 それ以外は断ります。アプリのインストール・起動・データの消去・URL を開くといった操作は、
-DSL のコマンド([installApp](../reference/commands/install_app_ja.md)・[launchApp](../reference/commands/launch_app_ja.md) など)を使ってください。
+DSL のコマンド([installApp](../commands/install_app_ja.md)・[launchApp](../commands/launch_app_ja.md) など)を使ってください。
 
 ## 関連
 
-- [アクセスできるフォルダと通信先](access_ja.md) —— 書ける場所・読めない場所・通信先・設定ファイル
-- [サンドボックスの考え方](sandbox_ja.md)
+- [サンドボックスの既定(書ける場所・読めない場所・通信先)](../running/sandbox_access_ja.md) —— 書ける場所・読めない場所・通信先・設定ファイル
+- [サンドボックスを確かめて、必要な穴をあける](../../security/sandbox_ja.md)
 
 ### Link
-- [index](../index_ja.md)
+- [index](../../index_ja.md)

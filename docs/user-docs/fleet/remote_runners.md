@@ -2,108 +2,65 @@
 
 [in Japanese(日本語)](remote_runners_ja.md)
 
-`fleetest run --runner <machine>` runs your tests on another Mac (a runner machine). Your Mac
-sends the run over SSH, the runner executes it just like a local run, and the output and
-artifacts come back to your Mac.
+These steps run your tests on another Mac (a runner machine). Your Mac sends the run over SSH, the runner executes it
+just like a local run, and the output and artifacts (reports, recordings, logs) come back to your Mac.
 
-This page covers what remote runs can do and how they work. The setup steps are in
-[Adding a Mac](adding_mac.md).
+What remote runs can do, the overview, machine names, and how a run profile decides where a run goes are in
+[Fleet concepts](concepts.md).
 
-## What it can do
+## Before you start
 
-| Capability | Supported |
-|---|---|
-| Send a run to another Mac (from the CLI or the VS Code extension) | ✅ |
-| Progress display, cancellation, timeout | ✅ |
-| Bring reports, JUnit, recordings and run logs back to your Mac | ✅ |
-| Provision a runner from your Mac in one command (`remote setup`); remove it the same way (`remote teardown`) | ✅ |
-| Check or clean up several runners at once (`remote status` / `remote clean`) | ✅ |
-| Run a single `fleetest` command on a runner (`remote exec`) | ✅ |
-| Run on several runners at the same time (a fleet, `run --fleet`) | ✅ |
-| Split one set of scenarios across several runners (`run --fleet <name> --split`) | ✅ |
-| Include remote results in `fleetest results` (flaky detection etc.) | ✅ (collected by default) |
-| See remote devices' state and video in the Device Monitor | ✅ |
-
-Scenarios and profiles are sent from your Mac to the runner automatically on every run. You edit
-them only on your Mac; you never edit files on the runner directly.
-
-## Overview
-
-```
-Your Mac                                Runner machine
-fleetest run --runner mac2 …             ~/fleetest-runner/               ← dedicated base directory
-  ├ version check (fleetest, Xcode)  ssh ├── foundation-tester/          ← clone of fleetest itself (fixed name, shared)
-  ├ send (scenarios/config) ───────────> └── users/<issuerId>/work/     ← your work area (per user)
-  ├ display output                             ├── TestProjects/<project>/
-  └ collect artifacts <──────────────────      └── .build/
-```
-
-Remote runs only use `~/fleetest-runner/` on the runner. If the runner has its own copy of
-foundation-tester elsewhere, it is never touched.
-
-## Setup
-
-The setup steps, for both the CLI and the VS Code extension, are in
-[Adding a Mac](adding_mac.md). The flow is:
-
-1. Prepare the runner (on the runner, by hand)
-2. Set up SSH key login
-3. Register the machine
-4. Install fleetest on the runner (`fleetest remote setup`)
-5. Add the runner's devices to your profiles
-6. Check the connection and run your first test
+The runner must already be prepared. If it is not, finish [Adding a Mac](adding_mac.md) first (preparing the runner,
+SSH, registering the machine, installing fleetest on the runner and checking the connection).
 
 In Claude Code, you can also set up with the `/fleetest-remote-setup` skill. The skill
 asks what it needs to know, leaves the mechanical work to `fleetest remote setup`, hands you the
 parts that need a person, and reports the result at the end. It does not do the tasks that need
 sudo or the GUI, such as preparing the runner, for you.
 
-## Machine names
+## 1. Add the runner's devices to a run profile
 
-To point at a runner, you use a name you give it on your Mac, not its host name or IP address.
-This name is called the **machine name**.
+Which machine runs a test is decided by the `machine` written on each device in the run profile's `devices`
+("The run profile decides where tests run" in [Fleet concepts](concepts.md)).
 
-- **Host**: the real network destination. Example: `<user@192.168.xxx.xxx>`
-- **Machine**: a name for that host, known only on this Mac. Example: `M1Max`. This is what
-  profiles refer to.
+### Prompt for the AI
 
-Register machine names with `fleetest remote machines add` or in the Device Monitor's Settings
-tab (see Step 2 of [Adding a Mac](adding_mac.md)).
-
-Renaming a machine later causes no trouble. Records such as result JSON keep the host name, and
-the machine name never appears in the files or arguments sent to the runner.
-
-## A run profile's devices decide where a run goes
-
-Each device in a run profile names its own machine in `machine`:
-
-```jsonc
-// profiles/runs/ios-m1max.json
-{ "app": "myapp",
-  "devices": [
-    { "platform": "ios", "machine": "M1Max", "name": "iPhone 17 Pro", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" }
-  ] }
+```text
+Find the devices on M1Max and add them to the run profile ios-run.
 ```
 
-So **choosing a run profile also chooses which machine runs it**, and you normally do not need
-`--runner`. If a run profile's enabled devices all live on one remote machine, the run
-is automatically sent there. If they span several machines (some `"local"`, some remote), the
-run splits per machine and each portion runs against its own devices there.
+<details>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
-- Write `"machine": "local"` for devices on your own Mac — always write it explicitly, since
-  there is no profile-level default to fall back on.
-- `--runner <name>` on the command line takes priority over the profile (pass `--runner local` to
-  force a run to stay on your Mac). Besides a machine name, `--runner` also accepts a host name
-  or IP address directly.
-- When you narrow a run with `--device <name>` and devices with that name exist on **more than one
-  machine** (you use the same names on your Mac and on a runner), fleetest cannot tell which machine
-  you mean, so the run is refused. Add `--runner local` for your Mac only, `--runner <machine>` for one
-  machine, or `--all-machines` to run on every machine that has a device with that name. If the name
-  is on only one machine, the run goes ahead as before.
+In the VS Code extension, open "Select Devices" from the run profile's "Add device" button and switch "Machine:".
+On the CLI, look up the runner's devices with `fleetest remote exec M1Max -- api installed-devices` and write them, with
+`machine`, into the run profile's `devices`. Both are described in Step 4 of [Adding a Mac](adding_mac.md).
 
-## `run --runner` and `--fleet`
+</details>
+<br>
+
+## 2. Run it
+
+If the run profile's devices are on the runner, the run goes to the runner with the same prompt as any other run.
+You do not need `--runner`.
+
+### Prompt for the AI
+
+```text
+Run the scenario <scenario name> with the run profile ios-run.
+```
+
+To send just this one run to a different machine, name the machine:
+
+```text
+Run the scenario <scenario name> on M1Max with the run profile ios-run.
+```
+
+<details>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 ```bash
+fleetest run --profile <run profile> --scenario <scenario ID>        # follows the machine of the profile's devices
 fleetest run --runner <name> --profile <run profile>            # send this one run to a specific machine
 fleetest run --project <project> --fleet <name>                 # run the same scenarios on every machine in the fleet
 fleetest run --project <project> --fleet <name> --split          # split the scenarios across the machines
@@ -128,38 +85,12 @@ In a fleet definition you write the machine name under the `host` key (the key d
 - With `--junit <path>`, the results from every machine are merged into one file. Each
   `<testsuite>`'s `hostname` tells you which machine it came from.
 
-## Runners on another network (across a router)
+</details>
+<br>
 
-A runner does not have to be on the same LAN as your Mac. Any Mac you can reach with
-`ssh <target> 'echo ok'` works. Only whole run jobs travel over the network, so remote runs stay
-fairly stable even with network latency.
+The first run takes a few minutes to start, because the runner builds the scenarios and so on. Later runs start within seconds.
 
-- **The only connection you open is SSH from your Mac to the runner.** Your Mac does not need to
-  accept incoming connections. File transfers, progress, artifact collection and live video all
-  travel inside that one SSH connection.
-- **Put port numbers and jump hosts in `~/.ssh/config`.** A target cannot be written as
-  `host:2222` (targets containing `:` or whitespace are rejected). Define an alias in
-  `~/.ssh/config` with `Host mac2` / `HostName` / `Port` / `ProxyJump`, and use that alias as the
-  target.
-- **Do not expose the SSH port directly to the internet.** Connecting over a VPN (Tailscale or
-  similar) is the intended setup. If you must forward a port, forward only one, restrict the
-  source IP addresses, and disable password authentication in the runner's sshd.
-- **Do not open Screen Sharing (port 5900) on the router.** Instead, open a tunnel with
-  `ssh -L 5900:localhost:5900 <target>` and connect to `vnc://localhost:5900`.
-- **A slow link keeps working with reduced features instead of breaking.** When live video
-  cannot be established, tiles switch to still images. While the connection is briefly down,
-  a tile shows `unknown`. This means "the state could not be checked", not "free". Collecting
-  recordings is what puts the heaviest load on the link.
-
-**When physical devices are attached to the runner**, the network route from your Mac does not
-matter; only the runner's own LAN does. Over USB, nothing needs to be configured. A LAN-attached
-iPhone listens and the Mac connects to it, so no firewall change is needed on the Mac either.
-You do need both of the following:
-
-- The runner and the device are on the same subnet
-- Client isolation (privacy separator) on the access point is turned off
-
-## Using it from the VS Code extension
+## 3. Using it from the VS Code extension
 
 The extension has no "choose where to run" screen. When you choose a run profile, the `machine`
 its devices name decides where the run goes.
@@ -187,7 +118,29 @@ watch (Wi-Fi repair) only applies to local devices. Physical devices are exclude
 Services in `scripts/compose.yaml` start on the runner, so the runner also needs a container
 runtime and the images (see the requirements table in [Adding a Mac](adding_mac.md)).
 
-## Sharing one runner between several people
+## 4. Sharing one runner between several people
+
+When you send a run to a runner that someone else is using, it waits until the runner is free. The run log shows your
+position in line.
+
+### Prompt for the AI
+
+```text
+Run the scenario <scenario name> on M1Max with the run profile ios-run. If M1Max is in use, wait up to 10 minutes for your turn.
+```
+
+<details>
+<summary><b>If you do it manually (click to show details)</b></summary>
+
+```bash
+fleetest run --runner M1Max --profile <run profile> --scenario <scenario ID> --wait-lock 600
+```
+
+`--wait-lock <seconds>` is the longest it waits for the runner to become free. While you wait, the run log shows your
+position.
+
+</details>
+<br>
 
 **Only one run at a time** can use a runner. The devices belong to that runner, so two runs are
 kept from fighting over the same device. When the runner is busy, you are shown who has been
@@ -219,7 +172,40 @@ If you set your name in `issuerId` in `~/.config/fleetest/config.json`, that nam
 messages. For setting up a runner shared by several people, see "When several people share one
 runner" in [Adding a Mac](adding_mac.md).
 
-## Maintaining runner machines
+## Good to know
+
+### Runners on another network (across a router)
+
+A runner does not have to be on the same LAN as your Mac. Any Mac you can reach with
+`ssh <target> 'echo ok'` works. Only whole run jobs travel over the network, so remote runs stay
+fairly stable even with network latency.
+
+- **The only connection you open is SSH from your Mac to the runner.** Your Mac does not need to
+  accept incoming connections. File transfers, progress, artifact collection and live video all
+  travel inside that one SSH connection.
+- **Put port numbers and jump hosts in `~/.ssh/config`.** A target cannot be written as
+  `host:2222` (targets containing `:` or whitespace are rejected). Define an alias in
+  `~/.ssh/config` with `Host mac2` / `HostName` / `Port` / `ProxyJump`, and use that alias as the
+  target.
+- **Do not expose the SSH port directly to the internet.** Connecting over a VPN (Tailscale or
+  similar) is the intended setup. If you must forward a port, forward only one, restrict the
+  source IP addresses, and disable password authentication in the runner's sshd.
+- **Do not open Screen Sharing (port 5900) on the router.** Instead, open a tunnel with
+  `ssh -L 5900:localhost:5900 <target>` and connect to `vnc://localhost:5900`.
+- **A slow link keeps working with reduced features instead of breaking.** When live video
+  cannot be established, tiles switch to still images. While the connection is briefly down,
+  a tile shows `unknown`. This means "the state could not be checked", not "free". Collecting
+  recordings is what puts the heaviest load on the link.
+
+**When physical devices are attached to the runner**, the network route from your Mac does not
+matter; only the runner's own LAN does. Over USB, nothing needs to be configured. A LAN-attached
+iPhone listens and the Mac connects to it, so no firewall change is needed on the Mac either.
+You do need both of the following:
+
+- The runner and the device are on the same subnet
+- Client isolation (privacy separator) on the access point is turned off
+
+### Maintaining runner machines
 
 Nobody looks at a runner machine's results, reports, and recordings the way you look at your own, so
 they pile up unnoticed. Run `fleetest remote clean --runner <machine>` from time to time. You can check the free
@@ -228,7 +214,7 @@ space with `fleetest remote status`. `remote clean` stops if a test is running (
 When you update fleetest on your Mac, bring the runner machines to the same version too (see "When you update fleetest"
 in [Adding a Mac](adding_mac.md)).
 
-## Using it safely
+### Using it safely
 
 - The only path is **SSH with key-based authentication**. No password prompt is used, and
   **relaxed host-key checking is never used**.

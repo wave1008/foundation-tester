@@ -49,6 +49,12 @@ same version is covered on that page too.
 - If, after updating Xcode, you are told the iOS Simulator runtime is missing, install it with
   `xcodebuild -downloadPlatform iOS`.
 
+#### Prompt for the AI
+
+```text
+I updated macOS and Xcode. Delete .build in the fleetest clone and in the work folder, rebuild with update.sh --force, and install the iOS Simulator runtime if it is missing.
+```
+
 ### When FM (Foundation Models) stops working
 
 If a test run ends with `FM is dead on this machine`, the on-device model (FM) on this Mac has stopped
@@ -60,6 +66,12 @@ working. You can check with `fleetest doctor --fm-only` (it exits with code 1 wh
   note `visibility-guard-skipped`).
 - While FM is known to have stopped, fleetest does not call it (calling a stopped FM takes more than ten
   seconds each time). It checks again once every two minutes, so it is used again as soon as it comes back.
+
+#### Prompt for the AI
+
+```text
+Run fleetest doctor --fm-only and check whether FM works on this Mac. If it does not, tell me why and how to fix it.
+```
 
 ### Keeping disk space free
 
@@ -89,6 +101,12 @@ working. You can check with `fleetest doctor --fm-only` (it exits with code 1 wh
   not keep growing. If you delete it, it is rebuilt the next time you use fleetest, which takes a few
   minutes.
 
+#### Prompt for the AI
+
+```text
+Show me how much fleetest clean --dry-run would delete, and if that is fine run fleetest clean. Stop any bridges that are not in use. Also tell me how much space the compose.yaml services use, from fleetest services status.
+```
+
 ### Remote runner machines
 
 Cleaning up a runner machine's results, reports, and recordings is covered in "Maintaining runner machines" in
@@ -100,11 +118,23 @@ The image samples you use with `findImage` and the like look different on each O
 update the OS of a device you test on, add samples taken on the new OS
 ([Finding by image](../reference/commands/find_image.md)).
 
+#### Prompt for the AI
+
+```text
+I moved the iOS Simulator used for tests to a new OS. Add the sample images used by findImage, taken from the new OS's screens.
+```
+
 ### Self-healing suggestions
 
 If you use self-healing, review the fix suggestions that appear after a test run and apply them
 ([Self-healing](../reference/running/self_healing.md)). fleetest never rewrites your scenario source by itself, so
 the same suggestions keep appearing on every run until you apply them.
+
+#### Prompt for the AI
+
+```text
+List the self-healing suggestions from the most recent run. If they look right, apply them to the scenarios and check with a dry-run.
+```
 
 ### Link
 - [index](../index.md)

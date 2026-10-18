@@ -26,16 +26,16 @@ then continue with the [Tutorial](#tutorial).
 - [Preparing the servers your app depends on](tutorial/preparing_app_server.md)
 - [Creating tests](tutorial/creating_tests.md)
 - [Running tests](tutorial/running_tests.md)
+- [Running smoke and regression separately](tutorial/smoke_and_regression.md)
 - [Reading results and investigating failures](tutorial/investigating_failures.md)
 - [Keeping tests up with app changes](tutorial/keeping_up_with_app_changes.md)
 - [Watching in VSCode](tutorial/watching_in_vscode.md)
 
 ## Security
 
+- [Checking the sandbox and opening the holes you need](security/sandbox.md)
+- [Checking what a test leaves behind](security/test_outputs.md)
 - [Network exposure and security](security/network_security.md)
-- [The sandbox](security/sandbox.md)
-- [Accessible folders and destinations](security/access.md)
-- [Helpful features for writing test code](security/helpers.md)
 - [Notes and limitations](security/limitations.md)
 
 ## Expanding your fleet
@@ -45,17 +45,23 @@ then continue with the [Tutorial](#tutorial).
 - [Adding physical devices](fleet/adding_physical_devices.md)
 - [Remote Runners](fleet/remote_runners.md)
 
+## Response measurement
+
+- [Measuring app responsiveness](response/measuring_app_response.md)
+
 ## Operations
 
 - [Update](update.md)
 - [Uninstall](uninstall.md)
 - [Running on CI](in_action/ci.md)
+- [Sharing the test project until a second person runs it](in_action/sharing_project.md)
 - [Troubleshooting](in_action/troubleshooting.md)
 - [Maintenance for long-term use](in_action/maintenance.md)
 
 ## Appendix
 
 - [Quality attributes (non-functional requirements)](overview/quality.md)
+- [Glossary](overview/glossary.md)
 
 ## Developer reference
 
@@ -67,6 +73,7 @@ scenarios the AI assistant wrote, or to write some yourself.
 - [Creating a test project](reference/project/creating_project.md)
 - [Profiles (app / run)](reference/project/profiles.md)
 - [Run profile settings](reference/project/run_profile.md)
+- [Machine settings (config.json)](reference/project/machine_settings.md)
 
 ### Creating TestClass
 
@@ -152,9 +159,12 @@ scenarios the AI assistant wrote, or to write some yourself.
 - [Parallel execution](reference/running/parallel_execution.md)
 - [Analysing results (fleetest results, dashboard)](reference/running/results_analysis.md)
 - [Response measurement](reference/running/response_measurement.md)
+- [Test bases and scenario drafts (draft-scenario)](reference/running/testbases.md)
+- [Sandbox defaults (writable places, unreadable places, destinations)](reference/running/sandbox_access.md)
 
 ### Tools
 
+- [CLI reference (fleetest subcommands)](reference/tools/cli.md)
 - [VSCode extension](reference/tools/vscode_extension.md)
 - [MCP server](reference/tools/mcp_server.md)
 - [Claude Code skills](reference/tools/claude_code_skills.md)
@@ -167,6 +177,7 @@ scenarios the AI assistant wrote, or to write some yourself.
 - [UI component patterns and quirks](reference/writing/ui_component_patterns.md)
 - [Network access from scenarios](reference/writing/network_access.md)
 - [Services the app depends on (compose.yaml)](reference/writing/services.md)
+- [Helpful features for writing test code](reference/writing/helpers.md)
 - [Adding your own features](reference/writing/extending.md)
 
 ### Specifications

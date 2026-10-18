@@ -4,28 +4,51 @@
 
 While the AI assistant creates and runs tests, you can **watch** what is happening in the VSCode extension.
 The VSCode extension comes with the installation in [Quick start](../quick-start.md).
+This page walks you through it step by step and shows what you see on each screen.
 
-## Device Monitor
+## 1. Open the Device Monitor
 
-Run the command "fleetest: Show Device Monitor", or click
-**fleetest mobile** in the status bar at the bottom left of VSCode, to open it.
+Run "fleetest: Show Device Monitor" from the Command Palette, or click
+**fleetest mobile** in the status bar at the bottom left of VSCode.
 
-- **The device screens line up in near real time**. You can watch the AI assistant exploring, and tests
+What you see:
+
+- The "Device Monitor" tab opens with three panes, top to bottom: the **Line View** (the row of device tiles), the
+  **Grid View** (the enlarged screen of the selected device) and the **Run Log View** (the run log of the selected
+  device).
+- The Line View shows the device screens in near real time. You can watch the AI assistant exploring, and tests
   running in parallel on multiple devices, as they happen.
-- A device you select by clicking its tile is shown enlarged below, and its execution log (which step is running and whether it passed) streams in.
 - The "Running" section at the top shows the runs in progress, with "how many of how many" and "how many minutes left".
 
 <img src="../images/tutorial/en/vscode_device_monitor.png" width="720" alt="Device Monitor">
 
-### When the Mac is slow
+## 2. Select a tile to see the enlarged screen and the run log
 
-Streaming the screens puts load on the Mac. When you are running many devices in parallel and things get slow,
-turn "Live Updates" in the Device Monitor OFF to stop streaming and lower the load (status display continues).
+Click a tile in the Line View to select the device. It is easiest to see when you try this while the AI assistant is
+running a test.
 
-## Touch it yourself (Live Control)
+```text
+Run the scenario I created on iOS.
+```
 
-In the "Live Control" tab, you can operate the device screen directly with the mouse (click to tap, drag to swipe).
+What you see:
+
+- The selected device's screen appears enlarged in the Grid View.
+- The Run Log View streams that device's run log (which step is running and whether it passed).
+- The Grid View and the Run Log View show only the device selected in the Line View. With nothing selected, both say
+  "Select a device".
+- With exactly one device selected, the Grid View shows the enlarged screen and the run log side by side, and the Run
+  Log View below folds itself so the same log is not shown twice.
+
+## 3. Touch it yourself (Live Control)
+
+Open the "Live Control" tab (you can also run "fleetest: Show Live Control" from the Command Palette).
+You can operate the device screen directly with the mouse (click to tap, drag to swipe).
 Use it when you want to check how the screen looks before asking the AI assistant, or to set up by hand the state a test assumes.
+
+What you see:
+
+- The place you click is tapped on the device, and the screen updates.
 
 You can also turn your operations directly into a scenario with "Start Recording" -> operate -> "Stop Recording".
 A scenario made by recording has no verifications in it, so ask the AI assistant to finish it
@@ -33,23 +56,34 @@ A scenario made by recording has no verifications in it, so ask the AI assistant
 
 <img src="../images/tutorial/en/vscode_live_control.png" width="720" alt="Live Control">
 
-## Test list and runs (Test Explorer)
+## 4. Run from the Test Explorer
 
-In VSCode's Testing view, the project's scenarios appear in three levels: folder -> class -> test.
+Open VSCode's Testing view. The project's scenarios appear in three levels: folder -> class -> test.
 
-- You can select tests and press "Run" or "Run (dry-run)". Before "Run", choose a run profile with
-  `fleetest: Select Run Profile` in the Command Palette (without one, the run does not start).
+1. Choose a run profile with `fleetest: Select Run Profile` in the Command Palette
+   (without one, the run does not start and shows an error).
+2. Select a test and press "Run" or "Run (dry-run)".
+
+What you see:
+
 - Pass/fail is shown right there, and you can open the failure report from it.
+- You can watch the running devices in the Device Monitor from steps 1 and 2.
 
 <img src="../images/tutorial/en/vscode_test_explorer.png" width="720" alt="Test Explorer">
 
-## Watching recordings
+## 5. Watch the recordings
 
-Recording is on by default, and the "Test Sessions" tab lets you look back at each scenario's video and steps.
-If the Device Monitor is showing when a run finishes, it switches to this tab automatically.
-You can also export the results to an Excel file.
+Open the "Test Sessions" tab. Recording is on by default. If the Device Monitor is showing when a run finishes, it
+switches to this tab automatically.
+
+What you see:
+
+- Each scenario's video and steps, to look back at.
+- You can also export the results to an Excel file.
 
 To save space, you can keep recordings only for failed scenarios.
+
+### Prompt for the AI
 
 ```text
 For fleetest's iOS runs, keep recordings only for failed scenarios.
@@ -57,12 +91,20 @@ For fleetest's iOS runs, keep recordings only for failed scenarios.
 
 <img src="../images/tutorial/en/vscode_test_sessions.png" width="720" alt="Test Sessions">
 
-## Results Dashboard
+## 6. See the Results Dashboard
 
-The command "fleetest: Open Results Dashboard" lists the run history, newly failing tests, recovered tests, and
-success rate.
+Run "fleetest: Open Results Dashboard" from the Command Palette.
+
+What you see:
+
+- The run history, newly failing tests, recovered tests, and success rate.
 
 <img src="../images/tutorial/en/vscode_results_dashboard.png" width="720" alt="Results Dashboard">
+
+## When the Mac is slow
+
+Streaming the screens puts load on the Mac. When you are running many devices in parallel and things get slow,
+turn "Live Updates" in the Device Monitor OFF to stop streaming and lower the load (status display continues).
 
 ## Learn more
 

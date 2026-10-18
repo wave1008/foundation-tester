@@ -78,17 +78,65 @@ Go through past fleetest results and find scenarios that are flaky (sometimes pa
 
 </details>
 
+### What to do once you find one
+
+1. **Fix how it is written.** Where waits are placed, selectors, and how things that may or may not appear are handled can all be fixed in how the scenario is written.
+   Tell the AI assistant to fix it following [Writing Robust Scenarios](../reference/writing/writing_robust_scenarios.md).
+2. **Suspect a busy Mac.** When the Mac is slow, suspect the Device Monitor's streaming
+   ("When the Mac is slow" in [Watching in VSCode](watching_in_vscode.md)).
+3. **After fixing it, run the same scenario several times in a row to check.** One pass does not mean it is fixed.
+4. **Decide how to treat it on CI.** The policy is to find and fix, not to hide it behind retries ("Flaky scenarios (no retry mechanism, by design)" in [Running on CI](../in_action/ci.md)).
+
+### Prompt for the AI
+
+```text
+Run the login test on iOS 5 times in a row and confirm that all of them pass. If any run fails, report which run failed and why.
+```
+
+<details>
+<summary><b>If you do it manually (click to show details)</b></summary>
+
+There is no option to set a count. Use a shell loop to run the same scenario repeatedly.
+
+```bash
+for i in 1 2 3 4 5; do
+  ../foundation-tester/.build/debug/fleetest run --profile ios-run --scenario <ClassName> --quiet || echo "failed: run $i"
+done
+```
+
+`<ClassName>` is the scenario's file name without the extension. Each run ends with a summary line, and a failed run is followed by `failed: run N`.
+
+</details>
+
 ## Look back at how a run went
 
-- Recording is on by default, and a video is kept for each scenario (to save space, ask "keep recordings only for
-  failed scenarios"). You can watch recordings in the "Test Sessions" tab of the VSCode extension ([Watching in VSCode](watching_in_vscode.md)).
-- Per-scenario execution logs (the pass/fail of each step and the output produced during the run) are also kept.
-  Ask "show me the execution log of the login test in the most recent run" to read it.
+Per-scenario execution logs (the pass/fail of each step and the output produced during the run) and recordings are kept.
+
+### Prompt for the AI
+
+```text
+Show me the execution log of the login test in the most recent run, and walk me through what happened at each step.
+```
+
+- Recording is on by default, and a video is kept for each scenario. You can watch recordings in the "Test Sessions" tab
+  of the VSCode extension ([Watching in VSCode](watching_in_vscode.md)). To save space, ask for this:
+
+```text
+In fleetest's iOS runs, keep recordings only for failed scenarios.
+```
 
 ## When it might be a bug in fleetest itself
 
-If, after having the AI assistant investigate, the cause seems to be on the tool's side, report it to the fleetest developers
-(where to report, and how to put together the diagnostic information to attach, are in [Troubleshooting](../in_action/troubleshooting.md)).
+If, after having the AI assistant investigate, the cause seems to be on the tool's side, report it to the fleetest developers.
+The diagnostic information to attach can be bundled into a zip (nothing is sent anywhere).
+
+### Prompt for the AI
+
+```text
+Create the diagnostic zip with fleetest doctor --bundle fleetest-diag.zip and list its contents. Also check whether it contains text from the app's screens.
+```
+
+Where to report, and what to check before sharing the zip, are in "Reporting a problem" in [Troubleshooting](../in_action/troubleshooting.md).
 
 ## Learn more
 

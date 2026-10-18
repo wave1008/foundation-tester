@@ -25,19 +25,7 @@
   ([compose.yaml](../reference/writing/services_ja.md))のために起こしたコンテナがそこへ届き、この Mac のファイルを
   マウントできます。その状態では fleetest はサービスを起動せず、`fleetest doctor` が警告します
 
-## シナリオでできないこと
-
-| できないこと | 代わりの方法 |
-|---|---|
-| 一時フォルダ(`NSTemporaryDirectory()`)や任意の場所にファイルを書く | [`TestLog.directoryForLog` / `directoryForTemp`](../reference/commands/test_log_ja.md) |
-| シナリオのソース・プロジェクト・fleetest 本体を書き換える | ― (書き換えられないことが前提です) |
-| 自分で作った `URLSession` で外部へ通信する | `fleetestURLSession` か [`httpRequest`](../reference/commands/http_request_ja.md)。宛先は `allowedDomains` に書きます |
-| プロキシを通らない通信(UDP・プロキシに対応しないクライアント) | 外部へは出られません。HTTP(S) か、`CONNECT` に対応したクライアントを使います |
-| シェルの環境変数(トークンなど)を読む | [`account()`](../reference/commands/dataset_ja.md) のこの Mac 側のファイルに置きます |
-| 他のアプリを起こす(`open -a` など) | ― |
-| `adb`・`simctl`・`devicectl` を自由に使う | DSL のコマンドを使います。adb だけは設定の `allowDirectAdb` で開けられます |
-| fleetest の設定(`~/.config/fleetest`)を書き換える | ― (この Mac の人が編集します) |
-| iOS 実機の写真ライブラリへ写真を入れる(`addMedia`) | Simulator で実行するか、端末へ手で入れます(これはサンドボックスではなく iOS 側の制限です) |
+シナリオでできないこと(一時フォルダへの書き込み・環境変数の読み取りなど)と代わりの方法は、[サンドボックスを確かめて、必要な穴をあける](sandbox_ja.md)の手順で試せます。
 
 ## 運用上の注意
 
@@ -48,7 +36,7 @@
 - **`allowDirectAdb` は必要なときだけ**にしてください。開けると、シナリオから Emulator の中のシェル経由で外部へ出られ、
   繋がった全 Android 端末に届くようになります。代行と比べて速さはほとんど変わりません。
 - **`sandbox.disabled` は原因の切り分けのために一時的に使う**ものです。外して動くならサンドボックスが断っている操作が
-  あるということなので、上の「代わりの方法」で書き直し、設定を戻してください。
+  あるということなので、[サンドボックスを確かめて、必要な穴をあける](sandbox_ja.md)の手順3〜4の決まった口で書き直し、設定を戻してください。
 - **MCP からの実行は承認で受けます**。Claude Code では、インストーラが `ft_start_run`(run の前後のスクリプトを含む
   本番の実行)と `ft_services`(サービスの起動)だけを確認する設定を書きます。承認の範囲の選び方は [MCP サーバ](../reference/tools/mcp_server_ja.md)にあります。
 - **macOS の更新で挙動が変わることがあります**。fleetest が使う `sandbox-exec` は Apple が非推奨と明記している仕組みで、
@@ -65,13 +53,13 @@
 | ファイルを書くと「You don’t have permission」で失敗する | 書けるのは `TestLog` の2つのフォルダだけです |
 | 外部への通信がタイムアウトする・`403 Forbidden` が返る | [シナリオから外部へ通信する](../reference/writing/network_access_ja.md)の繋がらないときの表 |
 | シナリオが起動せず、設定ファイルのエラーが出る | `~/.config/fleetest/config.json` の JSON の形と、知らないキーが無いか |
-| 環境変数が空に見える | シナリオに渡るのは fleetest が使う変数だけです([アクセスできるフォルダと通信先](access_ja.md)) |
+| 環境変数が空に見える | シナリオに渡るのは fleetest が使う変数だけです([サンドボックスの既定(書ける場所・読めない場所・通信先)](../reference/running/sandbox_access_ja.md)) |
 
 ## 関連
 
 - [ネットワークの露出とセキュリティ](network_security_ja.md) —— fleetest が開くポート・外向きの通信・閉域網での運用
-- [サンドボックスの考え方](sandbox_ja.md)
-- [アクセスできるフォルダと通信先](access_ja.md)
+- [サンドボックスを確かめて、必要な穴をあける](sandbox_ja.md)
+- [サンドボックスの既定(書ける場所・読めない場所・通信先)](../reference/running/sandbox_access_ja.md)
 
 ### Link
 - [index](../index_ja.md)

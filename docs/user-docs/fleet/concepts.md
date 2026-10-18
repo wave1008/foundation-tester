@@ -17,20 +17,55 @@ You can grow your fleet by adding devices on local and remote Macs.
 | Device | Where the tests run: Simulators and Emulators (virtual devices) and physical devices (a real iPhone or Android). Every device belongs to one machine |
 | Run profile | The setting that decides which devices on which machines run the tests. Each device has its machine name in `machine` |
 
+## Machine names
+
+To point at a runner machine, you use a name you give it on your Mac, not its host name or IP address.
+This name is called the **machine name**.
+
+- **Host**: the real network destination. Example: `<user@192.168.xxx.xxx>`
+- **Machine**: a name for that host, known only on this Mac. Example: `M1Max`. This is what
+  profiles refer to.
+
+Register machine names with `fleetest remote machines add` or in the Device Monitor's Settings
+tab (see Step 2 of [Adding a Mac](adding_mac.md)).
+
+Renaming a machine later causes no trouble. Records such as result JSON keep the host name, and
+the machine name never appears in the files or arguments sent to the runner.
+
 ## The run profile decides where tests run
 
-The devices listed in a run profile's `devices` are where the run goes. Because each device has a `machine`,
-**choosing a run profile also chooses which Macs run the tests**.
+The devices listed in a run profile's `devices` are where the run goes. Each device names its own machine in
+`machine`, so **choosing a run profile also chooses which Macs run the tests**.
 
-- If every device is on one runner machine, the run is sent to that runner machine.
+```jsonc
+// profiles/runs/ios-m1max.json
+{ "app": "myapp",
+  "devices": [
+    { "platform": "ios", "machine": "M1Max", "name": "iPhone 17 Pro", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" }
+  ] }
+```
+
+- If every device is on one runner machine, the run is sent to that runner machine, and you normally do not need
+  `--runner`.
 - If the devices are split between your Mac and runner machines (or several runner machines), scenarios are split
-  across machines by how many devices each has, and run at the same time.
+  across machines by how many devices each has, and run at the same time. Each portion runs against its own devices
+  there.
 - Physical devices work the same way. List a device with `"kind": "physical"` and its identifier, with the `machine`
   of the Mac it is connected to.
+- Write `"machine": "local"` for devices on your own Mac — always write it explicitly, since
+  there is no profile-level default to fall back on.
+- `--runner <name>` on the command line takes priority over the profile (pass `--runner local` to
+  force a run to stay on your Mac). Besides a machine name, `--runner` also accepts a host name
+  or IP address directly.
+- When you narrow a run with `--device <name>` and devices with that name exist on **more than one
+  machine** (you use the same names on your Mac and on a runner), fleetest cannot tell which machine
+  you mean, so the run is refused. Add `--runner local` for your Mac only, `--runner <machine>` for one
+  machine, or `--all-machines` to run on every machine that has a device with that name. If the name
+  is on only one machine, the run goes ahead as before.
 
 To run the same scenarios on every machine, create a **fleet definition** that lists pairs of a machine and a run
 profile (`TestProjects/<project>/profiles/fleets/<name>.json`) and run `fleetest run --fleet <name>` (`--split`
-splits the scenarios across the machines instead of running all of them everywhere; see [Remote Runners](remote_runners.md)).
+splits the scenarios across the machines instead of running all of them everywhere; see "Run it" in [Remote Runners](remote_runners.md)).
 
 ## What happens automatically
 
@@ -45,6 +80,35 @@ splits the scenarios across the machines instead of running all of them everywhe
 
 The only connection is **SSH (key authentication) from your Mac to the runner machines**. Your Mac never needs to
 accept incoming connections.
+
+## Overview
+
+```
+Your Mac                                Runner machine
+fleetest run --runner mac2 …             ~/fleetest-runner/               ← dedicated base directory
+  ├ version check (fleetest, Xcode)  ssh ├── foundation-tester/          ← clone of fleetest itself (fixed name, shared)
+  ├ send (scenarios/config) ───────────> └── users/<issuerId>/work/     ← your work area (per user)
+  ├ display output                             ├── TestProjects/<project>/
+  └ collect artifacts <──────────────────      └── .build/
+```
+
+Remote runs only use `~/fleetest-runner/` on the runner. If the runner has its own copy of
+foundation-tester elsewhere, it is never touched.
+
+## What it can do
+
+| Capability | Supported |
+|---|---|
+| Send a run to another Mac (from the CLI or the VS Code extension) | ✅ |
+| Progress display, cancellation, timeout | ✅ |
+| Bring reports, JUnit, recordings and run logs back to your Mac | ✅ |
+| Provision a runner from your Mac in one command (`remote setup`); remove it the same way (`remote teardown`) | ✅ |
+| Check or clean up several runners at once (`remote status` / `remote clean`) | ✅ |
+| Run a single `fleetest` command on a runner (`remote exec`) | ✅ |
+| Run on several runners at the same time (a fleet, `run --fleet`) | ✅ |
+| Split one set of scenarios across several runners (`run --fleet <name> --split`) | ✅ |
+| Include remote results in `fleetest results` (flaky detection etc.) | ✅ (collected by default) |
+| See remote devices' state and video in the Device Monitor | ✅ |
 
 ## How to grow it
 
@@ -70,7 +134,7 @@ one Mac starts to slow things down, it is time to add a Mac.
 
 - [Adding a Mac](adding_mac.md) — preparing a runner machine and adding it to the fleet
 - [Adding physical devices](adding_physical_devices.md) — adding a real iPhone or Android to the fleet
-- [Remote Runners](remote_runners.md) — `--runner`, `--fleet`, setups across a router, sharing, maintenance and safety
+- [Remote Runners](remote_runners.md) — running on a runner machine (`--runner`, `--fleet`, the VS Code extension, sharing), plus setups across a router, maintenance and safety
 
 ### Link
 - [index](../index.md)
