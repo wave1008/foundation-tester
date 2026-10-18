@@ -389,7 +389,7 @@ final class SignalDefaultProcess: @unchecked Sendable {
         posix_spawn_file_actions_init(&actions)
         defer { posix_spawn_file_actions_destroy(&actions) }
         posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
-        posix_spawn_file_actions_addopen(&actions, 1, logPath, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+        posix_spawn_file_actions_addopen(&actions, 1, logPath, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW, 0o644)
         posix_spawn_file_actions_adddup2(&actions, 1, 2)
 
         let argv = ([executable] + arguments).map { strdup($0) } + [nil]

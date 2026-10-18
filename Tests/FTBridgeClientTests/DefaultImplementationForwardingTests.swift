@@ -34,6 +34,27 @@ final class DefaultImplementationForwardingTests: XCTestCase {
         "SystemUIDriver.addMedia": "springboard 参照専用。addMedia は primary/fallback が受ける",
         // in-app ブリッジは /gesture を持たない。既定の 501 が hybrid を XCUITest へ回す合図になる
         "InAppDriver.gesture": "in-app に /gesture は無い。501 で hybrid が XCUITest へ回す",
+        // 応答時間計測は実機だけで、実機の iOS は xcuitest(BridgeClient)だけ = in-app / hybrid の合成の部品には届かない
+        "InAppDriver.prepareResponseMeasurement": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "InAppDriver.collectResponseMeasurement": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "InAppDriver.fetchResponseObservation": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "InAppDriver.stopResponseObservation": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "HybridFallbackDriver.prepareResponseMeasurement": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "HybridFallbackDriver.collectResponseMeasurement": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "HybridFallbackDriver.fetchResponseObservation": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "HybridFallbackDriver.stopResponseObservation": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "AppAttachDriver.prepareResponseMeasurement": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "AppAttachDriver.collectResponseMeasurement": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "AppAttachDriver.fetchResponseObservation": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "AppAttachDriver.stopResponseObservation": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "SystemUIDriver.prepareResponseMeasurement": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "SystemUIDriver.collectResponseMeasurement": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "SystemUIDriver.fetchResponseObservation": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "SystemUIDriver.stopResponseObservation": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "WebViewDelegatingDriver.prepareResponseMeasurement": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "WebViewDelegatingDriver.collectResponseMeasurement": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "WebViewDelegatingDriver.fetchResponseObservation": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
+        "WebViewDelegatingDriver.stopResponseObservation": "計測は実機の xcuitest だけ(in-app / hybrid の合成には乗らない)",
     ]
 
     /// オーバーロードがあり、名前だけでは検出できない操作の実シグネチャ

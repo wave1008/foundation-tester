@@ -26,6 +26,7 @@ final class ApiRunNDJSONPathParityTests: XCTestCase {
     private let nonStepFields: Set<String> = [
         "worker", "title", "file", "line", "oldSelector", "newSelector", "passed", "reportPath",
         "message", "fm", "requestID", "installPath", "appCrash", "skipped", "memoKey", "memoValue", "notApplicableReason",
+        "readyUpdate",   // responseReady の欄(step には載らない)
     ]
 
     private func fullStepEvent() -> ScenarioEvent {
@@ -41,6 +42,8 @@ final class ApiRunNDJSONPathParityTests: XCTestCase {
         e.command = "tap"
         e.failureKind = StepFailureKind.driverUnreachable.rawValue
         e.guarded = true
+        e.response = ResponseMeasurementRecord(busyBeforeAction: false, quietWaitMs: 510, firstFrameMs: 54,
+                                               firstFrameMissing: nil, downTimeMs: 1000)
         return e
     }
 
