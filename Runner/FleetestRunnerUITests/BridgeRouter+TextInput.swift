@@ -43,7 +43,10 @@ extension BridgeRouter {
     /// 知らせを返さないアプリでは /type 1回に上限 6s × 4(タップの前後・打鍵の前後)= 24s かかって、ホストの
     /// 操作の上限 20s(BridgeClient.Timeout.interaction)を超えた —— 応答は失敗なのに文字は打たれていた(実測・Apple マップ)
     static func tapBeforeTyping(_ point: XCUICoordinate) {
-        QuiescenceWait.around(skip: false, skipByDefault: true) { point.tap() }
+        QuiescenceWait.around(skip: false, skipByDefault: true) {
+            ResponseMeasurement.noteInjection()
+            point.tap()
+        }
     }
 
     func handleType(_ body: Data) throws -> BridgeHTTPServer.Response {
@@ -83,7 +86,7 @@ extension BridgeRouter {
             let note = try performTypeReadback(app, target: target, main: main)
             // 本文を入れ切ってから発火する(app 全体へ送るのは従来どおり。要素への typeText は
             // ランナーごと落ちうる)
-            if hasTrailingNewline { app.typeText("\n") }
+            if hasTrailingNewline { ResponseMeasurement.noteInjection(); app.typeText("\n") }
             return note
         }
         // **この分岐だけ焦点の有無を確かめる**(ライブクエリ = 上のコメントで避けている
@@ -109,9 +112,11 @@ extension BridgeRouter {
            let target = Self.matchFocusedElement(focusAfter, in: captured.elements),
            TypeReadback.isTextInput(target), !TypeReadback.isMaskedInput(target) {
             let note = try performTypeReadback(app, target: target, main: main)
+            ResponseMeasurement.noteInjection()
             app.typeText("\n")
             return note
         }
+        ResponseMeasurement.noteInjection()
         app.typeText(req.text)
         return nil
     }
@@ -138,6 +143,7 @@ extension BridgeRouter {
         let elementsBeforeTyping = Array(refElements.values)
         let deadline = Date().addingTimeInterval(Self.typeBudgetSeconds)
         loop: while true {
+            ResponseMeasurement.noteInjection()
             app.typeText(pending)
             rounds += 1
             // 読めない・曖昧 = 検証不能なので受理する(TypeReadback.value 参照)
@@ -409,6 +415,7 @@ extension BridgeRouter {
             // 読み返し不一致が唯一の合図になる(2026-08-31・実機実測)
             try Self.requirePresent(focused)
             tapFieldEndIfHittable(app, focused)
+            ResponseMeasurement.noteInjection()
             app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue,
                                  count: Self.invisibleContentDeleteBurst))
         }
@@ -426,6 +433,7 @@ extension BridgeRouter {
             tapFieldEndIfHittable(app, focused)
             // 打鍵は app 全体へ(要素へ向けると、叩いた後に焦点が動いたとき要素スコープの失敗でランナーを落とし得る。
             // 入力先は叩いた欄 = 最前のレスポンダ。下の木で読み返す経路と同じ)
+            ResponseMeasurement.noteInjection()
             app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
         }
         if let residual = try Self.presentRemainingText(of: focused) {
@@ -455,6 +463,7 @@ extension BridgeRouter {
                     return current.frame == target.frame
                 }?.frame ?? target.frame
                 Self.tapBeforeTyping(coordinate(app, CGPoint(x: now.x + now.width - 4, y: now.y + now.height / 2)))
+                ResponseMeasurement.noteInjection()
                 app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: left.count))
             }
         }

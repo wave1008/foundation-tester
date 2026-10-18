@@ -521,6 +521,13 @@ struct ApiRunCommand: AsyncParsableCommand {
         // この defer は関数のスコープに置く(if の中に置くとブロックの終わりで外れる)
         var responseMonitorHold: ResponseMeasurementMonitorHold.Handle?
         defer { ResponseMeasurementMonitorHold.release(responseMonitorHold) { logStderr($0) } }
+        // 計測 run が書き換えた Android 実機のアニメーション設定を終了時に戻す(ProfileRunner.run と同じ)。
+        // 取得は開始時の同期(buildAndroidWorkers)より前に行う
+        var animationRestores: [ProfileWorkerFactory.AnimationRestore] = []
+        defer { ProfileWorkerFactory.restoreAnimations(animationRestores) { logStderr($0) } }
+        // iOS 実機の計測だけ録る xctrace(開始は供給の後・配布の前、止めて結果へ入れるのは run の後。ProfileRunner.run と同じ)
+        var responseTrace: ResponseTraceSession?
+        defer { responseTrace?.cleanup() }
         if let resolved = resolvedProfile, !dryRun {
             let hookStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
             // レスポンス計測中はモニターを止める(ProfileRunner.run と同じ。解除は defer = 中断・エラーでも通る)
@@ -530,6 +537,10 @@ struct ApiRunCommand: AsyncParsableCommand {
             // 二重使用は開始スクリプトと破壊的な準備より前に断る(ProfileRunner と同じ判定)
             try ProfileRunner.rejectIfDevicesLeasedBeforePreparation(
                 resolved: resolved, leaseStateDir: hookStateDir)
+            // 他の run が使っているデバイスを断った後に取る(断られた run が他人の設定を戻さない)
+            if resolved.responseMeasurement {
+                animationRestores = ProfileWorkerFactory.captureAnimationRestore(resolved: resolved)
+            }
             servicesSession = try ServicesSession.up(
                 resolved: resolved, stateDir: hookStateDir, options: .forRun(resolved), interruptState: interruptState) { logStderr($0) }
             do {
@@ -892,6 +903,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                         androidWorkers: androidWorkers.count, eagerIOSWorkers: eagerIOSWorkers.count,
                         hasLateIOS: hasLateIOS))
                     progressHandedToRunWithProfileParallel = true
+                    responseTrace = await ResponseTraceSession.startIfNeeded(resolved: resolvedProfile) { logStderr($0) }
                     outcome = try await runWithProfileParallel(
                         resolved: resolvedProfile, project: testProject, selected: selected,
                         workers: androidWorkers + eagerIOSWorkers, iosWorkersTask: effectiveIosWorkersTask,
@@ -921,6 +933,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             recorder?.recordLastResultsFailed(selected.map(\.id))
             throw error
         }
+
+        await responseTrace?.finish(runDir: recorder?.runDir) { logStderr($0) }
 
         // 並列経路の triage は box 経由(sequential 経路は outcome に設定済みのため二重加算しない)
         let boxTriage = triageBox.get()

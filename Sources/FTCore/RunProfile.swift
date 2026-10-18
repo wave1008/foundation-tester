@@ -1217,7 +1217,7 @@ public enum ProfileError: Error, LocalizedError {
             return "responseMeasurement in run profile \(run) needs a physical device, but \"\(device)\" is not"
                 + " kind=physical (use a physical device, or turn responseMeasurement off)"
         case .responseMeasurementUnsupportedPlatform(let run, let device, let platform):
-            return "responseMeasurement in run profile \(run) supports only Android physical devices in this version,"
+            return "responseMeasurement in run profile \(run) supports only Android and iOS physical devices,"
                 + " but \"\(device)\" is \(platform)"
         case .responseMeasurementConflict(let run, let key, let required):
             return "responseMeasurement in run profile \(run) requires \(key) to be \(required),"

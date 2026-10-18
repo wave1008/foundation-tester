@@ -27,11 +27,17 @@ final class ResponseMeasurementTests: XCTestCase {
         XCTAssertTrue(message(RunProfileDocument(), two)?.contains("exactly one enabled device (found 2)") == true)
     }
 
-    func testMustBePhysicalAndAndroid() {
+    func testOnePhysicalIOSPasses() {
+        XCTAssertNil(message(RunProfileDocument(), [device("ios", physical: true)]))
+    }
+
+    func testMustBePhysicalAndKnownPlatform() {
         XCTAssertTrue(message(RunProfileDocument(), [device("android", physical: false)])?
             .contains("needs a physical device") == true)
-        XCTAssertTrue(message(RunProfileDocument(), [device("ios", physical: true)])?
-            .contains("supports only Android physical devices in this version") == true)
+        XCTAssertTrue(message(RunProfileDocument(), [device("ios", physical: false)])?
+            .contains("needs a physical device") == true)
+        XCTAssertTrue(message(RunProfileDocument(), [device("web", physical: true)])?
+            .contains("supports only Android and iOS physical devices") == true)
     }
 
     func testExplicitConflictsAreRejected() {

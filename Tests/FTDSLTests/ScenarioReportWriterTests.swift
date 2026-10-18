@@ -265,6 +265,59 @@ final class ScenarioReportWriterTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: FailureEvidence.url(forReport: url).path))
     }
 
+    // MARK: - 応答時間計測の列
+
+    private func measured(firstFrameMs: Int? = nil, missing: ResponseMeasurementRecord.FirstFrameMissing? = nil,
+                          readyMs: Int? = nil, readyMissing: String? = nil) -> ResponseMeasurementRecord {
+        ResponseMeasurementRecord(busyBeforeAction: false, quietWaitMs: 10, firstFrameMs: firstFrameMs,
+                                  firstFrameMissing: missing, readyMs: readyMs, readyMissing: readyMissing)
+    }
+
+    func testResponseTextShowsValues() {
+        XCTAssertEqual(ScenarioReportWriter.responseText(measured(firstFrameMs: 54, readyMs: 72)),
+                       " · first frame 54 ms · ready 72 ms")
+    }
+
+    func testResponseTextShowsMissingReasons() {
+        XCTAssertEqual(ScenarioReportWriter.responseText(
+            measured(missing: .busyBeforeAction, readyMissing: "noTarget")),
+                       " · first frame - (busyBeforeAction) · ready - (noTarget)")
+    }
+
+    func testResponseTextOmitsReadyWhenNotJudged() {
+        XCTAssertEqual(ScenarioReportWriter.responseText(measured(firstFrameMs: 54)), " · first frame 54 ms")
+    }
+
+    func testResponseTextEmptyWithoutMeasurement() {
+        XCTAssertEqual(ScenarioReportWriter.responseText(nil), "")
+        let step = DSLStepRecord(index: 1, section: nil, description: "tap", status: .passed,
+                                 file: "", line: 0, durationMs: 830)
+        XCTAssertEqual(ScenarioReportWriter.line(for: step), "- ✅ 1. tap — 0.83s\n")
+    }
+
+    func testLineAppendsResponseAfterDuration() {
+        let step = DSLStepRecord(index: 2, section: nil, description: "tap", status: .passed,
+                                 file: "", line: 0, durationMs: 830,
+                                 response: measured(firstFrameMs: 54, readyMs: 72))
+        XCTAssertEqual(ScenarioReportWriter.line(for: step),
+                       "- ✅ 2. tap — 0.83s · first frame 54 ms · ready 72 ms\n")
+    }
+
+    func testReadyUpdateReachesEarlierSceneStepOnly() {
+        func step(_ i: Int) -> DSLStepRecord {
+            DSLStepRecord(index: i, section: nil, description: "s\(i)", status: .passed, file: "", line: 0,
+                          response: measured(firstFrameMs: i))
+        }
+        var first = SceneRecordData(number: 1, title: "a"); first.steps = [step(1), step(2)]
+        var second = SceneRecordData(number: 2, title: "b"); second.steps = [step(3)]
+        var scenes = [first, second]
+        scenes.applyReadyUpdate(ResponseReadyUpdate(readyMs: 99), toStepIndex: 2)
+        XCTAssertEqual(scenes[0].steps.map { $0.response?.readyMs }, [nil, 99])
+        XCTAssertEqual(scenes[1].steps.map { $0.response?.readyMs }, [nil])
+        scenes.applyReadyUpdate(ResponseReadyUpdate(readyMs: 5), toStepIndex: 42)
+        XCTAssertEqual(scenes.flatMap(\.steps).map { $0.response?.readyMs }, [nil, 99, nil])
+    }
+
     private func makeTempDir() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("ScenarioReportWriterTests-\(UUID().uuidString)", isDirectory: true)

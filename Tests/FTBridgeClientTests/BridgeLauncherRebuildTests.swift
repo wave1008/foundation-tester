@@ -27,7 +27,8 @@ final class BridgeLauncherRebuildTests: XCTestCase {
     private static let inputs = ["Runner/project.yml", "Runner/FleetestRunnerUITests/BridgeRouter.swift",
                                  "Runner/FleetestRunnerApp/App.swift", "Sources/FTCore/BridgeDTO.swift",
                                  "Sources/FTCore/SnapshotDedupe.swift", "Sources/FTCore/TypeReadback.swift",
-                                 "Sources/FTCore/AXFrameRescale.swift"]
+                                 "Sources/FTCore/AXFrameRescale.swift",
+                                 "Sources/FTCore/ResponseMeasurementWire.swift"]
 
     private let toolchain = "Xcode X / sdk Y"
 
@@ -82,7 +83,7 @@ final class BridgeLauncherRebuildTests: XCTestCase {
     /// TypeReadback を入力から落としていて、それだけを変えても旧ビルドのまま走った)
     func testNewerSharedFTCoreFilesTriggerRebuild() throws {
         for file in ["Sources/FTCore/SnapshotDedupe.swift", "Sources/FTCore/TypeReadback.swift",
-                                 "Sources/FTCore/AXFrameRescale.swift"] {
+                                 "Sources/FTCore/AXFrameRescale.swift", "Sources/FTCore/ResponseMeasurementWire.swift"] {
             let xctestrun = try makeXCTestRun(modified: Date(timeIntervalSinceNow: -3600))
             for input in Self.inputs { try setModified(input, Date(timeIntervalSinceNow: -7200)) }
             try setModified(file, Date())

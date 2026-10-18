@@ -14,12 +14,17 @@ public struct ResponseMeasurementRecord: Codable, Sendable, Equatable {
     public var firstFrameMs: Int?
     /// `firstFrameMs` が nil の理由。値があるときは nil
     public var firstFrameMissing: FirstFrameMissing?
+    /// 最初の注入の端末時計の値(Android = `SystemClock.uptimeMillis` / iOS = mach 時刻を ms に換算した値)。
+    /// 記録(iOS は xctrace)と突き合わせるための生の値で、端末が違えば比べられない。無ければ(注入が無い・測れなかった)nil
+    public var downTimeMs: Int?
     public var reactionMs: Int?
     public var readyMs: Int?
     public var readyAfterObservationStartMs: Int?
     public var observationStartMs: Int?
     public var readyDecidedBy: String?
     public var readyMissing: String?
+    /// 観測で読めた木の回数(ResponseReadyUpdate.observedReads と同じ)
+    public var observedReads: Int?
     /// 最後の注入から操作可能まで / 最初の注入から最後の注入まで / 注入の回数(`readyMs` と `firstFrameMs` は最初の注入から)
     public var readyAfterLastInjectionMs: Int?
     public var injectionSpanMs: Int?
@@ -43,7 +48,8 @@ public struct ResponseMeasurementRecord: Codable, Sendable, Equatable {
                 readyAfterObservationStartMs: Int? = nil, observationStartMs: Int? = nil,
                 readyDecidedBy: String? = nil, readyMissing: String? = nil,
                 readyAfterLastInjectionMs: Int? = nil, injectionSpanMs: Int? = nil, injections: Int? = nil,
-                readyIdentity: String? = nil) {
+                readyIdentity: String? = nil, downTimeMs: Int? = nil) {
+        self.downTimeMs = downTimeMs
         self.busyBeforeAction = busyBeforeAction
         self.quietWaitMs = quietWaitMs
         self.firstFrameMs = firstFrameMs
@@ -70,6 +76,7 @@ public struct ResponseMeasurementRecord: Codable, Sendable, Equatable {
         copy.readyDecidedBy = update.readyDecidedBy
         copy.readyIdentity = update.readyIdentity
         copy.readyMissing = update.readyMissing
+        copy.observedReads = update.observedReads
         return copy
     }
 
@@ -97,10 +104,11 @@ public struct ResponseMeasurementRecord: Codable, Sendable, Equatable {
         let injections = collect.injections > 0 ? collect.injections : nil
         if let ms = collect.firstFrameDelayMs {
             return ResponseMeasurementRecord(busyBeforeAction: false, quietWaitMs: prepare.waitedMs,
-                                             firstFrameMs: ms, firstFrameMissing: nil, injections: injections)
+                                             firstFrameMs: ms, firstFrameMissing: nil, injections: injections,
+                                             downTimeMs: collect.downTimeMs)
         }
         return ResponseMeasurementRecord(busyBeforeAction: false, quietWaitMs: prepare.waitedMs, firstFrameMs: nil,
                                          firstFrameMissing: collect.reason.flatMap(FirstFrameMissing.init(rawValue:)),
-                                         injections: injections)
+                                         injections: injections, downTimeMs: collect.downTimeMs)
     }
 }

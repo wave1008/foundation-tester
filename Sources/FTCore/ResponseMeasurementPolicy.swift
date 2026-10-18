@@ -28,7 +28,7 @@ public enum ResponseMeasurementPolicy {
             return nil
         }
         return ResponseMeasurementRunInfo(
-            deviceName: device.name, serial: device.spec.serial,
+            deviceName: device.name, serial: device.spec.serial, udid: device.spec.udid,
             model: device.spec.model, osVersion: device.spec.osVersion,
             repeatCount: resolved.responseRepeat)
     }
@@ -51,7 +51,10 @@ public enum ResponseMeasurementPolicy {
         guard device.spec.isPhysical else {
             throw ProfileError.responseMeasurementNotPhysical(run: run, device: device.name)
         }
-        guard device.platform == "android" else {
+        // iOS 実機はホストから Reduce Motion を変えられないので、端末自身のアニメーション設定のまま測る
+        // (Android は run の開始時に倍率を合わせる = ProfileWorkerFactory.syncAnimationSettings)。
+        // 実機のエンジンは xcuitest だけ(kind=physical に inapp を断る検査が RunProfile の解決にある)
+        guard device.platform == "android" || device.platform == "ios" else {
             throw ProfileError.responseMeasurementUnsupportedPlatform(
                 run: run, device: device.name, platform: device.platform)
         }

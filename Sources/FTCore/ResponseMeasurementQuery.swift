@@ -89,7 +89,7 @@ public enum ResponseMeasurementQuery {
     }
 
     /// 計測 run の記録を (シナリオ, ステップ, 機械, デバイス) ごとに集計し、直前の計測 run との差を付ける。
-    /// - 対象は `responseMeasurement != nil` の run だけ。デバイスは run の meta の識別(serial ?? deviceName)
+    /// - 対象は `responseMeasurement != nil` の run だけ。デバイスは run の meta の識別(serial ?? udid ?? deviceName)
     /// - 同じ run の同じシナリオの複数記録(繰り返し)は標本を合算する
     /// - 行は各グループの最新の run のもの。直前 = 同じ (機械, デバイス) でそのグループを持つ1つ前の run(別の機械・デバイスとは比べない)
     /// - 百分位は RunResultsQuery.percentile(最近接順位法)
@@ -99,7 +99,7 @@ public enum ResponseMeasurementQuery {
         for meta in runs {
             guard let info = meta.responseMeasurement else { continue }
             infoByRun[meta.runID] = RunInfo(runID: meta.runID, host: meta.host,
-                                            device: info.serial ?? info.deviceName, startedAt: meta.startedAt)
+                                            device: info.serial ?? info.udid ?? info.deviceName, startedAt: meta.startedAt)
         }
         guard !infoByRun.isEmpty else { return [] }
 

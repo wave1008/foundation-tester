@@ -5,7 +5,7 @@
 既存のシナリオを実機で回しながら、**操作してからアプリが反応するまで**と、**次の操作ができるようになるまで**の時間を、
 ステップごとに測ります。測った値は結果に残り、同じ機械・同じ端末での前回の計測と比べられます。
 
-> **試験的な機能です。** 今は **Android の実機1台** だけに対応しています(iOS・Simulator・Emulator は対象外)。
+> **試験的な機能です。** **Android か iOS の実機1台** で使えます(Simulator・Emulator は対象外)。
 
 ## 何を測るか
 
@@ -42,7 +42,9 @@
 fleetest run --profile <name> --set responseMeasurement=true --set responseRepeat=3 --scenario <シナリオID>
 ```
 
-- **有効なデバイスはちょうど1台で、Android の実機(`kind: physical`)** でなければなりません。条件を満たさないと実行を断ります。
+- **有効なデバイスはちょうど1台で、Android か iOS の実機(`kind: physical`)** でなければなりません。条件を満たさないと実行を断ります。
+- iOS の実機では、**最初のフレームまで** を Xcode の Instruments(`xctrace`)で記録して、run の終わりに結果へ書き足します。
+  Xcode が入っていて、その端末を Instruments で記録できる状態が必要です。記録できなかったときは、その旨を1行出して値を空のままにします。
 - `responseRepeat`(既定 `5`、`1`〜`50`)で、各シナリオを続けて何回回すかを決めます。回数が多いほど、中央値・p90 が安定します。
   結果ファイルは `<id>`、`<id>~2`、`<id>~3`、… の名前で並びます。
 - 計測の条件をそろえるため、計測モードでは次のように動きます。
@@ -79,6 +81,8 @@ fleetest results response [--project <name>] [--since <期間>] [--json]
 - `--json` では、行ごとに値が出ない理由の内訳(下の表の値)も出ます。
 
 1回ごとの値は、結果 JSON(`results/runs/.../scenarios/<id>.json`)の各ステップの `response` にも残ります。
+
+シナリオのレポート(`reports/scenario-*.md`)には、計測したステップごとに所要時間の後ろへ値が並びます(` · first frame 54 ms · ready 72 ms`)。値が出ないときは理由が出ます(`first frame - (busyBeforeAction)`)。操作可能までを判定しなかったステップでは `ready` の部分を出しません。`ready` の値は次の計測ステップで確定するので、シナリオの最後の計測ステップには付きません。
 
 ## 値が出ないとき
 
@@ -120,6 +124,13 @@ fleetest results response [--project <name>] [--since <期間>] [--json]
 - 1つの操作で何度も入力を注入するステップ(スクロールで探す・繰り返しフリックするなど)は、**最初の**注入から測ります。
   条件は**最後の**注入より後で成り立ったものだけを数えます。
 - 計測の run は、端末が他の作業に使われていない状態で回してください。モニターの停止は、run を起動した clone の中でだけ効きます。
+
+### iOS の実機で測るとき
+
+- **最初のフレームまで** には、XCUITest が入力を端末へ届けるまでの時間も含まれます(Android より長めに出ます)。
+- **操作可能まで** の判定の材料は、画面の要素の情報を1回取るのに数百 ms かかるため、Android より粗くなります
+  (結果 JSON の `observedReads` が、判定に使えた読みの回数です)。
+- 端末の「視差効果を減らす」(Reduce Motion)の設定は、ツールからは変えられません。端末の設定のまま測ります。
 
 関連: [実行プロファイル](../project/run_profile_ja.md) / [結果の分析](./results_analysis_ja.md) / [シナリオの実行](./running_scenarios_ja.md)
 

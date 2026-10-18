@@ -272,7 +272,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | setOverrides | [String: String]? | **この run に効いた `--set <key>=<value>` の上書き**(キーは実行プロファイル JSON のキーそのもの、値は型を問わず文字列化したもの。例 `{"scenarioTimeout": "3", "iosInappEngine": "false"}`)。上書きが無い run では省略(空辞書ではなく無し)。**打ち切り run(`--set scenarioTimeout=…` で短くした run 等)を insights/flaky の集計から機械的に外すための欄** —— この欄が無い記録では、`--set` で打ち切った run と通常の失敗が見分けられない(この版より前の記録は全て欄が無い) |
 | interrupted | Bool? | **この run が SIGINT/SIGTERM/SIGHUP(拡張の「テストを中断」・端末の Ctrl-C・`kill <pid>`・ssh の切断等)を受けたか**。**供給段(デバイス・ブリッジの用意)の最中の中断も含む**(受け付けは記録の開始直後から)。true の run は途中で打ち切られており、残っていたシナリオは `"the run was interrupted (SIGINT/SIGTERM) before this scenario started"` という理由で failed に数えられる。false は書かない(既存レコードと同じ形)。**始まらなかったシナリオは `skipKind: "interrupted"` で記録され、`results insights` と flaky の判定からは外れる**(中断のたびに回帰の疑いを並べない)。2026-09-11 より前の記録には無い(それより前は中断で finishedAt 自体が欠落していた) |
 | abortReason | String? | **供給段(ワーカー構築・レーン検査等)の例外で run 全体が始まる前に終わったときの理由**(英語、人間可読)。この欄がある run は `total` 分すべて未実行(`passed:0`)。正常終了・`interrupted` の run では省略。**この欄が無いと理由はログにしか残らず、`results insights` の「クラッシュか強制終了」に紛れる**。2026-09-11 より前の記録には無い |
-| responseMeasurement | ResponseMeasurementRunInfo? | **レスポンス計測モード(プロファイルの `responseMeasurement: true`)の run だけ**書く。無い = 計測モードの run ではない(旧い記録も同じ意味)。前回比は同じデバイス・同じ `host` の run どうしだけを比べるので、デバイスを論理名ではなく端末で識別する。欄: `deviceName`(プロファイル上の論理名)・`serial`(Android の adb serial。省略あり)・`model` / `osVersion`(プロファイルに書かれていれば。端末から読み直さない。省略あり)・`repeatCount`(各シナリオを続けて回した回数 = `responseRepeat`)。繰り返しの結果ファイルは `<id>`、`<id>~2`、… で、`total` / `passed` / `failed` は繰り返しを含む本数 |
+| responseMeasurement | ResponseMeasurementRunInfo? | **レスポンス計測モード(プロファイルの `responseMeasurement: true`)の run だけ**書く。無い = 計測モードの run ではない(旧い記録も同じ意味)。前回比は同じデバイス・同じ `host` の run どうしだけを比べるので、デバイスを論理名ではなく端末で識別する。欄: `deviceName`(プロファイル上の論理名)・`serial`(Android の adb serial。省略あり)・`udid`(iOS の UDID。省略あり。前回比の「同じ端末」は `serial ?? udid ?? deviceName`)・`model` / `osVersion`(プロファイルに書かれていれば。端末から読み直さない。省略あり)・`repeatCount`(各シナリオを続けて回した回数 = `responseRepeat`)。繰り返しの結果ファイルは `<id>`、`<id>~2`、… で、`total` / `passed` / `failed` は繰り返しを含む本数 |
 | servicesWarnings | [String]? | **サービス(`scripts/compose.yaml`)の起動時に出た警告**(Android 実機への `adb reverse` が張れなかった 等。英語の文言そのまま。UDP の経路が届かないのは警告でなく起動の失敗 = `abortReason`)。**合否は変えない**(警告だけ)。警告が無い run と、この版より前の記録では省略 |
 | slowWorkers | [String]? | **デバイスそのものが遅いことの観測**(`FTCore.SlowWorkerDetector`。`worker: median snapshot <N>ms over <M> samples (other lanes <K>ms)` の1行×デバイス)。ワーカーごとの in-app snapshot 所要(`scenarios/*.json` の `timeline[].snapshotMs`)の中央値が、標本8件以上かつ**同じ run の他ワーカー全体の中央値の10倍以上・かつ絶対値1,000ms以上**のときだけ載る(相対だけだとホスト負荷で全台が遅い run を1台のせいにし、絶対だけだと元から遅い環境で毎回鳴るため、両方を要求する)。**警告のみで除外・自動修復はしない** —— 既存の劣化検知(XCUITestランナーの遅いa11y照会での起動し直し・凍結トリアージ)は原理的にこの帯(ステップtimeout未満の遅さ)を見ないので、これが唯一の痕跡になる。**他ワーカーが1台も無い(単機の)runでは常に省略**(相対比較ができない)。CLI/`api run` はこの配列が1件でもあれば末尾に `⚠️ slow lane: …` を追加で出す(既存の劣化警告とは別行)。**2つ目の形(間欠的に詰まるデバイス)も同じ欄に載る**(2026-09-16): 中央値は正常でも `worker: <N> of <M> snapshots took 2000ms+ (p90 <P>ms, other lanes <K> of <L>)` の1行。標本8件以上・2秒超が5本以上かつ20%以上・他レーン全体の2秒超の割合がこのレーンの1/10以下、の全部を満たすときだけ(実測: 劣化デバイスは26〜43%・健全なレーンは最大9%(22標本中2本))。中央値判定が立ったデバイスには出さない(1台1件) |
 
@@ -557,8 +557,9 @@ LC_UUID が入るので再ビルドでコールドに戻る。docs/performance-t
 `response` の欄:
 
 - **`busyBeforeAction`**(Bool): 操作の前から描画が止まらなかった(prepare の `quiet == false`)。true のとき `firstFrameMs` は出さない
-- **`quietWaitMs`**(Int?): 描画の停止を待った時間。prepare が失敗したら省略
-- **`firstFrameMs`**(Int?): **ステップの最初に注入した入力**(スクロール探索のスワイプがあればタップより先のそのスワイプ)から、最初に提示されたフレームまでの遅れ。t1(反応)の確認済みの値ではない
+- **`quietWaitMs`**(Int?): 描画の停止を待った時間。prepare が失敗したら省略(iOS はスクリーンショットの比較で静止を待つ)
+- **`downTimeMs`**(Int?): ステップの最初の注入の時刻(端末の時計の ms。Android = `SystemClock.uptimeMillis`、iOS = `mach_absolute_time` を ms にした値)。記録どうしを突き合わせるための生の値で、端末を跨いで比べられない
+- **`firstFrameMs`**(Int?): **ステップの最初に注入した入力**(スクロール探索のスワイプがあればタップより先のそのスワイプ)から、最初に提示されたフレームまでの遅れ。t1(反応)の確認済みの値ではない。**iOS は run の後に Instruments の記録(端末全体の「画面に出たフレーム」)から入る**(ランナーは注入の時刻だけ返す)。注入の時刻はランナーが XCTest の合成を呼ぶ直前なので、XCTest が入力を端末へ届けるまでの時間を含む
 - **`firstFrameMissing`**(String?): `firstFrameMs` が無い理由。`busyBeforeAction`(操作の前から描画が続いていた)/ `noInjectedInput`(ブリッジが入力の注入を記録していない)/ `noFrame`(注入の後にフレームが出なかった)/ `frameHistoryIncomplete`(フレームの履歴が足りず判定できない)/ `noSessionApp`(対象アプリが無い)/ `bridgeError`(prepare / collect が失敗した。未対応のドライバの 501 を含む)。値があるときは省略。ブリッジが知らない理由を返したときも省略する(別の理由に丸めない)。`busyBeforeAction` は「描画が止まらなかった」ときだけで、ブリッジが判定できなかった(`noSessionApp` 等)ときはその理由になる
 - `reactionMs` / `readyAfterObservationStartMs` / `observationStartMs`: 常に省略(t1 は画面の差での確認が要る。後者2つは「観測の遅れ」の方式を採らなかったので使わない)
 - **t2(操作可能)の欄は、このステップの次の計測ステップが対象を解決した時点で後から入る**(ブリッジが記録した木の履歴を、次のステップが実際に操作した要素で判定する = docs/response-measurement.md §5「2b の方式」)。**次の計測ステップが無い(シナリオの最後の計測ステップ・失敗や中断で終わったシナリオ)ときと、次のステップが対象に着くまでに自分で画面を動かした(スクロール探索・寄せ)ときは判定されず、これらの欄は省略のまま**。結果 JSON への書き込みは `kind: "responseReady"` のイベント(`index` = 宛先のステップの添字・`readyUpdate`)を `ScenarioRecordBuilder` が `timeline[]` の該当ステップへ当てる(ライブの NDJSON(`fleetest api run`)には流さない)
@@ -566,10 +567,11 @@ LC_UUID が入るので再ビルドでコールドに戻る。docs/performance-t
   - **`readyAfterLastInjectionMs`**(Int?): 最後の注入から t2 まで。**`injectionSpanMs`**(Int?): 最初から最後の注入まで。**`injections`**(Int?): 注入の回数(`readyMs` が無いときも、判定されたなら入る)
   - **`readyDecidedBy`**(String?): `tree`(木の条件で決めた。画素の静止は見ていない)
   - **`readyIdentity`**(String?): `locator`(同じ指定で解決した要素までしか照合していない。要素の同一性は比べない)
+  - **`observedReads`**(Int?): 判定の材料になった木の読みの回数(最後の注入より後で読めた回)。t2 の分解能の目安(iOS は1回に数百 ms かかり、ステップの合間の読みはホストの木の取得が主 = 2〜4 回程度)
   - **`readyMissing`**(String?): t2 が無い理由(判定されたときだけ)。`notReadyBeforeNextAction`(条件が揃う前に次の操作が撃たれた)/ `observationTimeout`(`responseObserveMs` で観測が締まり、揃った回が無い)/ `observationTruncated`(記録の上限で途中から記録をやめ、それまでに揃った回が無い)/ `observationLost`(ブリッジに観測が無かった)/ `noTarget`(次のステップにセレクタで解決した要素が無い = 座標の操作等)/ `bridgeError`(観測の取得が失敗した)。観測の終わり方を言えないときは省略(丸めない)
 - 判定に使う観測の上限 `responseObserveMs`(既定 10000ms)は `RunTunables`
 
-対象は Android の実機のみ(ブリッジ v102〜)。`api results` の出力キャッシュのパック(`RunRecordPack.trimmedForStorage`)は timeline を `notes` のあるステップの4欄に削るので、`command` / `response` はパック経由では見えない(`scenarios/*.json` の記録には載る)。
+対象は Android と iOS の実機(Android ブリッジ v106・iOS ブリッジ 193〜)。`api results` の出力キャッシュのパック(`RunRecordPack.trimmedForStorage`)は timeline を `notes` のあるステップの4欄に削るので、`command` / `response` はパック経由では見えない(`scenarios/*.json` の記録には載る)。
 
 ---
 

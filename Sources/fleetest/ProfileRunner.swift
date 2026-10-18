@@ -403,6 +403,10 @@ enum ProfileRunner {
             ? hookStateDir.flatMap { ResponseMeasurementMonitorHold.acquire(stateDir: $0) { ConsoleOut.out($0) } }
             : nil
         defer { ResponseMeasurementMonitorHold.release(responseMonitorHold) { ConsoleOut.out($0) } }
+        // 計測 run が書き換えた Android 実機のアニメーション設定を終了時に戻す。取得は開始時の同期(buildAndroidWorkers)より前
+        let animationRestores = resolved.responseMeasurement
+            ? ProfileWorkerFactory.captureAnimationRestore(resolved: resolved) : []
+        defer { ProfileWorkerFactory.restoreAnimations(animationRestores) { ConsoleOut.out($0) } }
         let servicesSession = try ServicesSession.up(
             resolved: resolved, stateDir: hookStateDir, options: .forRun(resolved), interruptState: interruptState) { ConsoleOut.out($0) }
         defer { servicesSession?.down { ConsoleOut.out($0) } }
@@ -613,6 +617,9 @@ enum ProfileRunner {
             ? .broadcast(lanes: resolved.devices.map { BroadcastLane(key: $0.name, platform: $0.platform) })
             : .shared
         let itemsToRun = items  // async let は var を直接捕捉できない(Sendable 境界)
+        // iOS 実機の計測だけ: 供給の後・配布の前から xctrace を録る(止めて結果へ入れるのは summary の後)
+        let responseTrace = await ResponseTraceSession.startIfNeeded(resolved: resolved) { ConsoleOut.out($0) }
+        defer { responseTrace?.cleanup() }
         // ここから先は RunOrchestrator.run() が必ず finish() まで進む(non-throwing)ので、
         // "preparing" の後始末は orchestrator 側の finish()/remove に委ねる
         progressHandedToOrchestrator = true
@@ -669,6 +676,7 @@ enum ProfileRunner {
         }
 
         let finalSummary = await summary
+        await responseTrace?.finish(runDir: recorder?.runDir) { ConsoleOut.out($0) }
         if finalSummary.failed > 0 { servicesSession?.saveLogs(to: servicesLogDir) { ConsoleOut.out($0) } }
         if !finalSummary.degradedWorkers.isEmpty {
             ConsoleOut.out("⚠️ Degraded or dropped workers (\(finalSummary.degradedWorkers.count)):")

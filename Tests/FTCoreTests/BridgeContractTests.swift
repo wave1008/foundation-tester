@@ -75,6 +75,8 @@ final class BridgeContractTests: XCTestCase {
         "POST /type",
         // waitForSettle(v174)。画面全体を撮るのでセッションを要さない。in-app は持たない(アプリ自身の描画しか撮れない)
         "POST /waitForSettle",
+        // 応答時間計測(v192)。契約は FTCore/ResponseMeasurementWire.swift(Android と共有)
+        "POST /responsePrepare", "POST /responseCollect", "POST /responseObservation", "POST /responseObservationStop",
     ]
 
     static let androidRoutes: Set<String> = [
@@ -83,7 +85,7 @@ final class BridgeContractTests: XCTestCase {
         "POST /pressEnter", "POST /scrollAction", "POST /session", "POST /settle", "POST /swipe",
         "POST /tap", "POST /terminate", "POST /type",
         "POST /waitForSettle",
-        // 応答時間計測(Android v102〜)。XCUITest・in-app は持たない
+        // 応答時間計測(Android v102〜)。in-app は持たない
         "POST /responsePrepare", "POST /responseCollect", "POST /responseObservation", "POST /responseObservationStop",
     ]
 
@@ -139,7 +141,7 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "7a0c3b6359ecb213cc028afee402efb227e85c3c06f61d1d065c70288b1e3e4a",
             "Sources/FTCore/AXFrameRescale.swift": "2e09609619aefcc33658163d57e1751f475771dc3841c79f9ca0b721c8fd1250",
-            "Sources/FTCore/BridgeDTO.swift": "76ae0bdfde50e70ad0ec534dcf192e58101e711f862fb42bd5c7943a81d2d28f",
+            "Sources/FTCore/BridgeDTO.swift": "e51eded57d830411caddf7ba444e2e59c1ce732a5b0a64ff1a8d1dc24da7c1bc",
             "Sources/FTCore/TypeReadback.swift": "540f796616a84130b001b105094446ad4e582bd15499ca5123d04d39e8d1470c",
             "Sources/FTCore/UIFrameworkMarkers.swift": "1601c9feecaa817d73deea4445523522341ae1b777086b55c33c6e0a74fef6b8",
             "Sources/FTCore/WebViewDOMSnapshot.swift": "a47ced947063748e979fdad3140286eada7e3013c7a132b750dd5e2fde64a96e",
@@ -147,20 +149,22 @@ final class BridgeContractTests: XCTestCase {
         .xcuitest: [
             "Runner/FleetestRunnerUITests/BridgeHTTPServer.swift": "0b78c5bf0d29f3088a49d741dc840590f37b4cdd8179329ce253124de29ccaf7",
             "Runner/FleetestRunnerUITests/BridgeRouter+Snapshot.swift": "55f5bdc9607198d489299ee946d4c2521802836219e3f9d2712bc06adace4334",
-            "Runner/FleetestRunnerUITests/BridgeRouter+TextInput.swift": "f4162aa7d70adf9a5676d9ccb18c46870fefdfd8a2570bdd3aed1790025d7081",
-            "Runner/FleetestRunnerUITests/BridgeRouter.swift": "60bc46faed99a4c4fc82ba674fd92e60af9d14cbc5c05f076557a75ca1566edd",
+            "Runner/FleetestRunnerUITests/BridgeRouter+TextInput.swift": "6dc9105026d207238afa9b55736e4281c385cbd22d3cec09a012cbc399142459",
+            "Runner/FleetestRunnerUITests/BridgeRouter.swift": "65c1c500a74a9c2ee913e3ac3796ae17c203f477e170111774d0a219e32b4341",
             "Runner/FleetestRunnerUITests/BridgingHeader.h": "f7ff424d9283644d0e7a0c6e202911ecbf2d9c12d469eea330d91471c4788272",
-            "Runner/FleetestRunnerUITests/CoordinatePinch.swift": "0325962ef510c2ea02948ad323b35fbfa1d4c5cbef4ff6ea4d5c9b8e315cb4b2",
+            "Runner/FleetestRunnerUITests/CoordinatePinch.swift": "0642cf8aaa2e4cb1aec391473e0703508d96564dadeb3f6075c68f10fed0840e",
             "Runner/FleetestRunnerUITests/DisplayHeartbeat.swift": "c62c30a45e842d5ec7aff60210284d679b76f6e44358a3f4c97429fe918e5ffa",
             "Runner/FleetestRunnerUITests/DisplayRouting.swift": "4c2a45c043a5915ffacfb174dc7af5c6561c0fa3223d08779a4956a825e1891c",
-            "Runner/FleetestRunnerUITests/QuiescenceWait.swift": "c82f956a72b0fd302658336aa26f5bf079cae8a554295d1a24051d6bc0c51795",
             "Runner/FleetestRunnerUITests/FleetestBridgeTests.swift": "f067851e91fad9b386d9152501efa5ceed836d5afd40687ab9ce5e13c806a719",
             "Runner/FleetestRunnerUITests/InterruptionGuard.swift": "413462f639dac179b10155b07ff77ffe244fcf5e1cb8be4073b62853c0c805b2",
             "Runner/FleetestRunnerUITests/ObjCExceptionCatcher.h": "5a98cdbeefb031137a985b2f4430a5e12fec447a492599f8f4da1bd2c7101edc",
             "Runner/FleetestRunnerUITests/ObjCExceptionCatcher.m": "8b41a8a81bc8199bca13a364717614684f8003999c7675d9a63242c8e74c26be",
+            "Runner/FleetestRunnerUITests/QuiescenceWait.swift": "c82f956a72b0fd302658336aa26f5bf079cae8a554295d1a24051d6bc0c51795",
+            "Runner/FleetestRunnerUITests/ResponseMeasurement.swift": "850c12182ddd70cca2c029482917f3d25595b596f4519abef0b479bd1e4d2018",
             "Runner/FleetestRunnerUITests/VirtualHID.swift": "8ee358d73f27c9aabefbd6f98e41091dfde837ee8f15e5066997df1d97df802e",
             "Sources/FTCore/AXFrameRescale.swift": "2e09609619aefcc33658163d57e1751f475771dc3841c79f9ca0b721c8fd1250",
-            "Sources/FTCore/BridgeDTO.swift": "76ae0bdfde50e70ad0ec534dcf192e58101e711f862fb42bd5c7943a81d2d28f",
+            "Sources/FTCore/BridgeDTO.swift": "e51eded57d830411caddf7ba444e2e59c1ce732a5b0a64ff1a8d1dc24da7c1bc",
+            "Sources/FTCore/ResponseMeasurementWire.swift": "950f037187a54c610cb97bee2e9fdbbf5a9540359249b95c186a7668a0f941d5",
             "Sources/FTCore/SnapshotDedupe.swift": "f987a913f2010e8cd81e381c595c15242f58225c71a11a9be206590baccf8c9b",
             "Sources/FTCore/TypeReadback.swift": "540f796616a84130b001b105094446ad4e582bd15499ca5123d04d39e8d1470c",
         ],

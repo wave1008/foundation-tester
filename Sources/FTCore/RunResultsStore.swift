@@ -68,6 +68,25 @@ public enum RunResultsStore {
         return url
     }
 
+    /// 1 run の scenarios/*.json を読み、`transform` が新しい記録を返したものだけ同じファイルへ書き直す(run の後から欄を足す用)。
+    /// 読めないファイル・新しすぎる schemaVersion は触らない。戻り値 = 書き直した本数
+    @discardableResult
+    public static func rewriteScenarios(runDir: URL, transform: (ScenarioRunRecord) -> ScenarioRunRecord?) -> Int {
+        guard let files = jsonFiles(in: runDir.appendingPathComponent("scenarios")) else { return 0 }
+        let decoder = JSONDecoder()
+        var rewritten = 0
+        for file in files {
+            guard let data = try? Data(contentsOf: file),
+                  let record = try? decoder.decode(ScenarioRunRecord.self, from: data),
+                  record.schemaVersion <= RunRecordSchema.current,
+                  let updated = transform(record),
+                  let out = try? makeEncoder().encode(updated),
+                  (try? out.write(to: file, options: .atomic)) != nil else { continue }
+            rewritten += 1
+        }
+        return rewritten
+    }
+
     /// 1 run の run.json を読む(scanRuns と同じ規律: 壊れたファイル・新しすぎる schemaVersion は nil)
     public static func meta(runDir: URL) -> RunMetaRecord? {
         let metaURL = runDir.appendingPathComponent("run.json")

@@ -1,8 +1,11 @@
-// レスポンス計測のブリッジ契約(Android の POST /responsePrepare・/responseCollect・/responseObservation・
-// /responseObservationStop。同期相手は AndroidRunner/src/com/example/ftbridge/BridgeRouter.java の handleResponse* と
-// ResponseProbe.java / ResponseObserver.java)。
-// **BridgeDTO.swift に置かない**: あちらは iOS のブリッジ(in-app dylib・XCUITest ランナー)にも組み込まれ、
-// 触ると iOS のブリッジの版上げを要求される(BridgeContractTests)。この契約は Android だけ
+// レスポンス計測のブリッジ契約(POST /responsePrepare・/responseCollect・/responseObservation・
+// /responseObservationStop)。**Android ブリッジと iOS の XCUITest ランナーが共有する**(in-app は持たない)。
+// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeRouter.java の handleResponse* と ResponseProbe.java /
+// ResponseObserver.java、Runner/FleetestRunnerUITests/ResponseMeasurement.swift。
+// **ここを変えたら Android(VERSION_CODE / expectedBridgeVersionCode)と iOS(BridgeDTO.bridgeProtocolVersion)の
+// 両方の版を上げる**(Runner/project.yml と BridgeSourceSet.xcuitest に載るので、触ると iOS の指紋も動く)。
+// 時刻の単位は ms。時計はブリッジごとに違う: Android = SystemClock.uptimeMillis(MotionEvent.downTime と同じ)/
+// iOS = mach_absolute_time を mach_timebase_info で ns に直して ms にした値(xctrace の time-info `mabs-epoch` と同じ時計)
 
 /// `POST /responsePrepare`。アプリのフレームが `quietMs` の間出なくなるまで(最長 `timeoutMs`)待ち、
 /// 次に注入する最初の ACTION_DOWN の記録を構える。`observeMs` = その注入を起点に木を読み続ける上限(t2 の観測。v104〜)

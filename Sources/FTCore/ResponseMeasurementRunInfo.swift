@@ -5,17 +5,21 @@
 public struct ResponseMeasurementRunInfo: Codable, Sendable, Equatable {
     /// プロファイル上の論理名(ScenarioRunRecord.worker の `<platform>:` の後ろと同じ)
     public var deviceName: String
-    /// Android の adb serial(計測は Android の実機1台だけ = ResponseMeasurementPolicy)
+    /// Android の adb serial(Android の実機のとき)
     public var serial: String?
+    /// iOS の UDID(iOS の実機のとき)。前回比の「同じ端末」は serial か udid で決める(論理名は別の端末を指しうる)
+    public var udid: String?
     /// プロファイルの `model` / `osVersion`(書かれていれば。端末から読み直さない)
     public var model: String?
     public var osVersion: String?
     /// 各シナリオを続けて回した回数(`responseRepeat`)
     public var repeatCount: Int
 
-    public init(deviceName: String, serial: String?, model: String?, osVersion: String?, repeatCount: Int) {
+    public init(deviceName: String, serial: String?, udid: String? = nil, model: String?, osVersion: String?,
+                repeatCount: Int) {
         self.deviceName = deviceName
         self.serial = serial
+        self.udid = udid
         self.model = model
         self.osVersion = osVersion
         self.repeatCount = repeatCount

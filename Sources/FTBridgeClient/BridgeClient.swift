@@ -1220,6 +1220,24 @@ public final class BridgeClient: AppDriver, Sendable {
         try await post("/responseCollect", body: OKResponse(), timeout: interactionTimeout)
     }
 
+    /// 応答時間計測の AppDriver 要件。XCUITest ランナー(iOS 実機。v192〜)が応える。
+    /// Android は AndroidDriver が同じ呼び出しを包む
+    public func prepareResponseMeasurement(quietMs: Int, timeoutMs: Int, observeMs: Int) async throws -> ResponsePrepareResult {
+        try await responsePrepare(quietMs: quietMs, timeoutMs: timeoutMs, observeMs: observeMs)
+    }
+
+    public func collectResponseMeasurement() async throws -> ResponseCollectResult {
+        try await responseCollect()
+    }
+
+    public func fetchResponseObservation(firstDownTimeMs: Int) async throws -> ResponseObservation {
+        try await responseObservation(firstDownTimeMs: firstDownTimeMs)
+    }
+
+    public func stopResponseObservation() async throws {
+        try await responseObservationStop()
+    }
+
     public func terminate() async throws {
         let _: OKResponse = try await post("/terminate", body: OKResponse(),
                                            timeout: sessionTimeout)

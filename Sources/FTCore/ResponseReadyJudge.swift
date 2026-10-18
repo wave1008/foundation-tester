@@ -30,10 +30,14 @@ public struct ResponseReadyUpdate: Codable, Sendable, Equatable {
     public var readyDecidedBy: String?
     public var readyIdentity: String?
     public var readyMissing: String?
+    /// 観測で読めた木の回数(最後の注入より後・読めた回だけ)。t2 の分解能と、判定の材料がどれだけあったかを示す事実。
+    /// 観測が見つからなかった・取れなかったときは nil
+    public var observedReads: Int?
 
     public init(readyMs: Int? = nil, readyAfterLastInjectionMs: Int? = nil, injectionSpanMs: Int? = nil,
                 injections: Int? = nil, readyDecidedBy: String? = nil, readyIdentity: String? = nil,
-                readyMissing: String? = nil) {
+                readyMissing: String? = nil, observedReads: Int? = nil) {
+        self.observedReads = observedReads
         self.readyMs = readyMs
         self.readyAfterLastInjectionMs = readyAfterLastInjectionMs
         self.injectionSpanMs = injectionSpanMs
@@ -87,6 +91,7 @@ public enum ResponseReadyJudge {
         }
 
         let candidates = reads.indices.filter { reads[$0].ok && reads[$0].startMs >= facts.lastDownTimeMs }
+        let observed = candidates.count
         for (position, readIndex) in candidates.enumerated() {
             guard position + 1 < candidates.count else { break }
             guard holds(readIndex: readIndex), holds(readIndex: candidates[position + 1]) else { continue }
@@ -95,17 +100,24 @@ public enum ResponseReadyJudge {
                 readyMs: t2 - facts.firstDownTimeMs,
                 readyAfterLastInjectionMs: t2 - facts.lastDownTimeMs,
                 injectionSpanMs: facts.lastDownTimeMs - facts.firstDownTimeMs,
-                injections: facts.injections, readyDecidedBy: "tree", readyIdentity: "locator")
+                injections: facts.injections, readyDecidedBy: "tree", readyIdentity: "locator",
+                observedReads: observed)
         }
 
-        if observation.truncated == true { return missing(.observationTruncated, facts: facts) }
-        switch observation.endReason {
-        case "nextInjection": return missing(.notReadyBeforeNextAction, facts: facts)
-        case "cap": return missing(.observationTimeout, facts: facts)
-        default:
-            // stopped など: 理由を言えないので readyMissing を省く(丸めない)
-            return ResponseReadyUpdate(injectionSpanMs: facts.lastDownTimeMs - facts.firstDownTimeMs,
-                                       injections: facts.injections)
+        var result: ResponseReadyUpdate
+        if observation.truncated == true {
+            result = missing(.observationTruncated, facts: facts)
+        } else {
+            switch observation.endReason {
+            case "nextInjection": result = missing(.notReadyBeforeNextAction, facts: facts)
+            case "cap": result = missing(.observationTimeout, facts: facts)
+            default:
+                // stopped など: 理由を言えないので readyMissing を省く(丸めない)
+                result = ResponseReadyUpdate(injectionSpanMs: facts.lastDownTimeMs - facts.firstDownTimeMs,
+                                             injections: facts.injections)
+            }
         }
+        result.observedReads = observed
+        return result
     }
 }

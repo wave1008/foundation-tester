@@ -24,10 +24,13 @@ public struct DSLStepRecord: Sendable {
     /// `procedure { }` の中で記録したステップ。レポート(.md)は成功・skip を畳む(Shirates の procedure = describe + silent)。
     /// 結果 JSON・イベントには全部残す(事実は省かない)
     public let insideProcedure: Bool
+    /// 応答時間計測の記録(計測モードの計測ステップだけ)。t2 は次の計測ステップで後から入る(`applyingReadyUpdate`)
+    public var response: ResponseMeasurementRecord?
 
     public init(index: Int, section: String?, description: String, status: StepResult.Status,
                 file: String, line: Int, durationMs: Int? = nil,
-                screenshotData: Data? = nil, screenshotLabel: String? = nil, insideProcedure: Bool = false) {
+                screenshotData: Data? = nil, screenshotLabel: String? = nil, insideProcedure: Bool = false,
+                response: ResponseMeasurementRecord? = nil) {
         self.index = index
         self.section = section
         self.description = description
@@ -38,6 +41,19 @@ public struct DSLStepRecord: Sendable {
         self.screenshotData = screenshotData
         self.screenshotLabel = screenshotLabel
         self.insideProcedure = insideProcedure
+        self.response = response
+    }
+}
+
+extension Array where Element == SceneRecordData {
+    /// 添字が `stepIndex` のステップへ t2 の確定を当てる(前の scene・区分のステップも探す。無ければ何もしない)
+    mutating func applyReadyUpdate(_ update: ResponseReadyUpdate, toStepIndex stepIndex: Int) {
+        for s in indices {
+            guard let i = self[s].steps.firstIndex(where: { $0.index == stepIndex }),
+                  let current = self[s].steps[i].response else { continue }
+            self[s].steps[i].response = current.applying(update)
+            return
+        }
     }
 }
 
@@ -1638,11 +1654,12 @@ public final class FTDriveCore {
                                    description: displayed, status: status,
                                    file: relativePath(file), line: line, durationMs: durationMs,
                                    screenshotData: screenshotData, screenshotLabel: screenshotLabel,
-                                   insideProcedure: procedureDepth > 0)
+                                   insideProcedure: procedureDepth > 0, response: response)
         appendToCurrentScene(record)
 
         // 前の計測ステップの t2 の確定は、そのステップの添字宛てに流す(結果 JSON の timeline へ当てる。ScenarioEvent の冒頭)
         if let update = readyUpdateForPreviousStep, let target = pendingReadyStepIndex {
+            self.record.scenes.applyReadyUpdate(update, toStepIndex: target)
             var ready = ScenarioEvent(kind: "responseReady")
             ready.scenario = scenarioID
             ready.index = target

@@ -173,7 +173,7 @@ public enum ScenarioReportWriter {
     static func line(for step: DSLStepRecord) -> String {
         let location = step.file.isEmpty ? "" : "(\(URL(fileURLWithPath: step.file).lastPathComponent):\(step.line))"
         // 時間列。durationMs 欠測(dry-run・スキップ等)時は空欄
-        let duration = durationText(step.durationMs)
+        let duration = durationText(step.durationMs) + responseText(step.response)
         switch step.status {
         case .passed:
             return "- ✅ \(step.index). \(step.description)\(duration)\n"
@@ -194,6 +194,23 @@ public enum ScenarioReportWriter {
     static func durationText(_ durationMs: Int?) -> String {
         guard let durationMs else { return "" }
         return String(format: " — %.2fs", Double(durationMs) / 1000)
+    }
+
+    /// 計測ステップの値の列(例: " · first frame 54 ms · ready 72 ms")。事実だけを並べる。計測なし・判定なしの部分は出さない
+    static func responseText(_ response: ResponseMeasurementRecord?) -> String {
+        guard let response else { return "" }
+        var text = ""
+        if let ms = response.firstFrameMs {
+            text += " · first frame \(ms) ms"
+        } else if let missing = response.firstFrameMissing {
+            text += " · first frame - (\(missing.rawValue))"
+        }
+        if let ms = response.readyMs {
+            text += " · ready \(ms) ms"
+        } else if let missing = response.readyMissing {
+            text += " · ready - (\(missing))"
+        }
+        return text
     }
 
     /// シナリオ ID からファイル名用スラッグを作る(日本語可、記号は _ に)

@@ -6,7 +6,7 @@ Run your existing scenarios on a physical device and measure, step by step, **ho
 **how long until the next action becomes possible**. The values are kept in the results and can be compared with the previous
 measurement on the same machine and the same device.
 
-> **Experimental.** Only **one Android physical device** is supported for now (not iOS, the Simulator or the Emulator).
+> **Experimental.** Works with **one Android or iOS physical device** (not the Simulator or the Emulator).
 
 ## What is measured
 
@@ -44,7 +44,7 @@ To try it once without editing the profile, override it with `--set`.
 fleetest run --profile <name> --set responseMeasurement=true --set responseRepeat=3 --scenario <scenario ID>
 ```
 
-- The profile must have **exactly one enabled device, and it must be an Android physical device (`kind: physical`)**. Otherwise
+- The profile must have **exactly one enabled device, and it must be an Android or iOS physical device (`kind: physical`)**. Otherwise
   the run is refused.
 - `responseRepeat` (default `5`, `1` to `50`) sets how many times each scenario runs back to back. More repeats give a steadier
   median and p90. The result files are named `<id>`, `<id>~2`, `<id>~3`, …
@@ -82,6 +82,8 @@ This collects only measurement-mode runs and lists them per step.
 - With `--json`, each row also carries the breakdown of the reasons a value is missing (the values in the tables below).
 
 Each individual value is also kept in the result JSON (`results/runs/.../scenarios/<id>.json`) under each step's `response`.
+
+The scenario report (`reports/scenario-*.md`) shows the values after the duration of each measured step: ` · first frame 54 ms · ready 72 ms`. When a value is missing it shows the reason instead (`first frame - (busyBeforeAction)`); when the ready time was not judged, the `ready` part is left out. The `ready` value of a step arrives with the next measured step, so the last measured step of a scenario has none.
 
 ## When a value is missing
 
@@ -125,6 +127,16 @@ In the following cases there is neither a time until ready nor a reason (the ste
   **first** injection, and only conditions met after the **last** injection count.
 - Run measurements while the device is not used for anything else. The monitor hold applies only within the clone that started
   the run.
+
+### Measuring on an iOS physical device
+
+- On iOS, **time to first frame** is recorded with Xcode Instruments (`xctrace`) during the run and filled into the results when
+  the run ends. Xcode must be installed and able to record the device with Instruments. If recording fails, the run prints one line
+  saying so and leaves the value empty.
+- **Time to first frame** also includes the time XCUITest takes to deliver the input to the device (it reads longer than on Android).
+- **Time until ready** is coarser than on Android, because reading the screen's element information takes a few hundred
+  milliseconds each time (`observedReads` in the result JSON is the number of reads the judgement could use).
+- The device's Reduce Motion setting cannot be changed by the tool; the device is measured with its own setting.
 
 Related: [Run profile](../project/run_profile.md) / [Analysing results](./results_analysis.md) / [Running scenarios](./running_scenarios.md)
 

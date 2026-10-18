@@ -36,4 +36,31 @@ public enum AndroidAnimationSettings {
         guard let scale else { return false }
         return animationsEnabled ? scale != 0 : scale == 0
     }
+
+    /// run の後に元へ戻す1件。`value == nil` は「元は未設定」= 設定を消す
+    public struct Restore: Equatable, Sendable {
+        public var key: String
+        public var value: String?
+        public init(key: String, value: String?) {
+            self.key = key
+            self.value = value
+        }
+
+        /// adb の "shell" の後ろに続く引数列
+        public var arguments: [String] {
+            value.map { ["settings", "put", "global", key, $0] } ?? ["settings", "delete", "global", key]
+        }
+    }
+
+    /// 戻す対象の決定。**この run が書き換えたものだけ**(= `matches` が false だった key。run の開始時の同期が put するのと同じ条件)。
+    /// `previousRaw` は読めた key の `settings get` の出力だけ(読めなかった key は元が分からないので戻さない)。
+    /// "null"・空は元が未設定 → 消す。順序は `AnimationPolicy.androidScaleKeys`
+    public static func restoreEntries(previousRaw: [String: String], animationsEnabled: Bool) -> [Restore] {
+        AnimationPolicy.androidScaleKeys.compactMap { key in
+            guard let raw = previousRaw[key],
+                  !matches(rawValue: raw, animationsEnabled: animationsEnabled) else { return nil }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return Restore(key: key, value: (trimmed.isEmpty || trimmed == "null") ? nil : trimmed)
+        }
+    }
 }
