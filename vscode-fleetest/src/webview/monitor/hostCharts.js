@@ -673,6 +673,7 @@ export function hostMetricsMachines() {
       cpu: sample && typeof sample.cpu === 'number' ? sample.cpu : null,
       memRatio: used !== null && total !== null && total > 0 ? used / total : null,
       liveness: { ...row.liveness },
+      encoder: { ...row.encoder },
       visionCalls: stats ? stats.calls : null,
       visionFailures: stats ? stats.failures : null,
       windowTicks: row.vision.window.length,

@@ -158,6 +158,10 @@ export const webviewDashboardStrings = {
   "wvDashboard.machineHealth.fmDead": { ja: "dead", en: "dead" },
   "wvDashboard.machineHealth.fmUnknown": { ja: "unknown", en: "unknown" },
   "wvDashboard.machineHealth.fmCheckedAt": { ja: "確認: {time}", en: "Checked: {time}" },
+  "wvDashboard.machineHealth.aveDead": {
+    ja: "ハードウェア動画エンコーダーが動いていません。録画の切り出しはソフトウェアで続けます(遅くなります)。この Mac の再起動で戻った実績があります",
+    en: "The hardware video encoder is not working. Recording clips are still extracted with the software encoder (slower). Rebooting this Mac has cleared this state before.",
+  },
   "wvDashboard.machineHealth.fmNoObservation": { ja: "モニターで観測できていません", en: "Not observed by the monitor" },
   "wvDashboard.machineHealth.visionCalls": { ja: "呼び出し {calls} · 失敗 {failures}", en: "calls {calls} · failures {failures}" },
   "wvDashboard.machineHealth.visionWindowTitle": { ja: "直近 {seconds} 秒の件数", en: "Counts over the last {seconds} s" },

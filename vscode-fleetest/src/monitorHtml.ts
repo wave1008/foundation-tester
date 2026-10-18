@@ -135,11 +135,12 @@ function renderDashboardPanel(): string {
         <thead>
           <tr>
             <th rowspan="2">${t("exploreHeal.dashboard.colMachine")}</th>
-            <th colspan="3" class="mh-group">${t("exploreHeal.dashboard.colGroupMachineNow")}</th>
+            <th colspan="4" class="mh-group">${t("exploreHeal.dashboard.colGroupMachineNow")}</th>
             <th colspan="8" id="mh-period-header" class="mh-group mh-period-start">${t("exploreHeal.dashboard.colGroupMachinePeriod")}</th>
           </tr>
           <tr>
             <th title="${t("exploreHeal.dashboard.colMhFmTitle")}">${t("exploreHeal.dashboard.colMhFm")}</th>
+            <th title="${t("exploreHeal.dashboard.colMhAveTitle")}">${t("exploreHeal.dashboard.colMhAve")}</th>
             <th title="${t("exploreHeal.dashboard.colMhVisionTitle")}">${t("exploreHeal.dashboard.colMhVision")}</th>
             <th>${t("exploreHeal.dashboard.colMhLoad")}</th>
             <!-- 集計期間の列は発生順(操作前の減速 → OCR → Vision → FM の枠待ち → FM の呼び出し → 素通り → run を閉じた時点の FM 停止)。machineHealth.js の rowElement と同じ順 -->

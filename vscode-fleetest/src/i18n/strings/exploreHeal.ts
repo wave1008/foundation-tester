@@ -199,6 +199,11 @@ export const exploreHealStrings = {
     ja: "期間内のこのマシンの run の数(マウスを載せると最後の run の時刻)",
     en: "Runs on this machine in the period (hover for the time of the last run)",
   },
+  "exploreHeal.dashboard.colMhAve": { ja: "AVE", en: "AVE" },
+  "exploreHeal.dashboard.colMhAveTitle": {
+    ja: "ハードウェア動画エンコーダー(AVE = Apple Video Encoder)が使えるか。モニターの最新の観測で、観測できていない間は「不明」です(停止の理由はチップに載せます)",
+    en: "Whether the hardware video encoder (AVE = Apple Video Encoder) works, from the monitor's latest observation. Unknown while nothing is observed (the reason for a stop is on the chip)",
+  },
   "exploreHeal.dashboard.colMhFmDead": { ja: "FM 停止", en: "FM dead" },
   "exploreHeal.dashboard.colMhFmDeadTitle": {
     ja: "FM が停止していると記録された run の数(マウスを載せると最後の停止の時刻・経路・理由)",

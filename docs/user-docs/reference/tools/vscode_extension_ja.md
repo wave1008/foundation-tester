@@ -151,7 +151,8 @@ iOS の Compose アプリでは、実機と `xcuitest` だけの構成でダブ�
 プロジェクトの `fleetest api results` の集計が表示されます。上から順に次のセクションが並びます。
 
 - **マシンの健全性**: 1台の Mac を1行で、FM(Foundation Models のテキスト・画像)と OCR / Vision の健全性を並べる。
-  「現在の状態」の列は FM の Text・Image それぞれの alive・dead・unknown(記号と文字つき)、直近の Vision の呼び出し・失敗件数、OCR モデルの
+  「現在の状態」の列は FM の Text・Image それぞれの alive・dead・unknown(● / ✕ / ? の記号)、
+  ハードウェア動画エンコーダー(AVE = Apple Video Encoder)の alive・dead・unknown(同じ記号。停止の理由はマウスを載せると出る)、直近の Vision の呼び出し・失敗件数、OCR モデルの
   コンパイル中、CPU / MEM の負荷。「集計期間」の列は run 履歴から、発生順に run 数・負荷による減速・
   OCR / Vision の注記・FM の枠待ち・FM 呼び出しの失敗・可視性検証の素通り・FM 停止の run 数を出す(マウスを載せると内訳や理由)。
   失敗や停止などがあるセルは警告色になる。モニターが観測できていない値、記録に欄が無い値は 0 にせず「–」

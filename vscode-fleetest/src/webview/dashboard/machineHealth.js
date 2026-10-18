@@ -126,31 +126,61 @@ function fmStateOf(live, path) {
   return state === 'alive' || state === 'dead' ? state : 'unknown';
 }
 
-/** 色は補助。記号と文字を必ず残す。 */
+const STATE_MARKS = { alive: '●', dead: '✕', unknown: '?' };
+
+function stateLabel(state) {
+  return t({
+    alive: 'wvDashboard.machineHealth.fmAlive',
+    dead: 'wvDashboard.machineHealth.fmDead',
+    unknown: 'wvDashboard.machineHealth.fmUnknown',
+  }[state]);
+}
+
+function checkedAtLine(checkedAt) {
+  return typeof checkedAt === 'number'
+    ? t('wvDashboard.machineHealth.fmCheckedAt', { time: formatLocalDateTime(new Date(checkedAt * 1000).toISOString()) })
+    : '';
+}
+
+/** 色は補助。状態は記号で出し、状態の語は aria-label に残す。 */
 function fmCell(live) {
   const cell = document.createElement('td');
   cell.className = 'mh-fm';
-  const marks = { alive: '●', dead: '✕', unknown: '?' };
-  const labels = {
-    alive: t('wvDashboard.machineHealth.fmAlive'),
-    dead: t('wvDashboard.machineHealth.fmDead'),
-    unknown: t('wvDashboard.machineHealth.fmUnknown'),
-  };
   const paths = [['text', t('wvDashboard.machineHealth.chipText')], ['vision', t('wvDashboard.machineHealth.chipImage')]];
   for (const [path, name] of paths) {
     const state = fmStateOf(live, path);
-    cell.appendChild(chip('mh-chip mh-fm-' + state, marks[state] + ' ' + name + ' ' + labels[state]));
+    const c = chip('mh-chip mh-fm-' + state, STATE_MARKS[state] + ' ' + name);
+    c.setAttribute('aria-label', name + ' ' + stateLabel(state));
+    cell.appendChild(c);
   }
   const tips = [];
   if (!live || live.stale) {
     tips.push(t('wvDashboard.machineHealth.fmNoObservation'));
   } else {
     if (live.liveness.reason) tips.push(live.liveness.reason);
-    if (typeof live.liveness.checkedAt === 'number') {
-      tips.push(t('wvDashboard.machineHealth.fmCheckedAt', {
-        time: formatLocalDateTime(new Date(live.liveness.checkedAt * 1000).toISOString()),
-      }));
-    }
+    const checked = checkedAtLine(live.liveness.checkedAt);
+    if (checked) tips.push(checked);
+  }
+  return withTip(cell, tips.join('\n'));
+}
+
+/** AVE(ハードウェア動画エンコーダー)。経路は1つ・3値は FM と同じ(不明と生を混ぜない) */
+function aveCell(live) {
+  const cell = document.createElement('td');
+  cell.className = 'mh-fm';
+  const encoder = live && !live.stale ? live.encoder : null;
+  const state = encoder && (encoder.state === 'alive' || encoder.state === 'dead') ? encoder.state : 'unknown';
+  const c = chip('mh-chip mh-fm-' + state, STATE_MARKS[state]);
+  c.setAttribute('aria-label', 'AVE ' + stateLabel(state));
+  cell.appendChild(c);
+  const tips = [];
+  if (state === 'unknown') {
+    tips.push(t('wvDashboard.machineHealth.fmNoObservation'));
+  } else {
+    if (state === 'dead') tips.push(t('wvDashboard.machineHealth.aveDead'));
+    if (encoder.error) tips.push(encoder.error);
+    const checked = checkedAtLine(encoder.checkedAt);
+    if (checked) tips.push(checked);
   }
   return withTip(cell, tips.join('\n'));
 }
@@ -290,12 +320,12 @@ function liveSignature(rows) {
   return JSON.stringify(rows.map((row) => {
     const l = row.live;
     return [row.label, l ? [l.stale, pct(l.cpu), pct(l.memRatio), l.liveness, l.visionCalls, l.visionFailures,
-      l.windowTicks, l.ocrCompiling] : null];
+      l.windowTicks, l.ocrCompiling, l.encoder] : null];
   }));
 }
 
-const LIVE_CELL_BUILDERS = [fmCell, visionCell, loadCell];
-// 「今」の列は rowElement の中でマシンの列の直後(rowElement もこの一覧から作る)
+const LIVE_CELL_BUILDERS = [fmCell, aveCell, visionCell, loadCell];
+// monitorHtml.ts の「現在の状態」の見出しと同じ順。「今」の列は rowElement の中でマシンの列の直後(rowElement もこの一覧から作る)
 const LIVE_CELL_OFFSET = 1;
 
 /** 行の並びが同じなら「今」の列だけを**同じ td の中身の差し替え**で更新する。行を作り直すと、マウスを載せている
