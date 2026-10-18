@@ -60,7 +60,7 @@ VSCode では Test Explorer でシナリオを選び、「実行」をクリッ�
 </details>
 
 `--scenario` には、クラス名で1ファイル分、`クラス名.テスト名` で1本を指定します。
-上のコマンドの `../foundation-tester/.build/debug/fleetest` の意味は[はじめに](../getting-started_ja.md)を参照してください。
+上のコマンドの `../foundation-tester/.build/debug/fleetest` の意味は[クイックスタート](../quick-start_ja.md)を参照してください。
 詳しくは[シナリオの実行](../reference/running/running_scenarios_ja.md)。
 
 ## 複数のデバイスで速く回す

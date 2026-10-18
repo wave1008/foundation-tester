@@ -3,7 +3,7 @@
 ## 読者の分岐(最初に判定する)
 
 - **このツールを「使う」だけ**(自分のアプリのシナリオを書いて実行したい。ツール本体は改造しない):
-  `/fleetest-setup` スキルに従ってセットアップする。手順の全体像は docs/user-docs/getting-started_ja.md。
+  `/fleetest-setup` スキルに従ってセットアップする。手順の全体像は docs/user-docs/quick-start_ja.md。
   **以下の保守者向けルール(委譲方針・コメント規約・i18n・ソース分割等)は適用しない。**
 - **このツール本体を「改造する」保守者**: 以下すべてが適用対象。
 
@@ -19,7 +19,7 @@
   `index_ja.md`。1ページ = `<name>.md`(英)+ `<name>_ja.md`(日)で**片方だけ変えない**
   (`userDocsIntegrity.test.mjs` が対の欠落・切れたリンク・言語の混線・index 未掲載を検出)。
   DSL の挙動を変えたら docs/commands.md と併せて該当ページも直す
-- 受け手向けの導入(事前準備・インストールだけ): docs/user-docs/getting-started_ja.md。更新は docs/user-docs/update_ja.md・アンインストールは docs/user-docs/uninstall_ja.md
+- 受け手向けの導入(事前準備・インストール・サンプルアプリでの実行): docs/user-docs/quick-start_ja.md。更新は docs/user-docs/update_ja.md・アンインストールは docs/user-docs/uninstall_ja.md
 - DSL コマンドリファレンス(全コマンドの引数・挙動): docs/commands.md
 - CI 連携(`fleetest run --junit` の JUnit 出力・GitHub Actions 例・flaky 方針): docs/ci.md
 - リリース(git タグ発行。**受け手の配布口は最新リリースタグ**・main は開発線で版固定の導線は案内しない。

@@ -4,7 +4,7 @@
 
 The general flow for putting the servers, DBs and stubs your own app uses into containers and declaring them to
 fleetest. The details of the specification are in [Services the app depends on](../reference/writing/services.md).
-For a worked example with the sample app, see [Preparing the Sample App](../sample-app.md).
+For a worked example with the sample app, see "Preparing the sample app" in the [Quick start](../quick-start.md#4-preparing-the-sample-app).
 
 ## The idea
 

@@ -21,7 +21,7 @@ paths:
   - "Tests/FTCoreTests/ProfileWriterTests.swift"
   - "Tests/FTCoreTests/SelectorInventoryTests.swift"
   - "Tests/FTCoreTests/ToolchainFingerprintTests.swift"
-  - "docs/user-docs/getting-started*.md"
+  - "docs/user-docs/quick-start*.md"
   - "docs/user-docs/reference/tools/other_agents*.md"
   - "vscode-fleetest/src/monitorUpdateController.ts"
   - "vscode-fleetest/src/toolRootResolve.ts"

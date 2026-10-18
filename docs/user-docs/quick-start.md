@@ -2,10 +2,92 @@
 
 [in Japanese(日本語)](quick-start_ja.md)
 
-The shortest path from completed [Getting Started (Installation)](getting-started.md) and [Preparing the Sample App](sample-app.md) to creating
-scenarios for a sample app and running them. You do not write scenarios by hand.
+The shortest path from installing fleetest to creating scenarios for a sample app and running them.
+You do not write scenarios by hand.
 
-## 1. Prepare the profiles
+## 1. Environment
+
+For the supported macOS, Xcode, Android SDK and other requirements, see [Environment](overview/environments.md).
+
+## 2. Before you start
+
+- **If you test iOS**
+  - Install Xcode and the iOS Simulator runtime
+- **If you test Android**
+  - Install Android Studio (Android SDK)
+- **VSCode and Node.js**
+  - Install VSCode and Node.js v24 or newer (npm v11 or newer), which are needed to build and install the VSCode extension
+- **If you run the sample app or your app's server in containers** (optional)
+  - Install Apple Container (`brew install container`). You can also have the AI assistant install it in [4. Preparing the sample app](#4-preparing-the-sample-app)
+- **AI assistant**
+  - Install an AI assistant that supports MCP (Claude Code, Codex, Cline, Cursor, Copilot, and so on).
+    With any of them, you have the assistant carry out the installation.
+
+## 3. Installing fleetest
+
+1. Create a **new, test-only folder** in Finder and open it in VSCode
+
+2. Start your AI assistant and give it this instruction:
+
+```text
+Clone https://github.com/wave1008/foundation-tester next to this folder, then set it up by
+following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
+```
+
+3. When the installation finishes, open the Command Palette in VSCode with shift + command + P and run `Developer: Reload Window`.
+
+4. Click **fleetest mobile** in the status bar at the lower-left corner of VSCode. The device monitor opens.
+
+5. If you use an **AI assistant other than Claude Code**, ask it to "register the MCP server". Then restart the assistant.
+
+6. Ask your AI assistant to "run fleetest doctor and report the result", and confirm that no errors are reported
+
+## 4. Preparing the sample app
+
+Prepare the sample app used in the rest of this page
+([sut-ec-mobile](https://github.com/wave1008/sut-ec-mobile), a Compose Multiplatform shopping app)
+and declare its server to fleetest. The server is built with Kotlin (Ktor) and PostgreSQL.
+
+### Prompt for the AI
+
+```text
+Clone https://github.com/wave1008/sut-ec-mobile next to this folder, then run bash ../sut-ec-mobile/fleetest/prepare.sh in this folder.
+Don't modify any shell configuration files. When it finishes, report the last lines of the script's output.
+```
+
+The script (`sut-ec-mobile/fleetest/prepare.sh`) goes through these steps and skips the ones already done, so you can run it
+as many times as you like.
+
+1. Checks that this is an Apple Silicon Mac and that it runs in your work folder
+2. Installs Apple Container with Homebrew if it is missing
+3. Starts the container runtime (the first time, it fetches the Linux kernel)
+4. Pulls the server and PostgreSQL images (the server is an image published on GitHub Container Registry, so nothing is
+   built on your Mac)
+5. Creates the test project `project1` if it does not exist, and puts the server declaration (`compose.yaml`) in
+   `TestProjects/project1/workspace/scripts/`
+
+- fleetest starts and stops the server on every run. Even after you restart your Mac, there is nothing to start again.
+- The DB is created empty on every run, and the server seeds the initial data at startup.
+- To pick up a newer server, run `git pull` in `sut-ec-mobile` and run the same script again.
+- The cloned repository is also used to build the app in [5. Prepare the profiles](#5-prepare-the-profiles).
+- The declaration is in [sut-ec-mobile/fleetest/compose.yaml](https://github.com/wave1008/sut-ec-mobile/blob/main/fleetest/compose.yaml),
+  and how to write one is in [Services the app depends on](reference/writing/services.md).
+
+<details>
+<summary><b>Do it manually (click to show details)</b></summary>
+
+Run these in your work folder:
+
+```bash
+git clone https://github.com/wave1008/sut-ec-mobile.git ../sut-ec-mobile
+bash ../sut-ec-mobile/fleetest/prepare.sh
+```
+
+To use a different test project name, pass it like `bash ../sut-ec-mobile/fleetest/prepare.sh <name>`.
+
+</details>
+
+## 5. Prepare the profiles
 
 Create the app profile and the run profile.
 
@@ -71,7 +153,7 @@ When it succeeds, the AI assistant reports the name of the run profile (such as 
 
 See [Profiles](./reference/project/profiles.md) for the details.
 
-## 2. Create the scenarios
+## 6. Create the scenarios
 
 Let's create exploratory tests for the login screen.
 
@@ -100,7 +182,7 @@ Start the server by hand, explore, and stop it when you are done.
 
 </details>
 
-## 3. Run it on a device
+## 7. Run it on a device
 
 Let's run the scenarios you created.
 On every run fleetest starts the server and stops it when the run ends. Services you started beforehand are taken over.
@@ -120,7 +202,7 @@ For scenarios created on Android, ask "Run them on Android" instead.
 ../foundation-tester/.build/debug/fleetest run --profile ios-run
 ```
 
-`--profile` takes the name of the run profile from step 1 (`ios-run`, or `android-run` for Android).
+`--profile` takes the name of the run profile from step 5 (`ios-run`, or `android-run` for Android).
 The app, the devices, and the run-time settings are all resolved from it.
 
 From VSCode, open the **Test Explorer**, pick the scenario, and click **Run**.
@@ -129,7 +211,7 @@ Command Palette. Without one, the run does not start and shows an error.
 
 </details>
 
-## 4. Read the results
+## 8. Read the results
 
 Every run writes a Markdown report per scenario to `TestProjects/<project>/reports/`.
 
@@ -151,9 +233,12 @@ can open the report from there.
 
 </details>
 
+## 9. Troubleshooting
+
+If you run into a problem, ask your AI assistant. Common symptoms and how to narrow them down are
+collected in [Troubleshooting](in_action/troubleshooting.md).
+
 Next: [Asking the AI assistant](tutorial/asking_ai.md)
 
 ### Link
 - [index](index.md)
-- [Getting Started (Installation)](getting-started.md)
-- [Preparing the Sample App](sample-app.md)

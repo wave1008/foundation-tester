@@ -52,7 +52,7 @@ negative `screenLooksLike` verdict; it does not measure test pass rate or recove
 - FM features are not available on macOS 26.
 - When FM is unavailable, `screenLooksLike` is **skipped**, not failed.
 
-Next: [Getting Started (Installation)](../getting-started.md)
+Next: [Quick start](../quick-start.md)
 
 ### Link
 - [index](../index.md)

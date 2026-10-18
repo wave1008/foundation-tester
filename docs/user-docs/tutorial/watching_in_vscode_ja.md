@@ -3,7 +3,7 @@
 [in English](watching_in_vscode.md)
 
 AIアシスタントがテストを作り、実行している間、何が起きているかは VSCode 拡張で**見る**ことができます。
-VSCode 拡張は[はじめに](../getting-started_ja.md)のインストールで入ります。
+VSCode 拡張は[クイックスタート](../quick-start_ja.md)のインストールで入ります。
 
 ## デバイスモニター
 

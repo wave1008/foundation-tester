@@ -21,7 +21,7 @@
   checkout したクローン(`fleetest.channel` 未設定の detached)は `pinned` で、動かさない。
 - リモートランナー(`fleetest remote setup` / `Scripts/align.sh`)は手元のコミットへ揃える(リリース追従の対象外)。`remote setup` は手元の install.sh を送るので `--track-branch` を渡してリリースタグへ移さない(移すと「手元のスクリプト + リリースのバイナリ」になり新しい引数が通じない。`RemoteSetupPlan.installArgs`)。
 
-配布そのものは git clone + `swift build` / `npm run install-local`(docs/user-docs/getting-started_ja.md)。
+配布そのものは git clone + `swift build` / `npm run install-local`(docs/user-docs/quick-start_ja.md)。
 プラグインと `install-skill.sh` は廃止済み(理由は docs/maintainer-notes.md §2.3)。既定フローは
 `fleetest init --fleetest-path`(隣の clone)なので、SPM の `from:` を使う版指定は通らない。
 
@@ -64,7 +64,7 @@ git tag -l --format='%(contents)' <version>   # 注釈がリリースノート�
 # (update-check.sh --notes はリリース追従のクローン = fleetest.channel=release でしか注釈を出さない)
 ```
 
-受け手の利用フローは docs/user-docs/getting-started_ja.md を参照。
+受け手の利用フローは docs/user-docs/quick-start_ja.md を参照。
 
 ## 保守者だけが使う口(`FLEETEST_REF`)
 

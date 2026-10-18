@@ -3,7 +3,7 @@
 [in Japanese(日本語)](watching_in_vscode_ja.md)
 
 While the AI assistant creates and runs tests, you can **watch** what is happening in the VSCode extension.
-The VSCode extension comes with the installation in [Getting started](../getting-started.md).
+The VSCode extension comes with the installation in [Quick start](../quick-start.md).
 
 ## Device Monitor
 

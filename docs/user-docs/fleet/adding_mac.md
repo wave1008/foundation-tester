@@ -23,7 +23,7 @@ In the examples below, the runner is `<user@192.168.xxx.xxx>` and its machine na
 ## Before you start
 
 - **Your Mac**: fleetest is set up and you have a test project
-  ([Getting Started](../getting-started.md)).
+  ([Quick start](../quick-start.md)).
 - **The runner**: it meets the following requirements. Step 0 takes care of anything missing.
 
 | Requirement | Check (run on the runner) |

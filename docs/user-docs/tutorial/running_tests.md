@@ -60,7 +60,7 @@ Command Palette. Without one, the run does not start and shows an error.
 </details>
 
 `--scenario` takes a class name for one file, or `ClassName.testName` for a single test.
-For what `../foundation-tester/.build/debug/fleetest` in the commands above means, see [Getting Started](../getting-started.md).
+For what `../foundation-tester/.build/debug/fleetest` in the commands above means, see [Quick start](../quick-start.md).
 For details, see [Running scenarios](../reference/running/running_scenarios.md).
 
 ## Run faster on multiple devices

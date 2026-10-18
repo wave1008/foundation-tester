@@ -13,7 +13,7 @@ Using a different agent (Codex, Cline, …)? The same runbooks apply — see
 ## Installing the skills
 
 The installer (`install.sh`) copies the skills into the work folder's `.claude/skills/`. You get
-them through the steps in [Getting Started](../../getting-started.md) (ask your AI assistant), and
+them through the steps in [Quick start](../../quick-start.md) (ask your AI assistant), and
 every update refreshes the copies (restart Claude Code after the copies are refreshed). You call
 them by name alone, such as `/fleetest-scenario`.
 

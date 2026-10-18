@@ -51,7 +51,7 @@ FMが有効な回答を返せた割合を表し、`screenLooksLike` が不一致
 - macOS 26 では FM の機能は使えません。
 - FM が使えない環境では、`screenLooksLike` は失敗ではなく**スキップ**されます。
 
-次へ: [はじめに(インストール)](../getting-started_ja.md)
+次へ: [クイックスタート](../quick-start_ja.md)
 
 ### Link
 - [index](../index_ja.md)

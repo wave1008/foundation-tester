@@ -139,8 +139,8 @@ const MUST_CARRY_SLUG = [
   "vscode-fleetest/package.json",
   ".claude/skills/fleetest-setup/SKILL.md",
   ".claude/skills/fleetest-mcp/SKILL.md",
-  "docs/user-docs/getting-started.md",
-  "docs/user-docs/getting-started_ja.md",
+  "docs/user-docs/quick-start.md",
+  "docs/user-docs/quick-start_ja.md",
 ];
 
 test("配布経路の各ファイルが正典の slug を実際に持っている", () => {

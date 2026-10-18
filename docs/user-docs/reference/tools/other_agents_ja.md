@@ -41,7 +41,7 @@ bash ../foundation-tester/Scripts/install.sh
 他のエージェントの MCP 登録は、次の「2. MCP サーバを登録する」で行います
 (インストーラはエージェントのグローバル設定には書き込みません)。
 
-手順の全体像と前提は[はじめに(インストール)](../../getting-started_ja.md)、更新は[更新](../../update_ja.md)、
+手順の全体像と前提は[クイックスタート](../../quick-start_ja.md)、更新は[更新](../../update_ja.md)、
 アンインストールは[アンインストール](../../uninstall_ja.md)を参照してください。
 
 ## 2. MCP サーバを登録する

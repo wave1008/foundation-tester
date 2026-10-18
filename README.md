@@ -104,7 +104,7 @@ bash ../foundation-tester/Scripts/install.sh
   `fleetest-remote-setup`(別の Mac をランナー機にする)。
   受け手は**最新のリリースタグ**に追従する(install.sh が最新リリースへ移す。更新は `Scripts/update.sh`)。
 - 既定は**外部パッケージ構成**: ツール(この clone)と、あなたの `TestProjects/` が住むテスト用フォルダを分ける。
-- 事前準備・インストールの手順は [docs/user-docs/getting-started_ja.md](docs/user-docs/getting-started_ja.md)、更新は [docs/user-docs/update_ja.md](docs/user-docs/update_ja.md)、アンインストールは [docs/user-docs/uninstall_ja.md](docs/user-docs/uninstall_ja.md)。
+- 事前準備・インストールの手順は [docs/user-docs/quick-start_ja.md](docs/user-docs/quick-start_ja.md)、更新は [docs/user-docs/update_ja.md](docs/user-docs/update_ja.md)、アンインストールは [docs/user-docs/uninstall_ja.md](docs/user-docs/uninstall_ja.md)。
   導入後の使い方(プロファイル・シナリオ・実行)は**利用者向けドキュメント [docs/user-docs/index_ja.md](docs/user-docs/index_ja.md)**([English](docs/user-docs/index.md))と [docs/commands.md](docs/commands.md)。
 
 > **配布はソースビルド前提**(バイナリ配布はしない)。CLI も VSCode 拡張(.vsix)も clone から
