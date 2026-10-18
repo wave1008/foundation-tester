@@ -20,8 +20,14 @@ and `select` steps are not measured.
 
 All times are taken on the device's clock, so the communication time between the Mac and the device is not included.
 
+<img src="../../images/response_measurement/en/timeline.png" width="720" alt="Before the action the run waits up to 10 seconds for drawing to stop, then taps Log in by injecting input. From the injection to the app's first frame is the time to first frame; from the injection until the My page button operated next is found, enabled, not covered and not moving is the time until ready. All times are taken on the device's clock">
+
+
 **Time until ready** is decided by the element the scenario actually operates next. If a scenario taps "Log in" and then taps
 "My page", the value for "Log in" is "from the tap until the My page button can be pressed".
+
+<img src="../../images/response_measurement/en/steps.png" width="720" alt="A four-step scenario: tap Log in, exist Welcome, tap My page, tap Settings. Each tap step measures the time to first frame; exist is a verification step and is not measured. The time until ready of Log in lasts until My page, operated next, can be pressed; that of My page until Settings can be pressed. The last action, Settings, has no time until ready">
+
 
 ## Turning it on
 
@@ -126,6 +132,9 @@ In the following cases there is neither a time until ready nor a reason (the ste
   check whether the screen's pixels have stopped changing.
 - A step that injects input several times in one action (searching by scrolling, repeated flicks, …) is measured from the
   **first** injection, and only conditions met after the **last** injection count.
+
+  <img src="../../images/response_measurement/en/multi_injection.png" width="720" alt="When a step injects input three times, the time until ready is measured from the first injection. Conditions met before the last injection are not counted; the time until ready ends when the next element can be pressed after the last injection">
+
 - Run measurements while the device is not used for anything else. The monitor hold applies only within the clone that started
   the run.
 
