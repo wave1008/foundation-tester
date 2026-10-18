@@ -40,6 +40,10 @@ public enum WorkerRecoveryKind: String, Codable, Sendable {
     case runnerRestart
     /// 離脱したワーカーの論理デバイスを復帰させた(superviseWorker の revive 成功)
     case workerRevive
+    /// 止まった表示を sleep/wake で戻した(DisplayFreezeWatch。Android Emulator だけ)
+    case displaySleepWake
+    /// 止まった表示のデバイスを再起動した(Emulator = ゲストの再起動か停止→起動 / Simulator = shutdown → boot)
+    case deviceRestart
 }
 
 /// run 中に起きたワーカーの異常。**prose の degradedWorkers / freezeRetries と同じ事実を

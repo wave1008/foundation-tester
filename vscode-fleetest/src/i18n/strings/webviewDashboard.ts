@@ -114,6 +114,8 @@ export const webviewDashboardStrings = {
   "wvDashboard.deviceHealth.cause.noResponse": { ja: "応答なし", en: "No response" },
   "wvDashboard.deviceHealth.recovery.runnerRestart": { ja: "ランナーの起動し直し", en: "Runner restart" },
   "wvDashboard.deviceHealth.recovery.workerRevive": { ja: "ワーカーの復帰", en: "Worker revive" },
+  "wvDashboard.deviceHealth.recovery.displaySleepWake": { ja: "表示の sleep/wake", en: "Display sleep/wake" },
+  "wvDashboard.deviceHealth.recovery.deviceRestart": { ja: "デバイスの再起動", en: "Device restart" },
 
   // insights.js
   "wvDashboard.insights.severityCritical": { ja: "重大", en: "Critical" },

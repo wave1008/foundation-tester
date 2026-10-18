@@ -39,6 +39,58 @@ final class ScenarioTimingTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.testSeconds ?? 0, 25, accuracy: 0.001)
     }
 
+    /// 開始・終了とも送られた時刻(flowStartedAt / flowEndedAt)で数える。終了が境目の表示の確認まで保留された回も、
+    /// 確認・回復の時間がシナリオ合計・レーンの busy・テスト実時間に入らない
+    func testHeldFinishIsCountedAtItsRealEndTime() {
+        var tracker = ScenarioTimingTracker()
+        let a = item("A.S0010")
+        tracker.record(.flowStartedAt(worker: "ios:1", flowURL: a.url, at: base), at: base)
+        tracker.record(.flowStarted(worker: "ios:1", flowURL: a.url, flowName: a.info.id, isDirty: false), at: base)
+        tracker.record(.flowEndedAt(worker: "ios:1", flowURL: a.url, at: base.addingTimeInterval(10)),
+                       at: base.addingTimeInterval(70))
+        tracker.record(.flowFinished(worker: "ios:1", flowURL: a.url, passed: true, reportURL: nil, fm: nil,
+                                     notApplicableReason: nil), at: base.addingTimeInterval(70))
+        XCTAssertEqual(tracker.scenarioTotalSeconds ?? 0, 10, accuracy: 0.001)
+        XCTAssertEqual(tracker.testSeconds ?? 0, 10, accuracy: 0.001)
+        XCTAssertEqual(tracker.laneUtilizations.first?.busySeconds ?? 0, 10, accuracy: 0.001)
+    }
+
+    /// 読み手が開始イベントを遅れて受け取っても、送られた時刻で数えるので所要は負にならない
+    func testLateReceiptOfTheStartDoesNotMakeTheDurationNegative() {
+        var tracker = ScenarioTimingTracker()
+        let a = item("A.S0010")
+        tracker.record(.flowStartedAt(worker: "ios:1", flowURL: a.url, at: base), at: base.addingTimeInterval(20))
+        tracker.record(.flowStarted(worker: "ios:1", flowURL: a.url, flowName: a.info.id, isDirty: false),
+                       at: base.addingTimeInterval(20))
+        tracker.record(.flowEndedAt(worker: "ios:1", flowURL: a.url, at: base.addingTimeInterval(10)),
+                       at: base.addingTimeInterval(20))
+        tracker.record(.flowFinished(worker: "ios:1", flowURL: a.url, passed: true, reportURL: nil, fm: nil,
+                                     notApplicableReason: nil), at: base.addingTimeInterval(20))
+        XCTAssertEqual(tracker.scenarioTotalSeconds ?? -1, 10, accuracy: 0.001)
+        XCTAssertEqual(tracker.testSeconds ?? -1, 10, accuracy: 0.001)
+        XCTAssertEqual(tracker.laneUtilizations.first?.busySeconds ?? -1, 10, accuracy: 0.001)
+    }
+
+    /// broadcast: 同じ flowURL を 2 つのワーカーが走らせ、送られた時刻のイベントが交錯しても、それぞれの時刻で数える
+    func testBroadcastKeepsEachWorkersTimesApart() {
+        var tracker = ScenarioTimingTracker()
+        let a = item("A.S0010")
+        for worker in ["ios:1", "ios:2"] {
+            tracker.record(.flowStartedAt(worker: worker, flowURL: a.url, at: base), at: base)
+            tracker.record(.flowStarted(worker: worker, flowURL: a.url, flowName: a.info.id, isDirty: false), at: base)
+        }
+        tracker.record(.flowEndedAt(worker: "ios:1", flowURL: a.url, at: base.addingTimeInterval(10)),
+                       at: base.addingTimeInterval(70))
+        tracker.record(.flowEndedAt(worker: "ios:2", flowURL: a.url, at: base.addingTimeInterval(20)),
+                       at: base.addingTimeInterval(70))
+        for worker in ["ios:1", "ios:2"] {
+            tracker.record(.flowFinished(worker: worker, flowURL: a.url, passed: true, reportURL: nil, fm: nil,
+                                         notApplicableReason: nil), at: base.addingTimeInterval(70))
+        }
+        XCTAssertEqual(tracker.testSeconds ?? 0, 20, accuracy: 0.001)
+        XCTAssertEqual(tracker.scenarioTotalSeconds ?? 0, 30, accuracy: 0.001, "10 + 20")
+    }
+
     func testEmptyTrackerReportsNilNotZero() {
         // 0 と「1本も走っていない」は別。レポートは値なしとして扱う必要がある
         let tracker = ScenarioTimingTracker()

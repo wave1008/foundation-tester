@@ -4920,3 +4920,86 @@ EWOULDBLOCK(`MaintenanceError.slotHeld`)だけ同じ秒数のあいだ取り直�
   期限は単調時計で測り、テストは止めた時計で順序を固定する(時刻の比較で順序を証明する案は時計の後退・精度差で捨てた)
 - **未確認の関係**: 裏で撮り続けた h264 録画はハードウェアエンコーダを使い続けた可能性がある。§86 の故障との関係は確かめていない ——
   直した後に故障が減るかを `video-encoder-history.ndjson` で見る
+
+## 88. 10/18 の3時間負荷テストと、止まった表示のデバイスを run の中で見つけて再起動する機能(2026-10-18 09:27〜12:27)
+
+§84 と同じ構成(手元の Simulator 8 台・Emulator 6 台のフリート run・sim-09 = MCP・sim-10 = ライブ操作・emulator-5566 = MCP・
+emulator-5568 = ライブ操作・実機 3 台(SE3・Pixel 4a・Pixel 3a)= MCP・sut-ec-mobile のサービス・MCP からの `ft_start_run` ループ・
+障害注入)。フリートの 3 割は `--set record=false`(録画の既定が true なので、録画なしの経路も通す)。
+フリート run 79(api 27・録画なし 21・871 本)・MCP 約 7.4 万・ライブ操作 約 1.7 万・CLI 約 2,200・障害注入 31・サービス操作 16。
+**クラッシュ・応答の無い呼び出し 0**(fleetest のクラッシュレポート 0。MobAI-Runner の 3 件は別ツール)。赤の大半は CMP iOS の白紙
+(notRendered 114)と Emulator の凍結(レーン離脱 22)。修正は worktree ~/github/wave1008/ft-lt1018 で作り、試験後に本線へ適用。
+ハーネスの控えは ~/github/wave1008/lt-harness-20261018/。
+
+### 88.1 Android Emulator の表示が止まると、ブリッジの撮影は「数分前の絵」を返し続ける
+09:36 以降、Emulator 5556/5558/5560/5562/5564 の `adb screencap` が全面黒(同一 15,733 バイト)になった(前面は SUT・画面 ON・Awake。
+ゲストの時計はホストと一致)。**ブリッジ(`UiAutomation.takeScreenshot`)は黒ではなく凍結した瞬間の絵を返し続けた**:
+5560 の `checkIsOFF "#sw_notify"` の分類器の根拠画像は 6 分前の別の画面(アニメーション画面)で `[ON]` 1.00 の誤った赤・5562 の失敗時スクショと
+09:40 のブリッジ撮影はどちらも 9:32 の「ID なし」画面(同時刻の adb は 9:40 の新しい絵 = 撮影の経路で見える絵が違う)。
+一様判定(`FrozenVerdict.uniformBlank`)・下端を除く黒の警告(`blackApartFromBottomStrip`)は中身のある古い絵には立たず、run 前トリアージは
+「未確認」として lane を残した。プロセス内の `StaleFrameDetector` も同じプロセスの前のガードとしか比べない(各シナリオの最初の画像判定に砦が無い)上、
+2 週間の結果で `stale-screenshot` は通ったステップに約 1.4 万回立っており(木の更新と描画の間の揺れを拾う設計)、デバイスを触る根拠にはならない。
+ユーザー指示で 6 台を `restart-devices` で再起動(09:43〜09:47)→ 15 分後に 2 台が再び黒 = この負荷では短時間で再発する。
+
+### 88.2 組み込んだ機能(ユーザー指示「問題があるデバイスを検出し、再起動する機能を fleetest に組み込む」)
+設計は docs/design.md の「run の途中で「表示が止まった」仮想デバイスを見つけて再起動する」に。要点:
+- **判定は時間で**(`FTCore.DisplayFreezeDetector`): レーンがシナリオの境目で撮った絵(SHA-256)が**同じまま 60 秒以上**(ステータスバーの時計が
+  1 分に 1 回変わる = 生きた表示では起きない)→ 疑い。**同じ絵が続く間は最初に見た時刻を保つ**(境目ごとに上書きすると 60 秒より短い
+  シナリオの連続で永久に疑えない。自分で踏んだ)
+- **疑いだけでは触らない**(`FTAndroid.DisplayFreezeWatch`): home を押して 3 秒の間に絵が変わるかで確定(run 前トリアージの nudge と同じ考え)。
+  変わらなければ sleep/wake → ブリッジの絵で確かめ → ゲストの再起動(`adb reboot`)→ ブートを確認できなければ Emulator の停止と起動
+  (Simulator は shutdown → boot)。再起動の後は絵で確かめない(ブリッジが居ない)= 次の境目が新しい基準。実機は見ない
+- **確定したレーンは `.frozen` と同じ**(`RunOrchestrator.checkLaneDisplay`): 直前のシナリオの結果を**合否を問わず**捨てて振り直し(その画像判定は
+  止まった絵で下されている)・離脱・回復してから revive で張り直す。離脱の尾は `retireUnusable` に共通化。run.json には `requeued`/`degraded`
+  (cause `frozen`)と `recovered`(recovery `displaySleepWake` / `deviceRestart`)が対で載る(docs/results-json.md)
+- **陽性対照**: `FT_FAKE_FROZEN_FRAME_KEYS=emulator-5570` で Emulator -09 の撮影を固定の絵に差し替え、worktree のバイナリで E2E-CMP の 5 本を回した
+  → 4 本目の境目で「62s」の疑い → home で変わらず → sleep/wake で戻らず → `adb reboot` 成功 → 離脱 → revive 成功 → 振り直した 1 本を含め 5/5 緑。
+  run.json に `recovered(deviceRestart)` / `requeued` / `degraded` / `recovered(workerRevive)`。固定費は境目ごとにスクショ 1 枚。
+  iOS も予備の Simulator(XCUITest)で同じ注入 → 82 秒で疑い → home → shutdown→boot → 離脱 → revive(ブリッジの張り直し)→ 振り直しまで通った
+  (その run の赤はこの機械の CMP が白紙を描いていたため = 88.3)
+- テスト: `DisplayFreezeDetectorTests` / `DisplayFreezeWatchTests`(状態機械・撮影と回復は偽物)/ `DisplayFreezeWiringTests`(配線の走査)。
+  拡張の i18n に `displaySleepWake` / `deviceRestart` のラベル。変異 3/3(境界の >=・基準の上書き・停止の分岐)
+- **小さな直し(同じ回)**: `ft_run_status` が `ft_stop_run` で止めた run に「No run record was found (the run may have ended before recording)」の
+  推測を並べていた(§84.2 の lock 拒否と同族)→ 台帳(`MCPRunJobRegistry.noteStopRequested`)に停止の要求を残し、「ft_stop_run sent SIGTERM to
+  this run before it ended」の事実を並べる(終わった原因はシグナルの番号のまま・断定しない)
+- **やっていないこと**: モニター(run の外の待機中のデバイス)は見ない(そちらの健康監視は一様判定のまま)。実機は見ない
+
+- **小さな直し②(同じ回)**: 障害注入で sim-09 の XCUITest ランナーを殺した後、MCP(`udid` を毎回添える呼び手)は 5 分で 312 回
+  「no running bridge is on udid …」を返し続けた。B1 の自動回復(`dispatchRetryingAfterBridgeRecovery`)は**覚えたポートの接続拒否**にしか
+  反応せず、udid の畳み込み(`portForIOS`)が先に「居ない」で落ちる経路には回復が無かった(空いたポートはフリートが別のデバイスの in-app に
+  使い回した = 覚えたポートは接続拒否にならない)。そのブリッジが退いてポートが空いた 14 分後に B1 の回復が効いて自力で戻った =
+  ポートが使い回されている間は戻らない。→ 畳み込みで「診断が完走し、一覧が Simulator と言い、何も待ち受けていない」なら、実機の
+  トンネル張り直し(X5)と同じ位置で `rebuildMissingSimulatorBridge` がランナーを起動し直す(門は `shouldRebuildMissingSimulatorBridge`:
+  他のセッションの端末には撃たない・このセッションで一度失敗したら撃たない。provision は `BridgeProvisioner.provision` の 1 箇所のまま)。
+  応答(成功・失敗とも)の先頭に `bridgeStartedForUDIDNote`。失敗の記憶は `DeviceSession.simulatorBridgeRebuildFailedUDIDs`(udid ごと)
+
+- **Codex のレビュー(7 件)を反映**: ①振り直しの上限で、凍結と判明した成功の記録が `passed: true` のまま failed だけ増えた →
+  `RunRecorder.markLastFailed` で失敗へ書き換え(`--failed` も)②in-app の確認の home(501 → 設定アプリ)で SUT が背面に回り、in-app の撮影が
+  止まって確認が成立せず背面のまま後続へ → iOS は OS 側の撮影に揃え、確認の後に SUT を前面へ戻す ③home もフォールバックも撃てなくても
+  凍結と確定しうる → nudge が撃てたかを終了コードで返し、撃てなければ判定しない ④録画へ合否を渡すのが確認より前 → 区間の終わりは確認の前・
+  合否は確認の後 ⑤MCP の起動し直しの失敗を畳む前の engineKey(port を省いた iOS は全部同じ鍵)で覚え、1 台の失敗で別の Simulator まで止めた →
+  udid ごと ⑥起動し直した呼び出しが失敗すると注記が無く、次の成功へ持ち越された → 注記は call() の中だけで持ち、成功・失敗の両方へ ⑦SIGTERM の後に
+  別のシグナルで止まった run も ft_stop_run の仕業と言った → 送った事実だけを並べ、終わった原因はシグナルのまま
+- **Codex の再レビュー(2 件)を反映**: ①記録は失敗へ直しても、先に流れた scenarioFinished(passed:true)で Test Explorer は合格のまま
+  (reducer で確認された)→ 終了イベントを確認まで保留し、凍結なら失敗として流す(新しいイベントは足さない。保留の分だけ読み手の受け取りが
+  遅れる = ふつうは撮影 1 枚ぶん)②前面へ戻すアプリがプロファイルのアプリで、`@TestClass(app:)` を無視 → 子と同じ `ScenarioAppResolution` で決める
+- **3 回目(1 件)**: 保留で `ScenarioTimingTracker`(受け取り時刻で数える)がシナリオ合計・レーンの busy・テスト実時間に確認・回復の時間を
+  足した → 保留した時刻を控え、ホストの中だけのイベント `RunEvent.flowEndedAt` で直後の flowFinished より先に流し、tracker はそれで数える
+  (NDJSON・ログには出さない = プロトコル版は変えない)
+- **4 回目(2 件)**: ①開始は受け取り時刻・終了は送り手の時刻と基準が混ざり、読み手が開始を遅れて受け取ると所要が負になった ②broadcast で
+  同じ flowURL を複数のワーカーが走らせると、終了時刻の受け渡しが flowURL だけの鍵で混ざった → 開始・終了とも送り手の時刻
+  (`RunEvent.flowStartedAt` / `flowEndedAt`)を毎回 (ワーカー, flowURL) の組で運び、tracker の開始の控えもワーカーで分けた。
+  同じワーカーの開始が無ければ、その flowURL に残る開始が 1 つだけのときに限ってそれを使う(振り直しで開始と終了のワーカーが変わる既存の形。
+  複数が並ぶ broadcast では混ぜない)。これで broadcast の開始の控えが flowURL だけの鍵で上書きされていた元からの穴も塞がった
+
+### 88.3 記録だけの観察
+- **AppleAVE の一時死が繰り返した**(09:29:39 / 〜10:02 / 10:08:31 の 3 回・probe が毎回 60 秒後に alive)= §86 の「再起動まで戻らない」とは別の型。
+  切り出しは毎回 SW で成功。**そのたび 2〜3 分後に CMP iOS が白紙を描いた**(09:32:44〜09:33:11 に 4 台 7 本・10:11:04〜06 に 2 台 2 本。
+  失敗時の絵は形だけで文字が無い / 全面単色。数分後の同じ Simulator は正常描画)= open-issues の「AVE が壊れる直前に CMP iOS の文字が消える」の実例
+- `kill -9` した recordVideo の client 7 本(障害注入)→ 次の run の開始時に `HostRecordingProbe` が 4 台の残った録画セッションを検出して shutdown→boot
+  (§87 の経路)→ 12/12 緑。09:56 の Simulator デーモンのクラッシュレポート群(logd・filecoordinationd 等)はその shutdown の巻き添え
+- `ft_services`(`swift run fleetest` 経由 = 設計どおり)はフリートのシナリオビルドの SwiftPM ロックを待って 30〜90 秒、応答にビルドの進捗行が混ざる
+- ライブ操作の Android の type/clear の失敗文に Java の例外名(`the node became stale (NullPointerException)`)
+- ライブ操作(5568)は 10:06〜10:07 の 2 分間、約 300 回「Cannot reach the driver … The network connection was lost」→ 自然に回復。同時刻はホストの
+  負荷平均 250〜400(worktree のテストの並列ビルド)
+- 可視性検証の FM の空の転写(§84.4)は今日も 1 件(09:28・WebView `wv_result=-`・`ocr-shortcut-not-ready`・ocrMs 0 = 最初のガード)

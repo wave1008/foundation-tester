@@ -649,7 +649,8 @@ public enum ProfileWorkerFactory {
     /// emulator プロセスは生かしたままなので serial・adb forward は維持される(デバイス常駐ブリッジは
     /// 死ぬが AndroidDriver.ensureBridge が次の操作で貼り直す)。
     /// 戻り値 false = 発行不能 or ブート完了を確認できず(呼び出し側は blank 再判定で最終判断する)
-    private static func rebootGuest(serial: String, timeout: TimeInterval) async -> Bool {
+    /// DisplayFreezeWatch(run 中の止まった表示の回復)も使う
+    static func rebootGuest(serial: String, timeout: TimeInterval) async -> Bool {
         let adbPath = try? AndroidDriver.findADB()
         let issuedViaAdb = adbPath.flatMap {
             try? Shell.run([$0, "-s", serial, "reboot"], timeout: 15)

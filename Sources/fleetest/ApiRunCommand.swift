@@ -1514,8 +1514,9 @@ struct ApiRunCommand: AsyncParsableCommand {
         for event: RunEvent, itemByURL: [URL: ScenarioRunItem], workerID: WorkerIDMap
     ) -> [String] {
         switch event {
-        case .runStarted, .workerReady, .runFinished, .flowPaused:
-            // runStarted/runFinished は呼び出し側で emit 済み。flowPaused はデバッグ専用でこの並列経路には来ない
+        case .runStarted, .workerReady, .runFinished, .flowPaused, .flowStartedAt, .flowEndedAt:
+            // runStarted/runFinished は呼び出し側で emit 済み。flowPaused はデバッグ専用でこの並列経路には来ない。
+            // flowStartedAt / flowEndedAt はホストの所要の集計だけのイベント(外の契約に出さない = プロトコル版を変えない)
             return []
 
         case .sceneStarted(let worker, let flowURL, let scene, let sceneTitle):
@@ -1989,7 +1990,21 @@ struct LaneUtilization {
 struct ScenarioTimingTracker {
     private var firstStart: Date?
     private var lastFinish: Date?
-    private var startedAt: [URL: (at: Date, worker: String)] = [:]
+    /// flowURL → ワーカー → 開始時刻。**ワーカーまで分ける**(broadcast は同じ flowURL を複数のワーカーが同時に走らせる)
+    private var startedAt: [URL: [String: Date]] = [:]
+    /// 直後の flowStarted / flowFinished が送られた時刻(RunEvent.flowStartedAt / flowEndedAt)。flowURL → ワーカー → 時刻。
+    /// あれば受け取り時刻より優先する(開始・終了を同じ基準で数える)
+    private var sentStartAt: [URL: [String: Date]] = [:]
+    private var sentEndAt: [URL: [String: Date]] = [:]
+
+    /// 終了に対応する開始を取り出す。同じワーカーの開始が無ければ、その flowURL に残る開始が**1つだけ**のときに限ってそれを使う
+    /// (振り直しで開始と終了のワーカーが変わる形。broadcast のように複数が並ぶときは混ぜない)
+    private mutating func takeStart(flowURL: URL, worker: String) -> (at: Date, worker: String)? {
+        if let at = startedAt[flowURL]?.removeValue(forKey: worker) { return (at, worker) }
+        guard let pending = startedAt[flowURL], pending.count == 1, let only = pending.first else { return nil }
+        startedAt[flowURL] = nil
+        return (only.value, only.key)
+    }
     private var scenarioTotal: TimeInterval = 0
     private var hasScenario = false
     /// platform → (稼働したレーン = RunWorker.laneKey(デバイス単位。label はポートで変わる),
@@ -2008,18 +2023,24 @@ struct ScenarioTimingTracker {
     /// at はテストから時刻を固定するための注入点(既定は実時刻)。
     mutating func record(_ event: RunEvent, at now: Date = Date()) {
         switch event {
+        case .flowStartedAt(let worker, let flowURL, let at):
+            sentStartAt[flowURL, default: [:]][worker] = at
+        case .flowEndedAt(let worker, let flowURL, let at):
+            sentEndAt[flowURL, default: [:]][worker] = at
         case .flowStarted(let worker, let flowURL, _, _):
+            let now = sentStartAt[flowURL]?.removeValue(forKey: worker) ?? now
             // min/max で受ける(実運用のイベントは時系列順だが、順序に依存しない方が安全。
             // 依存すると集計が壁時計より短い分母を掴んで稼働率が 100% を超える)
             firstStart = min(firstStart ?? now, now)
-            startedAt[flowURL] = (now, worker)
+            startedAt[flowURL, default: [:]][worker] = now
             hasScenario = true
         case .flowFinished(let worker, let flowURL, _, _, _, _, _):
+            let now = sentEndAt[flowURL]?.removeValue(forKey: worker) ?? now
             lastFinish = max(lastFinish ?? now, now)
             let platform = Self.platform(ofWorker: worker)
             lastFinishByPlatform[platform] = max(lastFinishByPlatform[platform] ?? now, now)
             lanesByPlatform[platform, default: []].insert(RunWorker.laneKey(fromLabel: worker))
-            if let start = startedAt.removeValue(forKey: flowURL) {
+            if let start = takeStart(flowURL: flowURL, worker: worker) {
                 let elapsed = now.timeIntervalSince(start.at)
                 scenarioTotal += elapsed
                 // 実行したのは開始時のワーカー(振り直しで別デバイスに移ることがある)

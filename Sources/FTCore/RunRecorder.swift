@@ -168,6 +168,28 @@ public final class RunRecorder: @unchecked Sendable {
         if kind.countsAsFailedLastTime { recordLastResultsFailed([scenarioID]) }
     }
 
+    /// 直前に書いた成功の記録を、**後から信用できないと分かった失敗**へ書き換える(RunOrchestrator の境目の表示の確認が
+    /// 凍結を確定し、振り直しの上限で取り消せなかった回)。記録は消さない(実行の証跡)。`passed` を false にし、
+    /// 理由を `failedSteps` の 1 行(index 0 = シナリオのステップではない)と `errorLogs` に置く。`--failed` の記録も失敗へ。
+    /// 書き換えた記録が無ければ(既に取り消された・書いていない)何もしない
+    public func markLastFailed(scenarioID: String, worker: String?, reason: String) {
+        let baseName = Self.sanitizeFileName(scenarioID)
+        lock.lock()
+        let entry = liveFiles[baseName].flatMap { entries in
+            worker == nil ? entries.last : entries.last(where: { $0.worker == worker })
+        }
+        lock.unlock()
+        guard let entry else { return }
+        let url = runDir.appendingPathComponent("scenarios").appendingPathComponent("\(entry.fileName).json")
+        guard let data = try? Data(contentsOf: url),
+              var record = try? JSONDecoder().decode(ScenarioRunRecord.self, from: data) else { return }
+        record.passed = false
+        record.failedSteps = (record.failedSteps ?? []) + [FailedStepRecord(index: 0, description: reason)]
+        record.errorLogs = (record.errorLogs ?? []) + [reason]
+        RunResultsStore.writeScenario(record, runDir: runDir, fileName: entry.fileName)
+        recordLastResultsFailed([scenarioID])
+    }
+
     /// `--failed` 用の「直近失敗」を書く(best-effort)。始まらなかったシナリオ用
     public func recordLastResultsFailed(_ scenarioIDs: [String]) {
         guard let lastResultsDir else { return }

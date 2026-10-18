@@ -179,6 +179,12 @@ public enum RunEvent: Sendable {
     case flowFinished(worker: String, flowURL: URL, passed: Bool,
                       reportURL: URL?, fm: FMUsageRecord?, appCrash: AppCrashRecord? = nil,
                       notApplicableReason: String?)
+    /// **ホストの中だけのイベント**(NDJSON・ログには出さない): 直後の flowStarted / flowFinished が**送られた**時刻。
+    /// ScenarioTimingTracker は開始・終了とも同じ基準(送り手の時刻)で数える —— 受け取り時刻で数えると、境目の表示の確認が
+    /// 終了イベントを保留した分(確認・回復の時間)が実働に入り、片方だけ送り手の時刻にすると読み手の遅れで所要が負になる。
+    /// worker は同じ flowURL を複数のワーカーが同時に走らせる broadcast で組を分けるため
+    case flowStartedAt(worker: String, flowURL: URL, at: Date)
+    case flowEndedAt(worker: String, flowURL: URL, at: Date)
     /// 担当ワーカー不在などで実行できなかった(失敗として数える)
     case flowSkipped(flowURL: URL, reason: String)
     /// もうどのワーカーもシナリオを実行しておらず、残りは録画のクリップ切り出しと後始末だけになった
@@ -1026,6 +1032,9 @@ public final class RunOrchestrator: Sendable {
     /// retired ワーカーの論理デバイス復帰。nil(未注入)なら復帰を試みず即ギブアップ
     /// (呼び出し側がプロファイル経由の場合のみ注入。--port 等の非プロファイル経路では nil)
     private let reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)?
+    /// シナリオの境目で「表示が止まっていないか」を確かめる(FTAndroid.DisplayFreezeWatch。判定は DisplayFreezeDetector)。
+    /// 確定したレーンは .frozen と同じ扱い(直前の結果を捨てて振り直し・離脱・revive)。isDeviceFrozen と同じ理由で注入
+    private let checkLaneDisplay: LaneDisplayCheck?
     /// 各シナリオを子へ渡す直前に、画面に残ったシステムアラートを消す(`ResidualSystemAlertClearing`)。
     /// 戻り値はレーンへ出す1行(nil = 何もしなかった)。**init に既定値を置かない**(呼び手の渡し忘れを
     /// コンパイルで止める。消せない経路は警告だけを返す口を明示して渡す)
@@ -1039,6 +1048,11 @@ public final class RunOrchestrator: Sendable {
     /// **戻り値 true = 実際に起動し直した**(WorkerAnomalyRecord kind:"recovered" recovery:.runnerRestart の
     /// 生成に使う。健全・未測定・起動し直し失敗はいずれも false)
     private let recheckRunner: RunnerRecheck?
+    /// シナリオの境目の表示の確認。log はそのレーンの実行ログへ
+    /// 第 2 引数はそのプラットフォームの SUT の bundle ID / パッケージ名(確認の home の後に前面へ戻す。分からなければ nil)
+    public typealias LaneDisplayCheck = @Sendable (RunWorker, String?, _ log: @escaping @Sendable (String) -> Void) async
+        -> LaneDisplayCheckOutcome
+
     public typealias RunnerRecheck =
         @Sendable (RunWorker, Int?, @escaping @Sendable (String) -> Void) async -> Bool
     /// 遅延参加ワーカー(iOS ブリッジ供給待ち)。platforms は「後から必ず来る platform」の宣言で、
@@ -1149,6 +1163,7 @@ public final class RunOrchestrator: Sendable {
                 clearResidualSystemAlert: (@Sendable (RunWorker) async -> String?)?,
                 cleanupRetiredWorker: (@Sendable (RunWorker) async -> Void)? = nil,
                 reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)? = nil,
+                checkLaneDisplay: LaneDisplayCheck? = nil,
                 recheckRunner: RunnerRecheck? = nil,
                 lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])? = nil,
                 installHandler: (@Sendable (RunWorker, String?) async
@@ -1183,6 +1198,7 @@ public final class RunOrchestrator: Sendable {
         self.progressHistoryRuns = progressHistoryRuns
         self.cleanupRetiredWorker = cleanupRetiredWorker
         self.reviveWorker = reviveWorker
+        self.checkLaneDisplay = checkLaneDisplay
         self.clearResidualSystemAlert = clearResidualSystemAlert
         self.recheckRunner = recheckRunner
         self.lateWorkers = lateWorkers
@@ -1606,6 +1622,54 @@ public final class RunOrchestrator: Sendable {
         }
     }
 
+    /// 使用不能になったレーンの離脱: 直前のシナリオの結果を捨てて振り直し(上限あり)、レーンを離れる。
+    /// run-lease はここでは外さない(superviseWorker が復帰の成否で決める)
+    /// `invalidatesPassedRecord`: 直前のシナリオは**成功として記録済み**で、後から信用できないと分かった(境目の表示の確認)。
+    /// 振り直しの上限で取り消せない回は、記録を失敗へ書き換えて数と揃える(成功の記録のまま failed だけ増やすと、個別 JSON・
+    /// `ft_run_status` の失敗一覧・`--failed` が run の集計と食い違う)。読み手への終了イベントは確認まで保留して失敗として
+    /// 流している(runWorker の heldFinish)。理由はそのレーンのログに 1 行出す
+    /// 確認の後に前面へ戻すアプリ = **そのシナリオが使ったアプリ**(`@TestClass(app:)` が勝つ。子と同じ `ScenarioAppResolution`)。
+    /// 決まらなければ nil(戻さない)
+    static func restoreAppID(declared: String?, fromProfile: String?, scenarioID: String) -> String? {
+        if case .resolved(let bundleID, _) = ScenarioAppResolution.resolve(
+            declared: declared, fromProfile: fromProfile, scenarioID: scenarioID) { return bundleID }
+        return nil
+    }
+
+    /// 終了イベントの合否を失敗へ直す(対象外の宣言はそのまま = 画面を見ていない)。他の欄は変えない
+    static func failedFinish(_ event: RunEvent) -> RunEvent {
+        guard case .flowFinished(let worker, let url, _, let report, let fm, let crash, let notApplicable) = event,
+              notApplicable == nil else { return event }
+        return .flowFinished(worker: worker, flowURL: url, passed: false, reportURL: report, fm: fm,
+                             appCrash: crash, notApplicableReason: nil)
+    }
+
+    private func retireUnusable(_ item: ScenarioRunItem, worker: RunWorker, queue: ScenarioQueue,
+                                reason: String, cause: WorkerAnomalyCause?, failed: Int,
+                                progressLaneKey: String, leaseKey: String?,
+                                invalidatesPassedRecord: Bool = false) async -> WorkerExit {
+        var failed = failed
+        let requeued = await discardAndRequeue(item, worker: worker, queue: queue, reason: reason, cause: cause)
+        if requeued {
+            await progressState?.laneIdled(laneKey: progressLaneKey)
+        } else {
+            if invalidatesPassedRecord {
+                let message = "the result is not trusted: \(reason) was found right after this scenario passed, and the"
+                    + " retry limit was reached, so it is recorded as failed"
+                recorder?.markLastFailed(scenarioID: item.info.id,
+                                         worker: ScenarioRunner.recordingWorker(worker), reason: message)
+                continuation.yield(.workerLog(worker: worker.label, message: "❌ \(item.info.id): \(message)"))
+            }
+            await progressState?.scenarioFinished(laneKey: progressLaneKey, passed: false)
+            failed += 1
+        }
+        await reportWorkerFailed(worker, "dropped out because of \(reason)", cause: cause)
+        // このレーンはもう走らない(復帰できれば superviseWorker が新しい runWorker で laneJoined を呼び直す)
+        await progressState?.laneLeft(key: progressLaneKey)
+        await stopRecording(worker, leaseKey: leaseKey)
+        return .retired(failed: failed, worker: worker)
+    }
+
     private func runWorker(_ worker: RunWorker, queue: ScenarioQueue, revived: Bool) async -> WorkerExit {
         // 期限付き(ウェッジしたブリッジで 120s×N 待たないため。withDeadline 参照)。
         guard await withDeadline(seconds: 10, { try await worker.driver.status() }) != nil else {
@@ -1685,6 +1749,11 @@ public final class RunOrchestrator: Sendable {
             await progressState?.scenarioStarted(laneKey: progressLaneKey, scenario: item.info.id,
                                                  at: Date())
             let slowestStep = SlowestStepSnapshot()
+            // **終了イベントは境目の表示の確認まで保留する**(確認が凍結を確定したら合否を失敗へ直して流す = Test Explorer などの
+            // 読み手が「合格」を見たまま残らない。NDJSON は scenarioFinished を取り消す口を持たない)。確認を注入していなければ保留しない。
+            // 保留の分だけ読み手の受け取り時刻が遅れるので、送った時刻は flowStartedAt / flowEndedAt で別に運ぶ(所要の集計が確認・回復の時間を含まない)
+            let holdsFinish = checkLaneDisplay != nil
+            let heldFinish = LockedValue<(event: RunEvent, at: Date)?>(nil)
             let outcome = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker,
                 deviceSession: deviceSessions.session(for: BroadcastPlan.laneKey(of: worker)),
@@ -1709,10 +1778,57 @@ public final class RunOrchestrator: Sendable {
                     if case .step(_, _, let result) = event, let ms = result.timing?.snapshotMs {
                         slowestStep.note(ms)
                     }
+                    if case .flowStarted(let worker, let flowURL, _, _) = event {
+                        continuation.yield(.flowStartedAt(worker: worker, flowURL: flowURL, at: Date()))
+                    }
+                    if case .flowFinished(let worker, let flowURL, _, _, _, _, _) = event {
+                        let at = Date()
+                        if holdsFinish {
+                            heldFinish.withLock { $0 = (event, at) }
+                            return
+                        }
+                        continuation.yield(.flowEndedAt(worker: worker, flowURL: flowURL, at: at))
+                    }
                     continuation.yield(event)
                 })
+            // 録画の区間の終わりは**確認の前**の時刻(確認・回復の時間をシナリオの区間に入れない)。合否は確認の後に決める ——
+            // 凍結が確定した成功は録画にとっても失敗(recordFailuresOnly で問題の区間を残すため)
+            let scenarioEndedAt = Date()
+            // **表示が止まっていないかを境目で確かめる**(DisplayFreezeWatch)。確定したら合否を問わず .frozen と同じ扱い ——
+            // 直前のシナリオの画像判定(分類器・findImage・可視性検証)は止まった絵で下されているので、結果を捨てて振り直す。
+            // .frozen(子の明示の信号)の後・中断中は確かめない(どちらも次のシナリオを配らない)。**対象外(notApplicable)の後も
+            // 確かめない** —— 画面を見ていないので捨てる結果が無く、上限で書き換える成功の記録も無い(次の境目が確かめる)
+            var displayFreeze: (detail: String, recovery: WorkerRecoveryKind?)?
+            if outcome != .frozen, outcome != .notApplicable, let checkLaneDisplay,
+               await !interruptRequested.isRequested(),
+               case .frozen(let detail, let recovery) = await checkLaneDisplay(
+                   worker, Self.restoreAppID(declared: item.info.app, fromProfile: appBundleIDs[worker.platform],
+                                             scenarioID: item.info.id), { [continuation] message in
+                       continuation.yield(.workerLog(worker: worker.label, message: message))
+                   }) {
+                displayFreeze = (detail, recovery)
+            }
+            // 保留した終了イベントを流す(凍結が確定したら失敗として。振り直しの requeued はこの後に続く = 凍結の失敗と同じ並び)
+            if let held = heldFinish.withLock({ $0 }),
+               case .flowFinished(let heldWorker, let heldURL, _, _, _, _, _) = held.event {
+                continuation.yield(.flowEndedAt(worker: heldWorker, flowURL: heldURL, at: held.at))
+                continuation.yield(displayFreeze == nil ? held.event : Self.failedFinish(held.event))
+            }
             await videoRecording?.scenarioFinished(
-                workerLabel: worker.label, at: Date(), passed: outcome == .passed || outcome == .notApplicable)
+                workerLabel: worker.label, at: scenarioEndedAt,
+                passed: displayFreeze == nil && (outcome == .passed || outcome == .notApplicable))
+            if let displayFreeze {
+                if let recovery = displayFreeze.recovery {
+                    await anomalies.add(WorkerAnomalyRecord(
+                        kind: "recovered", worker: Self.workerID(worker), label: worker.label,
+                        scenarioID: item.info.id, reason: "recovered a frozen display: \(displayFreeze.detail)",
+                        cause: .frozen, recovery: recovery))
+                }
+                return await retireUnusable(item, worker: worker, queue: queue,
+                                            reason: "a frozen display (\(displayFreeze.detail))", cause: .frozen,
+                                            failed: failed, progressLaneKey: progressLaneKey, leaseKey: leaseKey,
+                                            invalidatesPassedRecord: outcome == .passed)
+            }
             if outcome == .passed || outcome == .notApplicable {
                 if outcome == .notApplicable { await runSkipped.increment() }
                 breaker.recordPass()
@@ -1860,21 +1976,8 @@ public final class RunOrchestrator: Sendable {
                 }
             }
             if let reason = unusableReason {
-                let requeued = await discardAndRequeue(item, worker: worker, queue: queue, reason: reason,
-                                                        cause: unusableCause)
-                if requeued {
-                    await progressState?.laneIdled(laneKey: progressLaneKey)
-                } else {
-                    await progressState?.scenarioFinished(laneKey: progressLaneKey, passed: false)
-                }
-                if !requeued { failed += 1 }
-                await reportWorkerFailed(worker, "dropped out because of \(reason)", cause: unusableCause)
-                // このレーンはもう走らない(復帰できれば superviseWorker が新しい runWorker で
-                // laneJoined を呼び直す)
-                await progressState?.laneLeft(key: progressLaneKey)
-                // run-lease はここでは外さない(superviseWorker が復帰の成否で決める)
-                await stopRecording(worker, leaseKey: leaseKey)
-                return .retired(failed: failed, worker: worker)
+                return await retireUnusable(item, worker: worker, queue: queue, reason: reason, cause: unusableCause,
+                                            failed: failed, progressLaneKey: progressLaneKey, leaseKey: leaseKey)
             }
             await progressState?.scenarioFinished(laneKey: progressLaneKey, passed: false)
             failed += 1
@@ -1925,7 +2028,7 @@ public final class RunOrchestrator: Sendable {
 public enum RunLogFormatter {
     public static func lines(for event: RunEvent) -> [String] {
         switch event {
-        case .runStarted, .workerReady, .runFinished:
+        case .runStarted, .workerReady, .runFinished, .flowStartedAt, .flowEndedAt:
             return []
         case .sceneStarted, .sceneFinished:
             // 表示は flowStarted〜flowFinished 間の step 行だけで完結させる方針のため、

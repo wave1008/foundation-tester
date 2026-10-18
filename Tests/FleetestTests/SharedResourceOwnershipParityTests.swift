@@ -139,6 +139,11 @@ final class SharedResourceOwnershipParityTests: XCTestCase {
         // ①この run 自身が今使っている凍結ワーカーの自己回復(BlankWorkerTriage.recover)。
         // 他プロセスのデバイスは触らない
         "ProfileWorkerFactory.recoverFrozenIOSWorkers",
+        // ①この run 自身のレーン(run-lease を自分が持つデバイス)の、止まった表示の回復。呼び手は
+        // RunOrchestrator.checkLaneDisplay = そのレーンのワーカーだけ(実機は DisplayFreezeWatch.key(of:) で除外)。
+        // 他プロセスのデバイスは触らない(docs/design.md「run の途中で「表示が止まった」仮想デバイスを見つけて再起動する」)
+        "DisplayFreezeWatch.productionRepair",
+        "DisplayFreezeWatch.repairEmulator",
         // ②呼び出し元 DeviceWiper.wipeOne(android) が deviceInUseRefusal を通した後にだけ呼ぶ
         // 実体部分(関数分割の内側。単体では判定語彙が現れない)
         "AndroidDataWiper.stopIfRunning",

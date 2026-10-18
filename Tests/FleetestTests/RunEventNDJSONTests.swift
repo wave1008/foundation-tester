@@ -52,6 +52,9 @@ final class RunEventNDJSONTests: XCTestCase {
         XCTAssertEqual(lines(.workerReady(worker: workerLabel)), [])
         XCTAssertEqual(lines(.flowPaused(worker: workerLabel, flowURL: flowURL, index: 1,
                                          description: "tap", file: nil, line: nil)), [])
+        // ホストの所要の集計だけのイベント(外の契約に出さない)
+        XCTAssertEqual(lines(.flowStartedAt(worker: workerLabel, flowURL: flowURL, at: Date())), [])
+        XCTAssertEqual(lines(.flowEndedAt(worker: workerLabel, flowURL: flowURL, at: Date())), [])
     }
 
     /// 拡張(vscode-fleetest/src/model.ts の RecordingFinalizingEvent)が読む kind 名を固定する

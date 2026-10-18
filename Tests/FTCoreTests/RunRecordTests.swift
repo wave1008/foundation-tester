@@ -690,6 +690,33 @@ final class RunRecordTests: XCTestCase {
         XCTAssertEqual(meta.guardStaleFrame, 1)
     }
 
+    /// 境目の表示の確認で「信用できない」と分かった成功の記録は、振り直しの上限では失敗へ書き換える(消さない)。
+    /// 書き換えるのは名指しの書き手の最新だけ(broadcast では別のデバイスが同じ ID を書いている)
+    func testMarkLastFailedRewritesOnlyThatWritersLatestPassedRecord() throws {
+        let (recorder, cleanup) = try runRecorder()
+        defer { cleanup() }
+        for worker in ["ios:A", "ios:B"] {
+            var record = ScenarioRunRecord(
+                scenarioID: "Foo.frozen", platform: "ios", passed: true,
+                startedAt: "2026-09-07T00:00:00.000Z", durationMs: 10,
+                steps: StepCountsRecord(total: 1, passed: 1))
+            record.worker = worker
+            recorder.record(record)
+        }
+        recorder.markLastFailed(scenarioID: "Foo.frozen", worker: "ios:A", reason: "frozen display")
+        let records = RunResultsStore.records(runDir: recorder.runDir)
+        let a = try XCTUnwrap(records.first { $0.worker == "ios:A" })
+        let b = try XCTUnwrap(records.first { $0.worker == "ios:B" })
+        XCTAssertFalse(a.passed)
+        XCTAssertEqual(a.failedSteps?.map(\.description), ["frozen display"])
+        XCTAssertEqual(a.errorLogs, ["frozen display"])
+        XCTAssertTrue(b.passed, "別の書き手の記録は触らない")
+        XCTAssertNil(b.failedSteps)
+        // 取り消し済み(書いていない)なら何もしない
+        recorder.markLastFailed(scenarioID: "Foo.none", worker: "ios:A", reason: "x")
+        XCTAssertEqual(RunResultsStore.records(runDir: recorder.runDir).count, 2)
+    }
+
     /// 凍結・環境エラーの再実行で `discardLast` が直前の記録を取り消したら、その記録の
     /// ガード計数も run 合計から引く。引かないと同じシナリオを2回数え、**保護できた割合が
     /// 実際より高く見える**(この記録を足した目的そのものを損なう)

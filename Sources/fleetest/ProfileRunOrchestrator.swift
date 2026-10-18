@@ -186,6 +186,9 @@ enum ProfileRunOrchestrator {
                 }
                 return nil
             },
+            checkLaneDisplay: { [watch = DisplayFreezeWatch.production(repoRoot: repoRoot, locale: resolved.locale)] worker, appID, log in
+                await watch.check(worker, restoring: appID, log: log)
+            },
             recheckRunner: { worker, maxStepSnapshotMs, log in
                 await RunnerMidRunRecheck.recheck(worker: worker, maxStepSnapshotMs: maxStepSnapshotMs,
                                                   repoRoot: repoRoot, log: log)

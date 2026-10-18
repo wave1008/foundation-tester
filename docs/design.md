@@ -2754,6 +2754,29 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   **nudge も修復も撃たず、レーンにも残す**(描画要求が無いだけの黒画面と分けていない)。
   **モニターには出ない**(`frozen` は確定だけ。警告の根拠を配る欄は無い)。実行中の失敗後の判定
   (`isBlankObserved`)は確定の経路なので変えていない
+- **run の途中で「表示が止まった」仮想デバイスを見つけて再起動する**(2026-10-18。`FTAndroid.DisplayFreezeWatch`・
+  判定は `FTCore.DisplayFreezeDetector`・配線は `ProfileRunOrchestrator` → `RunOrchestrator.checkLaneDisplay`)。
+  一様(白/黒ベタ)でない凍結がある —— 表示の止まった Android Emulator はブリッジの `UiAutomation.takeScreenshot` に
+  **数分前の絵を返し続け**(同時刻の adb screencap は黒)、分類器・findImage・可視性検証が別の画面の絵で誤判定した
+  (10/18 の負荷テスト。run 前トリアージの一様判定・下端を除く黒の警告は素通り)。絵の中身では見分けられないので
+  **時間で見る**: レーンがシナリオの境目で撮った絵を前回の境目と比べ、**同じバイト列が 60 秒以上離れて返ったら疑い**
+  (生きた表示はステータスバーの時計が 1 分に 1 回変わる = 60 秒以上離れた 2 枚が同一になることは無い。時計を隠す
+  全画面のアプリだけが例外)。疑いだけでは触らず、**home を押して絵が変わるかで確定する**(run 前トリアージの nudge と
+  同じ「描画要求が無いだけ」との区別。変われば健全・変わらなければ凍結。**home を撃てなかったら判定しない** = 撃てていないのに
+  「変わらなかった」と読まない。凍結でなければ確認の後に SUT を前面へ戻す)。撮る経路は Android = ブリッジ(古い絵を返すのはこちら)・
+  iOS Simulator = OS の `simctl io screenshot`(in-app の撮影は SUT の中なので、home で背面に回ると撮れない)。確定したレーンは `.frozen` と同じ扱い ——
+  **直前のシナリオの結果は合否を問わず捨てて振り直す**(その画像判定は止まった絵で下されている。振り直しの上限で捨てられない成功は
+  記録を失敗へ書き換える = `RunRecorder.markLastFailed`。読み手への終了イベントは確認まで保留し、凍結なら失敗として流す)・
+  録画の合否も確認の後に決める・レーンを離脱・回復してから revive で張り直す。対象外(notApplicable)のシナリオの後は確かめない。
+  確認の後に前面へ戻すのはそのシナリオが使ったアプリ(`@TestClass(app:)` が実行プロファイルに勝つ = 子と同じ `ScenarioAppResolution`)。回復の順: Emulator = sleep/wake(ブリッジの絵で確かめる)→ ゲストの再起動
+  (`adb reboot`)→ ブートを確認できなければ停止と起動 / Simulator = shutdown → boot。再起動の後は絵で確かめない
+  (ブリッジが居ない)= 次の境目の撮影が新しい基準。**実機は見ない**(無害な nudge も再起動も無い)。撮れない
+  (10 秒)ときは判定しない。固定費は境目ごとにスクショ 1 枚(Emulator 数十 ms・XCUITest 数百 ms)。run.json には
+  `requeued`/`degraded`(cause `frozen`)と `recovered`(recovery `displaySleepWake` / `deviceRestart`)が対で載る。
+  陽性対照は `FT_FAKE_FROZEN_FRAME_KEYS=<serial|udid,…>`(そのデバイスの撮影を固定の絵に差し替える = 検知も確認も同じ絵。
+  **回復まで本当に撃つ**ので保守者の自分のデバイスでだけ使う)。
+  プロセス内の `StaleFrameDetector`(上)はこの用途には使えない —— 2 週間の結果で `stale-screenshot` は通ったステップに
+  約 1.4 万回立っており(木の更新と描画の間の揺れを拾う設計)、デバイスを触る根拠にはならない
 - **容器の推測に依存する補正は3層で止められる**(上位から `FT_CONTAINER_INFERENCE=off` の殺しスイッチ /
   実行プロファイルの `containerInference` / DSL の `tap(containerInference:)`・`withoutContainerInference { }`。
   実装は `StepExecutor.execute` 冒頭の `Self.containerInferenceEnabled && (step.containerInference ?? 既定)` 1式)。
