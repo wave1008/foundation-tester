@@ -239,6 +239,10 @@ final class ResponseTraceSession: @unchecked Sendable {
             return taken
         }
         guard let process, let exitWait else { return "the trace recorder was already stopped" }
+        // 止める直前の描画は保存されないので、run の最後のステップの描画が残るまで記録を続けてから止める
+        if process.isRunning {
+            try? await Task.sleep(nanoseconds: UInt64(ResponseTracePolicy.stopLingerSeconds * 1_000_000_000))
+        }
         let recorded = ProcessInfo.processInfo.systemUptime - startedUptime
         if process.isRunning { kill(process.processIdentifier, SIGINT) }
         let limit = ResponseTracePolicy.stopLimitSeconds(recordedSeconds: recorded)

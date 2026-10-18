@@ -19,6 +19,12 @@ public enum ResponseTracePolicy {
     /// これを超えて走った run は、範囲の外の注入が空のまま残る(`ResponseTracePatch.apply` の outside)
     public static let recordTimeLimit = "2h"
 
+    /// run の後、SIGINT を送る前に記録を続ける時間(秒)。保存される表は止めた時刻より数秒手前で終わる(止める直前の描画は残らない)。
+    /// 根拠(iPhone SE3・E2E-RN・run の最後のステップのタブ切り替え): 待たない 1/5・1 秒 0/3・2 秒 1/3・3 秒 5/5 で描画が残った
+    /// = 遅れは一定でなく 2 秒を超えることがある。3 秒に余裕を見て 5 秒。尽きたとき(遅れがもっと長い)は最後のステップが記録の範囲の外に
+    /// なり、最初のフレームは空欄になる(`ResponseTracePatch.coverage` は表の最後のフレームまでしか覆わない = 誤った noFrame にはならない)
+    public static let stopLingerSeconds = 5.0
+
     /// SIGINT から記録が保存されて終わるまでの上限(秒)の下限。保存の所要は記録の長さに比例するが比例係数は未測定なので、
     /// 記録 1 秒あたり `stopSecondsPerRecordedSecond` を足す。尽きたら SIGKILL して「保存が終わらなかった」と言う
     public static let stopBaseSeconds = 60.0

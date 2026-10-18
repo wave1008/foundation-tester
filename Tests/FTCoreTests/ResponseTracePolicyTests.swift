@@ -58,6 +58,10 @@ final class ResponseTracePolicyTests: XCTestCase {
                        ["xcrun", "xctrace", "export", "--input", "/t", "--toc", "--output", "/o.xml"])
     }
 
+    func testStopLingerIsPinned() {
+        XCTAssertEqual(ResponseTracePolicy.stopLingerSeconds, 5)
+    }
+
     func testStopLimitGrowsWithTheRecording() {
         XCTAssertEqual(ResponseTracePolicy.stopLimitSeconds(recordedSeconds: 0), 60)
         XCTAssertEqual(ResponseTracePolicy.stopLimitSeconds(recordedSeconds: 400), 160)
