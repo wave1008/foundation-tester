@@ -69,6 +69,26 @@ final class ProfileResolverTests: XCTestCase {
         }
     }
 
+    /// 一時フォルダの appPath は警告する(消えると次の run でアプリを入れられない)。リポジトリの中は警告しない
+    func testAppPathInATemporaryFolderIsWarned() throws {
+        try write("""
+        { "ios": { "appName": "A", "app": "com.example.a", "appPath": "/private/tmp/agent-scratchpad/Build/A.app" },
+          "android": { "appName": "A", "app": "com.example.a", "appPath": "builds/app-debug.apk" } }
+        """, to: project.appsDir, name: "tmpapp")
+        try write("""
+        { "app": "tmpapp", "devices": [
+            { "platform": "ios", "machine": "local", "name": "i", "osVersion": "iOS 27.0", "udid": "U" },
+            { "platform": "android", "machine": "local", "name": "a", "avd": "Pixel_9" } ] }
+        """, to: project.runsDir, name: "tmprun")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "tmprun")
+        let temporary = resolved.warnings.filter { $0.contains("points into a temporary folder") }
+        XCTAssertEqual(temporary.count, 1, "\(resolved.warnings)")
+        XCTAssertTrue(temporary.first?.contains("(ios): appPath") == true, "\(temporary)")
+        XCTAssertFalse(AppPathLocation.isAbsoluteDeclaration("builds/app-debug.apk"), "相対は見ない(リポジトリ基準)")
+        XCTAssertTrue(AppPathLocation.isTemporary("/var/folders/xy/T/A.app"))
+        XCTAssertFalse(AppPathLocation.isTemporary("/Users/u/dev/sut-ec-mobile/build/ios-sim/A.app"))
+    }
+
     func testResolveMixedPlatforms() throws {
         try writeStandardFixture()
         let resolved = try ProfileResolver.resolve(

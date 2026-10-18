@@ -60,6 +60,11 @@ description: fleetest のアプリプロファイル・実行プロファイル�
 **パッケージパス(`appPath`)は聞かない**。ユーザーが自発的に伝えてきた場合のみ使う
 (ビルド済み `.app`/`.apk`。相対は WORK_DIR 基準・`~`・絶対可)。未指定なら省略する
 (後から `profiles/apps/` を編集して向けられる)。
+**依頼でアプリをビルドしたときは、成果物をアプリのリポジトリの中に出して `--app-path` に渡す**
+(iOS は `xcodebuild` に `-derivedDataPath build/ios-sim` を付ける → `build/ios-sim/Build/Products/Debug-iphonesimulator/<名>.app`。
+Android の Gradle は既定でリポジトリの中 = `<モジュール>/build/outputs/apk/debug/`)。**一時フォルダ(`/tmp`・`/private/tmp`・
+`/private/var/folders`・エージェントのセッション用の作業フォルダ)へ出さない** —— 消えると次の run でアプリを入れられない
+(`appPath` が一時フォルダを指すと解決の時点で警告が出る)。
 
 `appRef`(アプリプロファイルのファイル名)は既定で `<plat>-app`(`ios-app` / `android-app` / `hybrid-app`)、
 実行プロファイル名は既定で `<plat>-run`(`ios-run` / `android-run`)になる。

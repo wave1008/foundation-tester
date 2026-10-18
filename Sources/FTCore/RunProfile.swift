@@ -1530,6 +1530,13 @@ public enum ProfileResolver {
                 WorkspaceAppStaging.installPath(declared: declared, workspaceRoot: workspaceRoot)
             }
             let physicalSource = section.appPathPhysical.map { resolvePath($0, base: repoRoot) }
+            for (key, declared, path) in [("appPath", section.appPath, sourcePath),
+                                          ("appPathPhysical", section.appPathPhysical, physicalSource)] {
+                if let declared, let path, AppPathLocation.isAbsoluteDeclaration(declared), AppPathLocation.isTemporary(path) {
+                    warnings.append(AppPathLocation.temporaryWarning(
+                        appProfile: appRef, platform: platform, key: key, path: path))
+                }
+            }
             let physicalInstallPath = section.appPathPhysical.map { declared in
                 WorkspaceAppStaging.installPath(declared: declared, workspaceRoot: workspaceRoot,
                                                 physical: true)
