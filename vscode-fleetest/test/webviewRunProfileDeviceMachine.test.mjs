@@ -102,6 +102,7 @@ const RUN_PROFILE_DATA = {
     homeOnStart: true,
     playProtectBypass: true,
     enableAnimations: false,
+    responseMeasurement: false,
     containerInference: true,
     updateWebView: true,
     wipeDataOnBloat: true,

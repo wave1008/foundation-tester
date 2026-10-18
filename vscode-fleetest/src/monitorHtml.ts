@@ -743,6 +743,10 @@ function renderRunProfileSection(): string {
               <label for="run-profile-enable-animations">${t("panels.runProfile.enableAnimationsLabel")}</label>
             </div>
             <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-response-measurement">
+              <label for="run-profile-response-measurement">${t("panels.runProfile.responseMeasurementLabel")}</label>
+            </div>
+            <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-container-inference">
               <label for="run-profile-container-inference">${t("panels.runProfile.containerInferenceLabel")}</label>
             </div>

@@ -944,7 +944,8 @@ public enum ScenarioRunner {
                           status: status, scene: event.scene, sceneTitle: event.sceneTitle,
                           section: event.section, timing: timing, at: event.at,
                           command: event.command, failureKind: event.failureKind,
-                          notes: event.notes, guarded: event.guarded)
+                          notes: event.notes, guarded: event.guarded,
+                          response: event.response)
     }
 }
 

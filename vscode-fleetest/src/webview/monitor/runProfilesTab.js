@@ -44,6 +44,7 @@ const runProfileInappOptions = document.getElementById('run-profile-inapp-option
 const runProfileHomeOnStart = document.getElementById('run-profile-home-on-start');
 const runProfilePlayProtectBypass = document.getElementById('run-profile-play-protect-bypass');
 const runProfileEnableAnimations = document.getElementById('run-profile-enable-animations');
+const runProfileResponseMeasurement = document.getElementById('run-profile-response-measurement');
 const runProfileUpdateWebView = document.getElementById('run-profile-update-webview');
 const runProfileWipeDataOnBloat = document.getElementById('run-profile-wipe-data-on-bloat');
 const runProfileRecoverCpuFallback = document.getElementById('run-profile-recover-cpu-fallback');
@@ -258,6 +259,7 @@ function renderRunProfileEditor(fields) {
   runProfileHomeOnStart.checked = fields.homeOnStart;
   runProfilePlayProtectBypass.checked = fields.playProtectBypass;
   runProfileEnableAnimations.checked = fields.enableAnimations;
+  runProfileResponseMeasurement.checked = fields.responseMeasurement;
   runProfileContainerInference.checked = fields.containerInference;
   runProfileUpdateWebView.checked = fields.updateWebView;
   runProfileWipeDataOnBloat.checked = fields.wipeDataOnBloat;
@@ -382,6 +384,7 @@ function runProfileValuesEqual(fields) {
     runProfileHomeOnStart.checked === fields.homeOnStart &&
     runProfilePlayProtectBypass.checked === fields.playProtectBypass &&
     runProfileEnableAnimations.checked === fields.enableAnimations &&
+    runProfileResponseMeasurement.checked === fields.responseMeasurement &&
     runProfileContainerInference.checked === fields.containerInference &&
     runProfileUpdateWebView.checked === fields.updateWebView &&
     runProfileWipeDataOnBloat.checked === fields.wipeDataOnBloat &&
@@ -475,6 +478,7 @@ function collectRunProfileFields() {
     homeOnStart: runProfileHomeOnStart.checked,
     playProtectBypass: runProfilePlayProtectBypass.checked,
     enableAnimations: runProfileEnableAnimations.checked,
+    responseMeasurement: runProfileResponseMeasurement.checked,
     containerInference: runProfileContainerInference.checked,
     updateWebView: runProfileUpdateWebView.checked,
     wipeDataOnBloat: runProfileWipeDataOnBloat.checked,

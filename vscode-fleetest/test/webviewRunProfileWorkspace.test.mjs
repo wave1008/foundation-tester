@@ -110,6 +110,7 @@ const RUN_PROFILE_FIELDS = {
   iosInappEngine: true,
   homeOnStart: true,
   enableAnimations: false,
+  responseMeasurement: false,
   reportDir: "reports",
   updateWebView: true,
   wipeDataOnBloat: true,

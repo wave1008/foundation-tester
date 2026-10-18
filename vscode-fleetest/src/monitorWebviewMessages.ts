@@ -1267,6 +1267,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.iosPreActionPing === "boolean" &&
         typeof value.fields.homeOnStart === "boolean" &&
         typeof value.fields.enableAnimations === "boolean" &&
+        typeof value.fields.responseMeasurement === "boolean" &&
         typeof value.fields.reportDir === "string" &&
         typeof value.fields.scenarioTimeout === "string" &&
         typeof value.fields.wipeDataOnBloat === "boolean" &&

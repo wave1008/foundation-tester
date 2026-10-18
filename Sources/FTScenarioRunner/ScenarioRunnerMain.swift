@@ -180,6 +180,10 @@ struct RunScenario: AsyncParsableCommand {
           help: "Disable corrections that infer the scroll container from the tree")
     var noContainerInference = false
 
+    @Flag(name: .customLong("response-measurement"),
+          help: "Response measurement mode (set by ScenarioHost from the run profile's responseMeasurement)")
+    var responseMeasurement = false
+
     @Flag(name: .customLong("no-ocr-text-visibility-check"), help: "Disable the Vision OCR stage of the occlusion guard (FM only; with --no-fm-text-visibility-check too, no guard)")
     var noOcclusionOCR = false
 
@@ -558,6 +562,7 @@ struct RunScenario: AsyncParsableCommand {
                                fmTextVisibilityCheckEnabled: !noFMTextVisibilityCheck,
                                screenLooksLikeEnabled: !noScreenLooksLike,
                                containerInference: !noContainerInference,
+                               responseMeasurement: responseMeasurement,
                                occlusionOCREnabled: !noOcclusionOCR,
                                visionClassifierProjectRoot: projectDir.map { URL(fileURLWithPath: $0) },
                                preferCheckStateClassifier: !noPreferCheckStateClassifier,

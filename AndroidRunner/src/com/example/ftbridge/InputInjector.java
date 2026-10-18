@@ -955,7 +955,36 @@ final class InputInjector {
                 InputDevice.SOURCE_TOUCHSCREEN, 0);
     }
 
+    /** 応答時間計測の記録。hold の UP は別スレッドから注入されるので全アクセスを firstDownLock で守る */
+    private static final Object firstDownLock = new Object();
+    private static boolean firstDownArmed = false;
+    private static long firstDownTime = -1;
+
+    /** 記録を空にして待ち受ける。次の ACTION_DOWN の downTime が1つだけ記録される */
+    static void armFirstDown() {
+        synchronized (firstDownLock) {
+            firstDownArmed = true;
+            firstDownTime = -1;
+        }
+    }
+
+    /** 記録された downTime(uptimeMillis)。無ければ -1。取り出すと待ち受けも解く */
+    static long takeFirstDown() {
+        synchronized (firstDownLock) {
+            long t = firstDownTime;
+            firstDownArmed = false;
+            firstDownTime = -1;
+            return t;
+        }
+    }
+
     private static void inject(UiAutomation ua, MotionEvent e) {
+        // recycle 後は読めないので注入の前に取る。キーは injectKey 経由でここを通らない
+        if (e.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            synchronized (firstDownLock) {
+                if (firstDownArmed && firstDownTime < 0) firstDownTime = e.getDownTime();
+            }
+        }
         try {
             if (!ua.injectInputEvent(e, true)) {
                 // 口が死んでいれば 503 + exit(BridgeRouter.assertConnectionAlive)。生きていて拒否なら 500

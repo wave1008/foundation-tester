@@ -94,6 +94,7 @@ const RUN_FIELDS = {
   homeOnStart: true,
   playProtectBypass: true,
   enableAnimations: false,
+  responseMeasurement: false,
   reportDir: "reports",
   updateWebView: true,
   wipeDataOnBloat: true,

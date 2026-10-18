@@ -512,6 +512,7 @@ public enum ScenarioHost {
         let fm = settings.fm
         let containerInference = settings.containerInference
         let occlusionOCR = settings.occlusionOCR
+        let responseMeasurement = settings.responseMeasurement
         let preferCheckStateClassifier = settings.preferCheckStateClassifier
         let findImagePrewarm = settings.findImagePrewarm
         let tunables = settings.tunables
@@ -604,7 +605,8 @@ public enum ScenarioHost {
         if settings.heal { args.append("--heal") }
         let machineConfig = LocalConfig.load()
         args += accountRedactionArguments(machineConfig)
-        if !dryRun {
+        // 計測中は減速を渡さない(子の既定 = 減速なし)。減速は操作の前に待ちを入れるので反応時間に混ざる
+        if !dryRun && !responseMeasurement {
             args += hostLoadPacingArguments(machineConfig) { warning in
                 if !hostLoadPacingWarned.withLock({ let was = $0; $0 = true; return was }) {
                     ConsoleOut.err("[fleetest] " + warning)
@@ -631,6 +633,7 @@ public enum ScenarioHost {
         }
         // **FM とは無関係**(幾何ヒューリスティックの既定)なので FMConfig には入れない
         if !containerInference { args.append("--no-container-inference") }
+        if responseMeasurement { args.append("--response-measurement") }
         // occlusion guard の OCR 事前判定(FMConfig の外。fmTextVisibilityCheck が off なら guard 自体が
         // 走らないためこの値は無意味 —— 別ゲートは追加しない)
         if !occlusionOCR { args.append("--no-ocr-text-visibility-check") }

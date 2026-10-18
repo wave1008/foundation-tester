@@ -125,6 +125,7 @@ function runProfileData(app, devices) {
       homeOnStart: true,
       playProtectBypass: true,
       enableAnimations: false,
+      responseMeasurement: false,
       reportDir: "",
       updateWebView: true,
       wipeDataOnBloat: true,

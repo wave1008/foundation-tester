@@ -112,6 +112,8 @@ public struct ScenarioEvent: Codable, Sendable {
     /// 文字列を割って数えると書式を変えた瞬間に静かに壊れる(notes と同じ理由)。
     /// 名前の集合は `CommandIndex`
     public var command: String?
+    /// kind == step。応答時間計測(計測モードで画面を動かす操作のステップだけ。nil = 測っていない)
+    public var response: ResponseMeasurementRecord?
     /// kind == step かつ status == failed。**どの経路で落ちたか**(`StepFailureKind` の rawValue)。
     /// 言えないときはキーごと省略 = 推測で埋めない
     public var failureKind: String?

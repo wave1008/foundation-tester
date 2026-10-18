@@ -40,6 +40,7 @@
 | `iosPreActionPing` | bool | `true` | interop WebView 画面(Compose/Flutter 等の埋め込み WebView)でタップ・入力の直前にランナーへ1回問い合わせてから撃つ。attach したままの XCUITest セッションは放置後の座標イベントを成功応答のまま届け損なうことがある。コストは該当画面のイベント1回につき約 +0.4 秒(読み取りと他の画面には掛からない)。hybrid エンジンのときだけ効く |
 | `containerInference` | bool | `true` | スクロール容器を幾何から推測する補正(端の見切れ・座標補正等)を有効にする。FM とは無関係 |
 | `enableAnimations` | bool | `false` | 実行のためにアプリのアニメーションを無効化せず残す |
+| `responseMeasurement` | bool | `false` | **実験的。** **Android 実機 1 台だけ**を対象にしたレスポンス計測モード。プロファイルの有効なデバイスが 1 台で、`kind: physical` かつ Android でなければ run を断る。アプリのアニメーションを残し(`enableAnimations` を強制的に有効)、`fmTextVisibilityCheck`・`ocrTextVisibilityCheck`・`screenLooksLike`・`record`・ホスト負荷による減速を止め、run が終わるまでデバイスモニターを止める。`enableAnimations: false` や、FM・OCR・`record` のキーを `true` にした併用はエラー。`--broadcast`・`--fleet`・`--split` とは併用できない |
 | `homeOnStart` | bool | `--profile` 実行は `true`・プロファイル無しの素の `fleetest run` は `false` | 実行開始時に各デバイスへ Home を1回撃つ(一斉起動直後に画面が黒いまま止まるのを防ぐ) |
 | `playProtectBypass` | bool | `true` | Android の `adb install` で Play Protect の照会(「アプリをセキュリティ確認のために送信しますか?」)を通さない。インストールの間だけ「USB 経由でアプリを確認」を切って元に戻す(アプリを Google へ送らない)。`false` はキルスイッチ: ツールは端末の設定に触らず、release 署名の APK は端末側のダイアログで止まったままになる(ツールはそのダイアログに答えない) |
 | `record` | bool | `true` | 各ワーカーの画面を run 全体で録画し、シナリオごとの clip に切り出す。物理 iPhone は動画を取り出す手段が無いので、最初の操作の直前と、操作したステップ・失敗したステップの直後に撮った画面を時刻どおりに並べた clip になる(コマ送り。撮影1回ごとに約 50ms かかる)。Android の実機は通常どおり録画する。シミュレータ・エミュレータ・Android 実機で画面録画を起動できなかったデバイスも、警告を出してこのコマ送りに切り替える |
@@ -63,7 +64,7 @@ ON**、プロファイルを使わない素の `fleetest run` は既定 OFF で�
 値は上表に示したキーの型と一致させる。複数回指定できる)。`--profile` の有無を問わず効きます —— 例外は実行
 プロファイルの devices 一覧・供給工程が要るキー(`iosInappEngine`・`updateWebView`・
 `wipeDataOnBloat`・`recoverCpuFallbackToGpu`・`app`・`locale`・
-`wipeDataThresholdGB`)で、これらは `--profile` が必須です。`devices`/`remoteControl` は
+`wipeDataThresholdGB`・`responseMeasurement`)で、これらは `--profile` が必須です。`devices`/`remoteControl` は
 配列・オブジェクトなので `<キー>=<値>` の形では指定できません(この2つはプロファイル JSON を
 直接編集してください)。`record` は `--profile` か、`--port` を2回以上指定するかのどちらかが要ります(単一接続には録画セッションを付けるところが無いため)。`reportDir` は `--report-dir` と同時指定できません(同じ欄の二重指定になるため)。実行プロファイルのキー `app` はアプリ**プロファイル名**を指し、`fleetest run` の `--app-id` フラグとは別物です。`--set` に未知のキー・型の合わない値を渡すとエラーになります(プロファイル JSON の中の
 未知のキーは警告を出して無視されます)。

@@ -546,6 +546,24 @@ LC_UUID が入るので再ビルドでコールドに戻る。docs/performance-t
 **いちばん高いステップだけが時間ゼロ**で載り、`scenes[].durationMs` もその分を落としている ——
 冷えた1周目の遅さを run 横断で比べるときは、この日を境に扱いが変わることに注意する。
 
+**`command` と `response`**(どちらも省略可。**欄が無い=不明または測っていないのであって 0 でも失敗でもない**):
+
+| キー | 型 | 意味 |
+|---|---|---|
+| command | String? | DSL のコマンド名(`ScenarioEvent.command`。`tap` / `exist` 等)。description から切り出さずに運ぶ。言えないステップは省略 |
+| response | ResponseMeasurementRecord? | 応答時間計測(プロファイルの `responseMeasurement: true` の run で、**画面を動かす操作のステップ**だけ。検証・`select`・`findImages`・`waitForSettle`・`performCustom` 経由(launch / back / home / wait 等)は省略)。`StepExecutor` が操作の前に prepare(アプリが `responseQuietMs` の間フレームを出さなくなるまで最長 `responseQuietTimeoutMs` 待ち、最初の入力の記録を構える)、後に collect する。prepare / collect の所要は `actionMs` / `waitMs` に入れない(`durationMs` には入る)。失敗してもステップの結果は変わらない |
+
+`response` の欄(この版で値が入るのは太字だけ。他は常に省略または `readyMissing` の固定値):
+
+- **`busyBeforeAction`**(Bool): 操作の前から描画が止まらなかった(prepare の `quiet == false`)。true のとき `firstFrameMs` は出さない
+- **`quietWaitMs`**(Int?): 描画の停止を待った時間。prepare が失敗したら省略
+- **`firstFrameMs`**(Int?): **ステップの最初に注入した入力**(スクロール探索のスワイプがあればタップより先のそのスワイプ)から、最初に提示されたフレームまでの遅れ。t1(反応)の確認済みの値ではない
+- **`firstFrameMissing`**(String?): `firstFrameMs` が無い理由。`busyBeforeAction`(操作の前から描画が続いていた)/ `noInjectedInput`(ブリッジが入力の注入を記録していない)/ `noFrame`(注入の後にフレームが出なかった)/ `frameHistoryIncomplete`(フレームの履歴が足りず判定できない)/ `noSessionApp`(対象アプリが無い)/ `bridgeError`(prepare / collect が失敗した。未対応のドライバの 501 を含む)。値があるときは省略。ブリッジが知らない理由を返したときも省略する(別の理由に丸めない)。`busyBeforeAction` は「描画が止まらなかった」ときだけで、ブリッジが判定できなかった(`noSessionApp` 等)ときはその理由になる
+- `reactionMs` / `readyMs` / `readyAfterObservationStartMs` / `observationStartMs` / `readyDecidedBy`: この版では常に省略(t1 は画面の差での確認が要り、t2 は未実装)
+- **`readyMissing`**(String?): この版では常に `notMeasuredInThisVersion`
+
+対象は Android の実機のみ(ブリッジ v102〜)。`api results` の出力キャッシュのパック(`RunRecordPack.trimmedForStorage`)は timeline を `notes` のあるステップの4欄に削るので、`command` / `response` はパック経由では見えない(`scenarios/*.json` の記録には載る)。
+
 ---
 
 ## デバイスの健全性(`fleetest api results` の `deviceHealth`)

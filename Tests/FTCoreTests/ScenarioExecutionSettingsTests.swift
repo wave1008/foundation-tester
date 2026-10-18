@@ -46,7 +46,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
             preferCheckStateClassifier: false,
             iosPreActionPing: false,
             containerInference: false,
-            enableAnimations: true,
+            enableAnimations: true, responseMeasurement: true,
             playProtectBypass: false,
             homeOnStart: false,
             record: true,
@@ -64,7 +64,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
     func testDeviceIndependentRunSettingsMappingLeavesProfileNameNil() {
         let settings = ScenarioExecutionSettings(DeviceIndependentRunSettings(
             fm: FMConfig(), heal: false, ocrTextVisibilityCheck: true, preferCheckStateClassifier: true,
-            iosPreActionPing: true, containerInference: true, enableAnimations: false,
+            iosPreActionPing: true, containerInference: true, enableAnimations: false, responseMeasurement: false,
             playProtectBypass: true, homeOnStart: true, record: false, recordFailuresOnly: false,
             recordFullResolution: false, reportDir: nil, defaultTimeout: nil, scenarioTimeout: nil,
             recordBitrateKbps: nil))
@@ -87,7 +87,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
             iosPreActionPing: true, containerInference: false,
             ocrTextVisibilityCheck: false,
             preferCheckStateClassifier: false,
-            enableAnimations: false,
+            enableAnimations: false, responseMeasurement: true,
             homeOnStart: true, playProtectBypass: true, record: false, recordFailuresOnly: false,
             recordBitrateKbps: 1500, recordFullResolution: false, warnings: [])
         assertNoFieldStaysDefault(ScenarioExecutionSettings(profile), excluding: ["findImagePrewarm"])

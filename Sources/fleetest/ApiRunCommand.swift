@@ -51,7 +51,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 + "<value> matches that key's type (e.g. --set heal=true --set reportDir=/tmp/out "
                 + "--set defaultTimeout=8). Keys that need a run profile's device list/supply pipeline "
                 + "(iosInappEngine, updateWebView, wipeDataOnBloat, recoverCpuFallbackToGpu, app, "
-                + "machine, locale, wipeDataThresholdGB) need --profile. The run profile keys "
+                + "machine, locale, wipeDataThresholdGB, responseMeasurement) need --profile. The run profile keys "
                 + "\"app\"/\"machine\" (an app/machine *profile* name) are unrelated to this command's "
                 + "own --app-id/--runner flags (a bundle ID / package name and a dispatch target). "
                 + "Cannot combine reportDir/defaultTimeout/scenarioTimeout with the matching "
@@ -518,8 +518,15 @@ struct ApiRunCommand: AsyncParsableCommand {
         // (この defer は下の終了スクリプトの defer より先に書く = 後に走る)
         var servicesSession: ServicesSession?
         defer { servicesSession?.down { logStderr($0) } }
+        // この defer は関数のスコープに置く(if の中に置くとブロックの終わりで外れる)
+        var responseMonitorHold: ResponseMeasurementMonitorHold.Handle?
+        defer { ResponseMeasurementMonitorHold.release(responseMonitorHold) { logStderr($0) } }
         if let resolved = resolvedProfile, !dryRun {
             let hookStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
+            // レスポンス計測中はモニターを止める(ProfileRunner.run と同じ。解除は defer = 中断・エラーでも通る)
+            if resolved.responseMeasurement, let hookStateDir {
+                responseMonitorHold = ResponseMeasurementMonitorHold.acquire(stateDir: hookStateDir) { logStderr($0) }
+            }
             // 二重使用は開始スクリプトと破壊的な準備より前に断る(ProfileRunner と同じ判定)
             try ProfileRunner.rejectIfDevicesLeasedBeforePreparation(
                 resolved: resolved, leaseStateDir: hookStateDir)
@@ -1630,6 +1637,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             step.failureKind = result.failureKind
             step.notes = result.notes
             step.guarded = result.guarded
+            step.response = result.response
             return [step.encodedLine()]
 
         case .fixSuggestion(let worker, _, let scenarioID, let command, let file, let line,

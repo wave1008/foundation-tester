@@ -36,6 +36,7 @@ const FORM_FIELDS = {
   homeOnStart: true,
   playProtectBypass: true,
   enableAnimations: false,
+  responseMeasurement: false,
   containerInference: true,
   updateWebView: true,
   wipeDataOnBloat: true,

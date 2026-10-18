@@ -155,6 +155,25 @@ final class FakeAppDriver: AppDriver {
     /// フレームを進めるので、覆いの下でも値が勝手に更新され Fix B を検証できない)
     var afterTap: (() -> Void)?
 
+    /// 応答時間計測の擬似(prepare / collect の呼び出しを log に積み、引数を控える)
+    var prepareResult: Result<ResponsePrepareResult, Error> = .success(ResponsePrepareResult(quiet: true, waitedMs: 12))
+    var collectResult: Result<ResponseCollectResult, Error> =
+        .success(ResponseCollectResult(downTimeMs: 1000, firstFrameDelayMs: 34))
+    private(set) var prepareArguments: [(quietMs: Int, timeoutMs: Int)] = []
+    private(set) var collectCallCount = 0
+
+    func prepareResponseMeasurement(quietMs: Int, timeoutMs: Int) async throws -> ResponsePrepareResult {
+        log.entries.append("\(name).responsePrepare")
+        prepareArguments.append((quietMs, timeoutMs))
+        return try prepareResult.get()
+    }
+
+    func collectResponseMeasurement() async throws -> ResponseCollectResult {
+        log.entries.append("\(name).responseCollect")
+        collectCallCount += 1
+        return try collectResult.get()
+    }
+
     func tap(ref: Int) async throws {
         log.entries.append("\(name).tap(ref:\(ref))")
         afterTap?()

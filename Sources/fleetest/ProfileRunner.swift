@@ -298,6 +298,9 @@ enum ProfileRunner {
         let resolvedAll = try ProfileResolver.resolve(
             project: project, runName: profileName,
             workspaceOverride: workspaceOverride, overrides: setOverrides)
+        if broadcast, resolvedAll.responseMeasurement {
+            throw ValidationError(ResponseMeasurementPolicy.combinationRejection(flag: "--broadcast"))
+        }
         // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17)
         // なので毎回雛形作成(既に揃っていれば何もしない。WorkspaceScaffold の宣言)。
         // リモートディスパッチはこれとは別に、ミラー前のローカル側で同じ呼び出しを行う
@@ -395,6 +398,11 @@ enum ProfileRunner {
         // サービス(scripts/compose.yaml)は開始スクリプトの前に上げ、片付けは終了スクリプトの後
         // (defer は後に書いたものから走る = 下の終了スクリプトの defer より先に書く)
         let reportDir = reportDirOverride.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
+        // レスポンス計測中はモニターを止める(ApiRunCommand.run と同じ。解除は defer = 中断・エラーでも通る)
+        let responseMonitorHold = resolved.responseMeasurement
+            ? hookStateDir.flatMap { ResponseMeasurementMonitorHold.acquire(stateDir: $0) { ConsoleOut.out($0) } }
+            : nil
+        defer { ResponseMeasurementMonitorHold.release(responseMonitorHold) { ConsoleOut.out($0) } }
         let servicesSession = try ServicesSession.up(
             resolved: resolved, stateDir: hookStateDir, options: .forRun(resolved), interruptState: interruptState) { ConsoleOut.out($0) }
         defer { servicesSession?.down { ConsoleOut.out($0) } }

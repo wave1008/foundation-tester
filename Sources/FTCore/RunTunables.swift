@@ -39,6 +39,13 @@ public struct RunTunables: Codable, Sendable, Equatable {
     /// 応答しない宛先で固まっても壁時計の締切(コマンド全体の打ち切り)より先に失敗として言える。
     /// この値を commandTimeout 以上にしない(固まったときに失敗の理由が「タイムアウト」の一言になる)
     public var httpRequestTimeout: Double
+    /// レスポンス計測: 操作の注入の前に「アプリのフレームが出ていない」が続くべき時間(ms)。
+    /// 根拠: 試作で使った 500ms
+    public var responseQuietMs: Int
+    /// レスポンス計測: 上の静けさを待つ上限(ms)。尽きたらそのステップは「操作の前から描画が続いていた」
+    /// (busy before the action)として記録し、反応時間を出さない。
+    /// 根拠: 試作で操作後に観測した最長の連続描画が約 4.2 秒(Pixel 4a・View の SUT)なので 5 秒で覆える
+    public var responseQuietTimeoutMs: Int
 
     public init(defaultTimeout: Double = DefaultWait.seconds,
                 commandTimeout: Double = 120,
@@ -53,7 +60,9 @@ public struct RunTunables: Codable, Sendable, Equatable {
                 doUntilTrueTimeout: Double = 10,
                 doUntilTrueInterval: Double = 0.5,
                 doUntilTrueMaxLoopCount: Int = 100,
-                httpRequestTimeout: Double = 30) {
+                httpRequestTimeout: Double = 30,
+                responseQuietMs: Int = 500,
+                responseQuietTimeoutMs: Int = 5000) {
         self.defaultTimeout = defaultTimeout
         self.commandTimeout = commandTimeout
         self.injectedAppProbeTimeout = injectedAppProbeTimeout
@@ -68,5 +77,7 @@ public struct RunTunables: Codable, Sendable, Equatable {
         self.doUntilTrueInterval = doUntilTrueInterval
         self.doUntilTrueMaxLoopCount = doUntilTrueMaxLoopCount
         self.httpRequestTimeout = httpRequestTimeout
+        self.responseQuietMs = responseQuietMs
+        self.responseQuietTimeoutMs = responseQuietTimeoutMs
     }
 }

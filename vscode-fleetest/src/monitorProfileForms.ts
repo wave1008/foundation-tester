@@ -170,6 +170,8 @@ export interface RunProfileFormFields {
   /// **既定 true**。Android install 中だけ Play Protect の照会をバイパスするキルスイッチ
   readonly playProtectBypass: boolean;
   readonly enableAnimations: boolean;
+  /** 既定 false(実験的)。Android 実機 1 台のレスポンス計測モード(Swift: RunProfileDocument.responseMeasurement) */
+  readonly responseMeasurement: boolean;
   readonly reportDir: string;
   /** シナリオ1本の上限秒(空文字 = 未設定 = Sources/FTCore/ScenarioHost.swift の defaultScenarioTimeout)。
    * 正の整数だけ通す = Swift 側の検査(RunProfile.swift)と同じ条件 */
@@ -222,6 +224,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const homeOnStart = typeof source.homeOnStart === "boolean" ? source.homeOnStart : true;
   const playProtectBypass = typeof source.playProtectBypass === "boolean" ? source.playProtectBypass : true;
   const enableAnimations = typeof source.enableAnimations === "boolean" ? source.enableAnimations : false;
+  const responseMeasurement = typeof source.responseMeasurement === "boolean" ? source.responseMeasurement : false;
   const updateWebView = typeof source.updateWebView === "boolean" ? source.updateWebView : true;
   const wipeDataOnBloat = typeof source.wipeDataOnBloat === "boolean" ? source.wipeDataOnBloat : true;
   const recoverCpuFallbackToGpu =
@@ -288,6 +291,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     homeOnStart,
     playProtectBypass,
     enableAnimations,
+    responseMeasurement,
     reportDir,
     scenarioTimeout,
     updateWebView,
@@ -317,7 +321,7 @@ export type RunProfileUpdateResult =
  * recordBitrateKbps は空文字ならキー削除、正の整数文字列以外はエラー。
  * devices は fields.devices の順に並べ直し、既存 devices 配列の同名エントリ(未知キー込み)を
  * 再利用する(新規名は { name } のみ追加。同名重複があれば最初の1件を採用)。
- * record/recordFailuresOnly/recordFullResolution/enableAnimations は false のとき
+ * record/recordFailuresOnly/recordFullResolution/enableAnimations/responseMeasurement は false のとき
  * キー自体を書かない
  * (既定値のノイズを既存プロファイルに足さない。parseRunProfileForForm の「欠落→false」と対で
  * round-trip が安定する)。
@@ -357,7 +361,7 @@ export function updateRunProfileInObject(
   result.record = fields.record;  // 同上(既定 true 側。CLI の `doc.record ?? true` と一致)
   for (const key of [
     "recordFailuresOnly", "recordFullResolution", "recoverCpuFallbackToGpu",
-    "enableAnimations",
+    "enableAnimations", "responseMeasurement",
   ] as const) {
     if (fields[key]) {
       result[key] = true;

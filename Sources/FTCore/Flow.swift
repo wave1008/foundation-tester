@@ -94,6 +94,21 @@ public struct FlowStep: Codable, Sendable {
     /// 「検証として書かれた」ステップか(DSL のアサーション計数の判定)。existImage は findImage の
     /// 探索を通すためアクションとして実行するが、見つからなければ落ちる検証
     public var isVerification: Bool { assert != nil || action == "existImage" }
+
+    /// action を持つが画面を動かさないもの: 画面を読むだけ(select・findImages = 検証とセットで使う)/
+    /// 待つだけ(waitForSettle)。hold の押している間は FTDriveCore が別に止める
+    static let nonOperationActions: Set<String> = ["select", "findImages", "waitForSettle"]
+
+    /// 「画面を動かす操作」か。ホスト負荷による減速(`HostLoadPacing`)と応答時間計測が**同じ判定**を使う
+    /// (別々に持つと、減速した操作と測った操作が食い違う)。`settle` には依らない
+    public static func isScreenMovingOperation(action: String?, isVerification: Bool) -> Bool {
+        guard !isVerification, let action else { return false }
+        return !nonOperationActions.contains(action)
+    }
+
+    public var isScreenMovingOperation: Bool {
+        Self.isScreenMovingOperation(action: action, isVerification: isVerification)
+    }
     /// 端まで送る(scrollToBottom 等)の上限。**終了条件は「画面が変わらなくなること」**で、
     /// これは暴走を止める安全網にすぎないので探索(8)より大きく取る
     public static let defaultMaxEdgeSwipes = 50

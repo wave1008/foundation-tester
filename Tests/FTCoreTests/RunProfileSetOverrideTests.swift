@@ -231,7 +231,7 @@ final class RunProfileSetOverrideKeysTests: XCTestCase {
         XCTAssertTrue(RunProfileDocument.profileOnlyKeys.isSubset(of: RunProfileDocument.overridableKeys))
         XCTAssertEqual(RunProfileDocument.profileOnlyKeys, [
             "iosInappEngine", "updateWebView", "wipeDataOnBloat", "recoverCpuFallbackToGpu",
-            "app", "locale", "wipeDataThresholdGB",
+            "app", "locale", "wipeDataThresholdGB", "responseMeasurement",
         ])
     }
 
@@ -276,6 +276,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         case "iosPreActionPing": return doc.iosPreActionPing.map(RunProfileSetValue.bool)
         case "containerInference": return doc.containerInference.map(RunProfileSetValue.bool)
         case "enableAnimations": return doc.enableAnimations.map(RunProfileSetValue.bool)
+        case "responseMeasurement": return doc.responseMeasurement.map(RunProfileSetValue.bool)
         case "homeOnStart": return doc.homeOnStart.map(RunProfileSetValue.bool)
         case "playProtectBypass": return doc.playProtectBypass.map(RunProfileSetValue.bool)
         case "updateWebView": return doc.updateWebView.map(RunProfileSetValue.bool)
@@ -303,7 +304,8 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         "heal": "false", "fmTextVisibilityCheck": "false",
         "screenLooksLike": "false", "ocrTextVisibilityCheck": "false", "preferCheckStateClassifier": "false",
         "iosInappEngine": "false", "iosPreActionPing": "false",
-        "containerInference": "false", "enableAnimations": "true", "homeOnStart": "false",
+        "containerInference": "false", "enableAnimations": "true", "responseMeasurement": "true",
+        "homeOnStart": "false",
         "playProtectBypass": "false", "updateWebView": "false", "wipeDataOnBloat": "false",
         "recoverCpuFallbackToGpu": "true", "record": "true", "recordFailuresOnly": "true",
         "recordFullResolution": "true",

@@ -70,7 +70,7 @@ final class BuildAndroidWorkersPartialFailureTests: XCTestCase {
             containerInference: true,
             ocrTextVisibilityCheck: true,
             preferCheckStateClassifier: true,
-            enableAnimations: false,
+            enableAnimations: false, responseMeasurement: false,
             homeOnStart: true, playProtectBypass: true,
             record: false,
             recordFailuresOnly: false,

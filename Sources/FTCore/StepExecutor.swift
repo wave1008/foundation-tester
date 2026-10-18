@@ -77,12 +77,16 @@ public struct StepResult: Sendable {
     public let failureKind: String?
     public let notes: [String]?
     public let guarded: Bool?
+    /// ScenarioEvent.response(応答時間計測)。並列経路の NDJSON 再構築で落とさないために運ぶ
+    public let response: ResponseMeasurementRecord?
 
     public init(index: Int, description: String, status: Status,
                 scene: Int? = nil, sceneTitle: String? = nil, section: String? = nil,
                 synthetic: Bool = false, timing: StepTiming? = nil, at: String? = nil,
                 command: String? = nil, failureKind: String? = nil,
-                notes: [String]? = nil, guarded: Bool? = nil) {
+                notes: [String]? = nil, guarded: Bool? = nil,
+                response: ResponseMeasurementRecord? = nil) {
+        self.response = response
         self.index = index
         self.description = description
         self.status = status
@@ -198,6 +202,8 @@ public struct StepOutcome: Sendable {
     /// 操作の対象を解決したとき、セレクタが2件以上に一致した数(1件目を撃った。序数・相対の指定は数えない)。
     /// 結果 JSON には載せない(MCP の ft_batch が行に添えるだけ)
     public let ambiguousMatchCount: Int?
+    /// 応答時間計測(計測モードで、画面を動かす操作のステップだけ。それ以外は nil)
+    public let response: ResponseMeasurementRecord?
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil,
                healedByFingerprint: Bool = false,
@@ -209,7 +215,9 @@ public struct StepOutcome: Sendable {
                evidenceImage: Data? = nil,
                imageMatches: [FindImage.Match]? = nil,
                ambiguousMatchCount: Int? = nil,
+               response: ResponseMeasurementRecord? = nil,
                at: String = ISO8601Millis.string(from: Date())) {
+        self.response = response
         self.imageMatches = imageMatches
         self.ambiguousMatchCount = ambiguousMatchCount
         self.failureKind = failureKind
@@ -592,6 +600,9 @@ public final class StepExecutor {
     /// **`execute` の入口でステップへ畳む**ので、下流(解決・探索・タップ)はステップだけ見ればよい
     let containerInference: Bool
 
+    /// レスポンス計測モード(`--response-measurement`)。画面を動かす操作の前後で prepare / collect を撃つ(executeStep)
+    let responseMeasurement: Bool
+
     /// **半開きシート内で停滞したら、逆走査(飛び越しの拾い直し)を掛けずに即返す**(既定 false)。
     /// true にしてよいのは「呼び手がシートを展開して再試行する」場合だけ —— 展開後の再試行は
     /// 全画面高の容器で同じ逆走査を持つので救済は落ちない(MCP の ft_scroll_to の1回目が使う。
@@ -640,6 +651,7 @@ public final class StepExecutor {
                 tunables: RunTunables,
                 uiFramework: AppUIFramework? = nil,
                 containerInference: Bool = true,
+                responseMeasurement: Bool = false,
                 defersPartialSheetRecovery: Bool = false,
                 commandTimeoutSeconds: TimeInterval? = nil) {
         self.releasesScrollTouch = releasesScrollTouch
@@ -647,6 +659,7 @@ public final class StepExecutor {
         self.tunables = tunables
         self.uiFramework = uiFramework
         self.containerInference = containerInference
+        self.responseMeasurement = responseMeasurement
         self.defersPartialSheetRecovery = defersPartialSheetRecovery
         self.commandTimeoutMs = commandTimeoutSeconds.map { Int($0 * 1000) }
         self.driver = driver
@@ -721,8 +734,28 @@ public final class StepExecutor {
         systemAlertProbeFailure = nil
         do {
             if let action = step.action {
-                let outcome = try await executeAction(action, step: step,
+                // 計測の prepare / collect は phase の外(actionMs / waitMs に入れない)。durationMs には入る
+                // (ステップの壁時計の所要のままにする)。失敗してもステップの結果は変えない
+                let measuring = responseMeasurement && step.isScreenMovingOperation
+                var prepared: ResponsePrepareResult?
+                if measuring {
+                    prepared = try? await driver.prepareResponseMeasurement(
+                        quietMs: tunables.responseQuietMs, timeoutMs: tunables.responseQuietTimeoutMs)
+                }
+                let outcome: StepOutcome
+                do {
+                    outcome = try await executeAction(action, step: step,
                                                       fingerprint: fingerprint, phase: &phase)
+                } catch {
+                    // 投げた経路でもブリッジの記録(armed)を残さない。結果は捨てる
+                    if measuring { _ = try? await driver.collectResponseMeasurement() }
+                    throw error
+                }
+                var response: ResponseMeasurementRecord?
+                if measuring {
+                    let collected = try? await driver.collectResponseMeasurement()
+                    response = ResponseMeasurementRecord.make(prepare: prepared, collect: collected)
+                }
                 // 失敗したなら、登録の無いシステムアラートが前面に無いかを1回だけ聞いて文言に添える
                 let status = await annotatedWithSystemAlert(outcome.status, phase: &phase)
                 noteHoldAlreadyReleased(onFailureOf: step, status: status)
@@ -746,7 +779,8 @@ public final class StepExecutor {
                                    failureKind: failureKind(for: outcome.status),
                                    evidenceImage: Self.isSuccess(status) ? nil : classifierScreenshotThisStep,
                                    imageMatches: Self.isSuccess(outcome.status) ? imageMatchesThisStep : nil,
-                                   ambiguousMatchCount: ambiguousMatchCountThisStep)
+                                   ambiguousMatchCount: ambiguousMatchCountThisStep,
+                                   response: response)
             }
             if let assert = step.assert {
                 var status = try await executeAssert(assert, step: step, phase: &phase)

@@ -183,6 +183,10 @@ export const panelsStrings = {
     ja: "アニメーションを有効にする(既定は無効。有効にすると整定待ちが伸び、テストが不安定になることがあります)",
     en: "Keep app animations (off by default; keeping them lengthens settling waits and can make tests unstable)",
   },
+  "panels.runProfile.responseMeasurementLabel": {
+    ja: "レスポンス計測モード(実験的。Android 実機 1 台のみ。アニメーションを残し、FM・OCR の可視性検証と録画を止めます)",
+    en: "Response measurement mode (experimental; one Android physical device only; keeps animations and turns off FM/OCR visibility checks and recording)",
+  },
   "panels.runProfile.containerInferenceLabel": {
     ja: "タップ/スクロールの領域推測による補正",
     en: "Container-inference corrections for taps/scrolls",

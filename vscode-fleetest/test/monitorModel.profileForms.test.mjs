@@ -46,6 +46,7 @@ const VALID_RUN_PROFILE_SAVE = {
     iosPreActionPing: true,
     homeOnStart: true,
     enableAnimations: false,
+    responseMeasurement: false,
     reportDir: "reports",
     updateWebView: true,
     playProtectBypass: true,
@@ -105,6 +106,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields22�
         iosPreActionPing: false,
         homeOnStart: true,
         enableAnimations: true,
+        responseMeasurement: false,
         reportDir: "",
         updateWebView: true,
         playProtectBypass: false,
@@ -643,6 +645,7 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
     homeOnStart: true,
     playProtectBypass: false,
     enableAnimations: true,
+    responseMeasurement: false,
     reportDir: "reports",
     updateWebView: true,
     wipeDataOnBloat: false,
@@ -672,6 +675,7 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
     homeOnStart: true,
     playProtectBypass: false,
     enableAnimations: true,
+    responseMeasurement: false,
     reportDir: "reports",
     updateWebView: true,
     wipeDataOnBloat: false,
@@ -703,6 +707,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/reco
     homeOnStart: true,
     playProtectBypass: true,
     enableAnimations: false,
+    responseMeasurement: false,
     reportDir: "",
     updateWebView: true,
     wipeDataOnBloat: true,
@@ -754,6 +759,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     homeOnStart: true,
     playProtectBypass: true,
     enableAnimations: false,
+    responseMeasurement: false,
     reportDir: "",
     updateWebView: true,
     wipeDataOnBloat: true,
@@ -1043,6 +1049,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   iosPreActionPing: true,
   homeOnStart: true,
   enableAnimations: false,
+  responseMeasurement: false,
   reportDir: "reports",
   updateWebView: true,
   wipeDataOnBloat: true,
@@ -1111,7 +1118,7 @@ test("updateRunProfileInObject: remoteControl.workspace は空文字でセクシ
 });
 
 test("updateRunProfileInObject: recordFailuresOnly/recordFullResolution/enableAnimations は true のときのみ書き込み、false なら既存キーごと削除する", () => {
-  for (const key of ["recordFailuresOnly", "recordFullResolution", "enableAnimations"]) {
+  for (const key of ["recordFailuresOnly", "recordFullResolution", "enableAnimations", "responseMeasurement"]) {
     const enabled = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, [key]: true });
     assert.equal(enabled.ok, true);
     assert.equal(enabled.object[key], true, `${key}: true で書き込まれるべき`);

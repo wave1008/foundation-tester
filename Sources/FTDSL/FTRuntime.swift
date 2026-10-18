@@ -473,6 +473,8 @@ public final class FTDriveCore {
                 fmTextVisibilityCheckEnabled: Bool = true, screenLooksLikeEnabled: Bool = true,
                 // 容器の推測に依存する補正の既定(実行プロファイル由来。**FM とは無関係**)
                 containerInference: Bool = true,
+                // レスポンス計測モード(`--response-measurement`)。StepExecutor へ渡すだけ
+                responseMeasurement: Bool = false,
                 // occlusion guard 前段の Vision OCR 事前判定(`ocrTextVisibilityCheck` の実効値。
                 // `fm` の配下ではない)。false のときは FT_OCCLUSION_OCR を読まず常に .off ——
                 // プロファイルの明示 off が環境変数に勝つ
@@ -525,6 +527,7 @@ public final class FTDriveCore {
                                      tunables: tunables,
                                      uiFramework: uiFramework,
                                      containerInference: containerInference,
+                                     responseMeasurement: responseMeasurement,
                                      commandTimeoutSeconds: tunables.commandTimeout)
         self.scenarioID = scenarioID
         self.scenarioTitle = scenarioTitle
@@ -941,6 +944,7 @@ public final class FTDriveCore {
                    pacingMs: pacingMs, at: recordedAt,
                    notes: outcome?.notes ?? [], guarded: outcome?.guardEntered ?? false,
                    command: command, failureKind: failureKind,
+                   response: outcome?.response,
                    // 画像の判定(分類器・existImage)・リンク文字の OCR で落ちたときだけ入る(StepOutcome.evidenceImage)。
                    // ラベルはファイル名に入って 24 文字で切られる(docs/design.md の該当節)
                    screenshotData: outcome?.evidenceImage,
@@ -1605,6 +1609,7 @@ public final class FTDriveCore {
                     ocrMs: Int? = nil, pacingMs: Int? = nil, at: String? = nil,
                     notes: [StepNote] = [], guarded: Bool = false,
                     command: String? = nil, failureKind: StepFailureKind? = nil,
+                    response: ResponseMeasurementRecord? = nil,
                     screenshotData: Data? = nil, screenshotLabel: String? = nil) {
         // `account()` が返した値を、レコード(レポート)と NDJSON の両方へ入る前の1箇所で伏せる。
         // 説明・失敗の detail に引数の値が入る(`type(account(...))`)ため。全コマンドがここを通る
@@ -1654,6 +1659,7 @@ public final class FTDriveCore {
         // 大多数を占める「ガードに入らなかった」を毎行書くと帯域だけ食う
         event.guarded = guarded ? true : nil
         event.command = command
+        event.response = response
         // 素性は失敗にだけ付ける(呼び出し側が誤って渡しても落とす)
         if case .failed = status { event.failureKind = failureKind?.rawValue }
         emit(event)

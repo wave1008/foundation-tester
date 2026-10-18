@@ -525,6 +525,10 @@ public struct TimelineStepRecord: Codable, Sendable {
     /// (description の文言一致で数えない。StepNote の doc 参照)。注記が無いステップと、
     /// notes を持たない旧レコードはどちらも nil
     public var notes: [String]?
+    /// DSL のコマンド名(ScenarioEvent.command)。分からないステップは nil
+    public var command: String?
+    /// 応答時間計測(ScenarioEvent.response)。計測モードで画面を動かす操作のステップだけ
+    public var response: ResponseMeasurementRecord?
 
     public init(scene: Int? = nil, sceneTitle: String? = nil, section: String? = nil,
                 index: Int, description: String,
@@ -532,7 +536,10 @@ public struct TimelineStepRecord: Codable, Sendable {
                 snapshotMs: Int? = nil, actionMs: Int? = nil, waitMs: Int? = nil,
                 scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, ioBlockedMs: Int? = nil,
                 stallMs: Int? = nil, poolStallMs: Int? = nil, guardMs: Int? = nil,
-                ocrMs: Int? = nil, pacingMs: Int? = nil, notes: [String]? = nil) {
+                ocrMs: Int? = nil, pacingMs: Int? = nil, notes: [String]? = nil,
+                command: String? = nil, response: ResponseMeasurementRecord? = nil) {
+        self.command = command
+        self.response = response
         self.scene = scene
         self.sceneTitle = sceneTitle
         self.section = section
@@ -833,7 +840,8 @@ public struct ScenarioRecordBuilder {
             ioBlockedMs: event.ioBlockedMs,
             stallMs: event.stallMs, poolStallMs: event.poolStallMs, guardMs: event.guardMs, ocrMs: event.ocrMs,
             pacingMs: event.pacingMs,
-            notes: event.notes?.isEmpty == true ? nil : event.notes))
+            notes: event.notes?.isEmpty == true ? nil : event.notes,
+            command: event.command, response: event.response))
         if let pacingMs = event.pacingMs {
             stepCounts.paced = (stepCounts.paced ?? 0) + 1
             stepCounts.pacedMs = (stepCounts.pacedMs ?? 0) + pacingMs

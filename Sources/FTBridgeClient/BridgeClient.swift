@@ -1196,6 +1196,17 @@ public final class BridgeClient: AppDriver, Sendable {
         let _: OKResponse = try await post("/settle", body: OKResponse(), timeout: interactionTimeout)
     }
 
+    /// Android v102〜 のみ。応答は描画が止まるまで(最長 timeoutMs)返らないので、HTTP の待ちは timeoutMs から導く
+    /// (短いと待っている最中に bridgeUnreachable を誤報する)。余白は shell 往復ぶん(interactionTimeout)
+    public func responsePrepare(quietMs: Int, timeoutMs: Int) async throws -> ResponsePrepareResult {
+        try await post("/responsePrepare", body: ResponsePrepareRequest(quietMs: quietMs, timeoutMs: timeoutMs),
+                       timeout: Double(timeoutMs) / 1000 + interactionTimeout)
+    }
+
+    public func responseCollect() async throws -> ResponseCollectResult {
+        try await post("/responseCollect", body: OKResponse(), timeout: interactionTimeout)
+    }
+
     public func terminate() async throws {
         let _: OKResponse = try await post("/terminate", body: OKResponse(),
                                            timeout: sessionTimeout)

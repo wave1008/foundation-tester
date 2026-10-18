@@ -273,7 +273,7 @@ struct RunScenarios: AsyncParsableCommand {
                 + "<value> matches that key's type (e.g. --set fmTextVisibilityCheck=false "
                 + "--set reportDir=/tmp/out). Keys that need a run profile's device list/supply "
                 + "pipeline (iosInappEngine, updateWebView, wipeDataOnBloat, recoverCpuFallbackToGpu, "
-                + "app, machine, locale, wipeDataThresholdGB) need --profile. The run profile keys "
+                + "app, machine, locale, wipeDataThresholdGB, responseMeasurement) need --profile. The run profile keys "
                 + "\"app\"/\"machine\" (an app/machine *profile* name) are unrelated to this command's "
                 + "own --app-id/--runner flags. Cannot combine reportDir with --report-dir. "
                 + "devices/remoteControl are lists/objects and cannot be set this way; edit the run "
@@ -554,6 +554,9 @@ struct RunScenarios: AsyncParsableCommand {
         let resolvedAll = try ProfileResolver.resolve(
             project: testProject, runName: profile,
             workspaceOverride: workspace, overrides: try RunProfileSetOverride.parse(setOverrides))
+        if broadcast, resolvedAll.responseMeasurement {
+            throw ValidationError(ResponseMeasurementPolicy.combinationRejection(flag: "--broadcast"))
+        }
         // 明示 --runner local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
         // local 枠だけに絞る(理由は run() 本編の同じ判定の宣言参照)
         var effectiveDeviceFilter = devices
@@ -1130,6 +1133,19 @@ struct RunScenarios: AsyncParsableCommand {
                     skipped, subject: "fleet \"\(fleetName)\" runs on"))
             }
             FleetRunner.log(MachineEnablement.skippedNotice(skipped))
+        }
+        // 計測モードのプロファイルは --fleet / --split に載せない(--set でもプロファイル側の指定でも)。
+        // 読めないプロファイルは各エントリの run が自分の言葉で言うのでここでは飛ばす
+        let setValues = try RunProfileSetOverride.parse(setOverrides)
+        let flag = split ? "--split" : "--fleet"
+        if ResponseMeasurementPolicy.isRequested(by: setValues) {
+            throw ValidationError(ResponseMeasurementPolicy.combinationRejection(flag: flag))
+        }
+        for entry in enabledDoc.runs {
+            if let resolved = try? ProfileResolver.resolve(project: testProject, runName: entry.profile),
+               resolved.responseMeasurement {
+                throw ValidationError(ResponseMeasurementPolicy.combinationRejection(flag: flag))
+            }
         }
         let exitCode = try await FleetRunner.run(
             project: testProject, fleetName: fleetName, fleet: enabledDoc,

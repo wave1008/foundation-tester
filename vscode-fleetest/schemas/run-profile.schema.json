@@ -167,6 +167,11 @@
       "description": "テスト対象アプリのアニメーションを残す(既定 false = 実行開始時にデバイス側のアニメーションを無効化する)。true にすると整定待ちが伸び、Android ではスクリーンショットが遷移途中の絵を掴むことがある。設定は run 開始時に毎回デバイスへ同期される(Android 実機はグローバル設定が永続的に書き換わる)。",
       "default": false
     },
+    "responseMeasurement": {
+      "type": "boolean",
+      "description": "レスポンス計測モード(実験的。既定 false)。Android 実機 1 台だけが対象で、有効なデバイスが 1 台・kind=physical・Android でなければエラー。アニメーションを残し(enableAnimations を true に固定)、fmTextVisibilityCheck・ocrTextVisibilityCheck・screenLooksLike・record・ホスト負荷による減速を止める(これらを true に明示するとエラー)。run の間はモニターを止める。--broadcast・--fleet・--split とは併用できない。",
+      "default": false
+    },
     "record": {
       "type": "boolean",
       "description": "各デバイスの画面録画を有効化する(既定 true)。録画は results/runs/<YYYY-MM>/<runID>/recordings/ 配下に保存され、モニターパネルの「録画」タブから再生できる。",
