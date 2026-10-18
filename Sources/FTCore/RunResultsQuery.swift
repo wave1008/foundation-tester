@@ -22,6 +22,7 @@ public enum RunResultsQuery {
 
     /// RunRecorder.recordSkipped が書く合成レコード(実行対象外の埋め合わせ)の判定。
     /// duration 集計(平均・中央値・trend バー)からは除外するが、成功率・失敗率には失敗として含める
+    /// (インフラ都合の noWorker。中断と対象外は `isOutsideSuccessRate` で成功率から外す)
     public static func isSkippedSynthetic(_ record: ScenarioRunRecord) -> Bool {
         record.steps.total == 1 && record.steps.skipped == 1 && record.durationMs == 0
     }
@@ -42,6 +43,13 @@ public enum RunResultsQuery {
     /// insights・flaky はシナリオの履歴からこれを外す
     public static func isInterruptedRecord(_ record: ScenarioRunRecord) -> Bool {
         isInterruptedBeforeStart(record) || record.interrupted == true
+    }
+
+    /// 成功率(シナリオ別・デバイス別)の標本に入れない記録: 対象外の宣言と、中断で落ちた/始まらなかった記録。
+    /// どちらもシナリオの成否を確かめていない = 成功にも失敗にも数えない(中断を失敗に数えると、止めただけの run が
+    /// 成功率を下げる。クイックスタートの通し検証で、緑のシナリオが 66.7% と出た)。run の失敗数(exit code)は別で、数えたまま
+    public static func isOutsideSuccessRate(_ record: ScenarioRunRecord) -> Bool {
+        isDeclaredNotApplicable(record) || isInterruptedRecord(record)
     }
 
     // ISO8601DateFormatter は Apple が thread-safe と明記(生成後に設定を変えないこと)
@@ -107,7 +115,7 @@ public enum RunResultsQuery {
         _ records: [ScenarioRunRecord], recentRuns: Int
     ) -> [ScenarioSummaryRow] {
         let window = max(1, recentRuns)
-        let grouped = Dictionary(grouping: records.filter { !isDeclaredNotApplicable($0) },
+        let grouped = Dictionary(grouping: records.filter { !isOutsideSuccessRate($0) },
                                  by: \.scenarioID)
         let rows = grouped.map { scenarioID, allRecords -> ScenarioSummaryRow in
             let group = Array(
@@ -216,7 +224,7 @@ public enum RunResultsQuery {
     private static let unknownWorkerLabel = "(unknown worker)"
 
     public static func deviceSummary(_ allRecords: [ScenarioRunRecord]) -> DevicesReport {
-        let records = allRecords.filter { !isDeclaredNotApplicable($0) }
+        let records = allRecords.filter { !isOutsideSuccessRate($0) }
         func aggregate<Key: Hashable>(
             _ records: [ScenarioRunRecord], key: (ScenarioRunRecord) -> Key
         ) -> [(Key, Int, Double, Double?)] {

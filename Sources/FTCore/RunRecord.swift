@@ -598,8 +598,8 @@ public enum ScenarioSkipKind: String, Codable, Sendable {
     /// 担当ワーカー不在・全滅・振り直し上限などのインフラ都合。失敗として数える
     case noWorker
     /// run が中断(SIGINT/SIGTERM)されて**始まらなかった**。run の失敗数には数えるが、シナリオの
-    /// 履歴(insights の連続失敗・新規失敗・flaky)には入れない —— 利用者が止めただけで、シナリオの
-    /// 性質ではない(入れると中断のたびに「回帰の疑い」が並ぶ)
+    /// 履歴(insights の連続失敗・新規失敗・flaky)と成功率(`RunResultsQuery.isOutsideSuccessRate`)には入れない
+    /// —— 利用者が止めただけで、シナリオの性質ではない(入れると中断のたびに「回帰の疑い」が並ぶ)
     case interrupted
 
     /// `fleetest run --failed` の「直近失敗」に数えるか(**唯一の定義**。`RunRecorder.recordSkipped` と

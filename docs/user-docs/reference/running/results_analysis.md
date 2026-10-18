@@ -26,7 +26,7 @@ suffix, so results from different machines/branches merge without conflicts.
 | Command | Description |
 |---|---|
 | `fleetest results list [--since <period>] [--limit <n>]` | List runs, newest first |
-| `fleetest results summary [--scenario <id>]` | Aggregate run count, pass rate and duration per scenario (lowest pass rate first) |
+| `fleetest results summary [--scenario <id>]` | Aggregate run count, pass rate and duration per scenario (lowest pass rate first). Runs you interrupted (and scenarios that never started because of it) are left out of the pass rate |
 | `fleetest results flaky [--min-runs <n>]` | Scenarios that both pass and fail, most flaky first |
 | `fleetest results trend --scenario <id>` | One scenario's run history in chronological order |
 | `fleetest results devices` | Run count and pass rate per worker (device) and per platform |

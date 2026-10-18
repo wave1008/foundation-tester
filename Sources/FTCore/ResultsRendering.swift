@@ -51,7 +51,9 @@ public enum ResultsRendering {
         let tableRows = rows.map { meta -> [String] in
             let counts: String
             if let total = meta.total, let passed = meta.passed, let failed = meta.failed {
-                counts = "\(passed)/\(failed)/\(total)"
+                // 中断・打ち切りの run の失敗数は「確かめていない」本数を含む(exit code のため)ので、数字だけで読ませない
+                let note = meta.interrupted == true ? " (interrupted)" : meta.abortReason != nil ? " (aborted)" : ""
+                counts = "\(passed)/\(failed)/\(total)\(note)"
             } else {
                 counts = "(incomplete)"
             }

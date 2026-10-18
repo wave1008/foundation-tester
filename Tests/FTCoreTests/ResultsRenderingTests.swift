@@ -108,6 +108,40 @@ final class ResultsRenderingTests: XCTestCase {
         XCTAssertEqual(ResultsRendering.summary([]), "No matching scenarios")
     }
 
+    /// 中断で始まらなかった・中断で落ちた記録は成功率の標本に入れない(シナリオ別もデバイス別も)。
+    /// インフラ都合の noWorker は失敗のまま数える。最後の結果も、確かめた回(中断でない回)で出す
+    func testInterruptedRecordsStayOutOfSuccessRates() {
+        var notStarted = record("Login.s1", passed: false, durationMs: 0, startedAt: "2026-09-28T00:00:00Z")
+        notStarted.skipKind = .interrupted
+        var killed = record("Login.s1", passed: false, durationMs: 50, startedAt: "2026-09-29T00:00:00Z")
+        killed.interrupted = true
+        var noWorker = record("Login.s2", passed: false, durationMs: 0, startedAt: "2026-09-28T00:00:00Z")
+        noWorker.skipKind = .noWorker
+        let records = [record("Login.s1", passed: true, durationMs: 100, startedAt: "2026-09-27T00:00:00Z"),
+                       notStarted, killed,
+                       record("Login.s2", passed: true, durationMs: 100, startedAt: "2026-09-27T00:00:00Z"), noWorker]
+        let rows = Dictionary(uniqueKeysWithValues: RunResultsQuery.scenarioSummary(records, recentRuns: .max)
+            .map { ($0.scenarioID, $0) })
+        XCTAssertEqual(rows["Login.s1"]?.runs, 1)
+        XCTAssertEqual(rows["Login.s1"]?.successRate, 100, "止めただけの run で成功率を下げない")
+        XCTAssertEqual(rows["Login.s1"]?.lastPassed, true)
+        XCTAssertEqual(rows["Login.s2"]?.successRate, 50, "noWorker は失敗として数えたまま")
+        let devices = RunResultsQuery.deviceSummary(records)
+        XCTAssertEqual(devices.byPlatform.first?.runs, 3)
+    }
+
+    func testListMarksInterruptedAndAbortedRuns() {
+        var interrupted = RunMetaRecord(runID: "r3", project: "Shop", profile: "smoke", host: "m1", trigger: "cli",
+                                        startedAt: started, total: 3, passed: 0, failed: 3)
+        interrupted.interrupted = true
+        var aborted = RunMetaRecord(runID: "r4", project: "Shop", profile: "smoke", host: "m1", trigger: "cli",
+                                    startedAt: started, total: 3, passed: 0, failed: 3)
+        aborted.abortReason = "services failed to start"
+        let out = lines(ResultsRendering.list([interrupted, aborted]))
+        XCTAssertEqual(cells(out[2]).last, "0/3/3 (interrupted)")
+        XCTAssertEqual(cells(out[3]).last, "0/3/3 (aborted)")
+    }
+
     // MARK: - flaky
 
     func testFlakyRendersRecentResultsAndNamesTheOptionInTheEmptyMessage() {
