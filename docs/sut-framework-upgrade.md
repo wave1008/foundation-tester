@@ -114,13 +114,38 @@ for u in org/jetbrains/compose/compose-gradle-plugin org/jetbrains/kotlin/kotlin
    reanimated だけ 4.7.0 に戻すと3本とも緑 → **E2EYAppRN は `react-native-reanimated` を `4.7.0` ちょうどに固定**
    (`^` に戻すと解き直しでまた 4.7.1 になる)。新しい reanimated / collapsible-tab-view が出たら外せるか試す
 
-## 5. Compose Multiplatform(2026-10-13 時点で未実施)
+## 5. Compose Multiplatform
 
 - `gradle/libs.versions.toml` の `composeMultiplatform` と `kotlin` を3系統とも書き換える(作り直しは監視が拾う)
-- **AGP はメジャーを跨ぐ更新(8 → 9)を同時にしない**のが案(9 はビルドの書き方に非互換がある。RN のひな形も
-  `android.builtInKotlin=false` / `android.newDsl=false` で AGP 9 の振る舞いを止めている)。CMP の新版が AGP 9 を
-  必須にしているかを着手時に確かめる
 - Kotlin・Compose の互換表(Compose Multiplatform のリリースノート)で Kotlin の版の組み合わせを確かめる
+- 2026-10-13 に 1.12.1・Kotlin 2.4.21・AGP 9.4.1・Gradle 9.8.1 へ上げた(3ecc2e88)
+
+### AGP 9 と KMP のモジュール
+
+- **AGP 9 は `org.jetbrains.kotlin.multiplatform` と `com.android.application` / `com.android.library` を同じモジュールに
+  置けない**(プラグインの適用で `IllegalStateException`。`… is not compatible with the 'org.jetbrains.kotlin.multiplatform' plugin since AGP 9.0`)
+- 対処は2つ。**CMP の SUT 3系統は回避の設定**(`gradle.properties` の `android.builtInKotlin=false` / `android.newDsl=false`。
+  RN のひな形も同じ)。**この2つは AGP 10.0 で削除される**(ビルドのたびに廃止の警告が出る)ので、AGP 10 へ上げるときは
+  下の分割が要る
+- **分割の実例はサンプルアプリ sut-ec-mobile**(887ec92): Android アプリ本体(Activity・Application・マニフェスト・テーマ)を
+  `:androidApp`(`com.android.application`)へ出し、`:composeApp` / `:shared` は `com.android.kotlin.multiplatform.library`。
+  iOS の framework は `:composeApp` に残るので Xcode 側は変わらない。罠2つ:
+  - **KMP の Android ライブラリは `BuildConfig` を持たない** → `BuildConfig.DEBUG` はアプリ側が起動時に渡す
+  - **apk の場所とタスク名が変わる**(`:androidApp:assembleDebug` → `androidApp/build/outputs/apk/debug/androidApp-debug.apk`)。
+    古い `composeApp-debug.apk` を指す実行プロファイルは、ビルドしても更新されない古いアプリを入れ続ける
+
+### JDK の版
+
+- **Gradle が動かせる JDK には上限がある**: 8.11 は 23 まで・8.14 は 24 まで(Gradle の対応表)。9.8.1 は sut-ec-mobile で
+  JDK 27 でもビルドが通った(Android Gradle Plugin 9.4.1)。上限を超えた JDK では `./gradlew` が始まらない
+- **`JAVA_HOME` が無いと macOS の既定の JDK**(`/usr/libexec/java_home`。`/Library/Java/JavaVirtualMachines/` に登録されたうちの最新)
+  **が使われる**。Homebrew の `openjdk` は常に最新版(2026-10 時点で 27)で、この Mac では登録のリンクがそれを指しているので、
+  `brew upgrade openjdk` で既定が動く。Android Studio 同梱の Java も新しい(2026-10 時点で 25)
+- **E2E\*Android の SUT 3系統は Gradle 8.11.1(AGP 8.9.1)のまま** = `JAVA_HOME` 無しで動かすと、既定の JDK(24 以降)では
+  ビルドできない。手元のシェルは `JAVA_HOME` が Corretto 17 なので、e2e.sh 等から作り直すぶんには困らない。
+  上げるなら Gradle 9.x へ(CMP の SUT と揃う)
+- **sut-ec-mobile は JDK 25(LTS)固定**(887ec92。出力の向き先も Java 25・サーバーのイメージは `eclipse-temurin:25-jre-alpine`)。
+  クイックスタートの指示文は「無ければ Homebrew で JDK 25」= `openjdk@25`(素の `openjdk` は 25 ではない)
 
 ## 6. 実行中に起きたこと
 
