@@ -660,6 +660,8 @@ XCTest の `measure(metrics:)`(**基準値をデバイスごとに持ち**、前
    - **iOS の最初のフレームはアプリに限らない**: displayed-surfaces の行の大半はプロセスを持たない画面全体の表示更新(E2E-RN の run で
      252 行中 247 行)なので、注入の後に最初に画面が更新された時刻になる(ステータスバー等の更新が先に来ればそれを数える。2 秒待った回の
      13 ms はこの疑い)
+   - **台数の検査は `--device` / `--runner local` で絞った後**(run / api run の入口 = ロックの前・機械へ配る前。機械をまたいで数える)。
+     resolve は設定(繰り返しの範囲・衝突)だけを見る。実機が2台あるプロファイルでも1台に絞れば測れる
    - **自前描画の SUT でも確認**(CMP・Flutter・RN × Pixel 4a・iPhone SE3・同じシナリオを各5回): 全組で全ステップに値が出て
      `busyBeforeAction` は0。中央値は Android 70〜374 ms・iOS 128〜260 ms、p90 は中央値から概ね 10% 以内(外れは CMP Android の
      `#tab_controls` 209 → 379 ms の1件)。t2 は遷移の後 Android 118〜427 ms・iOS 652〜776 ms、次の対象がタブバーなら 5〜8 ms

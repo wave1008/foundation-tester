@@ -48,7 +48,12 @@
 fleetest run --profile <name> --set responseMeasurement=true --set responseRepeat=3 --scenario <シナリオID>
 ```
 
-- **有効なデバイスはちょうど1台で、Android か iOS の実機(`kind: physical`)** でなければなりません。条件を満たさないと実行を断ります。
+- **使うデバイスはちょうど1台で、Android か iOS の実機(`kind: physical`)** でなければなりません。条件を満たさないと実行を断ります。
+  デバイスが複数あるプロファイルでは、`--device <名前>` で1台に絞ります(この Mac につないだデバイスなら `--runner local` も付けます)。
+
+  ```sh
+  fleetest run --profile <名前> --runner local --device "Pixel 8" --set responseMeasurement=true --scenario <シナリオID>
+  ```
 - iOS の実機では、**最初のフレームまで** を Xcode の Instruments(`xctrace`)で記録して、run の終わりに結果へ書き足します。
   Xcode が入っていて、その端末を Instruments で記録できる状態が必要です。記録できなかったときは、その旨を1行出して値を空のままにします。
 - `responseRepeat`(既定 `5`、`1`〜`50`)で、各シナリオを続けて何回回すかを決めます。回数が多いほど、中央値・p90 が安定します。

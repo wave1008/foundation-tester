@@ -1212,7 +1212,8 @@ public enum ProfileError: Error, LocalizedError {
                 + " \(ignored) \(other) device(s) are ignored)"
         case .responseMeasurementDeviceCount(let run, let count):
             return "responseMeasurement in run profile \(run) needs exactly one enabled device (found \(count));"
-                + " set \"enabled\": false on the others"
+                + " narrow it with --device <name> (add --runner local for a device on this Mac),"
+                + " or set \"enabled\": false on the others"
         case .responseMeasurementNotPhysical(let run, let device):
             return "responseMeasurement in run profile \(run) needs a physical device, but \"\(device)\" is not"
                 + " kind=physical (use a physical device, or turn responseMeasurement off)"
@@ -1440,8 +1441,8 @@ public enum ProfileResolver {
         }
 
         if runDoc.responseMeasurement == true {
-            let enabled = enabledEntries.map { ResolvedDevice(platform: $0.platform, spec: $0.spec) }
-            try ResponseMeasurementPolicy.validate(runDoc, devices: enabled, run: runName)
+            // デバイスの台数・種類は `--device` / `--runner local` で絞った後に入口で検査する(ResponseMeasurementPolicy の冒頭)
+            try ResponseMeasurementPolicy.validateSettings(runDoc, run: runName)
         } else {
             try ResponseMeasurementPolicy.validateRepeatScope(runDoc, run: runName)
         }

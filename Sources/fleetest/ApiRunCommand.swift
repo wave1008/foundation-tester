@@ -334,6 +334,10 @@ struct ApiRunCommand: AsyncParsableCommand {
                 "\(scope) matched no device in run profile \(profile)"
                 + " (available: \(resolvedAll.devices.map(\.name).joined(separator: ", ")))")
         }
+        // 計測は絞った後の台数で1台(機械をまたいで数える = 配る前。ResponseMeasurementPolicy の冒頭。run と同じ)
+        if full.responseMeasurement {
+            try ResponseMeasurementPolicy.validateDevices(full.devices, run: full.runName)
+        }
         return (resolvedAll, full)
     }
 

@@ -17,6 +17,19 @@ final class ResponseTraceWiringTests: XCTestCase {
     private static let repoRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 
+    /// 計測の台数は両方の入口で、`--device` / `--runner local` で絞った `full` に当てる(resolve は台数を見ない)。
+    /// 片方に無いと、その入口では2台の計測プロファイルがそのまま並行に走る
+    func testBothEntrancesCheckMeasurementDevicesAfterNarrowing() throws {
+        for path in ["Sources/fleetest/Fleetest.swift", "Sources/fleetest/ApiRunCommand.swift"] {
+            let lines = try Self.code(path)
+            let narrow = try XCTUnwrap(lines.firstIndex { $0.hasPrefix("let full = resolvedAll.filteringDevices(") },
+                                       "\(path): filteringDevices の行が無い")
+            let check = lines.firstIndex { $0.contains("ResponseMeasurementPolicy.validateDevices(full.devices") }
+            XCTAssertNotNil(check, "\(path): 絞った後の台数の検査が無い")
+            if let check { XCTAssertGreaterThan(check, narrow, "\(path): 検査は絞った後") }
+        }
+    }
+
     func testBothEntrancesStartFinishAndCleanUpTheTrace() throws {
         for path in Self.entrances {
             let lines = try Self.code(path)

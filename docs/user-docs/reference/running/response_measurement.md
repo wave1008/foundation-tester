@@ -50,8 +50,13 @@ To try it once without editing the profile, override it with `--set`.
 fleetest run --profile <name> --set responseMeasurement=true --set responseRepeat=3 --scenario <scenario ID>
 ```
 
-- The profile must have **exactly one enabled device, and it must be an Android or iOS physical device (`kind: physical`)**. Otherwise
-  the run is refused.
+- The run must use **exactly one enabled device, and it must be an Android or iOS physical device (`kind: physical`)**. Otherwise
+  the run is refused. In a profile with several devices, narrow it to one with `--device <name>` (add `--runner local` for a device
+  connected to this Mac):
+
+  ```sh
+  fleetest run --profile <name> --runner local --device "Pixel 8" --set responseMeasurement=true --scenario <scenario ID>
+  ```
 - `responseRepeat` (default `5`, `1` to `50`) sets how many times each scenario runs back to back. More repeats give a steadier
   median and p90. The result files are named `<id>`, `<id>~2`, `<id>~3`, …
 - To keep the conditions even, measurement mode does the following:

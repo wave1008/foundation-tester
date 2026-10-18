@@ -40,6 +40,35 @@ final class ProfileResolverTests: XCTestCase {
         """, to: project.runsDir, name: "all")
     }
 
+    /// 計測の台数は `--device` で絞った後に入口で数える(ResponseMeasurementPolicy の冒頭)。resolve は2台の計測プロファイルを断らず、
+    /// 1台に絞れば通り、絞らなければ入口の検査が断る。設定の衝突は resolve が断る
+    func testMeasurementDeviceCountIsCheckedAfterNarrowingNotAtResolve() throws {
+        try write("""
+        { "android": { "appName": "サンプルアプリ", "app": "com.example.sampleapp", "appPath": "builds/app-debug.apk" } }
+        """, to: project.appsDir, name: "sampleapp")
+        try write("""
+        { "app": "sampleapp", "responseMeasurement": true,
+          "devices": [
+            { "platform": "android", "machine": "local", "name": "実機A", "kind": "physical", "serial": "SA" },
+            { "platform": "android", "machine": "local", "name": "実機B", "kind": "physical", "serial": "SB" } ] }
+        """, to: project.runsDir, name: "measure")
+        let all = try ProfileResolver.resolve(project: project, runName: "measure")
+        XCTAssertEqual(all.devices.count, 2)
+        XCTAssertThrowsError(try ResponseMeasurementPolicy.validateDevices(all.devices, run: all.runName)) {
+            XCTAssertTrue($0.localizedDescription.contains("narrow it with --device"), $0.localizedDescription)
+        }
+        let one = all.filteringDevices(names: ["実機A"])
+        XCTAssertNoThrow(try ResponseMeasurementPolicy.validateDevices(one.devices, run: one.runName))
+
+        try write("""
+        { "app": "sampleapp", "responseMeasurement": true, "record": true,
+          "devices": [ { "platform": "android", "machine": "local", "name": "実機A", "kind": "physical", "serial": "SA" } ] }
+        """, to: project.runsDir, name: "conflict")
+        XCTAssertThrowsError(try ProfileResolver.resolve(project: project, runName: "conflict")) {
+            XCTAssertTrue($0.localizedDescription.contains("requires record to be false"), $0.localizedDescription)
+        }
+    }
+
     func testResolveMixedPlatforms() throws {
         try writeStandardFixture()
         let resolved = try ProfileResolver.resolve(

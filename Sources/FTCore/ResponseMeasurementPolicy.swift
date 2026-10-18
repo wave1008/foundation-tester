@@ -1,5 +1,7 @@
 // レスポンス計測モード(RunProfileDocument.responseMeasurement)の検査。純粋関数。
-// 呼び手は ProfileResolver.resolve の1箇所(`fleetest run --profile` と `fleetest api run --profile` が共有)。
+// 設定の検査(`validateSettings`)は ProfileResolver.resolve の1箇所(`fleetest run --profile` と `fleetest api run --profile` が共有)。
+// デバイスの検査(`validateDevices`)は `--device` / `--runner local` で絞った**後**の台数に当てる = run / api run の入口の2箇所
+// (ロックの前・機械へ配る前。マシン別のサブ実行の中だけで数えると、手元とリモートに1台ずつ配られて並行に測ってしまう)。
 // 強制値(アニメーション ON・FM/OCR/録画 OFF)は DeviceIndependentRunSettings.resolve が持つ。
 public enum ResponseMeasurementPolicy {
 
@@ -40,11 +42,14 @@ public enum ResponseMeasurementPolicy {
         }
     }
 
-    /// 有効なときだけ呼ぶ。`devices` は有効な(enabled)デバイスだけ
+    /// 有効なときだけ呼ぶ。`devices` は有効な(enabled)デバイスだけ。設定とデバイスの両方を検査する
     public static func validate(_ doc: RunProfileDocument, devices: [ResolvedDevice], run: String) throws {
-        if let value = doc.responseRepeat, !(minRepeat...maxRepeat).contains(value) {
-            throw ProfileError.responseRepeatOutOfRange(run: run, value: value, min: minRepeat, max: maxRepeat)
-        }
+        try validateSettings(doc, run: run)
+        try validateDevices(devices, run: run)
+    }
+
+    /// 計測の run が回すデバイスの検査。`devices` は絞った後の、有効なデバイスだけ
+    public static func validateDevices(_ devices: [ResolvedDevice], run: String) throws {
         guard devices.count == 1, let device = devices.first else {
             throw ProfileError.responseMeasurementDeviceCount(run: run, count: devices.count)
         }
@@ -57,6 +62,13 @@ public enum ResponseMeasurementPolicy {
         guard device.platform == "android" || device.platform == "ios" else {
             throw ProfileError.responseMeasurementUnsupportedPlatform(
                 run: run, device: device.name, platform: device.platform)
+        }
+    }
+
+    /// 計測モードの設定の検査(デバイスに依らない)。有効なときだけ呼ぶ
+    public static func validateSettings(_ doc: RunProfileDocument, run: String) throws {
+        if let value = doc.responseRepeat, !(minRepeat...maxRepeat).contains(value) {
+            throw ProfileError.responseRepeatOutOfRange(run: run, value: value, min: minRepeat, max: maxRepeat)
         }
         if doc.enableAnimations == false {
             throw ProfileError.responseMeasurementConflict(run: run, key: "enableAnimations", required: "true")
