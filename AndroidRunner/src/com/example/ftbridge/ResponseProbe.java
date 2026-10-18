@@ -3,6 +3,7 @@
 package com.example.ftbridge;
 
 import android.app.UiAutomation;
+import android.content.Context;
 import android.os.SystemClock;
 
 import java.util.ArrayList;
@@ -32,6 +33,8 @@ final class ResponseProbe {
         final Long downTimeMs;
         final Long firstFrameDelayMs;
         final String reason;
+        Long lastDownTimeMs = null;
+        int injections = 0;
 
         Collected(Long downTimeMs, Long firstFrameDelayMs, String reason) {
             this.downTimeMs = downTimeMs;
@@ -50,7 +53,9 @@ final class ResponseProbe {
      * 描画が止まるまで待ってから、最初の DOWN の記録を構える。quiet でなくても(タイムアウトでも noSessionApp でも)必ず構える
      * —— 構えないと collect が前の操作の記録を拾う
      */
-    static Prepared prepare(UiAutomation ua, String pkg, long quietMs, long timeoutMs) {
+    static Prepared prepare(UiAutomation ua, Context context, String pkg, long quietMs, long timeoutMs, long observeMs) {
+        // 実行中の観測の最後の DOWN・回数は armFirstDown で消えるので、その前に観測へ写させる
+        ResponseObserver.prepare(context, observeMs);
         try {
             if (pkg == null) return new Prepared(false, 0, NO_SESSION_APP);
             long start = SystemClock.uptimeMillis();
@@ -71,6 +76,16 @@ final class ResponseProbe {
     }
 
     static Collected collect(UiAutomation ua, String pkg) {
+        Collected c = collectFrames(ua, pkg);
+        long[] stats = InputInjector.peekDownStats();
+        if (stats[0] >= 0) {
+            c.lastDownTimeMs = stats[1];
+            c.injections = (int) stats[2];
+        }
+        return c;
+    }
+
+    private static Collected collectFrames(UiAutomation ua, String pkg) {
         long downTime = InputInjector.takeFirstDown();
         if (downTime < 0) return new Collected(null, null, "noInjectedInput");
         if (pkg == null) return new Collected(downTime, null, NO_SESSION_APP);

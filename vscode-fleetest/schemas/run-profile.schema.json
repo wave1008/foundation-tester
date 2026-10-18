@@ -174,8 +174,8 @@
     },
     "responseRepeat": {
       "type": "integer",
-      "description": "レスポンス計測モードで各シナリオを続けて回す回数(既定 5)。2 以上 50 以下。responseMeasurement が true のときだけ指定できる(無しで指定するとエラー)。1 回目は次の操作の対象を覚える回で、反応時間を測らない。",
-      "minimum": 2,
+      "description": "レスポンス計測モードで各シナリオを続けて回す回数(既定 5)。1 以上 50 以下。responseMeasurement が true のときだけ指定できる(無しで指定するとエラー)。",
+      "minimum": 1,
       "maximum": 50,
       "default": 5
     },

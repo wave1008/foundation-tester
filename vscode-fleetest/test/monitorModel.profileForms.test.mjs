@@ -1540,7 +1540,7 @@ test("parseRunProfileForForm: responseRepeat は number なら String() 化、st
   assert.equal(parseRunProfileForForm({ responseRepeat: true }).responseRepeat, "");
 });
 
-test("updateRunProfileInObject: responseRepeat は計測モードのときだけ書き、2〜50 の整数以外はエラー", () => {
+test("updateRunProfileInObject: responseRepeat は計測モードのときだけ書き、1〜50 の整数以外はエラー", () => {
   const measuring = { ...BASE_RUN_PROFILE_FIELDS, responseMeasurement: true };
   const added = updateRunProfileInObject({}, { ...measuring, responseRepeat: "7" });
   assert.equal(added.ok, true);
@@ -1554,10 +1554,10 @@ test("updateRunProfileInObject: responseRepeat は計測モードのときだけ
   const off = updateRunProfileInObject({ responseRepeat: 3 }, { ...BASE_RUN_PROFILE_FIELDS, responseRepeat: "4" });
   assert.equal("responseRepeat" in off.object, false);
 
-  for (const valid of ["2", "50"]) {
+  for (const valid of ["1", "50"]) {
     assert.equal(updateRunProfileInObject({}, { ...measuring, responseRepeat: valid }).ok, true, valid);
   }
-  for (const invalid of ["1", "0", "51", "-2", "2.5", "abc"]) {
+  for (const invalid of ["0", "51", "-2", "2.5", "abc"]) {
     const result = updateRunProfileInObject({}, { ...measuring, responseRepeat: invalid });
     assert.equal(result.ok, false, `responseRepeat=${invalid} は不正値としてエラーになるべき`);
     assert.match(result.error, /responseRepeat/);

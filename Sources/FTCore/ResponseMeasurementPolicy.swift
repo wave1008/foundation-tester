@@ -3,11 +3,11 @@
 // 強制値(アニメーション ON・FM/OCR/録画 OFF)は DeviceIndependentRunSettings.resolve が持つ。
 public enum ResponseMeasurementPolicy {
 
-    /// 既定の繰り返し回数。根拠: 設計の中央値・p90 は複数の標本が要り、1回目は次の対象を覚えるだけで t2 を出さない
-    /// ので、実効の標本は N − 1。5 なら 4 標本(docs/response-measurement.md §8.1)
+    /// 既定の繰り返し回数。根拠: 中央値・p90 は複数の標本が要る(docs/response-measurement.md §8.1)。
+    /// t2 は1回目から出る(木の履歴で判定する = §5「2b の方式」)ので、5 なら 5 標本
     public static let defaultRepeat = 5
-    /// 下限 2: 1回目は学習専用で t2 を出さない(§5)ので、1 では何も測れない
-    public static let minRepeat = 2
+    /// 下限 1: 1回でも firstFrameMs と t2 は測れる(繰り返しは標本を増やすだけ)
+    public static let minRepeat = 1
     /// 上限 50: 1回の計測 run の所要を有限に収める。これを超える値は意図より打ち間違いの可能性が高い
     public static let maxRepeat = 50
 

@@ -1198,9 +1198,22 @@ public final class BridgeClient: AppDriver, Sendable {
 
     /// Android v102〜 のみ。応答は描画が止まるまで(最長 timeoutMs)返らないので、HTTP の待ちは timeoutMs から導く
     /// (短いと待っている最中に bridgeUnreachable を誤報する)。余白は shell 往復ぶん(interactionTimeout)
-    public func responsePrepare(quietMs: Int, timeoutMs: Int) async throws -> ResponsePrepareResult {
-        try await post("/responsePrepare", body: ResponsePrepareRequest(quietMs: quietMs, timeoutMs: timeoutMs),
+    public func responsePrepare(quietMs: Int, timeoutMs: Int, observeMs: Int) async throws -> ResponsePrepareResult {
+        try await post("/responsePrepare",
+                       body: ResponsePrepareRequest(quietMs: quietMs, timeoutMs: timeoutMs, observeMs: observeMs),
                        timeout: Double(timeoutMs) / 1000 + interactionTimeout)
+    }
+
+    /// Android v104〜。応答は全読みの時刻と変化した木を含み数 MB になりうる(ブリッジの MAX_TREES の見積り)ので、
+    /// 転送に余裕のある sessionTimeout(snapshot と同じ枠)で待つ
+    public func responseObservation(firstDownTimeMs: Int) async throws -> ResponseObservation {
+        try await post("/responseObservation", body: ResponseObservationRequest(firstDownTimeMs: firstDownTimeMs),
+                       timeout: sessionTimeout)
+    }
+
+    public func responseObservationStop() async throws {
+        struct Stopped: Decodable { let stopped: Bool }
+        let _: Stopped = try await post("/responseObservationStop", body: OKResponse(), timeout: interactionTimeout)
     }
 
     public func responseCollect() async throws -> ResponseCollectResult {

@@ -131,6 +131,23 @@ emulator-5556 の1台。この Mac の他の Emulator 5台と実機2台は接続
   **さらに操作の前に描画が止まっていることを確かめる** —— 実機では前の操作の描画(約3秒)が続いていることがあり、そのまま
   「最初のフレーム」を取ると 1〜2ms と出る(§7)。計測モードは各ステップの前に「フレームが出ていない」を待ち、待っても止まらなければ
   「操作の前から描画が続いていた」を事実として残して t1 を出さない
+- **2b の方式(実装。ユーザー承認の切り替え)= 学習の方式をやめ、木の履歴で判定する**。以下の「学習」「呼び出しスタックの鍵」
+  「要素の同一性の印」「食い違い」の議論は、この方式を採る前の検討の記録(採らなかった案)として残す。
+  - **やること**: ブリッジは、計測するステップ j の最初の注入から次に計測するステップ i の最初の注入まで、木を読み続けて履歴
+    (読みの時刻・木が変わった回の木)を持つ(`ResponseObservation`)。i が対象を解決し終えたら、ホストが j の履歴を **i が実際に
+    解決して操作した要素**で判定する(`ResponseReadyJudge`。解決は StepExecutor と同じ `LocatorResolver`、遮蔽は操作の前と同じ
+    `OcclusionGeometry`)。結果は j のレコードへ後から当てる(`responseReady` イベント)
+  - **なぜ切り替えたか**: 木を記録しておけば履歴を**後から**判定できる。「次の対象は注入の時点では分からない」という前提から
+    学習・呼び出しスタックの鍵・同一性の印・予測との食い違いの欠測が要っていたが、全部要らなくなる(判定に使う対象は事実として
+    次のステップが解決したもの)。繰り返しの1回目から t2 が取れる
+  - **費用**: ブリッジが観測中ずっと木を読む(負荷と、記録の転送量。木が変わった回だけを送り、読みの回数・木の数に上限を置く)
+  - **条件**: ①②③に当たる部分(解決できる・有効・覆われていない・枠が次のステップの使った枠と等しい)を、続く次の読みでも保たれた
+    最初の読みの終わりを t2 とする。**④(画素の静止)は実装していない**(`readyDecidedBy` = `tree`)。**要素の同一性は比べない**
+    (`readyIdentity` = `locator`。同じ位置に別の要素が来ても見分けない = 上の「Android での試行」で View の再利用が見分けられなかった
+    構成と同じ制約を、全構成に適用する)
+  - **判定しない場合**: 次の計測ステップが無い(シナリオの最後)・次のステップが対象に着くまでに自分で画面を動かした(スクロール探索・寄せ。
+    使った枠が履歴の木の座標と別になる)・次のステップが注入しなかった。欠測の理由は `notReadyBeforeNextAction` / `observationTimeout` /
+    `observationTruncated` / `observationLost` / `noTarget` / `bridgeError`(§8.3)。観測の上限は `responseObserveMs`(`RunTunables`)
 - **t2(操作可能)= 次のステップの対象について、次の条件がすべて揃った最初の時刻**。
   **注入の時点では次の対象は分からない** —— `FTRuntime.perform` はステップを1つずつ同期で実行し、次に何をするかはシナリオの
   Swift のコード(操作の後に読んだ値での分岐など)が決める。
@@ -451,9 +468,8 @@ XCTest の `measure(metrics:)`(**基準値をデバイスごとに持ち**、前
 
 - **`responseMeasurement: true`**(既定 false)。`--set responseMeasurement=true` で上書きできる(`run` / `api run` の両方。専用フラグは
   足さない = `RunCommandFlagParityTests` は変えずに済む)
-- **`responseRepeat: N`**(**段階 2a で実装済み**: 2〜50 の整数・`responseMeasurement` 無しの指定はエラー・`RunMetaRecord.responseMeasurement.repeatCount` に記録。既定 5。各シナリオを続けて N 回回し、ステップごとに中央値・p90 を出す)。**1回目は次の対象を覚える回**で
-  t2 を出さない(§5)ので、t2 の標本の数は「2回目以降の各回で、そのステップ(§5 の集計の単位)が有効に測れた回数の合計」(ループ等で
-  同じ単位が1回の実行に何度も出れば N − 1 を超える。食い違い・観測の遅れの回は欠測になる)。N は 2 以上でなければエラー
+- **`responseRepeat: N`**(**段階 2a で実装済み**: 1〜50 の整数・`responseMeasurement` 無しの指定はエラー・`RunMetaRecord.responseMeasurement.repeatCount` に記録。既定 5。各シナリオを続けて N 回回し、ステップごとに中央値・p90 を出す)。t2 は木の履歴で判定する(§5「2b の方式」)ので**1回目から測れる**(学習方式の案では1回目を覚える回にして下限を 2 にしていたが、
+  2b で方式を替えたので下限は 1)。t2 の標本の数は、各回でそのステップが判定できた回数の合計
 - 実行時設定は `ScenarioExecutionSettings` に欄を足して運ぶ(既定は init の1箇所・プロファイルからの写像は変換 init だけ・
   子プロセスへの境界は走査テストで縛る = `.claude/rules/executor.md`)。**専用フラグを足さないことでは `run` / `api run` の配線漏れは
   防げない**(`RunCommandFlagParityTests` が見るのはフラグの集合だけ)→ 両方の入口で、有効化・下の拒否条件・結果の出力・
@@ -477,8 +493,10 @@ XCTest の `measure(metrics:)`(**基準値をデバイスごとに持ち**、前
   **画面を動かす操作のステップだけ**(判定は `FlowStep.isScreenMovingOperation` = 減速 `HostLoadPacing` と共有)に付く。欄は
   `busyBeforeAction` / `quietWaitMs` / `firstFrameMs` / `firstFrameMissing`(`busyBeforeAction` / `noInjectedInput` / `noFrame` /
   `frameHistoryIncomplete` / `noSessionApp` / `bridgeError`)/ `reactionMs` / `readyMs` / `readyAfterObservationStartMs` /
-  `observationStartMs` / `readyDecidedBy` / `readyMissing`。**この版で値が入るのは前の4欄だけ**で、`reactionMs` と t2 の欄は
-  常に省略、`readyMissing` は常に `notMeasuredInThisVersion`(`reactionMs` に `firstFrameMs` を写さない = §5)。
+  `observationStartMs` / `readyDecidedBy` / `readyMissing`。**操作の直後に入るのは前の4欄だけ**で、`reactionMs` は常に省略(`reactionMs` に `firstFrameMs` を写さない = §5)。
+  t2 の欄(`readyMs` / `readyAfterLastInjectionMs` / `injectionSpanMs` / `injections` / `readyDecidedBy` / `readyIdentity` / `readyMissing`)は
+  **段階 2b で、次の計測ステップが対象を解決した時点で後から入る**(§5「2b の方式」)。判定されなかったステップ(シナリオの最後の
+  計測ステップ等)は t2 の欄が省略のまま(旧版の `readyMissing: notMeasuredInThisVersion` は廃止)。
   記録する入力は「ステップの最初の注入」。**欄は省略可**(下の「欄の扱い」= ユーザー決定)。`RunRecordPack.trimmedForStorage` は未変更。型は `Sources/FTCore/ResponseMeasurementRecord.swift`、結果 JSON の説明は
   docs/results-json.md §TimelineStepRecord。下の列は最終形の案
 - `TimelineStepRecord` に `command`(コマンド名。今は失敗時の `FailedStepRecord` にしか無い)と `response` を足す:
@@ -486,9 +504,10 @@ XCTest の `measure(metrics:)`(**基準値をデバイスごとに持ち**、前
   busyBeforeAction, notes }`
   - `firstFrameMs`: 最初のフレーム(t1 を画面の差で確かめられなかった構成ではこちらだけを出す = §5)
   - `readyMs`: t2(ステップの最初の注入から)。注入と同時に観測を始められた標本だけ
-  - `readyIdentity`: `element`(要素の同一性まで照合した)/ `locator`(同じ指定・枝・枠までしか照合できない構成。§5)
-  - `readyAfterObservationStartMs` / `observationStartMs`: 観測の開始が遅れた標本(t2 を名乗らない)
-  - `readyMissing`: t2 が無い理由(`learningIteration` = 1回目 / `nextStepMismatch` = 次のステップが記録と食い違った /
+  - `readyIdentity`: 2b の実装は常に `locator`(同じ指定で解決した要素までしか照合しない。`element`(同一性まで照合)は §5 の検討で採らなかった)
+  - `readyAfterObservationStartMs` / `observationStartMs`: 2b の実装では使わない(観測は最初の注入から始まる)
+  - `readyMissing`(2b の実装が出す値は `notReadyBeforeNextAction` / `observationTimeout` / `observationTruncated` / `observationLost` / `noTarget` /
+    `bridgeError` の6つ。判定されなかったステップは省略。下の列は学習の方式を含む検討時の案): t2 が無い理由(`learningIteration` = 1回目 / `nextStepMismatch` = 次のステップが記録と食い違った /
     `contextUnidentified` = 呼び出しスタックがテストの入口まで届かない(別スレッドへ乗り換えた経路)/ `noTarget` = 次の操作に対象が無い /
     `observationLate` = 観測の開始が遅れた / `notReadyBeforeNextAction` = 条件が揃う前に次の操作が撃たれた /
     `observationTimeout` = 締めた時点で判定が上限で止まっていた / `observationAborted` = シナリオの失敗・中断・接続断・アプリの終了 /
@@ -537,6 +556,7 @@ XCTest の `measure(metrics:)`(**基準値をデバイスごとに持ち**、前
   実行時の `index` は制御フローでずれるので使わない。表示は `s2 action tap Tap login #1`)。同じ run の繰り返しの記録(`<id>`, `<id>~2`…)は標本を合算する。
   列: scenario / step / device(serial があれば serial、無ければ deviceName)/ host / n(firstFrameMs のある標本数)/ median / p90(最近接順位法)/
   busy(`busyBeforeAction` の件数)/ prev median / delta(ms と %)。JSON には `missingCounts`(`firstFrameMissing` の生の値ごとの件数)も出る。
+  2b で `readyN` / `readyMedianMs` / `readyP90Ms` / `readyMissingCounts`(`readyMissing` の生の値ごとの件数)と、表の列 `ready n` / `ready median ms` / `ready p90 ms` を足した。
   各グループの最新の run の行で、前回 = 同じ (host, device) でそのグループを持つ直前の run。`occurrences` の集約・`stepKey` の位置への解決は未実装(下の案は最終形)
 
 (以下は最終形の案)
@@ -582,6 +602,21 @@ XCTest の `measure(metrics:)`(**基準値をデバイスごとに持ち**、前
    約 6.6 秒に約 1.5 倍の余裕で 10 秒(`RunTunables.responseQuietTimeoutMs`)。描画が何なのか(見た目は変わらない)は未特定のまま
    - 運用の注意: モニターの停止(`.fleetest/monitor-hold.json`)は**コマンドを撃ったディレクトリのクローン**に書かれる。拡張のモニターは
      本線のクローンを見るので、別の作業ツリーから起動した計測の run の停止はモニターに届かない
-2b. Android: ②(t2。1回目で次の対象を覚える仕組みを含む)
+2b. Android: ②(t2)
+   - **ホスト側を実装**(§5「2b の方式」): 学習は採らず、ブリッジが記録した木の履歴を次の計測ステップの対象で判定する
+     (`ResponseReadyJudge`・`StepExecutor.judgeReadiness`・`responseReady` イベント → `timeline[].response`・`fleetest results response` の
+     ready 列)。観測の上限は `RunTunables.responseObserveMs`。④(画素の静止)と要素の同一性は未実装。`responseRepeat` の「1回目は覚える回」は
+     この方式では不要(1回目から t2 が出る)で、繰り返しは標本を増やすためだけに残る
+   - **ブリッジ側も実装**(v106): 計測ステップの最初の DOWN で観測を始め、木を読み続けて「全読みの時刻」と「変わった木」だけを残す
+     (`ResponseObserver`)。次の計測ステップの最初の DOWN・上限・停止で締める。**同じステップの2回目以降の DOWN では記録を捨てて
+     その DOWN から記録し直し、上限の起点もそこへ移す**(判定は最後の注入より後しか使わない。捨てないと、何度も送る操作は最後の注入の
+     前に記録の上限を使い切った = 下の確認で 32 ステップ中 3 ステップが `observationTruncated`。木の上限を 30 → 100 に上げても同じだった)
+   - **Pixel 4a で確認**(アニメーションあり・各2回):
+     - `起動と画面遷移が正しく行われること.S0010`: 画面遷移の後の t2 は 62〜79ms(試作のブリッジの中での観測 60〜74ms と同程度)。
+       次の対象がタブバーのボタン(遷移の間も同じ位置に出続ける)のときは 5〜8ms = 最初の読みから操作可能。**ブリッジの読みはキャッシュを
+       返しうるので、この短い値は条件③(アプリが応答する)の証明としては弱い**(§6 の鮮度の残件)
+     - `スクロールで折り返し下の要素に到達できること.S0010`: 計測 32 ステップのうち t2 が出たのは 21、`noTarget`(次が座標の操作)2、
+       残りは次のステップがスクロールで探した回(判定しない)と最後のステップ。慣性のスクロールの後は約 1.0 秒、何度も送る操作
+       (4〜5 回注入)は最初の注入から 4.8〜5.8 秒。打ち切りは 0
 3. iOS: ランナーの ①②③ と xctrace の取り込み
 4. 報告(シナリオの md・拡張の表示)

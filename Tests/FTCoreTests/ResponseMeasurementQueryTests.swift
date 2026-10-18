@@ -109,5 +109,37 @@ final class ResponseMeasurementQueryTests: XCTestCase {
         let out = ResultsRendering.response(rows)
         XCTAssertTrue(out.contains("prev median ms"))
         XCTAssertTrue(out.contains("s1 action tap Tap #1"))
+        for header in ["ready n", "ready median ms", "ready p90 ms"] {
+            XCTAssertTrue(out.contains(header), header)
+        }
+    }
+
+    private func readyStep(_ description: String, readyMs: Int? = nil, missing: String? = nil) -> TimelineStepRecord {
+        TimelineStepRecord(scene: 1, section: "action", index: 0, description: description, status: "passed",
+                           command: "tap",
+                           response: ResponseMeasurementRecord(busyBeforeAction: false, quietWaitMs: nil, firstFrameMs: 40,
+                                                               firstFrameMissing: nil, readyMs: readyMs,
+                                                               readyMissing: missing))
+    }
+
+    func testReadyAggregationCountsSamplesAndMissingReasons() {
+        let records = [
+            record("r1", startedAt: "2026-10-01T00:00:01Z", [readyStep("Tap", readyMs: 100)]),
+            record("r1", startedAt: "2026-10-01T00:00:02Z", [readyStep("Tap", readyMs: 300)]),
+            record("r1", startedAt: "2026-10-01T00:00:03Z", [readyStep("Tap", readyMs: 200)]),
+            record("r1", startedAt: "2026-10-01T00:00:04Z", [readyStep("Tap", missing: "notReadyBeforeNextAction")]),
+            record("r1", startedAt: "2026-10-01T00:00:05Z", [readyStep("Tap", missing: "notReadyBeforeNextAction")]),
+            record("r1", startedAt: "2026-10-01T00:00:06Z", [readyStep("Tap", missing: "noTarget")]),
+            record("r1", startedAt: "2026-10-01T00:00:07Z", [readyStep("Tap")]),   // 判定されなかった(最後の計測ステップ等)
+        ]
+        let rows = ResponseMeasurementQuery.rows(runs: [meta("r1", startedAt: "2026-10-01T00:00:00Z")], records: records)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].n, 7, "firstFrameMs の集計は t2 と独立")
+        XCTAssertEqual(rows[0].readyN, 3)
+        XCTAssertEqual(rows[0].readyMedianMs, 200)
+        XCTAssertEqual(rows[0].readyP90Ms, 300)
+        XCTAssertEqual(rows[0].readyMissingCounts, ["notReadyBeforeNextAction": 2, "noTarget": 1])
+        let out = ResultsRendering.response(rows)
+        XCTAssertTrue(out.contains("200"))
     }
 }

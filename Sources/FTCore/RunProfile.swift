@@ -1227,7 +1227,7 @@ public enum ProfileError: Error, LocalizedError {
                 + " (set responseMeasurement to true, or remove responseRepeat)"
         case .responseRepeatOutOfRange(let run, let value, let min, let max):
             let why = value < min
-                ? "must be at least \(min) (the first iteration only learns the next step's target and records no reaction time)"
+                ? "must be at least \(min)"
                 : "must be at most \(max) (a larger value is more likely a typo; it would keep one run busy for a very long time)"
             return "responseRepeat in run profile \(run) \(why), but it is \(value)"
         }

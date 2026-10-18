@@ -238,8 +238,16 @@ public final class SessionRecoveryDriver: AppDriver {
         try await base.waitForSettle(request, timeoutSeconds: timeoutSeconds)
     }
 
-    public func prepareResponseMeasurement(quietMs: Int, timeoutMs: Int) async throws -> ResponsePrepareResult {
-        try await base.prepareResponseMeasurement(quietMs: quietMs, timeoutMs: timeoutMs)
+    public func fetchResponseObservation(firstDownTimeMs: Int) async throws -> ResponseObservation {
+        try await base.fetchResponseObservation(firstDownTimeMs: firstDownTimeMs)
+    }
+
+    public func stopResponseObservation() async throws {
+        try await base.stopResponseObservation()
+    }
+
+    public func prepareResponseMeasurement(quietMs: Int, timeoutMs: Int, observeMs: Int) async throws -> ResponsePrepareResult {
+        try await base.prepareResponseMeasurement(quietMs: quietMs, timeoutMs: timeoutMs, observeMs: observeMs)
     }
 
     public func collectResponseMeasurement() async throws -> ResponseCollectResult {

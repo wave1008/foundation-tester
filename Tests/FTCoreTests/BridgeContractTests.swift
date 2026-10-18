@@ -84,7 +84,7 @@ final class BridgeContractTests: XCTestCase {
         "POST /tap", "POST /terminate", "POST /type",
         "POST /waitForSettle",
         // 応答時間計測(Android v102〜)。XCUITest・in-app は持たない
-        "POST /responsePrepare", "POST /responseCollect",
+        "POST /responsePrepare", "POST /responseCollect", "POST /responseObservation", "POST /responseObservationStop",
     ]
 
     private var repoRoot: URL {
@@ -169,13 +169,14 @@ final class BridgeContractTests: XCTestCase {
             "AndroidRunner/build.sh": "b136074f6bd0753af9c4186ec066407492125748aef24dd13e6556cfd3c3524a",
             "AndroidRunner/src/com/example/ftbridge/BridgeHttpServer.java": "863ec6982e6dd41c6bda8f8f6fe998c17c95b0f250c7f57345e6c5cb617f26ac",
             "AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java": "78fe5cc272782a091bbbc512d1693bed0a192cf363548699a586cb0f3d614824",
-            "AndroidRunner/src/com/example/ftbridge/BridgeRouter.java": "cb15f37e3687d7d8db9b8bfc61ecc216d4551f6c4822fc828fe8ed504cf0e783",
+            "AndroidRunner/src/com/example/ftbridge/BridgeRouter.java": "77d5ad281a0bff00f6a80a33cb8f8ce6524a8d39676dc723394bc3231754a026",
             "AndroidRunner/src/com/example/ftbridge/DisplayHeartbeat.java": "b00ff62b9a909e7e46df1a7a1aa1f39ba0a5711834092148adfee9f6bd6c7d9a",
             "AndroidRunner/src/com/example/ftbridge/ImeOnboarding.java": "fe2d90d892046f64e4893c008148d47886e36bceb244dd9e68e560b368f0193b",
             "AndroidRunner/src/com/example/ftbridge/KeyboardPrimerActivity.java": "f5a4751486cd8349a8f10b65332d6a3e1d77c3d82e0528e8518ec646aad152d9",
-            "AndroidRunner/src/com/example/ftbridge/InputInjector.java": "12d76b3d1e864e4e31a6022a9340b08352344db00481172636d0c8144b448ca2",
+            "AndroidRunner/src/com/example/ftbridge/InputInjector.java": "22a08a9f9c45482642637b7958cfc751c89e471946b898089fdb01b1bd053a4b",
             "AndroidRunner/src/com/example/ftbridge/QuietWaiter.java": "b939eb89d48c6a3591a78b8457b31f851cd95c0f188fffdaa1668f557153347d",
-            "AndroidRunner/src/com/example/ftbridge/ResponseProbe.java": "497a71e794391d31ad99932b8e724b31eda3bda099426d709200082ea58fbdd0",
+            "AndroidRunner/src/com/example/ftbridge/ResponseObserver.java": "be3d5f8cf7f43c24b936ed4c1030c09947857e89c434caea08552f7c7743d6e5",
+            "AndroidRunner/src/com/example/ftbridge/ResponseProbe.java": "a5e9434b0b01b73466620e3dcc61a4b9e5e0b7ffb9e4b7fab317bdb453a08647",
             "AndroidRunner/src/com/example/ftbridge/SnapshotBuilder.java": "355b052546bff1644a0e223fae31bf7d82435a140090276c2195c0e703a4caa3",
         ],
     ]

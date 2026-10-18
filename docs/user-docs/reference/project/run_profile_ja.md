@@ -41,7 +41,7 @@
 | `containerInference` | bool | `true` | スクロール容器を幾何から推測する補正(端の見切れ・座標補正等)を有効にする。FM とは無関係 |
 | `enableAnimations` | bool | `false` | 実行のためにアプリのアニメーションを無効化せず残す |
 | `responseMeasurement` | bool | `false` | **実験的。** **Android 実機 1 台だけ**を対象にしたレスポンス計測モード。プロファイルの有効なデバイスが 1 台で、`kind: physical` かつ Android でなければ run を断る。アプリのアニメーションを残し(`enableAnimations` を強制的に有効)、`fmTextVisibilityCheck`・`ocrTextVisibilityCheck`・`screenLooksLike`・`record`・ホスト負荷による減速を止め、run が終わるまでデバイスモニターを止める。`enableAnimations: false` や、FM・OCR・`record` のキーを `true` にした併用はエラー。`--broadcast`・`--fleet`・`--split` とは併用できない |
-| `responseRepeat` | int | `5` | **実験的。** `responseMeasurement: true` のときだけ指定できます(無しで指定するとエラー)。各シナリオをデバイス上で続けて回す回数で、`2` 〜 `50`。1 回目は次の操作の対象を覚えるだけで反応時間を測りません。結果ファイルは `<id>`、`<id>~2`、`<id>~3`、… の名前で並びます |
+| `responseRepeat` | int | `5` | **実験的。** `responseMeasurement: true` のときだけ指定できます(無しで指定するとエラー)。各シナリオをデバイス上で続けて回す回数で、`1` 〜 `50`。どの回も計測します。結果ファイルは `<id>`、`<id>~2`、`<id>~3`、… の名前で並びます |
 | `homeOnStart` | bool | `--profile` 実行は `true`・プロファイル無しの素の `fleetest run` は `false` | 実行開始時に各デバイスへ Home を1回撃つ(一斉起動直後に画面が黒いまま止まるのを防ぐ) |
 | `playProtectBypass` | bool | `true` | Android の `adb install` で Play Protect の照会(「アプリをセキュリティ確認のために送信しますか?」)を通さない。インストールの間だけ「USB 経由でアプリを確認」を切って元に戻す(アプリを Google へ送らない)。`false` はキルスイッチ: ツールは端末の設定に触らず、release 署名の APK は端末側のダイアログで止まったままになる(ツールはそのダイアログに答えない) |
 | `record` | bool | `true` | 各ワーカーの画面を run 全体で録画し、シナリオごとの clip に切り出す。物理 iPhone は動画を取り出す手段が無いので、最初の操作の直前と、操作したステップ・失敗したステップの直後に撮った画面を時刻どおりに並べた clip になる(コマ送り。撮影1回ごとに約 50ms かかる)。Android の実機は通常どおり録画する。シミュレータ・エミュレータ・Android 実機で画面録画を起動できなかったデバイスも、警告を出してこのコマ送りに切り替える |

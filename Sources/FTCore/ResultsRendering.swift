@@ -147,7 +147,8 @@ public enum ResultsRendering {
 
     public static func response(_ rows: [ResponseMeasurementQuery.Row]) -> String {
         guard !rows.isEmpty else { return "No response-measurement runs found" }
-        let headers = ["scenario", "step", "device", "host", "n", "median ms", "p90 ms", "busy", "prev median ms", "delta"]
+        let headers = ["scenario", "step", "device", "host", "n", "median ms", "p90 ms", "busy",
+                       "ready n", "ready median ms", "ready p90 ms", "prev median ms", "delta"]
         func ms(_ value: Double?) -> String { value.map { String(format: "%.0f", $0) } ?? "-" }
         let tableRows = rows.map { row -> [String] in
             let delta: String
@@ -158,7 +159,8 @@ public enum ResultsRendering {
                 delta = "-"
             }
             return [row.scenarioID, row.step, row.device, row.host, String(row.n), ms(row.medianMs), ms(row.p90Ms),
-                    String(row.busyCount), ms(row.previousMedianMs), delta]
+                    String(row.busyCount), String(row.readyN), ms(row.readyMedianMs), ms(row.readyP90Ms),
+                    ms(row.previousMedianMs), delta]
         }
         return SimpleTable.render(headers: headers, rows: tableRows)
     }

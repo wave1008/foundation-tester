@@ -1,5 +1,5 @@
 // ResponseMeasurementQuery.swift
-// `fleetest results response` の集計(純粋関数)。計測モードの run の `timeline[].response.firstFrameMs` を
+// `fleetest results response` の集計(純粋関数)。計測モードの run の `timeline[].response.firstFrameMs` と `readyMs` を
 // (シナリオ, ステップ, 機械, デバイス)ごとに束ね、同じ機械・同じデバイスの直前の計測 run と中央値を比べる。
 // **全文の ScenarioRunRecord を渡すこと**(RunRecordPack の縮約版は timeline の欄を落とす)。
 // RunResultsQuery.swift に置かない: TimelineNotesOnlyScanTests が timeline の notes 以外の読み取りを禁じている。
@@ -37,6 +37,12 @@ public enum ResponseMeasurementQuery {
         public let busyCount: Int
         /// firstFrameMissing の値(生の文字列)ごとの件数。値の無いステップは数えない
         public let missingCounts: [String: Int]
+        /// readyMs(t2)を持つ標本数と中央値・p90。t2 は次の計測ステップの判定で後から入る(最後の計測ステップ等は入らない)
+        public let readyN: Int
+        public let readyMedianMs: Double?
+        public let readyP90Ms: Double?
+        /// readyMissing の値(生の文字列)ごとの件数。readyMs が無く値もないステップは数えない
+        public let readyMissingCounts: [String: Int]
         public let previousRunID: String?
         public let previousMedianMs: Double?
         public let deltaMs: Double?
@@ -54,6 +60,8 @@ public enum ResponseMeasurementQuery {
         var samples: [Int] = []
         var busy = 0
         var missing: [String: Int] = [:]
+        var readySamples: [Int] = []
+        var readyMissing: [String: Int] = [:]
     }
 
     /// 同一記録内で response を持つステップへ鍵を振る(出現順)
@@ -118,6 +126,11 @@ public enum ResponseMeasurementQuery {
                 if response.firstFrameMs == nil, let reason = response.firstFrameMissing {
                     agg.missing[reason.rawValue, default: 0] += 1
                 }
+                if let ms = response.readyMs {
+                    agg.readySamples.append(ms)
+                } else if let reason = response.readyMissing {
+                    agg.readyMissing[reason, default: 0] += 1
+                }
                 aggregates[group, default: [:]][record.runID] = agg
             }
         }
@@ -143,6 +156,9 @@ public enum ResponseMeasurementQuery {
                 medianMs: currentMedian,
                 p90Ms: agg.samples.isEmpty ? nil : RunResultsQuery.percentile(agg.samples, 0.9),
                 busyCount: agg.busy, missingCounts: agg.missing,
+                readyN: agg.readySamples.count, readyMedianMs: median(agg.readySamples),
+                readyP90Ms: agg.readySamples.isEmpty ? nil : RunResultsQuery.percentile(agg.readySamples, 0.9),
+                readyMissingCounts: agg.readyMissing,
                 previousRunID: previous?.runID, previousMedianMs: previousMedian,
                 deltaMs: deltaMs, deltaPct: deltaPct)
             built.append((group.scenarioID, order[group.scenarioID]?[group.step] ?? 0, row))

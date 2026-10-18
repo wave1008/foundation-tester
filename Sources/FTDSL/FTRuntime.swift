@@ -334,6 +334,8 @@ public final class FTDriveCore {
     /// スレッド違反の記録は 1 run につき 1 回だけ(stateLock 経由。recordThreadViolation 参照)
     private var threadViolationRecorded = false
     var stepCounter = 0
+    /// 次の計測ステップの判定待ちになっている直近の計測ステップの添字(`StepOutcome.opensReadyObservation` と対。stateLock の下)
+    private var pendingReadyStepIndex: Int?
     /// シナリオ中に **1 度でも解決できた** `#id`。否定アサーション(notExist / countIs 0 /
     /// ifCanSelect)だけで使われ、かつ最後まで一度も解決できなかった id は typo の可能性が高い
     /// (構文検証では捕まらない。「そんな id は無い」= 否定は常に成功するため)
@@ -945,6 +947,8 @@ public final class FTDriveCore {
                    notes: outcome?.notes ?? [], guarded: outcome?.guardEntered ?? false,
                    command: command, failureKind: failureKind,
                    response: outcome?.response,
+                   readyUpdateForPreviousStep: outcome?.readyUpdateForPreviousStep,
+                   opensReadyObservation: outcome?.opensReadyObservation ?? false,
                    // 画像の判定(分類器・existImage)・リンク文字の OCR で落ちたときだけ入る(StepOutcome.evidenceImage)。
                    // ラベルはファイル名に入って 24 文字で切られる(docs/design.md の該当節)
                    screenshotData: outcome?.evidenceImage,
@@ -1150,6 +1154,11 @@ public final class FTDriveCore {
         emit(.log("⚠️ " + message))
         addSuggestion(FixSuggestion(isStrong: true, message: message),
                       emitEvent: false, file: "", line: 0)
+    }
+
+    /// シナリオの終わりに、計測の観測をブリッジに止めさせる(計測モードのときだけ効く・失敗は無視)
+    public func endResponseMeasurement() async {
+        await executor.endResponseMeasurement()
     }
 
     /// シナリオ終了時に1回だけ呼ぶ(warnAbout* と同じ位置)。LocatorFingerprintCache.record は
@@ -1610,6 +1619,8 @@ public final class FTDriveCore {
                     notes: [StepNote] = [], guarded: Bool = false,
                     command: String? = nil, failureKind: StepFailureKind? = nil,
                     response: ResponseMeasurementRecord? = nil,
+                    readyUpdateForPreviousStep: ResponseReadyUpdate? = nil,
+                    opensReadyObservation: Bool = false,
                     screenshotData: Data? = nil, screenshotLabel: String? = nil) {
         // `account()` が返した値を、レコード(レポート)と NDJSON の両方へ入る前の1箇所で伏せる。
         // 説明・失敗の detail に引数の値が入る(`type(account(...))`)ため。全コマンドがここを通る
@@ -1629,6 +1640,16 @@ public final class FTDriveCore {
                                    screenshotData: screenshotData, screenshotLabel: screenshotLabel,
                                    insideProcedure: procedureDepth > 0)
         appendToCurrentScene(record)
+
+        // 前の計測ステップの t2 の確定は、そのステップの添字宛てに流す(結果 JSON の timeline へ当てる。ScenarioEvent の冒頭)
+        if let update = readyUpdateForPreviousStep, let target = pendingReadyStepIndex {
+            var ready = ScenarioEvent(kind: "responseReady")
+            ready.scenario = scenarioID
+            ready.index = target
+            ready.readyUpdate = update
+            emit(ready)
+        }
+        if opensReadyObservation { pendingReadyStepIndex = record.index }
 
         var event = ScenarioEvent(kind: "step")
         event.scenario = scenarioID

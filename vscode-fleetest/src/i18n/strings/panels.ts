@@ -189,8 +189,8 @@ export const panelsStrings = {
   },
   "panels.runProfile.responseRepeatLabel": { ja: "計測の繰り返し回数", en: "Measurement repeat count" },
   "panels.runProfile.responseRepeatTitle": {
-    ja: "responseRepeat(2〜50)。レスポンス計測モードで各シナリオを続けて回す回数。空欄なら透かしの既定値。レスポンス計測モードがオフのときは保存されません",
-    en: "responseRepeat (2 to 50). How many times each scenario runs back to back in response measurement mode. Empty uses the default shown in the field. Not saved while response measurement mode is off",
+    ja: "responseRepeat(1〜50)。レスポンス計測モードで各シナリオを続けて回す回数。空欄なら透かしの既定値。レスポンス計測モードがオフのときは保存されません",
+    en: "responseRepeat (1 to 50). How many times each scenario runs back to back in response measurement mode. Empty uses the default shown in the field. Not saved while response measurement mode is off",
   },
   "panels.runProfile.containerInferenceLabel": {
     ja: "タップ/スクロールの領域推測による補正",

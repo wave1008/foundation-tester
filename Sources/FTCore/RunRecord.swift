@@ -808,6 +808,12 @@ public struct ScenarioRecordBuilder {
             }
         case "step":
             consumeStep(event)
+        case "responseReady":
+            // 宛先は同じ添字の最後の計測済みステップ(添字が重なっても新しい側)。無ければ捨てる(推測で別の行に当てない)
+            if let index = event.index, let update = event.readyUpdate,
+               let position = timeline.lastIndex(where: { $0.index == index && $0.response != nil }) {
+                timeline[position].response = timeline[position].response?.applying(update)
+            }
         case "sceneFinished":
             consumeSceneFinished(event)
         case "fixSuggestion":

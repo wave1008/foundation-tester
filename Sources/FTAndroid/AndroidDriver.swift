@@ -983,8 +983,16 @@ public final class AndroidDriver: AppDriver {
     }
 
     /// apk の中で撮影して判定する(画像はホストへ出さない)。HTTP の待ちは呼び手の `timeoutSeconds`
-    public func prepareResponseMeasurement(quietMs: Int, timeoutMs: Int) async throws -> ResponsePrepareResult {
-        try await withBridge { try await $0.responsePrepare(quietMs: quietMs, timeoutMs: timeoutMs) }
+    public func prepareResponseMeasurement(quietMs: Int, timeoutMs: Int, observeMs: Int) async throws -> ResponsePrepareResult {
+        try await withBridge { try await $0.responsePrepare(quietMs: quietMs, timeoutMs: timeoutMs, observeMs: observeMs) }
+    }
+
+    public func fetchResponseObservation(firstDownTimeMs: Int) async throws -> ResponseObservation {
+        try await withBridge { try await $0.responseObservation(firstDownTimeMs: firstDownTimeMs) }
+    }
+
+    public func stopResponseObservation() async throws {
+        try await withBridge { try await $0.responseObservationStop() }
     }
 
     public func collectResponseMeasurement() async throws -> ResponseCollectResult {

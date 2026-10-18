@@ -28,6 +28,7 @@ final class ResponseMeasurementStepTests: XCTestCase {
         var tunables = RunTunables()
         tunables.responseQuietMs = 321
         tunables.responseQuietTimeoutMs = 4321
+        tunables.responseObserveMs = 7654
         let outcome = await makeExecutor(measuring: true, driver: driver, tunables: tunables).execute(tap)
 
         let prepareAt = log.entries.firstIndex(of: "d.responsePrepare")
@@ -40,6 +41,7 @@ final class ResponseMeasurementStepTests: XCTestCase {
         XCTAssertLessThan(tapAt!, collectAt!)
         XCTAssertEqual(driver.prepareArguments.first?.quietMs, 321)
         XCTAssertEqual(driver.prepareArguments.first?.timeoutMs, 4321)
+        XCTAssertEqual(driver.prepareArguments.first?.observeMs, 7654)
         let response = outcome.response
         XCTAssertEqual(response?.busyBeforeAction, false)
         XCTAssertEqual(response?.quietWaitMs, 12)
@@ -47,7 +49,7 @@ final class ResponseMeasurementStepTests: XCTestCase {
         XCTAssertNil(response?.firstFrameMissing)
         XCTAssertNil(response?.reactionMs)
         XCTAssertNil(response?.readyMs)
-        XCTAssertEqual(response?.readyMissing, "notMeasuredInThisVersion")
+        XCTAssertNil(response?.readyMissing, "t2 の欄は次の計測ステップの判定で後から入る。操作の直後は空")
     }
 
     func testBusyBeforeActionWithholdsFirstFrame() async {
@@ -173,5 +175,160 @@ final class ResponseMeasurementStepTests: XCTestCase {
         event.response = ResponseMeasurementRecord(busyBeforeAction: false, quietWaitMs: 1, firstFrameMs: 2,
                                                    firstFrameMissing: nil)
         XCTAssertEqual(ScenarioRunner.stepResult(from: event).response?.firstFrameMs, 2)
+    }
+
+    // MARK: - t2(前の計測ステップの確定)
+
+    private func collected(first: Int?, last: Int? = nil, injections: Int = 1) -> Result<ResponseCollectResult, Error> {
+        .success(ResponseCollectResult(downTimeMs: first, firstFrameDelayMs: 30, lastDownTimeMs: last ?? first,
+                                       injections: first == nil ? 0 : injections))
+    }
+
+    /// OK ボタンが履歴の最初から最後まで揃っている観測(読みは 1100ms から 3 回)
+    private func readyObservation() -> ResponseObservation {
+        let snapshot = SnapshotResponse(sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                                        elements: [okButton()], truncatedCount: 0)
+        return ResponseObservation(
+            found: true, firstDownTimeMs: 1000, lastDownTimeMs: 1000, injections: 1, endedAtMs: 1200,
+            endReason: "nextInjection",
+            reads: (0..<3).map { ResponseObservation.Read(startMs: 1100 + $0 * 10, endMs: 1104 + $0 * 10, ok: true) },
+            trees: [ResponseObservation.Tree(readIndex: 0, snapshot: snapshot)])
+    }
+
+    func testPreviousStepIsJudgedWithTheNextStepsTargetAfterItsCollect() async {
+        let log = CallLog()
+        let driver = makeDriver(log)
+        driver.collectResults = [collected(first: 1000), collected(first: 5000)]
+        driver.observationResults = [.success(readyObservation())]
+        let executor = makeExecutor(measuring: true, driver: driver)
+
+        let first = await executor.execute(tap)
+        XCTAssertNil(first.readyUpdateForPreviousStep)
+        XCTAssertTrue(first.opensReadyObservation)
+        XCTAssertTrue(driver.fetchedFirstDownTimes.isEmpty, "最初の計測ステップは判定する前のステップが無い")
+
+        let second = await executor.execute(tap)
+        XCTAssertEqual(driver.fetchedFirstDownTimes, [1000])
+        let collects = log.entries.indices.filter { log.entries[$0] == "d.responseCollect" }
+        let fetchAt = log.entries.firstIndex(of: "d.responseObservation")
+        XCTAssertEqual(collects.count, 2)
+        XCTAssertGreaterThan(fetchAt!, collects[1], "取得は次のステップの collect の後")
+        XCTAssertEqual(second.readyUpdateForPreviousStep?.readyMs, 104)
+        XCTAssertEqual(second.readyUpdateForPreviousStep?.readyDecidedBy, "tree")
+        XCTAssertEqual(second.readyUpdateForPreviousStep?.readyIdentity, "locator")
+        XCTAssertTrue(second.opensReadyObservation)
+        XCTAssertNil(second.response?.readyMs, "更新は前のステップ宛て。自分の欄は空のまま")
+    }
+
+    func testNonMeasuredStepsInBetweenDoNotDisturbThePending() async {
+        let driver = makeDriver(CallLog())
+        driver.collectResults = [collected(first: 1000), collected(first: 5000)]
+        driver.observationResults = [.success(readyObservation())]
+        let executor = makeExecutor(measuring: true, driver: driver)
+        _ = await executor.execute(tap)
+        let between = await executor.execute(FlowStep(assert: "exist", locator: FlowLocator(label: "OK")))
+        XCTAssertNil(between.readyUpdateForPreviousStep)
+        XCTAssertFalse(between.opensReadyObservation)
+        XCTAssertTrue(driver.fetchedFirstDownTimes.isEmpty)
+        let last = await executor.execute(tap)
+        XCTAssertEqual(driver.fetchedFirstDownTimes, [1000])
+        XCTAssertNotNil(last.readyUpdateForPreviousStep)
+    }
+
+    func testStepWithoutInjectionKeepsThePreviousPending() async {
+        let driver = makeDriver(CallLog())
+        driver.collectResults = [collected(first: 1000), collected(first: nil), collected(first: 5000)]
+        driver.observationResults = [.success(readyObservation())]
+        let executor = makeExecutor(measuring: true, driver: driver)
+        _ = await executor.execute(tap)
+        let noInjection = await executor.execute(tap)
+        XCTAssertNil(noInjection.readyUpdateForPreviousStep)
+        XCTAssertFalse(noInjection.opensReadyObservation)
+        XCTAssertTrue(driver.fetchedFirstDownTimes.isEmpty, "注入しなかったステップは判定しない")
+        let third = await executor.execute(tap)
+        XCTAssertEqual(driver.fetchedFirstDownTimes, [1000])
+        XCTAssertNotNil(third.readyUpdateForPreviousStep)
+    }
+
+    func testFetchErrorBecomesBridgeError() async {
+        let driver = makeDriver(CallLog())
+        driver.collectResults = [collected(first: 1000, last: 1050, injections: 3), collected(first: 5000)]
+        driver.observationResults = [.failure(DriverError.badResponse(status: 500, body: "x"))]
+        let executor = makeExecutor(measuring: true, driver: driver)
+        _ = await executor.execute(tap)
+        let update = await executor.execute(tap).readyUpdateForPreviousStep
+        XCTAssertEqual(update?.readyMissing, "bridgeError")
+        XCTAssertNil(update?.readyMs)
+        XCTAssertEqual(update?.injections, 3)
+        XCTAssertEqual(update?.injectionSpanMs, 50)
+    }
+
+    func testCoordinateStepIsNoTargetAndMakesNoFetch() async {
+        let driver = makeDriver(CallLog())
+        driver.collectResults = [collected(first: 1000), collected(first: 5000)]
+        let executor = makeExecutor(measuring: true, driver: driver)
+        _ = await executor.execute(tap)
+        let update = await executor.execute(FlowStep(action: "tap", x: 50, y: 120)).readyUpdateForPreviousStep
+        XCTAssertEqual(update?.readyMissing, "noTarget")
+        XCTAssertTrue(driver.fetchedFirstDownTimes.isEmpty)
+    }
+
+    func testModeOffNeverFetches() async {
+        let driver = makeDriver(CallLog())
+        let executor = makeExecutor(measuring: false, driver: driver)
+        let first = await executor.execute(tap)
+        let second = await executor.execute(tap)
+        XCTAssertTrue(driver.fetchedFirstDownTimes.isEmpty)
+        XCTAssertNil(second.readyUpdateForPreviousStep)
+        XCTAssertFalse(first.opensReadyObservation)
+        await executor.endResponseMeasurement()
+        XCTAssertEqual(driver.stopObservationCallCount, 0)
+    }
+
+    func testEndResponseMeasurementStopsAndClearsPending() async {
+        let driver = makeDriver(CallLog())
+        driver.collectResults = [collected(first: 1000), collected(first: 5000)]
+        let executor = makeExecutor(measuring: true, driver: driver)
+        _ = await executor.execute(tap)
+        await executor.endResponseMeasurement()
+        XCTAssertEqual(driver.stopObservationCallCount, 1)
+        let next = await executor.execute(tap)
+        XCTAssertNil(next.readyUpdateForPreviousStep, "終わった後の宛先は残さない")
+        XCTAssertTrue(driver.fetchedFirstDownTimes.isEmpty)
+    }
+
+    func testResponseReadyEventPatchesTheTimelineEntryByIndex() {
+        var builder = ScenarioRecordBuilder(scenarioID: "Foo.a", platform: "android", title: nil, worker: nil)
+        for index in 1...3 {
+            var step = ScenarioEvent(kind: "step")
+            step.index = index
+            step.description = "step \(index)"
+            step.status = "passed"
+            if index != 2 {
+                step.response = ResponseMeasurementRecord(busyBeforeAction: false, quietWaitMs: 1, firstFrameMs: 10 * index,
+                                                          firstFrameMissing: nil)
+            }
+            builder.consume(step)
+        }
+        var ready = ScenarioEvent(kind: "responseReady")
+        ready.index = 1
+        ready.readyUpdate = ResponseReadyUpdate(readyMs: 300, readyAfterLastInjectionMs: 200, injectionSpanMs: 100,
+                                                injections: 2, readyDecidedBy: "tree", readyIdentity: "locator")
+        builder.consume(ready)
+        // 計測していないステップ宛て・存在しない添字は捨てる(別の行へ当てない)
+        var stray = ScenarioEvent(kind: "responseReady")
+        stray.index = 2
+        stray.readyUpdate = ResponseReadyUpdate(readyMs: 9)
+        builder.consume(stray)
+        stray.index = 99
+        builder.consume(stray)
+
+        let record = builder.build(passed: true, timedOut: false, startedAt: Date(), durationMs: 1, packageRoot: nil)
+        XCTAssertEqual(record.timeline?[0].response?.readyMs, 300)
+        XCTAssertEqual(record.timeline?[0].response?.injections, 2)
+        XCTAssertEqual(record.timeline?[0].response?.firstFrameMs, 10)
+        XCTAssertNil(record.timeline?[1].response)
+        XCTAssertNil(record.timeline?[2].response?.readyMs)
+        XCTAssertEqual(record.timeline?.count, 3)
     }
 }

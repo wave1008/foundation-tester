@@ -1,6 +1,8 @@
 /// ステップ1つぶんの応答時間計測の記録(契約: docs/response-measurement.md §5・§8.3、結果 JSON は docs/results-json.md)。
-/// **この版で値が入るのは** `busyBeforeAction` / `quietWaitMs` / `firstFrameMs` / `firstFrameMissing` / `readyMissing`(常に
-/// `notMeasuredInThisVersion`)だけ。`reactionMs`(t1 は画面の差での確認が要る)と t2 の欄は常に nil。
+/// 操作の直後に入るのは `busyBeforeAction` / `quietWaitMs` / `firstFrameMs` / `firstFrameMissing` だけ。t2 の欄は
+/// このステップの次の計測ステップが対象を解決した時点で `ResponseReadyUpdate` として後から入る
+/// (次の計測ステップが無い = シナリオの最後の計測ステップ・途中で終わったシナリオは判定されず、t2 の欄は nil のまま)。
+/// `reactionMs`(t1 は画面の差での確認が要る)は常に nil。
 /// 記録する入力は**ステップの最初の注入**(例: スクロール探索のスワイプがあれば、タップより先のそのスワイプ)
 public struct ResponseMeasurementRecord: Codable, Sendable, Equatable {
     /// 操作の前から描画が止まらなかった(prepare の `quiet == false`)。true のとき `firstFrameMs` は出さない
@@ -18,9 +20,12 @@ public struct ResponseMeasurementRecord: Codable, Sendable, Equatable {
     public var observationStartMs: Int?
     public var readyDecidedBy: String?
     public var readyMissing: String?
-
-    /// t2 が無い理由のうち、この版で言える唯一の値
-    public static let readyNotMeasured = "notMeasuredInThisVersion"
+    /// 最後の注入から操作可能まで / 最初の注入から最後の注入まで / 注入の回数(`readyMs` と `firstFrameMs` は最初の注入から)
+    public var readyAfterLastInjectionMs: Int?
+    public var injectionSpanMs: Int?
+    public var injections: Int?
+    /// `locator` = 同じ指定で解決した要素までしか照合していない(要素の同一性は比べない)
+    public var readyIdentity: String?
 
     public enum FirstFrameMissing: String, Codable, Sendable, Equatable {
         case busyBeforeAction
@@ -36,7 +41,9 @@ public struct ResponseMeasurementRecord: Codable, Sendable, Equatable {
     public init(busyBeforeAction: Bool, quietWaitMs: Int?, firstFrameMs: Int?,
                 firstFrameMissing: FirstFrameMissing?, reactionMs: Int? = nil, readyMs: Int? = nil,
                 readyAfterObservationStartMs: Int? = nil, observationStartMs: Int? = nil,
-                readyDecidedBy: String? = nil, readyMissing: String? = Self.readyNotMeasured) {
+                readyDecidedBy: String? = nil, readyMissing: String? = nil,
+                readyAfterLastInjectionMs: Int? = nil, injectionSpanMs: Int? = nil, injections: Int? = nil,
+                readyIdentity: String? = nil) {
         self.busyBeforeAction = busyBeforeAction
         self.quietWaitMs = quietWaitMs
         self.firstFrameMs = firstFrameMs
@@ -47,6 +54,23 @@ public struct ResponseMeasurementRecord: Codable, Sendable, Equatable {
         self.observationStartMs = observationStartMs
         self.readyDecidedBy = readyDecidedBy
         self.readyMissing = readyMissing
+        self.readyAfterLastInjectionMs = readyAfterLastInjectionMs
+        self.injectionSpanMs = injectionSpanMs
+        self.injections = injections
+        self.readyIdentity = readyIdentity
+    }
+
+    /// 後から来た t2 の確定を当てる(欄ごとに上書き。更新が持たない欄は元のまま)
+    public func applying(_ update: ResponseReadyUpdate) -> ResponseMeasurementRecord {
+        var copy = self
+        copy.readyMs = update.readyMs
+        copy.readyAfterLastInjectionMs = update.readyAfterLastInjectionMs
+        copy.injectionSpanMs = update.injectionSpanMs
+        copy.injections = update.injections
+        copy.readyDecidedBy = update.readyDecidedBy
+        copy.readyIdentity = update.readyIdentity
+        copy.readyMissing = update.readyMissing
+        return copy
     }
 
     /// prepare / collect の結果から組む。
@@ -70,11 +94,13 @@ public struct ResponseMeasurementRecord: Codable, Sendable, Equatable {
             return ResponseMeasurementRecord(busyBeforeAction: false, quietWaitMs: prepare.waitedMs,
                                              firstFrameMs: nil, firstFrameMissing: .bridgeError)
         }
+        let injections = collect.injections > 0 ? collect.injections : nil
         if let ms = collect.firstFrameDelayMs {
             return ResponseMeasurementRecord(busyBeforeAction: false, quietWaitMs: prepare.waitedMs,
-                                             firstFrameMs: ms, firstFrameMissing: nil)
+                                             firstFrameMs: ms, firstFrameMissing: nil, injections: injections)
         }
         return ResponseMeasurementRecord(busyBeforeAction: false, quietWaitMs: prepare.waitedMs, firstFrameMs: nil,
-                                         firstFrameMissing: collect.reason.flatMap(FirstFrameMissing.init(rawValue:)))
+                                         firstFrameMissing: collect.reason.flatMap(FirstFrameMissing.init(rawValue:)),
+                                         injections: injections)
     }
 }

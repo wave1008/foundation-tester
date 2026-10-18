@@ -204,6 +204,11 @@ public struct StepOutcome: Sendable {
     public let ambiguousMatchCount: Int?
     /// 応答時間計測(計測モードで、画面を動かす操作のステップだけ。それ以外は nil)
     public let response: ResponseMeasurementRecord?
+    /// このステップの対象で判定した**前の計測ステップ**の t2。前の計測ステップが無い・判定できなかった(注入しなかった等)ときは nil
+    public let readyUpdateForPreviousStep: ResponseReadyUpdate?
+    /// true = このステップが注入し、次の計測ステップの判定待ち(`readyUpdateForPreviousStep` の宛先)になった。
+    /// 呼び手が「前の計測ステップ」の添字を覚える目印(executor の待ちと同じ条件で立つ)
+    public let opensReadyObservation: Bool
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil,
                healedByFingerprint: Bool = false,
@@ -216,8 +221,12 @@ public struct StepOutcome: Sendable {
                imageMatches: [FindImage.Match]? = nil,
                ambiguousMatchCount: Int? = nil,
                response: ResponseMeasurementRecord? = nil,
+               readyUpdateForPreviousStep: ResponseReadyUpdate? = nil,
+               opensReadyObservation: Bool = false,
                at: String = ISO8601Millis.string(from: Date())) {
         self.response = response
+        self.readyUpdateForPreviousStep = readyUpdateForPreviousStep
+        self.opensReadyObservation = opensReadyObservation
         self.imageMatches = imageMatches
         self.ambiguousMatchCount = ambiguousMatchCount
         self.failureKind = failureKind
@@ -603,6 +612,10 @@ public final class StepExecutor {
     /// レスポンス計測モード(`--response-measurement`)。画面を動かす操作の前後で prepare / collect を撃つ(executeStep)
     let responseMeasurement: Bool
 
+    /// 直近に注入した計測ステップの注入の事実(次の計測ステップが対象を解決した時点で、その木の履歴を判定する宛先)。
+    /// execute は DSL から1ステップずつ同期で呼ばれるので競合しない
+    var pendingResponseObservation: ResponseInjectionFacts?
+
     /// **半開きシート内で停滞したら、逆走査(飛び越しの拾い直し)を掛けずに即返す**(既定 false)。
     /// true にしてよいのは「呼び手がシートを展開して再試行する」場合だけ —— 展開後の再試行は
     /// 全画面高の容器で同じ逆走査を持つので救済は落ちない(MCP の ft_scroll_to の1回目が使う。
@@ -740,21 +753,35 @@ public final class StepExecutor {
                 var prepared: ResponsePrepareResult?
                 if measuring {
                     prepared = try? await driver.prepareResponseMeasurement(
-                        quietMs: tunables.responseQuietMs, timeoutMs: tunables.responseQuietTimeoutMs)
+                        quietMs: tunables.responseQuietMs, timeoutMs: tunables.responseQuietTimeoutMs,
+                        observeMs: tunables.responseObserveMs)
                 }
                 let outcome: StepOutcome
                 do {
                     outcome = try await executeAction(action, step: step,
                                                       fingerprint: fingerprint, phase: &phase)
                 } catch {
-                    // 投げた経路でもブリッジの記録(armed)を残さない。結果は捨てる
-                    if measuring { _ = try? await driver.collectResponseMeasurement() }
+                    // 投げた経路でもブリッジの記録(armed)を残さない。結果は捨てる。
+                    // 注入していても前の計測ステップの履歴はここで締まっているので、宛先は残さない(判定しない)
+                    if measuring {
+                        _ = try? await driver.collectResponseMeasurement()
+                        pendingResponseObservation = nil
+                    }
                     throw error
                 }
                 var response: ResponseMeasurementRecord?
+                var readyUpdate: ResponseReadyUpdate?
+                var opensReadyObservation = false
                 if measuring {
                     let collected = try? await driver.collectResponseMeasurement()
                     response = ResponseMeasurementRecord.make(prepare: prepared, collect: collected)
+                    if let facts = Self.injectionFacts(collected) {
+                        if let previous = pendingResponseObservation {
+                            readyUpdate = await judgeReadiness(of: previous, step: step)
+                        }
+                        pendingResponseObservation = facts
+                        opensReadyObservation = true
+                    }
                 }
                 // 失敗したなら、登録の無いシステムアラートが前面に無いかを1回だけ聞いて文言に添える
                 let status = await annotatedWithSystemAlert(outcome.status, phase: &phase)
@@ -780,7 +807,9 @@ public final class StepExecutor {
                                    evidenceImage: Self.isSuccess(status) ? nil : classifierScreenshotThisStep,
                                    imageMatches: Self.isSuccess(outcome.status) ? imageMatchesThisStep : nil,
                                    ambiguousMatchCount: ambiguousMatchCountThisStep,
-                                   response: response)
+                                   response: response,
+                                   readyUpdateForPreviousStep: readyUpdate,
+                                   opensReadyObservation: opensReadyObservation)
             }
             if let assert = step.assert {
                 var status = try await executeAssert(assert, step: step, phase: &phase)
@@ -824,6 +853,43 @@ public final class StepExecutor {
                                failureKind: Self.failureKind(thrown: error)
                                    ?? failureKindThisStep)
         }
+    }
+
+    /// collect の結果 → 注入の事実。注入が無ければ nil(= このステップは次の判定の宛先にならない)
+    static func injectionFacts(_ collected: ResponseCollectResult?) -> ResponseInjectionFacts? {
+        guard let collected, let first = collected.downTimeMs else { return nil }
+        return ResponseInjectionFacts(firstDownTimeMs: first, lastDownTimeMs: collected.lastDownTimeMs ?? first,
+                                      injections: max(collected.injections, 1))
+    }
+
+    /// 前の計測ステップ j の木の履歴を、このステップ i が実際に解決して操作した対象で判定する。
+    /// 判定できない構成は nil(更新を出さない = j は判定されないまま):
+    /// i が対象に着くまでに自分で画面を動かした(スクロール探索・寄せ)と、i が使った枠は履歴の木の枠と
+    /// 別の座標系になり、条件(枠が等しい)が成り立たないのに「揃う前に撃たれた」と言ってしまうため
+    func judgeReadiness(of previous: ResponseInjectionFacts, step: FlowStep) async -> ResponseReadyUpdate? {
+        guard step.locator != nil, let used = resolvedElementThisStep else {
+            return ResponseReadyJudge.missing(.noTarget, facts: previous)
+        }
+        if (scrollSwipesThisStep ?? 0) > 0 || (slowDragsThisStep ?? 0) > 0 { return nil }
+        let observation: ResponseObservation
+        do {
+            observation = try await driver.fetchResponseObservation(firstDownTimeMs: previous.firstDownTimeMs)
+        } catch {
+            return ResponseReadyJudge.missing(.bridgeError, facts: previous)
+        }
+        return ResponseReadyJudge.judge(
+            observation: observation, facts: previous,
+            resolve: { LocatorResolver.resolve(step: step, in: $0)?.0 },
+            isOccluded: { OcclusionGeometry.overlayCovering($0, in: $1.elements, screen: $1.screen) != nil },
+            usedFrame: used.frame)
+    }
+
+    /// シナリオの終わりに、締まっていない観測をブリッジに止めさせる(失敗しても何もしない。届かなければ
+    /// ブリッジは次の所有者の最初の注入で捨てる)。保留の宛先も捨てる
+    public func endResponseMeasurement() async {
+        guard responseMeasurement else { return }
+        pendingResponseObservation = nil
+        try? await driver.stopResponseObservation()
     }
 
     /// 撮り直す理由 → 実際にキャッシュを迂回するか。**ドライバの対応可否と掛け合わせる唯一の場所**

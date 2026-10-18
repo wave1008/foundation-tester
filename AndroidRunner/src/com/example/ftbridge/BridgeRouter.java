@@ -167,6 +167,8 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                 case "POST /waitForSettle": return handleWaitForSettle(body(request));
                 case "POST /responsePrepare": return handleResponsePrepare(body(request));
                 case "POST /responseCollect": return handleResponseCollect();
+                case "POST /responseObservation": return handleResponseObservation(body(request));
+                case "POST /responseObservationStop": return handleResponseObservationStop();
                 default:
                     return BridgeHttpServer.Response.error(404,
                             "not found: " + request.method + " " + request.path);
@@ -829,6 +831,10 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     /** responsePrepare の timeoutMs の許容範囲(ms)。上限はホストの HTTP 待ちの導出元でもある(BridgeClient.responsePrepare) */
     private static final long RESPONSE_TIMEOUT_MIN_MS = 100;
     private static final long RESPONSE_TIMEOUT_MAX_MS = 30_000;
+    /** responsePrepare の observeMs の許容範囲(ms)。下限は木の読み1回(数十〜数百 ms)を1回は含める値、
+     *  上限 60s は ResponseObserver.MAX_READS / MAX_TREES の見積り(応答が数 MB)の前提 */
+    private static final long RESPONSE_OBSERVE_MIN_MS = 200;
+    private static final long RESPONSE_OBSERVE_MAX_MS = 60_000;
 
     /**
      * POST /responsePrepare(契約は FTCore/BridgeDTO.ResponsePrepareRequest)。アプリのフレームが出なくなるまで待ち、
@@ -836,17 +842,19 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
      * quietMs / timeoutMs は必須で、範囲外は RESPONSE_*_MIN/MAX_MS へ丸める
      */
     private BridgeHttpServer.Response handleResponsePrepare(JSONObject body) throws JSONException {
-        if (!body.has("quietMs") || !body.has("timeoutMs")) {
-            throw new BridgeException(400, "quietMs and timeoutMs are required");
+        if (!body.has("quietMs") || !body.has("timeoutMs") || !body.has("observeMs")) {
+            throw new BridgeException(400, "quietMs, timeoutMs and observeMs are required");
         }
         long quietMs = body.optLong("quietMs", -1);
         long timeoutMs = body.optLong("timeoutMs", -1);
-        if (quietMs <= 0 || timeoutMs <= 0) {
-            throw new BridgeException(400, "quietMs and timeoutMs must be positive integers");
+        long observeMs = body.optLong("observeMs", -1);
+        if (quietMs <= 0 || timeoutMs <= 0 || observeMs <= 0) {
+            throw new BridgeException(400, "quietMs, timeoutMs and observeMs must be positive integers");
         }
+        observeMs = Math.max(RESPONSE_OBSERVE_MIN_MS, Math.min(observeMs, RESPONSE_OBSERVE_MAX_MS));
         quietMs = Math.max(RESPONSE_QUIET_MIN_MS, Math.min(quietMs, RESPONSE_QUIET_MAX_MS));
         timeoutMs = Math.max(RESPONSE_TIMEOUT_MIN_MS, Math.min(timeoutMs, RESPONSE_TIMEOUT_MAX_MS));
-        ResponseProbe.Prepared r = ResponseProbe.prepare(ua(), sessionBundleID, quietMs, timeoutMs);
+        ResponseProbe.Prepared r = ResponseProbe.prepare(ua(), instrumentation.getContext(), sessionBundleID, quietMs, timeoutMs, observeMs);
         JSONObject o = new JSONObject();
         o.put("quiet", r.quiet);
         o.put("waitedMs", r.waitedMs);
@@ -861,7 +869,21 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         o.put("downTimeMs", r.downTimeMs == null ? JSONObject.NULL : r.downTimeMs);
         o.put("firstFrameDelayMs", r.firstFrameDelayMs == null ? JSONObject.NULL : r.firstFrameDelayMs);
         o.put("reason", r.reason == null ? JSONObject.NULL : r.reason);
+        o.put("lastDownTimeMs", r.lastDownTimeMs == null ? JSONObject.NULL : r.lastDownTimeMs);
+        o.put("injections", r.injections);
         return BridgeHttpServer.Response.json(200, o.toString());
+    }
+
+    /** POST /responseObservation(契約は FTCore/ResponseMeasurementWire.ResponseObservation)。締め終わった観測を最初の downTime で返す。settle は呼ばない */
+    private BridgeHttpServer.Response handleResponseObservation(JSONObject body) throws JSONException {
+        if (!body.has("firstDownTimeMs")) throw new BridgeException(400, "firstDownTimeMs is required");
+        return BridgeHttpServer.Response.json(200, ResponseObserver.fetch(body.optLong("firstDownTimeMs", -1)).toString());
+    }
+
+    /** POST /responseObservationStop。実行中の観測を止め、記録を全部捨てる。settle は呼ばない */
+    private BridgeHttpServer.Response handleResponseObservationStop() {
+        ResponseObserver.stopAll();
+        return BridgeHttpServer.Response.json(200, "{\"stopped\":true}");
     }
 
     /**

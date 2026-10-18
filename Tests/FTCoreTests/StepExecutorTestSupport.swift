@@ -159,18 +159,38 @@ final class FakeAppDriver: AppDriver {
     var prepareResult: Result<ResponsePrepareResult, Error> = .success(ResponsePrepareResult(quiet: true, waitedMs: 12))
     var collectResult: Result<ResponseCollectResult, Error> =
         .success(ResponseCollectResult(downTimeMs: 1000, firstFrameDelayMs: 34))
-    private(set) var prepareArguments: [(quietMs: Int, timeoutMs: Int)] = []
+    private(set) var prepareArguments: [(quietMs: Int, timeoutMs: Int, observeMs: Int)] = []
     private(set) var collectCallCount = 0
+    /// 観測の取得の擬似。呼ばれるたびに先頭から消費し、尽きたら最後の値を返す。`fetchedFirstDownTimes` は引数の控え
+    var observationResults: [Result<ResponseObservation, Error>] = []
+    private(set) var fetchedFirstDownTimes: [Int] = []
+    private(set) var stopObservationCallCount = 0
+    /// 次の collect の結果を呼び出しごとに差し替える(空なら `collectResult`)
+    var collectResults: [Result<ResponseCollectResult, Error>] = []
 
-    func prepareResponseMeasurement(quietMs: Int, timeoutMs: Int) async throws -> ResponsePrepareResult {
+    func prepareResponseMeasurement(quietMs: Int, timeoutMs: Int, observeMs: Int) async throws -> ResponsePrepareResult {
         log.entries.append("\(name).responsePrepare")
-        prepareArguments.append((quietMs, timeoutMs))
+        prepareArguments.append((quietMs, timeoutMs, observeMs))
         return try prepareResult.get()
+    }
+
+    func fetchResponseObservation(firstDownTimeMs: Int) async throws -> ResponseObservation {
+        log.entries.append("\(name).responseObservation")
+        fetchedFirstDownTimes.append(firstDownTimeMs)
+        guard !observationResults.isEmpty else { return ResponseObservation(found: false) }
+        let next = fetchedFirstDownTimes.count - 1
+        return try observationResults[min(next, observationResults.count - 1)].get()
+    }
+
+    func stopResponseObservation() async throws {
+        log.entries.append("\(name).responseObservationStop")
+        stopObservationCallCount += 1
     }
 
     func collectResponseMeasurement() async throws -> ResponseCollectResult {
         log.entries.append("\(name).responseCollect")
         collectCallCount += 1
+        if !collectResults.isEmpty { return try collectResults.removeFirst().get() }
         return try collectResult.get()
     }
 

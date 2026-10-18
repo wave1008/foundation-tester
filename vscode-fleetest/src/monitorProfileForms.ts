@@ -172,7 +172,7 @@ export interface RunProfileFormFields {
   readonly enableAnimations: boolean;
   /** 既定 false(実験的)。Android 実機 1 台のレスポンス計測モード(Swift: RunProfileDocument.responseMeasurement) */
   readonly responseMeasurement: boolean;
-  /** 計測モードで各シナリオを続けて回す回数(空文字 = 未設定 = Swift 側の既定 5)。2〜50 の整数だけ通す =
+  /** 計測モードで各シナリオを続けて回す回数(空文字 = 未設定 = Swift 側の既定 5)。1〜50 の整数だけ通す =
    * Sources/FTCore/ResponseMeasurementPolicy.swift の minRepeat/maxRepeat と同じ条件。
    * responseMeasurement が false のときは書かない(Swift は responseMeasurement 無しの responseRepeat を断る) */
   readonly responseRepeat: string;
@@ -402,7 +402,7 @@ export function updateRunProfileInObject(
   const responseRepeatTrimmed = fields.responseRepeat.trim();
   if (responseRepeatTrimmed.length === 0 || !fields.responseMeasurement) {
     delete result.responseRepeat;
-  } else if (!/^\d+$/.test(responseRepeatTrimmed) || Number(responseRepeatTrimmed) < 2
+  } else if (!/^\d+$/.test(responseRepeatTrimmed) || Number(responseRepeatTrimmed) < 1
              || Number(responseRepeatTrimmed) > 50) {
     return { ok: false, error: t("monitor.runProfile.responseRepeatInvalid") };
   } else {

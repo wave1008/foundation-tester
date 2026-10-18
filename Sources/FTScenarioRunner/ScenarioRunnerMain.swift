@@ -686,6 +686,7 @@ struct RunScenario: AsyncParsableCommand {
             thread.start()
         }
         FTRuntime.tearDown()
+        await core.endResponseMeasurement()
 
         // Unconditional call, but cheap when unused: each leaf driver's rotate(to:) only captures
         // the original orientation on its first call in this scenario, so this is a true no-op

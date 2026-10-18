@@ -84,15 +84,15 @@ final class ResponseMeasurementTests: XCTestCase {
         XCTAssertEqual(DeviceIndependentRunSettings.resolve(
             RunProfileDocument(responseMeasurement: true, responseRepeat: 12)).responseRepeat, 12)
         let dev = [device("android", physical: true)]
-        XCTAssertNil(message(RunProfileDocument(responseMeasurement: true, responseRepeat: 2), dev))
+        XCTAssertNil(message(RunProfileDocument(responseMeasurement: true, responseRepeat: 1), dev))
         XCTAssertNil(message(RunProfileDocument(responseMeasurement: true, responseRepeat: 50), dev))
     }
 
     func testRepeatOutOfRangeIsRejectedWithBothBounds() {
         let dev = [device("android", physical: true)]
-        for value in [1, 0, -3] {
+        for value in [0, -3] {
             XCTAssertTrue(message(RunProfileDocument(responseMeasurement: true, responseRepeat: value), dev)?
-                .contains("responseRepeat in run profile r must be at least 2") == true, "value \(value)")
+                .contains("responseRepeat in run profile r must be at least 1") == true, "value \(value)")
         }
         XCTAssertTrue(message(RunProfileDocument(responseMeasurement: true, responseRepeat: 51), dev)?
             .contains("must be at most 50") == true)

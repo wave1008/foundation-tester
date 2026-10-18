@@ -554,14 +554,20 @@ LC_UUID が入るので再ビルドでコールドに戻る。docs/performance-t
 | command | String? | DSL のコマンド名(`ScenarioEvent.command`。`tap` / `exist` 等)。description から切り出さずに運ぶ。言えないステップは省略 |
 | response | ResponseMeasurementRecord? | 応答時間計測(プロファイルの `responseMeasurement: true` の run で、**画面を動かす操作のステップ**だけ。検証・`select`・`findImages`・`waitForSettle`・`performCustom` 経由(launch / back / home / wait 等)は省略)。`StepExecutor` が操作の前に prepare(アプリが `responseQuietMs` の間フレームを出さなくなるまで最長 `responseQuietTimeoutMs` 待ち、最初の入力の記録を構える)、後に collect する。prepare / collect の所要は `actionMs` / `waitMs` に入れない(`durationMs` には入る)。失敗してもステップの結果は変わらない |
 
-`response` の欄(この版で値が入るのは太字だけ。他は常に省略または `readyMissing` の固定値):
+`response` の欄:
 
 - **`busyBeforeAction`**(Bool): 操作の前から描画が止まらなかった(prepare の `quiet == false`)。true のとき `firstFrameMs` は出さない
 - **`quietWaitMs`**(Int?): 描画の停止を待った時間。prepare が失敗したら省略
 - **`firstFrameMs`**(Int?): **ステップの最初に注入した入力**(スクロール探索のスワイプがあればタップより先のそのスワイプ)から、最初に提示されたフレームまでの遅れ。t1(反応)の確認済みの値ではない
 - **`firstFrameMissing`**(String?): `firstFrameMs` が無い理由。`busyBeforeAction`(操作の前から描画が続いていた)/ `noInjectedInput`(ブリッジが入力の注入を記録していない)/ `noFrame`(注入の後にフレームが出なかった)/ `frameHistoryIncomplete`(フレームの履歴が足りず判定できない)/ `noSessionApp`(対象アプリが無い)/ `bridgeError`(prepare / collect が失敗した。未対応のドライバの 501 を含む)。値があるときは省略。ブリッジが知らない理由を返したときも省略する(別の理由に丸めない)。`busyBeforeAction` は「描画が止まらなかった」ときだけで、ブリッジが判定できなかった(`noSessionApp` 等)ときはその理由になる
-- `reactionMs` / `readyMs` / `readyAfterObservationStartMs` / `observationStartMs` / `readyDecidedBy`: この版では常に省略(t1 は画面の差での確認が要り、t2 は未実装)
-- **`readyMissing`**(String?): この版では常に `notMeasuredInThisVersion`
+- `reactionMs` / `readyAfterObservationStartMs` / `observationStartMs`: 常に省略(t1 は画面の差での確認が要る。後者2つは「観測の遅れ」の方式を採らなかったので使わない)
+- **t2(操作可能)の欄は、このステップの次の計測ステップが対象を解決した時点で後から入る**(ブリッジが記録した木の履歴を、次のステップが実際に操作した要素で判定する = docs/response-measurement.md §5「2b の方式」)。**次の計測ステップが無い(シナリオの最後の計測ステップ・失敗や中断で終わったシナリオ)ときと、次のステップが対象に着くまでに自分で画面を動かした(スクロール探索・寄せ)ときは判定されず、これらの欄は省略のまま**。結果 JSON への書き込みは `kind: "responseReady"` のイベント(`index` = 宛先のステップの添字・`readyUpdate`)を `ScenarioRecordBuilder` が `timeline[]` の該当ステップへ当てる(ライブの NDJSON(`fleetest api run`)には流さない)
+  - **`readyMs`**(Int?): t2。**最初の注入**から、対象が操作可能(解決できる・有効・覆われていない・枠が次のステップの使った枠と等しい)になり、続く次の読みでも保たれた最初の読みの終わりまで
+  - **`readyAfterLastInjectionMs`**(Int?): 最後の注入から t2 まで。**`injectionSpanMs`**(Int?): 最初から最後の注入まで。**`injections`**(Int?): 注入の回数(`readyMs` が無いときも、判定されたなら入る)
+  - **`readyDecidedBy`**(String?): `tree`(木の条件で決めた。画素の静止は見ていない)
+  - **`readyIdentity`**(String?): `locator`(同じ指定で解決した要素までしか照合していない。要素の同一性は比べない)
+  - **`readyMissing`**(String?): t2 が無い理由(判定されたときだけ)。`notReadyBeforeNextAction`(条件が揃う前に次の操作が撃たれた)/ `observationTimeout`(`responseObserveMs` で観測が締まり、揃った回が無い)/ `observationTruncated`(記録の上限で途中から記録をやめ、それまでに揃った回が無い)/ `observationLost`(ブリッジに観測が無かった)/ `noTarget`(次のステップにセレクタで解決した要素が無い = 座標の操作等)/ `bridgeError`(観測の取得が失敗した)。観測の終わり方を言えないときは省略(丸めない)
+- 判定に使う観測の上限 `responseObserveMs`(既定 10000ms)は `RunTunables`
 
 対象は Android の実機のみ(ブリッジ v102〜)。`api results` の出力キャッシュのパック(`RunRecordPack.trimmedForStorage`)は timeline を `notes` のあるステップの4欄に削るので、`command` / `response` はパック経由では見えない(`scenarios/*.json` の記録には載る)。
 
