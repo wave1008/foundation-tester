@@ -43,10 +43,8 @@ final class ResponseObserver {
         /** 上限(capMs)に達して読みを止めている。観測は閉じない(同じステップの次の注入で再開できる)。cappedAt = 期限(capBase + capMs) */
         boolean capped = false;
         long cappedAt = -1;
-        /** 最初のフレームの確定値(--latency-clear の各回の直前に求め、見つかったときだけ置く)。noFrame は観測を取りに来るまで暫定 =
-         *  置かない(待ちの途中や締めの前に出るフレームを後の回・fetch で拾う)。ffIncompleteSeen = 途中の回で履歴の不足を見た */
-        Long ffDelay;
-        boolean ffIncompleteSeen = false;
+        /** 最初のフレームの確定(--latency-clear の各回の直前の読みを当てる。規則は FirstFrameState)。lock の中で触る */
+        final FirstFrameState firstFrame = new FirstFrameState();
         final List<long[]> reads = new ArrayList<>(); // {startMs, endMs, ok(1/0)}
         final List<Object[]> trees = new ArrayList<>(); // {Integer readIndex, String snapshotJson}
         String lastTreeJson;
@@ -87,12 +85,12 @@ final class ResponseObserver {
         List<Long> bounds = new ArrayList<>();
         synchronized (lock) {
             long now = SystemClock.uptimeMillis();
-            if (running != null && running.ffDelay == null) {
+            if (running != null && !running.firstFrame.decided()) {
                 targets.add(running);
                 bounds.add(Math.min(now, running.capBase + running.capMs));
             }
             for (Obs c : closedObs) {
-                if (c.ffDelay == null) {
+                if (!c.firstFrame.decided()) {
                     targets.add(c);
                     bounds.add(c.endedAt);
                 }
@@ -102,9 +100,7 @@ final class ResponseObserver {
             Obs o = targets.get(i);
             Object[] ff = ResponseProbe.firstFrameWithin(ua, pkg, o.firstDown, bounds.get(i).longValue());
             synchronized (lock) {
-                if (o.ffDelay != null) continue;
-                if (ff[0] != null) o.ffDelay = (Long) ff[0];
-                else if (ResponseProbe.FRAME_HISTORY_INCOMPLETE.equals(ff[1])) o.ffIncompleteSeen = true;
+                o.firstFrame.absorb(ff);
             }
         }
     }
@@ -159,15 +155,13 @@ final class ResponseObserver {
      *  dumpsys は遅いのでロックの外で読む(締めた観測は書き換わらない) */
     static JSONObject fetch(UiAutomation ua, String pkg, long firstDownTimeMs) throws org.json.JSONException {
         Obs obs = null;
-        Long storedDelay = null;
-        boolean incompleteSeen = false;
+        Object[] decidedFirstFrame = null;
         synchronized (lock) {
             for (Obs c : closedObs) {
                 if (c.firstDown == firstDownTimeMs) obs = c;
             }
             if (obs != null) {
-                storedDelay = obs.ffDelay;
-                incompleteSeen = obs.ffIncompleteSeen;
+                decidedFirstFrame = obs.firstFrame.decidedResult();
             }
         }
         JSONObject o = new JSONObject();
@@ -204,12 +198,9 @@ final class ResponseObserver {
         }
         o.put("trees", trees);
         o.put("truncated", obs.truncated);
-        // 確定していなければ、最後に消した後の履歴を今読む(締めまでの残り)。途中の回で履歴の不足を見ていたら noFrame と言えない
-        Object[] ff = storedDelay != null ? new Object[] {storedDelay, null}
+        // 確定していれば(フレーム、または確定の前に見た履歴の不足)それ。未確定なら最後に消した後の履歴を今読む(締めまでの残り)
+        Object[] ff = decidedFirstFrame != null ? decidedFirstFrame
                 : ResponseProbe.firstFrameWithin(ua, pkg, obs.firstDown, obs.endedAt);
-        if (ff[0] == null && incompleteSeen && "noFrame".equals(ff[1])) {
-            ff = new Object[] {null, ResponseProbe.FRAME_HISTORY_INCOMPLETE};
-        }
         o.put("firstFrameDelayMs", ff[0] == null ? JSONObject.NULL : ff[0]);
         o.put("firstFrameReason", ff[1] == null ? JSONObject.NULL : ff[1]);
         return o;

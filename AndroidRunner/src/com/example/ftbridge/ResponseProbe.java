@@ -16,7 +16,7 @@ final class ResponseProbe {
     /** --latency の履歴は1レイヤー最大128フレーム。これ以上埋まっていたら溢れて古い側が消えている可能性がある(127 = 余裕1) */
     private static final int HISTORY_FULL_ROWS = 127;
     private static final String NO_SESSION_APP = "noSessionApp";
-    static final String FRAME_HISTORY_INCOMPLETE = "frameHistoryIncomplete";
+    static final String FRAME_HISTORY_INCOMPLETE = FirstFrameState.FRAME_HISTORY_INCOMPLETE;
 
     static final class Prepared {
         final boolean quiet;
