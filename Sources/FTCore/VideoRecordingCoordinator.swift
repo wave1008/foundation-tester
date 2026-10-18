@@ -607,7 +607,7 @@ actor VideoRecordingCoordinator {
         let finalURL = config.runDir.appendingPathComponent(clip.file)
         // **一時フォルダへ書いてから、成功したときだけ recordings/ へ移す** —— 期限を過ぎた敗者 task は待たずに放置するので
         // (固着した VT セッションに触ると共倒れし得る)、後から書かれた出力が index の参照しないゴミとして recordings/ に残っていた
-        let temporaryDir = FileManager.default.temporaryDirectory
+        let temporaryDir = TemporaryDirectory.url
             .appendingPathComponent("fleetest-clip-\(UUID().uuidString)", isDirectory: true)
         let outputURL = temporaryDir.appendingPathComponent(finalURL.lastPathComponent)
         await acquireExportSlot()

@@ -28,7 +28,7 @@ struct ApiFMAlignCommand: AsyncParsableCommand {
             _ = try await FMServeAlignment.align(socketPath: socket, executable: target,
                                                 build: Self.buildOperation(command: buildCommand)) { ConsoleOut.err($0) }
         } catch {
-            ConsoleOut.err("FM alignment failed: \(error)")
+            ConsoleOut.err("FM alignment failed: \(ErrorText.user(error))")
             throw ExitCode.failure
         }
     }
