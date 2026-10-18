@@ -89,6 +89,13 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertTrue(AppPathLocation.isTemporary("/private/./tmp/A.app"), "畳んでから見る")
         XCTAssertTrue(AppPathLocation.isTemporary("/Users/u/../../private/tmp/A.app"))
         XCTAssertFalse(AppPathLocation.isTemporary("/private/tmp/../../Users/u/A.app"), "畳むと永続の場所")
+        // まだ無い末尾(ビルド前の .app)でも、在る祖先のリンクを解く
+        let real = tempDir.appendingPathComponent("real")
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        let link = tempDir.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        XCTAssertEqual(AppPathLocation.resolvingExistingAncestor(link.appendingPathComponent("Missing.app")).path,
+                       real.resolvingSymlinksInPath().appendingPathComponent("Missing.app").path)
         XCTAssertFalse(AppPathLocation.isTemporary("/Users/u/dev/sut-ec-mobile/build/ios-sim/A.app"))
     }
 

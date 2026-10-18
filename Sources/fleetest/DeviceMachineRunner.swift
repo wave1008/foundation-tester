@@ -59,8 +59,7 @@ enum DeviceMachineRunner {
         // 計測の run は機械をまたいで1台(並行に測らない)。分割へ進む前のここで数える —— 入口の検査
         // (validateDevices)は分割の後にしか届かず、子はそれぞれ1台で通ってしまう(run / api run の両方がここを通る)
         if kept.count > 1,
-           (try? ProfileResolver.resolve(project: project, runName: profileName, overrides: overrides))?
-               .responseMeasurement == true {
+           ProfileResolver.declaresResponseMeasurement(project: project, runName: profileName, overrides: overrides) {
             throw ProfileError.responseMeasurementDeviceCount(run: profileName, count: kept.count)
         }
         let grouped = DeviceMachineGrouping.groups(kept) { $0.machine }

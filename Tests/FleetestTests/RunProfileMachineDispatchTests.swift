@@ -85,6 +85,15 @@ final class RunProfileMachineDispatchTests: XCTestCase {
             "計測でなければ従来どおり分ける")
     }
 
+    /// 全体の resolve が失敗するプロファイル(ここではアプリプロファイルが無い)でも計測の判定を飛ばさない
+    /// —— 子へ送るプロファイルは選んだデバイスだけに畳まれるので、子では resolve が通ってそれぞれ1台で検査を抜ける
+    func testMeasurementCheckDoesNotDependOnAFullResolve() throws {
+        try writeMixed()
+        XCTAssertThrowsError(try DeviceMachineRunner.plan(
+            project: project, profileName: "multi", explicitHost: nil, deviceFilter: [], disabledMachines: [],
+            overrides: ["responseMeasurement": .bool(true)]))
+    }
+
     /// 手元だけに絞れた場合は従来どおり単一経路(nil)
     func testPlanIsNilWhenTheDeviceFilterLeavesOnlyLocalDevices() throws {
         try writeMixed()

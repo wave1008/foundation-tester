@@ -1290,6 +1290,17 @@ public enum ProfileResolver {
             .map { RunDeviceMachine(machine: $0.machine, name: $0.name, platform: $0.platform) }
     }
 
+    /// 実行プロファイルの文書(`--set` 適用後)が計測の run か。**フルの resolve() を経由しない** —— 機械別の分割の前の台数の検査
+    /// (DeviceMachineRunner.plan)が使い、選んでいない別のデバイスの設定の誤りで resolve が失敗しても判定を飛ばさないため。
+    /// 読めない・デコードできないときは false(そのときは runDeviceMachines も空 = 分割の計画は作られない)
+    public static func declaresResponseMeasurement(project: TestProject, runName: String,
+                                                   overrides: [String: RunProfileSetValue] = [:]) -> Bool {
+        let runURL = project.runsDir.appendingPathComponent("\(runName).json")
+        guard let data = try? Data(contentsOf: runURL),
+              let doc = try? JSONDecoder().decode(RunProfileDocument.self, from: data) else { return false }
+        return doc.applyingOverrides(overrides).responseMeasurement == true
+    }
+
     /// runProfileName の実行プロファイルが宣言する `remoteControl.workspace`(trim 後非空)を返す。
     /// ファイルが無い/デコード不能/未宣言・空文字列なら nil。**マシン解決を必要としないので
     /// フルの resolve() を経由しない** —— リモートディスパッチ(Sources/fleetest/

@@ -16,11 +16,22 @@ public enum AppPathLocation {
 
     /// 解決済みの絶対パスが一時フォルダの中か。**`.` / `..` を畳み、シンボリックリンクを解いてから**見る
     /// (接頭辞だけだと `/private/./tmp/…` や一時フォルダへのリンクを見逃し、`/private/tmp/../../Users/…` を誤って警告する)。
-    /// リンクの解決は在るところまで(無いパスは畳んだ形のまま判定する)
+    /// リンクの解決は**在る祖先まで**: resolvingSymlinksInPath は末尾が無いと何も解かないので、在る祖先を解いてから
+    /// 無い部分を足し戻す(まだビルドしていない `<リンク>/App.app` も見る)
     public static func isTemporary(_ absolutePath: String) -> Bool {
         // resolvingSymlinksInPath は先頭の /private を落とす(/private/tmp → /tmp)ので、接頭辞は両方の名前で持つ
-        let path = URL(fileURLWithPath: absolutePath).standardizedFileURL.resolvingSymlinksInPath().path
+        let path = resolvingExistingAncestor(URL(fileURLWithPath: absolutePath).standardizedFileURL).path
         return temporaryPrefixes.contains { path.hasPrefix($0) || path + "/" == $0 }
+    }
+
+    static func resolvingExistingAncestor(_ url: URL) -> URL {
+        var existing = url
+        var missing: [String] = []
+        while !FileManager.default.fileExists(atPath: existing.path), existing.path != "/" {
+            missing.insert(existing.lastPathComponent, at: 0)
+            existing.deleteLastPathComponent()
+        }
+        return missing.reduce(existing.resolvingSymlinksInPath()) { $0.appendingPathComponent($1) }
     }
 
     public static func temporaryWarning(appProfile: String, platform: String, key: String, path: String) -> String {
