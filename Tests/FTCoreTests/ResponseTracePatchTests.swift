@@ -69,10 +69,13 @@ final class ResponseTracePatchTests: XCTestCase {
         XCTAssertEqual(out.lastEndMs, 1302)
     }
 
-    func testCoveragePrefersTocDurationOverLastSurface() {
+    func testCoverageEndsAtTheLastSurfaceNotAtTheRecordingEnd() {
         let info = ResponseTracePatch.TimeInfo(mabsEpochTicks: 24_000_000, numer: 125, denom: 3)
         XCTAssertEqual(ResponseTracePatch.coverage(timeInfo: info, durationSeconds: 10, lastSurfaceEndMs: 1302),
-                       ResponseTracePatch.Coverage(startMs: 1000, endMs: 11_000))
+                       ResponseTracePatch.Coverage(startMs: 1000, endMs: 1302),
+                       "記録の終わり際は表に描画が入らないことがある = 最後のフレームより後は覆うと言わない")
+        XCTAssertEqual(ResponseTracePatch.coverage(timeInfo: info, durationSeconds: 0.2, lastSurfaceEndMs: 1302),
+                       ResponseTracePatch.Coverage(startMs: 1000, endMs: 1200), "記録の長さの方が短ければそちら")
         XCTAssertEqual(ResponseTracePatch.coverage(timeInfo: info, durationSeconds: nil, lastSurfaceEndMs: 1302),
                        ResponseTracePatch.Coverage(startMs: 1000, endMs: 1302))
         XCTAssertNil(ResponseTracePatch.coverage(timeInfo: info, durationSeconds: nil, lastSurfaceEndMs: nil))

@@ -96,15 +96,17 @@ public enum ResponseTracePatch {
         return (times.sorted(), lastEnd)
     }
 
-    /// 記録の覆う範囲。終わりは `--toc` の記録の長さがあればそれ(最後のフレームの後に何も出なかった区間も覆う = `noFrame` と言える根拠)、
-    /// 無ければ表の最後の行の終わり(その後は覆うと言えない = 範囲の外として何も入れない側に倒れる)
+    /// 記録の覆う範囲。終わりは**表の最後のフレームの終わり**(`--toc` の記録の長さの方が短ければそちら)。記録の長さの終わりまで
+    /// 覆うとは言わない —— 記録の終わり際の描画が表に入らないことがあり(iPhone SE3・E2E-RN の run の最後のステップで、他の回は
+    /// 約 250 ms で出るタブ切り替えが `noFrame` になった)、その区間で `noFrame` と言うと誤る。最後のフレームの後のステップは
+    /// 範囲の外 = 何も入れない側に倒れる(言えないときは欄ごと省く)
     public static func coverage(timeInfo: TimeInfo, durationSeconds: Double?, lastSurfaceEndMs: Double?) -> Coverage? {
         guard let epochNs = nanoseconds(ticks: timeInfo.mabsEpochTicks, numer: timeInfo.numer, denom: timeInfo.denom)
         else { return nil }
         let start = Double(epochNs) / 1_000_000
-        if let durationSeconds { return Coverage(startMs: start, endMs: start + durationSeconds * 1000) }
         guard let lastSurfaceEndMs else { return nil }
-        return Coverage(startMs: start, endMs: lastSurfaceEndMs)
+        let recordedEnd = durationSeconds.map { start + $0 * 1000 }
+        return Coverage(startMs: start, endMs: min(lastSurfaceEndMs, recordedEnd ?? lastSurfaceEndMs))
     }
 
     // MARK: 結果への当て込み

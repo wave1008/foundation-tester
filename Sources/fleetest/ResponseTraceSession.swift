@@ -187,7 +187,7 @@ final class ResponseTraceSession: @unchecked Sendable {
         switch outcome {
         case .failed(let reason):
             log(Self.notMeasured(reason))
-        case .patched(let steps, let scenarios, let outside, let unbounded):
+        case .patched(let steps, let scenarios, let outside, let unbounded, let tail):
             guard steps > 0 || outside > 0 || unbounded > 0 else { return }
             var line = "ℹ️ First frame filled in from the Instruments trace for \(steps) step(s) in \(scenarios) scenario(s)"
             if outside > 0 {
@@ -196,6 +196,8 @@ final class ResponseTraceSession: @unchecked Sendable {
             if unbounded > 0 {
                 line += "; \(unbounded) step(s) without an observation end time were left empty"
             }
+            // 記録の終わりまでの、表にフレームが無い区間の長さ(範囲は最後のフレームまでに切る = ResponseTracePatch.coverage)
+            if let tail, outside > 0 { line += " (the trace has no frames in its last \(tail) ms)" }
             log(line)
         }
     }
@@ -251,7 +253,7 @@ final class ResponseTraceSession: @unchecked Sendable {
 
     private enum Analysis {
         case failed(String)
-        case patched(steps: Int, scenarios: Int, outside: Int, unbounded: Int)
+        case patched(steps: Int, scenarios: Int, outside: Int, unbounded: Int, tailWithoutFramesMs: Int?)
     }
 
     /// 表の書き出し → 換算 → 結果の書き換え。ブロックするので detached で呼ぶ
@@ -293,7 +295,12 @@ final class ResponseTraceSession: @unchecked Sendable {
             Self.patchReport(before: record, after: patched.record)
             return patched.record
         }
-        return .patched(steps: steps, scenarios: scenarios, outside: outside, unbounded: unbounded)
+        let tail = duration.flatMap { seconds -> Int? in
+            guard let last = surfaces.lastEndMs else { return nil }
+            return Int((coverage.startMs + seconds * 1000 - last).rounded())
+        }
+        return .patched(steps: steps, scenarios: scenarios, outside: outside, unbounded: unbounded,
+                        tailWithoutFramesMs: tail)
     }
 
     /// Markdown レポート(reports/scenario-*.md)の該当ステップの行へも最初のフレームを足す。

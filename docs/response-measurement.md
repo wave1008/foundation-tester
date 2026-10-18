@@ -651,6 +651,12 @@ XCTest の `measure(metrics:)`(**基準値をデバイスごとに持ち**、前
      期限なしに置き換えて終わりに戻す。run.json の識別は配る前に書き、失敗の finish でも残す。操作が投げた経路でも collect の記録を載せる。
      xctrace の見張りは spawn の直後から後始末の最後まで生かし、親の死では一時フォルダを引数に持つ子(書き出しを含む)を止めてから消す(見張りの sh は実際の /bin/sh で
      テストする = `ResponseTraceWatcherTests`。関数の中の `$2` / `$3` が空になる不具合を出した)
+   - **iOS の当て込みの範囲は表の最後のフレームまで**(記録の長さの終わりまでとは言わない)。E2E-RN の iPhone SE3 で、run の最後の
+     シナリオの最後のステップ(他の回は約 250 ms で出るタブ切り替え)が3回とも trace に描画が無く、記録の長さで覆うと `noFrame` と誤った
+     (表にフレームが無い末尾は 592・695 ms)。今は範囲の外として空欄にする。run の最後の計測ステップは iOS で最初のフレームが出ないことがある
+   - **自前描画の SUT でも確認**(CMP・Flutter・RN × Pixel 4a・iPhone SE3・同じシナリオを各5回): 全組で全ステップに値が出て
+     `busyBeforeAction` は0。中央値は Android 70〜374 ms・iOS 128〜260 ms、p90 は中央値から概ね 10% 以内(外れは CMP Android の
+     `#tab_controls` 209 → 379 ms の1件)。t2 は遷移の後 Android 118〜427 ms・iOS 652〜776 ms、次の対象がタブバーなら 5〜8 ms
    - **Pixel 4a・iPhone SE3 で確認**(`起動と画面遷移が正しく行われること.S0010`・各2回): 全ステップに `firstFrameMs`(Android 49〜62ms・
      iOS 139〜237ms)と `observationEndMs`。最後のステップにも観測の終わりが入る。iOS は md の行にも `first frame` が入った。Android で
      遅れて出るフレームの経路は、どのステップも collect の時点でフレームが出ていたので**デバイスでは通っていない**(単体テストだけ)

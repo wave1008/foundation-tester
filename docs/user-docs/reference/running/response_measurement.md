@@ -135,6 +135,8 @@ In the following cases there is neither a time until ready nor a reason (the ste
   the run ends. Xcode must be installed and able to record the device with Instruments. If recording fails, the run prints one line
   saying so and leaves the value empty.
 - **Time to first frame** also includes the time XCUITest takes to deliver the input to the device (it reads longer than on Android).
+- The last moments of an Instruments recording can come without frames, so the last measured step of a run may have no time to first
+  frame (it is left empty rather than reported as `noFrame`).
 - **Time until ready** is coarser than on Android, because reading the screen's element information takes a few hundred
   milliseconds each time (`observedReads` in the result JSON is the number of reads the judgement could use).
 - The device's Reduce Motion setting cannot be changed by the tool; the device is measured with its own setting.
