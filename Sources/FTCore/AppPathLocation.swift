@@ -14,24 +14,31 @@ public enum AppPathLocation {
         declared.hasPrefix("/") || declared.hasPrefix("~")
     }
 
-    /// 解決済みの絶対パスが一時フォルダの中か。**`.` / `..` を畳み、シンボリックリンクを解いてから**見る
-    /// (接頭辞だけだと `/private/./tmp/…` や一時フォルダへのリンクを見逃し、`/private/tmp/../../Users/…` を誤って警告する)。
-    /// リンクの解決は**在る祖先まで**: resolvingSymlinksInPath は末尾が無いと何も解かないので、在る祖先を解いてから
-    /// 無い部分を足し戻す(まだビルドしていない `<リンク>/App.app` も見る)
+    /// 解決済みの絶対パスが一時フォルダの中か。**カーネルと同じ順で先頭から1要素ずつたどる**: 在る部分はリンクを解き
+    /// (`realpath`。/private を落とさない)、`..` は**解いた先の**親へ上がる。先に `..` を畳むとリンクの情報を失う
+    /// (`<リンク>/../App.app` はリンク先の親を指す)。まだ無い末尾(ビルド前の .app)はそのまま足す
     public static func isTemporary(_ absolutePath: String) -> Bool {
-        // resolvingSymlinksInPath は先頭の /private を落とす(/private/tmp → /tmp)ので、接頭辞は両方の名前で持つ
-        let path = resolvingExistingAncestor(URL(fileURLWithPath: absolutePath).standardizedFileURL).path
+        let path = resolvingLikeTheKernel(absolutePath)
         return temporaryPrefixes.contains { path.hasPrefix($0) || path + "/" == $0 }
     }
 
-    static func resolvingExistingAncestor(_ url: URL) -> URL {
-        var existing = url
-        var missing: [String] = []
-        while !FileManager.default.fileExists(atPath: existing.path), existing.path != "/" {
-            missing.insert(existing.lastPathComponent, at: 0)
-            existing.deleteLastPathComponent()
+    static func resolvingLikeTheKernel(_ absolutePath: String) -> String {
+        var current = "/"
+        for component in absolutePath.split(separator: "/").map(String.init) {
+            switch component {
+            case ".": continue
+            case "..": current = (current as NSString).deletingLastPathComponent
+            default:
+                let candidate = (current as NSString).appendingPathComponent(component)
+                if FileManager.default.fileExists(atPath: candidate), let real = realpath(candidate, nil) {
+                    current = String(cString: real)
+                    free(real)
+                } else {
+                    current = candidate
+                }
+            }
         }
-        return missing.reduce(existing.resolvingSymlinksInPath()) { $0.appendingPathComponent($1) }
+        return current
     }
 
     public static func temporaryWarning(appProfile: String, platform: String, key: String, path: String) -> String {

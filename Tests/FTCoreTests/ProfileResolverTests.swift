@@ -94,8 +94,15 @@ final class ProfileResolverTests: XCTestCase {
         try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
         let link = tempDir.appendingPathComponent("link")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
-        XCTAssertEqual(AppPathLocation.resolvingExistingAncestor(link.appendingPathComponent("Missing.app")).path,
-                       real.resolvingSymlinksInPath().appendingPathComponent("Missing.app").path)
+        let realPath = AppPathLocation.resolvingLikeTheKernel(real.path)
+        XCTAssertEqual(AppPathLocation.resolvingLikeTheKernel(link.appendingPathComponent("Missing.app").path),
+                       realPath + "/Missing.app")
+        // リンクの後の `..` はリンク先の親へ上がる(先に畳むとリンクを失う)
+        let sub = real.appendingPathComponent("sub")
+        try FileManager.default.createDirectory(at: sub, withIntermediateDirectories: true)
+        let subLink = tempDir.appendingPathComponent("sublink")
+        try FileManager.default.createSymbolicLink(at: subLink, withDestinationURL: sub)
+        XCTAssertEqual(AppPathLocation.resolvingLikeTheKernel(subLink.path + "/../Missing.app"), realPath + "/Missing.app")
         XCTAssertFalse(AppPathLocation.isTemporary("/Users/u/dev/sut-ec-mobile/build/ios-sim/A.app"))
     }
 
