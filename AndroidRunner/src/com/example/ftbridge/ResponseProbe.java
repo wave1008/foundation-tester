@@ -16,6 +16,7 @@ final class ResponseProbe {
     /** --latency の履歴は1レイヤー最大128フレーム。これ以上埋まっていたら溢れて古い側が消えている可能性がある(127 = 余裕1) */
     private static final int HISTORY_FULL_ROWS = 127;
     private static final String NO_SESSION_APP = "noSessionApp";
+    static final String FRAME_HISTORY_INCOMPLETE = "frameHistoryIncomplete";
 
     static final class Prepared {
         final boolean quiet;
@@ -55,11 +56,13 @@ final class ResponseProbe {
      */
     static Prepared prepare(UiAutomation ua, Context context, String pkg, long quietMs, long timeoutMs, long observeMs) {
         // 実行中の観測の最後の DOWN・回数は armFirstDown で消えるので、その前に観測へ写させる
-        ResponseObserver.prepare(ua, context, pkg, observeMs);
+        ResponseObserver.prepare(context, observeMs);
         try {
             if (pkg == null) return new Prepared(false, 0, NO_SESSION_APP);
             long start = SystemClock.uptimeMillis();
             while (true) {
+                // 消す前に、前の観測の最初のフレームを今の履歴から拾わせる(消した後では読めない)
+                ResponseObserver.beforeLatencyClear(ua, pkg);
                 BridgeRouter.rawShell(ua, "dumpsys SurfaceFlinger --latency-clear");
                 sleep(quietMs);
                 boolean any = false;
@@ -103,7 +106,7 @@ final class ResponseProbe {
             if (f.filledRows >= HISTORY_FULL_ROWS && earliest > downNs) incomplete = true;
         }
         // 履歴から落ちた可能性を noFrame より先に: 失われたフレームを「出なかった」と読ませない
-        if (incomplete) return new Collected(downTime, null, "frameHistoryIncomplete");
+        if (incomplete) return new Collected(downTime, null, FRAME_HISTORY_INCOMPLETE);
         if (first == Long.MAX_VALUE) return new Collected(downTime, null, "noFrame");
         return new Collected(downTime, Math.round((first - downNs) / 1e6), null);
     }
@@ -128,7 +131,7 @@ final class ResponseProbe {
             }
             if (f.filledRows >= HISTORY_FULL_ROWS && earliest > downNs) incomplete = true;
         }
-        if (incomplete) return new Object[] {null, "frameHistoryIncomplete"};
+        if (incomplete) return new Object[] {null, FRAME_HISTORY_INCOMPLETE};
         if (first == Long.MAX_VALUE) return new Object[] {null, "noFrame"};
         return new Object[] {Long.valueOf(Math.round((first - downNs) / 1e6)), null};
     }

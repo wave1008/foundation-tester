@@ -40,34 +40,37 @@ final class ResponseTraceSession: @unchecked Sendable {
     }
 
     /// 親(fleetest)が居る間は待ち続け(xctrace が先に終わっても)、親が消えたら後始末する:
-    /// 記録の xctrace(`$2`)へ SIGINT(保存させる)、一時フォルダ(`$3`)の名前をコマンドラインに持つ他のプロセス
+    /// 記録の xctrace へ SIGINT(保存させる)、一時フォルダの名前をコマンドラインに持つ他のプロセス
     /// (表の書き出しの xctrace export など。パイプ・サブシェルを使わず `pgrep -f` の結果をファイル経由で読む =
-    /// サブシェルの sh 自身が一時フォルダを引数に持ち、拾ってしまうため。自分(`$$`)と `$2` は除く)へ SIGTERM を送り、
-    /// 全部居なくなるまで最長 30 秒待ち、残れば SIGKILL、最後に一時フォルダを消す。`$1` = 親の pid
+    /// サブシェルの sh 自身が一時フォルダを引数に持ち、拾ってしまうため。自分(`$$`)と記録の pid は除く)へ SIGTERM を送り、
+    /// 全部居なくなるまで最長 30 秒待ち、残れば SIGKILL、最後に一時フォルダを消す。
+    /// 引数 `$1` = 親の pid / `$2` = xctrace の pid / `$3` = 一時フォルダ。**最初に名前付きの変数へ移す** —— 関数の中の `$2` / `$3` は
+    /// 関数自身の引数で空になる(ResponseTraceWatcherTests が実際の /bin/sh で固定)
     static let watcherScript = """
+        parent="$1"; recorder="$2"; dir="$3"
         scan() {
-          pgrep -f -- "$3" > "$3/.pids" 2>/dev/null
+          pgrep -f -- "$dir" > "$dir/.pids" 2>/dev/null
           others=""
           while read -r p; do
-            [ "$p" = "$$" ] || [ "$p" = "$2" ] || others="$others $p"
-          done < "$3/.pids"
+            [ "$p" = "$$" ] || [ "$p" = "$recorder" ] || others="$others $p"
+          done < "$dir/.pids"
         }
-        while kill -0 "$1" 2>/dev/null; do sleep 2; done
-        kill -INT "$2" 2>/dev/null
+        while kill -0 "$parent" 2>/dev/null; do sleep 2; done
+        kill -INT "$recorder" 2>/dev/null
         scan
         for p in $others; do kill -TERM "$p" 2>/dev/null; done
         n=0
         while [ "$n" -lt 30 ]; do
           scan
-          if [ -z "$others" ] && ! kill -0 "$2" 2>/dev/null; then break; fi
+          if [ -z "$others" ] && ! kill -0 "$recorder" 2>/dev/null; then break; fi
           sleep 1
           n=$((n + 1))
         done
         if [ "$n" -ge 30 ]; then
           for p in $others; do kill -KILL "$p" 2>/dev/null; done
-          kill -KILL "$2" 2>/dev/null
+          kill -KILL "$recorder" 2>/dev/null
         fi
-        rm -rf "$3"
+        rm -rf "$dir"
         """
 
     // MARK: 開始

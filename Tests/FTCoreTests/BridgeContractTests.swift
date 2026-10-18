@@ -179,8 +179,8 @@ final class BridgeContractTests: XCTestCase {
             "AndroidRunner/src/com/example/ftbridge/KeyboardPrimerActivity.java": "f5a4751486cd8349a8f10b65332d6a3e1d77c3d82e0528e8518ec646aad152d9",
             "AndroidRunner/src/com/example/ftbridge/InputInjector.java": "6b04fbba91a732c33c06a8f4bba2d55156300ab40678494b4588216a29fb1497",
             "AndroidRunner/src/com/example/ftbridge/QuietWaiter.java": "b939eb89d48c6a3591a78b8457b31f851cd95c0f188fffdaa1668f557153347d",
-            "AndroidRunner/src/com/example/ftbridge/ResponseObserver.java": "4de5eebdec4ca6a32dfb1a0bcaf536a2af0988ffae8dad122a9c7b98ec8d6815",
-            "AndroidRunner/src/com/example/ftbridge/ResponseProbe.java": "4638478fbf9adef334b55ffd564a8caad9f9d4b935081cd2b16231611c299da4",
+            "AndroidRunner/src/com/example/ftbridge/ResponseObserver.java": "afe2f1c0193164bac4fa69e1c892c28d31710a9f6efb310a6400949c7d1b7cff",
+            "AndroidRunner/src/com/example/ftbridge/ResponseProbe.java": "7084e31c48b766e7ca2d3a0765cf7fe1be4606b633208395b4cbcf8f850ca7dc",
             "AndroidRunner/src/com/example/ftbridge/SnapshotBuilder.java": "355b052546bff1644a0e223fae31bf7d82435a140090276c2195c0e703a4caa3",
         ],
     ]
