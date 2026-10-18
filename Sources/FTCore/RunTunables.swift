@@ -44,7 +44,9 @@ public struct RunTunables: Codable, Sendable, Equatable {
     public var responseQuietMs: Int
     /// レスポンス計測: 上の静けさを待つ上限(ms)。尽きたらそのステップは「操作の前から描画が続いていた」
     /// (busy before the action)として記録し、反応時間を出さない。
-    /// 根拠: 試作で操作後に観測した最長の連続描画が約 4.2 秒(Pixel 4a・View の SUT)なので 5 秒で覆える
+    /// 根拠: 観測した最長が約 6.6 秒(Pixel 4a・アニメーションあり・View の SUT のセレクタ画面へ遷移した直後。この口そのもので
+    /// 上限 30 秒・静止の窓 0.5 秒で5回測り 6562〜6613ms。窓を含む)。約 1.5 倍の余裕で 10 秒(試作の約 4.2 秒・旧上限 5 秒では
+    /// その画面の後が毎回 busy になった)
     public var responseQuietTimeoutMs: Int
 
     public init(defaultTimeout: Double = DefaultWait.seconds,
@@ -62,7 +64,7 @@ public struct RunTunables: Codable, Sendable, Equatable {
                 doUntilTrueMaxLoopCount: Int = 100,
                 httpRequestTimeout: Double = 30,
                 responseQuietMs: Int = 500,
-                responseQuietTimeoutMs: Int = 5000) {
+                responseQuietTimeoutMs: Int = 10000) {
         self.defaultTimeout = defaultTimeout
         self.commandTimeout = commandTimeout
         self.injectedAppProbeTimeout = injectedAppProbeTimeout

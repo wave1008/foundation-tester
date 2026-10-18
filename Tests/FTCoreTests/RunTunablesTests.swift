@@ -24,7 +24,7 @@ final class RunTunablesTests: XCTestCase {
         XCTAssertEqual(t.doUntilTrueMaxLoopCount, 100)
         XCTAssertEqual(t.httpRequestTimeout, 30)
         XCTAssertEqual(t.responseQuietMs, 500)
-        XCTAssertEqual(t.responseQuietTimeoutMs, 5000)
+        XCTAssertEqual(t.responseQuietTimeoutMs, 10000)
         XCTAssertLessThan(t.httpRequestTimeout, t.commandTimeout, "httpRequest の待ちは壁時計の締切より小さく保つ")
     }
 
