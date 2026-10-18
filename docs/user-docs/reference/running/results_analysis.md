@@ -31,7 +31,7 @@ suffix, so results from different machines/branches merge without conflicts.
 | `fleetest results trend --scenario <id>` | One scenario's run history in chronological order |
 | `fleetest results devices` | Run count and pass rate per worker (device) and per platform |
 | `fleetest results slow [--limit <n>]` | Scenarios by average duration, slowest first |
-| `fleetest results response` (experimental) | Per step of response-measurement runs (`responseMeasurement=true`): time to first frame (n, median, p90, busy count), time until the next action is possible (n, median, p90), and the change in time to first frame from the previous measurement run on the same host and device. Steps are keyed by scene, section, command, description and occurrence within the scenario; runs on a different host or device are never compared. See [Response measurement](./response_measurement.md) |
+| `fleetest results response` | Per step of response-measurement runs (`responseMeasurement=true`): time to first frame (n, median, p90, busy count), time until the next action is possible (n, median, p90), and the change in time to first frame from the previous measurement run on the same host and device. Steps are keyed by scene, section, command, description and occurrence within the scenario; runs on a different host or device are never compared. See [Response measurement](./response_measurement.md) |
 | `fleetest results insights` | Ten checks over the run history — see [What `insights` detects](#what-insights-detects) |
 | `fleetest results log <runID> [--scenario <id>]` | A run's per-scenario execution log — see [Reading a scenario's execution log](#reading-a-scenarios-execution-log) |
 

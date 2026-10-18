@@ -1,4 +1,4 @@
-# Response measurement (experimental)
+# Response measurement
 
 [in Japanese(日本語)](response_measurement_ja.md)
 
@@ -6,7 +6,7 @@ Run your existing scenarios on a physical device and measure, step by step, **ho
 **how long until the next action becomes possible**. The values are kept in the results and can be compared with the previous
 measurement on the same machine and the same device.
 
-> **Experimental.** Works with **one Android or iOS physical device** (not the Simulator or the Emulator).
+> Works with **one Android or iOS physical device** (not the Simulator or the Emulator).
 
 ## What is measured
 
@@ -144,10 +144,14 @@ In the following cases there is neither a time until ready nor a reason (the ste
   the run ends. Xcode must be installed and able to record the device with Instruments. If recording fails, the run prints one line
   saying so and leaves the value empty.
 - **Time to first frame** also includes the time XCUITest takes to deliver the input to the device (it reads longer than on Android).
-- The last moments of an Instruments recording can come without frames, so the last measured step of a run may have no time to first
-  frame (it is left empty rather than reported as `noFrame`).
-- **Time until ready** is coarser than on Android, because reading the screen's element information takes a few hundred
-  milliseconds each time (`observedReads` in the result JSON is the number of reads the judgement could use).
+- On iOS, **time to first frame** is the first screen update after the input. Instruments records updates of the whole screen, so an
+  update from something other than the app (the status bar, …) that comes first is counted.
+- An Instruments recording does not keep its last few seconds, so the run keeps recording for 5 seconds after the end before stopping.
+  If saving still lags behind, the last measured step of the run has no time to first frame (it is left empty, not reported as `noFrame`).
+- **Time until ready** never reads shorter than **about 0.7 seconds**, because reading the screen's element information takes a few
+  hundred milliseconds each time (on an iPhone SE3, a tab bar that stays pressable through the transition reads about 0.7 seconds,
+  against a few milliseconds on Android). Differences shorter than that cannot be told apart (`observedReads` in the result JSON is the
+  number of reads the judgement could use).
 - The device's Reduce Motion setting cannot be changed by the tool; the device is measured with its own setting.
 
 Related: [Run profile](../project/run_profile.md) / [Analysing results](./results_analysis.md) / [Running scenarios](./running_scenarios.md)

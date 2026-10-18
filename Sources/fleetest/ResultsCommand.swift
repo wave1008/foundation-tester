@@ -219,7 +219,7 @@ struct ResultsSlowCommand: AsyncParsableCommand {
 struct ResultsResponseCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "response",
-        abstract: "(Experimental) Aggregate first-frame response times of response-measurement runs per step, with the change from the previous run on the same host and device")
+        abstract: "Aggregate response times (time to first frame and time until ready) of response-measurement runs per step, with the change from the previous run on the same host and device")
 
     @OptionGroup var options: ResultsQueryOptions
 
