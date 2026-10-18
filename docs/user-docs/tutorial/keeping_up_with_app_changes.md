@@ -29,7 +29,7 @@ Then run those scenarios and confirm they pass.
 ```
 
 <details>
-<summary><b>Do it manually (click to show details)</b></summary>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 If you run from the VSCode Test Explorer and repair suggestions are produced, a "fleetest Heal Review" panel opens at the end of the run (`heal` in the run profile is on by default).
 Compare the before and after, choose the suggestions to apply, and press "Apply N selected".

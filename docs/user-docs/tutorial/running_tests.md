@@ -17,7 +17,7 @@ Dry-run all fleetest scenarios and list any warnings.
 ```
 
 <details>
-<summary><b>Do it manually (click to show details)</b></summary>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 ```bash
 ../foundation-tester/.build/debug/fleetest run --dry-run
@@ -42,7 +42,7 @@ Run only the fleetest login test on Android.
 ```
 
 <details>
-<summary><b>Do it manually (click to show details)</b></summary>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 ```bash
 # Everything
@@ -58,6 +58,7 @@ Before the first run, choose the run profile to use (for example `ios-run`) with
 Command Palette. Without one, the run does not start and shows an error.
 
 </details>
+<br>
 
 `--scenario` takes a class name for one file, or `ClassName.testName` for a single test.
 For what `../foundation-tester/.build/debug/fleetest` in the commands above means, see [Quick start](../quick-start.md).
@@ -85,7 +86,7 @@ Re-run only the fleetest scenarios that failed on iOS last time.
 ```
 
 <details>
-<summary><b>Do it manually (click to show details)</b></summary>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 ```bash
 ../foundation-tester/.build/debug/fleetest run --profile ios-run --failed

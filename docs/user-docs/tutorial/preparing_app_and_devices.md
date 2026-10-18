@@ -35,7 +35,7 @@ When you're done, tell me the names of the run profiles you created. There's no 
 In Claude Code, `/fleetest-profiles` does the same thing (it asks you for the app name and so on, one by one).
 
 <details>
-<summary><b>Do it manually (click to show details)</b></summary>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 ```bash
 ../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.example.myshop --auto-device \
@@ -65,7 +65,7 @@ Then show me the profile's updated device list.
 The number of devices that can run at once is limited by the Mac's memory and CPU. If adding devices makes things slower, ask to reduce them.
 
 <details>
-<summary><b>Do it manually (click to show details)</b></summary>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 In the **Profiles** tab of the VSCode extension's device monitor, use the run profile's "Add device" button,
 or choose the devices to use with the checkboxes in the device list.

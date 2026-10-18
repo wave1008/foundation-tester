@@ -17,7 +17,7 @@ fleetest のシナリオを全部 dry-run で検証し、警告があれば一�
 ```
 
 <details>
-<summary><b>手動で実行(クリックで詳細表示)</b></summary>
+<summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 ```bash
 ../foundation-tester/.build/debug/fleetest run --dry-run
@@ -42,7 +42,7 @@ fleetest のログインのテストだけを Android で実行して。
 ```
 
 <details>
-<summary><b>手動で実行(クリックで詳細表示)</b></summary>
+<summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 ```bash
 # 全部
@@ -58,6 +58,7 @@ VSCode では Test Explorer でシナリオを選び、「実行」をクリッ�
 選んでおきます。選んでいないと、実行は始まらずにエラーになります。
 
 </details>
+<br>
 
 `--scenario` には、クラス名で1ファイル分、`クラス名.テスト名` で1本を指定します。
 上のコマンドの `../foundation-tester/.build/debug/fleetest` の意味は[クイックスタート](../quick-start_ja.md)を参照してください。
@@ -85,7 +86,7 @@ fleetest で、前回 iOS で落ちたシナリオだけを実行し直して。
 ```
 
 <details>
-<summary><b>手動で実行(クリックで詳細表示)</b></summary>
+<summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 ```bash
 ../foundation-tester/.build/debug/fleetest run --profile ios-run --failed

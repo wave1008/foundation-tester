@@ -22,7 +22,11 @@
 - iOS Simulator のランタイムと Simulator
 - Android のシステムイメージと Emulator
 
-## 動作確認している UI フレームワーク
+### オプション：Foundation Models (macOS 27+)
+
+macOS 27+ で Apple Intelligence を有効化すると Foundation Models(FM) を使う機能をテストで使用することができます(システム設定 → Siri で Siri をオン)。
+
+## サポートする UI フレームワーク
 
 | フレームワーク | 対象 OS |
 |---|---|
@@ -31,17 +35,6 @@
 | Flutter | iOS, Android |
 | React Native | iOS, Android |
 | View/XML | Android |
-
-
-## Foundation Models を使う機能(macOS 27+)
-
-macOS 27+ で Apple Intelligence を有効化すると Foundation Models(FM) を使う機能をテストで使用することができます。
-有効化は、システム設定 → Siri で Siri をオンにします。
-
-### 制限
-
-- **experimental(実験的機能) です。**
-- FM が使えない環境では、`screenLooksLike` は失敗ではなく**スキップ**されます。
 
 次へ: [クイックスタート](../quick-start_ja.md)
 

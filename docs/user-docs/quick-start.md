@@ -44,6 +44,8 @@ following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
 
 6. Click **fleetest mobile** in the status bar at the lower-left corner of VSCode. The device monitor opens.
 
+   <img src="images/quick_start/en/device_monitor.png" width="640" alt="The device monitor just opened">
+
 7. Ask your AI assistant to "run fleetest doctor and report the result", and confirm that no errors are reported
 
 ## 4. Preparing the sample app
@@ -59,7 +61,7 @@ Clone https://github.com/wave1008/sut-ec-mobile next to this folder, then run ba
 ```
 
 <details>
-<summary><b>Do it manually (click to show details)</b></summary>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 Run these in your work folder:
 
@@ -93,7 +95,7 @@ The build needs JDK 25; if it is missing, you can install JDK 25 with Homebrew. 
 ```
 
 <details>
-<summary><b>Do it manually (click to show details)</b></summary>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 Build the app in the sut-ec-mobile folder:
 
@@ -133,8 +135,11 @@ run profiles `ios-run` and `android-run`. These commands register one device; ad
 "Profiles" tab of the VSCode extension's device monitor.
 
 </details>
+<br>
 
 When it succeeds, the AI assistant reports the name of the run profile (such as `ios-run`), and that run profile is listed on the "Profiles" tab of the VSCode device monitor.
+
+<img src="images/quick_start/en/profiles_tab.png" width="640" alt="The Profiles tab of the device monitor listing the run profile ios-run">
 
 See [Profiles](./reference/project/profiles.md) for the details.
 
@@ -156,7 +161,7 @@ operating it, and turns the behavior it finds into scenarios.
 Before exploring, the AI assistant starts the server declared in compose.yaml with `ft_services`.
 
 <details>
-<summary><b>When you explore manually (click to show details)</b></summary>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 Start the server by hand, explore, and stop it when you are done.
 
@@ -180,8 +185,10 @@ Run the scenarios you created on iOS.
 
 For scenarios created on Android, ask "Run them on Android" instead.
 
+<img src="images/quick_start/en/run_in_progress.png" width="640" alt="The device monitor while the run is in progress">
+
 <details>
-<summary><b>Do it manually (click to show details)</b></summary>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 ```bash
 ../foundation-tester/.build/debug/fleetest run --profile ios-run
@@ -200,6 +207,8 @@ Command Palette. Without one, the run does not start and shows an error.
 
 Every run writes a Markdown report per scenario to `TestProjects/<project>/reports/`.
 
+<img src="images/quick_start/en/report.png" width="640" alt="A scenario report">
+
 When a run fails, the server's log is kept at `TestProjects/<project>/results/runs/<month>/<runID>/services/server.log`.
 
 Let's summarize the reports and analyze the errors.
@@ -211,7 +220,7 @@ Summarize the results of that run. If anything failed, use the report to find ou
 ```
 
 <details>
-<summary><b>Do it manually (click to show details)</b></summary>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 Open the report in `reports/`. In VSCode, the Test Explorer shows pass/fail on each test, and you
 can open the report from there.

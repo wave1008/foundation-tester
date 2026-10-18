@@ -22,7 +22,11 @@
 - iOS Simulator runtime and Simulator
 - Android system image and Emulator
 
-## UI frameworks verified to work
+### Optional: Foundation Models (macOS 27+)
+
+On macOS 27+, enabling Apple Intelligence lets your tests use the features that rely on Foundation Models (FM) (turn Siri on in System Settings → Siri).
+
+## Supported UI frameworks
 
 | Framework | Platforms |
 |---|---|
@@ -31,17 +35,6 @@
 | Flutter | iOS, Android |
 | React Native | iOS, Android |
 | View/XML | Android |
-
-
-## Features that use Foundation Models (macOS 27+)
-
-On macOS 27+, enabling Apple Intelligence lets your tests use the features that rely on Foundation Models (FM).
-To enable it, turn Siri on in System Settings → Siri.
-
-### Limitations
-
-- **Experimental.**
-- When FM is unavailable, `screenLooksLike` is **skipped**, not failed.
 
 Next: [Quick start](../quick-start.md)
 

@@ -230,3 +230,23 @@ test("リンクの直後に挙げた節の名前が、リンク先の見出し�
   assert.ok(checked > 0, "節の名前で指す参照が1件も見つからない(走査の形が変わった)");
   assert.deepEqual(problems, []);
 });
+
+test("折りたたみの直後に本文が続くときは <br> で1行あける", () => {
+  // Markdown の空行だけでは、プレビュー(VSCode・GitHub)で </details> と次の本文が詰まって見える(ユーザー指示)。
+  // 次の非空行が見出しなら不要(見出しが上に余白を持つ)。
+  const problems = [];
+  let checked = 0;
+  for (const page of pages) {
+    const lines = readPage(page).split("\n");
+    lines.forEach((line, i) => {
+      if (line.trim() !== "</details>") return;
+      checked += 1;
+      let j = i + 1;
+      while (j < lines.length && lines[j].trim() === "") j += 1;
+      if (j >= lines.length || /^#{1,6}\s/.test(lines[j]) || lines[j].trim() === "<br>") return;
+      problems.push(`${page}:${i + 1}: </details> の後ろに本文が続く(次の行に <br> を置く)`);
+    });
+  }
+  assert.ok(checked > 0, "</details> が1件も見つからない(走査の形が変わった)");
+  assert.deepEqual(problems, []);
+});

@@ -35,7 +35,7 @@
 Claude Code では `/fleetest-profiles` でも同じことができます(アプリ名などを順に質問されます)。
 
 <details>
-<summary><b>手動で実行(クリックで詳細表示)</b></summary>
+<summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 ```bash
 ../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.example.myshop --auto-device \
@@ -65,7 +65,7 @@ fleetest の実行プロファイル ios-run に、iPhone の Simulator をあ�
 同時に動かせる台数は Mac のメモリと CPU で決まります。増やして遅くなったら、減らすよう指示してください。
 
 <details>
-<summary><b>手動で実行(クリックで詳細表示)</b></summary>
+<summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 VSCode 拡張のデバイスモニターの「プロファイル」タブで、実行プロファイルの「デバイスを追加」を使うか、
 デバイス一覧のチェックボックスで使うデバイスを選びます。

@@ -44,6 +44,8 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 
 6. VSCode の左下のステータスバーに表示される **fleetest mobile** をクリックします。デバイスモニターが開きます
 
+   <img src="images/quick_start/ja/device_monitor.png" width="640" alt="デバイスモニターが開いたところ">
+
 7. AIアシスタントへ「fleetest doctor を実行して結果を報告して」と指示し、エラーが出ないことを確かめます
 
 ## 4. サンプルアプリの準備
@@ -59,7 +61,7 @@ https://github.com/wave1008/sut-ec-mobile をこのフォルダの隣に clone �
 ```
 
 <details>
-<summary><b>手動で実行(クリックで詳細表示)</b></summary>
+<summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 作業フォルダで実行します。
 
@@ -93,7 +95,7 @@ sut-ec-mobile の Android アプリをビルドし、プロファイルを作成
 ```
 
 <details>
-<summary><b>手動で実行(クリックで詳細表示)</b></summary>
+<summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 sut-ec-mobile のフォルダでアプリをビルドします。
 
@@ -132,8 +134,11 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 手で登録するのは1台です。2台目は VSCode 拡張のデバイスモニターの「プロファイル」タブにある「デバイスを追加」で足せます。
 
 </details>
+<br>
 
 成功すると、AIアシスタントが実行プロファイル名(`ios-run` など)を報告し、VSCode のデバイスモニターの「プロファイル」タブにその実行プロファイルが並びます。
+
+<img src="images/quick_start/ja/profiles_tab.png" width="640" alt="デバイスモニターの「プロファイル」タブに実行プロファイル ios-run が並んだところ">
 
 プロファイルの詳細は[プロファイル](./reference/project/profiles_ja.md)。
 
@@ -155,7 +160,7 @@ AIアシスタントはデバイス上でアプリを起動し、ログイン画
 AIアシスタントは探索の前に、compose.yaml に宣言したサーバーを `ft_services` で起こします。
 
 <details>
-<summary><b>手動で探索するとき(クリックで詳細表示)</b></summary>
+<summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 サーバーを手で起こしてから探索し、終わったら止めます。
 
@@ -179,8 +184,10 @@ AIアシスタントは探索の前に、compose.yaml に宣言したサーバ�
 
 ※Android で作ったシナリオなら「Android で実行して」と指示します。
 
+<img src="images/quick_start/ja/run_in_progress.png" width="640" alt="デバイスモニターで実行している最中">
+
 <details>
-<summary><b>手動で実行(クリックで詳細表示)</b></summary>
+<summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 ```bash
 ../foundation-tester/.build/debug/fleetest run --profile ios-run
@@ -200,6 +207,8 @@ VSCode からは **Test Explorer** でシナリオを選び、**実行**をク�
 実行のたびに `TestProjects/<プロジェクト>/reports/` にシナリオごとの Markdown
 レポートが出ます。
 
+<img src="images/quick_start/ja/report.png" width="640" alt="シナリオのレポート">
+
 失敗したときは、サーバーのログが `TestProjects/<プロジェクト>/results/runs/<月>/<runID>/services/server.log` に残ります。
 
 レポートを要約し、エラーを分析してみましょう。
@@ -211,7 +220,7 @@ VSCode からは **Test Explorer** でシナリオを選び、**実行**をク�
 ```
 
 <details>
-<summary><b>手動で実行(クリックで詳細表示)</b></summary>
+<summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 `reports/` のレポートを開きます。VSCode では Test Explorer が成否を直接表示し、そこからレポートを
 開けます。

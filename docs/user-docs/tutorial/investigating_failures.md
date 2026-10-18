@@ -13,7 +13,7 @@ Summarize the latest fleetest run. If anything failed, list the failed scenarios
 ```
 
 <details>
-<summary><b>Do it manually (click to show details)</b></summary>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 - Each scenario has a Markdown report under `TestProjects/<project>/reports/`.
 - In VSCode, the Test Explorer shows pass/fail directly, and you can open the report from there.
@@ -68,7 +68,7 @@ Go through past fleetest results and find scenarios that are flaky (sometimes pa
 ```
 
 <details>
-<summary><b>Do it manually (click to show details)</b></summary>
+<summary><b>If you do it manually (click to show details)</b></summary>
 
 ```bash
 ../foundation-tester/.build/debug/fleetest results flaky      # Scenarios that both pass and fail

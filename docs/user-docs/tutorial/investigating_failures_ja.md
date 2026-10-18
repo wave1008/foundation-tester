@@ -13,7 +13,7 @@ fleetest の直近の実行結果を要約し、失敗があれば、失敗し�
 ```
 
 <details>
-<summary><b>手動で実行(クリックで詳細表示)</b></summary>
+<summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 - `TestProjects/<プロジェクト>/reports/` にシナリオごとの Markdown レポートがあります。
 - VSCode では Test Explorer が成否を直接表示し、そこからレポートを開けます。
@@ -68,7 +68,7 @@ fleetest の過去の実行結果から、通ったり落ちたりする不安�
 ```
 
 <details>
-<summary><b>手動で実行(クリックで詳細表示)</b></summary>
+<summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 ```bash
 ../foundation-tester/.build/debug/fleetest results flaky      # 成功も失敗もするシナリオ
