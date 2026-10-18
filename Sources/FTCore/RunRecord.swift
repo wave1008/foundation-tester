@@ -131,7 +131,7 @@ public struct RunMetaRecord: Codable, Sendable {
         case measurementInvalid, measurementInvalidReasons, workerAnomalies, issuer, runGroup
         case performanceMode, fmDead, fmDeadReason
         case guarded, guardSkipped, guardStaleFrame, fmSettings, setOverrides
-        case interrupted, abortReason, slowWorkers, servicesWarnings
+        case interrupted, abortReason, slowWorkers, servicesWarnings, responseMeasurement
     }
 
     public init(from decoder: Decoder) throws {
@@ -170,6 +170,7 @@ public struct RunMetaRecord: Codable, Sendable {
         abortReason = try c.decodeIfPresent(String.self, forKey: .abortReason)
         slowWorkers = try c.decodeIfPresent([String].self, forKey: .slowWorkers)
         servicesWarnings = try c.decodeIfPresent([String].self, forKey: .servicesWarnings)
+        responseMeasurement = try c.decodeIfPresent(ResponseMeasurementRunInfo.self, forKey: .responseMeasurement)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -208,6 +209,7 @@ public struct RunMetaRecord: Codable, Sendable {
         try c.encodeIfPresent(abortReason, forKey: .abortReason)
         try c.encodeIfPresent(slowWorkers, forKey: .slowWorkers)
         try c.encodeIfPresent(servicesWarnings, forKey: .servicesWarnings)
+        try c.encodeIfPresent(responseMeasurement, forKey: .responseMeasurement)
     }
 
     public var schemaVersion: Int
@@ -314,6 +316,9 @@ public struct RunMetaRecord: Codable, Sendable {
     /// サービス(scripts/compose.yaml)の起動時の警告(英語の文言そのまま。`adb reverse` 等)。合否は変えない。
     /// 無ければ省略(docs/results-json.md)
     public var servicesWarnings: [String]?
+    /// レスポンス計測モードの run だけ書く(通常の run は nil で省略)。**欄が無い = 計測モードの run ではない**
+    /// (測っていない)で、旧い記録も同じ意味になる。前回比は同じデバイス・同じ `host` の run どうしだけを比べる
+    public var responseMeasurement: ResponseMeasurementRunInfo?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
                 profile: String?, host: String, toolchain: String? = nil, trigger: String, startedAt: String,
@@ -331,7 +336,8 @@ public struct RunMetaRecord: Codable, Sendable {
                 setOverrides: [String: String]? = nil,
                 interrupted: Bool? = nil, abortReason: String? = nil,
                 slowWorkers: [String]? = nil,
-                servicesWarnings: [String]? = nil) {
+                servicesWarnings: [String]? = nil,
+                responseMeasurement: ResponseMeasurementRunInfo? = nil) {
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.project = project
@@ -366,6 +372,7 @@ public struct RunMetaRecord: Codable, Sendable {
         self.abortReason = abortReason
         self.slowWorkers = slowWorkers
         self.servicesWarnings = servicesWarnings
+        self.responseMeasurement = responseMeasurement
     }
 }
 
@@ -525,6 +532,10 @@ public struct TimelineStepRecord: Codable, Sendable {
     /// (description の文言一致で数えない。StepNote の doc 参照)。注記が無いステップと、
     /// notes を持たない旧レコードはどちらも nil
     public var notes: [String]?
+    /// DSL のコマンド名(ScenarioEvent.command)。分からないステップは nil
+    public var command: String?
+    /// 応答時間計測(ScenarioEvent.response)。計測モードで画面を動かす操作のステップだけ
+    public var response: ResponseMeasurementRecord?
 
     public init(scene: Int? = nil, sceneTitle: String? = nil, section: String? = nil,
                 index: Int, description: String,
@@ -532,7 +543,10 @@ public struct TimelineStepRecord: Codable, Sendable {
                 snapshotMs: Int? = nil, actionMs: Int? = nil, waitMs: Int? = nil,
                 scheduleDelayMs: Int? = nil, cpuMs: Int? = nil, ioBlockedMs: Int? = nil,
                 stallMs: Int? = nil, poolStallMs: Int? = nil, guardMs: Int? = nil,
-                ocrMs: Int? = nil, pacingMs: Int? = nil, notes: [String]? = nil) {
+                ocrMs: Int? = nil, pacingMs: Int? = nil, notes: [String]? = nil,
+                command: String? = nil, response: ResponseMeasurementRecord? = nil) {
+        self.command = command
+        self.response = response
         self.scene = scene
         self.sceneTitle = sceneTitle
         self.section = section
@@ -794,6 +808,12 @@ public struct ScenarioRecordBuilder {
             }
         case "step":
             consumeStep(event)
+        case "responseReady":
+            // 宛先は同じ添字の最後の計測済みステップ(添字が重なっても新しい側)。無ければ捨てる(推測で別の行に当てない)
+            if let index = event.index, let update = event.readyUpdate,
+               let position = timeline.lastIndex(where: { $0.index == index && $0.response != nil }) {
+                timeline[position].response = timeline[position].response?.applying(update)
+            }
         case "sceneFinished":
             consumeSceneFinished(event)
         case "fixSuggestion":
@@ -833,7 +853,8 @@ public struct ScenarioRecordBuilder {
             ioBlockedMs: event.ioBlockedMs,
             stallMs: event.stallMs, poolStallMs: event.poolStallMs, guardMs: event.guardMs, ocrMs: event.ocrMs,
             pacingMs: event.pacingMs,
-            notes: event.notes?.isEmpty == true ? nil : event.notes))
+            notes: event.notes?.isEmpty == true ? nil : event.notes,
+            command: event.command, response: event.response))
         if let pacingMs = event.pacingMs {
             stepCounts.paced = (stepCounts.paced ?? 0) + 1
             stepCounts.pacedMs = (stepCounts.pacedMs ?? 0) + pacingMs

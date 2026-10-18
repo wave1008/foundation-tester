@@ -1196,6 +1196,48 @@ public final class BridgeClient: AppDriver, Sendable {
         let _: OKResponse = try await post("/settle", body: OKResponse(), timeout: interactionTimeout)
     }
 
+    /// Android v102〜 のみ。応答は描画が止まるまで(最長 timeoutMs)返らないので、HTTP の待ちは timeoutMs から導く
+    /// (短いと待っている最中に bridgeUnreachable を誤報する)。余白は shell 往復ぶん(interactionTimeout)
+    public func responsePrepare(quietMs: Int, timeoutMs: Int, observeMs: Int) async throws -> ResponsePrepareResult {
+        try await post("/responsePrepare",
+                       body: ResponsePrepareRequest(quietMs: quietMs, timeoutMs: timeoutMs, observeMs: observeMs),
+                       timeout: Double(timeoutMs) / 1000 + interactionTimeout)
+    }
+
+    /// Android v104〜。応答は全読みの時刻と変化した木を含み数 MB になりうる(ブリッジの MAX_TREES の見積り)ので、
+    /// 転送に余裕のある sessionTimeout(snapshot と同じ枠)で待つ
+    public func responseObservation(firstDownTimeMs: Int) async throws -> ResponseObservation {
+        try await post("/responseObservation", body: ResponseObservationRequest(firstDownTimeMs: firstDownTimeMs),
+                       timeout: sessionTimeout)
+    }
+
+    public func responseObservationStop() async throws {
+        struct Stopped: Decodable { let stopped: Bool }
+        let _: Stopped = try await post("/responseObservationStop", body: OKResponse(), timeout: interactionTimeout)
+    }
+
+    public func responseCollect() async throws -> ResponseCollectResult {
+        try await post("/responseCollect", body: OKResponse(), timeout: interactionTimeout)
+    }
+
+    /// 応答時間計測の AppDriver 要件。XCUITest ランナー(iOS 実機。v192〜)が応える。
+    /// Android は AndroidDriver が同じ呼び出しを包む
+    public func prepareResponseMeasurement(quietMs: Int, timeoutMs: Int, observeMs: Int) async throws -> ResponsePrepareResult {
+        try await responsePrepare(quietMs: quietMs, timeoutMs: timeoutMs, observeMs: observeMs)
+    }
+
+    public func collectResponseMeasurement() async throws -> ResponseCollectResult {
+        try await responseCollect()
+    }
+
+    public func fetchResponseObservation(firstDownTimeMs: Int) async throws -> ResponseObservation {
+        try await responseObservation(firstDownTimeMs: firstDownTimeMs)
+    }
+
+    public func stopResponseObservation() async throws {
+        try await responseObservationStop()
+    }
+
     public func terminate() async throws {
         let _: OKResponse = try await post("/terminate", body: OKResponse(),
                                            timeout: sessionTimeout)

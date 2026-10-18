@@ -40,6 +40,7 @@ targets:
       - path: ../Sources/FTCore/SnapshotDedupe.swift
       - path: ../Sources/FTCore/TypeReadback.swift
       - path: ../Sources/FTCore/AXFrameRescale.swift
+      - path: ../Sources/FTCore/ResponseMeasurementWire.swift
     dependencies:
       - target: FleetestRunnerApp
     settings:

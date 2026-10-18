@@ -51,7 +51,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 + "<value> matches that key's type (e.g. --set heal=true --set reportDir=/tmp/out "
                 + "--set defaultTimeout=8). Keys that need a run profile's device list/supply pipeline "
                 + "(iosInappEngine, updateWebView, wipeDataOnBloat, recoverCpuFallbackToGpu, app, "
-                + "machine, locale, wipeDataThresholdGB) need --profile. The run profile keys "
+                + "machine, locale, wipeDataThresholdGB, responseMeasurement) need --profile. The run profile keys "
                 + "\"app\"/\"machine\" (an app/machine *profile* name) are unrelated to this command's "
                 + "own --app-id/--runner flags (a bundle ID / package name and a dispatch target). "
                 + "Cannot combine reportDir/defaultTimeout/scenarioTimeout with the matching "
@@ -518,11 +518,29 @@ struct ApiRunCommand: AsyncParsableCommand {
         // (この defer は下の終了スクリプトの defer より先に書く = 後に走る)
         var servicesSession: ServicesSession?
         defer { servicesSession?.down { logStderr($0) } }
+        // この defer は関数のスコープに置く(if の中に置くとブロックの終わりで外れる)
+        var responseMonitorHold: ResponseMeasurementMonitorHold.Handle?
+        defer { ResponseMeasurementMonitorHold.release(responseMonitorHold) { logStderr($0) } }
+        // 計測 run が書き換えた Android 実機のアニメーション設定を終了時に戻す(ProfileRunner.run と同じ)。
+        // 取得は開始時の同期(buildAndroidWorkers)より前に行う
+        var animationRestores: [ProfileWorkerFactory.AnimationRestore] = []
+        defer { ProfileWorkerFactory.restoreAnimations(animationRestores) { logStderr($0) } }
+        // iOS 実機の計測だけ録る xctrace(開始は供給の後・配布の前、止めて結果へ入れるのは run の後。ProfileRunner.run と同じ)
+        var responseTrace: ResponseTraceSession?
+        defer { responseTrace?.cleanup() }
         if let resolved = resolvedProfile, !dryRun {
             let hookStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
+            // レスポンス計測中はモニターを止める(ProfileRunner.run と同じ。解除は defer = 中断・エラーでも通る)
+            if resolved.responseMeasurement, let hookStateDir {
+                responseMonitorHold = ResponseMeasurementMonitorHold.acquire(stateDir: hookStateDir) { logStderr($0) }
+            }
             // 二重使用は開始スクリプトと破壊的な準備より前に断る(ProfileRunner と同じ判定)
             try ProfileRunner.rejectIfDevicesLeasedBeforePreparation(
                 resolved: resolved, leaseStateDir: hookStateDir)
+            // 他の run が使っているデバイスを断った後に取る(断られた run が他人の設定を戻さない)
+            if resolved.responseMeasurement {
+                animationRestores = ProfileWorkerFactory.captureAnimationRestore(resolved: resolved)
+            }
             servicesSession = try ServicesSession.up(
                 resolved: resolved, stateDir: hookStateDir, options: .forRun(resolved), interruptState: interruptState) { logStderr($0) }
             do {
@@ -790,6 +808,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                                                                           profile: profile))
             : nil
         if let recorder { interruptState.attachRecorder(recorder) }
+        // 計測 run の識別は finish を待たず run.json に書く(殺された run にも残す。ProfileRunner.run と同じ)
+        recorder?.recordResponseMeasurement(resolvedProfile.flatMap(ResponseMeasurementPolicy.runInfo(resolved:)))
 
         // OS 対象外(`@TestClass(platform:)` / `@Test(platform:)`)をキュー投入前に外す。
         // **dry-run では外さない** —— デバイスに触らないので全件を構文検査したい。
@@ -813,7 +833,9 @@ struct ApiRunCommand: AsyncParsableCommand {
             selected = applicability.runnable
         }
 
-        emitLine(ApiRunStartedEvent(total: selected.count))
+        // 計測モードは各シナリオを responseRepeat 回回すので、total は展開後の本数(完了イベントの数と揃える)
+        let measuredCopies = resolvedProfile.flatMap { $0.responseMeasurement ? $0.responseRepeat : nil } ?? 1
+        emitLine(ApiRunStartedEvent(total: selected.count * measuredCopies))
         // 供給フェーズは runStarted より前に走り始めるので、貯めた進行行をここで流す
         Self.supplyRelay.start { Self.writeLineLocked($0) }
 
@@ -883,6 +905,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                         androidWorkers: androidWorkers.count, eagerIOSWorkers: eagerIOSWorkers.count,
                         hasLateIOS: hasLateIOS))
                     progressHandedToRunWithProfileParallel = true
+                    responseTrace = await ResponseTraceSession.startIfNeeded(resolved: resolvedProfile) { logStderr($0) }
                     outcome = try await runWithProfileParallel(
                         resolved: resolvedProfile, project: testProject, selected: selected,
                         workers: androidWorkers + eagerIOSWorkers, iosWorkersTask: effectiveIosWorkersTask,
@@ -905,12 +928,15 @@ struct ApiRunCommand: AsyncParsableCommand {
                              performanceMode: performanceMode, fmSettings: fmSettings,
                              setOverrides: profileOverrides.mapValues(\.token),
                              servicesWarnings: servicesSession?.warnings ?? [],
+                             responseMeasurement: resolvedProfile.flatMap(ResponseMeasurementPolicy.runInfo(resolved:)),
                              abortReason: error.localizedDescription)
             // `--failed` が拾えるよう、始まらなかった分を直近失敗として残す(`run` の供給段は
             // ProfileRunner.run の defer が同じ記録を書く。**対象外は selected に既に居ない**)
             recorder?.recordLastResultsFailed(selected.map(\.id))
             throw error
         }
+
+        await responseTrace?.finish(runDir: recorder?.runDir) { logStderr($0) }
 
         // 並列経路の triage は box 経由(sequential 経路は outcome に設定済みのため二重加算しない)
         let boxTriage = triageBox.get()
@@ -927,7 +953,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // 赤の run はサービスのログの末尾も記録へ(ProfileRunner.run と同じ。片付けの前に読む)
         if outcome.failed > 0, let runDir = recorder?.runDir { servicesSession?.saveLogs(to: runDir) { logStderr($0) } }
         // fmSettings は上(do/catch より前)で計算済み —— 供給段の abort 記録もここを使うため
-        let slowWorkers = recorder?.finish(total: selected.count, passed: outcome.passed, failed: outcome.failed,
+        let slowWorkers = recorder?.finish(total: selected.count * measuredCopies, passed: outcome.passed, failed: outcome.failed,
                          degradedWorkers: outcome.degradedWorkers,
                          freezeRetries: outcome.freezeRetries,
                          blankRepairs: outcome.blankRepairs,
@@ -939,6 +965,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                          fmSettings: fmSettings,
                          setOverrides: profileOverrides.mapValues(\.token),
                          servicesWarnings: servicesSession?.warnings ?? [],
+                         responseMeasurement: resolvedProfile.flatMap(ResponseMeasurementPolicy.runInfo(resolved:)),
                          interrupted: outcome.interrupted) ?? []
         if !outcome.degradedWorkers.isEmpty {
             logStderr("⚠️ Degraded or dropped workers (\(outcome.degradedWorkers.count)):")
@@ -1399,11 +1426,13 @@ struct ApiRunCommand: AsyncParsableCommand {
             || workers.contains { $0.platform == "ios" }) ? "ios" : "android"
 
         // 長いシナリオを先に流すと末尾の遊休が減る(LPTOrdering。--no-lpt で元の ID 順)
-        let items = LPTOrdering.apply(selected.map { ScenarioRunItem(info: $0) },
+        let lptItems = LPTOrdering.apply(selected.map { ScenarioRunItem(info: $0) },
                                       project: project, defaultPlatform: defaultPlatform,
                                       enabled: !noLPT,
                                       historyRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
                                       log: { logStderr($0) })
+        let items = resolved.responseMeasurement
+            ? ResponseMeasurementRepeat.expand(lptItems, count: resolved.responseRepeat) : lptItems
         // RunEvent の flowURL(scenario:// URL)→ 元の ScenarioInfo の逆引き。
         // RunEvent は scenario ID・title を毎回運んでくれないため、変換時にここから補う
         let itemByURL = Dictionary(uniqueKeysWithValues: items.map { ($0.url, $0) })
@@ -1630,6 +1659,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             step.failureKind = result.failureKind
             step.notes = result.notes
             step.guarded = result.guarded
+            step.response = result.response
             return [step.encodedLine()]
 
         case .fixSuggestion(let worker, _, let scenarioID, let command, let file, let line,

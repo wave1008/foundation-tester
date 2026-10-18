@@ -15,6 +15,8 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     /// (`MCPServer.withoutFMAndVision`)。切っても findImage を使うシナリオは初回に払うだけ
     public var findImagePrewarm: Bool
     public var containerInference: Bool
+    /// レスポンス計測モード(プロファイルの `responseMeasurement`)。子へは `--response-measurement` で運ぶ
+    public var responseMeasurement: Bool
     /// 環境で正解が変わる既定の束(`defaultTimeout` 含む)。子プロセスへは `--tunables` で運ぶ
     public var tunables: RunTunables
     public var scenarioTimeout: Int?
@@ -29,7 +31,8 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     /// `homeOnStart` はデバイスに触る工程の設定なのでここには入れない
     public init(fm: FMConfig = FMConfig(), heal: Bool = false, occlusionOCR: Bool = true,
                 preferCheckStateClassifier: Bool = true, findImagePrewarm: Bool = true,
-                containerInference: Bool = true, tunables: RunTunables = RunTunables(),
+                containerInference: Bool = true, responseMeasurement: Bool = false,
+                tunables: RunTunables = RunTunables(),
                 scenarioTimeout: Int? = nil, profileName: String? = nil) {
         self.fm = fm
         self.heal = heal
@@ -37,6 +40,7 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
         self.preferCheckStateClassifier = preferCheckStateClassifier
         self.findImagePrewarm = findImagePrewarm
         self.containerInference = containerInference
+        self.responseMeasurement = responseMeasurement
         self.tunables = tunables
         self.scenarioTimeout = scenarioTimeout
         self.profileName = profileName
@@ -48,6 +52,7 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
         self.init(fm: settings.fm, heal: settings.heal, occlusionOCR: settings.ocrTextVisibilityCheck,
                   preferCheckStateClassifier: settings.preferCheckStateClassifier,
                   containerInference: settings.containerInference,
+                  responseMeasurement: settings.responseMeasurement,
                   tunables: t, scenarioTimeout: settings.scenarioTimeout)
     }
 
@@ -57,6 +62,7 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
         self.init(fm: resolved.fm, heal: resolved.heal, occlusionOCR: resolved.ocrTextVisibilityCheck,
                   preferCheckStateClassifier: resolved.preferCheckStateClassifier,
                   containerInference: resolved.containerInference,
+                  responseMeasurement: resolved.responseMeasurement,
                   tunables: t, scenarioTimeout: resolved.scenarioTimeout,
                   profileName: resolved.runName)
     }

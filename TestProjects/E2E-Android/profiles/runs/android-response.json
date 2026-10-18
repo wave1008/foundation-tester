@@ -1,0 +1,17 @@
+{
+  "app": "ft_e2e_android",
+  "devices": [
+    {
+      "platform": "android",
+      "machine": "local",
+      "name": "Pixel 4a",
+      "kind": "physical",
+      "model": "Pixel 4a",
+      "osVersion": "Android 13",
+      "serial": "14141JEC204922"
+    }
+  ],
+  "responseMeasurement": true,
+  "iosInappEngine": false,
+  "wipeDataOnBloat": false
+}

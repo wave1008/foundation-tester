@@ -14,24 +14,32 @@ public struct ScenarioRunItem: Identifiable, Sendable {
     /// 同時に走っても (シナリオ × デバイス) が別キーになり、URL で状態を持つ側(表示バッファ・
     /// 稼働集計・キューの再実行回数)が混線しない。`lastPathComponent` は ID のまま
     public let lane: String?
+    /// 計測モードの繰り返し(`ResponseMeasurementRepeat.expand`)で「何回目か」(1 始まり)。通常は nil。
+    /// lane と同じく URL のクエリに載り、同じシナリオ ID の複数回分が別キーになる。URL を読み戻す側は無い
+    public let repeatIndex: Int?
     public let url: URL
     public var id: URL { url }
 
-    public init(info: ScenarioInfo, lane: String? = nil) {
+    public init(info: ScenarioInfo, lane: String? = nil, repeatIndex: Int? = nil) {
         self.info = info
         self.lane = lane
-        self.url = Self.url(for: info.id, lane: lane)
+        self.repeatIndex = repeatIndex
+        self.url = Self.url(for: info.id, lane: lane, repeatIndex: repeatIndex)
     }
 
-    /// シナリオ ID(日本語可)→ 一意キー URL。lane があれば `?lane=<名>` を付ける
-    public static func url(for scenarioID: String, lane: String? = nil) -> URL {
+    /// シナリオ ID(日本語可)→ 一意キー URL。lane があれば `?lane=<名>`、repeatIndex があれば `repeat=<n>` を
+    /// クエリに付ける(両方なら `?lane=<名>&repeat=<n>`)
+    public static func url(for scenarioID: String, lane: String? = nil, repeatIndex: Int? = nil) -> URL {
         let encoded = scenarioID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
             ?? "scenario"
         var string = "scenario://run/\(encoded)"
+        var query: [String] = []
         if let lane {
             // デバイス名は "(" ")" ":" "&" を含みうるので英数字以外は全部エスケープする
-            string += "?lane=" + (lane.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "lane")
+            query.append("lane=" + (lane.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "lane"))
         }
+        if let repeatIndex { query.append("repeat=\(repeatIndex)") }
+        if !query.isEmpty { string += "?" + query.joined(separator: "&") }
         return URL(string: string) ?? URL(fileURLWithPath: "/scenario")
     }
 }
@@ -267,6 +275,9 @@ public struct RunSummary: Sendable {
     /// orchestrator 自身は知らないので常に空 —— 呼び手(ProfileRunner / ApiRunCommand)が `ServicesSession.warnings` で埋め、
     /// RunMetaRecord.servicesWarnings へ焼き込む
     public let servicesWarnings: [String]
+    /// 計測モードの run の識別(RunMetaRecord.responseMeasurement にそのまま焼き込む)。orchestrator は知らないので
+    /// 常に nil —— 呼び手(ProfileRunner)が resolve 済みの値で自分の RunSummary へ埋める
+    public let responseMeasurement: ResponseMeasurementRunInfo?
 
     public init(total: Int, failed: Int, skipped: Int = 0, degradedWorkers: [String] = [],
                 freezeRetries: [String] = [],
@@ -277,7 +288,8 @@ public struct RunSummary: Sendable {
                 performanceMode: Bool = false,
                 fmSettings: FMSettingsRecord? = nil,
                 interrupted: Bool = false,
-                servicesWarnings: [String] = []) {
+                servicesWarnings: [String] = [],
+                responseMeasurement: ResponseMeasurementRunInfo? = nil) {
         self.total = total
         self.failed = failed
         self.skipped = skipped
@@ -293,6 +305,7 @@ public struct RunSummary: Sendable {
         self.fmSettings = fmSettings
         self.interrupted = interrupted
         self.servicesWarnings = servicesWarnings
+        self.responseMeasurement = responseMeasurement
     }
 
     /// FM の呼び出しが**全部失敗した**か(呼び出しが1件も無いときは false = 使っていないだけ)
@@ -944,7 +957,8 @@ public enum ScenarioRunner {
                           status: status, scene: event.scene, sceneTitle: event.sceneTitle,
                           section: event.section, timing: timing, at: event.at,
                           command: event.command, failureKind: event.failureKind,
-                          notes: event.notes, guarded: event.guarded)
+                          notes: event.notes, guarded: event.guarded,
+                          response: event.response)
     }
 }
 

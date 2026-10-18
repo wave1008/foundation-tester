@@ -273,7 +273,7 @@ struct RunScenarios: AsyncParsableCommand {
                 + "<value> matches that key's type (e.g. --set fmTextVisibilityCheck=false "
                 + "--set reportDir=/tmp/out). Keys that need a run profile's device list/supply "
                 + "pipeline (iosInappEngine, updateWebView, wipeDataOnBloat, recoverCpuFallbackToGpu, "
-                + "app, machine, locale, wipeDataThresholdGB) need --profile. The run profile keys "
+                + "app, machine, locale, wipeDataThresholdGB, responseMeasurement) need --profile. The run profile keys "
                 + "\"app\"/\"machine\" (an app/machine *profile* name) are unrelated to this command's "
                 + "own --app-id/--runner flags. Cannot combine reportDir with --report-dir. "
                 + "devices/remoteControl are lists/objects and cannot be set this way; edit the run "
@@ -554,6 +554,9 @@ struct RunScenarios: AsyncParsableCommand {
         let resolvedAll = try ProfileResolver.resolve(
             project: testProject, runName: profile,
             workspaceOverride: workspace, overrides: try RunProfileSetOverride.parse(setOverrides))
+        if broadcast, resolvedAll.responseMeasurement {
+            throw ValidationError(ResponseMeasurementPolicy.combinationRejection(flag: "--broadcast"))
+        }
         // 明示 --runner local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
         // local 枠だけに絞る(理由は run() 本編の同じ判定の宣言参照)
         var effectiveDeviceFilter = devices
@@ -895,6 +898,8 @@ struct RunScenarios: AsyncParsableCommand {
                                     ocrTextVisibilityCheck: noProfileSettings.ocrTextVisibilityCheck),
                                 setOverrides: profileOverrides.mapValues(\.token),
                                 servicesWarnings: [],
+                                // resolve 前の失敗で計測モードかどうかを断定できない
+                                responseMeasurement: nil,
                                 abortReason: error.localizedDescription)
                 throw error
             }
@@ -905,7 +910,8 @@ struct RunScenarios: AsyncParsableCommand {
             let ranCount = runSummary.total
             // --broadcast の total は (本数 × 台数) なので items.count との差は対象外の数にならない
             // (対象外の件数は ProfileRunner が「Skipped N scenario(s) …」で出している)
-            let notApplicable = broadcast ? 0 : items.count - ranCount
+            // 計測モードは各シナリオを繰り返すので ranCount が items.count を超えうる(負の件数にしない)
+            let notApplicable = broadcast ? 0 : max(0, items.count - ranCount)
             PhaseLog.mark("profile-run-done")
             let slowWorkers = recorder.finish(total: ranCount, passed: ranCount - failedCount - runSummary.skipped, failed: failedCount,
                             degradedWorkers: runSummary.degradedWorkers,
@@ -919,6 +925,7 @@ struct RunScenarios: AsyncParsableCommand {
                             fmSettings: fmSettings,
                             setOverrides: profileOverrides.mapValues(\.token),
                             servicesWarnings: runSummary.servicesWarnings,
+                            responseMeasurement: runSummary.responseMeasurement,
                             interrupted: runSummary.interrupted)
             PhaseLog.mark("recorder-finish")
             try writeJUnitIfRequested(project: testProject, recorder: recorder)
@@ -1014,6 +1021,7 @@ struct RunScenarios: AsyncParsableCommand {
                             performanceMode: false, fmSettings: noProfileFMSettings,
                             setOverrides: profileOverrides.mapValues(\.token),
                             servicesWarnings: [],
+                            responseMeasurement: nil,
                             abortReason: error.localizedDescription)
             throw error
         }
@@ -1026,6 +1034,7 @@ struct RunScenarios: AsyncParsableCommand {
                         fmSettings: noProfileFMSettings,
                         setOverrides: profileOverrides.mapValues(\.token),
                         servicesWarnings: [],
+                        responseMeasurement: nil,
                         interrupted: interrupted)
         try writeJUnitIfRequested(project: testProject, recorder: recorder)
         RunCompletionSweep.spawn(activeRunID: recorder.runID) { ConsoleOut.out($0) }
@@ -1130,6 +1139,19 @@ struct RunScenarios: AsyncParsableCommand {
                     skipped, subject: "fleet \"\(fleetName)\" runs on"))
             }
             FleetRunner.log(MachineEnablement.skippedNotice(skipped))
+        }
+        // 計測モードのプロファイルは --fleet / --split に載せない(--set でもプロファイル側の指定でも)。
+        // 読めないプロファイルは各エントリの run が自分の言葉で言うのでここでは飛ばす
+        let setValues = try RunProfileSetOverride.parse(setOverrides)
+        let flag = split ? "--split" : "--fleet"
+        if ResponseMeasurementPolicy.isRequested(by: setValues) {
+            throw ValidationError(ResponseMeasurementPolicy.combinationRejection(flag: flag))
+        }
+        for entry in enabledDoc.runs {
+            if let resolved = try? ProfileResolver.resolve(project: testProject, runName: entry.profile),
+               resolved.responseMeasurement {
+                throw ValidationError(ResponseMeasurementPolicy.combinationRejection(flag: flag))
+            }
         }
         let exitCode = try await FleetRunner.run(
             project: testProject, fleetName: fleetName, fleet: enabledDoc,

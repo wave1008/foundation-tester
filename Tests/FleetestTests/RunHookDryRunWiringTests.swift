@@ -17,12 +17,33 @@ final class RunHookDryRunWiringTests: XCTestCase {
         let calls = lines.indices.filter { lines[$0].contains("RunHookRunner.begin(") }
         XCTAssertEqual(calls.count, 1, "expected exactly one RunHookRunner.begin call in ApiRunCommand")
         for call in calls {
-            guard let guardLine = lines[..<call].lastIndex(where: {
-                $0.trimmingCharacters(in: .whitespaces).hasPrefix("if ")
-            }) else { return XCTFail("RunHookRunner.begin must sit inside an if") }
+            guard let guardLine = Self.enclosingIf(of: call, in: lines)
+            else { return XCTFail("RunHookRunner.begin must sit inside an if") }
             XCTAssertTrue(lines[guardLine].contains("!dryRun"),
                           "the if around RunHookRunner.begin must exclude dry-run: \(lines[guardLine])")
         }
+    }
+
+    /// 呼び出しを**囲む**最も内側の `if`(波括弧の入れ子で数える。`do {` 等の if 以外の塊は外へたどる)。
+    /// 直前にあるだけの別の if(計測の分岐など)を囲みと取り違えない
+    static func enclosingIf(of index: Int, in lines: [String]) -> Int? {
+        var depth = 0
+        var i = index - 1
+        while i >= 0 {
+            let line = lines[i]
+            depth += line.filter { $0 == "}" }.count - line.filter { $0 == "{" }.count
+            if depth < 0 {
+                if line.trimmingCharacters(in: .whitespaces).hasPrefix("if ") { return i }
+                depth = 0
+            }
+            i -= 1
+        }
+        return nil
+    }
+
+    func testEnclosingIfSkipsASiblingIfAndADoBlock() {
+        let lines = ["if ok, !dryRun {", "    if measuring {", "        x()", "    }", "    do {", "        call()", "    }", "}"]
+        XCTAssertEqual(Self.enclosingIf(of: 5, in: lines), 0)
     }
 
     func testRunReturnsFromTheDryRunBranchBeforeProfileRunner() throws {

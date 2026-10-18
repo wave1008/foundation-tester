@@ -39,6 +39,19 @@ public struct RunTunables: Codable, Sendable, Equatable {
     /// 応答しない宛先で固まっても壁時計の締切(コマンド全体の打ち切り)より先に失敗として言える。
     /// この値を commandTimeout 以上にしない(固まったときに失敗の理由が「タイムアウト」の一言になる)
     public var httpRequestTimeout: Double
+    /// レスポンス計測: 操作の注入の前に「アプリのフレームが出ていない」が続くべき時間(ms)。
+    /// 根拠: 試作で使った 500ms
+    public var responseQuietMs: Int
+    /// レスポンス計測: 上の静けさを待つ上限(ms)。尽きたらそのステップは「操作の前から描画が続いていた」
+    /// (busy before the action)として記録し、反応時間を出さない。
+    /// 根拠: 観測した最長が約 6.6 秒(Pixel 4a・アニメーションあり・View の SUT のセレクタ画面へ遷移した直後。この口そのもので
+    /// 上限 30 秒・静止の窓 0.5 秒で5回測り 6562〜6613ms。窓を含む)。約 1.5 倍の余裕で 10 秒(試作の約 4.2 秒・旧上限 5 秒では
+    /// その画面の後が毎回 busy になった)
+    public var responseQuietTimeoutMs: Int
+    /// レスポンス計測: ステップの最初の注入から木を読み続ける上限(ms)。達したら t2 は `observationTimeout`(欠測)。
+    /// 根拠: 静けさの上限と同じ桁(静けさの 10 秒の元は観測した最長の連続描画 約 6.6 秒・Pixel 4a)。
+    /// 試作で観測した t2 の最長は約 3.3 秒(メインスレッドを止めた陽性対照)
+    public var responseObserveMs: Int
 
     public init(defaultTimeout: Double = DefaultWait.seconds,
                 commandTimeout: Double = 120,
@@ -53,7 +66,10 @@ public struct RunTunables: Codable, Sendable, Equatable {
                 doUntilTrueTimeout: Double = 10,
                 doUntilTrueInterval: Double = 0.5,
                 doUntilTrueMaxLoopCount: Int = 100,
-                httpRequestTimeout: Double = 30) {
+                httpRequestTimeout: Double = 30,
+                responseQuietMs: Int = 500,
+                responseQuietTimeoutMs: Int = 10000,
+                responseObserveMs: Int = 10000) {
         self.defaultTimeout = defaultTimeout
         self.commandTimeout = commandTimeout
         self.injectedAppProbeTimeout = injectedAppProbeTimeout
@@ -68,5 +84,8 @@ public struct RunTunables: Codable, Sendable, Equatable {
         self.doUntilTrueInterval = doUntilTrueInterval
         self.doUntilTrueMaxLoopCount = doUntilTrueMaxLoopCount
         self.httpRequestTimeout = httpRequestTimeout
+        self.responseQuietMs = responseQuietMs
+        self.responseQuietTimeoutMs = responseQuietTimeoutMs
+        self.responseObserveMs = responseObserveMs
     }
 }

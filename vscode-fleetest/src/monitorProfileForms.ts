@@ -170,6 +170,12 @@ export interface RunProfileFormFields {
   /// **既定 true**。Android install 中だけ Play Protect の照会をバイパスするキルスイッチ
   readonly playProtectBypass: boolean;
   readonly enableAnimations: boolean;
+  /** 既定 false(実験的)。Android 実機 1 台のレスポンス計測モード(Swift: RunProfileDocument.responseMeasurement) */
+  readonly responseMeasurement: boolean;
+  /** 計測モードで各シナリオを続けて回す回数(空文字 = 未設定 = Swift 側の既定 5)。1〜50 の整数だけ通す =
+   * Sources/FTCore/ResponseMeasurementPolicy.swift の minRepeat/maxRepeat と同じ条件。
+   * responseMeasurement が false のときは書かない(Swift は responseMeasurement 無しの responseRepeat を断る) */
+  readonly responseRepeat: string;
   readonly reportDir: string;
   /** シナリオ1本の上限秒(空文字 = 未設定 = Sources/FTCore/ScenarioHost.swift の defaultScenarioTimeout)。
    * 正の整数だけ通す = Swift 側の検査(RunProfile.swift)と同じ条件 */
@@ -222,6 +228,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const homeOnStart = typeof source.homeOnStart === "boolean" ? source.homeOnStart : true;
   const playProtectBypass = typeof source.playProtectBypass === "boolean" ? source.playProtectBypass : true;
   const enableAnimations = typeof source.enableAnimations === "boolean" ? source.enableAnimations : false;
+  const responseMeasurement = typeof source.responseMeasurement === "boolean" ? source.responseMeasurement : false;
   const updateWebView = typeof source.updateWebView === "boolean" ? source.updateWebView : true;
   const wipeDataOnBloat = typeof source.wipeDataOnBloat === "boolean" ? source.wipeDataOnBloat : true;
   const recoverCpuFallbackToGpu =
@@ -267,6 +274,10 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const scenarioTimeout =
     typeof rawScenarioTimeout === "number" ? String(rawScenarioTimeout)
       : typeof rawScenarioTimeout === "string" ? rawScenarioTimeout : "";
+  const rawResponseRepeat = source.responseRepeat;
+  const responseRepeat =
+    typeof rawResponseRepeat === "number" ? String(rawResponseRepeat)
+      : typeof rawResponseRepeat === "string" ? rawResponseRepeat : "";
   const rawBitrate = source.recordBitrateKbps;
   const recordBitrateKbps =
     typeof rawBitrate === "number" ? String(rawBitrate) : typeof rawBitrate === "string" ? rawBitrate : "";
@@ -288,6 +299,8 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     homeOnStart,
     playProtectBypass,
     enableAnimations,
+    responseMeasurement,
+    responseRepeat,
     reportDir,
     scenarioTimeout,
     updateWebView,
@@ -317,7 +330,7 @@ export type RunProfileUpdateResult =
  * recordBitrateKbps は空文字ならキー削除、正の整数文字列以外はエラー。
  * devices は fields.devices の順に並べ直し、既存 devices 配列の同名エントリ(未知キー込み)を
  * 再利用する(新規名は { name } のみ追加。同名重複があれば最初の1件を採用)。
- * record/recordFailuresOnly/recordFullResolution/enableAnimations は false のとき
+ * record/recordFailuresOnly/recordFullResolution/enableAnimations/responseMeasurement は false のとき
  * キー自体を書かない
  * (既定値のノイズを既存プロファイルに足さない。parseRunProfileForForm の「欠落→false」と対で
  * round-trip が安定する)。
@@ -357,7 +370,7 @@ export function updateRunProfileInObject(
   result.record = fields.record;  // 同上(既定 true 側。CLI の `doc.record ?? true` と一致)
   for (const key of [
     "recordFailuresOnly", "recordFullResolution", "recoverCpuFallbackToGpu",
-    "enableAnimations",
+    "enableAnimations", "responseMeasurement",
   ] as const) {
     if (fields[key]) {
       result[key] = true;
@@ -383,6 +396,17 @@ export function updateRunProfileInObject(
     return { ok: false, error: t("monitor.runProfile.scenarioTimeoutInvalid") };
   } else {
     result.scenarioTimeout = Number(scenarioTimeoutTrimmed);
+  }
+
+  // 計測モードを切ったときに responseRepeat だけ残すと Swift が起動を断るので、キーごと落とす
+  const responseRepeatTrimmed = fields.responseRepeat.trim();
+  if (responseRepeatTrimmed.length === 0 || !fields.responseMeasurement) {
+    delete result.responseRepeat;
+  } else if (!/^\d+$/.test(responseRepeatTrimmed) || Number(responseRepeatTrimmed) < 1
+             || Number(responseRepeatTrimmed) > 50) {
+    return { ok: false, error: t("monitor.runProfile.responseRepeatInvalid") };
+  } else {
+    result.responseRepeat = Number(responseRepeatTrimmed);
   }
 
   const bitrateTrimmed = fields.recordBitrateKbps.trim();

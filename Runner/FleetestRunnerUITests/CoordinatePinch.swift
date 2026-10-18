@@ -194,6 +194,7 @@ enum CoordinatePinch {
         let path = classes.path.init(touchAt: display?.nativePoint(point) ?? point, offset: 0)
         path.liftUp(atOffset: seconds)
         record.add(path)
+        ResponseMeasurement.noteInjection()
         synthesizer.synthesize(record) { }
     }
 
@@ -226,6 +227,7 @@ enum CoordinatePinch {
         // 送信は非同期。**ここは HTTP のハンドラ(専用スレッド)なので待ってよい** ——
         // 待たずに返すと、ホストが直後に撮るスナップショットがジェスチャ前の木になる
         let done = DispatchSemaphore(value: 0)
+        ResponseMeasurement.noteInjection()
         synthesizer.synthesize(record) { done.signal() }
         if done.wait(timeout: .now() + totalDuration + 10) == .timedOut {
             throw BridgeError(500, "the coordinate gesture did not come back within"

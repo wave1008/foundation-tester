@@ -422,6 +422,45 @@ public enum ProfileWorkerFactory {
         }
     }
 
+    /// 計測 run の終わりに戻すための、開始前のアニメーション設定。実機だけ(エミュレータは使い捨て)。
+    /// **`buildAndroidWorkers` の同期(`syncAnimationSettings`)より前に呼ぶ**(同期が書き換えた後では元の値が読めない)
+    public struct AnimationRestore: Sendable {
+        public let serial: String
+        public let entries: [AndroidAnimationSettings.Restore]
+    }
+
+    public static func captureAnimationRestore(resolved: ResolvedProfile) -> [AnimationRestore] {
+        guard let adb = try? AndroidDriver.findADB() else { return [] }
+        return resolved.androidDevices.filter(\.spec.isPhysical).compactMap { device in
+            guard let serial = try? AndroidDeviceCatalog.resolveSerial(spec: device.spec) else { return nil }
+            var previous: [String: String] = [:]
+            for key in AnimationPolicy.androidScaleKeys {
+                let result = try? Shell.run(
+                    [adb, "-s", serial, "shell"] + AndroidAnimationSettings.getArguments(key: key), timeout: 15)
+                if let output = result?.outputIfSucceeded { previous[key] = output }
+            }
+            let entries = AndroidAnimationSettings.restoreEntries(previousRaw: previous)
+            return entries.isEmpty ? nil : AnimationRestore(serial: serial, entries: entries)
+        }
+    }
+
+    /// `captureAnimationRestore` の値を戻す。失敗は 1 行言うだけ(run の結果は変えない)
+    public static func restoreAnimations(_ restores: [AnimationRestore], log: (String) -> Void) {
+        guard !restores.isEmpty, let adb = try? AndroidDriver.findADB() else { return }
+        for restore in restores {
+            var failed: [String] = []
+            for entry in restore.entries {
+                let status = (try? Shell.run([adb, "-s", restore.serial, "shell"] + entry.arguments, timeout: 15))?.status
+                if status != 0 { failed.append(entry.key) }
+            }
+            if failed.isEmpty {
+                log("ℹ️ \(restore.serial): restored the device animation settings changed for this run")
+            } else {
+                log("⚠️ \(restore.serial): could not restore the animation settings (\(failed.joined(separator: ", ")))")
+            }
+        }
+    }
+
     /// excludeOrRepairBlankScreenWorkers の結果。repaired/excluded はワーカー label
     /// (RunSummary → RunMetaRecord(run.json)に監査記録として残る)。
     /// repaired は sleep/wake 修復と guest reboot 修復の両方を含む(run.json のスキーマは

@@ -15,6 +15,9 @@
 // memoWrite / memoClear / deviceSetUp / deviceTearDown はデバイスセッション(DeviceSessionHandoff.swift)の子→親通知専用。
 // memoWrite は memoKey/memoValue、deviceSetUp は status に "began"/"passed"/"failed"、deviceTearDown は "declared"(クラスが tearDownDevice を持つ)。
 // ScenarioHost.run が横取りして RunDeviceSession へ反映し、emit へは渡さない(同じく api 契約に現れない)。
+// responseReady は応答時間計測の t2 の後追い確定(index = 宛先の計測ステップの添字、readyUpdate = 確定)。ScenarioRecordBuilder が
+// その添字の timeline[].response へ当てる。ライブの NDJSON(fleetest api run)には流さない: 宛先の step 行は確定の前に流れ終わっており、
+// 結果 JSON(run.json のシナリオ記録)が唯一の置き場。
 
 import Foundation
 
@@ -112,6 +115,10 @@ public struct ScenarioEvent: Codable, Sendable {
     /// 文字列を割って数えると書式を変えた瞬間に静かに壊れる(notes と同じ理由)。
     /// 名前の集合は `CommandIndex`
     public var command: String?
+    /// kind == step。応答時間計測(計測モードで画面を動かす操作のステップだけ。nil = 測っていない)
+    public var response: ResponseMeasurementRecord?
+    /// kind == responseReady。`index` のステップの t2 の確定
+    public var readyUpdate: ResponseReadyUpdate?
     /// kind == step かつ status == failed。**どの経路で落ちたか**(`StepFailureKind` の rawValue)。
     /// 言えないときはキーごと省略 = 推測で埋めない
     public var failureKind: String?

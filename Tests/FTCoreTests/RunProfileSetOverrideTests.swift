@@ -231,7 +231,7 @@ final class RunProfileSetOverrideKeysTests: XCTestCase {
         XCTAssertTrue(RunProfileDocument.profileOnlyKeys.isSubset(of: RunProfileDocument.overridableKeys))
         XCTAssertEqual(RunProfileDocument.profileOnlyKeys, [
             "iosInappEngine", "updateWebView", "wipeDataOnBloat", "recoverCpuFallbackToGpu",
-            "app", "locale", "wipeDataThresholdGB",
+            "app", "locale", "wipeDataThresholdGB", "responseMeasurement", "responseRepeat",
         ])
     }
 
@@ -276,6 +276,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         case "iosPreActionPing": return doc.iosPreActionPing.map(RunProfileSetValue.bool)
         case "containerInference": return doc.containerInference.map(RunProfileSetValue.bool)
         case "enableAnimations": return doc.enableAnimations.map(RunProfileSetValue.bool)
+        case "responseMeasurement": return doc.responseMeasurement.map(RunProfileSetValue.bool)
         case "homeOnStart": return doc.homeOnStart.map(RunProfileSetValue.bool)
         case "playProtectBypass": return doc.playProtectBypass.map(RunProfileSetValue.bool)
         case "updateWebView": return doc.updateWebView.map(RunProfileSetValue.bool)
@@ -288,6 +289,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         case "defaultTimeout": return doc.defaultTimeout.map(RunProfileSetValue.double)
         case "scenarioTimeout": return doc.scenarioTimeout.map(RunProfileSetValue.int)
         case "recordBitrateKbps": return doc.recordBitrateKbps.map(RunProfileSetValue.int)
+        case "responseRepeat": return doc.responseRepeat.map(RunProfileSetValue.int)
         case "app": return doc.app.map(RunProfileSetValue.string)
         case "locale": return doc.locale.map(RunProfileSetValue.string)
         case "wipeDataThresholdGB": return doc.wipeDataThresholdGB.map(RunProfileSetValue.double)
@@ -303,12 +305,13 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         "heal": "false", "fmTextVisibilityCheck": "false",
         "screenLooksLike": "false", "ocrTextVisibilityCheck": "false", "preferCheckStateClassifier": "false",
         "iosInappEngine": "false", "iosPreActionPing": "false",
-        "containerInference": "false", "enableAnimations": "true", "homeOnStart": "false",
+        "containerInference": "false", "enableAnimations": "true", "responseMeasurement": "true",
+        "homeOnStart": "false",
         "playProtectBypass": "false", "updateWebView": "false", "wipeDataOnBloat": "false",
         "recoverCpuFallbackToGpu": "true", "record": "true", "recordFailuresOnly": "true",
         "recordFullResolution": "true",
         "reportDir": "/tmp/out", "defaultTimeout": "12.5", "scenarioTimeout": "45",
-        "recordBitrateKbps": "2000", "app": "sample-app",
+        "recordBitrateKbps": "2000", "responseRepeat": "7", "app": "sample-app",
         "locale": "en_US", "wipeDataThresholdGB": "4.5",
     ]
 

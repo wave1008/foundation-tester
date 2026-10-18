@@ -100,7 +100,7 @@ final class HostMetricsRecorderTests: XCTestCase {
         // HostMetricsLog は open 時にファイルを生成するので begin 直後から存在する
         XCTAssertTrue(FileManager.default.fileExists(atPath: sessionFile.path),
                       "セッションファイルが作られていない: \(sessionFile.path)")
-        recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
+        recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
     }
 
     /// captureHostMetrics: false では採取器を起動せず、ファイルも作らない
@@ -114,7 +114,7 @@ final class HostMetricsRecorderTests: XCTestCase {
             .appendingPathComponent("host-metrics.ndjson")
         XCTAssertFalse(FileManager.default.fileExists(atPath: sessionFile.path),
                        "capture 無効なのにセッションファイルが作られた")
-        recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
+        recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
     }
 
     /// 上限(16MB)を超えたら `.1` へ回して新しいファイルへ書き続ける。旧 fd は新しい fd を開けてから

@@ -443,7 +443,7 @@ public enum RunResultsQuery {
     }
 
     /// 最近接順位法(nearest-rank)。values が空なら 0
-    private static func percentile(_ values: [Int], _ p: Double) -> Double {
+    static func percentile(_ values: [Int], _ p: Double) -> Double {
         guard !values.isEmpty else { return 0 }
         let sorted = values.sorted()
         let rank = Int((p * Double(sorted.count)).rounded(.up))

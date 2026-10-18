@@ -18,6 +18,7 @@ struct ResultsCommand: AsyncParsableCommand {
             ResultsTrendCommand.self,
             ResultsDevicesCommand.self,
             ResultsSlowCommand.self,
+            ResultsResponseCommand.self,
             ResultsInsightsCommand.self,
             ResultsLogCommand.self,
         ])
@@ -210,6 +211,30 @@ struct ResultsSlowCommand: AsyncParsableCommand {
             return
         }
         ConsoleOut.out(ResultsRendering.slow(rows))
+    }
+}
+
+// MARK: - response
+
+struct ResultsResponseCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "response",
+        abstract: "(Experimental) Aggregate first-frame response times of response-measurement runs per step, with the change from the previous run on the same host and device")
+
+    @OptionGroup var options: ResultsQueryOptions
+
+    func run() throws {
+        let (_, resultsDir, sinceDate) = try options.resolve()
+        // 全文の記録を読む(縮約版は timeline の response を持たない)
+        let runs = RunResultsStore.scanRuns(resultsDir: resultsDir, since: sinceDate)
+        let records = RunResultsStore.scanRecords(resultsDir: resultsDir, since: sinceDate)
+        let rows = ResponseMeasurementQuery.rows(runs: runs, records: records)
+
+        if options.json {
+            try printResultsJSON(rows)
+            return
+        }
+        ConsoleOut.out(ResultsRendering.response(rows))
     }
 }
 

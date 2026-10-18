@@ -136,6 +136,11 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   recorder-watch は client の終了を確かめてから = 観測できない間は何もせず待つ)。**recorder-watch は `InterruptRelay` にも載せず、拡張の孤児掃除と
   「全て終了」(`residentProcesses.ts` の `planResidentKill`)からも外す** —— 掃討は recordVideo の client を撃たないので、見張りだけ消すと client が
   撮り続けてそのシミュレータが塞がったままになる。
+  **レスポンス計測の xctrace の見張り**(`/bin/sh`・`ResponseTraceSession.watcherScript`)も親の死を生き延びる(xctrace を SIGINT で止めて
+  保存を待ち、一時フォルダを消す)。`InterruptRelay` には載せない(登録した子へ送るのは SIGTERM で、xctrace は SIGINT でしか保存しない)。
+  **子を SIGINT で止める経路を足すときは `Process` で起こさない** —— run の間 `InterruptRelay` が SIGINT を `SIG_IGN` にしており、無視の
+  設定は exec を越えて子へ引き継がれる(xctrace の停止が効かず保存されないまま殺された)。`SignalDefaultProcess`(posix_spawn で
+  SIGINT/SIGTERM/SIGHUP を既定に戻す)を使う。`/bin/sh` の `trap` では起動時に無視だった合図を戻せない
   **親の死を知らせる発話は投げない API で書く**(`ParentDeathWatch.writeNotice` = fd に `F_SETNOSIGPIPE` を
   掛けた生の `write(2)`。失敗は黙って諦める)—— 親が死んだ瞬間の stderr は**読み手の居ないパイプ**で、
   `FileHandle.write` は EPIPE を ObjC 例外にするので abort し、**SIGTERM に到達せず後始末が1つも走らない**

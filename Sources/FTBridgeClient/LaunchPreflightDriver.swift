@@ -167,6 +167,22 @@ public final class LaunchPreflightDriver: AppDriver {
         try await base.waitForSettle(request, timeoutSeconds: timeoutSeconds)
     }
 
+    public func fetchResponseObservation(firstDownTimeMs: Int) async throws -> ResponseObservation {
+        try await base.fetchResponseObservation(firstDownTimeMs: firstDownTimeMs)
+    }
+
+    public func stopResponseObservation() async throws {
+        try await base.stopResponseObservation()
+    }
+
+    public func prepareResponseMeasurement(quietMs: Int, timeoutMs: Int, observeMs: Int) async throws -> ResponsePrepareResult {
+        try await base.prepareResponseMeasurement(quietMs: quietMs, timeoutMs: timeoutMs, observeMs: observeMs)
+    }
+
+    public func collectResponseMeasurement() async throws -> ResponseCollectResult {
+        try await base.collectResponseMeasurement()
+    }
+
     public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
         try await base.rotate(to: orientation)
     }

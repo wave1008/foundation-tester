@@ -74,13 +74,9 @@ public struct HostLoadPacing: Codable, Sendable, Equatable {
     /// **`settle: false` の操作も待たない** —— 利用者が速さ優先と明示した操作(消える表示を叩く・連打)で、
     /// 待つと間に合わなくなる(Material の Snackbar の短い表示は 1.5 秒)
     public static func pacesBefore(action: String?, isVerification: Bool, settle: Bool?) -> Bool {
-        guard !isVerification, settle != false, let action else { return false }
-        return !nonOperationActions.contains(action)
+        guard settle != false else { return false }
+        return FlowStep.isScreenMovingOperation(action: action, isVerification: isVerification)
     }
-
-    /// action を持つが操作ではないもの: 画面を読むだけ(select・findImages = 検証とセットで使う)/
-    /// 待つだけ(waitForSettle)。hold の押している間は FTDriveCore が別に止める
-    static let nonOperationActions: Set<String> = ["select", "findImages", "waitForSettle"]
 
     /// cpu は 0〜1 の割合。当たる段のうち**最大の閾値**の delayMs(入力の並びに依らない)。値が無ければ待たない
     public static func delayMs(cpu: Double?, tiers: [Tier]) -> Int {

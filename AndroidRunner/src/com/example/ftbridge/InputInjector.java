@@ -955,7 +955,75 @@ final class InputInjector {
                 InputDevice.SOURCE_TOUCHSCREEN, 0);
     }
 
+    /** 応答時間計測の記録。hold の UP は別スレッドから注入されるので全アクセスを firstDownLock で守る。
+     *  ResponseObserver の呼び出しはこのロックの外で行う(observer → injector の一方向のロック順を保つ) */
+    private static final Object firstDownLock = new Object();
+    private static boolean firstDownArmed = false;
+    private static long firstDownTime = -1;
+    private static long lastDownTime = -1;
+    private static int downCount = 0;
+
+    /** 記録を空にして待ち受ける。次の ACTION_DOWN の downTime が最初・最後・回数として記録される */
+    static void armFirstDown() {
+        synchronized (firstDownLock) {
+            firstDownArmed = true;
+            firstDownTime = -1;
+            lastDownTime = -1;
+            downCount = 0;
+        }
+    }
+
+    /** シナリオの終わり(ResponseObserver.stopAll): 待ち受けを解き記録を消す。呼び元は observer のロックの中(observer → injector の順) */
+    static void disarmAndClear() {
+        synchronized (firstDownLock) {
+            firstDownArmed = false;
+            firstDownTime = -1;
+            lastDownTime = -1;
+            downCount = 0;
+        }
+    }
+
+    /** 記録された最初の downTime(uptimeMillis)。無ければ -1。取り出すと待ち受けを解く。
+     *  最後の downTime と回数は次の armFirstDown まで残す(collect と ResponseObserver が後から読む) */
+    static long takeFirstDown() {
+        synchronized (firstDownLock) {
+            long t = firstDownTime;
+            firstDownArmed = false;
+            return t;
+        }
+    }
+
+    /** {最初の downTime, 最後の downTime, DOWN の回数}。無ければ -1 / -1 / 0 */
+    static long[] peekDownStats() {
+        synchronized (firstDownLock) {
+            return new long[] {firstDownTime, lastDownTime, downCount};
+        }
+    }
+
     private static void inject(UiAutomation ua, MotionEvent e) {
+        // recycle 後は読めないので注入の前に取る。キーは injectKey 経由でここを通らない
+        if (e.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            long first = -1;
+            long later = -1;
+            int count = 0;
+            synchronized (firstDownLock) {
+                if (firstDownArmed) {
+                    if (firstDownTime < 0) {
+                        firstDownTime = e.getDownTime();
+                        first = firstDownTime;
+                    } else {
+                        later = e.getDownTime();
+                    }
+                    lastDownTime = e.getDownTime();
+                    downCount++;
+                    count = downCount;
+                }
+            }
+            // 前のステップの観測を締めて新しい観測を始めるのは、この DOWN を撃つ前(締める時刻 = この downTime)。
+            // 同じステップの2回目以降の DOWN は観測を記録し直させる(t2 は最後の注入より後だけを数える = 前の記録は使われない)
+            if (first >= 0) ResponseObserver.onFirstDown(ua, first);
+            else if (later >= 0) ResponseObserver.onLaterDown(later, count);
+        }
         try {
             if (!ua.injectInputEvent(e, true)) {
                 // 口が死んでいれば 503 + exit(BridgeRouter.assertConnectionAlive)。生きていて拒否なら 500

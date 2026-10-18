@@ -31,6 +31,7 @@ results/runs/<YYYY-MM>/<runID>/
 | `fleetest results trend --scenario <id>` | 1シナリオの実行履歴を時系列で表示する |
 | `fleetest results devices` | ワーカー(デバイス)別・プラットフォーム別の実行回数と成功率を集計する |
 | `fleetest results slow [--limit <n>]` | シナリオを平均所要時間が長い順に一覧する |
+| `fleetest results response`(試験的) | レスポンス計測の run(`responseMeasurement=true`)のステップごとに、最初のフレームまでの時間(標本数・中央値・p90・busy 件数)と、次の操作ができるようになるまでの時間(標本数・中央値・p90)、同じ機械・同じデバイスの前回の計測 run からの最初のフレームまでの差を並べる。ステップはシナリオ内の (scene, section, command, description, 出現順) で同一視する。機械かデバイスが違う run とは比べない。[レスポンス計測](./response_measurement_ja.md)参照 |
 | `fleetest results insights` | 実行履歴に対する10種の検査 —— [`insights` が検知するもの](#insights-が検知するもの)を参照 |
 | `fleetest results log <runID> [--scenario <id>]` | run のシナリオごとの実行ログ —— [シナリオの実行ログを読む](#シナリオの実行ログを読む)を参照 |
 

@@ -422,8 +422,8 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 
 | ブリッジ | 共通コアへの追加 | 計 |
 |---|---|---|
-| XCUITest(Runner/) | `POST /drag`・`POST /gesture`・`POST /hold`・`POST /appswitcher`・`POST /home`・`POST /hinge`(折りたたみの Duo の Simulator のヒンジ角。仮想 HID・`FTCore.FoldControl`)・共通コアの /screenshot のクエリ `display=<id>`(追加のルートではない。内蔵画面が2枚以上 = `/status` の `multiDisplay` のとき必須。ホストが devicectl で確かめた表示中の画面を渡す。`DisplayRouting`)・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/covering`・`GET /systemui/snapshot`・`POST /systemui/tap`・`POST /systemui/drag`・`POST /systemui/swipe`・`POST /waitForSettle`(§4.7) | 30 |
-| Android(AndroidRunner/) | `POST /gesture`・`POST /hold`・`POST /locale`・`POST /settle`・`POST /scrollAction`(§4.5)・`POST /waitForSettle`(§4.7) | 19 |
+| XCUITest(Runner/) | `POST /drag`・`POST /gesture`・`POST /hold`・`POST /appswitcher`・`POST /home`・`POST /hinge`(折りたたみの Duo の Simulator のヒンジ角。仮想 HID・`FTCore.FoldControl`)・共通コアの /screenshot のクエリ `display=<id>`(追加のルートではない。内蔵画面が2枚以上 = `/status` の `multiDisplay` のとき必須。ホストが devicectl で確かめた表示中の画面を渡す。`DisplayRouting`)・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/covering`・`GET /systemui/snapshot`・`POST /systemui/tap`・`POST /systemui/drag`・`POST /systemui/swipe`・`POST /waitForSettle`(§4.7)・`POST /responsePrepare`・`POST /responseCollect`・`POST /responseObservation`・`POST /responseObservationStop`(応答時間計測。docs/response-measurement.md §5・§7) | 34 |
+| Android(AndroidRunner/) | `POST /gesture`・`POST /hold`・`POST /locale`・`POST /settle`・`POST /scrollAction`(§4.5)・`POST /waitForSettle`(§4.7)・`POST /responsePrepare`・`POST /responseCollect`・`POST /responseObservation`・`POST /responseObservationStop`(応答時間計測。docs/response-measurement.md §8.5) | 23 |
 | InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate` | 16 |
 
 **ジェスチャの秒数(`/press` の duration・`/drag` の press+移動・速度つき `/swipe`・`/pinch`・`/gesture` の全体)の上限は2層**:

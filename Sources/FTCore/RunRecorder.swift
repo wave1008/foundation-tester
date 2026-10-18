@@ -63,6 +63,8 @@ public final class RunRecorder: @unchecked Sendable {
     private var guardedTotal = 0
     private var guardSkippedTotal = 0
     private var guardStaleFrameTotal = 0
+    /// `recordResponseMeasurement` で書いた識別(lock で保護)。finish が識別を持たない呼び手(供給失敗の経路)でも消さない
+    private var rememberedResponseMeasurement: ResponseMeasurementRunInfo?
 
     private init(runID: String, projectName: String, profile: String?, machine: String,
                 trigger: String, startedAt: String, runDir: URL,
@@ -119,6 +121,23 @@ public final class RunRecorder: @unchecked Sendable {
             issuer: issuer, runGroup: runGroup)
         RunResultsStore.writeMeta(meta, runDir: runDir)
         return recorder
+    }
+
+    /// 計測 run の識別を、finish を待たず run.json へ書く(途中で殺された run の run.json にも識別が残る。
+    /// finish も同じ値を書く)。実行中の形(`begin` と同じ欄 + 識別)で書き直す。`info == nil`(通常の run)は何もしない
+    public func recordResponseMeasurement(_ info: ResponseMeasurementRunInfo?) {
+        guard let info else { return }
+        lock.lock()
+        rememberedResponseMeasurement = info
+        lock.unlock()
+        let meta = RunMetaRecord(
+            runID: runID, project: projectName, profile: profile, host: machine,
+            toolchain: toolchain,
+            trigger: trigger, startedAt: startedAt,
+            pid: Int(ProcessInfo.processInfo.processIdentifier),
+            issuer: issuer, runGroup: runGroup,
+            responseMeasurement: info)
+        RunResultsStore.writeMeta(meta, runDir: runDir)
     }
 
     /// scenarioID の 2 回目以降が同一ファイルを上書きしないよう `<ID>~2.json` のように連番採番する。
@@ -273,6 +292,8 @@ public final class RunRecorder: @unchecked Sendable {
                        // サービス(compose.yaml)の起動時の警告。**既定値を置かない**(run / api run の片方の渡し忘れをコンパイルで止める。
                        // サービスの無い経路は `[]` を明示する)
                        servicesWarnings: [String],
+                       // 計測モードの run のときだけ識別を渡し、通常の run は nil。**既定値を置かない**(同じ理由)
+                       responseMeasurement: ResponseMeasurementRunInfo?,
                        // **既定値を持つ**(上と違い「渡し忘れ」が安全側に倒れる —— 大半の
                        // run は中断も中断以外の異常終了もしないので、省略時の false/nil がそのまま
                        // 正しい事実になる)
@@ -288,6 +309,7 @@ public final class RunRecorder: @unchecked Sendable {
         let guardedSum = guardedTotal
         let guardSkippedSum = guardSkippedTotal
         let guardStaleFrameSum = guardStaleFrameTotal
+        let remembered = rememberedResponseMeasurement
         lock.unlock()
         // [occlusion-guard] 1度もガードに入らなかった run では3欄とも省略。
         // 1件でもあれば guardSkipped/guardStaleFrame は0でも必ず書く
@@ -333,7 +355,8 @@ public final class RunRecorder: @unchecked Sendable {
             abortReason: abortReason,
             slowWorkers: slowWorkerSummaries.isEmpty ? nil : slowWorkerSummaries,
             // 無ければ書かない(欄が無い = 警告なし、または この版より前の記録)
-            servicesWarnings: servicesWarnings.isEmpty ? nil : servicesWarnings)
+            servicesWarnings: servicesWarnings.isEmpty ? nil : servicesWarnings,
+            responseMeasurement: responseMeasurement ?? remembered)
         RunResultsStore.writeMeta(meta, runDir: runDir)
         return slowFindings
     }

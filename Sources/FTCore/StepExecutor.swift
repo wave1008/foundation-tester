@@ -77,12 +77,16 @@ public struct StepResult: Sendable {
     public let failureKind: String?
     public let notes: [String]?
     public let guarded: Bool?
+    /// ScenarioEvent.response(応答時間計測)。並列経路の NDJSON 再構築で落とさないために運ぶ
+    public let response: ResponseMeasurementRecord?
 
     public init(index: Int, description: String, status: Status,
                 scene: Int? = nil, sceneTitle: String? = nil, section: String? = nil,
                 synthetic: Bool = false, timing: StepTiming? = nil, at: String? = nil,
                 command: String? = nil, failureKind: String? = nil,
-                notes: [String]? = nil, guarded: Bool? = nil) {
+                notes: [String]? = nil, guarded: Bool? = nil,
+                response: ResponseMeasurementRecord? = nil) {
+        self.response = response
         self.index = index
         self.description = description
         self.status = status
@@ -198,6 +202,13 @@ public struct StepOutcome: Sendable {
     /// 操作の対象を解決したとき、セレクタが2件以上に一致した数(1件目を撃った。序数・相対の指定は数えない)。
     /// 結果 JSON には載せない(MCP の ft_batch が行に添えるだけ)
     public let ambiguousMatchCount: Int?
+    /// 応答時間計測(計測モードで、画面を動かす操作のステップだけ。それ以外は nil)
+    public let response: ResponseMeasurementRecord?
+    /// このステップの対象で判定した**前の計測ステップ**の t2。前の計測ステップが無い・判定できなかった(注入しなかった等)ときは nil
+    public let readyUpdateForPreviousStep: ResponseReadyUpdate?
+    /// true = このステップが注入し、次の計測ステップの判定待ち(`readyUpdateForPreviousStep` の宛先)になった。
+    /// 呼び手が「前の計測ステップ」の添字を覚える目印(executor の待ちと同じ条件で立つ)
+    public let opensReadyObservation: Bool
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil,
                healedByFingerprint: Bool = false,
@@ -209,7 +220,13 @@ public struct StepOutcome: Sendable {
                evidenceImage: Data? = nil,
                imageMatches: [FindImage.Match]? = nil,
                ambiguousMatchCount: Int? = nil,
+               response: ResponseMeasurementRecord? = nil,
+               readyUpdateForPreviousStep: ResponseReadyUpdate? = nil,
+               opensReadyObservation: Bool = false,
                at: String = ISO8601Millis.string(from: Date())) {
+        self.response = response
+        self.readyUpdateForPreviousStep = readyUpdateForPreviousStep
+        self.opensReadyObservation = opensReadyObservation
         self.imageMatches = imageMatches
         self.ambiguousMatchCount = ambiguousMatchCount
         self.failureKind = failureKind
@@ -592,6 +609,13 @@ public final class StepExecutor {
     /// **`execute` の入口でステップへ畳む**ので、下流(解決・探索・タップ)はステップだけ見ればよい
     let containerInference: Bool
 
+    /// レスポンス計測モード(`--response-measurement`)。画面を動かす操作の前後で prepare / collect を撃つ(executeStep)
+    let responseMeasurement: Bool
+
+    /// 直近に注入した計測ステップの注入の事実(次の計測ステップが対象を解決した時点で、その木の履歴を判定する宛先)。
+    /// execute は DSL から1ステップずつ同期で呼ばれるので競合しない
+    var pendingResponseObservation: ResponseInjectionFacts?
+
     /// **半開きシート内で停滞したら、逆走査(飛び越しの拾い直し)を掛けずに即返す**(既定 false)。
     /// true にしてよいのは「呼び手がシートを展開して再試行する」場合だけ —— 展開後の再試行は
     /// 全画面高の容器で同じ逆走査を持つので救済は落ちない(MCP の ft_scroll_to の1回目が使う。
@@ -640,6 +664,7 @@ public final class StepExecutor {
                 tunables: RunTunables,
                 uiFramework: AppUIFramework? = nil,
                 containerInference: Bool = true,
+                responseMeasurement: Bool = false,
                 defersPartialSheetRecovery: Bool = false,
                 commandTimeoutSeconds: TimeInterval? = nil) {
         self.releasesScrollTouch = releasesScrollTouch
@@ -647,6 +672,7 @@ public final class StepExecutor {
         self.tunables = tunables
         self.uiFramework = uiFramework
         self.containerInference = containerInference
+        self.responseMeasurement = responseMeasurement
         self.defersPartialSheetRecovery = defersPartialSheetRecovery
         self.commandTimeoutMs = commandTimeoutSeconds.map { Int($0 * 1000) }
         self.driver = driver
@@ -719,10 +745,54 @@ public final class StepExecutor {
         elementLimitCeilingLatchedThisStep = false
         systemAlertAdvisoryThisStep = nil
         systemAlertProbeFailure = nil
+        // executeAction が投げた後でも、注入していれば集めた事実を失敗の StepOutcome に載せる
+        var thrownResponse: ResponseMeasurementRecord?
+        var thrownOpensReadyObservation = false
         do {
             if let action = step.action {
-                let outcome = try await executeAction(action, step: step,
+                // 計測の prepare / collect は phase の外(actionMs / waitMs に入れない)。durationMs には入る
+                // (ステップの壁時計の所要のままにする)。失敗してもステップの結果は変えない
+                let measuring = responseMeasurement && step.isScreenMovingOperation
+                var prepared: ResponsePrepareResult?
+                if measuring {
+                    prepared = try? await driver.prepareResponseMeasurement(
+                        quietMs: tunables.responseQuietMs, timeoutMs: tunables.responseQuietTimeoutMs,
+                        observeMs: tunables.responseObserveMs)
+                }
+                let outcome: StepOutcome
+                do {
+                    outcome = try await executeAction(action, step: step,
                                                       fingerprint: fingerprint, phase: &phase)
+                } catch {
+                    // 投げた経路でも collect してブリッジの記録(armed)を残さず、集めた事実は失敗の outcome に載せる。
+                    // 前の計測ステップ j はここでは判定しない(i が解決した対象が無い)。注入していれば i の観測を保留にする
+                    // (シナリオは失敗で中断するので通常は使われず、endResponseMeasurement が捨てる)
+                    if measuring {
+                        let collected = try? await driver.collectResponseMeasurement()
+                        let record = ResponseMeasurementRecord.make(prepare: prepared, collect: collected)
+                        thrownResponse = record
+                        pendingResponseObservation = Self.injectionFacts(
+                            collected, awaitsFirstFrame: Self.awaitsFirstFrame(prepare: prepared, record: record))
+                        thrownOpensReadyObservation = pendingResponseObservation != nil
+                    }
+                    throw error
+                }
+                var response: ResponseMeasurementRecord?
+                var readyUpdate: ResponseReadyUpdate?
+                var opensReadyObservation = false
+                if measuring {
+                    let collected = try? await driver.collectResponseMeasurement()
+                    let made = ResponseMeasurementRecord.make(prepare: prepared, collect: collected)
+                    response = made
+                    if let facts = Self.injectionFacts(
+                        collected, awaitsFirstFrame: Self.awaitsFirstFrame(prepare: prepared, record: made)) {
+                        if let previous = pendingResponseObservation {
+                            readyUpdate = await judgeReadiness(of: previous, step: step)
+                        }
+                        pendingResponseObservation = facts
+                        opensReadyObservation = true
+                    }
+                }
                 // 失敗したなら、登録の無いシステムアラートが前面に無いかを1回だけ聞いて文言に添える
                 let status = await annotatedWithSystemAlert(outcome.status, phase: &phase)
                 noteHoldAlreadyReleased(onFailureOf: step, status: status)
@@ -746,7 +816,10 @@ public final class StepExecutor {
                                    failureKind: failureKind(for: outcome.status),
                                    evidenceImage: Self.isSuccess(status) ? nil : classifierScreenshotThisStep,
                                    imageMatches: Self.isSuccess(outcome.status) ? imageMatchesThisStep : nil,
-                                   ambiguousMatchCount: ambiguousMatchCountThisStep)
+                                   ambiguousMatchCount: ambiguousMatchCountThisStep,
+                                   response: response,
+                                   readyUpdateForPreviousStep: readyUpdate,
+                                   opensReadyObservation: opensReadyObservation)
             }
             if let assert = step.assert {
                 var status = try await executeAssert(assert, step: step, phase: &phase)
@@ -788,8 +861,76 @@ public final class StepExecutor {
                                // 投げられたエラーは**型で**仕分ける(文言一致で数えない)。
                                // 分からない型は nil のまま = 推測しない
                                failureKind: Self.failureKind(thrown: error)
-                                   ?? failureKindThisStep)
+                                   ?? failureKindThisStep,
+                               response: thrownResponse,
+                               opensReadyObservation: thrownOpensReadyObservation)
         }
+    }
+
+    /// collect の結果 → 注入の事実。注入が無ければ nil(= このステップは次の判定の宛先にならない)
+    static func injectionFacts(_ collected: ResponseCollectResult?, awaitsFirstFrame: Bool = false)
+        -> ResponseInjectionFacts? {
+        guard let collected, let first = collected.downTimeMs else { return nil }
+        return ResponseInjectionFacts(firstDownTimeMs: first, lastDownTimeMs: collected.lastDownTimeMs ?? first,
+                                      injections: max(collected.injections, 1), awaitsFirstFrame: awaitsFirstFrame)
+    }
+
+    /// 最初のフレームを観測の取得で後から決めてよい記録か: prepare が描画の停止を確かめ(reason 無し・quiet)、
+    /// collect の記録に値も欠けた理由も無い(暫定の `noFrame` はここに入る)
+    static func awaitsFirstFrame(prepare: ResponsePrepareResult?, record: ResponseMeasurementRecord) -> Bool {
+        guard let prepare, prepare.reason == nil, prepare.quiet else { return false }
+        return !record.busyBeforeAction && record.firstFrameMs == nil && record.firstFrameMissing == nil
+    }
+
+    /// 前の計測ステップ j の木の履歴を、このステップ i が実際に解決して操作した対象で判定する。
+    /// 判定できない構成は nil(更新を出さない = j は判定されないまま):
+    /// i が対象に着くまでに自分で画面を動かした(スクロール探索・寄せ)と、i が使った枠は履歴の木の枠と
+    /// 別の座標系になり、条件(枠が等しい)が成り立たないのに「揃う前に撃たれた」と言ってしまうため
+    func judgeReadiness(of previous: ResponseInjectionFacts, step: FlowStep) async -> ResponseReadyUpdate? {
+        guard step.locator != nil, let used = resolvedElementThisStep else {
+            return await attachingFirstFrame(to: ResponseReadyJudge.missing(.noTarget, facts: previous), of: previous)
+        }
+        if (scrollSwipesThisStep ?? 0) > 0 || (slowDragsThisStep ?? 0) > 0 {
+            // t2 は判定しない(画面の位置がずれる)が、最初のフレームはこのステップの注入で締まった観測から決まる
+            return await attachingFirstFrame(to: nil, of: previous)
+        }
+        let observation: ResponseObservation
+        do {
+            observation = try await driver.fetchResponseObservation(firstDownTimeMs: previous.firstDownTimeMs)
+        } catch {
+            return ResponseReadyJudge.missing(.bridgeError, facts: previous)
+        }
+        let update = ResponseReadyJudge.judge(
+            observation: observation, facts: previous,
+            resolve: { LocatorResolver.resolve(step: step, in: $0)?.0 },
+            isOccluded: { OcclusionGeometry.overlayCovering($0, in: $1.elements, screen: $1.screen) != nil },
+            usedFrame: used.frame)
+        return ResponseReadyJudge.attachingFirstFrame(
+            update, observation: observation, decidesFirstFrame: previous.awaitsFirstFrame)
+    }
+
+    /// シナリオの終わりに、締まっていない観測をブリッジに止めさせる(失敗しても何もしない。届かなければ
+    /// ブリッジは次の所有者の最初の注入で捨てる)。保留の宛先も捨てる
+    /// 最後の計測ステップの最初のフレームがまだ決まっていなければ、stop で締めた観測から決めた更新を返す
+    /// (ブリッジの stop は締めた1件を残す。呼び手が保留中のステップへ当てる)
+    @discardableResult
+    public func endResponseMeasurement() async -> ResponseReadyUpdate? {
+        guard responseMeasurement else { return nil }
+        let pending = pendingResponseObservation
+        pendingResponseObservation = nil
+        guard (try? await driver.stopResponseObservation()) != nil, let pending else { return nil }
+        return await attachingFirstFrame(to: nil, of: pending)
+    }
+
+    /// t2 を判定しない経路でも、観測を取って締まった時刻と(未決なら)最初のフレームを足す。
+    /// 取れない・足すものが無ければ `update` のまま
+    private func attachingFirstFrame(to update: ResponseReadyUpdate?,
+                                     of previous: ResponseInjectionFacts) async -> ResponseReadyUpdate? {
+        guard let observation = try? await driver.fetchResponseObservation(firstDownTimeMs: previous.firstDownTimeMs)
+        else { return update }
+        let attached = ResponseReadyJudge.attachingFirstFrame(
+            update ?? ResponseReadyUpdate(), observation: observation, decidesFirstFrame: previous.awaitsFirstFrame)
+        return attached == (update ?? ResponseReadyUpdate()) ? update : attached
     }
 
     /// 撮り直す理由 → 実際にキャッシュを迂回するか。**ドライバの対応可否と掛け合わせる唯一の場所**

@@ -44,6 +44,7 @@ const runProfileInappOptions = document.getElementById('run-profile-inapp-option
 const runProfileHomeOnStart = document.getElementById('run-profile-home-on-start');
 const runProfilePlayProtectBypass = document.getElementById('run-profile-play-protect-bypass');
 const runProfileEnableAnimations = document.getElementById('run-profile-enable-animations');
+const runProfileResponseMeasurement = document.getElementById('run-profile-response-measurement');
 const runProfileUpdateWebView = document.getElementById('run-profile-update-webview');
 const runProfileWipeDataOnBloat = document.getElementById('run-profile-wipe-data-on-bloat');
 const runProfileRecoverCpuFallback = document.getElementById('run-profile-recover-cpu-fallback');
@@ -58,11 +59,12 @@ const runProfileWorkspace = document.getElementById('run-profile-workspace');
 const btnRunProfileHookScaffold = document.getElementById('btn-run-profile-hook-scaffold');
 const runProfileReportDir = document.getElementById('run-profile-report-dir');
 const runProfileScenarioTimeout = document.getElementById('run-profile-scenario-timeout');
+const runProfileResponseRepeat = document.getElementById('run-profile-response-repeat');
 const runProfileError = document.getElementById('run-profile-error');
 // 保存時に前後の空白を落として書き戻す欄(送る値と画面の値を一致させ、保存後に dirty が残らないように)
 const runProfileTextInputs = [
   runProfileRecordBitrate, runProfileWipeThreshold, runProfileLocale,
-  runProfileWorkspace, runProfileReportDir, runProfileScenarioTimeout,
+  runProfileWorkspace, runProfileReportDir, runProfileScenarioTimeout, runProfileResponseRepeat,
 ];
 
 // 直近受信の一覧(profileInfo 由来)。
@@ -258,6 +260,7 @@ function renderRunProfileEditor(fields) {
   runProfileHomeOnStart.checked = fields.homeOnStart;
   runProfilePlayProtectBypass.checked = fields.playProtectBypass;
   runProfileEnableAnimations.checked = fields.enableAnimations;
+  runProfileResponseMeasurement.checked = fields.responseMeasurement;
   runProfileContainerInference.checked = fields.containerInference;
   runProfileUpdateWebView.checked = fields.updateWebView;
   runProfileWipeDataOnBloat.checked = fields.wipeDataOnBloat;
@@ -272,6 +275,7 @@ function renderRunProfileEditor(fields) {
   runProfileWorkspace.value = fields.workspace;
   runProfileReportDir.value = fields.reportDir;
   runProfileScenarioTimeout.value = fields.scenarioTimeout;
+  runProfileResponseRepeat.value = fields.responseRepeat;
 
   runProfilePlaceholder.style.display = 'none';
   runProfileEditor.style.display = '';
@@ -382,6 +386,7 @@ function runProfileValuesEqual(fields) {
     runProfileHomeOnStart.checked === fields.homeOnStart &&
     runProfilePlayProtectBypass.checked === fields.playProtectBypass &&
     runProfileEnableAnimations.checked === fields.enableAnimations &&
+    runProfileResponseMeasurement.checked === fields.responseMeasurement &&
     runProfileContainerInference.checked === fields.containerInference &&
     runProfileUpdateWebView.checked === fields.updateWebView &&
     runProfileWipeDataOnBloat.checked === fields.wipeDataOnBloat &&
@@ -394,7 +399,8 @@ function runProfileValuesEqual(fields) {
     runProfileLocale.value === fields.locale &&
     runProfileWorkspace.value === fields.workspace &&
     runProfileReportDir.value === fields.reportDir &&
-    runProfileScenarioTimeout.value === fields.scenarioTimeout
+    runProfileScenarioTimeout.value === fields.scenarioTimeout &&
+    runProfileResponseRepeat.value === fields.responseRepeat
   );
 }
 
@@ -475,6 +481,7 @@ function collectRunProfileFields() {
     homeOnStart: runProfileHomeOnStart.checked,
     playProtectBypass: runProfilePlayProtectBypass.checked,
     enableAnimations: runProfileEnableAnimations.checked,
+    responseMeasurement: runProfileResponseMeasurement.checked,
     containerInference: runProfileContainerInference.checked,
     updateWebView: runProfileUpdateWebView.checked,
     wipeDataOnBloat: runProfileWipeDataOnBloat.checked,
@@ -488,6 +495,7 @@ function collectRunProfileFields() {
     workspace: runProfileWorkspace.value.trim(),
     reportDir: runProfileReportDir.value.trim(),
     scenarioTimeout: runProfileScenarioTimeout.value.trim(),
+    responseRepeat: runProfileResponseRepeat.value.trim(),
   };
 }
 

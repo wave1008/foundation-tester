@@ -298,6 +298,9 @@ enum ProfileRunner {
         let resolvedAll = try ProfileResolver.resolve(
             project: project, runName: profileName,
             workspaceOverride: workspaceOverride, overrides: setOverrides)
+        if broadcast, resolvedAll.responseMeasurement {
+            throw ValidationError(ResponseMeasurementPolicy.combinationRejection(flag: "--broadcast"))
+        }
         // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17)
         // なので毎回雛形作成(既に揃っていれば何もしない。WorkspaceScaffold の宣言)。
         // リモートディスパッチはこれとは別に、ミラー前のローカル側で同じ呼び出しを行う
@@ -395,6 +398,17 @@ enum ProfileRunner {
         // サービス(scripts/compose.yaml)は開始スクリプトの前に上げ、片付けは終了スクリプトの後
         // (defer は後に書いたものから走る = 下の終了スクリプトの defer より先に書く)
         let reportDir = reportDirOverride.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
+        // レスポンス計測中はモニターを止める(ApiRunCommand.run と同じ。解除は defer = 中断・エラーでも通る)
+        let responseMonitorHold = resolved.responseMeasurement
+            ? hookStateDir.flatMap { ResponseMeasurementMonitorHold.acquire(stateDir: $0) { ConsoleOut.out($0) } }
+            : nil
+        defer { ResponseMeasurementMonitorHold.release(responseMonitorHold) { ConsoleOut.out($0) } }
+        // 計測 run の識別は finish を待たず run.json に書く(殺された run にも残す。ApiRunCommand.run と同じ)
+        recorder?.recordResponseMeasurement(ResponseMeasurementPolicy.runInfo(resolved: resolved))
+        // 計測 run が書き換えた Android 実機のアニメーション設定を終了時に戻す。取得は開始時の同期(buildAndroidWorkers)より前
+        let animationRestores = resolved.responseMeasurement
+            ? ProfileWorkerFactory.captureAnimationRestore(resolved: resolved) : []
+        defer { ProfileWorkerFactory.restoreAnimations(animationRestores) { ConsoleOut.out($0) } }
         let servicesSession = try ServicesSession.up(
             resolved: resolved, stateDir: hookStateDir, options: .forRun(resolved), interruptState: interruptState) { ConsoleOut.out($0) }
         defer { servicesSession?.down { ConsoleOut.out($0) } }
@@ -553,6 +567,9 @@ enum ProfileRunner {
         // 長いシナリオを先に流すと末尾の遊休が減る(実績は platform 別。--no-lpt で素の ID 順)
         items = LPTOrdering.apply(items, project: project, defaultPlatform: defaultPlatform,
                                   enabled: lpt, historyRuns: lptHistoryRuns, log: { ConsoleOut.out($0) })
+        if resolved.responseMeasurement {
+            items = ResponseMeasurementRepeat.expand(items, count: resolved.responseRepeat)
+        }
         // ApiRunCommand.run と同じ関数(RunStartLine)で組み立てる(CLAUDE.md「2 実装の差」対策)
         ConsoleOut.out(RunStartLine.text(
             androidWorkers: workers.count, eagerIOSWorkers: eagerIOSWorkers.count, hasLateIOS: hasLateIOS)
@@ -602,6 +619,9 @@ enum ProfileRunner {
             ? .broadcast(lanes: resolved.devices.map { BroadcastLane(key: $0.name, platform: $0.platform) })
             : .shared
         let itemsToRun = items  // async let は var を直接捕捉できない(Sendable 境界)
+        // iOS 実機の計測だけ: 供給の後・配布の前から xctrace を録る(止めて結果へ入れるのは summary の後)
+        let responseTrace = await ResponseTraceSession.startIfNeeded(resolved: resolved) { ConsoleOut.out($0) }
+        defer { responseTrace?.cleanup() }
         // ここから先は RunOrchestrator.run() が必ず finish() まで進む(non-throwing)ので、
         // "preparing" の後始末は orchestrator 側の finish()/remove に委ねる
         progressHandedToOrchestrator = true
@@ -658,6 +678,7 @@ enum ProfileRunner {
         }
 
         let finalSummary = await summary
+        await responseTrace?.finish(runDir: recorder?.runDir) { ConsoleOut.out($0) }
         if finalSummary.failed > 0 { servicesSession?.saveLogs(to: servicesLogDir) { ConsoleOut.out($0) } }
         if !finalSummary.degradedWorkers.isEmpty {
             ConsoleOut.out("⚠️ Degraded or dropped workers (\(finalSummary.degradedWorkers.count)):")
@@ -692,7 +713,8 @@ enum ProfileRunner {
                                  performanceMode: performanceMode,
                                  fmSettings: fmSettings,
                                  interrupted: finalSummary.interrupted,
-                                 servicesWarnings: servicesSession?.warnings ?? [])
+                                 servicesWarnings: servicesSession?.warnings ?? [],
+                                 responseMeasurement: ResponseMeasurementPolicy.runInfo(resolved: resolved))
         return (resultSummary, fmSettings)
     }
 

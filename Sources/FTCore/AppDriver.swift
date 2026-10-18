@@ -175,6 +175,13 @@ public protocol AppDriver {
     /// in-app はアプリ自身の描画しか撮れない = キーボード・システムアラートが映らない)。**プロトコル要件として宣言すること**、
     /// 包むドライバは必ず素通しする
     func waitForSettle(_ request: WaitForSettleRequest, timeoutSeconds: Double) async throws -> WaitForSettleResponse
+    /// 応答時間計測(Android ブリッジ v102〜)。prepare = 描画が止まるまで待って次の最初の DOWN の記録を構える / collect = その downTime と
+    /// 最初のフレームまでの遅れ。**既定は 501**。プロトコル要件として宣言すること、包むドライバは素通しする
+    /// observeMs = 最初の注入から木を読み続ける上限。fetch = 最初の注入の downTime で締め終わった観測を受け取る / stop = 実行中を止めて記録を捨てる(v104〜)
+    func prepareResponseMeasurement(quietMs: Int, timeoutMs: Int, observeMs: Int) async throws -> ResponsePrepareResult
+    func collectResponseMeasurement() async throws -> ResponseCollectResult
+    func fetchResponseObservation(firstDownTimeMs: Int) async throws -> ResponseObservation
+    func stopResponseObservation() async throws
     /// Rotates the device and waits for it to settle, returning the actual settled orientation
     /// (always equals the request — the driver throws instead of returning a mismatch; see
     /// DriverError 422 usage). **Protocol requirement** (same reasoning as doubleTap/pinch above:
@@ -579,6 +586,22 @@ public extension AppDriver {
 
     func waitForSettle(_ request: WaitForSettleRequest, timeoutSeconds: Double) async throws -> WaitForSettleResponse {
         throw DriverError.badResponse(status: 501, body: "This driver cannot capture the whole screen (waitForSettle)")
+    }
+
+    func prepareResponseMeasurement(quietMs: Int, timeoutMs: Int, observeMs: Int) async throws -> ResponsePrepareResult {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support response measurement")
+    }
+
+    func fetchResponseObservation(firstDownTimeMs: Int) async throws -> ResponseObservation {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support response measurement")
+    }
+
+    func stopResponseObservation() async throws {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support response measurement")
+    }
+
+    func collectResponseMeasurement() async throws -> ResponseCollectResult {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support response measurement")
     }
 
     /// 501 = ホストが typeDriver(XCUITest)へ回す合図(in-app ブリッジは /gesture を持たない)

@@ -23,13 +23,16 @@ final class RunTunablesTests: XCTestCase {
         XCTAssertEqual(t.doUntilTrueInterval, 0.5)
         XCTAssertEqual(t.doUntilTrueMaxLoopCount, 100)
         XCTAssertEqual(t.httpRequestTimeout, 30)
+        XCTAssertEqual(t.responseQuietMs, 500)
+        XCTAssertEqual(t.responseQuietTimeoutMs, 10000)
+        XCTAssertEqual(t.responseObserveMs, 10000)
         XCTAssertLessThan(t.httpRequestTimeout, t.commandTimeout, "httpRequest の待ちは壁時計の締切より小さく保つ")
     }
 
     func testProfileDefaultTimeoutMapsIntoTunables() {
         let settings = ScenarioExecutionSettings(DeviceIndependentRunSettings(
             fm: FMConfig(), heal: false, ocrTextVisibilityCheck: true, preferCheckStateClassifier: true,
-            iosPreActionPing: true, containerInference: true, enableAnimations: false,
+            iosPreActionPing: true, containerInference: true, enableAnimations: false, responseMeasurement: false, responseRepeat: 5,
             playProtectBypass: true, homeOnStart: true, record: false, recordFailuresOnly: false,
             recordFullResolution: false, reportDir: nil, defaultTimeout: 12.5, scenarioTimeout: nil,
             recordBitrateKbps: nil))
@@ -40,7 +43,7 @@ final class RunTunablesTests: XCTestCase {
     func testUnspecifiedProfileDefaultTimeoutStaysDefault() {
         let settings = ScenarioExecutionSettings(DeviceIndependentRunSettings(
             fm: FMConfig(), heal: false, ocrTextVisibilityCheck: true, preferCheckStateClassifier: true,
-            iosPreActionPing: true, containerInference: true, enableAnimations: false,
+            iosPreActionPing: true, containerInference: true, enableAnimations: false, responseMeasurement: false, responseRepeat: 5,
             playProtectBypass: true, homeOnStart: true, record: false, recordFailuresOnly: false,
             recordFullResolution: false, reportDir: nil, defaultTimeout: nil, scenarioTimeout: nil,
             recordBitrateKbps: nil))
@@ -53,11 +56,12 @@ final class RunTunablesTests: XCTestCase {
                         defaultMaxSwipes: 3, defaultSwipeDuration: 2.5, defaultFlickDuration: 0.75,
                         defaultFlickInterval: 0.6, defaultPinchDuration: 1.25, defaultHoldDuration: 4,
                         screenWaitTimeout: 21, doUntilTrueTimeout: 12, doUntilTrueInterval: 0.75,
-                        doUntilTrueMaxLoopCount: 7, httpRequestTimeout: 9))
+                        doUntilTrueMaxLoopCount: 7, httpRequestTimeout: 9,
+                        responseQuietMs: 250, responseQuietTimeoutMs: 4000, responseObserveMs: 6000))
         XCTAssertEqual(json, #"{"commandTimeout":33,"defaultFlickDuration":0.75,"defaultFlickInterval":0.6,"#
             + #""defaultHoldDuration":4,"defaultMaxSwipes":3,"defaultPinchDuration":1.25,"#
             + #""defaultSwipeDuration":2.5,"defaultTimeout":7.5,"doUntilTrueInterval":0.75,"#
             + #""doUntilTrueMaxLoopCount":7,"doUntilTrueTimeout":12,"httpRequestTimeout":9,"injectedAppProbeTimeout":4,"#
-            + #""screenWaitTimeout":21}"#)
+            + #""responseObserveMs":6000,"responseQuietMs":250,"responseQuietTimeoutMs":4000,"screenWaitTimeout":21}"#)
     }
 }

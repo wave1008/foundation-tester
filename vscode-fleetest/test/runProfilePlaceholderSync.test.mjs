@@ -5,6 +5,7 @@
 // 同期相手:
 //   reportDir       … Sources/FTCore/RunProfile.swift の `ProfileResolver.reportDirectory` の `reportDir ?? "reports"`
 //   scenarioTimeout … Sources/FTCore/ScenarioHost.swift の `defaultScenarioTimeout`
+//   responseRepeat  … Sources/FTCore/ResponseMeasurementPolicy.swift の `defaultRepeat`
 //
 // process.cwd() は npm test 実行時に vscode-fleetest ルート。
 
@@ -35,4 +36,11 @@ test("scenarioTimeout の透かしは未指定時の既定秒と一致する", (
   const match = swift.match(/static let defaultScenarioTimeout = (\d+)/);
   assert.ok(match, "ScenarioHost.swift から defaultScenarioTimeout を抽出できません");
   assert.equal(placeholderOf("run-profile-scenario-timeout"), match[1]);
+});
+
+test("responseRepeat の透かしは未指定時の既定回数と一致する", () => {
+  const swift = readFileSync(path.join(REPO, "Sources/FTCore/ResponseMeasurementPolicy.swift"), "utf8");
+  const match = swift.match(/static let defaultRepeat = (\d+)/);
+  assert.ok(match, "ResponseMeasurementPolicy.swift から defaultRepeat を抽出できません");
+  assert.equal(placeholderOf("run-profile-response-repeat"), match[1]);
 });

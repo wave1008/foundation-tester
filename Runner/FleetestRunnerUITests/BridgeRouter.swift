@@ -32,7 +32,7 @@ final class BridgeRouter {
 
     // 現在のセッション状態。直近スナップショットの ref→frame 対応表を保持し、
     // tap/press は座標タップとして解決する(要素クエリ再構築より頑健)。
-    private var app: XCUIApplication?
+    private(set) var app: XCUIApplication?
     private var sessionBundleID: String?
     private var refFrames: [Int: CGRect] = [:]
     /// `/hittable` が ref から XCUIElement を引き直すための手掛かり(直近の /snapshot 由来)。
@@ -95,6 +95,10 @@ final class BridgeRouter {
     func handle(_ request: BridgeHTTPServer.Request) -> BridgeHTTPServer.Response {
         InterruptionGuard.shared.reset()
         skipSettle = request.skipSettle
+        // 処理中は観測の読み(ResponseMeasurement のタイマー)を撃たせない: XCTest の待ちは main の RunLoop を入れ子で回すので、
+        // タイマーが操作の途中に割り込みうる
+        ResponseMeasurement.requestDepth += 1
+        defer { ResponseMeasurement.requestDepth -= 1 }
         do {
             var response: BridgeHTTPServer.Response
             switch (request.method, request.path) {
@@ -124,6 +128,11 @@ final class BridgeRouter {
             case ("POST", "/hold"): response = try handleHold(request.body)
             // **mutatingPaths に入れない**(操作ではない)。settlePending はハンドラが自分で立てる
             case ("POST", "/waitForSettle"): response = try handleWaitForSettle(request.body)
+            // **mutatingPaths に入れない・整定も QuiescenceWait も掛けない**(待ちが計測を汚す)
+            case ("POST", "/responsePrepare"): response = try handleResponsePrepare(request.body)
+            case ("POST", "/responseCollect"): response = handleResponseCollect()
+            case ("POST", "/responseObservation"): response = try handleResponseObservation(request.body)
+            case ("POST", "/responseObservationStop"): response = handleResponseObservationStop()
             case ("GET", "/screenshot"): response = handleScreenshot(request)
             case ("POST", "/appswitcher"): response = try handleAppSwitcher()
             case ("POST", "/home"): response = try handleHome()
@@ -257,6 +266,7 @@ final class BridgeRouter {
         // 操作直後のみ整定してから取得する(captureSettled)。XCUITest の tap quiescence は
         // 非同期 push 遷移の完了前に返るため、直後の素取得は遷移前ツリーを返す(実測 50%)。
         // 連続 snapshot(settlePending=false)は整定不要なので素取得のまま。
+        let readStarted = ResponseMeasurement.nowMs()
         let cap = try settlePending ? captureSettled(app) : captureOnce(app)
         settlePending = false
 
@@ -264,11 +274,20 @@ final class BridgeRouter {
         refIdentity = cap.identities
         // ref → 要素(handleType の読み返しが identifier / 直前の値を使う)。frame と同じ寿命
         refElements = Dictionary(uniqueKeysWithValues: zip(cap.elements.map(\.ref), cap.elements))
-        return .json(SnapshotResponse(
+        let response = snapshotResponse(cap, elements: withFocusedFlag(cap.elements, app: app))
+        // レスポンス計測の観測中なら、この木も読みとして残す(計測していなければ何もしない)
+        ResponseMeasurement.recordHostRead(response, startMs: readStarted, endMs: ResponseMeasurement.nowMs())
+        return .json(response)
+    }
+
+    /// GET /snapshot と /responseObservation の木が同じ形になるよう、応答の組み立てを共有する
+    /// (後者は焦点の申告 `withFocusedFlag`(ライブクエリ)を省いた elements を渡す)
+    func snapshotResponse(_ cap: Captured, elements: [ElementInfo]) -> SnapshotResponse {
+        SnapshotResponse(
             sessionBundleID: sessionBundleID,
             screen: FTRect(x: cap.screen.origin.x, y: cap.screen.origin.y,
                            width: cap.screen.width, height: cap.screen.height),
-            elements: withFocusedFlag(cap.elements, app: app),
+            elements: elements,
             truncatedCount: cap.truncated,
             note: cap.settleCapped ? "snapshot taken before the screen settled (budget)" : nil,
             offscreen: cap.offscreen.isEmpty ? nil : cap.offscreen,
@@ -278,7 +297,7 @@ final class BridgeRouter {
             },
             overlayWindowFrames: cap.overlayWindowFrames.isEmpty ? nil : cap.overlayWindowFrames,
             truncatedTiers: cap.truncatedTiers.isEmpty ? nil : cap.truncatedTiers,
-            bulkExemptCount: cap.bulkExempt > 0 ? cap.bulkExempt : nil))
+            bulkExemptCount: cap.bulkExempt > 0 ? cap.bulkExempt : nil)
     }
 
     /// フォーカス中要素の申告(clearInput 事後検証用。ElementInfo.focused 参照)。
@@ -516,6 +535,7 @@ final class BridgeRouter {
             throw refuseLandscapeSpringBoardTap()
         }
         gestureQuiescence {
+            ResponseMeasurement.noteInjection()
             coordinate(systemUIAnchor(), CGPoint(x: frame.midX, y: frame.midY)).tap()
         }
         return .json(OKResponse())
@@ -560,6 +580,7 @@ final class BridgeRouter {
         let req = try decode(SwipeRequest.self, body)
         let app = systemUIAnchor()
         gestureQuiescence {
+            ResponseMeasurement.noteInjection()
             switch req.direction {
             case .up: app.swipeUp()
             case .down: app.swipeDown()
@@ -759,6 +780,7 @@ final class BridgeRouter {
         _ = QuiescenceWait.takeCapNote()  // 前の操作の数え残しを捨てる(応答の注記はこの操作の分だけ)
         let start = DispatchTime.now()
         try QuiescenceWait.around(skip: skipSettle, skipByDefault: true) {
+            ResponseMeasurement.noteInjection()
             coordinate(app, point).tap()
         }
         let totalMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e6
@@ -793,7 +815,10 @@ final class BridgeRouter {
                 + " Tap the input field first (or type into it), then press Enter")
         }
         _ = QuiescenceWait.takeCapNote()
-        QuiescenceWait.capping(skipPostEvent: false) { app.typeText("\n") }   // 上限は handleType と同じ理由
+        QuiescenceWait.capping(skipPostEvent: false) {   // 上限は handleType と同じ理由
+            ResponseMeasurement.noteInjection()
+            app.typeText("\n")
+        }
         return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
     }
 
@@ -873,6 +898,7 @@ final class BridgeRouter {
             return .json(OKResponse())
         }
         QuiescenceWait.around(skip: skipSettle) {
+            ResponseMeasurement.noteInjection()
             switch (req.direction, velocity) {
             case (.up, nil): app.swipeUp()
             case (.down, nil): app.swipeDown()
@@ -894,6 +920,7 @@ final class BridgeRouter {
         let fromCoordinate = coordinate(app, from)
         let toCoordinate = coordinate(app, to)
         QuiescenceWait.around(skip: skipSettle) {
+            ResponseMeasurement.noteInjection()
             if let velocity {
                 fromCoordinate.press(forDuration: BridgeRouter.gestureMinSeconds, thenDragTo: toCoordinate,
                                       withVelocity: velocity, thenHoldForDuration: 0)
@@ -975,7 +1002,10 @@ final class BridgeRouter {
             return .json(OKResponse())
         }
         guard let requestedDuration = req.duration else {
-            gestureQuiescence { from.press(forDuration: press, thenDragTo: to) }
+            gestureQuiescence {
+                ResponseMeasurement.noteInjection()
+                from.press(forDuration: press, thenDragTo: to)
+            }
             return .json(OKResponse())
         }
         let distance = hypot(req.toX - req.fromX, req.toY - req.fromY)
@@ -991,6 +1021,7 @@ final class BridgeRouter {
         // **thenHoldForDuration に正の値を渡しても慣性は消えない**(2026-08-02 実測。
         // 指を保持するだけでイベントが出ず velocity 計算が更新されない)。0 のままにすること
         gestureQuiescence {
+            ResponseMeasurement.noteInjection()
             from.press(forDuration: press, thenDragTo: to,
                        withVelocity: XCUIGestureVelocity(velocity), thenHoldForDuration: 0)
         }
@@ -1026,6 +1057,7 @@ final class BridgeRouter {
         }
         _ = QuiescenceWait.takeCapNote()
         try QuiescenceWait.around(skip: skipSettle, skipByDefault: true) {
+            ResponseMeasurement.noteInjection()
             coordinate(app, point).doubleTap()
         }
         return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
@@ -1131,6 +1163,7 @@ final class BridgeRouter {
             throw BridgeError(400, violation)
         }
         gestureQuiescence {
+            ResponseMeasurement.noteInjection()
             target.pinch(withScale: CGFloat(req.scale),
                          velocity: req.scale > 1 ? magnitude : -magnitude)
         }
@@ -1236,6 +1269,7 @@ final class BridgeRouter {
         }
         _ = QuiescenceWait.takeCapNote()
         try QuiescenceWait.around(skip: skipSettle, skipByDefault: true) {
+            ResponseMeasurement.noteInjection()
             coordinate(app, point).press(forDuration: req.duration)
         }
         return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
@@ -1281,13 +1315,13 @@ final class BridgeRouter {
     // MARK: - waitForSettle
 
     /// 1 枚ぶんの比較用の画素。layout が nil = 画素が読めず PNG のバイト列で比べた(外接矩形は求められない)
-    private struct SettleFrame {
+    struct SettleFrame {
         let bytes: Data
         let layout: SettleLayout?
     }
 
     /// 切り出した画素列の幾何(px)。bytes は行ごとに詰めてあり `width * bytesPerPixel * height` バイト
-    private struct SettleLayout: Equatable {
+    struct SettleLayout: Equatable {
         let width: Int
         let height: Int
         let bytesPerPixel: Int
@@ -1357,7 +1391,7 @@ final class BridgeRouter {
 
     /// 1 枚撮って、比べる範囲だけを詰めた画素列にする。範囲が画面に掛からないときは画面全体(の内側)を比べる
     /// (見ていない所の「静止」を黙って返さない側)。画素が読めないときだけ PNG のバイト列にする
-    private func settleFrame(region: FTRect?) -> SettleFrame {
+    func settleFrame(region: FTRect?) -> SettleFrame {
         // **画面が2枚以上の端末では撮らない**(どちらが表示中かランナーには言えず、主画面は外側を撮る = DisplayRouting)。空の画素列を返す
         // = 比べると常に同じ = 画素では待たずに「静止」と答える(整定は木の比較だけになる)
         if DisplayRouting.isMultiDisplay { return SettleFrame(bytes: Data(), layout: nil) }
