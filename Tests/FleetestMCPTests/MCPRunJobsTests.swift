@@ -304,6 +304,36 @@ final class MCPRunJobsTests: XCTestCase {
         XCTAssertFalse(MCPRunJobs.statusText(input(nil)).contains("waitLockSeconds"))
     }
 
+    /// ft_stop_run が SIGTERM を送った run には、送った事実を並べて「記録前に終わったかも」の推測を出さない。
+    /// 終わった原因(どのシグナルか)は観測のまま書き、ft_stop_run の仕業と断定しない
+    func testStopRequestIsStatedAsAFactWithoutClaimingTheCause() {
+        var input = MCPRunStatusInput(
+            pid: 7, state: .signaled(15), elapsedSeconds: 45, project: "Shop", profile: "smoke",
+            logPath: "/log", logTail: [], progress: nil, meta: nil, runDirPath: nil, failedScenarios: [], dispatchRefusal: nil)
+        input.stopRequestedAt = Date()
+        let text = MCPRunJobs.statusText(input)
+        XCTAssertTrue(text.contains("stopped by signal 15"), text)
+        XCTAssertTrue(text.contains("ft_stop_run sent SIGTERM to this run before it ended"), text)
+        XCTAssertTrue(text.contains("it ended after ft_stop_run sent SIGTERM"), text)
+        XCTAssertFalse(text.contains("may have ended before recording"), text)
+        // SIGTERM の後に SIGKILL で止まった回: 終わった原因は 9 のまま・送った事実は並べる
+        input.state = .signaled(9)
+        let killed = MCPRunJobs.statusText(input)
+        XCTAssertTrue(killed.contains("stopped by signal 9"), killed)
+        XCTAssertFalse(killed.contains("stopped by ft_stop_run"), killed)
+        // 送っていない run には何も足さない
+        input.stopRequestedAt = nil
+        XCTAssertFalse(MCPRunJobs.statusText(input).contains("ft_stop_run sent"))
+    }
+
+    func testStopRequestIsRememberedPerPid() {
+        let registry = MCPRunJobRegistry()
+        XCTAssertNil(registry.stopRequestedAt(pid: 11))
+        registry.noteStopRequested(pid: 11)
+        XCTAssertNotNil(registry.stopRequestedAt(pid: 11))
+        XCTAssertNil(registry.stopRequestedAt(pid: 12))
+    }
+
     func testSignaledAndNoRecordStatus() {
         let text = MCPRunJobs.statusText(MCPRunStatusInput(
             pid: 7, state: .signaled(15), elapsedSeconds: 3, project: "Shop", profile: "smoke",

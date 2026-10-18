@@ -39,6 +39,18 @@ final class MCPRunJobRegistry: @unchecked Sendable {
     private let lock = NSLock()
     private var jobs: [MCPRunJob] = []
     private var exits: [Int32: (state: MCPRunJobState, at: Date)] = [:]
+    /// ft_stop_run が SIGTERM を送った時刻。ft_run_status が「自分で止めた」と言うため(記録の無い終わりを推測で埋めない)
+    private var stopRequests: [Int32: Date] = [:]
+
+    func noteStopRequested(pid: Int32, at: Date = Date()) {
+        lock.lock(); defer { lock.unlock() }
+        stopRequests[pid] = at
+    }
+
+    func stopRequestedAt(pid: Int32) -> Date? {
+        lock.lock(); defer { lock.unlock() }
+        return stopRequests[pid]
+    }
 
     func add(_ job: MCPRunJob) {
         lock.lock(); defer { lock.unlock() }
@@ -94,6 +106,8 @@ struct MCPRunStatusInput {
     var failedScenarios: [MCPFailedScenario]
     /// dispatch.lock で始まらなかったときの子の記録(`DispatchRefusalReport`)。無ければ nil
     var dispatchRefusal: DispatchRefusalReport.Record?
+    /// この MCP の ft_stop_run が SIGTERM を送っていればその時刻(`MCPRunJobRegistry.stopRequestedAt`)
+    var stopRequestedAt: Date? = nil
 }
 
 struct MCPFailedScenario: Equatable {
@@ -367,6 +381,10 @@ enum MCPRunJobs {
         case .signaled(let signal):
             lines.append("Run pid \(input.pid): stopped by signal \(signal) (elapsed \(elapsed)) — profile \(input.profile), project \(input.project)")
         }
+        // 終わった原因は断定しない(SIGTERM を送っても別のシグナルで止まりうる)。送った事実だけを並べる
+        if input.state != .running, input.stopRequestedAt != nil {
+            lines.append("ft_stop_run sent SIGTERM to this run before it ended")
+        }
         if input.state != .running {
             if let meta = input.meta {
                 var summary = "Run \(meta.runID): \(meta.passed ?? 0) passed / \(meta.failed ?? 0) failed"
@@ -380,9 +398,11 @@ enum MCPRunJobs {
                 if let reason = meta.abortReason { lines.append("Aborted: \(reason)") }
                 if let path = input.runDirPath { lines.append("Results: \(path)") }
             } else {
-                // 始まらなかったと分かっているなら「記録前に終わったかも」と推測しない(事実だけ)
+                // 始まらなかった・自分で止めたと分かっているなら「記録前に終わったかも」と推測しない(事実だけ)
                 if let refusal = input.dispatchRefusal {
                     lines.append(Self.dispatchRefusalText(refusal))
+                } else if input.stopRequestedAt != nil {
+                    lines.append("No run record was found (it ended after ft_stop_run sent SIGTERM — the log has what ran)")
                 } else {
                     lines.append("No run record was found (the run may have ended before recording — read the log)")
                 }
@@ -528,6 +548,7 @@ extension MCPServer {
             project: job.project, profile: job.profile, logPath: job.logURL.path,
             logTail: MCPRunJobs.logTail(url: job.logURL), progress: nil, meta: nil,
             runDirPath: nil, failedScenarios: [], dispatchRefusal: nil)
+        input.stopRequestedAt = runJobs.stopRequestedAt(pid: job.pid)
         // 拒否の記録は「この子がロックの拒否で終わった」(DispatchRefusalReport)。あれば時刻だけの照合をしない —— 同じ project /
         // profile の別の run の結果を、この run の結果として出してしまう
         let refusal = state == .running ? nil : DispatchRefusalReport.read(job.refusalReportURL)
@@ -557,6 +578,7 @@ extension MCPServer {
         // SIGTERM だけ。fleetest run が自前の後始末(終了スクリプト・ロック解放・録画の確定)を走らせる。
         // 刺さっても時限の SIGKILL は送らない(人が止める)
         kill(job.pid, SIGTERM)
+        runJobs.noteStopRequested(pid: job.pid)
         return text("Sent SIGTERM to run pid \(job.pid). It tears down on its own (this can take a while) —"
             + " poll ft_run_status (pid: \(job.pid)) until it reports finished.")
     }

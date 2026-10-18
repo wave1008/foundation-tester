@@ -407,7 +407,10 @@ extension MCPServer {
     /// デバイスと別の機を操作したことに最後まで気付けない。
     /// どちらも無ければ nil(resolveIOSPort が既定ポート → 探索の順で決める)。
     /// **udidPorts が空のときだけ追加調査(IO)を払う** —— 応答が1本でもあればそのまま素通り
-    static func portForIOS(_ args: [String: Any], rememberedPort: UInt16?) async throws -> UInt16? {
+    /// `rebuildSimulatorBridge`: 診断が「Simulator に何も待ち受けていない」のとき、その udid の xcuitest ランナーを起動し直して
+    /// ポートを返す閉包(`MCPServer.rebuildMissingSimulatorBridge`。門と記憶はあちら)。nil = 起動し直さない(読むだけの呼び手)
+    static func portForIOS(_ args: [String: Any], rememberedPort: UInt16?,
+                           rebuildSimulatorBridge: ((String, UDIDBridgeDiagnosis) async -> UInt16?)? = nil) async throws -> UInt16? {
         let port = try Self.portArgument(args)
         guard let udid = (args["udid"] as? String).flatMap({ $0.isEmpty ? nil : $0 }) else {
             return port
@@ -473,6 +476,16 @@ extension MCPServer {
            case .confirmedMatch = await Self.explicitPortIdentityProbe(port: restored, udid: udid,
                                                                       repoRoot: try? RepoRoot.find()) {
             return try reconcilePort(port, udid: udid, udidPorts: [restored])
+        }
+        // **Simulator のランナーが消えている(何も待ち受けていない)なら起動し直してから本人確認する**。B1 の自動回復
+        // (`dispatchRetryingAfterBridgeRecovery`)は覚えたポートの接続拒否にしか反応せず、**udid を毎回添える呼び手は
+        // ここで「no running bridge」になって二度と戻らなかった**(10/18 の負荷テスト: ランナーを殺した後 5 分で 300 回)。
+        // 門(他のセッションの端末・このセッションで一度失敗)と provision は閉包の側(1 箇所)。答えなければ下の文言へ
+        if Self.nothingListensFor(diagnosis), diagnosis.lookup == .simulator,
+           let rebuilt = await rebuildSimulatorBridge?(udid, diagnosis),
+           case .confirmedMatch = await Self.explicitPortIdentityProbe(port: rebuilt, udid: udid,
+                                                                      repoRoot: try? RepoRoot.find()) {
+            return try reconcilePort(port, udid: udid, udidPorts: [rebuilt])
         }
         return try reconcilePort(port, udid: udid, udidPorts: udidPorts, diagnosis: diagnosis)
     }

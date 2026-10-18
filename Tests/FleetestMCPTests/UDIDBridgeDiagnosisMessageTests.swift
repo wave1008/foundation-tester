@@ -461,3 +461,59 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
         XCTAssertFalse(MCPServer.nothingListensFor(.diagnosisTimedOut))
     }
 }
+
+
+// MARK: - Simulator のランナーが消えたとき(udid を毎回添える呼び手の自動回復)
+
+extension UDIDBridgeDiagnosisMessageTests {
+
+    /// 起動し直してよいのは「一覧が Simulator と言い切り・診断が完走して何も待ち受けていない・このセッションで未失敗・
+    /// 他のセッションが使っていない」ときだけ
+    func testSimulatorBridgeRebuildIsTriedOnlyForAQuietSimulatorNotHeldByOthers() {
+        typealias G = MCPServer
+        XCTAssertTrue(G.shouldRebuildMissingSimulatorBridge(
+            lookup: .simulator, nothingListens: true, alreadyFailedThisSession: false, heldByAnotherSession: false))
+        XCTAssertFalse(G.shouldRebuildMissingSimulatorBridge(
+            lookup: .physical, nothingListens: true, alreadyFailedThisSession: false, heldByAnotherSession: false))
+        XCTAssertFalse(G.shouldRebuildMissingSimulatorBridge(
+            lookup: .notFound, nothingListens: true, alreadyFailedThisSession: false, heldByAnotherSession: false))
+        XCTAssertFalse(G.shouldRebuildMissingSimulatorBridge(
+            lookup: .unreadable("simctl timed out"), nothingListens: true, alreadyFailedThisSession: false,
+            heldByAnotherSession: false))
+        XCTAssertFalse(G.shouldRebuildMissingSimulatorBridge(
+            lookup: .simulator, nothingListens: false, alreadyFailedThisSession: false, heldByAnotherSession: false))
+        XCTAssertFalse(G.shouldRebuildMissingSimulatorBridge(
+            lookup: .simulator, nothingListens: true, alreadyFailedThisSession: true, heldByAnotherSession: false))
+        XCTAssertFalse(G.shouldRebuildMissingSimulatorBridge(
+            lookup: .simulator, nothingListens: true, alreadyFailedThisSession: false, heldByAnotherSession: true))
+    }
+
+    private static func sourceWithoutComments(_ relative: String) throws -> String {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(relative)
+        return try String(contentsOf: url, encoding: .utf8)
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+    }
+
+    /// 配線の走査: 畳み込みが Simulator の「何も居ない」でだけ起動し直しを頼み(実機の張り直しと同じ位置)、
+    /// call() がその閉包を渡し、起動し直した呼び出しの応答(成功・失敗とも)に注記が載る
+    func testUDIDFoldingAsksForTheSimulatorBridgeRebuildAndTheResponseCarriesTheNote() throws {
+        let driver = try Self.sourceWithoutComments("Sources/fleetest-mcp/MCPServer+Driver.swift")
+        XCTAssertTrue(driver.contains("Self.nothingListensFor(diagnosis), diagnosis.lookup == .simulator"), "畳み込みの門")
+        XCTAssertTrue(driver.contains("await rebuildSimulatorBridge?(udid, diagnosis)"), "閉包の呼び出し")
+        let dispatch = try Self.sourceWithoutComments("Sources/fleetest-mcp/MCPServer+Dispatch.swift")
+        XCTAssertTrue(dispatch.contains("await self.rebuildMissingSimulatorBridge("), "call() が閉包を渡していない")
+        XCTAssertTrue(dispatch.contains("if port != nil { bridgeStarted.started = true }"), "起動し直したことを呼び出しの中で覚える")
+        XCTAssertEqual(dispatch.components(separatedBy: "bridgeStarted.prepended(to:").count - 1, 2,
+                       "起動し直した呼び出しの注記は成功の応答と MCPToolFailure の両方に載る")
+        XCTAssertEqual(dispatch.components(separatedBy: "bridgeStarted.started ? Self.bridgeStartedForUDIDNote").count - 1, 2,
+                       "畳み込みの失敗と通常のエラーの両方に載る")
+        let recovery = try Self.sourceWithoutComments("Sources/fleetest-mcp/MCPServer+BridgeRecovery.swift")
+        XCTAssertTrue(recovery.contains("simulatorBridgeRebuildFailedUDIDs.contains(udid)"), "失敗の記憶は udid ごと")
+        XCTAssertEqual(recovery.components(separatedBy: ".provision(devices:").count - 1, 2,
+                       "provision を呼ぶのは接続拒否の復帰と畳み込みの起動し直しの 2 箇所")
+    }
+}

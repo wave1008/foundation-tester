@@ -523,6 +523,8 @@ extension MCPServer {
         // **一覧・診断のツールまで道連れ**になり、文面が案内する `ft_list_devices` 自身が
         // 同じエラーを返す袋小路になっていた(実地の負荷テストで確認)
         let folded: [String: Any]
+        // 畳み込みの中でランナーを起動し直したか(この呼び出しの応答だけに注記を載せる。セッションに持たない = 持ち越さない)
+        let bridgeStarted = BridgeStartedInThisCall()
         if Self.toolAcceptsDeviceTarget(tool) {
             do {
                 // **udid を宣言していないツールでは走査しない**(ft_logs = ブリッジが死んだ後に読むツール。
@@ -530,10 +532,17 @@ extension MCPServer {
                 folded = Self.strippingSelectorQuotes(Self.toolFoldsUDID(tool)
                     ? try await SlowCallWatchdog.marking("resolving the target device") {
                         try await Self.foldingUDIDIntoPort(
-                            args, rememberedPort: self.rememberedPort(forUDID: args["udid"] as? String)) } : args)
+                            args, rememberedPort: self.rememberedPort(forUDID: args["udid"] as? String),
+                            rebuildSimulatorBridge: { [self, sessionKey = Self.engineKey(args)] udid, diagnosis in
+                                let port = await self.rebuildMissingSimulatorBridge(
+                                    udid: udid, diagnosis: diagnosis, sessionKey: sessionKey)
+                                if port != nil { bridgeStarted.started = true }
+                                return port
+                            }) } : args)
             } catch {
                 let hint = await connectionLostHint(error, args: args, tool: tool)
-                throw hint.isEmpty ? error : MCPError(error.localizedDescription + hint)
+                let note = bridgeStarted.started ? Self.bridgeStartedForUDIDNote + "\n" : ""
+                throw hint.isEmpty && note.isEmpty ? error : MCPError(note + error.localizedDescription + hint)
             }
         } else {
             folded = Self.strippingSelectorQuotes(args)
@@ -579,10 +588,11 @@ extension MCPServer {
             // (MCPToolFailure は接続拒否ではないので撃ち直しの対象にならない = シナリオを二重に走らせない)
             SlowCallWatchdog.mark("running \(tool)")
             noteScope = Self.toolAcceptsDeviceTarget(tool) ? Self.engineKey(resolved) : ""
-            return await decorated(try await dispatchRetryingAfterBridgeRecovery(tool: tool, args: resolved))
+            let content = try await dispatchRetryingAfterBridgeRecovery(tool: tool, args: resolved)
+            return await decorated(bridgeStarted.prepended(to: content))
         } catch let failure as MCPToolFailure {
             // 中身は呼び手が組み上げた報告そのもの。接続断の診断(デバイス走査)は足さない
-            throw MCPToolFailure(content: await decorated(failure.content))
+            throw MCPToolFailure(content: await decorated(bridgeStarted.prepended(to: failure.content)))
         } catch {
             // run がデバイスを使っている最中は失敗しやすい(アプリの起こし直し・ブリッジの起動し直し)ので、失敗にも言う
             let runNote = Self.toolAcceptsDeviceTarget(tool) ? markDeviceInUse(args: resolved) : nil
@@ -593,8 +603,9 @@ extension MCPServer {
                 + Self.accessibilityOutageHint(error)
                 + (runNote.map { " " + $0 } ?? "")
                 + (unknownArgumentNote.isEmpty ? "" : " " + unknownArgumentNote)
-            guard !hint.isEmpty else { throw error }
-            throw MCPError(error.localizedDescription + hint)
+            let note = bridgeStarted.started ? Self.bridgeStartedForUDIDNote + "\n" : ""
+            guard !hint.isEmpty || !note.isEmpty else { throw error }
+            throw MCPError(note + error.localizedDescription + hint)
         }
     }
 
@@ -730,9 +741,12 @@ extension MCPServer {
     /// `udid` を解決して `port` として畳んだ引数。**udid が無いときは触らない**
     /// (Android や profile 指定はブリッジ走査を1回も払わない)。
     /// 解決と食い違い検査は `portForIOS` に委ねる = 宛先の決め方は1箇所のまま
-    static func foldingUDIDIntoPort(_ args: [String: Any], rememberedPort: UInt16?) async throws -> [String: Any] {
+    static func foldingUDIDIntoPort(_ args: [String: Any], rememberedPort: UInt16?,
+                                    rebuildSimulatorBridge: ((String, UDIDBridgeDiagnosis) async -> UInt16?)? = nil)
+        async throws -> [String: Any] {
         guard (args["udid"] as? String).flatMap({ $0.isEmpty ? nil : $0 }) != nil else { return args }
-        return injectingPort(args, port: try await portForIOS(args, rememberedPort: rememberedPort))
+        return injectingPort(args, port: try await portForIOS(args, rememberedPort: rememberedPort,
+                                                              rebuildSimulatorBridge: rebuildSimulatorBridge))
     }
 
     /// このセッションがその udid で繋いだポート。**1本に決まるときだけ**返す(同じ機に xcuitest と
@@ -1249,4 +1263,14 @@ extension MCPServer {
         ConsoleOut.err("[fleetest-mcp] " + message)
     }
 
+}
+
+/// call() 1 回の中で「畳み込みがランナーを起動し直した」かの印。閉包(畳み込み)と応答の組み立ての間で受け渡すだけ
+/// (MCPServer の呼び出しは直列 = 同じ呼び出しの中でしか触らない)
+final class BridgeStartedInThisCall {
+    var started = false
+
+    func prepended(to content: [[String: Any]]) -> [[String: Any]] {
+        started ? [["type": "text", "text": MCPServer.bridgeStartedForUDIDNote]] + content : content
+    }
 }

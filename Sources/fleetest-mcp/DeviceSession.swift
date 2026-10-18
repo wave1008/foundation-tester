@@ -166,6 +166,11 @@ struct DeviceSession {
     /// 成功時は立てない(失敗のときだけ = 環境そのものが壊れているデバイスへ分単位のビルドを
     /// 撃ち続けない。MCPServer+BridgeRecovery.swift 参照)
     var bridgeRecoveryFailed = false
+    /// **udid の畳み込みで「Simulator に何も待ち受けていない」と分かり、ランナーを起動し直そうとして失敗した udid**
+    /// (`MCPServer.rebuildMissingSimulatorBridge`)。この欄を持つ鍵は畳む前の engineKey(port を省いた iOS の呼び出しは全部
+    /// `direct:ios:0:` になる)なので、**udid ごとに覚える**(1 台の失敗で別の Simulator の回復まで止めない)。
+    /// 失敗のときだけ入れる(成功したら次にまた消えたときは再挑戦してよい)
+    var simulatorBridgeRebuildFailedUDIDs: Set<String> = []
     /// 版ズレの内容。ft_status が「失敗するが理由を返す」ために覚えておく
     var versionSkew: String?
 }
