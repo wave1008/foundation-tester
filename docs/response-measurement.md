@@ -479,8 +479,7 @@ XCTest の `measure(metrics:)`(**基準値をデバイスごとに持ち**、前
   `frameHistoryIncomplete` / `noSessionApp` / `bridgeError`)/ `reactionMs` / `readyMs` / `readyAfterObservationStartMs` /
   `observationStartMs` / `readyDecidedBy` / `readyMissing`。**この版で値が入るのは前の4欄だけ**で、`reactionMs` と t2 の欄は
   常に省略、`readyMissing` は常に `notMeasuredInThisVersion`(`reactionMs` に `firstFrameMs` を写さない = §5)。
-  記録する入力は「ステップの最初の注入」。欄は必須ではなく省略可(下の「必須にする」「`ProtocolVersion` +1」「保存記録の移行」は段階2で
-  残る)。`RunRecordPack.trimmedForStorage` は未変更。型は `Sources/FTCore/ResponseMeasurementRecord.swift`、結果 JSON の説明は
+  記録する入力は「ステップの最初の注入」。**欄は省略可**(下の「欄の扱い」= ユーザー決定)。`RunRecordPack.trimmedForStorage` は未変更。型は `Sources/FTCore/ResponseMeasurementRecord.swift`、結果 JSON の説明は
   docs/results-json.md §TimelineStepRecord。下の列は最終形の案
 - `TimelineStepRecord` に `command`(コマンド名。今は失敗時の `FailedStepRecord` にしか無い)と `response` を足す:
   `response = { stepKey, reactionMs, firstFrameMs, readyMs, readyIdentity, readyAfterLastInjectionMs, injectionSpanMs, injections, readyAfterObservationStartMs, observationStartMs, readyDecidedBy, readyMissing,
@@ -520,12 +519,15 @@ XCTest の `measure(metrics:)`(**基準値をデバイスごとに持ち**、前
 - `RunMetaRecord` に `responseMeasurement: true` と、各デバイスの識別(udid / serial・機種・OS)と機械名
 - **結果 JSON の契約を変えるので `ProtocolVersion` を +1**(Swift と `vscode-fleetest/src/protocolVersion.ts` の両方)。契約の文書
   `docs/results-json.md` も同時に直す
-- **欄は必須にする**(CLAUDE.md「版と契約の同期」= 欄を足すときも必須にして版を +1。キーの省略で「測っていない」を表さない):
-  - API / NDJSON の出力: `response` と `command` は**常にキーを出す**。測っていない回は `response: null`、コマンド名が分からない記録は
-    `command: null`(不明を明示する。description から切り出して埋めない = 規則)
-  - 保存する記録(`run.json` / シナリオの記録): 新しい記録も常に同じキーを書き、保存用の `schemaVersion` を上げる。**既存の保存記録は
-    移行する**(キーを `null` で足して書き直す)。読み替え(読むときに既定値で吸う)は置かない。移行の前に、読めなくなる記録の件数を
-    実データで数え、移行の後に読み出せる run とシナリオの記録の件数が移行前と一致することを照合する
+- **欄の扱い = 省略可・`ProtocolVersion` は上げない・保存記録は移行しない**(ユーザー決定 2026-10-18。Codex の再レビューで出した
+  「必須 + null・版 +1・保存記録の移行」の案は採らない)。理由:
+  - 結果のファイルは読めないと**黙って飛ばされる**(`RunResultsStore` の decodeFailure)。必須にすると、移行しそこねた保存記録が
+    履歴からまるごと消える = CLAUDE.md が避けたい「沈黙する縮退」をこちらが作る
+  - `response` が無いことは「計測モードの回ではない(= 測っていない)」という**正しい意味**を持ち、古い記録でも同じ意味になる。
+    読むときに既定値で埋めて古い形を吸う(CLAUDE.md が禁じる読み替え)には当たらない。`command` も無ければ「不明」のまま
+    (description から切り出して埋めない)
+  - 足した欄は後方互換(既存の読み手は無視する)なので、版を上げる条件(後方非互換)に当たらない
+  - 段階を進めて欄の意味を後方非互換に変えるときは、そのときに版を上げる
 
 ### 8.4 比較と報告
 
