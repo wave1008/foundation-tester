@@ -356,13 +356,18 @@ public final class SandboxBroker: @unchecked Sendable {
     private let descriptor: Int32
     private let execute: @Sendable ([String], Double?, Data?) -> (status: Int32, output: Data)
 
+    /// 子へ「コマンドが完了しなかった」(時間切れ・起動の失敗)を返すときの終了コード。子の呼び手が「撃ったか分からない」を
+    /// 見分ける契約(`BridgeClient.stopOnSimulator`)。値はシェルの「実行できなかった」に揃えた
+    public static let didNotCompleteStatus: Int32 = 127
+
     /// 既定の実行。投げた理由(時間切れ = ShellError.timedOut・起動の失敗)をそのまま子へ返す。一律に「起動できない」と
     /// 答えると、負荷で simctl が時間切れになった事実が「xcrun が無い」に化けて失敗の記録が事実と食い違う
     static func runForChild(_ argv: [String], timeout: Double?, stdin: Data?) -> (status: Int32, output: Data) {
         do {
             return try Shell.runRaw(argv, timeout: timeout, stdin: stdin)
         } catch {
-            return (127, Data("\(argv.first ?? "the command") did not complete: \(error.localizedDescription)".utf8))
+            return (didNotCompleteStatus,
+                    Data("\(argv.first ?? "the command") did not complete: \(error.localizedDescription)".utf8))
         }
     }
 

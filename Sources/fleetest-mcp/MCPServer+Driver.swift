@@ -457,6 +457,10 @@ extension MCPServer {
             }
         }
         var diagnosis = await Self.udidBridgeDiagnosis(udid: udid)
+        // **予算切れは 1 回だけ診断し直す**(失敗の経路だけで払う。最大で予算 1 回ぶん)。Simulator を起動した直後の最初の呼び出しは
+        // 診断(simctl の一覧)が予算を超えて「確かめられない」で断られ、2 回目は通る実測がある(陽性対照で 2/2)。
+        // 先の診断は打ち切られず走り続けて一覧の読み込みを温めるので、2 回目は予算内に終わる
+        if diagnosis.timedOut { diagnosis = await Self.udidBridgeDiagnosis(udid: udid) }
         // **走査が取りこぼし、診断の probe には答えたブリッジ**(走査の2秒の窓の間だけ busy だった)。
         // 捨てると「居ない・bridge up しろ」になり、run が使っている端末に2本目を起動させる
         var identities: [(UInt16, ExplicitPortIdentity)] = []
@@ -479,7 +483,7 @@ extension MCPServer {
         }
         // **Simulator のランナーが消えている(何も待ち受けていない)なら起動し直してから本人確認する**。B1 の自動回復
         // (`dispatchRetryingAfterBridgeRecovery`)は覚えたポートの接続拒否にしか反応せず、**udid を毎回添える呼び手は
-        // ここで「no running bridge」になって二度と戻らなかった**(10/18 の負荷テスト: ランナーを殺した後 5 分で 300 回)。
+        // ここで「no running bridge」になって二度と戻らなかった**(負荷テスト: ランナーを殺した後 5 分で 300 回)。
         // 門(他のセッションの端末・このセッションで一度失敗)と provision は閉包の側(1 箇所)。答えなければ下の文言へ
         if Self.nothingListensFor(diagnosis), diagnosis.lookup == .simulator,
            let rebuilt = await rebuildSimulatorBridge?(udid, diagnosis),

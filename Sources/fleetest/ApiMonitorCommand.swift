@@ -159,6 +159,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         var healthDebounce = AndroidHealthDebounce(confirmThreshold: 2)
         // 画面凍結(一様フレーム)の確定。判定材料はこのループが毎サイクル撮っている PNG
         var frozenDebounce = MonitorFrozenDebounce(confirmThreshold: 2)
+        var staleFrames = MonitorStaleFrameTracker()
         // 配信を抑制中のデバイスを最後に「観測のためだけに」撮った時刻(capturePlan が更新する)
         var lastFrozenProbeAt: [String: Date] = [:]
         // ブリッジを持たない iOS シミュレータを最後に simctl で撮った時刻
@@ -473,6 +474,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 lastErrorMessage[state.target.id] = nil
                 loggedFetchFailure.remove(state.target.id)
                 frozenDebounce.forget(id: state.target.id)
+                staleFrames.forget(id: state.target.id)
                 lastFrozenProbeAt.removeValue(forKey: state.target.id)
                 // **撮り続ける対象の時計は捨てない**(判定は候補と同じ述語 = 2つの規則が
                 // 食い違わない)。捨てると毎サイクル全台が「未撮影」に戻り、順繰り
@@ -557,8 +559,19 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 } ?? false
                 if captureInRun {
                     frozenDebounce.forget(id: state.target.id)
+                    staleFrames.forget(id: state.target.id)
                 } else {
                     frozenDebounce.record(blankness: blankness, id: state.target.id)
+                    switch staleFrames.record(png: png, id: state.target.id, at: Date().timeIntervalSince1970) {
+                    case .began(let seconds):
+                        logStderr("[monitor] ⚠️ \(state.target.id): the screen has not changed for \(seconds)s"
+                            + " — the display may be frozen (a fleetest run checks and restarts it at the next scenario"
+                            + " boundary; the monitor only reports it)")
+                    case .ended:
+                        logStderr("[monitor] \(state.target.id): the screen is changing again")
+                    case .none:
+                        break
+                    }
                 }
 
                 // ---- 配信段: ここから先だけが抑制の対象
@@ -1004,6 +1017,44 @@ struct MonitorFrozenDebounce {
     mutating func forget(id: String) {
         streaks.removeValue(forKey: id)
         confirmedIDs.remove(id)
+    }
+}
+
+/// **同じ絵が 60 秒以上続く**(表示が止まった疑い)の受動観測。判定は `FTCore.DisplayFreezeDetector`(run の境目の確認と同じ)。
+/// 一様でない絵(止まった瞬間の中身)は `MonitorFrozenDebounce` に見えないので別に持つ。**警告だけ**(stderr に 1 行)——
+/// モニターはデバイスを触らない(確かめる home も回復も撃たない。run 中の回復は run の境目の確認が持つ)。
+/// 配る欄も無い(`frozen` は確定だけ)。疑いが立ったときと解けたときに 1 回ずつ言う
+/// internal: 判定は純粋なのでここだけで単体テストする(MonitorStaleFrameTrackerTests)
+struct MonitorStaleFrameTracker {
+    enum Change: Equatable {
+        case none
+        /// 同じ絵が `seconds` 秒続いた(このデバイスで初めて)
+        case began(seconds: Int)
+        /// 疑いを言った後に絵が変わった
+        case ended
+    }
+
+    private var samples: [String: DisplayFreezeDetector.Sample] = [:]
+    private var warned: Set<String> = []
+
+    /// このサイクルの絵を記録する。同じ絵の間は最初に見た時刻を保つ(上書きすると短い周期で永久に疑えない)
+    mutating func record(png: Data, id: String, at: TimeInterval) -> Change {
+        let current = DisplayFreezeDetector.Sample(png: png, at: at)
+        let previous = samples[id]
+        guard previous?.digest == current.digest else {
+            samples[id] = current
+            return warned.remove(id) != nil ? .ended : .none
+        }
+        guard !warned.contains(id),
+              case .suspect(let span) = DisplayFreezeDetector.judge(previous: previous, current: current) else { return .none }
+        warned.insert(id)
+        return .began(seconds: Int(span))
+    }
+
+    /// run 中・接続断は忘れる(run 中の画面は run が確かめる。終わった後は新しく数え直す)
+    mutating func forget(id: String) {
+        samples.removeValue(forKey: id)
+        warned.remove(id)
     }
 }
 

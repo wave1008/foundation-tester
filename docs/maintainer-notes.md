@@ -4992,6 +4992,13 @@ emulator-5568 = ライブ操作・実機 3 台(SE3・Pixel 4a・Pixel 3a)= MCP�
   同じワーカーの開始が無ければ、その flowURL に残る開始が 1 つだけのときに限ってそれを使う(振り直しで開始と終了のワーカーが変わる既存の形。
   複数が並ぶ broadcast では混ぜない)。これで broadcast の開始の控えが flowURL だけの鍵で上書きされていた元からの穴も塞がった
 
+- **小さな残りの対処(同じ日の後半)**: ①Simulator を起動した直後の最初の MCP 呼び出しが、udid の診断(simctl の一覧)が予算 3 秒を超えて
+  「確かめられない」で必ず 1 回断られた → 予算切れのときだけ 1 回診断し直す(先の診断は走り続けて一覧を温める。起動し直した直後で 2/2 が 1 回目で通った)
+  ②モニターに「同じ絵が 60 秒以上」の受動観測を足した(警告だけ・`MonitorStaleFrameTracker`)③負荷の下で clearAppData の
+  `simctl terminate` が 15 秒を超えて赤になった(2 回)→ 時間切れ(子の代行は `SandboxBroker.didNotCompleteStatus`、外は `ShellError.timedOut`)の
+  回だけ 1 回撃ち直す(止める操作は何度撃っても結果が同じ)④Android ブリッジの入力の失敗文に Java の例外名が出ていた →
+  「the field changed while it was being read」に変え、例外は logcat へ(ブリッジ版 101)
+
 ### 88.3 記録だけの観察
 - **AppleAVE の一時死が繰り返した**(09:29:39 / 〜10:02 / 10:08:31 の 3 回・probe が毎回 60 秒後に alive)= §86 の「再起動まで戻らない」とは別の型。
   切り出しは毎回 SW で成功。**そのたび 2〜3 分後に CMP iOS が白紙を描いた**(09:32:44〜09:33:11 に 4 台 7 本・10:11:04〜06 に 2 台 2 本。
@@ -4999,7 +5006,6 @@ emulator-5568 = ライブ操作・実機 3 台(SE3・Pixel 4a・Pixel 3a)= MCP�
 - `kill -9` した recordVideo の client 7 本(障害注入)→ 次の run の開始時に `HostRecordingProbe` が 4 台の残った録画セッションを検出して shutdown→boot
   (§87 の経路)→ 12/12 緑。09:56 の Simulator デーモンのクラッシュレポート群(logd・filecoordinationd 等)はその shutdown の巻き添え
 - `ft_services`(`swift run fleetest` 経由 = 設計どおり)はフリートのシナリオビルドの SwiftPM ロックを待って 30〜90 秒、応答にビルドの進捗行が混ざる
-- ライブ操作の Android の type/clear の失敗文に Java の例外名(`the node became stale (NullPointerException)`)
 - ライブ操作(5568)は 10:06〜10:07 の 2 分間、約 300 回「Cannot reach the driver … The network connection was lost」→ 自然に回復。同時刻はホストの
   負荷平均 250〜400(worktree のテストの並列ビルド)
 - 可視性検証の FM の空の転写(§84.4)は今日も 1 件(09:28・WebView `wv_result=-`・`ocr-shortcut-not-ready`・ocrMs 0 = 最初のガード)

@@ -2768,7 +2768,9 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   **直前のシナリオの結果は合否を問わず捨てて振り直す**(その画像判定は止まった絵で下されている。振り直しの上限で捨てられない成功は
   記録を失敗へ書き換える = `RunRecorder.markLastFailed`。読み手への終了イベントは確認まで保留し、凍結なら失敗として流す)・
   録画の合否も確認の後に決める・レーンを離脱・回復してから revive で張り直す。対象外(notApplicable)のシナリオの後は確かめない。
-  確認の後に前面へ戻すのはそのシナリオが使ったアプリ(`@TestClass(app:)` が実行プロファイルに勝つ = 子と同じ `ScenarioAppResolution`)。回復の順: Emulator = sleep/wake(ブリッジの絵で確かめる)→ ゲストの再起動
+  確認の後に前面へ戻すのはそのシナリオが使ったアプリ(`@TestClass(app:)` が実行プロファイルに勝つ = 子と同じ `ScenarioAppResolution`)。
+  **モニター(run の外)は警告だけ**(`MonitorStaleFrameTracker`: 同じ絵が 60 秒以上で stderr に 1 行・絵が変われば解けた旨を 1 行)。
+  モニターはデバイスを触らず、`frozen` の欄は確定だけなのでタイルには出さない。Android のモニターは adb で撮るので、止まった表示は黒 = 既存の一様判定が拾う回復の順: Emulator = sleep/wake(ブリッジの絵で確かめる)→ ゲストの再起動
   (`adb reboot`)→ ブートを確認できなければ停止と起動 / Simulator = shutdown → boot。再起動の後は絵で確かめない
   (ブリッジが居ない)= 次の境目の撮影が新しい基準。**実機は見ない**(無害な nudge も再起動も無い)。撮れない
   (10 秒)ときは判定しない。固定費は境目ごとにスクショ 1 枚(Emulator 数十 ms・XCUITest 数百 ms)。run.json には

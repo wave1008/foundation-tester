@@ -226,7 +226,8 @@ final class InputInjector {
                 throw e;   // 撃たずに弾いた判断(rejectMaskedAppend 等)は再試行の対象ではない
             } catch (RuntimeException e) {
                 // レイアウト変化中のノードは内部で NPE 等を投げる → 次周回で取り直す
-                lastState = "the node became stale (" + e.getClass().getSimpleName() + ")";
+                lastState = "the field changed while it was being read (the screen was still updating)";
+                android.util.Log.w(BridgeInstrumentation.TAG, "stale node while injecting text: " + e);
             }
             if (SystemClock.uptimeMillis() >= deadline) {
                 throw new BridgeRouter.BridgeException(500,
@@ -549,7 +550,8 @@ final class InputInjector {
             } catch (BridgeRouter.BridgeException e) {
                 throw e;   // 撃たずに弾いた判断は再試行の対象ではない(上のコメント参照)
             } catch (RuntimeException e) {
-                lastState = "the node became stale (" + e.getClass().getSimpleName() + ")";
+                lastState = "the field changed while it was being read (the screen was still updating)";
+                android.util.Log.w(BridgeInstrumentation.TAG, "stale node while injecting text: " + e);
             }
             if (SystemClock.uptimeMillis() >= deadline) {
                 throw new BridgeRouter.BridgeException(409,
@@ -630,7 +632,8 @@ final class InputInjector {
             } catch (BridgeRouter.BridgeException e) {
                 throw e;   // 撃たずに弾いた判断は再試行の対象ではない(上のコメント参照)
             } catch (RuntimeException e) {
-                lastState = "the node became stale (" + e.getClass().getSimpleName() + ")";
+                lastState = "the field changed while it was being read (the screen was still updating)";
+                android.util.Log.w(BridgeInstrumentation.TAG, "stale node while injecting text: " + e);
             }
             if (SystemClock.uptimeMillis() >= deadline) {
                 throw new BridgeRouter.BridgeException(500, lastState + " (2000ms waited; "
@@ -710,7 +713,8 @@ final class InputInjector {
                     }
                 }
             } catch (RuntimeException e) {
-                lastState = "the node became stale (" + e.getClass().getSimpleName() + ")";
+                lastState = "the field changed while it was being read (the screen was still updating)";
+                android.util.Log.w(BridgeInstrumentation.TAG, "stale node while injecting text: " + e);
             }
             if (SystemClock.uptimeMillis() >= deadline) {
                 throw new BridgeRouter.BridgeException(409, lastState + " (" + timeoutMs + "ms waited; "

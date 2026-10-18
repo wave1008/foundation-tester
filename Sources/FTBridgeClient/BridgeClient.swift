@@ -335,8 +335,37 @@ public final class BridgeClient: AppDriver, Sendable {
     /// シミュレータでアプリが止まっていることを `simctl terminate` で確かめる(動いていれば止める)。
     /// ランナーの terminate はランナーのセッションが起動したアプリにしか効かないので、止まったと言う前に通す。
     /// 終了コード 0 = 止めた / 3(ESRCH)= 動いていなかった。それ以外は止められなかったとして投げる(文言を見ない)
+    /// **完了したか分からない回(時間切れ)だけ 1 回撃ち直す**: 止める操作は何度撃っても結果が同じ(止まっていれば 3 が返る)。
+    /// 負荷の下で simctl terminate が期限(15 秒)を超えた実測がある(負荷テストで 2 回 = clearAppData がそのまま赤)。
+    /// 時間切れはサンドボックスの中では代行の `SandboxBroker.didNotCompleteStatus`、外では `ShellError.timedOut` で来る
     public static func stopOnSimulator(bundleID: String, target: String, purpose: String) throws {
-        let stop = try Shell.run(["xcrun", "simctl", "terminate", target, bundleID], timeout: 15)
+        try stopOnSimulator(bundleID: bundleID, purpose: purpose) {
+            let result = try Shell.run(["xcrun", "simctl", "terminate", target, bundleID],
+                                       timeout: stopOnSimulatorTimeoutSeconds)
+            return (result.status, result.tail)
+        }
+    }
+
+    /// 1 回の simctl terminate に払う上限(秒)。**根拠**: 静かな機械では 1 秒未満・負荷の下で 15 秒を超えた回がある
+    /// (撃ち直しで拾う)。尽きたら撃ち直し、2 回とも完了しなければ「止められなかった」で投げる
+    static let stopOnSimulatorTimeoutSeconds: Double = 15
+
+    /// 本体(`terminate` を差し替えてテストする)。戻り値は (終了コード, 出力の末尾)
+    static func stopOnSimulator(bundleID: String, purpose: String,
+                                terminate: () throws -> (status: Int32, tail: String)) throws {
+        func attempt() throws -> (status: Int32, tail: String)? {
+            do {
+                let result = try terminate()
+                return result.status == SandboxBroker.didNotCompleteStatus ? nil : result
+            } catch ShellError.timedOut {
+                return nil
+            }
+        }
+        guard let stop = try attempt() ?? attempt() else {
+            throw DriverError.badResponse(status: Int(SandboxBroker.didNotCompleteStatus),
+                body: "could not stop \(bundleID) \(purpose): simctl terminate did not complete within"
+                    + " \(Int(stopOnSimulatorTimeoutSeconds))s, twice (the Mac or the simulator is busy)")
+        }
         guard stop.status == 0 || stop.status == 3 else {
             throw DriverError.badResponse(status: Int(stop.status),
                 body: "could not stop \(bundleID) \(purpose): \(stop.tail)")
