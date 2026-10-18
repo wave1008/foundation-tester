@@ -1174,7 +1174,14 @@ public final class FTDriveCore {
 
     /// シナリオの終わりに、計測の観測をブリッジに止めさせる(計測モードのときだけ効く・失敗は無視)
     public func endResponseMeasurement() async {
-        await executor.endResponseMeasurement()
+        guard let update = await executor.endResponseMeasurement(), let target = pendingReadyStepIndex else { return }
+        pendingReadyStepIndex = nil
+        record.scenes.applyReadyUpdate(update, toStepIndex: target)
+        var ready = ScenarioEvent(kind: "responseReady")
+        ready.scenario = scenarioID
+        ready.index = target
+        ready.readyUpdate = update
+        emit(ready)
     }
 
     /// シナリオ終了時に1回だけ呼ぶ(warnAbout* と同じ位置)。LocatorFingerprintCache.record は

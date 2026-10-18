@@ -567,6 +567,7 @@ LC_UUID が入るので再ビルドでコールドに戻る。docs/performance-t
   - **`readyAfterLastInjectionMs`**(Int?): 最後の注入から t2 まで。**`injectionSpanMs`**(Int?): 最初から最後の注入まで。**`injections`**(Int?): 注入の回数(`readyMs` が無いときも、判定されたなら入る)
   - **`readyDecidedBy`**(String?): `tree`(木の条件で決めた。画素の静止は見ていない)
   - **`readyIdentity`**(String?): `locator`(同じ指定で解決した要素までしか照合していない。要素の同一性は比べない)
+  - **`observationEndMs`**(Int?): このステップの観測が締まった端末時計の時刻(次の計測ステップの最初の注入・上限の期限・停止)。最初のフレームを探す範囲の終わり(iOS の xctrace の当て込みもこれを上限にする)。観測を取れなかったら無い
   - **`observedReads`**(Int?): 判定の材料になった木の読みの回数(最後の注入より後で読めた回)。t2 の分解能の目安(iOS は1回に数百 ms かかり、ステップの合間の読みはホストの木の取得が主 = 2〜4 回程度)
   - **`readyMissing`**(String?): t2 が無い理由(判定されたときだけ)。`notReadyBeforeNextAction`(条件が揃う前に次の操作が撃たれた)/ `observationTimeout`(`responseObserveMs` で観測が締まり、揃った回が無い)/ `observationTruncated`(記録の上限で途中から記録をやめ、それまでに揃った回が無い)/ `observationLost`(ブリッジに観測が無かった)/ `noTarget`(次のステップにセレクタで解決した要素が無い = 座標の操作等)/ `bridgeError`(観測の取得が失敗した)。観測の終わり方を言えないときは省略(丸めない)
 - 判定に使う観測の上限 `responseObserveMs`(既定 10000ms)は `RunTunables`

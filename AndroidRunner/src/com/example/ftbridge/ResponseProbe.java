@@ -55,7 +55,7 @@ final class ResponseProbe {
      */
     static Prepared prepare(UiAutomation ua, Context context, String pkg, long quietMs, long timeoutMs, long observeMs) {
         // 実行中の観測の最後の DOWN・回数は armFirstDown で消えるので、その前に観測へ写させる
-        ResponseObserver.prepare(context, observeMs);
+        ResponseObserver.prepare(ua, context, pkg, observeMs);
         try {
             if (pkg == null) return new Prepared(false, 0, NO_SESSION_APP);
             long start = SystemClock.uptimeMillis();
@@ -102,9 +102,35 @@ final class ResponseProbe {
             }
             if (f.filledRows >= HISTORY_FULL_ROWS && earliest > downNs) incomplete = true;
         }
-        if (first == Long.MAX_VALUE) return new Collected(downTime, null, "noFrame");
+        // 履歴から落ちた可能性を noFrame より先に: 失われたフレームを「出なかった」と読ませない
         if (incomplete) return new Collected(downTime, null, "frameHistoryIncomplete");
+        if (first == Long.MAX_VALUE) return new Collected(downTime, null, "noFrame");
         return new Collected(downTime, Math.round((first - downNs) / 1e6), null);
+    }
+
+    /**
+     * 観測の取得時に求める最初のフレーム: downMs より後(厳密)で endMs 以前の最初の提示までの遅れ(ms)。{Long delay, String reason}。
+     * collectFrames と同じ読み・同じ ns↔ms の換算。履歴が溢れていて最古の提示が downMs より後なら途中が欠けているので incomplete
+     */
+    static Object[] firstFrameWithin(UiAutomation ua, String pkg, long downMs, long endMs) {
+        if (pkg == null) return new Object[] {null, NO_SESSION_APP};
+        long downNs = downMs * 1_000_000L;
+        long endNs = endMs * 1_000_000L;
+        long first = Long.MAX_VALUE;
+        boolean incomplete = false;
+        for (String layer : appLayers(ua, pkg)) {
+            Frames f = readFrames(ua, layer);
+            if (f.validPresents.isEmpty()) continue;
+            long earliest = Long.MAX_VALUE;
+            for (long p : f.validPresents) {
+                if (p < earliest) earliest = p;
+                if (p > downNs && p <= endNs && p < first) first = p;
+            }
+            if (f.filledRows >= HISTORY_FULL_ROWS && earliest > downNs) incomplete = true;
+        }
+        if (incomplete) return new Object[] {null, "frameHistoryIncomplete"};
+        if (first == Long.MAX_VALUE) return new Object[] {null, "noFrame"};
+        return new Object[] {Long.valueOf(Math.round((first - downNs) / 1e6)), null};
     }
 
     private static void sleep(long ms) {

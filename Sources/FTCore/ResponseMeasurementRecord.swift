@@ -17,6 +17,9 @@ public struct ResponseMeasurementRecord: Codable, Sendable, Equatable {
     /// 最初の注入の端末時計の値(Android = `SystemClock.uptimeMillis` / iOS = mach 時刻を ms に換算した値)。
     /// 記録(iOS は xctrace)と突き合わせるための生の値で、端末が違えば比べられない。無ければ(注入が無い・測れなかった)nil
     public var downTimeMs: Int?
+    /// このステップの観測が締まった時刻(`downTimeMs` と同じ時計)。次の計測ステップが観測を取得できたときだけ。
+    /// iOS の最初のフレームは、注入からこの時刻までに出た提示から決める(ResponseTracePatch)
+    public var observationEndMs: Int?
     public var reactionMs: Int?
     public var readyMs: Int?
     public var readyAfterObservationStartMs: Int?
@@ -77,6 +80,16 @@ public struct ResponseMeasurementRecord: Codable, Sendable, Equatable {
         copy.readyIdentity = update.readyIdentity
         copy.readyMissing = update.readyMissing
         copy.observedReads = update.observedReads
+        if let end = update.observationEndMs { copy.observationEndMs = end }
+        // 最初のフレームは、まだ値が無く描画が止まっていた記録にだけ入れる(collect が決めた値・busy の記録は触らない)
+        if firstFrameMs == nil && !busyBeforeAction {
+            if let ms = update.firstFrameMs {
+                copy.firstFrameMs = ms
+                copy.firstFrameMissing = nil
+            } else if firstFrameMissing == nil, let missing = update.firstFrameMissing {
+                copy.firstFrameMissing = missing
+            }
+        }
         return copy
     }
 
@@ -107,8 +120,12 @@ public struct ResponseMeasurementRecord: Codable, Sendable, Equatable {
                                              firstFrameMs: ms, firstFrameMissing: nil, injections: injections,
                                              downTimeMs: collect.downTimeMs)
         }
+        // `noFrame` は collect の時点の暫定(遅いフレームがまだ出ていないだけかもしれない)。決めずに nil のまま残し、
+        // 次の計測ステップの観測の取得で決まる(ResponseReadyUpdate.firstFrameMs / firstFrameMissing)
+        let missing = collect.reason == FirstFrameMissing.noFrame.rawValue
+            ? nil : collect.reason.flatMap(FirstFrameMissing.init(rawValue:))
         return ResponseMeasurementRecord(busyBeforeAction: false, quietWaitMs: prepare.waitedMs, firstFrameMs: nil,
-                                         firstFrameMissing: collect.reason.flatMap(FirstFrameMissing.init(rawValue:)),
+                                         firstFrameMissing: missing,
                                          injections: injections, downTimeMs: collect.downTimeMs)
     }
 }

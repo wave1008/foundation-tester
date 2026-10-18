@@ -53,8 +53,9 @@ fleetest run --profile <name> --set responseMeasurement=true --set responseRepea
     users experience.
   - It turns off the text visibility check (`fmTextVisibilityCheck`, `ocrTextVisibilityCheck`), `screenLooksLike`, recording
     (`record`) and host-load pacing.
-  - It holds the device monitor's observation and streaming for the duration of the run (released at the end; a hold you set
-    yourself with `fleetest monitor pause` is left as it is).
+  - It holds the device monitor's observation and streaming for the duration of the run (released at the end). A hold without a time limit that you set yourself
+    with `fleetest monitor pause` is left as it is; a hold with `--for` is replaced by one without a limit for the run and restored at
+    the end if it has not expired yet.
 - It cannot be combined with the following (the run stops with a named error): `enableAnimations: false`; `fmTextVisibilityCheck`,
   `ocrTextVisibilityCheck`, `screenLooksLike` or `record` set to `true`; `--broadcast`, `--fleet`, `--split`.
 
@@ -95,7 +96,7 @@ When a step has no value, the reason is kept as a fact. When the reason cannot b
 |---|---|
 | `busyBeforeAction` | The app was already drawing before the action (it did not stop within 10 seconds). Its "first frame" would only continue the earlier drawing, so it is not measured |
 | `noInjectedInput` | The step did not inject an input event (it was performed through an accessibility action, or by adb on the Mac side, …) |
-| `noFrame` | The app presented no frame after the input |
+| `noFrame` | The app presented no frame after the input before the next action (for the last action, within the 10-second observation limit) |
 | `frameHistoryIncomplete` | The frame history was too short to confirm the frames right after the input |
 | `noSessionApp` | The target app could not be confirmed |
 | `bridgeError` | Communication with the device side failed |

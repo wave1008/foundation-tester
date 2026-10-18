@@ -89,10 +89,13 @@ final class ResponseTracePatchTests: XCTestCase {
         XCTAssertNil(ResponseTracePatch.firstSurface(after: 1, in: []))
     }
 
+    /// `end` = 観測が締まった時刻(既定は注入 + 1000)。`noEnd` で欄ごと省く
     private func response(down: Int? = 1000, firstFrame: Int? = nil, missing: ResponseMeasurementRecord.FirstFrameMissing? = nil,
-                          busy: Bool = false) -> ResponseMeasurementRecord {
-        ResponseMeasurementRecord(busyBeforeAction: busy, quietWaitMs: 5, firstFrameMs: firstFrame,
-                                  firstFrameMissing: missing, downTimeMs: down)
+                          busy: Bool = false, end: Int? = nil, noEnd: Bool = false) -> ResponseMeasurementRecord {
+        var r = ResponseMeasurementRecord(busyBeforeAction: busy, quietWaitMs: 5, firstFrameMs: firstFrame,
+                                          firstFrameMissing: missing, downTimeMs: down)
+        r.observationEndMs = noEnd ? nil : (end ?? down.map { $0 + 1000 })
+        return r
     }
 
     private func record(_ responses: [ResponseMeasurementRecord?]) -> ScenarioRunRecord {
@@ -136,8 +139,44 @@ final class ResponseTracePatchTests: XCTestCase {
     }
 
     func testCoverageBoundsAreInclusive() {
-        let edge = ResponseTracePatch.apply(surfaceMs: [], coverage: coverage, to: record([response(down: 500), response(down: 5000)]))
+        let edge = ResponseTracePatch.apply(surfaceMs: [], coverage: coverage,
+                                            to: record([response(down: 500), response(down: 4000)]))
         XCTAssertEqual(edge.changed, 2)
+        XCTAssertEqual(edge.outside, 0)
+    }
+
+    /// 探す範囲の終わり(観測の締まった時刻)が記録の範囲の外なら、フレームが無いとは言えない(何も入れない)
+    func testEndBeyondCoverageIsLeftUntouchedWhenNoSurfaceFound() {
+        let out = ResponseTracePatch.apply(surfaceMs: [], coverage: coverage, to: record([response(down: 4500)]))
+        XCTAssertEqual(out.changed, 0)
+        XCTAssertEqual(out.outside, 1)
+        XCTAssertNil(out.record.timeline?[0].response?.firstFrameMissing)
+    }
+
+    /// 最後のステップが観測の終わり(1500)より後の提示(次のシナリオの 2020)を自分のものにしない
+    func testSurfaceAfterTheObservationEndIsNotTheAnswer() {
+        let out = ResponseTracePatch.apply(surfaceMs: [2020], coverage: coverage,
+                                           to: record([response(down: 1000, end: 1500)]))
+        XCTAssertEqual(out.changed, 1)
+        XCTAssertNil(out.record.timeline?[0].response?.firstFrameMs)
+        XCTAssertEqual(out.record.timeline?[0].response?.firstFrameMissing, .noFrame)
+    }
+
+    func testSurfaceExactlyAtTheObservationEndCounts() {
+        let out = ResponseTracePatch.apply(surfaceMs: [1500], coverage: coverage,
+                                           to: record([response(down: 1000, end: 1500)]))
+        XCTAssertEqual(out.record.timeline?[0].response?.firstFrameMs, 500)
+    }
+
+    /// 観測の終わりが無いステップは探す範囲を言えない: 何も入れず、`outside` とは別に数える
+    func testStepWithoutObservationEndIsLeftUntouchedAndCountedSeparately() {
+        let out = ResponseTracePatch.apply(surfaceMs: [1020], coverage: coverage,
+                                           to: record([response(noEnd: true)]))
+        XCTAssertEqual(out.changed, 0)
+        XCTAssertEqual(out.outside, 0)
+        XCTAssertEqual(out.unbounded, 1)
+        XCTAssertNil(out.record.timeline?[0].response?.firstFrameMs)
+        XCTAssertNil(out.record.timeline?[0].response?.firstFrameMissing)
     }
 
     func testOnlyPatchableStepsAreTouched() {

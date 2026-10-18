@@ -270,7 +270,7 @@ final class ResponseMeasurementStepTests: XCTestCase {
         _ = await executor.execute(tap)
         let update = await executor.execute(FlowStep(action: "tap", x: 50, y: 120)).readyUpdateForPreviousStep
         XCTAssertEqual(update?.readyMissing, "noTarget")
-        XCTAssertTrue(driver.fetchedFirstDownTimes.isEmpty)
+        XCTAssertEqual(driver.fetchedFirstDownTimes, [1000], "t2 は判定しないが、締まった時刻を得るため観測は取る")
     }
 
     func testModeOffNeverFetches() async {
@@ -294,7 +294,7 @@ final class ResponseMeasurementStepTests: XCTestCase {
         XCTAssertEqual(driver.stopObservationCallCount, 1)
         let next = await executor.execute(tap)
         XCTAssertNil(next.readyUpdateForPreviousStep, "終わった後の宛先は残さない")
-        XCTAssertTrue(driver.fetchedFirstDownTimes.isEmpty)
+        XCTAssertEqual(driver.fetchedFirstDownTimes, [1000], "終わりの取得(観測の終わりの時刻)の1回だけ。次のステップは取りに行かない")
     }
 
     func testResponseReadyEventPatchesTheTimelineEntryByIndex() {
@@ -330,5 +330,174 @@ final class ResponseMeasurementStepTests: XCTestCase {
         XCTAssertNil(record.timeline?[1].response)
         XCTAssertNil(record.timeline?[2].response?.readyMs)
         XCTAssertEqual(record.timeline?.count, 3)
+    }
+
+    // MARK: - 暫定の noFrame と遅いフレーム
+
+    private func provisionalNoFrame(first: Int) -> Result<ResponseCollectResult, Error> {
+        .success(ResponseCollectResult(downTimeMs: first, firstFrameDelayMs: nil, reason: "noFrame",
+                                       lastDownTimeMs: first, injections: 1))
+    }
+
+    func testCollectNoFrameIsProvisionalAndLeavesTheRecordUndecided() async {
+        let driver = makeDriver(CallLog())
+        driver.collectResults = [provisionalNoFrame(first: 1000)]
+        let response = await makeExecutor(measuring: true, driver: driver).execute(tap).response
+        XCTAssertNil(response?.firstFrameMs)
+        XCTAssertNil(response?.firstFrameMissing, "noFrame は暫定。次の計測ステップの観測で決まるまで空")
+        XCTAssertEqual(response?.downTimeMs, 1000)
+    }
+
+    func testLateFirstFrameFromTheObservationFillsThePreviousStep() async {
+        let driver = makeDriver(CallLog())
+        driver.collectResults = [provisionalNoFrame(first: 1000), collected(first: 5000)]
+        var observation = readyObservation()
+        observation.firstFrameDelayMs = 87
+        driver.observationResults = [.success(observation)]
+        let executor = makeExecutor(measuring: true, driver: driver)
+        _ = await executor.execute(tap)
+        let update = await executor.execute(tap).readyUpdateForPreviousStep
+        XCTAssertEqual(update?.firstFrameMs, 87)
+        XCTAssertNil(update?.firstFrameMissing)
+        XCTAssertEqual(update?.readyMs, 104, "t2 の判定はそのまま")
+    }
+
+    func testNoTargetNextStepStillDecidesTheFirstFrame() async {
+        let driver = makeDriver(CallLog())
+        driver.collectResults = [provisionalNoFrame(first: 1000), collected(first: 5000)]
+        var observation = readyObservation()
+        observation.firstFrameDelayMs = 61
+        driver.observationResults = [.success(observation)]
+        let executor = makeExecutor(measuring: true, driver: driver)
+        _ = await executor.execute(tap)
+        let update = await executor.execute(FlowStep(action: "tap", x: 50, y: 120)).readyUpdateForPreviousStep
+        XCTAssertEqual(update?.readyMissing, "noTarget", "t2 は判定しない")
+        XCTAssertEqual(update?.firstFrameMs, 61, "最初のフレームは締まった観測から決まる")
+        XCTAssertEqual(driver.fetchedFirstDownTimes, [1000])
+    }
+
+    func testEndOfScenarioDecidesTheLastStepsFirstFrameAfterStop() async {
+        let driver = makeDriver(CallLog())
+        driver.collectResults = [provisionalNoFrame(first: 1000)]
+        var observation = readyObservation()
+        observation.endReason = "stopped"
+        observation.firstFrameReason = "noFrame"
+        driver.observationResults = [.success(observation)]
+        let executor = makeExecutor(measuring: true, driver: driver)
+        _ = await executor.execute(tap)
+        let update = await executor.endResponseMeasurement()
+        XCTAssertEqual(driver.stopObservationCallCount, 1)
+        XCTAssertEqual(driver.fetchedFirstDownTimes, [1000])
+        XCTAssertEqual(update?.firstFrameMissing, .noFrame)
+        XCTAssertNil(update?.readyMs)
+        XCTAssertNil(update?.readyMissing, "最後のステップの t2 は判定しない")
+    }
+
+    func testEndOfScenarioCarriesTheEndTimeButKeepsADecidedFirstFrame() async {
+        let driver = makeDriver(CallLog())
+        driver.collectResults = [collected(first: 1000)]
+        var observation = readyObservation()
+        observation.endReason = "stopped"
+        observation.firstFrameDelayMs = 99
+        driver.observationResults = [.success(observation)]
+        let executor = makeExecutor(measuring: true, driver: driver)
+        _ = await executor.execute(tap)
+        let update = await executor.endResponseMeasurement()
+        XCTAssertEqual(update?.observationEndMs, 1200, "iOS の最初のフレームの探索の終わりになる")
+        XCTAssertNil(update?.firstFrameMs, "collect が決めた最初のフレームは観測で上書きしない")
+    }
+
+    func testObservationReasonDecidesFirstFrameMissing() async {
+        let driver = makeDriver(CallLog())
+        driver.collectResults = [provisionalNoFrame(first: 1000), collected(first: 5000)]
+        var observation = readyObservation()
+        observation.firstFrameReason = "frameHistoryIncomplete"
+        driver.observationResults = [.success(observation)]
+        let executor = makeExecutor(measuring: true, driver: driver)
+        _ = await executor.execute(tap)
+        let update = await executor.execute(tap).readyUpdateForPreviousStep
+        XCTAssertNil(update?.firstFrameMs)
+        XCTAssertEqual(update?.firstFrameMissing, .frameHistoryIncomplete)
+    }
+
+    func testObservationFirstFrameIsIgnoredWhenCollectAlreadyDecided() async {
+        let driver = makeDriver(CallLog())
+        driver.collectResults = [collected(first: 1000), collected(first: 5000)]
+        var observation = readyObservation()
+        observation.firstFrameDelayMs = 87
+        driver.observationResults = [.success(observation)]
+        let executor = makeExecutor(measuring: true, driver: driver)
+        _ = await executor.execute(tap)
+        let update = await executor.execute(tap).readyUpdateForPreviousStep
+        XCTAssertNil(update?.firstFrameMs, "collect が値を決めた記録には観測の値を足さない")
+        XCTAssertNil(update?.firstFrameMissing)
+    }
+
+    func testBusyStepNeverReceivesAFirstFrameFromTheObservation() async {
+        let driver = makeDriver(CallLog())
+        driver.prepareResult = .success(ResponsePrepareResult(quiet: false, waitedMs: 5000))
+        driver.collectResults = [provisionalNoFrame(first: 1000), collected(first: 5000)]
+        var observation = readyObservation()
+        observation.firstFrameDelayMs = 87
+        driver.observationResults = [.success(observation)]
+        let executor = makeExecutor(measuring: true, driver: driver)
+        _ = await executor.execute(tap)
+        let update = await executor.execute(tap).readyUpdateForPreviousStep
+        XCTAssertNil(update?.firstFrameMs)
+        XCTAssertNil(update?.firstFrameMissing)
+    }
+
+    func testApplyingFillsOnlyRecordsWithoutAFirstFrame() {
+        let undecided = ResponseMeasurementRecord(busyBeforeAction: false, quietWaitMs: 1, firstFrameMs: nil,
+                                                  firstFrameMissing: nil)
+        XCTAssertEqual(undecided.applying(ResponseReadyUpdate(firstFrameMs: 40)).firstFrameMs, 40)
+        XCTAssertEqual(undecided.applying(ResponseReadyUpdate(firstFrameMissing: .noFrame)).firstFrameMissing, .noFrame)
+        XCTAssertNil(undecided.applying(ResponseReadyUpdate(readyMs: 1)).firstFrameMissing, "更新が持たなければ空のまま")
+
+        let decided = ResponseMeasurementRecord(busyBeforeAction: false, quietWaitMs: 1, firstFrameMs: 10,
+                                                firstFrameMissing: nil)
+        let kept = decided.applying(ResponseReadyUpdate(firstFrameMs: 99, firstFrameMissing: .noFrame))
+        XCTAssertEqual(kept.firstFrameMs, 10)
+        XCTAssertNil(kept.firstFrameMissing)
+
+        let busy = ResponseMeasurementRecord(busyBeforeAction: true, quietWaitMs: 1, firstFrameMs: nil,
+                                             firstFrameMissing: .busyBeforeAction)
+        let untouched = busy.applying(ResponseReadyUpdate(firstFrameMs: 99))
+        XCTAssertNil(untouched.firstFrameMs)
+        XCTAssertEqual(untouched.firstFrameMissing, .busyBeforeAction)
+    }
+
+    // MARK: - 投げた経路
+
+    func testThrowAfterInjectionKeepsTheCollectedFacts() async {
+        let driver = FakeAppDriver(name: "d", log: CallLog(), snapshotElements: [[
+            ElementInfo(ref: 1, type: "textField", identifier: "field", label: nil, value: nil, placeholder: nil,
+                        enabled: true, frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)]])
+        driver.typeError = DriverError.badResponse(status: 500, body: "server error")
+        let executor = makeExecutor(measuring: true, driver: driver)
+        let outcome = await executor.execute(FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hi"))
+        guard case .failed(let message) = outcome.status, message.hasPrefix("execution error") else {
+            return XCTFail("投げた経路を通るはずが \(outcome.status)")
+        }
+        XCTAssertEqual(driver.collectCallCount, 1)
+        XCTAssertEqual(outcome.response?.firstFrameMs, 34)
+        XCTAssertEqual(outcome.response?.downTimeMs, 1000)
+        XCTAssertEqual(outcome.response?.quietWaitMs, 12)
+        XCTAssertTrue(outcome.opensReadyObservation)
+        XCTAssertNil(outcome.readyUpdateForPreviousStep)
+    }
+
+    func testFoundObservationCarriesItsEndTimeIntoTheUpdate() async {
+        let driver = makeDriver(CallLog())
+        driver.collectResults = [collected(first: 1000), collected(first: 5000)]
+        driver.observationResults = [.success(readyObservation())]
+        let executor = makeExecutor(measuring: true, driver: driver)
+        _ = await executor.execute(tap)
+        let update = await executor.execute(tap).readyUpdateForPreviousStep
+        XCTAssertEqual(update?.observationEndMs, 1200)
+        let record = ResponseMeasurementRecord(busyBeforeAction: false, quietWaitMs: 1, firstFrameMs: nil,
+                                               firstFrameMissing: nil)
+        XCTAssertEqual(record.applying(update!).observationEndMs, 1200)
+        XCTAssertNil(record.applying(ResponseReadyUpdate(readyMs: 1)).observationEndMs)
     }
 }

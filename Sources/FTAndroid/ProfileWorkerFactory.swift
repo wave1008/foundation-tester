@@ -439,8 +439,7 @@ public enum ProfileWorkerFactory {
                     [adb, "-s", serial, "shell"] + AndroidAnimationSettings.getArguments(key: key), timeout: 15)
                 if let output = result?.outputIfSucceeded { previous[key] = output }
             }
-            let entries = AndroidAnimationSettings.restoreEntries(
-                previousRaw: previous, animationsEnabled: resolved.enableAnimations)
+            let entries = AndroidAnimationSettings.restoreEntries(previousRaw: previous)
             return entries.isEmpty ? nil : AnimationRestore(serial: serial, entries: entries)
         }
     }

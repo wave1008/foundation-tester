@@ -174,23 +174,33 @@ final class ResponseMeasurementTests: XCTestCase {
 
     // MARK: モニター hold
 
-    func testShouldAcquireOnlyWhenNoActiveHold() {
+    func testAcquireDecisionByExistingHold() {
         let now = Date()
-        XCTAssertTrue(ResponseMeasurementMonitorHold.shouldAcquire(existing: nil, now: now))
-        XCTAssertFalse(ResponseMeasurementMonitorHold.shouldAcquire(
-            existing: MonitorHold(until: nil, startedAt: 1), now: now))
-        XCTAssertFalse(ResponseMeasurementMonitorHold.shouldAcquire(
-            existing: MonitorHold(until: now.timeIntervalSince1970 + 60, startedAt: 1), now: now))
-        XCTAssertTrue(ResponseMeasurementMonitorHold.shouldAcquire(
-            existing: MonitorHold(until: now.timeIntervalSince1970 - 60, startedAt: 1), now: now))
+        let t = now.timeIntervalSince1970
+        XCTAssertEqual(ResponseMeasurementMonitorHold.acquireDecision(existing: nil, now: now), .acquire(remember: nil))
+        XCTAssertEqual(ResponseMeasurementMonitorHold.acquireDecision(
+            existing: MonitorHold(until: nil, startedAt: 1), now: now), .leaveAsIs)
+        let limited = MonitorHold(until: t + 60, startedAt: 1)
+        XCTAssertEqual(ResponseMeasurementMonitorHold.acquireDecision(existing: limited, now: now),
+                       .acquire(remember: limited))
+        XCTAssertEqual(ResponseMeasurementMonitorHold.acquireDecision(
+            existing: MonitorHold(until: t - 60, startedAt: 1), now: now), .acquire(remember: nil))
     }
 
-    func testShouldReleaseOnlyMyOwnHold() {
+    func testReleaseActionRestoresOnlyAStillFutureTimeLimitedHold() {
+        let now = Date()
+        let t = now.timeIntervalSince1970
         let mine = MonitorHold(until: nil, startedAt: 100)
-        XCTAssertTrue(ResponseMeasurementMonitorHold.shouldRelease(current: mine, mine: mine))
-        XCTAssertFalse(ResponseMeasurementMonitorHold.shouldRelease(current: nil, mine: mine))
-        XCTAssertFalse(ResponseMeasurementMonitorHold.shouldRelease(
-            current: MonitorHold(until: nil, startedAt: 200), mine: mine))
+        let future = MonitorHold(until: t + 60, startedAt: 1)
+        let past = MonitorHold(until: t - 1, startedAt: 1)
+        XCTAssertEqual(ResponseMeasurementMonitorHold.releaseAction(current: mine, mine: mine, previous: nil, now: now), .clear)
+        XCTAssertEqual(ResponseMeasurementMonitorHold.releaseAction(current: mine, mine: mine, previous: future, now: now),
+                       .restore(future))
+        XCTAssertEqual(ResponseMeasurementMonitorHold.releaseAction(current: mine, mine: mine, previous: past, now: now), .clear)
+        // 自分のものでなければ(置き換わった・消えた)触らない
+        XCTAssertEqual(ResponseMeasurementMonitorHold.releaseAction(
+            current: MonitorHold(until: nil, startedAt: 200), mine: mine, previous: future, now: now), .keep)
+        XCTAssertEqual(ResponseMeasurementMonitorHold.releaseAction(current: nil, mine: mine, previous: future, now: now), .keep)
     }
 
     func testAcquireAndReleaseRoundTripInTempDir() throws {
@@ -200,7 +210,7 @@ final class ResponseMeasurementTests: XCTestCase {
         let handle = ResponseMeasurementMonitorHold.acquire(stateDir: dir) { _ in }
         XCTAssertNotNil(handle)
         XCTAssertNotNil(MonitorHold.load(stateDir: dir))
-        // 既に有効な hold があれば触らない(取れない)
+        // 期限の無い有効な hold があれば触らない(取れない)
         XCTAssertNil(ResponseMeasurementMonitorHold.acquire(stateDir: dir) { _ in })
         ResponseMeasurementMonitorHold.release(handle) { _ in }
         XCTAssertNil(MonitorHold.load(stateDir: dir))
@@ -209,6 +219,26 @@ final class ResponseMeasurementTests: XCTestCase {
         try MonitorHold.save(MonitorHold(until: nil, startedAt: 1), stateDir: dir)
         ResponseMeasurementMonitorHold.release(first) { _ in }
         XCTAssertNotNil(MonitorHold.load(stateDir: dir))
+    }
+
+    func testTimeLimitedPauseIsOverwrittenDuringTheRunAndRestoredAfter() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rm-hold-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let now = Date()
+        let limited = MonitorHold(until: now.timeIntervalSince1970 + 600, startedAt: 1)
+        try MonitorHold.save(limited, stateDir: dir)
+        let handle = ResponseMeasurementMonitorHold.acquire(stateDir: dir, now: now) { _ in }
+        XCTAssertNotNil(handle)
+        XCTAssertNil(MonitorHold.load(stateDir: dir)?.until, "run の間は期限の無い hold で上書きする")
+        ResponseMeasurementMonitorHold.release(handle, now: now.addingTimeInterval(10)) { _ in }
+        XCTAssertEqual(MonitorHold.load(stateDir: dir), limited)
+
+        // 期限が run の間に過ぎていたら戻さず外す
+        try MonitorHold.save(limited, stateDir: dir)
+        let second = ResponseMeasurementMonitorHold.acquire(stateDir: dir, now: now) { _ in }
+        ResponseMeasurementMonitorHold.release(second, now: now.addingTimeInterval(700)) { _ in }
+        XCTAssertNil(MonitorHold.load(stateDir: dir))
     }
 
     // MARK: 子プロセス境界(型の効かない継ぎ目だけ)

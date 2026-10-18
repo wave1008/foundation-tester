@@ -808,6 +808,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                                                                           profile: profile))
             : nil
         if let recorder { interruptState.attachRecorder(recorder) }
+        // 計測 run の識別は finish を待たず run.json に書く(殺された run にも残す。ProfileRunner.run と同じ)
+        recorder?.recordResponseMeasurement(resolvedProfile.flatMap(ResponseMeasurementPolicy.runInfo(resolved:)))
 
         // OS 対象外(`@TestClass(platform:)` / `@Test(platform:)`)をキュー投入前に外す。
         // **dry-run では外さない** —— デバイスに触らないので全件を構文検査したい。

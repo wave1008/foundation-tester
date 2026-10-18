@@ -5,9 +5,11 @@
 // 寿命の束ね方:
 // - 正常・エラーの終わり: 呼び手の `defer { cleanup() }`(SIGINT で止めて待ち、一時フォルダを消す)。正常は先に `finish`
 // - Ctrl-C: 端末の前景グループに xctrace も入り、自分で保存して終わる。run は通常の完了経路で `finish` に来る
-// - fleetest の即死(2回目の中断の exit(143)・SIGKILL): 見張りの sh(`watcherScript`)が親の消滅を見て xctrace へ SIGINT を送り、
-//   終わるまで待って一時フォルダを消す。**見張りは親の死を生き延びる必要がある**ので `FT_PARENT_PID` を渡さない・InterruptRelay にも載せない
-//   (録画の見張り recorder-watch と同じ扱い。自分で終わる)
+// - fleetest の即死(2回目の中断の exit(143)・SIGKILL): 見張りの sh(`watcherScript`)が親の消滅を見て、xctrace が生きていれば
+//   SIGINT を送って終わるまで待ち、一時フォルダを消す。**見張りは親の死を生き延びる必要がある**ので `FT_PARENT_PID` を渡さない・
+//   InterruptRelay にも載せない(録画の見張り recorder-watch と同じ扱い。自分で終わる)。
+//   見張りは各 spawn の直後(開始確認の待ちより前)に起こし、保存・書き出し・結果の書き換え・一時フォルダの削除が終わるまで
+//   生かす(cleanup の最後の段で止める)。xctrace が先に終わっても親を見張り続ける
 // - `--time-limit`(ResponseTracePolicy.recordTimeLimit)は上の全部が効かなかったときのディスクの安全弁
 // 子のパイプは読まない(出力はファイルへ。`readDataToEndOfFile` を使わない規律)
 
@@ -27,7 +29,8 @@ final class ResponseTraceSession: @unchecked Sendable {
     private var finished = false
 
     private init(workDir: URL, traceURL: URL, recordCommand: String, recorder: SignalDefaultProcess,
-                 recorderExit: @escaping @Sendable (DispatchTime) -> DispatchTimeoutResult) {
+                 recorderExit: @escaping @Sendable (DispatchTime) -> DispatchTimeoutResult, watcher: Process?) {
+        self.watcher = watcher
         self.workDir = workDir
         self.traceURL = traceURL
         self.recordCommand = recordCommand
@@ -36,15 +39,35 @@ final class ResponseTraceSession: @unchecked Sendable {
         self.startedUptime = ProcessInfo.processInfo.systemUptime
     }
 
-    /// 親(fleetest)が居る間だけ待ち、親が消えたら xctrace を SIGINT で止めて保存を待ち、一時フォルダを消す。
-    /// `$1` = 親の pid / `$2` = xctrace の pid / `$3` = 一時フォルダ。xctrace が先に終わったら何もせず抜ける
+    /// 親(fleetest)が居る間は待ち続け(xctrace が先に終わっても)、親が消えたら後始末する:
+    /// 記録の xctrace(`$2`)へ SIGINT(保存させる)、一時フォルダ(`$3`)の名前をコマンドラインに持つ他のプロセス
+    /// (表の書き出しの xctrace export など。パイプ・サブシェルを使わず `pgrep -f` の結果をファイル経由で読む =
+    /// サブシェルの sh 自身が一時フォルダを引数に持ち、拾ってしまうため。自分(`$$`)と `$2` は除く)へ SIGTERM を送り、
+    /// 全部居なくなるまで最長 30 秒待ち、残れば SIGKILL、最後に一時フォルダを消す。`$1` = 親の pid
     static let watcherScript = """
-        while kill -0 "$1" 2>/dev/null && kill -0 "$2" 2>/dev/null; do sleep 2; done
-        if kill -0 "$2" 2>/dev/null; then
-          kill -INT "$2" 2>/dev/null
-          while kill -0 "$2" 2>/dev/null; do sleep 1; done
-          rm -rf "$3"
+        scan() {
+          pgrep -f -- "$3" > "$3/.pids" 2>/dev/null
+          others=""
+          while read -r p; do
+            [ "$p" = "$$" ] || [ "$p" = "$2" ] || others="$others $p"
+          done < "$3/.pids"
+        }
+        while kill -0 "$1" 2>/dev/null; do sleep 2; done
+        kill -INT "$2" 2>/dev/null
+        scan
+        for p in $others; do kill -TERM "$p" 2>/dev/null; done
+        n=0
+        while [ "$n" -lt 30 ]; do
+          scan
+          if [ -z "$others" ] && ! kill -0 "$2" 2>/dev/null; then break; fi
+          sleep 1
+          n=$((n + 1))
+        done
+        if [ "$n" -ge 30 ]; then
+          for p in $others; do kill -KILL "$p" 2>/dev/null; done
+          kill -KILL "$2" 2>/dev/null
         fi
+        rm -rf "$3"
         """
 
     // MARK: 開始
@@ -65,8 +88,10 @@ final class ResponseTraceSession: @unchecked Sendable {
         let logURL = workDir.appendingPathComponent("record.log")
         let argv = ResponseTracePolicy.recordArguments(udid: udid, output: traceURL.path)
         let command = argv.joined(separator: " ")
+        var watcher: Process?
         func failed(_ reason: String) -> ResponseTraceSession? {
             try? FileManager.default.removeItem(at: workDir)
+            watcher?.terminate()
             log(notMeasured(reason))
             return nil
         }
@@ -97,6 +122,9 @@ final class ResponseTraceSession: @unchecked Sendable {
             } catch {
                 return failed("`\(command)` could not be started: \(error)")
             }
+            // 開始確認の待ちの間に親が死んでも xctrace を取り残さないよう、spawn の直後に見張りを起こす(試行ごとに起こし直す)
+            watcher?.terminate()
+            watcher = Self.launchWatcher(recorderPID: process.processIdentifier, workDir: workDir)
             // 録り始めの印(`Ctrl-C to stop the recording`)か終了まで待つ。最初の出力で抜けない —— 開始の失敗の文が最初の出力になる。
             // 印が出ないまま尽きても失敗にはしない(startConfirmSeconds の宣言)
             let deadline = ProcessInfo.processInfo.systemUptime + ResponseTracePolicy.startConfirmSeconds
@@ -111,6 +139,8 @@ final class ResponseTraceSession: @unchecked Sendable {
                 started = process
                 break
             }
+            watcher?.terminate()
+            watcher = nil
             let output = (try? String(contentsOf: logURL, encoding: .utf8)) ?? ""
             if attempt < ResponseTracePolicy.startAttempts,
                output.contains(ResponseTracePolicy.targetNotFoundMessage) {
@@ -123,23 +153,19 @@ final class ResponseTraceSession: @unchecked Sendable {
         guard let process = started else { return failed("`\(command)` did not start") }
         let exitWait: @Sendable (DispatchTime) -> DispatchTimeoutResult = { process.waitExit(until: $0) }
 
-        let session = ResponseTraceSession(workDir: workDir, traceURL: traceURL, recordCommand: command,
-                                           recorder: process, recorderExit: exitWait)
-        session.startWatcher(recorderPID: process.processIdentifier)
-        return session
+        return ResponseTraceSession(workDir: workDir, traceURL: traceURL, recordCommand: command,
+                                    recorder: process, recorderExit: exitWait, watcher: watcher)
     }
 
-    private func startWatcher(recorderPID: Int32) {
+    private static func launchWatcher(recorderPID: Int32, workDir: URL) -> Process? {
         let sh = Process()
         sh.executableURL = URL(fileURLWithPath: "/bin/sh")
-        sh.arguments = ["-c", Self.watcherScript, "fleetest-trace-watch", String(getpid()),
+        sh.arguments = ["-c", watcherScript, "fleetest-trace-watch", String(getpid()),
                         String(recorderPID), workDir.path]
         sh.standardInput = FileHandle.nullDevice
         sh.standardOutput = FileHandle.nullDevice
         sh.standardError = FileHandle.nullDevice
-        if (try? sh.run()) != nil {
-            lock.lock(); watcher = sh; lock.unlock()
-        }
+        return (try? sh.run()) != nil ? sh : nil
     }
 
     // MARK: 終了
@@ -158,11 +184,14 @@ final class ResponseTraceSession: @unchecked Sendable {
         switch outcome {
         case .failed(let reason):
             log(Self.notMeasured(reason))
-        case .patched(let steps, let scenarios, let outside):
-            guard steps > 0 || outside > 0 else { return }
+        case .patched(let steps, let scenarios, let outside, let unbounded):
+            guard steps > 0 || outside > 0 || unbounded > 0 else { return }
             var line = "ℹ️ First frame filled in from the Instruments trace for \(steps) step(s) in \(scenarios) scenario(s)"
             if outside > 0 {
                 line += "; \(outside) step(s) whose first touch is outside the recorded range were left empty"
+            }
+            if unbounded > 0 {
+                line += "; \(unbounded) step(s) without an observation end time were left empty"
             }
             log(line)
         }
@@ -180,7 +209,6 @@ final class ResponseTraceSession: @unchecked Sendable {
         recorderExit = nil
         self.watcher = nil
         lock.unlock()
-        watcher?.terminate()
         if let process, process.isRunning {
             kill(process.processIdentifier, SIGINT)
             // 保存を待つ(消す前に書き込みが終わっていること)。エラー経路なので長くは待たない
@@ -189,6 +217,8 @@ final class ResponseTraceSession: @unchecked Sendable {
             }
         }
         try? FileManager.default.removeItem(at: workDir)
+        // 見張りは最後に止める(保存・削除が終わる前に親が死んでも、見張りが後始末を引き取れるように)
+        watcher?.terminate()
     }
 
     /// エラー経路で xctrace の終了を待つ上限(秒)。根拠: 結果を使わず捨てるだけなので、保存の完了までは待たず
@@ -197,13 +227,12 @@ final class ResponseTraceSession: @unchecked Sendable {
 
     /// SIGINT で止めて保存の終わりを待つ。失敗の理由(1 行)か nil
     private func stopRecording() async -> String? {
-        let (process, exitWait, watcher) = lock.withLock {
-            let taken = (recorder, recorderExit, self.watcher)
+        // 見張りは止めない(解析と一時フォルダの削除が終わる cleanup の最後まで生かす)
+        let (process, exitWait) = lock.withLock {
+            let taken = (recorder, recorderExit)
             recorderExit = nil
-            self.watcher = nil
             return taken
         }
-        watcher?.terminate()
         guard let process, let exitWait else { return "the trace recorder was already stopped" }
         let recorded = ProcessInfo.processInfo.systemUptime - startedUptime
         if process.isRunning { kill(process.processIdentifier, SIGINT) }
@@ -219,7 +248,7 @@ final class ResponseTraceSession: @unchecked Sendable {
 
     private enum Analysis {
         case failed(String)
-        case patched(steps: Int, scenarios: Int, outside: Int)
+        case patched(steps: Int, scenarios: Int, outside: Int, unbounded: Int)
     }
 
     /// 表の書き出し → 換算 → 結果の書き換え。ブロックするので detached で呼ぶ
@@ -251,14 +280,28 @@ final class ResponseTraceSession: @unchecked Sendable {
         }
         var steps = 0
         var outside = 0
+        var unbounded = 0
         let scenarios = RunResultsStore.rewriteScenarios(runDir: runDir) { record in
             let patched = ResponseTracePatch.apply(surfaceMs: surfaces.times, coverage: coverage, to: record)
             outside += patched.outside
+            unbounded += patched.unbounded
             guard patched.changed > 0 else { return nil }
             steps += patched.changed
+            Self.patchReport(before: record, after: patched.record)
             return patched.record
         }
-        return .patched(steps: steps, scenarios: scenarios, outside: outside)
+        return .patched(steps: steps, scenarios: scenarios, outside: outside, unbounded: unbounded)
+    }
+
+    /// Markdown レポート(reports/scenario-*.md)の該当ステップの行へも最初のフレームを足す。
+    /// `reportPath` は絶対パスか、パッケージルート相対。解決できない・読めない・書けないときは何もしない(結果 JSON は書き換え済み)
+    private static func patchReport(before: ScenarioRunRecord, after: ScenarioRunRecord) {
+        guard let path = after.reportPath else { return }
+        let url = path.hasPrefix("/")
+            ? URL(fileURLWithPath: path) : ScenarioHost.packageRoot()?.appendingPathComponent(path)
+        guard let url, let markdown = try? String(contentsOf: url, encoding: .utf8),
+              let updated = ResponseReportPatch.patching(markdown: markdown, before: before, after: after) else { return }
+        try? updated.write(to: url, atomically: true, encoding: .utf8)
     }
 
     /// 外部コマンドを撃つ。失敗の理由(コマンドと終了コード)か nil

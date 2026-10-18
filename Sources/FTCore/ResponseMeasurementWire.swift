@@ -77,6 +77,11 @@ public struct ResponseObservation: Codable, Sendable {
     public var trees: [Tree]?
     /// 記録の上限(読みの回数・木の数)に達して途中から記録をやめた
     public var truncated: Bool?
+    /// Android だけ(v107〜): 取得の時点で SurfaceFlinger を読み、最初の注入から締めた時刻(`endedAtMs`)までに出た最初のフレームの遅れ。
+    /// collect の時点ではまだ出ていなかった遅いフレームを拾うため(collect の `noFrame` は確定ではない)。
+    /// 出ていなければ nil で `firstFrameReason` = `noFrame`、履歴が足りなければ `frameHistoryIncomplete`。iOS は nil(Instruments の記録で決める)
+    public var firstFrameDelayMs: Int?
+    public var firstFrameReason: String?
 
     public struct Read: Codable, Sendable, Equatable {
         public var startMs: Int
@@ -102,7 +107,9 @@ public struct ResponseObservation: Codable, Sendable {
 
     public init(found: Bool, firstDownTimeMs: Int? = nil, lastDownTimeMs: Int? = nil, injections: Int? = nil,
                 endedAtMs: Int? = nil, endReason: String? = nil, reads: [Read]? = nil, trees: [Tree]? = nil,
-                truncated: Bool? = nil) {
+                truncated: Bool? = nil, firstFrameDelayMs: Int? = nil, firstFrameReason: String? = nil) {
+        self.firstFrameDelayMs = firstFrameDelayMs
+        self.firstFrameReason = firstFrameReason
         self.found = found
         self.firstDownTimeMs = firstDownTimeMs
         self.lastDownTimeMs = lastDownTimeMs

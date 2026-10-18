@@ -403,6 +403,8 @@ enum ProfileRunner {
             ? hookStateDir.flatMap { ResponseMeasurementMonitorHold.acquire(stateDir: $0) { ConsoleOut.out($0) } }
             : nil
         defer { ResponseMeasurementMonitorHold.release(responseMonitorHold) { ConsoleOut.out($0) } }
+        // 計測 run の識別は finish を待たず run.json に書く(殺された run にも残す。ApiRunCommand.run と同じ)
+        recorder?.recordResponseMeasurement(ResponseMeasurementPolicy.runInfo(resolved: resolved))
         // 計測 run が書き換えた Android 実機のアニメーション設定を終了時に戻す。取得は開始時の同期(buildAndroidWorkers)より前
         let animationRestores = resolved.responseMeasurement
             ? ProfileWorkerFactory.captureAnimationRestore(resolved: resolved) : []

@@ -33,10 +33,21 @@ public struct ResponseReadyUpdate: Codable, Sendable, Equatable {
     /// 観測で読めた木の回数(最後の注入より後・読めた回だけ)。t2 の分解能と、判定の材料がどれだけあったかを示す事実。
     /// 観測が見つからなかった・取れなかったときは nil
     public var observedReads: Int?
+    /// 操作の直後の collect では決まらなかった最初のフレームを、観測(Android = 取得の時点の SurfaceFlinger)で後から決めた結果。
+    /// 値か理由のどちらか一方。決まらなければ両方 nil
+    public var firstFrameMs: Int?
+    public var firstFrameMissing: ResponseMeasurementRecord.FirstFrameMissing?
+    /// 取得した観測が締まった時刻(端末の時計。最初の注入と同じ)。観測が見つかったときだけ。iOS の最初のフレームの探索の終わり
+    public var observationEndMs: Int?
 
     public init(readyMs: Int? = nil, readyAfterLastInjectionMs: Int? = nil, injectionSpanMs: Int? = nil,
                 injections: Int? = nil, readyDecidedBy: String? = nil, readyIdentity: String? = nil,
-                readyMissing: String? = nil, observedReads: Int? = nil) {
+                readyMissing: String? = nil, observedReads: Int? = nil,
+                firstFrameMs: Int? = nil, firstFrameMissing: ResponseMeasurementRecord.FirstFrameMissing? = nil,
+                observationEndMs: Int? = nil) {
+        self.observationEndMs = observationEndMs
+        self.firstFrameMs = firstFrameMs
+        self.firstFrameMissing = firstFrameMissing
         self.observedReads = observedReads
         self.readyMs = readyMs
         self.readyAfterLastInjectionMs = readyAfterLastInjectionMs
@@ -53,7 +64,10 @@ public struct ResponseInjectionFacts: Sendable, Equatable {
     public var firstDownTimeMs: Int
     public var lastDownTimeMs: Int
     public var injections: Int
-    public init(firstDownTimeMs: Int, lastDownTimeMs: Int, injections: Int) {
+    /// 操作の直後の記録に最初のフレームも欠けた理由も無く、描画が止まっていた(= 観測の取得で後から決めてよい)
+    public var awaitsFirstFrame: Bool
+    public init(firstDownTimeMs: Int, lastDownTimeMs: Int, injections: Int, awaitsFirstFrame: Bool = false) {
+        self.awaitsFirstFrame = awaitsFirstFrame
         self.firstDownTimeMs = firstDownTimeMs
         self.lastDownTimeMs = lastDownTimeMs
         self.injections = injections
@@ -61,6 +75,25 @@ public struct ResponseInjectionFacts: Sendable, Equatable {
 }
 
 public enum ResponseReadyJudge {
+    /// 観測の事実を更新へ足す。観測が見つかったときだけ: 締まった時刻(`observationEndMs`)は常に、
+    /// 最初のフレームは `decidesFirstFrame` のときだけ(理由は `noFrame` / `frameHistoryIncomplete` だけ採る。
+    /// iOS の観測は最初のフレームを持たない = 何も足さない。言えない理由は省く)
+    public static func attachingFirstFrame(_ update: ResponseReadyUpdate, observation: ResponseObservation,
+                                           decidesFirstFrame: Bool = true) -> ResponseReadyUpdate {
+        guard observation.found else { return update }
+        var result = update
+        result.observationEndMs = observation.endedAtMs
+        guard decidesFirstFrame else { return result }
+        if let ms = observation.firstFrameDelayMs {
+            result.firstFrameMs = ms
+        } else if let reason = observation.firstFrameReason,
+                  let missing = ResponseMeasurementRecord.FirstFrameMissing(rawValue: reason),
+                  missing == .noFrame || missing == .frameHistoryIncomplete {
+            result.firstFrameMissing = missing
+        }
+        return result
+    }
+
     /// 値が出ない更新。注入の事実(回数・最初から最後まで)は collect 由来で言えるので載せる
     public static func missing(_ reason: ResponseReadyMissing, facts: ResponseInjectionFacts) -> ResponseReadyUpdate {
         ResponseReadyUpdate(injectionSpanMs: facts.lastDownTimeMs - facts.firstDownTimeMs,

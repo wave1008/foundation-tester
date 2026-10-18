@@ -71,6 +71,9 @@ enum ResponseMeasurement {
         var endReason: String?
         var closed = false
         var truncated = false
+        /// 上限(capMs)に達して読みを止めている。観測は閉じない(同じステップの次の注入で再開できる)。cappedAt = 達した時刻
+        var capped = false
+        var cappedAt: Int64 = -1
         var reads: [ResponseObservation.Read] = []
         var trees: [ResponseObservation.Tree] = []
         /// 直前に保存した木のエンコード(変化の判定用)
@@ -87,7 +90,10 @@ enum ResponseMeasurement {
     static var requestDepth = 0
     private static var reading = false
     private static var running: Obs?
-    private static var closedObs: Obs?
+    /// 締めた観測を最初の注入の時刻で引けるよう直近 maxClosed 件だけ持つ(古い側から捨てる)。1件だと、ホストが取りに来る前に
+    /// 次のステップの締めで上書きされうる。ホストは締まった観測を次のステップの注入の前に取るので、2件あれば取りこぼさない
+    static let maxClosed = 2
+    private static var closedObs: [Obs] = []
     private static var pendingCapMs: Int64 = 0
     private static var timer: Timer?
     /// 木を読むのに使うルーター(prepare で受け取る。ルーターは1つで寿命がプロセスと同じ)
@@ -123,6 +129,8 @@ enum ResponseMeasurement {
             obs.trees.removeAll()
             obs.lastTreeData = nil
             obs.truncated = false
+            obs.capped = false
+            obs.cappedAt = -1
         }
     }
 
@@ -133,13 +141,23 @@ enum ResponseMeasurement {
         obs.injections = injectionCount
     }
 
+    /// 上限に達していたら理由は cap・締めた時刻は達した時刻(読みはそこで止まっている。Android の close と同じ)
     private static func close(_ obs: Obs, reason: String, at time: Int64) {
         refreshStats(obs)
+        var reason = reason
+        var time = time
+        // 期限(capBase + capMs)を過ぎてから締めるなら、検知が遅れただけで上限には達していた
+        _ = markCappedIfReached(obs, at: time)
+        if obs.capped {
+            reason = "cap"
+            time = obs.cappedAt
+        }
         obs.closed = true
         obs.endReason = reason
         obs.endedAt = time
         if running === obs { running = nil }
-        closedObs = obs
+        closedObs.append(obs)
+        if closedObs.count > maxClosed { closedObs.removeFirst(closedObs.count - maxClosed) }
         if running == nil { stopTimer() }
     }
 
@@ -161,15 +179,12 @@ enum ResponseMeasurement {
     private static func tick() {
         guard let obs = running, !obs.closed else { stopTimer(); return }
         guard !reading else { return }
-        // 上限の締めは状態を書くだけで XCTest に触れないので、リクエスト処理中の割り込みでも安全(締めた時刻を遅らせない)
+        // 上限の判定は状態を書くだけで XCTest に触れないので、リクエスト処理中の割り込みでも安全(達した時刻を遅らせない)
         let t0 = nowMs()
-        if t0 - obs.capBase >= obs.capMs {
-            close(obs, reason: "cap", at: t0)
-            return
-        }
+        if markCappedIfReached(obs, at: t0) { return }
         guard requestDepth == 0, let router else { return }
-        // 打ち切った後は木を読まない(記録し直しか締めを待つだけ)
-        if obs.truncated { return }
+        // 打ち切り・上限の後は木を読まない(同じステップの次の注入での記録し直しか締めを待つだけ)
+        if obs.truncated || obs.capped { return }
         reading = true
         defer { reading = false }
         var snapshot: SnapshotResponse?
@@ -182,25 +197,44 @@ enum ResponseMeasurement {
         append(to: obs, startMs: t0, endMs: nowMs(), snapshot: snapshot)
     }
 
+    /// 上限に達していたら capped を立てて true(観測は閉じない)。達した後は何度呼んでも cappedAt を動かさない
+    private static func markCappedIfReached(_ obs: Obs, at time: Int64) -> Bool {
+        if obs.capped { return true }
+        if time - obs.capBase > obs.capMs {
+            obs.capped = true
+            obs.cappedAt = obs.capBase + obs.capMs // 検知の時刻ではなく期限
+            return true
+        }
+        return false
+    }
+
     /// ホストの `GET /snapshot` が取った木も観測の読みとして残す。**iOS ではこれが読みの主な出どころ**: ステップの合間はホストが
     /// 検証・次のステップの解決のために木を取りに来てメインスレッドが空かず、タイマーの読みはほとんど入らない(iPhone SE3 で
     /// 1 ステップあたり 0〜1 回)。木はどの経路で取っても同じ画面の事実なので、判定の材料として同じに扱ってよい
     static func recordHostRead(_ snapshot: SnapshotResponse, startMs: Int64, endMs: Int64) {
         guard let obs = running, !obs.closed, !obs.truncated else { return }
+        if markCappedIfReached(obs, at: startMs) { return }
         append(to: obs, startMs: startMs, endMs: endMs, snapshot: snapshot)
     }
 
     /// 読みを1件足す(記録し直しより前に始まった読みは捨てる)。木は前の木と変わったときだけ残す
     private static func append(to obs: Obs, startMs t0: Int64, endMs t1: Int64, snapshot: SnapshotResponse?) {
         if t0 < obs.capBase { return }
+        // 期限をまたいだ・期限の後に終わった読みは入れない(Android の readLoop と同じ)
+        if markCappedIfReached(obs, at: t1) { return }
         if !obs.truncated && obs.reads.count >= maxReads { obs.truncated = true }
         if !obs.truncated {
-            let index = obs.reads.count
-            obs.reads.append(.init(startMs: Int(t0), endMs: Int(t1), ok: snapshot != nil))
+            var changed: (SnapshotResponse, Data)?
             if let snapshot, let data = Self.encodeForComparison(snapshot), data != obs.lastTreeData {
-                if obs.trees.count >= maxTrees {
-                    obs.truncated = true
-                } else {
+                changed = (snapshot, data)
+            }
+            if changed != nil && obs.trees.count >= maxTrees {
+                // 変わった木を置けない読みは足さない: 足すと判定が前の木をその読みへ持ち越し、古い木で「2回連続で保持」と誤る
+                obs.truncated = true
+            } else {
+                let index = obs.reads.count
+                obs.reads.append(.init(startMs: Int(t0), endMs: Int(t1), ok: snapshot != nil))
+                if let (snapshot, data) = changed {
                     obs.trees.append(.init(readIndex: index, snapshot: snapshot))
                     obs.lastTreeData = data
                 }
@@ -242,7 +276,7 @@ enum ResponseMeasurement {
     }
 
     static func fetch(firstDownTimeMs: Int) -> ResponseObservation {
-        guard let obs = closedObs, Int(obs.firstDown) == firstDownTimeMs else {
+        guard let obs = closedObs.first(where: { Int($0.firstDown) == firstDownTimeMs }) else {
             return ResponseObservation(found: false)
         }
         return ResponseObservation(found: true, firstDownTimeMs: Int(obs.firstDown),
@@ -252,11 +286,16 @@ enum ResponseMeasurement {
                                    truncated: obs.truncated)
     }
 
-    /// シナリオの終わり: 実行中を止め、記録はすべて捨てる
+    /// シナリオの終わり: 実行中を締め、それ以外の記録は捨てる(締めた1件だけ残す。Android の stopAll と同じ)。
+    /// 注入の記録も解く(解かないと stop の後の普通の操作が新しい観測を始める)
     static func stopAll() {
+        closedObs.removeAll()
         if let obs = running { close(obs, reason: "stopped", at: nowMs()) }
         running = nil
-        closedObs = nil
+        armed = false
+        firstInjection = -1
+        lastInjection = -1
+        injectionCount = 0
         stopTimer()
     }
 }

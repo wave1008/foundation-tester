@@ -973,6 +973,16 @@ final class InputInjector {
         }
     }
 
+    /** シナリオの終わり(ResponseObserver.stopAll): 待ち受けを解き記録を消す。呼び元は observer のロックの中(observer → injector の順) */
+    static void disarmAndClear() {
+        synchronized (firstDownLock) {
+            firstDownArmed = false;
+            firstDownTime = -1;
+            lastDownTime = -1;
+            downCount = 0;
+        }
+    }
+
     /** 記録された最初の downTime(uptimeMillis)。無ければ -1。取り出すと待ち受けを解く。
      *  最後の downTime と回数は次の armFirstDown まで残す(collect と ResponseObserver が後から読む) */
     static long takeFirstDown() {

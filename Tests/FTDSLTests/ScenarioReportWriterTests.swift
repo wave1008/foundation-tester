@@ -295,6 +295,25 @@ final class ScenarioReportWriterTests: XCTestCase {
         XCTAssertEqual(ScenarioReportWriter.line(for: step), "- ✅ 1. tap — 0.83s\n")
     }
 
+    /// 後から足す書式(ResponseReportPatch)が、書き手(responseText)が最初から出す書式と同一であること
+    func testReportPatchProducesTheSameLineAsTheWriter() {
+        let withBoth = measured(firstFrameMs: 54, readyMs: 72)
+        let noFrame = measured(missing: .noFrame, readyMs: 72)
+        for response in [withBoth, noFrame] {
+            var readyOnly = response
+            readyOnly.firstFrameMs = nil
+            readyOnly.firstFrameMissing = nil
+            func line(_ r: ResponseMeasurementRecord) -> String {
+                ScenarioReportWriter.line(for: DSLStepRecord(
+                    index: 3, section: nil, description: "tap \"#x\"", status: .passed, file: "", line: 0,
+                    durationMs: 1100, response: r))
+            }
+            XCTAssertEqual(ResponseReportPatch.insertingFirstFrame(
+                markdown: "# t\n" + line(readyOnly), stepIndex: 3, response: response),
+                           "# t\n" + line(response))
+        }
+    }
+
     func testLineAppendsResponseAfterDuration() {
         let step = DSLStepRecord(index: 2, section: nil, description: "tap", status: .passed,
                                  file: "", line: 0, durationMs: 830,

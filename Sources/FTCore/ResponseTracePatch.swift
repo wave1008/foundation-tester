@@ -128,12 +128,15 @@ public enum ResponseTracePatch {
     }
 
     /// 1本の記録へ当てる。`changed` = 書き換えたステップ数(0 なら呼び手はファイルを書き直さない)、
-    /// `outside` = 当てられる形なのに注入の時刻が記録の範囲の外だったステップ数(何も入れない)
+    /// `outside` = 注入の時刻、または探す範囲の終わりが記録の範囲の外だったステップ数(何も入れない)、
+    /// `unbounded` = 観測の締まった時刻(`observationEndMs`)が無く探す範囲を言えないステップ数(何も入れない)。
+    /// 探す範囲は「注入より後・観測が締まった時刻まで(その時刻を含む)」。次のシナリオのフレームを自分のものにしない
     public static func apply(surfaceMs: [Double], coverage: Coverage, to record: ScenarioRunRecord)
-        -> (record: ScenarioRunRecord, changed: Int, outside: Int) {
-        guard var timeline = record.timeline else { return (record, 0, 0) }
+        -> (record: ScenarioRunRecord, changed: Int, outside: Int, unbounded: Int) {
+        guard var timeline = record.timeline else { return (record, 0, 0, 0) }
         var changed = 0
         var outside = 0
+        var unbounded = 0
         for index in timeline.indices {
             guard var response = timeline[index].response, isPatchable(response),
                   let down = response.downTimeMs.map(Double.init) else { continue }
@@ -141,17 +144,24 @@ public enum ResponseTracePatch {
                 outside += 1
                 continue
             }
-            if let surface = firstSurface(after: down, in: surfaceMs) {
+            guard let end = response.observationEndMs.map(Double.init) else {
+                unbounded += 1
+                continue
+            }
+            if let surface = firstSurface(after: down, in: surfaceMs), surface <= end {
                 response.firstFrameMs = Int((surface - down).rounded())
-            } else {
+            } else if coverage.contains(end) {
                 response.firstFrameMissing = .noFrame
+            } else {
+                outside += 1
+                continue
             }
             timeline[index].response = response
             changed += 1
         }
-        guard changed > 0 else { return (record, 0, outside) }
+        guard changed > 0 else { return (record, 0, outside, unbounded) }
         var patched = record
         patched.timeline = timeline
-        return (patched, changed, outside)
+        return (patched, changed, outside, unbounded)
     }
 }

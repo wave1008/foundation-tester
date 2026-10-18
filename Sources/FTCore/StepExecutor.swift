@@ -745,6 +745,9 @@ public final class StepExecutor {
         elementLimitCeilingLatchedThisStep = false
         systemAlertAdvisoryThisStep = nil
         systemAlertProbeFailure = nil
+        // executeAction が投げた後でも、注入していれば集めた事実を失敗の StepOutcome に載せる
+        var thrownResponse: ResponseMeasurementRecord?
+        var thrownOpensReadyObservation = false
         do {
             if let action = step.action {
                 // 計測の prepare / collect は phase の外(actionMs / waitMs に入れない)。durationMs には入る
@@ -761,11 +764,16 @@ public final class StepExecutor {
                     outcome = try await executeAction(action, step: step,
                                                       fingerprint: fingerprint, phase: &phase)
                 } catch {
-                    // 投げた経路でもブリッジの記録(armed)を残さない。結果は捨てる。
-                    // 注入していても前の計測ステップの履歴はここで締まっているので、宛先は残さない(判定しない)
+                    // 投げた経路でも collect してブリッジの記録(armed)を残さず、集めた事実は失敗の outcome に載せる。
+                    // 前の計測ステップ j はここでは判定しない(i が解決した対象が無い)。注入していれば i の観測を保留にする
+                    // (シナリオは失敗で中断するので通常は使われず、endResponseMeasurement が捨てる)
                     if measuring {
-                        _ = try? await driver.collectResponseMeasurement()
-                        pendingResponseObservation = nil
+                        let collected = try? await driver.collectResponseMeasurement()
+                        let record = ResponseMeasurementRecord.make(prepare: prepared, collect: collected)
+                        thrownResponse = record
+                        pendingResponseObservation = Self.injectionFacts(
+                            collected, awaitsFirstFrame: Self.awaitsFirstFrame(prepare: prepared, record: record))
+                        thrownOpensReadyObservation = pendingResponseObservation != nil
                     }
                     throw error
                 }
@@ -774,8 +782,10 @@ public final class StepExecutor {
                 var opensReadyObservation = false
                 if measuring {
                     let collected = try? await driver.collectResponseMeasurement()
-                    response = ResponseMeasurementRecord.make(prepare: prepared, collect: collected)
-                    if let facts = Self.injectionFacts(collected) {
+                    let made = ResponseMeasurementRecord.make(prepare: prepared, collect: collected)
+                    response = made
+                    if let facts = Self.injectionFacts(
+                        collected, awaitsFirstFrame: Self.awaitsFirstFrame(prepare: prepared, record: made)) {
                         if let previous = pendingResponseObservation {
                             readyUpdate = await judgeReadiness(of: previous, step: step)
                         }
@@ -851,15 +861,25 @@ public final class StepExecutor {
                                // 投げられたエラーは**型で**仕分ける(文言一致で数えない)。
                                // 分からない型は nil のまま = 推測しない
                                failureKind: Self.failureKind(thrown: error)
-                                   ?? failureKindThisStep)
+                                   ?? failureKindThisStep,
+                               response: thrownResponse,
+                               opensReadyObservation: thrownOpensReadyObservation)
         }
     }
 
     /// collect の結果 → 注入の事実。注入が無ければ nil(= このステップは次の判定の宛先にならない)
-    static func injectionFacts(_ collected: ResponseCollectResult?) -> ResponseInjectionFacts? {
+    static func injectionFacts(_ collected: ResponseCollectResult?, awaitsFirstFrame: Bool = false)
+        -> ResponseInjectionFacts? {
         guard let collected, let first = collected.downTimeMs else { return nil }
         return ResponseInjectionFacts(firstDownTimeMs: first, lastDownTimeMs: collected.lastDownTimeMs ?? first,
-                                      injections: max(collected.injections, 1))
+                                      injections: max(collected.injections, 1), awaitsFirstFrame: awaitsFirstFrame)
+    }
+
+    /// 最初のフレームを観測の取得で後から決めてよい記録か: prepare が描画の停止を確かめ(reason 無し・quiet)、
+    /// collect の記録に値も欠けた理由も無い(暫定の `noFrame` はここに入る)
+    static func awaitsFirstFrame(prepare: ResponsePrepareResult?, record: ResponseMeasurementRecord) -> Bool {
+        guard let prepare, prepare.reason == nil, prepare.quiet else { return false }
+        return !record.busyBeforeAction && record.firstFrameMs == nil && record.firstFrameMissing == nil
     }
 
     /// 前の計測ステップ j の木の履歴を、このステップ i が実際に解決して操作した対象で判定する。
@@ -868,28 +888,49 @@ public final class StepExecutor {
     /// 別の座標系になり、条件(枠が等しい)が成り立たないのに「揃う前に撃たれた」と言ってしまうため
     func judgeReadiness(of previous: ResponseInjectionFacts, step: FlowStep) async -> ResponseReadyUpdate? {
         guard step.locator != nil, let used = resolvedElementThisStep else {
-            return ResponseReadyJudge.missing(.noTarget, facts: previous)
+            return await attachingFirstFrame(to: ResponseReadyJudge.missing(.noTarget, facts: previous), of: previous)
         }
-        if (scrollSwipesThisStep ?? 0) > 0 || (slowDragsThisStep ?? 0) > 0 { return nil }
+        if (scrollSwipesThisStep ?? 0) > 0 || (slowDragsThisStep ?? 0) > 0 {
+            // t2 は判定しない(画面の位置がずれる)が、最初のフレームはこのステップの注入で締まった観測から決まる
+            return await attachingFirstFrame(to: nil, of: previous)
+        }
         let observation: ResponseObservation
         do {
             observation = try await driver.fetchResponseObservation(firstDownTimeMs: previous.firstDownTimeMs)
         } catch {
             return ResponseReadyJudge.missing(.bridgeError, facts: previous)
         }
-        return ResponseReadyJudge.judge(
+        let update = ResponseReadyJudge.judge(
             observation: observation, facts: previous,
             resolve: { LocatorResolver.resolve(step: step, in: $0)?.0 },
             isOccluded: { OcclusionGeometry.overlayCovering($0, in: $1.elements, screen: $1.screen) != nil },
             usedFrame: used.frame)
+        return ResponseReadyJudge.attachingFirstFrame(
+            update, observation: observation, decidesFirstFrame: previous.awaitsFirstFrame)
     }
 
     /// シナリオの終わりに、締まっていない観測をブリッジに止めさせる(失敗しても何もしない。届かなければ
     /// ブリッジは次の所有者の最初の注入で捨てる)。保留の宛先も捨てる
-    public func endResponseMeasurement() async {
-        guard responseMeasurement else { return }
+    /// 最後の計測ステップの最初のフレームがまだ決まっていなければ、stop で締めた観測から決めた更新を返す
+    /// (ブリッジの stop は締めた1件を残す。呼び手が保留中のステップへ当てる)
+    @discardableResult
+    public func endResponseMeasurement() async -> ResponseReadyUpdate? {
+        guard responseMeasurement else { return nil }
+        let pending = pendingResponseObservation
         pendingResponseObservation = nil
-        try? await driver.stopResponseObservation()
+        guard (try? await driver.stopResponseObservation()) != nil, let pending else { return nil }
+        return await attachingFirstFrame(to: nil, of: pending)
+    }
+
+    /// t2 を判定しない経路でも、観測を取って締まった時刻と(未決なら)最初のフレームを足す。
+    /// 取れない・足すものが無ければ `update` のまま
+    private func attachingFirstFrame(to update: ResponseReadyUpdate?,
+                                     of previous: ResponseInjectionFacts) async -> ResponseReadyUpdate? {
+        guard let observation = try? await driver.fetchResponseObservation(firstDownTimeMs: previous.firstDownTimeMs)
+        else { return update }
+        let attached = ResponseReadyJudge.attachingFirstFrame(
+            update ?? ResponseReadyUpdate(), observation: observation, decidesFirstFrame: previous.awaitsFirstFrame)
+        return attached == (update ?? ResponseReadyUpdate()) ? update : attached
     }
 
     /// 撮り直す理由 → 実際にキャッシュを迂回するか。**ドライバの対応可否と掛け合わせる唯一の場所**

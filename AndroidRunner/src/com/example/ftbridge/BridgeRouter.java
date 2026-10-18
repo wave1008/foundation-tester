@@ -877,7 +877,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     /** POST /responseObservation(契約は FTCore/ResponseMeasurementWire.ResponseObservation)。締め終わった観測を最初の downTime で返す。settle は呼ばない */
     private BridgeHttpServer.Response handleResponseObservation(JSONObject body) throws JSONException {
         if (!body.has("firstDownTimeMs")) throw new BridgeException(400, "firstDownTimeMs is required");
-        return BridgeHttpServer.Response.json(200, ResponseObserver.fetch(body.optLong("firstDownTimeMs", -1)).toString());
+        return BridgeHttpServer.Response.json(200, ResponseObserver.fetch(ua(), sessionBundleID, body.optLong("firstDownTimeMs", -1)).toString());
     }
 
     /** POST /responseObservationStop。実行中の観測を止め、記録を全部捨てる。settle は呼ばない */

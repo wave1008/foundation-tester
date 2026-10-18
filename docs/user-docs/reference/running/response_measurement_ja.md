@@ -52,8 +52,8 @@ fleetest run --profile <name> --set responseMeasurement=true --set responseRepea
     利用者が感じる時間を表さないためです。
   - テキストの可視性検証(`fmTextVisibilityCheck`・`ocrTextVisibilityCheck`)・`screenLooksLike`・録画(`record`)・
     ホスト負荷による減速を止めます。
-  - デバイスモニターの観測・配信を、run の間だけ止めます(run の終わりに戻します。自分で `fleetest monitor pause` している場合は
-    そのままにします)。
+  - デバイスモニターの観測・配信を、run の間だけ止めます(run の終わりに戻します。自分で期限なしの `fleetest monitor pause` をしている場合は
+    そのままにします。`--for` で期限付きにしている場合は run の間だけ期限なしに置き換え、終わりにまだ期限前なら元の停止に戻します)。
 - 次の指定と一緒には使えません(名前付きのエラーで止まります): `enableAnimations: false`、`fmTextVisibilityCheck` /
   `ocrTextVisibilityCheck` / `screenLooksLike` / `record` を `true`、`--broadcast`・`--fleet`・`--split`。
 
@@ -94,7 +94,7 @@ fleetest results response [--project <name>] [--since <期間>] [--json]
 |---|---|
 | `busyBeforeAction` | 操作の前から描画が続いていた(10 秒待っても止まらなかった)。この回の「最初のフレーム」は前の描画の続きなので測らない |
 | `noInjectedInput` | そのステップは入力イベントを注入しない操作だった(アクセシビリティの操作で代行した・Mac 側の adb で撃った等) |
-| `noFrame` | 注入のあと、アプリのフレームが出なかった |
+| `noFrame` | 注入のあと、次の操作まで(最後の操作は観測の上限 10 秒まで)アプリのフレームが出なかった |
 | `frameHistoryIncomplete` | フレームの履歴が足りず、注入の直後のフレームを確かめられなかった |
 | `noSessionApp` | 対象のアプリを確かめられなかった |
 | `bridgeError` | 端末側との通信に失敗した |

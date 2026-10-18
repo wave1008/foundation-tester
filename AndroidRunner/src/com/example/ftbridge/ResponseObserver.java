@@ -40,6 +40,13 @@ final class ResponseObserver {
         String endReason;
         boolean closed = false;
         boolean truncated = false;
+        /** 上限(capMs)に達して読みを止めている。観測は閉じない(同じステップの次の注入で再開できる)。cappedAt = 期限(capBase + capMs) */
+        boolean capped = false;
+        long cappedAt = -1;
+        /** 最初のフレームの確定値(prepare が次の --latency-clear の前に求めて置く)。ffStored なら fetch はこれを使う */
+        boolean ffStored = false;
+        Long ffDelay;
+        String ffReason;
         final List<long[]> reads = new ArrayList<>(); // {startMs, endMs, ok(1/0)}
         final List<Object[]> trees = new ArrayList<>(); // {Integer readIndex, String snapshotJson}
         String lastTreeJson;
@@ -54,16 +61,47 @@ final class ResponseObserver {
     /** 全状態を守る単一のロック。InputInjector のロックはこの内側でだけ取る(逆順は作らない) */
     private static final Object lock = new Object();
     private static Obs running;
-    private static Obs closedObs;
+    /** 締めた観測を最初の downTime で引けるよう直近 MAX_CLOSED 件だけ持つ(古い側から捨てる)。1件だと、ホストが取りに来る前に
+     *  次のステップの締めで上書きされうる。ホストは締まった観測を次のステップの注入の前に取るので、2件あれば取りこぼさない */
+    static final int MAX_CLOSED = 2;
+    private static final List<Obs> closedObs = new ArrayList<>();
     private static long pendingCapMs = 0;
     private static Context context;
 
-    /** responsePrepare から、InputInjector.armFirstDown の前に呼ぶ。実行中の観測の最後の DOWN・回数は arm で消えるので先に写す */
-    static void prepare(Context ctx, long observeMs) {
+    /** responsePrepare から、InputInjector.armFirstDown の前に呼ぶ。実行中の観測の最後の DOWN・回数は arm で消えるので先に写す。
+     *  **順序制約**: prepare は SurfaceFlinger の履歴を --latency-clear で消すので、その**前に**まだ最初のフレームを確定していない観測
+     *  (実行中・締め済み)の分をここで求めて観測へ置く。後の fetch が消えた履歴を読み直すと遅いフレームを失う。
+     *  探索の上限は min(今, 上限の期限 = capBase + capMs)(締め済みは endedAt)。dumpsys は遅いのでロックの外で読む */
+    static void prepare(UiAutomation ua, Context ctx, String pkg, long observeMs) {
+        List<Obs> targets = new ArrayList<>();
+        List<Long> bounds = new ArrayList<>();
         synchronized (lock) {
             context = ctx;
             pendingCapMs = observeMs;
             if (running != null) refreshStats(running);
+            long now = SystemClock.uptimeMillis();
+            if (running != null && !running.ffStored) {
+                targets.add(running);
+                bounds.add(Math.min(now, running.capBase + running.capMs));
+            }
+            for (Obs c : closedObs) {
+                if (!c.ffStored) {
+                    targets.add(c);
+                    bounds.add(c.endedAt);
+                }
+            }
+        }
+        if (pkg == null) return;
+        for (int i = 0; i < targets.size(); i++) {
+            Obs o = targets.get(i);
+            Object[] ff = ResponseProbe.firstFrameWithin(ua, pkg, o.firstDown, bounds.get(i).longValue());
+            synchronized (lock) {
+                if (!o.ffStored) {
+                    o.ffDelay = (Long) ff[0];
+                    o.ffReason = (String) ff[1];
+                    o.ffStored = true;
+                }
+            }
         }
     }
 
@@ -107,21 +145,34 @@ final class ResponseObserver {
             obs.trees.clear();
             obs.lastTreeJson = null;
             obs.truncated = false;
+            obs.capped = false;
+            obs.cappedAt = -1;
         }
     }
 
-    /** 締め終わった観測を最初の downTime で返す。締まっていない・知らない ID は null */
-    static JSONObject fetch(long firstDownTimeMs) throws org.json.JSONException {
-        Obs obs;
+    /** 締め終わった観測を最初の downTime で返す。締まっていない・知らない ID は null。
+     *  最初のフレームは取得の時点で SurfaceFlinger から改めて求める(collect の時点で未提示だった遅いフレームを拾う)。
+     *  dumpsys は遅いのでロックの外で読む(締めた観測は書き換わらない) */
+    static JSONObject fetch(UiAutomation ua, String pkg, long firstDownTimeMs) throws org.json.JSONException {
+        Obs obs = null;
+        boolean stored = false;
+        Long storedDelay = null;
+        String storedReason = null;
         synchronized (lock) {
-            obs = closedObs;
-            if (obs == null || obs.firstDown != firstDownTimeMs) obs = null;
+            for (Obs c : closedObs) {
+                if (c.firstDown == firstDownTimeMs) obs = c;
+            }
+            if (obs != null) {
+                stored = obs.ffStored;
+                storedDelay = obs.ffDelay;
+                storedReason = obs.ffReason;
+            }
         }
         JSONObject o = new JSONObject();
         if (obs == null) {
             o.put("found", false);
             for (String k : new String[] {"firstDownTimeMs", "lastDownTimeMs", "injections", "endedAtMs",
-                    "endReason", "reads", "trees", "truncated"}) {
+                    "endReason", "reads", "trees", "truncated", "firstFrameDelayMs", "firstFrameReason"}) {
                 o.put(k, JSONObject.NULL);
             }
             return o;
@@ -151,26 +202,45 @@ final class ResponseObserver {
         }
         o.put("trees", trees);
         o.put("truncated", obs.truncated);
+        // 保存済みが無いのは stop → fetch(間に --latency-clear が無い)。履歴を今読む
+        Object[] ff = stored ? new Object[] {storedDelay, storedReason}
+                : ResponseProbe.firstFrameWithin(ua, pkg, obs.firstDown, obs.endedAt);
+        o.put("firstFrameDelayMs", ff[0] == null ? JSONObject.NULL : ff[0]);
+        o.put("firstFrameReason", ff[1] == null ? JSONObject.NULL : ff[1]);
         return o;
     }
 
-    /** シナリオの終わり: 実行中を止め、記録はすべて捨てる */
+    /** シナリオの終わり: 実行中を締め、それ以外の記録は捨てる。締めた1件だけ残す = ホストが stop の後に最後の計測ステップの
+     *  最初のフレームを取りに来る(残りは次の close が MAX_CLOSED で押し出す)。注入の記録も解く(解かないと stop の後の普通の操作が
+     *  新しい観測を始める)。injector のロックは observer のロックの内側で取る(許される向き。injector は自分のロック中に observer を呼ばない) */
     static void stopAll() {
         synchronized (lock) {
+            closedObs.clear();
             if (running != null) close(running, "stopped", SystemClock.uptimeMillis());
             running = null;
-            closedObs = null;
+            InputInjector.disarmAndClear();
         }
     }
 
-    /** lock を持って呼ぶ。closed に移す(古い closed は置き換え) */
+    /** lock を持って呼ぶ。closed に移す。上限に達していたら理由は cap・締めた時刻は達した時刻(読みはそこで止まっている。
+     *  最初のフレームの探索もそこで切る = 上限より後の描画をこのステップに数えない) */
     private static void close(Obs obs, String reason, long endedAt) {
         refreshStats(obs);
+        // 期限(capBase + capMs)を過ぎてから締めるなら、検知が遅れただけで上限には達していた
+        if (!obs.capped && endedAt > obs.capBase + obs.capMs) {
+            obs.capped = true;
+            obs.cappedAt = obs.capBase + obs.capMs;
+        }
+        if (obs.capped) {
+            reason = "cap";
+            endedAt = obs.cappedAt;
+        }
         obs.closed = true;
         obs.endReason = reason;
         obs.endedAt = endedAt;
         if (running == obs) running = null;
-        closedObs = obs;
+        closedObs.add(obs);
+        while (closedObs.size() > MAX_CLOSED) closedObs.remove(0);
     }
 
     /** lock を持って呼ぶ。injector がまだこの観測の arm のままなら最後の DOWN・回数を写す(別の arm に替わっていたら写さない) */
@@ -192,14 +262,14 @@ final class ResponseObserver {
             boolean skip;
             synchronized (lock) {
                 if (obs.closed) return;
-                if (t0 - obs.capBase >= obs.capMs) {
-                    close(obs, "cap", t0);
-                    return;
+                if (!obs.capped && t0 - obs.capBase >= obs.capMs) {
+                    obs.capped = true;
+                    obs.cappedAt = obs.capBase + obs.capMs; // 検知の時刻ではなく期限
                 }
-                skip = obs.truncated;
+                skip = obs.truncated || obs.capped;
             }
             if (skip) {
-                // 打ち切った後は木を読まない(記録し直しか締めを待つだけ)
+                // 打ち切り・上限の後は木を読まない(同じステップの次の注入での記録し直しか締めを待つだけ)
                 SystemClock.sleep(FAILURE_BACKOFF_MS);
                 continue;
             }
@@ -215,20 +285,27 @@ final class ResponseObserver {
                 if (obs.closed) return;
                 // 記録し直しより前に始まった読みは捨てる(記録し直した後の列は最後の DOWN 以降だけにする)
                 if (t0 < obs.capBase) continue;
+                if (!obs.capped && t1 > obs.capBase + obs.capMs) {
+                    obs.capped = true;
+                    obs.cappedAt = obs.capBase + obs.capMs;
+                }
+                if (obs.capped) continue; // 期限をまたいだ・期限の後に終わった読みは入れない
                 if (!obs.truncated && obs.reads.size() >= MAX_READS) obs.truncated = true;
                 if (!obs.truncated) {
-                    int idx = obs.reads.size();
-                    obs.reads.add(new long[] {t0, t1, json != null ? 1 : 0});
-                    if (json != null && !json.equals(obs.lastTreeJson)) {
-                        if (obs.trees.size() >= MAX_TREES) {
-                            obs.truncated = true;
-                        } else {
+                    boolean changed = json != null && !json.equals(obs.lastTreeJson);
+                    if (changed && obs.trees.size() >= MAX_TREES) {
+                        // 変わった木を置けない読みは足さない: 足すと判定が前の木をその読みへ持ち越し、古い木で「2回連続で保持」と誤る
+                        obs.truncated = true;
+                    } else {
+                        int idx = obs.reads.size();
+                        obs.reads.add(new long[] {t0, t1, json != null ? 1 : 0});
+                        if (changed) {
                             obs.trees.add(new Object[] {Integer.valueOf(idx), json});
                             obs.lastTreeJson = json;
                         }
                     }
                 }
-                // 打ち切った後もスレッドは終わらせない(同じステップの次の DOWN で記録し直す・上限で締める)。記録しない間は空回りしない
+                // 打ち切った後もスレッドは終わらせない(同じステップの次の DOWN で記録し直す)。記録しない間は空回りしない
                 idle = obs.truncated;
             }
             if (json == null || idle) SystemClock.sleep(FAILURE_BACKOFF_MS);

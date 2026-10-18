@@ -52,13 +52,14 @@ public enum AndroidAnimationSettings {
         }
     }
 
-    /// 戻す対象の決定。**この run が書き換えたものだけ**(= `matches` が false だった key。run の開始時の同期が put するのと同じ条件)。
+    /// 戻す対象の決定。計測 run の間にアニメーション設定を書く経路は2つあり、どちらも3つ全部を put する
+    /// (ブリッジのコールド起動の `disableAnimations` は無条件・run 開始の同期は1つでも違えば)ので、
+    /// **読めた key をすべて**元へ戻す(1 / 0.5 / 未設定 が 1/1/1 のまま残らない)。
     /// `previousRaw` は読めた key の `settings get` の出力だけ(読めなかった key は元が分からないので戻さない)。
     /// "null"・空は元が未設定 → 消す。順序は `AnimationPolicy.androidScaleKeys`
-    public static func restoreEntries(previousRaw: [String: String], animationsEnabled: Bool) -> [Restore] {
+    public static func restoreEntries(previousRaw: [String: String]) -> [Restore] {
         AnimationPolicy.androidScaleKeys.compactMap { key in
-            guard let raw = previousRaw[key],
-                  !matches(rawValue: raw, animationsEnabled: animationsEnabled) else { return nil }
+            guard let raw = previousRaw[key] else { return nil }
             let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             return Restore(key: key, value: (trimmed.isEmpty || trimmed == "null") ? nil : trimmed)
         }
