@@ -82,14 +82,14 @@ For iOS:
 
 ```text
 Build the sut-ec-mobile iOS app and create its profiles. The app's display name is "SUT Store". Use two devices.
-The build needs JDK 17 to 24; if none is installed, you can install JDK 17 with Homebrew. Don't modify any shell configuration files.
+The build needs JDK 25; if it is missing, you can install JDK 25 with Homebrew. Don't modify any shell configuration files.
 ```
 
 For Android:
 
 ```text
 Build the sut-ec-mobile Android app and create its profiles. The app's display name is "SUT Store". Use two devices.
-The build needs JDK 17 to 24; if none is installed, you can install JDK 17 with Homebrew. Don't modify any shell configuration files.
+The build needs JDK 25; if it is missing, you can install JDK 25 with Homebrew. Don't modify any shell configuration files.
 ```
 
 <details>
@@ -105,8 +105,8 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 #   -> build/ios-sim/Build/Products/Debug-iphonesimulator/iosApp.app
 
 # Android
-./gradlew :composeApp:assembleDebug
-#   -> composeApp/build/outputs/apk/debug/composeApp-debug.apk
+./gradlew :androidApp:assembleDebug
+#   -> androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
 Go back to your work folder and run the following. The installation creates no test project, so create one first
@@ -121,7 +121,7 @@ Go back to your work folder and run the following. The installation creates no t
 
 # Android
 ../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.sutec.mobile.android --auto-device --app-name "SUT Store" \
-  --app-path ../sut-ec-mobile/composeApp/build/outputs/apk/debug/composeApp-debug.apk
+  --app-path ../sut-ec-mobile/androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
 Without `--app-name` the name defaults to the project name, which differs from the icon name on the home screen and produces a warning at the start of a run.

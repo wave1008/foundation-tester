@@ -82,14 +82,14 @@ iOS の場合:
 
 ```text
 sut-ec-mobile の iOS アプリをビルドし、プロファイルを作成して。アプリの表示名は「SUT Store」。デバイスは2台にして。
-ビルドには JDK 17〜24 が必要。無ければ Homebrew で JDK 17 をインストールしてよい。シェルの設定ファイルは変更しないで。
+ビルドには JDK 25 が必要。無ければ Homebrew で JDK 25 をインストールしてよい。シェルの設定ファイルは変更しないで。
 ```
 
 Android の場合:
 
 ```text
 sut-ec-mobile の Android アプリをビルドし、プロファイルを作成して。アプリの表示名は「SUT Store」。デバイスは2台にして。
-ビルドには JDK 17〜24 が必要。無ければ Homebrew で JDK 17 をインストールしてよい。シェルの設定ファイルは変更しないで。
+ビルドには JDK 25 が必要。無ければ Homebrew で JDK 25 をインストールしてよい。シェルの設定ファイルは変更しないで。
 ```
 
 <details>
@@ -105,8 +105,8 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 #   -> build/ios-sim/Build/Products/Debug-iphonesimulator/iosApp.app
 
 # Android
-./gradlew :composeApp:assembleDebug
-#   -> composeApp/build/outputs/apk/debug/composeApp-debug.apk
+./gradlew :androidApp:assembleDebug
+#   -> androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
 作業フォルダに戻って実行します。テストプロジェクトはインストールでは作られないので、最初に作ります
@@ -121,7 +121,7 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 
 # Android
 ../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.sutec.mobile.android --auto-device --app-name "SUT Store" \
-  --app-path ../sut-ec-mobile/composeApp/build/outputs/apk/debug/composeApp-debug.apk
+  --app-path ../sut-ec-mobile/androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
 `--app-name` を省略するとプロジェクト名になり、ホーム画面のアイコン名と食い違って実行の開始時に警告が出ます。
