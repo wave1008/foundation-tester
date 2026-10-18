@@ -55,6 +55,10 @@ export const monitorStrings = {
     ja: "scenarioTimeout は正の整数(秒)で入力してください。",
     en: "Enter scenarioTimeout as a positive integer (seconds).",
   },
+  "monitor.runProfile.responseRepeatInvalid": {
+    ja: "responseRepeat は 2 以上 50 以下の整数で入力してください(1 回目は次の操作の対象を覚えるだけで、反応時間を測りません)。",
+    en: "Enter responseRepeat as an integer from 2 to 50 (the first iteration only learns the next step's target and measures no reaction time).",
+  },
   "monitor.runProfile.localeInvalid": {
     ja: "locale は ja_JP のような形式で入力してください。",
     en: "Enter locale in a format like ja_JP.",

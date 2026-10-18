@@ -131,7 +131,7 @@ public struct RunMetaRecord: Codable, Sendable {
         case measurementInvalid, measurementInvalidReasons, workerAnomalies, issuer, runGroup
         case performanceMode, fmDead, fmDeadReason
         case guarded, guardSkipped, guardStaleFrame, fmSettings, setOverrides
-        case interrupted, abortReason, slowWorkers, servicesWarnings
+        case interrupted, abortReason, slowWorkers, servicesWarnings, responseMeasurement
     }
 
     public init(from decoder: Decoder) throws {
@@ -170,6 +170,7 @@ public struct RunMetaRecord: Codable, Sendable {
         abortReason = try c.decodeIfPresent(String.self, forKey: .abortReason)
         slowWorkers = try c.decodeIfPresent([String].self, forKey: .slowWorkers)
         servicesWarnings = try c.decodeIfPresent([String].self, forKey: .servicesWarnings)
+        responseMeasurement = try c.decodeIfPresent(ResponseMeasurementRunInfo.self, forKey: .responseMeasurement)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -208,6 +209,7 @@ public struct RunMetaRecord: Codable, Sendable {
         try c.encodeIfPresent(abortReason, forKey: .abortReason)
         try c.encodeIfPresent(slowWorkers, forKey: .slowWorkers)
         try c.encodeIfPresent(servicesWarnings, forKey: .servicesWarnings)
+        try c.encodeIfPresent(responseMeasurement, forKey: .responseMeasurement)
     }
 
     public var schemaVersion: Int
@@ -314,6 +316,9 @@ public struct RunMetaRecord: Codable, Sendable {
     /// サービス(scripts/compose.yaml)の起動時の警告(英語の文言そのまま。`adb reverse` 等)。合否は変えない。
     /// 無ければ省略(docs/results-json.md)
     public var servicesWarnings: [String]?
+    /// レスポンス計測モードの run だけ書く(通常の run は nil で省略)。**欄が無い = 計測モードの run ではない**
+    /// (測っていない)で、旧い記録も同じ意味になる。前回比は同じデバイス・同じ `host` の run どうしだけを比べる
+    public var responseMeasurement: ResponseMeasurementRunInfo?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
                 profile: String?, host: String, toolchain: String? = nil, trigger: String, startedAt: String,
@@ -331,7 +336,8 @@ public struct RunMetaRecord: Codable, Sendable {
                 setOverrides: [String: String]? = nil,
                 interrupted: Bool? = nil, abortReason: String? = nil,
                 slowWorkers: [String]? = nil,
-                servicesWarnings: [String]? = nil) {
+                servicesWarnings: [String]? = nil,
+                responseMeasurement: ResponseMeasurementRunInfo? = nil) {
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.project = project
@@ -366,6 +372,7 @@ public struct RunMetaRecord: Codable, Sendable {
         self.abortReason = abortReason
         self.slowWorkers = slowWorkers
         self.servicesWarnings = servicesWarnings
+        self.responseMeasurement = responseMeasurement
     }
 }
 

@@ -45,6 +45,7 @@ const FORM_FIELDS = {
   recordFailuresOnly: false,
   recordBitrateKbps: "",
   scenarioTimeout: "",
+  responseRepeat: "",
   recordFullResolution: false,
   wipeDataThresholdGB: "",
   locale: "",

@@ -48,7 +48,7 @@ final class RunRecordTests: XCTestCase {
         let recorder = RunRecorder.begin(project: TestProject(name: "P", rootURL: root),
                                          profile: "ios-fpc", trigger: "cli",
                                          captureHostMetrics: false)
-        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
+        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
         return try JSONDecoder().decode(
             RunMetaRecord.self,
             from: Data(contentsOf: recorder.runDir.appendingPathComponent("run.json")))
@@ -169,7 +169,7 @@ final class RunRecordTests: XCTestCase {
         }
         XCTAssertEqual(try read().runGroup, "20260826-0100Z-LDIPC96-abcd")
 
-        recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
+        recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
         XCTAssertEqual(try read().runGroup, "20260826-0100Z-LDIPC96-abcd", "finish で欄が落ちてはいけない")
     }
 
@@ -206,7 +206,7 @@ final class RunRecordTests: XCTestCase {
         XCTAssertTrue(begun.hasPrefix("Xcode "), begun)
 
         recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false,
-                        fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
+                        fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
         XCTAssertEqual(try read().toolchain, begun, "finish で欄が落ちてはいけない")
     }
 
@@ -224,7 +224,7 @@ final class RunRecordTests: XCTestCase {
                                          profile: "p", trigger: "cli", captureHostMetrics: false)
         let settings = FMSettingsRecord(
             heal: false, fmTextVisibilityCheck: true, screenLooksLike: false, ocrTextVisibilityCheck: true)
-        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: settings, setOverrides: nil, servicesWarnings: [])
+        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: settings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
 
         let data = try Data(contentsOf: recorder.runDir.appendingPathComponent("run.json"))
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -625,7 +625,7 @@ final class RunRecordTests: XCTestCase {
             startedAt: "2026-09-07T00:00:00.000Z", durationMs: 10,
             steps: StepCountsRecord(total: 1, passed: 1)))
 
-        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
+        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
         let meta = try readMeta(recorder)
         XCTAssertNil(meta.guarded)
         XCTAssertNil(meta.guardSkipped)
@@ -637,7 +637,7 @@ final class RunRecordTests: XCTestCase {
         let (recorder, cleanup) = try runRecorder()
         defer { cleanup() }
         recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil,
-                        servicesWarnings: ["⚠️ services: `adb -s 14141JEC204922 reverse tcp:8090 tcp:8090` failed (exit 1: device offline)"])
+                        servicesWarnings: ["⚠️ services: `adb -s 14141JEC204922 reverse tcp:8090 tcp:8090` failed (exit 1: device offline)"], responseMeasurement: nil)
         let meta = try readMeta(recorder)
         XCTAssertEqual(meta.servicesWarnings, ["⚠️ services: `adb -s 14141JEC204922 reverse tcp:8090 tcp:8090` failed (exit 1: device offline)"])
         let raw = try String(contentsOf: recorder.runDir.appendingPathComponent("run.json"), encoding: .utf8)
@@ -645,10 +645,29 @@ final class RunRecordTests: XCTestCase {
 
         let (quiet, cleanupQuiet) = try runRecorder()
         defer { cleanupQuiet() }
-        quiet.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
+        quiet.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
         XCTAssertNil(try readMeta(quiet).servicesWarnings)
         let quietRaw = try String(contentsOf: quiet.runDir.appendingPathComponent("run.json"), encoding: .utf8)
         XCTAssertFalse(quietRaw.contains("servicesWarnings"), "an empty list must not leave the key behind")
+    }
+
+    /// 計測モードの run だけ run.json に識別を書く(通常の run は欄ごと省く = 旧い記録と同じ形)
+    func testResponseMeasurementInfoIsWrittenOnlyForMeasurementRuns() throws {
+        let info = ResponseMeasurementRunInfo(deviceName: "Pixel-4a", serial: "SER1", model: "Pixel 4a",
+                                              osVersion: "13", repeatCount: 5)
+        let (measured, cleanup) = try runRecorder()
+        defer { cleanup() }
+        measured.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings,
+                        setOverrides: nil, servicesWarnings: [], responseMeasurement: info)
+        XCTAssertEqual(try readMeta(measured).responseMeasurement, info)
+
+        let (normal, cleanupNormal) = try runRecorder()
+        defer { cleanupNormal() }
+        normal.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings,
+                      setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
+        XCTAssertNil(try readMeta(normal).responseMeasurement)
+        let raw = try String(contentsOf: normal.runDir.appendingPathComponent("run.json"), encoding: .utf8)
+        XCTAssertFalse(raw.contains("responseMeasurement"), "通常の run に計測の欄を残さない")
     }
 
     /// guarded が1件以上ある run では、guardSkipped/guardStaleFrame が0件でも**明示的に0を書く**
@@ -661,7 +680,7 @@ final class RunRecordTests: XCTestCase {
             startedAt: "2026-09-07T00:00:00.000Z", durationMs: 10,
             steps: StepCountsRecord(total: 1, passed: 1, guarded: 3)))
 
-        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
+        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
         let meta = try readMeta(recorder)
         XCTAssertEqual(meta.guarded, 3)
         XCTAssertEqual(meta.guardSkipped, 0, "0件でも欄が無くなってはいけない")
@@ -683,7 +702,7 @@ final class RunRecordTests: XCTestCase {
             steps: StepCountsRecord(total: 1, passed: 1, guarded: 1, guardSkipped: 0,
                                     guardStaleFrame: 1)))
 
-        recorder.finish(total: 2, passed: 2, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
+        recorder.finish(total: 2, passed: 2, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
         let meta = try readMeta(recorder)
         XCTAssertEqual(meta.guarded, 3)
         XCTAssertEqual(meta.guardSkipped, 1)
@@ -737,7 +756,7 @@ final class RunRecordTests: XCTestCase {
             steps: StepCountsRecord(total: 2, passed: 2, guarded: 2, guardSkipped: 0,
                                     guardStaleFrame: 0)))
 
-        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
+        recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
         let meta = try readMeta(recorder)
         XCTAssertEqual(meta.guarded, 2, "捨てた回の 5 を足したままにしない")
         XCTAssertEqual(meta.guardSkipped, 0, "捨てた回の 4 を足したままにしない")
@@ -755,7 +774,7 @@ final class RunRecordTests: XCTestCase {
                                     guardStaleFrame: 1)))
         recorder.discardLast(scenarioID: "Foo.only")
 
-        recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
+        recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
         let meta = try readMeta(recorder)
         XCTAssertNil(meta.guarded)
         XCTAssertNil(meta.guardSkipped)
@@ -787,7 +806,7 @@ final class RunRecordTests: XCTestCase {
             timeline: timeline(snapshotSamples: [4, 6, 8, 10, 12, 14, 16, 18, 20, 12, 10, 8])))
 
         let returned = recorder.finish(total: 2, passed: 2, failed: 0, performanceMode: false,
-                                       fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
+                                       fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
         XCTAssertEqual(returned.map(\.worker), ["ios:iPhone 17 Pro-04"], "戻り値にも同じ観測が乗る")
 
         let meta = try readMeta(recorder)
@@ -808,7 +827,7 @@ final class RunRecordTests: XCTestCase {
             steps: StepCountsRecord(total: 1, passed: 1)))
 
         recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false,
-                        fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
+                        fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
         let meta = try readMeta(recorder)
         XCTAssertNil(meta.slowWorkers, "他ワーカーが居ない/遅い台が居ないrunでは欄を書かない")
     }
@@ -821,7 +840,7 @@ final class RunRecordTests: XCTestCase {
         let (recorder, cleanup) = try runRecorder()
         defer { cleanup() }
         recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false,
-                        fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
+                        fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
         let meta = try readMeta(recorder)
         XCTAssertNil(meta.setOverrides)
     }
@@ -833,7 +852,7 @@ final class RunRecordTests: XCTestCase {
         defer { cleanup() }
         recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false,
                         fmSettings: testFMSettings,
-                        setOverrides: ["scenarioTimeout": "3", "iosInappEngine": "false"], servicesWarnings: [])
+                        setOverrides: ["scenarioTimeout": "3", "iosInappEngine": "false"], servicesWarnings: [], responseMeasurement: nil)
         let meta = try readMeta(recorder)
         XCTAssertEqual(meta.setOverrides, ["scenarioTimeout": "3", "iosInappEngine": "false"])
     }
@@ -843,7 +862,7 @@ final class RunRecordTests: XCTestCase {
         let (recorder, cleanup) = try runRecorder()
         defer { cleanup() }
         recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false,
-                        fmSettings: testFMSettings, setOverrides: [:], servicesWarnings: [])
+                        fmSettings: testFMSettings, setOverrides: [:], servicesWarnings: [], responseMeasurement: nil)
         let meta = try readMeta(recorder)
         XCTAssertNil(meta.setOverrides)
     }
@@ -858,7 +877,7 @@ final class RunRecordTests: XCTestCase {
         let (recorder, cleanup) = try runRecorder()
         defer { cleanup() }
         recorder.finish(total: 1, passed: 0, failed: 1, performanceMode: false,
-                        fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
+                        fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
         let meta = try readMeta(recorder)
         XCTAssertNil(meta.interrupted)
         XCTAssertNil(meta.abortReason)
@@ -870,7 +889,7 @@ final class RunRecordTests: XCTestCase {
         let (recorder, cleanup) = try runRecorder()
         defer { cleanup() }
         recorder.finish(total: 3, passed: 1, failed: 2, performanceMode: false,
-                        fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], interrupted: true)
+                        fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil, interrupted: true)
         let meta = try readMeta(recorder)
         XCTAssertEqual(meta.interrupted, true)
         XCTAssertNotNil(meta.finishedAt, "中断でも finishedAt は必ず書く(F28)")
@@ -882,7 +901,7 @@ final class RunRecordTests: XCTestCase {
         let (recorder, cleanup) = try runRecorder()
         defer { cleanup() }
         recorder.finish(total: 4, passed: 0, failed: 4, performanceMode: false,
-                        fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [],
+                        fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil,
                         abortReason: "no usable devices (every Android device went blank)")
         let meta = try readMeta(recorder)
         XCTAssertEqual(meta.abortReason, "no usable devices (every Android device went blank)")

@@ -231,7 +231,7 @@ final class RunProfileSetOverrideKeysTests: XCTestCase {
         XCTAssertTrue(RunProfileDocument.profileOnlyKeys.isSubset(of: RunProfileDocument.overridableKeys))
         XCTAssertEqual(RunProfileDocument.profileOnlyKeys, [
             "iosInappEngine", "updateWebView", "wipeDataOnBloat", "recoverCpuFallbackToGpu",
-            "app", "locale", "wipeDataThresholdGB", "responseMeasurement",
+            "app", "locale", "wipeDataThresholdGB", "responseMeasurement", "responseRepeat",
         ])
     }
 
@@ -289,6 +289,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         case "defaultTimeout": return doc.defaultTimeout.map(RunProfileSetValue.double)
         case "scenarioTimeout": return doc.scenarioTimeout.map(RunProfileSetValue.int)
         case "recordBitrateKbps": return doc.recordBitrateKbps.map(RunProfileSetValue.int)
+        case "responseRepeat": return doc.responseRepeat.map(RunProfileSetValue.int)
         case "app": return doc.app.map(RunProfileSetValue.string)
         case "locale": return doc.locale.map(RunProfileSetValue.string)
         case "wipeDataThresholdGB": return doc.wipeDataThresholdGB.map(RunProfileSetValue.double)
@@ -310,7 +311,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         "recoverCpuFallbackToGpu": "true", "record": "true", "recordFailuresOnly": "true",
         "recordFullResolution": "true",
         "reportDir": "/tmp/out", "defaultTimeout": "12.5", "scenarioTimeout": "45",
-        "recordBitrateKbps": "2000", "app": "sample-app",
+        "recordBitrateKbps": "2000", "responseRepeat": "7", "app": "sample-app",
         "locale": "en_US", "wipeDataThresholdGB": "4.5",
     ]
 

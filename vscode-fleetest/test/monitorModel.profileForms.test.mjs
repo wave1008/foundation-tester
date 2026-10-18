@@ -59,13 +59,14 @@ const VALID_RUN_PROFILE_SAVE = {
     recordFailuresOnly: false,
     recordBitrateKbps: "",
     scenarioTimeout: "",
+    responseRepeat: "",
     recordFullResolution: false,
   },
 };
 
 test("isMonitorFromWebviewMessage: runProfileSave は型で必須の playProtectBypass / updateWebView / workspace / scenarioTimeout を欠くと false", () => {
   // 欠けると updateRunProfileInObject が undefined を代入して ON/OFF が黙って既定へ戻る・workspace.trim() が投げる
-  for (const key of ["playProtectBypass", "updateWebView", "workspace", "scenarioTimeout"]) {
+  for (const key of ["playProtectBypass", "updateWebView", "workspace", "scenarioTimeout", "responseRepeat"]) {
     const fields = { ...VALID_RUN_PROFILE_SAVE.fields };
     delete fields[key];
     assert.equal(isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_SAVE, fields }), false, key);
@@ -119,6 +120,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields22�
         recordFailuresOnly: true,
         recordBitrateKbps: "",
         scenarioTimeout: "",
+        responseRepeat: "",
         recordFullResolution: true,
       },
     }),
@@ -686,6 +688,7 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
     recordFailuresOnly: true,
     recordBitrateKbps: "2000",
     scenarioTimeout: "",
+    responseRepeat: "",
     recordFullResolution: true,
     workspace: "../sut-ec-mobile-workspace",
   });
@@ -718,6 +721,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/reco
     recordFailuresOnly: false,
     recordBitrateKbps: "",
     scenarioTimeout: "",
+    responseRepeat: "",
     recordFullResolution: false,
     workspace: "",
   });
@@ -770,6 +774,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     recordFailuresOnly: false,
     recordBitrateKbps: "",
     scenarioTimeout: "",
+    responseRepeat: "",
     recordFullResolution: false,
     workspace: "",
   });
@@ -1059,6 +1064,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   recordFailuresOnly: false,
   recordBitrateKbps: "",
   scenarioTimeout: "",
+  responseRepeat: "",
   recordFullResolution: false,
   workspace: "",
 };
@@ -1526,3 +1532,34 @@ test("updateAppProfileInObject: トップレベルがオブジェクトでなけ
   assert.equal(updateAppProfileInObject("string", BASE_APP_PROFILE_FIELDS).ok, false);
 });
 
+
+test("parseRunProfileForForm: responseRepeat は number なら String() 化、string ならそのまま、欠落・他の型は空文字", () => {
+  assert.equal(parseRunProfileForForm({ responseRepeat: 7 }).responseRepeat, "7");
+  assert.equal(parseRunProfileForForm({ responseRepeat: "3" }).responseRepeat, "3");
+  assert.equal(parseRunProfileForForm({}).responseRepeat, "");
+  assert.equal(parseRunProfileForForm({ responseRepeat: true }).responseRepeat, "");
+});
+
+test("updateRunProfileInObject: responseRepeat は計測モードのときだけ書き、2〜50 の整数以外はエラー", () => {
+  const measuring = { ...BASE_RUN_PROFILE_FIELDS, responseMeasurement: true };
+  const added = updateRunProfileInObject({}, { ...measuring, responseRepeat: "7" });
+  assert.equal(added.ok, true);
+  assert.equal(added.object.responseRepeat, 7);
+  assert.equal(typeof added.object.responseRepeat, "number");
+
+  const emptied = updateRunProfileInObject({ responseRepeat: 3 }, { ...measuring, responseRepeat: "" });
+  assert.equal("responseRepeat" in emptied.object, false);
+
+  // 計測モードを切ったら残さない(Swift は responseMeasurement 無しの responseRepeat を断る)
+  const off = updateRunProfileInObject({ responseRepeat: 3 }, { ...BASE_RUN_PROFILE_FIELDS, responseRepeat: "4" });
+  assert.equal("responseRepeat" in off.object, false);
+
+  for (const valid of ["2", "50"]) {
+    assert.equal(updateRunProfileInObject({}, { ...measuring, responseRepeat: valid }).ok, true, valid);
+  }
+  for (const invalid of ["1", "0", "51", "-2", "2.5", "abc"]) {
+    const result = updateRunProfileInObject({}, { ...measuring, responseRepeat: invalid });
+    assert.equal(result.ok, false, `responseRepeat=${invalid} は不正値としてエラーになるべき`);
+    assert.match(result.error, /responseRepeat/);
+  }
+});

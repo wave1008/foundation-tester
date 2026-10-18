@@ -451,7 +451,7 @@ XCTest の `measure(metrics:)`(**基準値をデバイスごとに持ち**、前
 
 - **`responseMeasurement: true`**(既定 false)。`--set responseMeasurement=true` で上書きできる(`run` / `api run` の両方。専用フラグは
   足さない = `RunCommandFlagParityTests` は変えずに済む)
-- **`responseRepeat: N`**(既定 5。各シナリオを続けて N 回回し、ステップごとに中央値・p90 を出す)。**1回目は次の対象を覚える回**で
+- **`responseRepeat: N`**(**段階 2a で実装済み**: 2〜50 の整数・`responseMeasurement` 無しの指定はエラー・`RunMetaRecord.responseMeasurement.repeatCount` に記録。既定 5。各シナリオを続けて N 回回し、ステップごとに中央値・p90 を出す)。**1回目は次の対象を覚える回**で
   t2 を出さない(§5)ので、t2 の標本の数は「2回目以降の各回で、そのステップ(§5 の集計の単位)が有効に測れた回数の合計」(ループ等で
   同じ単位が1回の実行に何度も出れば N − 1 を超える。食い違い・観測の遅れの回は欠測になる)。N は 2 以上でなければエラー
 - 実行時設定は `ScenarioExecutionSettings` に欄を足して運ぶ(既定は init の1箇所・プロファイルからの写像は変換 init だけ・
@@ -531,6 +531,16 @@ XCTest の `measure(metrics:)`(**基準値をデバイスごとに持ち**、前
 
 ### 8.4 比較と報告
 
+- **実装済み(CLI のみ)**: `fleetest results response [--project] [--since] [--json]`(`FTCore.ResponseMeasurementQuery`)。
+  `run.json` の `responseMeasurement` がある run だけを対象に、全文のシナリオ記録の `timeline[].response.firstFrameMs` を集計する。
+  **ステップの鍵 = (scene, section, command, description, 出現順)**(出現順 = 同じ記録内で response を持つ同一4つ組の1始まりの通し番号。
+  実行時の `index` は制御フローでずれるので使わない。表示は `s2 action tap Tap login #1`)。同じ run の繰り返しの記録(`<id>`, `<id>~2`…)は標本を合算する。
+  列: scenario / step / device(serial があれば serial、無ければ deviceName)/ host / n(firstFrameMs のある標本数)/ median / p90(最近接順位法)/
+  busy(`busyBeforeAction` の件数)/ prev median / delta(ms と %)。JSON には `missingCounts`(`firstFrameMissing` の生の値ごとの件数)も出る。
+  各グループの最新の run の行で、前回 = 同じ (host, device) でそのグループを持つ直前の run。`occurrences` の集約・`stepKey` の位置への解決は未実装(下の案は最終形)
+
+(以下は最終形の案)
+
 - **`fleetest results response`** を足す: (シナリオ, ステップ = §5 の集計の単位, デバイス, 機械)ごとに直近の計測 run の中央値・p90・
   `occurrences`(標本の回数。ループや保存した呼び出し可能な値で同じ経路が繰り返されるとまとめて数える)と、
   **同じデバイス・同じ機械での前回の計測 run との差**を並べる(XCTest の基準値と同じ単位)。デバイスか機械が違う run とは比べない
@@ -562,6 +572,14 @@ XCTest の `measure(metrics:)`(**基準値をデバイスごとに持ち**、前
      `busyBeforeAction`(試作で見た「操作の後に描画を続ける」現象。上限 5 秒の根拠にした約 4.2 秒より長く続いた = 上限の見直しは段階2で)。
      実装中に踏んだ罠: ブリッジのシェル実行口(`UiAutomation.executeShellCommand`)はシェルを通さないので、層の名前を引用符で包むと
      見つからない(全部 `noFrame` になった)。空白を含む層(入れ物・leash 等)は読まない
-2. Android: ②(t2。1回目で次の対象を覚える仕組みを含む)と `fleetest results response`
+2a. **実装済み**: `responseRepeat`(各シナリオを続けて N 回。作業の URL に `repeat=N` を足して区別し、結果ファイルは `<id>`・`<id>~2`…)/
+   run.json の `responseMeasurement`(端末の serial・機種・OS・回数)/ `fleetest results response`(CLI だけ。ステップの鍵は
+   (シーン・区分・コマンド・説明・同じ組の何回目か)。中央値・p90・busy の数・同じ機械と端末の直前の計測 run との差)。
+   **Pixel 4a で確認**: 同じシナリオを3回 → 2回で流し、5種のタップの中央値 50〜70ms と前回比が並ぶことを確認(3回の方はモニターを
+   止めずに測った = 差には意味を読まない)。**`#tab_controls`(セレクタ画面の後)は計 5 回とも `busyBeforeAction`** = その画面の後は
+   毎回 5 秒を超えて描画が続く。上限(`responseQuietTimeoutMs`)は、上げて何秒で止まるかを測ってから決める(推測で変えない)
+   - 運用の注意: モニターの停止(`.fleetest/monitor-hold.json`)は**コマンドを撃ったディレクトリのクローン**に書かれる。拡張のモニターは
+     本線のクローンを見るので、別の作業ツリーから起動した計測の run の停止はモニターに届かない
+2b. Android: ②(t2。1回目で次の対象を覚える仕組みを含む)
 3. iOS: ランナーの ①②③ と xctrace の取り込み
 4. 報告(シナリオの md・拡張の表示)

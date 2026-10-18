@@ -273,6 +273,8 @@ public final class RunRecorder: @unchecked Sendable {
                        // サービス(compose.yaml)の起動時の警告。**既定値を置かない**(run / api run の片方の渡し忘れをコンパイルで止める。
                        // サービスの無い経路は `[]` を明示する)
                        servicesWarnings: [String],
+                       // 計測モードの run のときだけ識別を渡し、通常の run は nil。**既定値を置かない**(同じ理由)
+                       responseMeasurement: ResponseMeasurementRunInfo?,
                        // **既定値を持つ**(上と違い「渡し忘れ」が安全側に倒れる —— 大半の
                        // run は中断も中断以外の異常終了もしないので、省略時の false/nil がそのまま
                        // 正しい事実になる)
@@ -333,7 +335,8 @@ public final class RunRecorder: @unchecked Sendable {
             abortReason: abortReason,
             slowWorkers: slowWorkerSummaries.isEmpty ? nil : slowWorkerSummaries,
             // 無ければ書かない(欄が無い = 警告なし、または この版より前の記録)
-            servicesWarnings: servicesWarnings.isEmpty ? nil : servicesWarnings)
+            servicesWarnings: servicesWarnings.isEmpty ? nil : servicesWarnings,
+            responseMeasurement: responseMeasurement)
         RunResultsStore.writeMeta(meta, runDir: runDir)
         return slowFindings
     }

@@ -59,7 +59,7 @@ final class ScenarioHostIdleWatchTests: XCTestCase {
             reportDir: root.appendingPathComponent("reports").path,
             recording: ScenarioRecording(recorder: recorder)) { sink.append($0) }
         recorder.finish(total: 1, passed: passed ? 1 : 0, failed: passed ? 0 : 1,
-                        performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [])
+                        performanceMode: false, fmSettings: testFMSettings, setOverrides: nil, servicesWarnings: [], responseMeasurement: nil)
         return (passed, RunResultsStore.records(runDir: recorder.runDir).first,
                 sink.events.compactMap(\.message))
     }

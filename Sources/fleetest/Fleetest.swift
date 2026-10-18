@@ -898,6 +898,8 @@ struct RunScenarios: AsyncParsableCommand {
                                     ocrTextVisibilityCheck: noProfileSettings.ocrTextVisibilityCheck),
                                 setOverrides: profileOverrides.mapValues(\.token),
                                 servicesWarnings: [],
+                                // resolve 前の失敗で計測モードかどうかを断定できない
+                                responseMeasurement: nil,
                                 abortReason: error.localizedDescription)
                 throw error
             }
@@ -908,7 +910,8 @@ struct RunScenarios: AsyncParsableCommand {
             let ranCount = runSummary.total
             // --broadcast の total は (本数 × 台数) なので items.count との差は対象外の数にならない
             // (対象外の件数は ProfileRunner が「Skipped N scenario(s) …」で出している)
-            let notApplicable = broadcast ? 0 : items.count - ranCount
+            // 計測モードは各シナリオを繰り返すので ranCount が items.count を超えうる(負の件数にしない)
+            let notApplicable = broadcast ? 0 : max(0, items.count - ranCount)
             PhaseLog.mark("profile-run-done")
             let slowWorkers = recorder.finish(total: ranCount, passed: ranCount - failedCount - runSummary.skipped, failed: failedCount,
                             degradedWorkers: runSummary.degradedWorkers,
@@ -922,6 +925,7 @@ struct RunScenarios: AsyncParsableCommand {
                             fmSettings: fmSettings,
                             setOverrides: profileOverrides.mapValues(\.token),
                             servicesWarnings: runSummary.servicesWarnings,
+                            responseMeasurement: runSummary.responseMeasurement,
                             interrupted: runSummary.interrupted)
             PhaseLog.mark("recorder-finish")
             try writeJUnitIfRequested(project: testProject, recorder: recorder)
@@ -1017,6 +1021,7 @@ struct RunScenarios: AsyncParsableCommand {
                             performanceMode: false, fmSettings: noProfileFMSettings,
                             setOverrides: profileOverrides.mapValues(\.token),
                             servicesWarnings: [],
+                            responseMeasurement: nil,
                             abortReason: error.localizedDescription)
             throw error
         }
@@ -1029,6 +1034,7 @@ struct RunScenarios: AsyncParsableCommand {
                         fmSettings: noProfileFMSettings,
                         setOverrides: profileOverrides.mapValues(\.token),
                         servicesWarnings: [],
+                        responseMeasurement: nil,
                         interrupted: interrupted)
         try writeJUnitIfRequested(project: testProject, recorder: recorder)
         RunCompletionSweep.spawn(activeRunID: recorder.runID) { ConsoleOut.out($0) }

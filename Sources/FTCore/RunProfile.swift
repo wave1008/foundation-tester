@@ -442,6 +442,11 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// 同期相手: vscode-fleetest/schemas/run-profile.schema.json と
     /// src/monitorProfileForms.ts の RunProfileFormFields
     public var responseMeasurement: Bool?
+    /// 計測モードで各シナリオを続けて回す回数(既定 `ResponseMeasurementPolicy.defaultRepeat`。
+    /// 範囲は 2...50 = `ResponseMeasurementPolicy.validate`)。`responseMeasurement` が true のときだけ指定できる。
+    /// 同期相手: vscode-fleetest/schemas/run-profile.schema.json と
+    /// src/monitorProfileForms.ts の RunProfileFormFields
+    public var responseRepeat: Int?
     /// run 開始時に各デバイスへ home() を1回撃つか(**既定 true**)。
     /// 一斉に launch した直後の端末は「描画要求が無いだけ」で画面が黒いまま止まることがあり、
     /// そのままだと凍結と見分けが付かない(実測: 黒かった5台のうち4台は入力で戻った)。
@@ -482,7 +487,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 recoverCpuFallbackToGpu: Bool? = nil,
                 locale: String? = nil, iosPreActionPing: Bool? = nil,
                 containerInference: Bool? = nil,
-                enableAnimations: Bool? = nil, responseMeasurement: Bool? = nil, homeOnStart: Bool? = nil,
+                enableAnimations: Bool? = nil, responseMeasurement: Bool? = nil, responseRepeat: Int? = nil,
+                homeOnStart: Bool? = nil,
                 playProtectBypass: Bool? = nil, record: Bool? = nil,
                 recordFailuresOnly: Bool? = nil, recordBitrateKbps: Int? = nil,
                 recordFullResolution: Bool? = nil, remoteControl: RemoteControlSection? = nil) {
@@ -506,6 +512,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.containerInference = containerInference
         self.enableAnimations = enableAnimations
         self.responseMeasurement = responseMeasurement
+        self.responseRepeat = responseRepeat
         self.homeOnStart = homeOnStart
         self.playProtectBypass = playProtectBypass
         self.record = record
@@ -522,7 +529,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "reportDir", "defaultTimeout", "scenarioTimeout",
         "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
         "recoverCpuFallbackToGpu", "locale",
-        "iosPreActionPing", "enableAnimations", "responseMeasurement", "homeOnStart",
+        "iosPreActionPing", "enableAnimations", "responseMeasurement", "responseRepeat", "homeOnStart",
         "playProtectBypass",
         "containerInference",
         "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution", "remoteControl",
@@ -556,7 +563,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "recoverCpuFallbackToGpu": .bool, "record": .bool, "recordFailuresOnly": .bool,
         "recordFullResolution": .bool,
         "reportDir": .string, "defaultTimeout": .double, "scenarioTimeout": .int,
-        "recordBitrateKbps": .int, "app": .string, "locale": .string,
+        "recordBitrateKbps": .int, "responseRepeat": .int, "app": .string, "locale": .string,
         "wipeDataThresholdGB": .double,
     ]
 
@@ -564,7 +571,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     fileprivate static let arrayOrObjectKeys: Set<String> = ["devices", "remoteControl"]
 
     /// `fleetest run --set <key>=<value>` / `fleetest api run --set` が受け付けるキー全部
-    /// (Bool 19 + スカラー8。キー名はプロファイル JSON のキーそのもの ——
+    /// (Bool 19 + スカラー9。キー名はプロファイル JSON のキーそのもの ——
     /// kebab 変換をしない)。**`RunProfileDocument` の Bool/String/Int/Double 欄の全部から
     /// `devices`・`remoteControl`(配列・オブジェクトで `key=value` を持たない)を除いたもの**。
     /// この等号は `RunProfileSetOverrideKeysTests` が Mirror で固定する
@@ -602,6 +609,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
             case ("defaultTimeout", .double(let v)): copy.defaultTimeout = v
             case ("scenarioTimeout", .int(let v)): copy.scenarioTimeout = v
             case ("recordBitrateKbps", .int(let v)): copy.recordBitrateKbps = v
+            case ("responseRepeat", .int(let v)): copy.responseRepeat = v
             case ("app", .string(let v)): copy.app = v
             case ("locale", .string(let v)): copy.locale = v
             case ("wipeDataThresholdGB", .double(let v)): copy.wipeDataThresholdGB = v
@@ -740,7 +748,7 @@ extension RunProfileDocument {
         "iosInappEngine", "updateWebView", "wipeDataOnBloat", "recoverCpuFallbackToGpu",
         "app", "locale", "wipeDataThresholdGB",
         // 実機 1 台の検査が devices 一覧に依存する(ProfileResolver.resolve)
-        "responseMeasurement",
+        "responseMeasurement", "responseRepeat",
     ]
 
     /// `record:true` は devices 一覧に依存しない(`profileOnlyKeys` に無い)が、録画の
@@ -791,6 +799,8 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
     /// RunProfileDocument.responseMeasurement(既定 false)。true なら下の欄は強制値
     /// (enableAnimations=true・fm 無効・ocrTextVisibilityCheck=false・record=false)
     public let responseMeasurement: Bool
+    /// RunProfileDocument.responseRepeat(既定 `ResponseMeasurementPolicy.defaultRepeat`。計測モードのときだけ使う)
+    public let responseRepeat: Int
     public let playProtectBypass: Bool
     /// run 開始時に各デバイスへ home() を撃つか(RunProfileDocument.homeOnStart。**既定 true**)
     public let homeOnStart: Bool
@@ -847,6 +857,7 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
             containerInference: doc.containerInference ?? true,
             enableAnimations: measuring || (doc.enableAnimations ?? false),
             responseMeasurement: measuring,
+            responseRepeat: doc.responseRepeat ?? ResponseMeasurementPolicy.defaultRepeat,
             playProtectBypass: doc.playProtectBypass ?? true,
             homeOnStart: doc.homeOnStart ?? true,
             record: !measuring && (doc.record ?? true),
@@ -998,6 +1009,8 @@ public struct ResolvedProfile: Sendable {
     public let enableAnimations: Bool
     /// レスポンス計測モード(RunProfileDocument.responseMeasurement。既定 false)
     public let responseMeasurement: Bool
+    /// 計測モードで各シナリオを続けて回す回数(RunProfileDocument.responseRepeat)
+    public let responseRepeat: Int
     /// run 開始時に各デバイスへ home() を撃つか(RunProfileDocument.homeOnStart。**既定 true**)
     public let homeOnStart: Bool
     /// Play Protect の照会をバイパスするか(RunProfileDocument.playProtectBypass。**既定 true**)
@@ -1148,6 +1161,10 @@ public enum ProfileError: Error, LocalizedError {
     case responseMeasurementUnsupportedPlatform(run: String, device: String, platform: String)
     /// responseMeasurement が強制する値と、明示された値が食い違う
     case responseMeasurementConflict(run: String, key: String, required: String)
+    /// responseRepeat が responseMeasurement 無しで指定された
+    case responseRepeatWithoutMeasurement(run: String)
+    /// responseRepeat が範囲外
+    case responseRepeatOutOfRange(run: String, value: Int, min: Int, max: Int)
 
     public var errorDescription: String? {
         switch self {
@@ -1205,6 +1222,14 @@ public enum ProfileError: Error, LocalizedError {
         case .responseMeasurementConflict(let run, let key, let required):
             return "responseMeasurement in run profile \(run) requires \(key) to be \(required),"
                 + " but it is set the other way (remove \(key), or turn responseMeasurement off)"
+        case .responseRepeatWithoutMeasurement(let run):
+            return "responseRepeat in run profile \(run) needs responseMeasurement"
+                + " (set responseMeasurement to true, or remove responseRepeat)"
+        case .responseRepeatOutOfRange(let run, let value, let min, let max):
+            let why = value < min
+                ? "must be at least \(min) (the first iteration only learns the next step's target and records no reaction time)"
+                : "must be at most \(max) (a larger value is more likely a typo; it would keep one run busy for a very long time)"
+            return "responseRepeat in run profile \(run) \(why), but it is \(value)"
         }
     }
 
@@ -1417,6 +1442,8 @@ public enum ProfileResolver {
         if runDoc.responseMeasurement == true {
             let enabled = enabledEntries.map { ResolvedDevice(platform: $0.platform, spec: $0.spec) }
             try ResponseMeasurementPolicy.validate(runDoc, devices: enabled, run: runName)
+        } else {
+            try ResponseMeasurementPolicy.validateRepeatScope(runDoc, run: runName)
         }
 
         // 4. iOS 実効エンジン: 実行プロファイルの iosInappEngine(既定 true)で決める。
@@ -1597,6 +1624,7 @@ public enum ProfileResolver {
             preferCheckStateClassifier: settings.preferCheckStateClassifier,
             enableAnimations: settings.enableAnimations,
             responseMeasurement: settings.responseMeasurement,
+            responseRepeat: settings.responseRepeat,
             homeOnStart: settings.homeOnStart,
             playProtectBypass: settings.playProtectBypass,
             record: settings.record,

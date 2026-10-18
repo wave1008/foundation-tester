@@ -77,6 +77,95 @@ final class ResponseMeasurementTests: XCTestCase {
         XCTAssertTrue(ResponseMeasurementPolicy.combinationRejection(flag: "--broadcast").hasPrefix("--broadcast cannot be combined"))
     }
 
+    // MARK: responseRepeat
+
+    func testRepeatDefaultsToFiveAndAcceptsBounds() {
+        XCTAssertEqual(DeviceIndependentRunSettings.resolve(RunProfileDocument(responseMeasurement: true)).responseRepeat, 5)
+        XCTAssertEqual(DeviceIndependentRunSettings.resolve(
+            RunProfileDocument(responseMeasurement: true, responseRepeat: 12)).responseRepeat, 12)
+        let dev = [device("android", physical: true)]
+        XCTAssertNil(message(RunProfileDocument(responseMeasurement: true, responseRepeat: 2), dev))
+        XCTAssertNil(message(RunProfileDocument(responseMeasurement: true, responseRepeat: 50), dev))
+    }
+
+    func testRepeatOutOfRangeIsRejectedWithBothBounds() {
+        let dev = [device("android", physical: true)]
+        for value in [1, 0, -3] {
+            XCTAssertTrue(message(RunProfileDocument(responseMeasurement: true, responseRepeat: value), dev)?
+                .contains("responseRepeat in run profile r must be at least 2") == true, "value \(value)")
+        }
+        XCTAssertTrue(message(RunProfileDocument(responseMeasurement: true, responseRepeat: 51), dev)?
+            .contains("must be at most 50") == true)
+    }
+
+    func testRepeatWithoutMeasurementIsRejected() {
+        for measurement in [nil, false] as [Bool?] {
+            do {
+                try ResponseMeasurementPolicy.validateRepeatScope(
+                    RunProfileDocument(responseMeasurement: measurement, responseRepeat: 3), run: "r")
+                XCTFail("responseRepeat without responseMeasurement must be rejected")
+            } catch {
+                XCTAssertTrue(error.localizedDescription.contains("responseRepeat in run profile r needs responseMeasurement"))
+            }
+        }
+        XCTAssertNoThrow(try ResponseMeasurementPolicy.validateRepeatScope(RunProfileDocument(), run: "r"))
+        XCTAssertNoThrow(try ResponseMeasurementPolicy.validateRepeatScope(
+            RunProfileDocument(responseMeasurement: true, responseRepeat: 3), run: "r"))
+    }
+
+    func testRepeatSetOverrideParsesAsIntAndIsProfileOnly() throws {
+        let parsed = try RunProfileSetOverride.parse(["responseMeasurement=true", "responseRepeat=7"])
+        XCTAssertEqual(RunProfileDocument().applyingOverrides(parsed).responseRepeat, 7)
+        XCTAssertTrue(RunProfileDocument.profileOnlyKeys.contains("responseRepeat"))
+        XCTAssertThrowsError(try RunProfileSetOverride.parse(["responseRepeat=x"]))
+    }
+
+    // MARK: 繰り返しの展開
+
+    private func runItem(_ id: String) -> ScenarioRunItem { ScenarioRunItem(info: ScenarioInfo(id: id, title: id)) }
+
+    func testExpandRepeatsEachItemBackToBackWithUniqueURLs() {
+        let out = ResponseMeasurementRepeat.expand([runItem("A.S1"), runItem("日本語.S2")], count: 3)
+        XCTAssertEqual(out.map(\.info.id), ["A.S1", "A.S1", "A.S1", "日本語.S2", "日本語.S2", "日本語.S2"])
+        XCTAssertEqual(Set(out.map(\.url)).count, 6, "URL は一意キー: 重複すると Dictionary(uniqueKeysWithValues:) が落ちる")
+        XCTAssertEqual(out.map(\.repeatIndex), [1, 2, 3, 1, 2, 3])
+        for item in out { XCTAssertEqual(item.url.lastPathComponent, item.info.id) }
+        XCTAssertTrue(out[1].url.absoluteString.hasSuffix("?repeat=2"))
+    }
+
+    func testExpandKeepsLaneAndCountOneIsIdentity() {
+        let laned = ScenarioRunItem(info: ScenarioInfo(id: "A.S1", title: "t"), lane: "dev(1)")
+        let out = ResponseMeasurementRepeat.expand([laned], count: 2)
+        XCTAssertTrue(out[1].url.absoluteString.contains("lane=dev"))
+        XCTAssertTrue(out[1].url.absoluteString.hasSuffix("&repeat=2"))
+        XCTAssertEqual(ResponseMeasurementRepeat.expand([laned], count: 1).map(\.url), [laned.url])
+    }
+
+    // MARK: run.json の識別
+
+    private func resolvedProfile(measuring: Bool, devices: [ResolvedDevice]) -> ResolvedProfile {
+        ResolvedProfile(
+            project: TestProject(name: "dummy", rootURL: URL(fileURLWithPath: "/tmp/dummy")),
+            runName: "r", appName: "app", apps: [:], devices: devices, fm: FMConfig(), heal: false,
+            reportDir: URL(fileURLWithPath: "/tmp/dummy/reports"),
+            defaultTimeout: nil, scenarioTimeout: nil, wipeDataOnBloat: true, updateWebView: false,
+            wipeDataThresholdGB: 8, recoverCpuFallbackToGpu: false, locale: "ja_JP",
+            iosPreActionPing: true, containerInference: true, ocrTextVisibilityCheck: true,
+            preferCheckStateClassifier: true,
+            enableAnimations: measuring, responseMeasurement: measuring, responseRepeat: 4,
+            homeOnStart: true, playProtectBypass: true, record: false, recordFailuresOnly: false,
+            recordBitrateKbps: 1500, recordFullResolution: false, warnings: [])
+    }
+
+    func testRunInfoCarriesDeviceIdentityOnlyWhenMeasuring() {
+        let dev = ResolvedDevice(platform: "android", spec: DeviceSpec(
+            name: "Pixel-4a", kind: .physical, osVersion: "13", serial: "SER1", model: "Pixel 4a"))
+        XCTAssertEqual(ResponseMeasurementPolicy.runInfo(resolved: resolvedProfile(measuring: true, devices: [dev])),
+                       ResponseMeasurementRunInfo(deviceName: "Pixel-4a", serial: "SER1", model: "Pixel 4a",
+                                                  osVersion: "13", repeatCount: 4))
+        XCTAssertNil(ResponseMeasurementPolicy.runInfo(resolved: resolvedProfile(measuring: false, devices: [dev])))
+    }
+
     // MARK: モニター hold
 
     func testShouldAcquireOnlyWhenNoActiveHold() {

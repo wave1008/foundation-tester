@@ -561,6 +561,9 @@ enum ProfileRunner {
         // 長いシナリオを先に流すと末尾の遊休が減る(実績は platform 別。--no-lpt で素の ID 順)
         items = LPTOrdering.apply(items, project: project, defaultPlatform: defaultPlatform,
                                   enabled: lpt, historyRuns: lptHistoryRuns, log: { ConsoleOut.out($0) })
+        if resolved.responseMeasurement {
+            items = ResponseMeasurementRepeat.expand(items, count: resolved.responseRepeat)
+        }
         // ApiRunCommand.run と同じ関数(RunStartLine)で組み立てる(CLAUDE.md「2 実装の差」対策)
         ConsoleOut.out(RunStartLine.text(
             androidWorkers: workers.count, eagerIOSWorkers: eagerIOSWorkers.count, hasLateIOS: hasLateIOS)
@@ -700,7 +703,8 @@ enum ProfileRunner {
                                  performanceMode: performanceMode,
                                  fmSettings: fmSettings,
                                  interrupted: finalSummary.interrupted,
-                                 servicesWarnings: servicesSession?.warnings ?? [])
+                                 servicesWarnings: servicesSession?.warnings ?? [],
+                                 responseMeasurement: ResponseMeasurementPolicy.runInfo(resolved: resolved))
         return (resultSummary, fmSettings)
     }
 

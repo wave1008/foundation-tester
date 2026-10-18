@@ -3,6 +3,14 @@
 // 強制値(アニメーション ON・FM/OCR/録画 OFF)は DeviceIndependentRunSettings.resolve が持つ。
 public enum ResponseMeasurementPolicy {
 
+    /// 既定の繰り返し回数。根拠: 設計の中央値・p90 は複数の標本が要り、1回目は次の対象を覚えるだけで t2 を出さない
+    /// ので、実効の標本は N − 1。5 なら 4 標本(docs/response-measurement.md §8.1)
+    public static let defaultRepeat = 5
+    /// 下限 2: 1回目は学習専用で t2 を出さない(§5)ので、1 では何も測れない
+    public static let minRepeat = 2
+    /// 上限 50: 1回の計測 run の所要を有限に収める。これを超える値は意図より打ち間違いの可能性が高い
+    public static let maxRepeat = 50
+
     /// 計測は 1 台ずつ順に回すので、全台で回す・分ける・複数機械へ並べる指定とは併用できない
     public static func combinationRejection(flag: String) -> String {
         "\(flag) cannot be combined with responseMeasurement (it measures one device at a time);"
@@ -14,8 +22,29 @@ public enum ResponseMeasurementPolicy {
         overrides["responseMeasurement"] == .bool(true)
     }
 
+    /// run.json に書く計測 run の識別。計測モードでない・デバイスが 1 台でない(検査済みなら起きない)ときは nil
+    public static func runInfo(resolved: ResolvedProfile) -> ResponseMeasurementRunInfo? {
+        guard resolved.responseMeasurement, resolved.devices.count == 1, let device = resolved.devices.first else {
+            return nil
+        }
+        return ResponseMeasurementRunInfo(
+            deviceName: device.name, serial: device.spec.serial,
+            model: device.spec.model, osVersion: device.spec.osVersion,
+            repeatCount: resolved.responseRepeat)
+    }
+
+    /// 計測モードでないのに responseRepeat があれば断る(黙って効かない形を作らない)
+    public static func validateRepeatScope(_ doc: RunProfileDocument, run: String) throws {
+        if doc.responseRepeat != nil, doc.responseMeasurement != true {
+            throw ProfileError.responseRepeatWithoutMeasurement(run: run)
+        }
+    }
+
     /// 有効なときだけ呼ぶ。`devices` は有効な(enabled)デバイスだけ
     public static func validate(_ doc: RunProfileDocument, devices: [ResolvedDevice], run: String) throws {
+        if let value = doc.responseRepeat, !(minRepeat...maxRepeat).contains(value) {
+            throw ProfileError.responseRepeatOutOfRange(run: run, value: value, min: minRepeat, max: maxRepeat)
+        }
         guard devices.count == 1, let device = devices.first else {
             throw ProfileError.responseMeasurementDeviceCount(run: run, count: devices.count)
         }

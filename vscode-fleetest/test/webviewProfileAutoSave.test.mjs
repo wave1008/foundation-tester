@@ -105,6 +105,7 @@ const RUN_FIELDS = {
   recordFailuresOnly: false,
   recordBitrateKbps: "",
   scenarioTimeout: "",
+  responseRepeat: "",
   recordFullResolution: false,
   workspace: "",
 };
@@ -266,6 +267,19 @@ test("scenarioTimeout の欄は確定で保存し、外部編集の値を表示�
   send({ type: "runProfileSaveResult", profile: "ios", ok: true, error: null });
   send(runProfileData({ ...RUN_FIELDS, scenarioTimeout: "1800" }));
   assert.equal(input.value, "1800");
+});
+
+test("responseRepeat の欄は確定で保存し、外部編集の値を表示する", (t) => {
+  const { window, document, posted, send } = loadedRunProfile(t);
+  const input = document.getElementById("run-profile-response-repeat");
+  typeAndCommit(window, input, " 8 ");
+  const sent = saves(posted);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].fields.responseRepeat, "8", "前後の空白は落として送る");
+
+  send({ type: "runProfileSaveResult", profile: "ios", ok: true, error: null });
+  send(runProfileData({ ...RUN_FIELDS, responseRepeat: "12" }));
+  assert.equal(input.value, "12");
 });
 
 test("保存の反響(同じ値の runProfileData)ではフォームを作り直さない", (t) => {

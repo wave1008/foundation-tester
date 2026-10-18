@@ -746,6 +746,11 @@ function renderRunProfileSection(): string {
               <input type="checkbox" id="run-profile-response-measurement">
               <label for="run-profile-response-measurement">${t("panels.runProfile.responseMeasurementLabel")}</label>
             </div>
+            <div class="modal-row">
+              <label for="run-profile-response-repeat" title="${t("panels.runProfile.responseRepeatTitle")}">${t("panels.runProfile.responseRepeatLabel")}</label>
+              <!-- 透かしは未指定時の既定(Sources/FTCore/ResponseMeasurementPolicy.swift の defaultRepeat。runProfilePlaceholderSync.test.mjs) -->
+              <input type="text" id="run-profile-response-repeat" class="run-profile-number-input" placeholder="5" title="${t("panels.runProfile.responseRepeatTitle")}">
+            </div>
             <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-container-inference">
               <label for="run-profile-container-inference">${t("panels.runProfile.containerInferenceLabel")}</label>

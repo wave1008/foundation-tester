@@ -172,6 +172,13 @@
       "description": "レスポンス計測モード(実験的。既定 false)。Android 実機 1 台だけが対象で、有効なデバイスが 1 台・kind=physical・Android でなければエラー。アニメーションを残し(enableAnimations を true に固定)、fmTextVisibilityCheck・ocrTextVisibilityCheck・screenLooksLike・record・ホスト負荷による減速を止める(これらを true に明示するとエラー)。run の間はモニターを止める。--broadcast・--fleet・--split とは併用できない。",
       "default": false
     },
+    "responseRepeat": {
+      "type": "integer",
+      "description": "レスポンス計測モードで各シナリオを続けて回す回数(既定 5)。2 以上 50 以下。responseMeasurement が true のときだけ指定できる(無しで指定するとエラー)。1 回目は次の操作の対象を覚える回で、反応時間を測らない。",
+      "minimum": 2,
+      "maximum": 50,
+      "default": 5
+    },
     "record": {
       "type": "boolean",
       "description": "各デバイスの画面録画を有効化する(既定 true)。録画は results/runs/<YYYY-MM>/<runID>/recordings/ 配下に保存され、モニターパネルの「録画」タブから再生できる。",

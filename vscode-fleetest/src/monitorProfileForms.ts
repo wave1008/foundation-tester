@@ -172,6 +172,10 @@ export interface RunProfileFormFields {
   readonly enableAnimations: boolean;
   /** 既定 false(実験的)。Android 実機 1 台のレスポンス計測モード(Swift: RunProfileDocument.responseMeasurement) */
   readonly responseMeasurement: boolean;
+  /** 計測モードで各シナリオを続けて回す回数(空文字 = 未設定 = Swift 側の既定 5)。2〜50 の整数だけ通す =
+   * Sources/FTCore/ResponseMeasurementPolicy.swift の minRepeat/maxRepeat と同じ条件。
+   * responseMeasurement が false のときは書かない(Swift は responseMeasurement 無しの responseRepeat を断る) */
+  readonly responseRepeat: string;
   readonly reportDir: string;
   /** シナリオ1本の上限秒(空文字 = 未設定 = Sources/FTCore/ScenarioHost.swift の defaultScenarioTimeout)。
    * 正の整数だけ通す = Swift 側の検査(RunProfile.swift)と同じ条件 */
@@ -270,6 +274,10 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const scenarioTimeout =
     typeof rawScenarioTimeout === "number" ? String(rawScenarioTimeout)
       : typeof rawScenarioTimeout === "string" ? rawScenarioTimeout : "";
+  const rawResponseRepeat = source.responseRepeat;
+  const responseRepeat =
+    typeof rawResponseRepeat === "number" ? String(rawResponseRepeat)
+      : typeof rawResponseRepeat === "string" ? rawResponseRepeat : "";
   const rawBitrate = source.recordBitrateKbps;
   const recordBitrateKbps =
     typeof rawBitrate === "number" ? String(rawBitrate) : typeof rawBitrate === "string" ? rawBitrate : "";
@@ -292,6 +300,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     playProtectBypass,
     enableAnimations,
     responseMeasurement,
+    responseRepeat,
     reportDir,
     scenarioTimeout,
     updateWebView,
@@ -387,6 +396,17 @@ export function updateRunProfileInObject(
     return { ok: false, error: t("monitor.runProfile.scenarioTimeoutInvalid") };
   } else {
     result.scenarioTimeout = Number(scenarioTimeoutTrimmed);
+  }
+
+  // 計測モードを切ったときに responseRepeat だけ残すと Swift が起動を断るので、キーごと落とす
+  const responseRepeatTrimmed = fields.responseRepeat.trim();
+  if (responseRepeatTrimmed.length === 0 || !fields.responseMeasurement) {
+    delete result.responseRepeat;
+  } else if (!/^\d+$/.test(responseRepeatTrimmed) || Number(responseRepeatTrimmed) < 2
+             || Number(responseRepeatTrimmed) > 50) {
+    return { ok: false, error: t("monitor.runProfile.responseRepeatInvalid") };
+  } else {
+    result.responseRepeat = Number(responseRepeatTrimmed);
   }
 
   const bitrateTrimmed = fields.recordBitrateKbps.trim();

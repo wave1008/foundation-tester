@@ -820,7 +820,9 @@ struct ApiRunCommand: AsyncParsableCommand {
             selected = applicability.runnable
         }
 
-        emitLine(ApiRunStartedEvent(total: selected.count))
+        // 計測モードは各シナリオを responseRepeat 回回すので、total は展開後の本数(完了イベントの数と揃える)
+        let measuredCopies = resolvedProfile.flatMap { $0.responseMeasurement ? $0.responseRepeat : nil } ?? 1
+        emitLine(ApiRunStartedEvent(total: selected.count * measuredCopies))
         // 供給フェーズは runStarted より前に走り始めるので、貯めた進行行をここで流す
         Self.supplyRelay.start { Self.writeLineLocked($0) }
 
@@ -912,6 +914,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                              performanceMode: performanceMode, fmSettings: fmSettings,
                              setOverrides: profileOverrides.mapValues(\.token),
                              servicesWarnings: servicesSession?.warnings ?? [],
+                             responseMeasurement: resolvedProfile.flatMap(ResponseMeasurementPolicy.runInfo(resolved:)),
                              abortReason: error.localizedDescription)
             // `--failed` が拾えるよう、始まらなかった分を直近失敗として残す(`run` の供給段は
             // ProfileRunner.run の defer が同じ記録を書く。**対象外は selected に既に居ない**)
@@ -934,7 +937,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // 赤の run はサービスのログの末尾も記録へ(ProfileRunner.run と同じ。片付けの前に読む)
         if outcome.failed > 0, let runDir = recorder?.runDir { servicesSession?.saveLogs(to: runDir) { logStderr($0) } }
         // fmSettings は上(do/catch より前)で計算済み —— 供給段の abort 記録もここを使うため
-        let slowWorkers = recorder?.finish(total: selected.count, passed: outcome.passed, failed: outcome.failed,
+        let slowWorkers = recorder?.finish(total: selected.count * measuredCopies, passed: outcome.passed, failed: outcome.failed,
                          degradedWorkers: outcome.degradedWorkers,
                          freezeRetries: outcome.freezeRetries,
                          blankRepairs: outcome.blankRepairs,
@@ -946,6 +949,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                          fmSettings: fmSettings,
                          setOverrides: profileOverrides.mapValues(\.token),
                          servicesWarnings: servicesSession?.warnings ?? [],
+                         responseMeasurement: resolvedProfile.flatMap(ResponseMeasurementPolicy.runInfo(resolved:)),
                          interrupted: outcome.interrupted) ?? []
         if !outcome.degradedWorkers.isEmpty {
             logStderr("⚠️ Degraded or dropped workers (\(outcome.degradedWorkers.count)):")
@@ -1406,11 +1410,13 @@ struct ApiRunCommand: AsyncParsableCommand {
             || workers.contains { $0.platform == "ios" }) ? "ios" : "android"
 
         // 長いシナリオを先に流すと末尾の遊休が減る(LPTOrdering。--no-lpt で元の ID 順)
-        let items = LPTOrdering.apply(selected.map { ScenarioRunItem(info: $0) },
+        let lptItems = LPTOrdering.apply(selected.map { ScenarioRunItem(info: $0) },
                                       project: project, defaultPlatform: defaultPlatform,
                                       enabled: !noLPT,
                                       historyRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
                                       log: { logStderr($0) })
+        let items = resolved.responseMeasurement
+            ? ResponseMeasurementRepeat.expand(lptItems, count: resolved.responseRepeat) : lptItems
         // RunEvent の flowURL(scenario:// URL)→ 元の ScenarioInfo の逆引き。
         // RunEvent は scenario ID・title を毎回運んでくれないため、変換時にここから補う
         let itemByURL = Dictionary(uniqueKeysWithValues: items.map { ($0.url, $0) })

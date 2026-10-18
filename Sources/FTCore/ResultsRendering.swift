@@ -145,6 +145,24 @@ public enum ResultsRendering {
         return SimpleTable.render(headers: headers, rows: tableRows)
     }
 
+    public static func response(_ rows: [ResponseMeasurementQuery.Row]) -> String {
+        guard !rows.isEmpty else { return "No response-measurement runs found" }
+        let headers = ["scenario", "step", "device", "host", "n", "median ms", "p90 ms", "busy", "prev median ms", "delta"]
+        func ms(_ value: Double?) -> String { value.map { String(format: "%.0f", $0) } ?? "-" }
+        let tableRows = rows.map { row -> [String] in
+            let delta: String
+            if let deltaMs = row.deltaMs {
+                let pct = row.deltaPct.map { String(format: " (%+.0f%%)", $0) } ?? ""
+                delta = String(format: "%+.0f", deltaMs) + pct
+            } else {
+                delta = "-"
+            }
+            return [row.scenarioID, row.step, row.device, row.host, String(row.n), ms(row.medianMs), ms(row.p90Ms),
+                    String(row.busyCount), ms(row.previousMedianMs), delta]
+        }
+        return SimpleTable.render(headers: headers, rows: tableRows)
+    }
+
     public static func insights(_ rows: [RunResultsQuery.InsightRow]) -> String {
         guard !rows.isEmpty else { return "Nothing needs attention" }
         return rows.map { row -> String in
