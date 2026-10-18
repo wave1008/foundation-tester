@@ -63,6 +63,28 @@ final class RunProfileMachineDispatchTests: XCTestCase {
         XCTAssertEqual(groups?.map(\.deviceNames), [["リモート機"]])
     }
 
+    /// 計測の run は分割の前に機械をまたいで数える: 手元とリモートに1台ずつなら断る(子はそれぞれ1台で入口の検査を
+    /// 通ってしまい、並行に測る)。`--device` でリモートの1台に絞れば計画を返す
+    func testMeasurementAcrossMachinesIsRejectedBeforeSplitting() throws {
+        try writeMixed()
+        try FileManager.default.createDirectory(at: project.appsDir, withIntermediateDirectories: true)
+        try #"{ "ios": { "appName": "A", "app": "com.example.a" } }"#.data(using: .utf8)!
+            .write(to: project.appsDir.appendingPathComponent("a.json"))
+        let measuring: [String: RunProfileSetValue] = ["responseMeasurement": .bool(true)]
+        XCTAssertThrowsError(try DeviceMachineRunner.plan(
+            project: project, profileName: "multi", explicitHost: nil, deviceFilter: [], disabledMachines: [],
+            overrides: measuring)) {
+            XCTAssertTrue($0.localizedDescription.contains("exactly one enabled device (found 2)"), $0.localizedDescription)
+        }
+        let one = try DeviceMachineRunner.plan(
+            project: project, profileName: "multi", explicitHost: nil, deviceFilter: ["リモート機"], disabledMachines: [],
+            overrides: measuring)
+        XCTAssertEqual(one?.map(\.deviceNames), [["リモート機"]])
+        XCTAssertNotNil(try DeviceMachineRunner.plan(
+            project: project, profileName: "multi", explicitHost: nil, deviceFilter: [], disabledMachines: []),
+            "計測でなければ従来どおり分ける")
+    }
+
     /// 手元だけに絞れた場合は従来どおり単一経路(nil)
     func testPlanIsNilWhenTheDeviceFilterLeavesOnlyLocalDevices() throws {
         try writeMixed()

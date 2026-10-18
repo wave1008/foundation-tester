@@ -26,7 +26,7 @@ results/runs/<YYYY-MM>/<runID>/
 | コマンド | 説明 |
 |---|---|
 | `fleetest results list [--since <期間>] [--limit <n>]` | run を新しい順に一覧する |
-| `fleetest results summary [--scenario <id>]` | シナリオ別の実行回数・成功率・所要時間を集計する(成功率が低い順)。中断した run(と、そのせいで始まらなかったシナリオ)は成功率に入れない |
+| `fleetest results summary [--scenario <id>]` | シナリオ別の実行回数・成功率・所要時間を集計する(成功率が低い順)。run を中断したせいで始まらなかったシナリオは成功率に入れない |
 | `fleetest results flaky [--min-runs <n>]` | 成功も失敗もするシナリオを、不安定な順に一覧する |
 | `fleetest results trend --scenario <id>` | 1シナリオの実行履歴を時系列で表示する |
 | `fleetest results devices` | ワーカー(デバイス)別・プラットフォーム別の実行回数と成功率を集計する |

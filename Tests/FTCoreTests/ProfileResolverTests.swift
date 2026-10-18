@@ -86,6 +86,9 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertTrue(temporary.first?.contains("(ios): appPath") == true, "\(temporary)")
         XCTAssertFalse(AppPathLocation.isAbsoluteDeclaration("builds/app-debug.apk"), "相対は見ない(リポジトリ基準)")
         XCTAssertTrue(AppPathLocation.isTemporary("/var/folders/xy/T/A.app"))
+        XCTAssertTrue(AppPathLocation.isTemporary("/private/./tmp/A.app"), "畳んでから見る")
+        XCTAssertTrue(AppPathLocation.isTemporary("/Users/u/../../private/tmp/A.app"))
+        XCTAssertFalse(AppPathLocation.isTemporary("/private/tmp/../../Users/u/A.app"), "畳むと永続の場所")
         XCTAssertFalse(AppPathLocation.isTemporary("/Users/u/dev/sut-ec-mobile/build/ios-sim/A.app"))
     }
 

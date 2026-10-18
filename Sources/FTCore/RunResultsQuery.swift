@@ -45,11 +45,13 @@ public enum RunResultsQuery {
         isInterruptedBeforeStart(record) || record.interrupted == true
     }
 
-    /// 成功率(シナリオ別・デバイス別)の標本に入れない記録: 対象外の宣言と、中断で落ちた/始まらなかった記録。
-    /// どちらもシナリオの成否を確かめていない = 成功にも失敗にも数えない(中断を失敗に数えると、止めただけの run が
-    /// 成功率を下げる。クイックスタートの通し検証で、緑のシナリオが 66.7% と出た)。run の失敗数(exit code)は別で、数えたまま
+    /// 成功率(シナリオ別・デバイス別)の標本に入れない記録: 対象外の宣言と、中断で**始まらなかった**記録。
+    /// どちらもシナリオの成否を確かめていない = 成功にも失敗にも数えない(始まらなかった分を失敗に数えると、止めただけの
+    /// run が成功率を下げる。クイックスタートの通し検証で、緑のシナリオが 66.7% と出た)。
+    /// **中断の後に書かれた失敗(`interrupted: true`)は外さない** —— 印は書いた時点の中断の状態だけで付くので、
+    /// 中断の前に確定していた本当の失敗(アサーションの失敗)も混ざる。外すと本当の失敗を隠す。run の失敗数(exit code)は別
     public static func isOutsideSuccessRate(_ record: ScenarioRunRecord) -> Bool {
-        isDeclaredNotApplicable(record) || isInterruptedRecord(record)
+        isDeclaredNotApplicable(record) || isInterruptedBeforeStart(record)
     }
 
     // ISO8601DateFormatter は Apple が thread-safe と明記(生成後に設定を変えないこと)

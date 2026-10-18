@@ -108,8 +108,8 @@ final class ResultsRenderingTests: XCTestCase {
         XCTAssertEqual(ResultsRendering.summary([]), "No matching scenarios")
     }
 
-    /// 中断で始まらなかった・中断で落ちた記録は成功率の標本に入れない(シナリオ別もデバイス別も)。
-    /// インフラ都合の noWorker は失敗のまま数える。最後の結果も、確かめた回(中断でない回)で出す
+    /// 中断で始まらなかった記録は成功率の標本に入れない(シナリオ別もデバイス別も)。中断の後に書かれた失敗
+    /// (`interrupted: true`)は、中断の前に確定した本当の失敗が混ざりうるので失敗のまま数える。noWorker も失敗のまま
     func testInterruptedRecordsStayOutOfSuccessRates() {
         var notStarted = record("Login.s1", passed: false, durationMs: 0, startedAt: "2026-09-28T00:00:00Z")
         notStarted.skipKind = .interrupted
@@ -122,12 +122,12 @@ final class ResultsRenderingTests: XCTestCase {
                        record("Login.s2", passed: true, durationMs: 100, startedAt: "2026-09-27T00:00:00Z"), noWorker]
         let rows = Dictionary(uniqueKeysWithValues: RunResultsQuery.scenarioSummary(records, recentRuns: .max)
             .map { ($0.scenarioID, $0) })
-        XCTAssertEqual(rows["Login.s1"]?.runs, 1)
-        XCTAssertEqual(rows["Login.s1"]?.successRate, 100, "止めただけの run で成功率を下げない")
-        XCTAssertEqual(rows["Login.s1"]?.lastPassed, true)
+        XCTAssertEqual(rows["Login.s1"]?.runs, 2, "始まらなかった回だけを外す")
+        XCTAssertEqual(rows["Login.s1"]?.successRate, 50, "中断の後に書かれた失敗は隠さない")
+        XCTAssertEqual(rows["Login.s1"]?.lastPassed, false)
         XCTAssertEqual(rows["Login.s2"]?.successRate, 50, "noWorker は失敗として数えたまま")
         let devices = RunResultsQuery.deviceSummary(records)
-        XCTAssertEqual(devices.byPlatform.first?.runs, 3)
+        XCTAssertEqual(devices.byPlatform.first?.runs, 4)
     }
 
     func testListMarksInterruptedAndAbortedRuns() {
