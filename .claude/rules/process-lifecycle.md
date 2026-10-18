@@ -1,24 +1,37 @@
 ---
 paths:
+  - "Sources/fleetest-*/main.swift"
+  - "Sources/fleetest/ApiFMAlignCommand.swift"
+  - "Sources/fleetest/ApiLiveCommand.swift"
+  - "Sources/fleetest/ApiRecorderWatchCommand.swift"
+  - "Sources/fleetest/InterruptRelay*.swift"
+  - "Sources/fleetest/InterruptRelay.swift"
+  - "Sources/fleetest/LiveBridgeAutoStarter.swift"
+  - "Sources/fleetest/RunCompletionSweep.swift"
   - "Sources/FTBridgeClient/BridgeEndpoint.swift"
   - "Sources/FTBridgeClient/BridgeProvisioner.swift"
   - "Sources/FTBridgeClient/BridgeReadyLedger.swift"
   - "Sources/FTBridgeClient/BridgeToolchainLedger.swift"
   - "Sources/FTBridgeClient/XCUIBridgeResolver.swift"
+  - "Sources/FTCore/HostRecordingProbe.swift"
+  - "Sources/FTCore/IOSSimulatorVideoRecorder.swift"
   - "Sources/FTCore/ParentDeathWatch*.swift"
   - "Sources/FTCore/ParentDeathWatch.swift"
   - "Sources/FTCore/ProcessLiveness*.swift"
   - "Sources/FTCore/ProcessLiveness.swift"
+  - "Sources/FTCore/RecorderWatch.swift"
   - "Sources/FTCore/ScenarioHost.swift"
   - "Sources/FTCore/Shell*.swift"
   - "Sources/FTCore/Shell.swift"
-  - "Sources/fleetest-*/main.swift"
-  - "Sources/fleetest/ApiLiveCommand.swift"
-  - "Sources/fleetest/ApiFMAlignCommand.swift"
-  - "Sources/fleetest/InterruptRelay*.swift"
-  - "Sources/fleetest/InterruptRelay.swift"
-  - "Sources/fleetest/LiveBridgeAutoStarter.swift"
-  - "Sources/fleetest/RunCompletionSweep.swift"
+  - "Tests/FleetestTests/ApiLiveCommandBudgetTests.swift"
+  - "Tests/FleetestTests/CrossLayerTerminationTests.swift"
+  - "Tests/FleetestTests/FMAlignBuildCommandTests.swift"
+  - "Tests/FleetestTests/InterruptRelayEarlyRegistrationWiringTests.swift"
+  - "Tests/FleetestTests/InterruptRelayTests.swift"
+  - "Tests/FleetestTests/LiveBridgeAutoStarterPortHolderTests.swift"
+  - "Tests/FleetestTests/ProvisionLockStartupPathsSyncTests.swift"
+  - "Tests/FleetestTests/RunCompletionSweepWiringTests.swift"
+  - "Tests/FleetestTests/StaleLedgerSweepTests.swift"
   - "Tests/FTBridgeClientTests/BridgeEndpointCorruptFileTests.swift"
   - "Tests/FTBridgeClientTests/BridgeEndpointTokenTests.swift"
   - "Tests/FTBridgeClientTests/BridgeReadyLedgerTests.swift"
@@ -27,10 +40,12 @@ paths:
   - "Tests/FTBridgeClientTests/ProvisionLockTests.swift"
   - "Tests/FTBridgeClientTests/XCUIBridgeResolverPortHolderTests.swift"
   - "Tests/FTCoreTests/AvailableDataAutoreleaseScanTests.swift"
+  - "Tests/FTCoreTests/IOSSimulatorVideoRecorderStartTests.swift"
   - "Tests/FTCoreTests/ParentDeathWatchTests.swift"
   - "Tests/FTCoreTests/ParentDeathWatchWiringTests.swift"
   - "Tests/FTCoreTests/ProcessLivenessSourceScanTests.swift"
   - "Tests/FTCoreTests/ProcessLivenessTests.swift"
+  - "Tests/FTCoreTests/RecorderWatchTests.swift"
   - "Tests/FTCoreTests/ScenarioHostChildEnvironmentTests.swift"
   - "Tests/FTCoreTests/ScenarioHostDeadlineExclusionTests.swift"
   - "Tests/FTCoreTests/ScenarioHostDebugTests.swift"
@@ -45,16 +60,8 @@ paths:
   - "Tests/FTCoreTests/ShellSourceScanTests.swift"
   - "Tests/FTCoreTests/ShellTimeoutTests.swift"
   - "Tests/FTCoreTests/StreamingHelperAutoreleaseScanTests.swift"
-  - "Tests/FleetestTests/ApiLiveCommandBudgetTests.swift"
-  - "Tests/FleetestTests/CrossLayerTerminationTests.swift"
-  - "Tests/FleetestTests/FMAlignBuildCommandTests.swift"
-  - "Tests/FleetestTests/InterruptRelayEarlyRegistrationWiringTests.swift"
-  - "Tests/FleetestTests/InterruptRelayTests.swift"
-  - "Tests/FleetestTests/LiveBridgeAutoStarterPortHolderTests.swift"
-  - "Tests/FleetestTests/ProvisionLockStartupPathsSyncTests.swift"
-  - "Tests/FleetestTests/RunCompletionSweepWiringTests.swift"
-  - "Tests/FleetestTests/StaleLedgerSweepTests.swift"
   - "vscode-fleetest/src/orphanSweep.ts"
+  - "vscode-fleetest/src/residentProcesses.ts"
 ---
 
 # プロセスの生存管理(終了猶予・Shell.run・台帳) の規律
@@ -123,8 +130,12 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   巻き込まない。`Process()` で `fleetest` / `fleetest-scenarios` を起こす経路を足したら
   `ParentDeathWatch.childEnvironment()` を渡す —— `ParentDeathWatchWiringTests` が集合を等号で固定。
   **例外は `compile-ocr` と背景の掃除(`RunCompletionSweep`)と FM の常駐プロセス(`api fm-serve`。`FMServeHost.serverEnvironment` が
-  `FT_PARENT_PID` を消す)の3つ**: どれも親の死を生き延びないと目的を果たせない(コンパイルのコミット / 親の run は掃除より先に必ず終わる /
-  run を跨いでモデルを載せたままにする)。どれも自分で終わる(fm-serve は無操作 30 分・SIGTERM)。
+  `FT_PARENT_PID` を消す)と録画の見張り(`api recorder-watch`。`IOSSimulatorVideoRecorder.watcherLaunch` が `FT_PARENT_PID` を消す)の4つ**:
+  どれも親の死を生き延びないと目的を果たせない(コンパイルのコミット / 親の run は掃除より先に必ず終わる / run を跨いでモデルを載せたままにする /
+  止める期限を過ぎた `simctl recordVideo` の client を run が終わった後も止める)。どれも自分で終わる(fm-serve は無操作 30 分・SIGTERM。
+  recorder-watch は client の終了を確かめてから = 観測できない間は何もせず待つ)。**recorder-watch は `InterruptRelay` にも載せず、拡張の孤児掃除と
+  「全て終了」(`residentProcesses.ts` の `planResidentKill`)からも外す** —— 掃討は recordVideo の client を撃たないので、見張りだけ消すと client が
+  撮り続けてそのシミュレータが塞がったままになる。
   **親の死を知らせる発話は投げない API で書く**(`ParentDeathWatch.writeNotice` = fd に `F_SETNOSIGPIPE` を
   掛けた生の `write(2)`。失敗は黙って諦める)—— 親が死んだ瞬間の stderr は**読み手の居ないパイプ**で、
   `FileHandle.write` は EPIPE を ObjC 例外にするので abort し、**SIGTERM に到達せず後始末が1つも走らない**

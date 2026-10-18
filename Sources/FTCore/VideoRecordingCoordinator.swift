@@ -671,17 +671,21 @@ actor VideoRecordingCoordinator {
         }
     }
 
+    /// 2 本目以降に `~N` を付ける。**鍵は置き場が同じ実体とみなす形**(`RecordingIndexIO.collisionKey` = 大小文字・正規化を無視)——
+    /// 名前のまま数えると `phone` と `Phone` が別の鍵で接尾辞なしになり、APFS 上では同じファイルになる(録画の上書き・見張りの取り違え)
     private func uniqueSourceStem(for workerID: String) -> String {
         let base = RecordingIndexIO.sanitizedFileName(for: workerID)
-        let count = (sourceFileNameCounts[base] ?? 0) + 1
-        sourceFileNameCounts[base] = count
+        let key = RecordingIndexIO.collisionKey(for: base)
+        let count = (sourceFileNameCounts[key] ?? 0) + 1
+        sourceFileNameCounts[key] = count
         return count == 1 ? base : "\(base)~\(count)"
     }
 
     private func uniqueClipStem(for scenarioID: String) -> String {
         let base = RecordingIndexIO.sanitizedFileName(for: scenarioID)
-        let count = (clipFileNameCounts[base] ?? 0) + 1
-        clipFileNameCounts[base] = count
+        let key = RecordingIndexIO.collisionKey(for: base)
+        let count = (clipFileNameCounts[key] ?? 0) + 1
+        clipFileNameCounts[key] = count
         return count == 1 ? base : "\(base)~\(count)"
     }
 }

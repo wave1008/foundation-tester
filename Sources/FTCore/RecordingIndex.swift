@@ -54,7 +54,7 @@ public struct RecordingIndexEntry: Codable, Sendable {
 
 /// 録画を起動できなかった理由(録画クラスが観測したことだけ。推測で名乗らない)。rawValue が index.json の値
 public enum RecordingStartFailure: String, Codable, Sendable {
-    /// simctl が "Host recording is already in progress"(端末側にセッションが残っている)
+    /// simctl が busy(HostRecordingProbe.busyMarkers。端末側にセッションが残っている・止まらなかった録画が撮り続けている)
     case hostRecordingBusy
     /// 試し撮りを閉じたら 0 バイトだった
     case emptyTestRecording
@@ -158,5 +158,14 @@ public enum RecordingIndexIO {
         String(id.map { ch -> Character in
             ch.isLetter || ch.isNumber ? ch : "-"
         })
+    }
+
+    /// 置き場(APFS の既定)が同じ実体とみなす名前は同じ鍵になる: Unicode の正規の大小無視照合(D145 = NFD → casefold → NFD)。
+    /// `lowercased()` では `σ`/`ς` が、`folding` → NFC では結合文字の順が違う正規等価(`α + ͅ + ́` の 2 順)が別の鍵になる。
+    /// 用途: 同じ run の録画の元ファイル名・クリップ名の重複判定(別の名前で 2 本目に `~N` を付ける = 上書き・取り違えを防ぐ)
+    public static func collisionKey(for name: String) -> String {
+        name.decomposedStringWithCanonicalMapping
+            .folding(options: .caseInsensitive, locale: nil)
+            .decomposedStringWithCanonicalMapping
     }
 }

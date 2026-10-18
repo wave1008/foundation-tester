@@ -561,6 +561,7 @@ export const deviceOpsStrings = {
   "deviceOps.type.stream": { ja: "画面ストリーム", en: "Screen stream" },
   "deviceOps.type.run": { ja: "実行(run)", en: "Run (run)" },
   "deviceOps.type.mcp": { ja: "MCPサーバ", en: "MCP server" },
+  "deviceOps.type.recorderWatch": { ja: "録画の見張り", en: "Recorder watch" },
 
   "deviceOps.parent.systemLaunchd": { ja: "launchd(システム)", en: "launchd (system)" },
   "deviceOps.parent.unknown": { ja: "(不明)", en: "(unknown)" },

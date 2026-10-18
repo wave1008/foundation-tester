@@ -38,6 +38,7 @@ test("classifyResident: 各種別を正しく判定する", () => {
     [".build/debug/fleetest-simstream --udid E38DCA93-95F2-4DDF-B1FE-29527205D3EE", "stream"],
     [".build/debug/fleetest api run --project SampleApp --scenario Foo", "run"],
     [".build/debug/fleetest-mcp", "mcp"],
+    [".build/debug/fleetest api recorder-watch --pid 4242 --started-us 1700000000123456 --file /r/recordings/src.mov", "recorder-watch"],
     [".build/debug/fleetest bridge status --port 8123", "fleetest"],
   ];
   for (const [cmd, type] of cases) {
@@ -240,9 +241,10 @@ test("parseResidentProcesses: state Z / <defunct> をゾンビとして立てる
 
 // 欠陥1: モニター「すべて終了」の掃討対象と signal を決める純粋関数。bridge down が断られた側の
 // ブリッジ型は除外し、run 型(後始末を持つ)は SIGTERM のみに倒す(process-lifecycle.md)。
-test("planResidentKill: bridgeDownRefused はブリッジ型を除外・run 型は SIGTERM のみ・mcp/emulator/自分自身は常に除外", () => {
+test("planResidentKill: bridgeDownRefused はブリッジ型を除外・run 型は SIGTERM のみ・mcp/emulator/recorder-watch/自分自身は常に除外", () => {
   const root = "/Users/w/proj";
   const psOutput = [
+    `777 1 S ${root}/.build/debug/fleetest api recorder-watch --pid 4242 --started-us 1 --file ${root}/recordings/src.mov`,
     `111 1 S /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun ${root}/.fleetest/DerivedData/Build/Products/FleetestRunner-8127.xctestrun -destination id=2C4FBE2E-5358-48CD-B32A-964B8EB817B4`,
     `222 1 S ${root}/.build/debug/fleetest api monitor --project A`,
     `333 1 S ${root}/.build/debug/fleetest api run --project A --scenario Foo`,
@@ -265,6 +267,7 @@ test("planResidentKill: bridgeDownRefused はブリッジ型を除外・run 型�
   assert.equal(byPidRefused[333], "SIGTERM", "run は SIGKILL でなく SIGTERM");
   assert.equal(byPidRefused[444], undefined, "mcp は常に除外");
   assert.equal(byPidRefused[555], undefined, "emulator は常に除外");
+  assert.equal(byPidRefused[777], undefined, "recorder-watch は常に除外(消すと client が撮り続けてシミュレータが塞がったままになる)");
   assert.equal(byPidRefused[999], undefined, "拡張ホスト自身(ownPid)は除外");
 
   const notRefused = planResidentKill(processes, {
@@ -275,6 +278,7 @@ test("planResidentKill: bridgeDownRefused はブリッジ型を除外・run 型�
   });
   const byPidOk = Object.fromEntries(notRefused.map((t) => [t.pid, t.signal]));
   assert.equal(byPidOk[111], "SIGKILL", "bridgeDownRefused=false なら bridge 型も対象に含む");
+  assert.equal(byPidOk[777], undefined, "recorder-watch はブリッジの可否と無関係に除外");
 });
 
 test("planResidentKill: isWorkspaceOwned が false の行(別 workspace/machine-wide)は対象から外す", () => {

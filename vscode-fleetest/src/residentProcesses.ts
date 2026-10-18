@@ -35,6 +35,7 @@ export type ResidentType =
   | "stream" // fleetest-simstream / fleetest-androidstream(画面ストリーム helper)
   | "run" // fleetest api run / fleetest run(実行。非常駐だが孤児化するとブリッジを占有)
   | "mcp" // fleetest-mcp(MCP サーバ)
+  | "recorder-watch" // fleetest api recorder-watch(止まらない録画 client の見張り。client と一緒に終わる)
   | "fleetest"; // その他の fleetest CLI(上のどれにも当たらない常駐)
 
 export interface ResidentProcess {
@@ -101,6 +102,7 @@ export const TYPE_ORDER: readonly ResidentType[] = [
   "stream",
   "run",
   "mcp",
+  "recorder-watch",
   "fleetest",
 ];
 
@@ -140,6 +142,7 @@ const TYPE_LABEL_KEY: Partial<Record<ResidentType, keyof typeof deviceOpsStrings
   stream: "deviceOps.type.stream",
   run: "deviceOps.type.run",
   mcp: "deviceOps.type.mcp",
+  "recorder-watch": "deviceOps.type.recorderWatch",
 };
 
 function typeLabel(type: ResidentType, locale: Locale): string {
@@ -216,6 +219,10 @@ export function classifyResident(
     // 実行(run)。孤児化するとプロファイル全デバイスのブリッジを占有し続けるため対象に含める。
     if (/\bapi\s+run(?:\s|$)/.test(cmd) || /(^|\/)fleetest\s+run(?:\s|$)/.test(cmd)) {
       return { type: "run", detail: extractArg(cmd, "--profile") };
+    }
+    // 止まらない録画 client の見張り(IOSSimulatorVideoRecorder.handOff が起こす。親の run より長生きするのが目的)
+    if (/\bapi\s+recorder-watch(?:\s|$)/.test(cmd)) {
+      return { type: "recorder-watch", detail: extractArg(cmd, "--pid") };
     }
     // その他の fleetest CLI 常駐(start-all-devices 等の一括操作を含む取りこぼし受け)
     return { type: "fleetest", detail: "" };
@@ -428,7 +435,9 @@ export function planResidentKill(
 ): ResidentKillTarget[] {
   const out: ResidentKillTarget[] = [];
   for (const p of processes) {
-    if (p.pid <= 0 || p.pid === opts.ownPid || p.type === "emulator" || p.type === "mcp") {
+    // recorder-watch は撃たない: 掃討は simctl recordVideo の client(常駐の種別に無い)を撃たないので、見張りだけ消すと
+    // client が撮り続けてそのシミュレータが塞がったままになる。見張りは client と一緒に終わる
+    if (p.pid <= 0 || p.pid === opts.ownPid || p.type === "emulator" || p.type === "mcp" || p.type === "recorder-watch") {
       continue;
     }
     if (!opts.isWorkspaceOwned(p.command)) {

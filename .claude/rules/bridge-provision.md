@@ -106,7 +106,9 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   `ProfileWorkerFactory.recoverStaleRecordingIOSWorkers`。凍結の回復と同じ再起動・デバイスは外さない・不明は撃たない)。
   **iOS の供給口3つ全部で凍結トリアージの直後に通す**(`HostRecordingProbeTests` が固定)。
   **検査も録画も recordVideo は SIGINT でしか止めない**(SIGKILL/SIGTERM がこの状態を作る)。
-  切り出しのエンコーダはソフトウェア固定(実測は docs/verification.md §録画)
+  **止めるときは `IOSSimulatorVideoRecorder.interruptRecorder` を通す** —— recordVideo は "Recording started" より前の
+  SIGINT を無視するので、撮り始めるまで送り直す(1回だけ送ると、負荷で起動が遅れた録画が何時間も撮り続けてデバイスを塞いだ)。
+  切り出しのエンコーダはハードウェア優先(docs/design.md の録画の節)
 - **iOS 供給の `installIfNeeded` を `try?` で戻さない**(全員失敗の throw を飲むと失敗前の一覧に
   戻り、古いアプリのまま走る。`InstallIfNeededTryOptionalSourceScanTests`)
 - **1台の失敗で全体を落とさない**。供給は部分失敗を許容し全滅のときだけ throw する

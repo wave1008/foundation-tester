@@ -14,6 +14,14 @@ final class HostRecordingProbeTests: XCTestCase {
         XCTAssertEqual(HostRecordingProbe.classify(line: "Host recording is already in progress"), .busy)
     }
 
+    /// 止まらなかった録画が端末側で撮り続けているときの行(8 台で採取。shutdown → boot で解けた)
+    func testRecordingAlreadyInProgressLineIsBusy() {
+        let line = "Error starting video recorder: Error Domain=NSPOSIXErrorDomain Code=16 \"Resource busy\""
+            + " UserInfo={NSLocalizedFailureReason=A recording is already in progress}."
+        XCTAssertEqual(HostRecordingProbe.classify(line: line), .busy)
+        XCTAssertEqual(HostRecordingProbe.classify(line: "A recording is already in progress"), .busy)
+    }
+
     func testRecordingStartedIsFree() {
         XCTAssertEqual(HostRecordingProbe.classify(line: "Recording started"), .free)
     }
@@ -35,7 +43,8 @@ final class HostRecordingProbeTests: XCTestCase {
     /// **検査がこの状態を作らない**: recordVideo を SIGINT 以外で止めると端末側のセッションが残る
     func testProbeNeverKillsTheRecorderHarshly() throws {
         let code = try source("Sources/FTCore/HostRecordingProbe.swift")
-        XCTAssertTrue(code.contains("process.interrupt()"), "停止は SIGINT(interrupt)で行う")
+        XCTAssertTrue(code.contains("IOSSimulatorVideoRecorder.interruptRecorder("),
+                      "停止は撮り始めるまで SIGINT を送り直す共通の止め方で行う(中身は process.interrupt())")
         for forbidden in [".terminate()", "SIGKILL", "SIGTERM", "kill("] {
             let executable = code.split(separator: "\n")
                 .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
@@ -47,9 +56,10 @@ final class HostRecordingProbeTests: XCTestCase {
     /// 録画側と検査側で simctl の文言を別々に持たない(片方だけ変わると検査と録画の判断が割れる)
     func testRecorderSharesTheSimctlMarkers() throws {
         let code = try source("Sources/FTCore/IOSSimulatorVideoRecorder.swift")
-        XCTAssertTrue(code.contains("HostRecordingProbe.busyMarker"))
+        XCTAssertTrue(code.contains("HostRecordingProbe.isBusy(line:"))
         XCTAssertTrue(code.contains("HostRecordingProbe.startedMarker"))
         XCTAssertFalse(code.contains("line.contains(\"Host recording is already in progress\")"))
+        XCTAssertFalse(code.contains("line.contains(\"A recording is already in progress\")"))
         XCTAssertFalse(code.contains("line.contains(\"Recording started\")"))
     }
 

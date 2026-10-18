@@ -3507,21 +3507,31 @@ devicepoll の要点:
   `VTCompressionSessionInvalidate` / `RemoteVideoEncoder_EncodeFrame` が居れば上記のエンコーダ
   無応答(相手側の VTEncoderXPCService プロセスも `AVE_UCRecv` で待っている)。ツールは期限で
   自力離脱するので待てばよい。頻発するなら OS 再起動でしか AVE は復旧しない
-- **切り出しはソフトウェアエンコーダ固定**(2026-09-17)。同じ素材・本番と同じ条件(12 秒クリップ
+- **切り出しは今はハードウェア優先**(2026-10-18 に変更。採った理由と実測は docs/performance-tuning.md §3.37・docs/design.md の録画の節)。
+  以下は 2026-09-17 にソフトウェアへ固定したときの記録:同じ素材・本番と同じ条件(12 秒クリップ
   16 本・同時 2 本・期限 60 秒)で交互に 8 回ずつ回した実測: ハードウェアは 8 回中 2 回で 1 本ずつ
   `VTCompressionSessionInvalidate` から戻らず期限の 60 秒を払った(その回の所要 64s、他は 10.5〜10.9s)。
   ソフトウェアは 0 回・11.1〜11.6s。1 本の中央値は 1.35s / 1.39s でほぼ同じ、12 秒クリップの大きさは
   2.79MB(指定 1500kbps の +24%)/ 2.07MB(−8%)。画質とモニターの配信を流した負荷下は比べていない。
   計測は `VideoRecordingFinalizer.swift` を写した単体プログラムで行った(FTCore の内部関数で外から呼べない)
-- **端末側に録画セッションが残った iOS シミュレータ**(simctl が `Host recording is already in progress`
-  = EBUSY で即落ちる。client プロセスが残っていなくても解けず、shutdown → boot でだけ解ける)は、
+- **端末側に録画セッションが残った iOS シミュレータ**(simctl が `Host recording is already in progress` か
+  `A recording is already in progress` = どちらも EBUSY で即落ちる。Xcode 27.2 で SIGKILL した client の後に残るのは後者。client プロセスが残っていなくても解けず、shutdown → boot でだけ解ける)は、
   録画ありの run の**供給段階**で `HostRecordingProbe` が見つけ、凍結の回復と同じ経路で再起動する
   (健全機の検査は 1 台約 0.4s・全台並列)。**陽性対照**: 起動中のシミュレータで
   `xcrun simctl io <udid> recordVideo --codec=h264 --force /tmp/x.mov &` を 3 秒走らせて `kill -9` する
-  (SIGKILL で殺した recordVideo はセッションを残す = この状態を作れる)→ もう一度 recordVideo を撃って
-  EBUSY になることを確かめる → そのデバイスを含む record:true の run を回し、
+  (SIGKILL で殺した recordVideo はセッションを残す = この状態を作れる。`Recording started` が出てから殺す)→ もう一度 recordVideo を撃って
+  EBUSY になることを確かめる(2026-10-18 に `A recording …` の形で再確認し、run の再起動で解けた) → そのデバイスを含む record:true の run を回し、
   `hold a stale host recording session … rebooting` と `the stale recording session(s) are gone` の2行が出て、
   そのデバイスのクリップが index.json に載り `sourcesFailed` が無いことを見る
+- **録画が run の途中で止まったときの静止画への切り替え**(`VideoRecordingCoordinator.prepareScenario`)の陽性対照(2026-10-18 に両 OS で確認):
+  1 台に絞った run(`--device … --runner local`・15 本)を起こし、45〜50 秒後から run が終わるまで録画を止め続ける。
+  Android は端末上の自分の screenrecord(cmdline に `/sdcard/ftrec-` を含むもの = 配信は巻き込まない)を 0.5 秒ごとに止める /
+  iOS は `pkill -INT -f 'io <udid> recordVideo'` を 0.2 秒ごと(**SIGKILL にしない** = 端末側のセッションが残り再起動まで録画できなくなる)。
+  見るもの: `the screen recording stopped and could not be restarted — … still frames` の1行・全シナリオ緑・index.json の
+  `sourceIssues` に `stillFramesFallback: true`・静止画のクリップが再生できること。Android を `kill -9` で止めると最初のセグメントが
+  読めなくなり、その区間のクリップは `no readable recording covers this scenario` として失敗に数えられる(黙って欠けない)
+- **iOS の録画の試し撮りが止まらずに残っていないか**: run の後に `ps -axo command | grep -E '^/[^ ]*simctl io .* recordVideo'` が空で、
+  `results/` に `*~smoke.mov*`(試し撮り)や `*.sb-*`(simctl の一時ファイル)が残っていないこと(残っていたら maintainer-notes §87 の形)
 
 ### WebView を触ったときの検証
 

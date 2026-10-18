@@ -62,16 +62,44 @@ public enum ProcessLiveness {
     /// 用途: そのプロセスが動き出す前/後でファイル群を分ける(RetentionSweeper の添付の
     /// セッション境界)。**nil のときは呼び手が安全側(消さない)へ倒すこと**
     public static func startTime(_ pid: pid_t) -> Date? {
-        guard pid > 0 else { return nil }
+        guard case .alive(let micros) = observe(pid) else { return nil }
+        return Date(timeIntervalSince1970: Double(micros) / 1_000_000)
+    }
+
+    /// 1 回の観測(sysctl KERN_PROC_PID を 1 回)。**`isAlive` と違い、sysctl の失敗を「死」にしない**(`.unreadable`)——
+    /// 録画の見張り(`RecorderWatch`)は「見えない相手を終わったとみなしてファイルを消す」より「待つ」ほうが害が小さい。
+    /// `isAlive` の「失敗 = 死」は台帳の回収の既存契約で、そちらは変えない
+    public enum Observation: Equatable, Sendable {
+        /// 居ない・ゾンビ・終了処理中
+        case gone
+        /// 生きている。起動時刻は epoch からの µs(`p_starttime` の timeval を Double を経由せず整数にしたもの。
+        /// pid が使い回されても起動時刻は一致しない = 身元の照合に使う)
+        case alive(startedMicroseconds: Int64)
+        /// sysctl が「居ない」以外の理由で失敗した(errno は問わない)
+        case unreadable
+    }
+
+    /// sysctl の生の結果 → 観測(純粋関数。テストが真偽表で叩く)。
+    /// macOS の KERN_PROC_PID は**居ない pid に「成功 + size 0」を返す**(実測・XNU の実装)。`ENOENT` は OID の探索失敗で
+    /// pid の不在ではないので、失敗は errno を見ずに全部 `.unreadable`
+    public static func classify(sysctlStatus: Int32, size: Int, pStat: Int32, flags: Int32,
+                                started: timeval) -> Observation {
+        guard sysctlStatus == 0 else { return .unreadable }
+        guard size > 0 else { return .gone }
+        guard isAliveState(pStat, flags: flags) else { return .gone }
+        return .alive(startedMicroseconds: Int64(started.tv_sec) * 1_000_000 + Int64(started.tv_usec))
+    }
+
+    public static func observe(_ pid: pid_t) -> Observation {
+        guard pid > 0 else { return .gone }
         var info = kinfo_proc()
         var size = MemoryLayout<kinfo_proc>.stride
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
-        guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0,
-              isAliveState(Int32(info.kp_proc.p_stat), flags: info.kp_proc.p_flag) else { return nil }
+        let status = sysctl(&mib, 4, &info, &size, nil, 0)
         // `p_starttime` は C マクロ(`p_un.__p_starttime` の別名)なので Swift へは import
         // されない —— 共用体の実体を直に読む
-        let started = info.kp_proc.p_un.__p_starttime
-        return Date(timeIntervalSince1970:
-            Double(started.tv_sec) + Double(started.tv_usec) / 1_000_000)
+        return classify(sysctlStatus: status, size: status == 0 ? size : 0,
+                        pStat: Int32(info.kp_proc.p_stat), flags: info.kp_proc.p_flag,
+                        started: info.kp_proc.p_un.__p_starttime)
     }
 }

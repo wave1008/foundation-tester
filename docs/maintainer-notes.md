@@ -3618,7 +3618,7 @@ springboard 退避(launch + snapshot)と**期限つきの呼び出しを最大5�
 - M1Max は §65・§66 と同じく Simulator / AVD が作り直されたまま(iOS 27 の 17 Pro も Pixel 9 も無い = 環境)。M1mini は別ワークスペース
   (`~/dev/foundation-tester`)のブリッジが端末を握っていて設計どおり断った
 - 手元の -05〜-08 の Simulator で録画の試し撮り(1 秒)が毎周空になり、静止画へ縮退した(縮退は設計どおり・基準の計測の時は空にならなかった)。
-  負荷時だけの事象かは未確認
+  負荷時だけの事象かは未確認 → 2026-10-18 に原因を特定(§87: 止まらなかった試し撮りがデバイスを塞いでいた)
 - sim-09 のライブ操作がポート 8131 を固定(`--port`)して起こされていたため、SE3 のブリッジが落ちて起動し直すたびに空いている最小のポートを
   取り(8133 → 8135 → 8131)、serve は起動時に「別のデバイスのブリッジ」と断り続けた(ハーネスの指定の問題。拡張は `--udid` も渡し、
   ポートはデバイス一覧から引き直す)。udid だけで起こし直すと自動起動で復帰した
@@ -4863,7 +4863,8 @@ EWOULDBLOCK(`MaintenanceError.slotHeld`)だけ同じ秒数のあいだ取り直�
 - **形**: ①切り出しの書き出しが `-11800`(下位 `-17691`)で失敗し始め、合成映像(256x256 を 3 フレーム)も失敗 ②合成映像が 10 秒以内に
   終わらない(固まり)。セッションを握るプロセスは無し(`AppleAVE2UserClient` 0)・メモリは空いていた・システムログに AVE の記録は無い。
   **再起動で戻った**(3回とも)
-- **巻き添え**: Simulator の録画(`simctl recordVideo`)の試し撮りが空 → 静止画方式へ。iOS の h264 配信も同じエンコーダを使う。
+- **巻き添え**: Simulator の録画(`simctl recordVideo`)の試し撮りが空 → 静止画方式へ(この「空」の一部は §87 の止まらない試し撮りだった
+  可能性がある = 警告がどの失敗でも「空」と書いていた)。iOS の h264 配信も同じエンコーダを使う。
   切り出しはソフトウェアへ逃げられるが、この2つは逃げられない = **自前の切り出しだけ守っても足りない**
 - **いつ**: 1回目 = 朝からの E2E の後、Android の run 完了時の切り出しの途中。2回目 = 再起動から約 25 分(iOS の run の開始時に Simulator の
   試し撮りが空 → 次の Android の run で固まり)。3回目 = 再起動から約 45 分(下の A・B・C の後の D の1本目)。どれも再起動からしばらく使い続けた後
@@ -4876,3 +4877,46 @@ EWOULDBLOCK(`MaintenanceError.slotHeld`)だけ同じ秒数のあいだ取り直�
 - **実験の罠**: 端末から取り出した録画が録画の途中だと moov が無く読めない(上限まで待ってから取り出す)。台帳を「故障」と書いてソフトウェアに
   固定する仕掛けはモニターの ⚠︎HWE にも出る。`fleetest run` は Sources を毎回ビルドするので、書きかけのコードがあると run が Simulator を
   起こす前に落ちる(結果を確かめずに「走っている」と言った)
+
+## 87. 止まらなかった録画の試し撮りが iOS Simulator を何時間も塞いでいた(2026-10-18 に発見・修正)
+
+録画の陽性対照(run の途中で録画を止める)を iOS で回したら、録画が run の開始時点で "A recording is already in progress" で始まらなかった。
+
+- **形**: 試し撮り(`IOSSimulatorVideoRecorder.smokeCheck`)が起動から 1 秒で SIGINT を1回だけ送っていた。`simctl recordVideo` は
+  **"Recording started" より前の SIGINT を無視する**(実測: 0.05・0.2 秒の SIGINT では止まらず、0.5 秒以降は止まった)ので、負荷で起動が
+  遅れると試し撮りが止まらない。SIGKILL しない設計なので放置され、**h264 で撮り続けた**(client が後から消えても端末側の録画は続き、
+  一時ファイル `*-smoke.mov.sb-…` が伸び続けた)。再試行は必ず「録画中」で断られ、そのデバイスは run の間ずっと静止画になった
+- **規模**: 10/18 の配信 8 本 + 10 run の実験で 1 run ごとに 1〜2 台ずつ塞がり、最後は 8 台すべて。`results/` には 10/4 以降の残骸が
+  14 本(計 5.4GB・最長は約 27 時間撮り続けた 2.4GB)。解けたのは Simulator の再起動だけ
+- **気付けなかった理由**: 再試行の警告がどの失敗でも「the test recording came out empty」と書いていた(`didNotStop` も一過性として再試行し
+  同じ文を出していた)。§68.3 の「試し撮りが毎周空」もこの形だった可能性が高い
+- **直したこと**: 止める経路をすべて `interruptRecorder` に通す(撮り始めるまで 0.2 秒ごとに送り直す・撮り始めたら1回)/ 試し撮りは
+  撮り始めを待ってから 1 秒撮る / `didNotStop` は再試行しない / 開始前の掃除は残りの録画が止まるまで待つ / `HostRecordingProbe` も同じ。
+  テストは偽の xcrun(撮り始める前の SIGINT を無視する・撮り始めた直後に止めると空)で固定(`IOSSimulatorVideoRecorderStartTests`・
+  `RecordingKillDisciplineTests`)
+- **レビュー(Codex)で足したこと**: ①自分から終わった client は stderr を読み切ってから busy を見る(読み手の遅れで busy を
+  `cannotLaunchRecorder` と名乗っていた)②止める期限を過ぎてもまだ動いている client は見張り(`handOff`)へ渡し、止まるまで送り直して
+  書いたファイルを消す(呼び手は process を持たないので、見張らないと stop() でも止まらずファイルが残った)。見張りは
+  **fleetest より長生きする `/bin/sh`** —— 最初はプロセスの中のタスクにしたが、fleetest が先に正常終了すると消えた(2回目のレビュー)。
+  `HostRecordingProbe` の止める期限切れにも同じ穴があり、同じ見張りへ渡す。3回目のレビューで、見張りに client の stderr の読み口を
+  引き継がせた(元の読み手が消えると client が SIGPIPE で死ぬ)のと、pid の照合に起動時刻を足した(`recordVideo` の部分一致だけでは、
+  引数にその語を持つ別のプロセスに使い回された pid を弾けない)③撮り直しの途中に
+  stop() が来たとき、`handlePartExited` の末尾でも SIGINT を送っていた(stop() は撮り直しの完了を待ってから止めるので重複 = 撮り始めた
+  client に2回届いた)のを消した
+- **busy の文言が2通りあった**: 塞がった Simulator が出したのは `A recording is already in progress` で、`HostRecordingProbe` が busy と
+  読むのは `Host recording is already in progress` だけだった = run 前の確認が「不明」と読んで再起動せず、塞がったまま run をまたいだ。
+  Xcode 27.2 では、撮り始めた client を SIGKILL した後に残るのも後者の形(docs/verification.md の陽性対照で作れる)= この確認はこの Xcode で
+  1度も残った録画を見つけていなかった。2つとも `HostRecordingProbe.busyMarkers` に載せ、判定は `isBusy(line:)` の1か所にした
+- **稼働中の外部の録画も再起動する(ユーザー決定)**: `A recording is already in progress` は、塞がった状態のほかに、誰かが同じ Simulator を
+  正常に録画しているときにも出る。録画ありの run はそれも busy と読んで再起動する。**Simulator を録画するのは run だけ、という運用を前提にする**
+  (再起動の前に `simctl io <udid> recordVideo` の生存を見て守る案は採らなかった。手で `simctl` を撃つ録画は守れるが、Simulator.app の
+  画面収録は見分けられない見込み)。運用が変わる(run 以外で録画する)ならこの判断を見直す
+- **見張りをシェルから Swift へ(設計レビュー 10 回・実装)**: `/bin/sh` の見張りは 0.2 秒ごとに ps を 3 回起こし、身元の照合が `ps -o lstart` の
+  文字列(1 秒の粒度・ロケール依存)で、判定がシェルの中にあってテストしにくかった。`fleetest api recorder-watch`(`RecorderWatch`)に置き換え、
+  レビューで直した主なもの: 「全て終了」(`planResidentKill`)が見張りを SIGKILL していた → 種別 `recorder-watch` を除外 / 身元は spawn 直後に採る /
+  観測を 3 値にして「読めない」を「終わった」にしない(sysctl の失敗は errno を問わず unreadable。居ない pid は status 0・size 0 で返る) /
+  見張りへ渡したら呼び手はファイルを消さない(simctl は一時ファイルから rename するので先に消しても現れる) / 出力名の衝突(`phone` の smoke と
+  `phone-smoke` の part1 が同じ `-smoke.mov` だった = 見張りと無関係に元からあった)→ `~` 区切り + 大小文字・正規化を無視する重複判定 /
+  期限は単調時計で測り、テストは止めた時計で順序を固定する(時刻の比較で順序を証明する案は時計の後退・精度差で捨てた)
+- **未確認の関係**: 裏で撮り続けた h264 録画はハードウェアエンコーダを使い続けた可能性がある。§86 の故障との関係は確かめていない ——
+  直した後に故障が減るかを `video-encoder-history.ndjson` で見る

@@ -35,6 +35,11 @@ test("parseOrphanPids: PPID=1 の api run はデバイス占有解除のため�
   assert.deepEqual(parseOrphanPids(psOutput), [111]);
 });
 
+test("parseOrphanPids: PPID=1 の api recorder-watch は候補にしない(親の run より長生きするのが目的の見張り)", () => {
+  const out = "  4242     1 /Users/w/proj/.build/debug/fleetest api recorder-watch --pid 100 --started-us 1 --file /r/src.mov\n";
+  assert.deepEqual(parseOrphanPids(out), []);
+});
+
 test("parseOrphanPids: PPID=1 でも api run 以外の非常駐コマンド(api gen-scenario 等)は除外する", () => {
   const psOutput = "  222     1 .build/debug/fleetest api gen-scenario --project SampleApp";
   assert.deepEqual(parseOrphanPids(psOutput), []);

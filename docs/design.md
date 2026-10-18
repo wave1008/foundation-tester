@@ -4824,7 +4824,7 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     「attaching took 15.3s」を出した)。同じ ping を解決の間も流す(`StreamResolvePing`)
   - **録画の client を SIGINT 以外で殺さない**(実測 2026-09-09。`IOSSimulatorVideoRecorder`):
     `simctl io <udid> recordVideo` を SIGKILL/SIGTERM で殺すと**端末側の録画セッションが握られたまま
-    残り**、そのデバイスは**再起動するまで**録画できない(以後 "Host recording is already in progress" で
+    残り**、そのデバイスは**再起動するまで**録画できない(以後 "Host recording …" / "A recording is already in progress" で
     全部落ちる)。ツールは猶予切れで SIGKILL しており、**自分で作ったセッションを自分で
     「残っている」と警告する自作自演**になっていた(実験: 該当デバイスは数分後も busy、
     `api stop-device` で解け、再起動後は 120KB の録画が撮れた)。停止は SIGINT のみ・止まらない
@@ -4836,6 +4836,24 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     予算は `spawnNextPart` と同じ(`startAttempts` / `startRetryBackoffSeconds` を共有。同じ
     一過性を2つの数字で持たない)。**busy は再試行しない**(端末側のセッションはシャットダウン
     以外では解けない)。仕分けは `isTransient` の1箇所で、テストが直接叩く
+  - **recordVideo は "Recording started" より前の SIGINT を無視する**(実測 2026-10-18: 起動から 0.05・0.2 秒の SIGINT では
+    止まらず、0.5 秒以降は止まった)。止める経路はすべて `IOSSimulatorVideoRecorder.interruptRecorder` を通し、撮り始めるまで
+    `interruptRepeatSeconds`(0.2 秒)ごとに送り直し、撮り始めたら1回だけ送る(撮り始めた後の client は SIGINT から数 ms で終わる)。
+    通すのは試し撮り・本番の開始が確かめられなかったとき・`HostRecordingProbe` の3つ。試し撮りは撮り始めを待ってから 1 秒撮る
+    (上限は本番と同じ `startConfirmSeconds` 10 秒)。**止まらなかった試し撮り(`didNotStop`)は再試行しない** —— 残った録画が
+    セッションを握るので撮り直しは必ず "A recording is already in progress" で断られる。開始前の掃除(`killStaleRecording`)は
+    残りの録画が止まるまで送り直して待つ(上限 15 秒)。止める期限を過ぎてもまだ動いている client は見張り(`handOff` →
+    `fleetest api recorder-watch` = `FTCore.RecorderWatch`)へ渡す。見張りは **fleetest より長生きする別プロセス**(プロセスの中のタスクだと、
+    fleetest が先に終わった後で撮り始めた client を誰も止めない)で、`FT_PARENT_PID` を渡さず `InterruptRelay` にも載せない。
+    **身元は spawn の直後にだけ採る**(pid + 起動時刻 µs = `RecorderWatch.Target.of`。handOff で採り直すと、終わって回収された pid が別の
+    プロセスに使い回された形を追う)。見張りの観測は 3 値(`ProcessLiveness.observe`: 居ない / 生きている + 起動時刻 / 読めない)で、
+    生きていて起動時刻が一致する間だけ SIGINT を送り直し、読めない間は送らず・消さず・待ち、居なくなったら最終名と `.sb-*`(simctl の一時
+    ファイル)を消して終わる。client の stderr のパイプは見張りが読み継ぐ(元の読み手が消えると、遅れて撮り始めた client が stderr へ書いた
+    瞬間に SIGPIPE で死に、SIGINT 以外の終わり方になる。読み捨ては行に分けない = 改行の無い出力を保持しない)。**ファイルの所有**: 見張りへ
+    渡したら呼び手は消さない(先に消しても simctl は一時ファイルから最終名へ rename するので後から現れる)。見張りを起こせなかったときは
+    呼び手が今あるぶんを消し、「止める者がいない・ファイルは残りうる」と事実だけを言う(`handOffNotice`)。**出力名は run の中で一意**
+    (`outputURL`: `<stem>~smoke.mov` / `<stem>.mov` / `<stem>~part<N>.mov`。`~` は `sanitizedFileName` が出さない。coordinator の重複判定の鍵は
+    `RecordingIndexIO.collisionKey` = 大小文字・正規化を無視)。期限は壁時計でなく単調時計(`clock`)で測る。経緯は maintainer-notes §87
   - **モニターの撮影失敗は事実だけ言う**(2026-09-09): `simctl io screenshot` の期限切れに
     「a test run is probably driving it」と断定していたが、run の2分前(一括起動中)の失敗にも
     同じ推測が出ていた。原因は候補として並べる(run / 一括起動 / 刺さった simctl)

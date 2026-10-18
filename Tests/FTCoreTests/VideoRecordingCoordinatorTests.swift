@@ -152,6 +152,45 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         ], "起動時に切り替えた事実と、止めたら何も無かった事実の両方を残す")
     }
 
+    /// 置き場(APFS の既定)が同じ実体とみなす名前(大小文字・正規化の違い)の worker は、2 本目に `~2` が付く
+    /// (名前のまま数えると両方とも接尾辞なしで同じファイルになり、録画の上書き・見張りの取り違えが起きる)
+    func testSourceStemsThatCollideOnACaseInsensitiveVolumeGetASuffix() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let stems = LockedValue<[String]>([])
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp, androidADBPath: nil, failuresOnly: false),
+            makeSession: { _, _, stem in stems.withLock { $0.append(stem) }; return DeadSession() })
+        for label in ["phone", "Phone", "σ", "ς"] {  // worker の ID は platform:label
+            let worker = RunWorker(label: label, platform: "ios", driver: UnusedDriver(),
+                                   connection: DriverConnection(platform: "ios"), logicalName: label)
+            _ = await coordinator.start(worker)
+        }
+        XCTAssertEqual(stems.value, ["src-ios-phone", "src-ios-Phone~2", "src-ios-σ", "src-ios-ς~2"])
+    }
+
+    /// クリップ名も同じ鍵で数える(`A.S0010` と `a.S0010` は置き場で同じファイル = 上書き)
+    func testClipStemsThatCollideOnACaseInsensitiveVolumeGetASuffix() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp),
+            makeSession: realFileSessionFactory(),
+            extractClip: writing { _, _, _, _, _, _, _ in true })
+        let w1 = makeWorker(1)
+        let w2 = makeWorker(2)
+        _ = await coordinator.start(w1)
+        _ = await coordinator.start(w2)
+        await registerInterval(coordinator, worker: w1, scenarioID: "A.S0010")
+        await registerInterval(coordinator, worker: w2, scenarioID: "a.S0010")
+        await coordinator.stop(w1)
+        await coordinator.stop(w2)
+        await coordinator.finish()
+        let index = try JSONDecoder().decode(RecordingIndex.self,
+                                             from: Data(contentsOf: tmp.appendingPathComponent("recordings/index.json")))
+        XCTAssertEqual(Set(index.recordings.map(\.file)), ["recordings/A-S0010.mp4", "recordings/a-S0010~2.mp4"])
+    }
+
     /// **物理 iPhone は静止画の録画**(StillFrameRecorder)—— 撮影先を子へ渡せ、置かれた静止画が
     /// 停止時に mp4 になってシナリオのクリップとして index に載る(実エンコード・実切り出し)
     func testPhysicalIPhoneRecordsStillFramesIntoAClip() async throws {
