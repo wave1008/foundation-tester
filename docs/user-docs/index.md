@@ -154,6 +154,7 @@ scenarios the AI assistant wrote, or to write some yourself.
 - [Self-healing](reference/running/self_healing.md)
 - [Parallel execution](reference/running/parallel_execution.md)
 - [Analysing results (fleetest results, dashboard)](reference/running/results_analysis.md)
+- [Response measurement (experimental)](reference/running/response_measurement.md)
 
 ### Tools
 

@@ -152,6 +152,7 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 - [自己修復](reference/running/self_healing_ja.md)
 - [並列実行](reference/running/parallel_execution_ja.md)
 - [結果の分析(fleetest results・ダッシュボード)](reference/running/results_analysis_ja.md)
+- [レスポンス計測(試験的)](reference/running/response_measurement_ja.md)
 
 ### ツール
 
