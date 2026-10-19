@@ -51,7 +51,8 @@ There are mechanisms that limit the risk if harmful code gets mixed into test co
   ([Checking the sandbox and opening the holes you need](../security/sandbox.md)).
 - **Tests can reach only the destinations you allow.**
   A test can talk to the internet only at the destinations listed in the `allowedDomains` setting
-  ([Sandbox defaults](../reference/running/sandbox_access.md)).
+  ([Sandbox defaults](../reference/running/sandbox_access.md)). The exception is a run that uses a physical iOS device
+  over Wi-Fi: on that bridge's port numbers, any host is reachable ([Notes and limitations](../security/limitations.md)).
 
 ## Privacy
 

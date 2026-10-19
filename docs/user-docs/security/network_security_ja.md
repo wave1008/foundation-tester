@@ -215,7 +215,8 @@ cat ~/.config/fleetest/config.json
 見えるもの:
 
 - `allowedDomains` に並んだ宛先だけが、シナリオから届く外部です。ファイルが無い・`allowedDomains` が無い・空なら、
-  シナリオは外部へ一切出られません。
+  シナリオは外部へ一切出られません。**例外は Wi-Fi で繋いだ iOS 実機を使う run** で、そのブリッジのポート番号だけは
+  どのホストへも繋がります([注意事項と制限事項](limitations_ja.md))。
 - 一覧にある宛先でも、シナリオが自作の `URLSession` で直接繋ぐ通信は届きません(プロキシを通る `httpRequest` と
   `fleetestURLSession` だけが届きます)。一覧に無い宛先へ繋ごうとすると、プロキシが `403 Forbidden` を返します。
   実際に繋いで確かめる手順と、繋がらないときの見方は[シナリオから外部へ通信する](../reference/writing/network_access_ja.md)にあります。

@@ -63,7 +63,7 @@ shell or in the `env` of `.mcp.json` are not visible. Put secrets a scenario nee
 | Destination | Reachable? |
 |---|---|
 | This Mac's localhost (bridges and so on) | Yes. Only the adb server (5037 by default) and the Emulator ports (5554–5585) are closed |
-| The bridge of a physical iOS device connected over Wi-Fi | Only that bridge's port |
+| The bridge of a physical iOS device connected over Wi-Fi | Yes, on that bridge's port number. The sandbox can narrow this only by port number, so **any host, not just the device, is reachable on that number** (without the proxy or `allowedDomains`) |
 | Destinations listed in `sandbox.allowedDomains` | Yes, through fleetest's proxy |
 | Anything else (the internet, the company LAN) | No |
 

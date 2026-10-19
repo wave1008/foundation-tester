@@ -51,7 +51,8 @@
   ([サンドボックスを確かめて、必要な穴をあける](../security/sandbox_ja.md))。
 - **外部と通信できるのは、許可した相手だけです。**
   テストからインターネットへ通信できるのは、設定 `allowedDomains` に書いた宛先だけです
-  ([サンドボックスの既定](../reference/running/sandbox_access_ja.md))。
+  ([サンドボックスの既定](../reference/running/sandbox_access_ja.md))。例外は Wi-Fi で繋いだ iOS 実機を使う run で、
+  そのブリッジのポート番号だけはどのホストへも繋がります([注意事項と制限事項](../security/limitations_ja.md))。
 
 ## プライバシー
 

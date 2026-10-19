@@ -228,7 +228,8 @@ cat ~/.config/fleetest/config.json
 What you should see:
 
 - Only the destinations listed in `allowedDomains` are reachable from a scenario. If the file does not exist, or
-  `allowedDomains` is missing or empty, a scenario cannot reach the outside at all.
+  `allowedDomains` is missing or empty, a scenario cannot reach the outside at all. **The exception is a run that uses a
+  physical iOS device over Wi-Fi**: on that bridge's port numbers, any host is reachable ([Notes and limitations](limitations.md)).
 - Even a listed destination is not reachable by a connection the scenario makes directly with a `URLSession` it created (only
   `httpRequest` and `fleetestURLSession`, which go through the proxy, reach it). Connecting to a destination that is not listed
   returns `403 Forbidden` from the proxy. How to confirm it by actually connecting, and how to read failures, are in
