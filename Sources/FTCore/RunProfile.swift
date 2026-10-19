@@ -1044,6 +1044,10 @@ public struct ResolvedProfile: Sendable {
     public let warnings: [String]
 
     public var iosDevices: [ResolvedDevice] { devices.filter { $0.platform == "ios" } }
+    /// platform を宣言していないシナリオを、デバイスに触らない dry-run でどちらの OS として列挙するか。
+    /// **`fleetest run --dry-run` と `api run --dry-run` が共有する唯一の規則**(実行時の「iOS のワーカーがあれば ios」と同じ方針)。
+    /// 別々に持つと、同じ `--profile android-run --dry-run` が CLI だけ iOS を検証して緑になった
+    public var dryRunDefaultPlatform: String { iosDevices.isEmpty ? "android" : "ios" }
     public var androidDevices: [ResolvedDevice] { devices.filter { $0.platform == "android" } }
 
     /// **回す本数を超える台数を用意しない**。1本のシナリオを回すのに 10 台ぶんのブリッジ供給と

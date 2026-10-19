@@ -1281,7 +1281,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // シナリオが platform 未指定のときの既定 platform(iOS ワーカーがあれば ios 優先。
         // dry-run はワーカーを構築しないため resolved のデバイス構成から同じ方針で決める)
         let defaultPlatform: String = dryRun
-            ? (resolved.iosDevices.isEmpty ? "android" : "ios")
+            ? resolved.dryRunDefaultPlatform
             : (workers.contains { $0.platform == "ios" } ? "ios" : "android")
 
         // 中断時は次のシナリオへ進まず、今動いている子を SIGTERM してから普通に return する

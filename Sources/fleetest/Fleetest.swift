@@ -811,6 +811,7 @@ struct RunScenarios: AsyncParsableCommand {
         // **RunRecorder を作らない**(実行していない結果を results DB と --failed の判断材料に
         // 混ぜないため。ScenarioHost も dryRun では LastResultsStore へ書かない)
         if dryRun {
+            var dryRunPlatform = resolvedPlatform
             if let profile {
                 // **使わなくても実在は確かめる** —— `api run` は同じ打鍵を「run profile not found」で
                 // 断る(2実装で検査規則を揃える)。確かめないと打ち間違えたプロファイル名が dry-run を
@@ -819,8 +820,18 @@ struct RunScenarios: AsyncParsableCommand {
                 guard names.contains(profile) else {
                     throw ProfileError.runProfileNotFound(name: profile, available: names)
                 }
-                ConsoleOut.out("ℹ️ --dry-run touches no device, so --profile is not used"
-                      + " (--platform decides which ios { } / android { } blocks run)")
+                // **platform を宣言していないシナリオの OS はプロファイルのデバイスから決める**(`api run` と同じ
+                // `ResolvedProfile.dryRunDefaultPlatform`)。--platform で決めると、Android だけのプロファイルの dry-run が
+                // iOS の ios { } を検証して緑になった(--profile と --platform は併用できないので既定の ios に倒れていた)
+                // **`--device` / `--device-machine` で絞った後のデバイスで決める**(`api run` の dry-run も絞った `full` から
+                // 決める。絞る前で決めると、混在プロファイルで Android の1台だけを指したときに CLI だけ ios を検証した)
+                let resolved = try ProfileResolver.resolve(
+                    project: testProject, runName: profile,
+                    workspaceOverride: workspace, overrides: try RunProfileSetOverride.parse(setOverrides))
+                    .filteringDevices(names: devices, deviceMachine: deviceMachine)
+                dryRunPlatform = resolved.dryRunDefaultPlatform
+                ConsoleOut.out("ℹ️ --dry-run touches no device; --profile only decides that scenarios declaring no"
+                      + " platform run their \(dryRunPlatform) { } blocks")
             }
             if runner != nil {
                 ConsoleOut.out("ℹ️ --dry-run touches no device, so --runner is not used"
@@ -836,7 +847,7 @@ struct RunScenarios: AsyncParsableCommand {
                 ConsoleOut.out("ℹ️ --dry-run touches no device, so --set is not used"
                       + " (dry-run always runs with FM disabled)")
             }
-            let failedCount = await runDryRun(items, project: testProject)
+            let failedCount = await runDryRun(items, project: testProject, platform: dryRunPlatform)
             ConsoleOut.out(failedCount == 0
                   ? "✅ All \(items.count) scenario(s) passed the dry-run"
                   : "❌ \(failedCount) of \(items.count) scenario(s) failed the dry-run")
@@ -1308,7 +1319,7 @@ struct RunScenarios: AsyncParsableCommand {
         return ["ios": app, "android": app]
     }
 
-    private func runDryRun(_ items: [ScenarioRunItem], project: TestProject) async -> Int {
+    private func runDryRun(_ items: [ScenarioRunItem], project: TestProject, platform defaultPlatform: String) async -> Int {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("fleetest-dryrun-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -1316,7 +1327,7 @@ struct RunScenarios: AsyncParsableCommand {
         var failedCount = 0
         let deviceSession = RunDeviceSession()
         for item in items {
-            let platform = item.info.platform ?? resolvedPlatform
+            let platform = item.info.platform ?? defaultPlatform
             // quiet: runSequential と同じ扱い(成功なら結果1行・失敗ならバッファ全体)
             var buffer: [String] = []
             let passed = await ScenarioHost.run(
@@ -1344,7 +1355,7 @@ struct RunScenarios: AsyncParsableCommand {
             if !passed { failedCount += 1 }
         }
         for outcome in await ScenarioHost.runDeviceTearDowns(
-            project: project, connection: DriverConnection(platform: resolvedPlatform),
+            project: project, connection: DriverConnection(platform: defaultPlatform),
             deviceSession: deviceSession, settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
             reportDir: tempDir.path, dryRun: true,
             appPath: nil, appName: nil, appBundleID: appID, registerChildProcess: nil) {

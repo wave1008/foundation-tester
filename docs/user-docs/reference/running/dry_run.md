@@ -36,8 +36,9 @@ execute for the platform being checked (to cover both OSes, dry-run once per pla
 ## What it does not do
 
 - It never contacts a device or an Emulator/Simulator, and never calls FM.
-- `--profile` is not used, since no device is involved — only `--platform` decides which of
-  `ios { }` / `android { }` to check.
+- `--profile` is not used to prepare any device. It only decides, from the profile's devices, which of `ios { }` /
+  `android { }` is checked for scenarios that declare no platform (`ios` if the profile has an iOS device, otherwise
+  `android`; the same rule as the VSCode extension's dry-run). Without a profile, `--platform` decides.
 - It does not write a report, and its result is not recorded for `--failed` to pick up later.
 
 `--scenario` / `--folder` / `--project` / `--quiet` all work the same as a normal run, and a
