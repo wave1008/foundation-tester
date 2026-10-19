@@ -24,7 +24,8 @@ final class ForeignBridgeOwnershipPlanTests: XCTestCase {
     }
 
     private func plan(engine: String, bundleID: String? = nil, digest: String? = nil,
-                      running: [UInt16: BridgeProvisioner.RunningBridge]) throws
+                      running: [UInt16: BridgeProvisioner.RunningBridge],
+                      foreign: [String: [BridgeOwnership.RunnerProcess]] = [:]) throws
         -> BridgeProvisioner.EnginePlan {
         let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130,
                                             // この Mac で生きているブリッジ(lsof)に結果を左右させない
@@ -33,7 +34,7 @@ final class ForeignBridgeOwnershipPlanTests: XCTestCase {
         var used = Set(running.keys)
         return try provisioner.planBridge(
             engine: engine, preferred: nil, name: sim.name, sim: sim, bundleID: bundleID,
-            appIsCurrent: [:], preinstallAppPath: nil, running: running, starting: [:],
+            appIsCurrent: [:], preinstallAppPath: nil, running: running, starting: [:], foreign: foreign,
             inappSourceDigest: digest, claimed: &claimed, usedPorts: &used)
     }
 
@@ -48,6 +49,21 @@ final class ForeignBridgeOwnershipPlanTests: XCTestCase {
         [8125: .init(udid: "UDID-A", name: sim.name, engine: "inapp",
                      protocolVersion: BridgeAPI.bridgeProtocolVersion, sessionBundleID: bundleID,
                      sourceDigest: digest, ownership: ownership)]
+    }
+
+    /// 別のワークスペースのランナーが /status に答えていない(その run の操作を処理中)とき、隣に2本目を起動しない
+    func testAForeignRunnerThatIsNotAnsweringBlocksInsteadOfASecondRunner() throws {
+        let busy = BridgeOwnership.RunnerProcess(udid: "UDID-A", port: 8129, ownerRepo: "/other-clone")
+        guard case .blockedByForeign(let port, let owner, _) = try plan(
+            engine: "xcuitest", running: [:], foreign: ["UDID-A": [busy]]) else {
+            return XCTFail("答えない別のワークスペースのランナーの隣に起動しないはず")
+        }
+        XCTAssertEqual(port, 8129)
+        XCTAssertEqual(owner, "/other-clone")
+        guard case .launch = try plan(engine: "xcuitest", running: [:],
+                                      foreign: ["UDID-OTHER": [busy]]) else {
+            return XCTFail("別の端末のランナーは関係ない")
+        }
     }
 
     func testForeignCurrentXCUITestRunnerIsUsedAsIs() throws {

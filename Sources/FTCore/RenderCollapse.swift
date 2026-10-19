@@ -20,6 +20,9 @@ public enum RenderCollapse {
     public enum Finding: Equatable, Sendable {
         /// アプリの領域が一色。値は木がその領域に報告した文字の要素の数
         case blankAppArea(textElements: Int)
+        /// ステータスバーまで含めて**画面全体**が一色 = アプリの描画ではなく画面そのものが写っていない・表示が止まった
+        /// (ステータスバーは OS が描く。SwiftUI・Flutter の真っ黒の写真がこの形だった)。値は木が報告した文字の要素の数
+        case wholeScreenBlank(textElements: Int)
         /// 文字の要素が1つも描かれていない。値は確かめた要素の数
         case noTextDrawn(textElements: Int)
     }
@@ -46,7 +49,8 @@ public enum RenderCollapse {
         let texts = textElements(in: elements, screen: screen, appArea: area)
         guard !texts.isEmpty else { return nil }
         if isUniform(pngData: pngData, region: area, screen: screen) == true {
-            return .blankAppArea(textElements: texts.count)
+            return BlankFrameDetector.isUniformBlank(pngData: pngData)
+                ? .wholeScreenBlank(textElements: texts.count) : .blankAppArea(textElements: texts.count)
         }
         guard texts.count >= minimumTextElements, inkThreshold > 0 else { return nil }
         let inks = texts.compactMap { RegionInk.luminanceStdDev(pngData: pngData, frame: $0.frame, screen: screen) }

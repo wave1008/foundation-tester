@@ -519,6 +519,12 @@ public struct BridgeProvisioner: Sendable {
             .portsByUDID(targets.map { $0.sim.udid }, repoRoot: repoRoot)
             .mapValues { $0.filter { !running.keys.contains($0) } }
             .filter { !$0.value.isEmpty }
+        // 3.6. 別のワークスペースの、/status に答えていない XCUITest ランナー(BridgeLauncher.foreignRunners)。
+        // 答えたものは running に foreign として載っているので除く
+        let foreignByUDID = BridgeLauncher
+            .foreignRunners(targets.map { $0.sim.udid }, repoRoot: repoRoot)
+            .mapValues { $0.filter { !running.keys.contains($0.port) } }
+            .filter { !$0.value.isEmpty }
         if !startingByUDID.isEmpty {
             let summary = startingByUDID.values.flatMap { $0 }.sorted()
                 .map(String.init).joined(separator: ", ")
@@ -544,14 +550,14 @@ public struct BridgeProvisioner: Sendable {
                         engine: "inapp", preferred: target.spec.port, name: target.name,
                         sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
                         preinstallAppPath: preinstallAppPath,
-                        running: running, starting: startingByUDID,
+                        running: running, starting: startingByUDID, foreign: foreignByUDID,
                         inappSourceDigest: inappSourceDigest,
                         claimed: &claimed, usedPorts: &usedPorts)))
                     bridges.append(("xcuitest", try planBridge(
                         engine: "xcuitest", preferred: nil, name: target.name,
                         sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
                         preinstallAppPath: preinstallAppPath,
-                        running: running, starting: startingByUDID,
+                        running: running, starting: startingByUDID, foreign: foreignByUDID,
                         inappSourceDigest: inappSourceDigest,
                         claimed: &claimed, usedPorts: &usedPorts)))
                 } else {
@@ -559,7 +565,7 @@ public struct BridgeProvisioner: Sendable {
                         engine: engine, preferred: target.spec.port, name: target.name,
                         sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
                         preinstallAppPath: preinstallAppPath,
-                        running: running, starting: startingByUDID,
+                        running: running, starting: startingByUDID, foreign: foreignByUDID,
                         inappSourceDigest: inappSourceDigest,
                         claimed: &claimed, usedPorts: &usedPorts)))
                 }
@@ -816,6 +822,7 @@ public struct BridgeProvisioner: Sendable {
                             preinstallAppPath: String?,
                             running: [UInt16: RunningBridge],
                             starting: [String: [UInt16]] = [:],
+                            foreign: [String: [BridgeOwnership.RunnerProcess]] = [:],
                             inappSourceDigest: String? = nil,
                             claimed: inout Set<UInt16>,
                             usedPorts: inout Set<UInt16>) throws -> EnginePlan {
@@ -875,6 +882,13 @@ public struct BridgeProvisioner: Sendable {
             claimed.insert(port)
             usedPorts.insert(port)
             return .adopt(port: port)
+        }
+        // 別のワークスペースの XCUITest ランナーが、このデバイスで /status に答えずに動いている(その run の操作を
+        // 処理中・起動中)。**隣に2本目を起動しない**(1デバイス1ランナーなので相手の run を壊す)。止めもしない
+        if engine == "xcuitest", let other = (foreign[sim.udid] ?? []).first(where: { !claimed.contains($0.port) }) {
+            claimed.insert(other.port)
+            return .blockedByForeign(port: other.port, owner: other.ownerRepo,
+                                     reason: "xcuitest bridge that is not answering right now (busy or starting)")
         }
         // 再利用できない同一 UDID の旧ブリッジは止めてから新規起動する
         // (放置するとポートを握ったまま残り、xcuitest は /status が旧版のまま応答し続け、

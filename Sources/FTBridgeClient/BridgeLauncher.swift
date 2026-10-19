@@ -805,6 +805,23 @@ public struct BridgeLauncher: Sendable {
     /// 「同一デバイスに 2 本目の XCUITest ランナーを立てない」判定はこれを使う
     /// (announce 済みブリッジしか見ない scanRunningBridges では、別プロセスが起動した直後の
     /// ランナーが見えず、空きポートに 2 本目を立てて OS の 1 デバイス 1 ランナー制約で全滅する)。
+    /// 指定の端末で動いている、**別の実在するワークスペースの** XCUITest ランナー(UDID → プロセスの申告)。
+    /// 自分の台帳(pid ファイル)では見えず、`/status` に答えないときは HTTP の走査にも映らないものを、
+    /// プロセスの起動引数から拾う(`BridgeOwnership.runnerProcess`)。申告先が消えたもの(孤児)は数えない
+    public static func foreignRunners(_ udids: [String], repoRoot: URL) -> [String: [BridgeOwnership.RunnerProcess]] {
+        guard !udids.isEmpty,
+              let ps = try? Shell.run(["ps", "-ax", "-o", "command="]).outputIfSucceeded else { return [:] }
+        var result: [String: [BridgeOwnership.RunnerProcess]] = [:]
+        for line in ps.split(whereSeparator: \.isNewline) {
+            guard let runner = BridgeOwnership.runnerProcess(fromCommand: String(line)),
+                  udids.contains(runner.udid),
+                  !BridgeOwnership.isSameRepo(runner.ownerRepo, repoRoot),
+                  FileManager.default.fileExists(atPath: runner.ownerRepo) else { continue }
+            result[runner.udid, default: []].append(runner)
+        }
+        return result
+    }
+
     public static func portsByUDID(_ udids: [String], repoRoot: URL) -> [String: [UInt16]] {
         let stateDir = repoRoot.appendingPathComponent(".fleetest")
         guard !udids.isEmpty,

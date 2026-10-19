@@ -58,6 +58,9 @@ extension StepExecutor {
         case .blankAppArea(let count):
             seen = "the app's area of the screenshot is a single colour, although the tree reports \(count) text"
                 + " element(s) there"
+        case .wholeScreenBlank(let count):
+            seen = "the whole screenshot is a single colour, status bar included (the screen itself was not captured"
+                + " or the display stopped), although the tree reports \(count) text element(s)"
         case .noTextDrawn(let count):
             seen = "none of the \(count) text element(s) the tree reports is drawn in the screenshot (shapes may be drawn,"
                 + " text is not)"

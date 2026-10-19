@@ -40,4 +40,21 @@ final class BridgeOwnershipTests: XCTestCase {
         XCTAssertTrue(BridgeOwnership.isSameRepo(privatePath, dir))
         XCTAssertFalse(BridgeOwnership.isSameRepo(dir.path + "-other", dir))
     }
+
+    /// 実際の `ps` の command 列(ランナーの起動引数)から端末・ポート・持ち主のワークスペースを読む
+    func testRunnerProcessReadsDeviceAndOwnerFromTheLaunchArguments() throws {
+        let command = "/Applications/Xcode_27.2_beta_3.app/Contents/Developer/usr/bin/xcodebuild test-without-building"
+            + " -xctestrun /Users/me/github/ft-kb/.fleetest/DerivedData/Build/Products/FleetestRunner-8125.xctestrun"
+            + " -destination platform=iOS Simulator,id=B422AB58-6C79-45BC-92F0-BEF88061C8E1"
+            + " -resultBundlePath /Users/me/github/ft-kb/.fleetest/xcresult/bridge-8125-1792398295961.xcresult"
+            + " -derivedDataPath /Users/me/github/ft-kb/.fleetest/DerivedData"
+        let runner = try XCTUnwrap(BridgeOwnership.runnerProcess(fromCommand: command))
+        XCTAssertEqual(runner, BridgeOwnership.RunnerProcess(udid: "B422AB58-6C79-45BC-92F0-BEF88061C8E1", port: 8125,
+                                                             ownerRepo: "/Users/me/github/ft-kb"))
+    }
+
+    func testOtherProcessesAreNotRunners() {
+        XCTAssertNil(BridgeOwnership.runnerProcess(fromCommand: "/usr/bin/xcodebuild build-for-testing -scheme Runner"))
+        XCTAssertNil(BridgeOwnership.runnerProcess(fromCommand: "tail -f bridge-8125.log id=B422AB58"))
+    }
 }

@@ -24,8 +24,9 @@ final class RenderCollapseTests: XCTestCase {
     }
 
     /// 白地に、`shapes` を紫で塗り、`inked` の枠に縞(文字の代わりの構造)を描いた絵
+    /// `statusBar` = 上端に時計の代わりの構造を描く(アプリだけが崩れた形。false = 画面全体が写っていない形)
     static func png(width: Int = 400, height: Int = 800, shapes: [FTRect] = [], inked: [FTRect] = [],
-                    keys: FTRect? = nil) -> Data {
+                    keys: FTRect? = nil, statusBar: Bool = true) -> Data {
         let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                                 space: CGColorSpaceCreateDeviceRGB(),
                                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
@@ -34,7 +35,8 @@ final class RenderCollapseTests: XCTestCase {
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
         context.setFillColor(CGColor(red: 0.4, green: 0.3, blue: 0.6, alpha: 1))
         for s in shapes { context.fill(flip(s)) }
-        for r in inked + (keys.map { [$0] } ?? []) {
+        let clock = statusBar ? [FTRect(x: 20, y: 10, width: 60, height: 20)] : []
+        for r in inked + clock + (keys.map { [$0] } ?? []) {
             context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
             var x = r.x
             while x < r.x + r.width {
@@ -58,6 +60,11 @@ final class RenderCollapseTests: XCTestCase {
 
     func testWholeAppAreaInOneColourWithTextInTheTreeIsBlank() {
         XCTAssertEqual(judge(Self.png()), .blankAppArea(textElements: 3))
+    }
+
+    /// ステータスバーまで一色 = 画面そのものが写っていない(アプリの描画の崩れとは書き分ける)
+    func testWholeScreenInOneColourIncludingTheStatusBarIsNotCaptured() {
+        XCTAssertEqual(judge(Self.png(statusBar: false)), .wholeScreenBlank(textElements: 3))
     }
 
     /// キーボード以外が真っ白(キーボードの範囲は除いて見る)

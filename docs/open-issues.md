@@ -162,6 +162,11 @@
 
 ## 設計判断で据え置いているもの(直さないと決めた。症状が出たら見直す)
 
+- 描画崩壊の判定は自前描画(Compose・Flutter)とフレームワーク不明のアプリだけ。SwiftUI・UIKit・RN で**画面全体が写っていない**
+  (ステータスバーまで一色)まま木だけの検証が緑になる形は拾わない。失敗レポートでは SwiftUI 648 枚中 3 枚・同日の SwiftUI/RN の
+  200 本超の run では 0 件。何か1つ落ちれば既存の凍結の検知が端末を外す。誤った緑を実際に観測したら判定をこの形だけ広げる
+  (maintainer-notes §90.3)
+
 - `activateSnapshotNode` の古い木: 撃つ前に `isReachable` で照合するが、UIView まで辿れないノードは許可する
   (`InAppBridge.swift:776-777`)ので、SwiftUI の AX だけのノードでは古いノードが発火し得る
 - `InAppSettle` は keyWindow だけを見る(`InAppSettle.swift:91-99`)。別の窓のアニメは見ない
