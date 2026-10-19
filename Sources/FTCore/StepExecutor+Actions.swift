@@ -1324,8 +1324,7 @@ extension StepExecutor {
     /// 内側に入力欄がちょうど1つある容器(`nonInputTypeTargetNote` が non-nil)は従来どおり撃つ
     func nonTextInputPreflightRefusal(_ element: ElementInfo, in elements: [ElementInfo],
                                       action: String) -> String? {
-        guard TapTargetGeometry.nonInputTypeTargetNote(element, in: elements) == nil,
-              TypeReadback.positivelyNonTextInputTypes.contains(element.type) else {
+        guard TapTargetGeometry.typeTargetVerdict(element, in: elements) == .notATextField(positively: true) else {
             return nil
         }
         return "the target is a \(element.type), not a text field — refusing before anything is"

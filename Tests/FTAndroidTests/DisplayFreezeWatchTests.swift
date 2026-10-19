@@ -85,6 +85,31 @@ final class DisplayFreezeWatchTests: XCTestCase {
         XCTAssertEqual(probe.nudges, 1)
     }
 
+    /// **基準は run をまたぐ**: 1 つの run で境目を 1 回しか迎えないレーンでも、前の run の控えと比べて疑う
+    /// (run ごとの控えだけだと、凍結した Emulator を一度も疑えなかった = 負荷テストで実測)
+    func testBaselineCarriesOverToTheNextRunsWatch() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dfw-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let probe = Probe(); probe.frames = [frameA] + Array(repeating: frameA, count: 40)
+        func watch() -> DisplayFreezeWatch {
+            DisplayFreezeWatch(
+                capture: { _ in probe.nextFrame() },
+                nudge: { _ in probe.sync { probe.nudges += 1; return true } },
+                restore: { _, _ in },
+                repair: { _, _, _ in probe.sync { probe.repairs += 1 }; return .deviceRestart },
+                baseline: .files(in: dir),
+                now: { probe.sync { probe.now } })
+        }
+        let first = await watch().check(worker(), restoring: "app") { _ in }
+        XCTAssertEqual(first, .healthy)
+        probe.now += DisplayFreezeDetector.minSpanSeconds
+        let next = await watch().check(worker(), restoring: "app") { _ in }  // 別の run = 別のインスタンス
+        guard case .frozen = next else { return XCTFail("前の run の基準と比べて疑うはず: \(next)") }
+        XCTAssertEqual(probe.repairs, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("emulator-5554.json").path),
+                       "回復の後は基準を捨てる")
+    }
+
     /// 確認の入力を撃てなかったら判定しない(時計の無い静止画面の健全なデバイスを再起動しない)・SUT にも触らない
     func testUnissuedNudgeIsNotJudgedAndNothingIsRepaired() async {
         let probe = Probe(); probe.frames = [frameA] + Array(repeating: frameA, count: 40)

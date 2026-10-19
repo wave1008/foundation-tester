@@ -113,14 +113,24 @@ final class RemoteDispatcherScenarioTextsTests: XCTestCase {
 
     func testReportsMissingNoteSaysFailedWhenNotInterrupted() {
         XCTAssertEqual(
-            RemoteRunDispatcher.reportsMissingNote(interrupted: false),
+            RemoteRunDispatcher.reportsMissingNote(interrupted: false, exitCode: 1),
             "note: the remote produced no reports (the run failed before writing any)")
     }
 
     func testReportsMissingNoteSaysInterruptedWhenWeStoppedIt() {
         XCTAssertEqual(
-            RemoteRunDispatcher.reportsMissingNote(interrupted: true),
+            RemoteRunDispatcher.reportsMissingNote(interrupted: true, exitCode: 1),
             "note: the remote produced no reports (the run was interrupted before writing any)")
+    }
+
+    /// ssh 自身の失敗(255)は run の失敗と言わない(接続前のタイムアウトでも 255 = run が始まったかも分からない)
+    func testSSHFailureIsNotCalledARunFailure() {
+        XCTAssertEqual(
+            RemoteRunDispatcher.reportsMissingNote(interrupted: false, exitCode: 255),
+            "note: the remote produced no reports (ssh exited 255, so whether the run started at all is unknown)")
+        XCTAssertEqual(RemoteRunDispatcher.finishedLine(exitCode: 255),
+                       "==> ssh exited 255 (the connection failed or dropped) — the remote run's own result is unknown")
+        XCTAssertEqual(RemoteRunDispatcher.finishedLine(exitCode: 1), "==> remote run finished (exit 1)")
     }
 
     // MARK: - recordedBoolField

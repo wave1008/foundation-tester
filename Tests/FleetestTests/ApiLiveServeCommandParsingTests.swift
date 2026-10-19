@@ -40,6 +40,55 @@ final class ApiLiveServeCommandParsingTests: XCTestCase {
         XCTAssertFalse(detail.contains("fromY"), detail)
     }
 
+    /// **JSON の true は NSNumber(CFBoolean)で来て `as? Int` / `as? Double` を 1 として通る**(負荷テストで
+    /// `{"cmd":"type","ref":true}` が ref 1 としてドライバまで届いた)。実入力と同じく JSONSerialization で読む
+    /// (Swift の `true` リテラルは CFBoolean にならないので、辞書リテラルでは再現しない)
+    private func parsed(_ json: String) throws -> ApiLiveServeCommand {
+        let raw = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        return ApiLiveServeCommand(cmd: try XCTUnwrap(raw["cmd"] as? String), raw: raw)
+    }
+
+    func testJSONBooleanIsRejectedForAnIntegerField() throws {
+        let command = try parsed(#"{"cmd":"type","text":"a","ref":true}"#)
+        guard let detail = command.decodeError else { return XCTFail("true を ref 1 として通さない") }
+        XCTAssertTrue(detail.contains("ref must be an integer (got the boolean true)"), detail)
+        XCTAssertNil(command.ref)
+    }
+
+    func testJSONBooleanIsRejectedForANumberField() throws {
+        let command = try parsed(#"{"cmd":"pinch","scale":false}"#)
+        guard let detail = command.decodeError else { return XCTFail("false を scale 0 として通さない") }
+        XCTAssertTrue(detail.contains("scale must be a number (got the boolean false)"), detail)
+        XCTAssertNil(command.scale)
+    }
+
+    func testJSONBooleanIsRejectedForAGesturePoint() throws {
+        let command = try parsed(#"{"cmd":"gesture","fingers":[{"points":[{"x":1,"y":2,"t":true}]}]}"#)
+        XCTAssertNotNil(command.decodeError, "t: true を 1 秒として通さない")
+        XCTAssertNil(command.fingers)
+    }
+
+    /// 逆向き: 数値の 1 を「the boolean true」と書かない(`as Bool` は NSNumber の 0/1 にも当たる)
+    func testJSONNumberOneInAStringFieldIsNotDescribedAsABoolean() throws {
+        let command = try parsed(#"{"cmd":"type","text":1}"#)
+        guard let detail = command.decodeError else { return XCTFail("型違いは decodeError に載せる") }
+        XCTAssertTrue(detail.contains("text must be a string (got 1)"), detail)
+    }
+
+    /// NUL は入口で断る(MCP と同じ文言。外部コマンドへ流れると Process が abort する)
+    func testNULInAStringFieldIsRejected() throws {
+        let command = try parsed(#"{"cmd":"launch","bundle":"com.x\u0000y"}"#)
+        XCTAssertEqual(command.decodeError, "bundle must not contain a NUL character (\\u0000)")
+        XCTAssertNil(command.bundle)
+    }
+
+    /// 配列の欄の型違いに「JSON の文字列を渡せ」と言わない
+    func testArrayFieldTypeErrorAsksForAnArray() throws {
+        let command = try parsed(#"{"cmd":"gesture","fingers":-1}"#)
+        guard let detail = command.decodeError else { return XCTFail("型違いは decodeError に載せる") }
+        XCTAssertTrue(detail.hasSuffix("pass a JSON array"), detail)
+    }
+
     func testCorrectTypesParseCleanlyWithNoDecodeError() {
         let command = ApiLiveServeCommand(
             cmd: "pinch", raw: ["cmd": "pinch", "scale": 2.5, "ref": 7])

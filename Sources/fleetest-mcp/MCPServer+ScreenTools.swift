@@ -167,10 +167,12 @@ extension MCPServer {
             // in-app エンジンでは焦点のある**別の**欄へ入って黙って成功扱いになる。
             // 対象そのものが分かっているのだから、ここで一度に断る
             if let priorElement, let elements = lastSnapshots[Self.engineKey(args)]?.elements {
-                if let warn = TapTargetGeometry.nonInputTypeTargetNote(priorElement, in: elements) {
+                switch TapTargetGeometry.typeTargetVerdict(priorElement, in: elements) {
+                case .textInput: break
+                case .containerWithOneField(let warn):
                     note = note.isEmpty ? " (warning: \(warn))"
                         : note + " (warning: \(warn))"
-                } else if !TypeReadback.isTextInput(priorElement) {
+                case .notATextField:  // 型で言い切れない clickable 等も断る(DSL・ライブ操作より厳しい)
                     throw MCPError(Self.notATextFieldRefusal(priorElement, ref: verified.ref))
                 }
             }
@@ -359,9 +361,10 @@ extension MCPServer {
             // ft_type と同じ門(そちらの doc 参照)。容器(内側に入力欄がちょうど1つ)は
             // 警告のうえで撃つが、それ以外の非入力欄は撃つ前に拒否する
             if let clearTarget, let elements = lastSnapshots[Self.engineKey(args)]?.elements {
-                if let warn = TapTargetGeometry.nonInputTypeTargetNote(clearTarget, in: elements) {
-                    clearNote += " (warning: \(warn))"
-                } else if !TypeReadback.isTextInput(clearTarget) {
+                switch TapTargetGeometry.typeTargetVerdict(clearTarget, in: elements) {
+                case .textInput: break
+                case .containerWithOneField(let warn): clearNote += " (warning: \(warn))"
+                case .notATextField:
                     throw MCPError(Self.notATextFieldRefusal(clearTarget, ref: verified.ref))
                 }
             }

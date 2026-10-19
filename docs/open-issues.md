@@ -37,6 +37,13 @@
   - そのたび 2〜3 分後に E2EY-CMP / E2EX-CMP の iOS(in-app)で「アプリ領域が単色」か「形だけで文字が無い」の notRendered(09:32:44〜09:33:11 に
     4 台 7 本・10:11:04〜06 に 2 台 2 本)。数分後の同じ Simulator は正常に描く。配信 10 本 + 録画 8 本 + Emulator 8 台 + ビルドの負荷下
   - 要る材料: 次に起きたときの GPU 側の記録(Metal/IOGPU のログ)。AVE の失敗と CMP の白紙が同じ GPU の逼迫の 2 つの症状かを分ける
+  - 2026-10-19 の負荷テスト(M2 Ultra)で採れた材料: CMP の iOS アプリ(プロセス名 `iosApp`)の Simulator 内ログに
+    `(Metal) Execution of the command buffer was aborted due to an error during execution (MTLCommandBufferErrorDomain error 1)` が
+    **全 Simulator で**出ていた(10 分で 25〜1,559 件。起動して 33 分の Simulator でも 773 件)= Simulator 個別の状態ではなくホスト側。
+    同じ Simulator で SwiftUI のアプリと設定アプリは描け、CMP だけが白紙(起動し直しても白紙のまま 10 分以上)。カーネルには
+    `IOGPUSysMemory::retainCPUWireMapping: failed to map memory for CPU wire mapping` / `AGXk: map block failed for cpu`(05:58:36)。
+    GPU の稼働率は 10%・Alloc system memory 36 GB。この回は白紙(05:51)の後に AVE の一時死(05:57)で、10/18 とは前後が逆。
+    負荷: Simulator 12 台(うち 2 台は別作業の iOS 27.2)・Emulator 10 台・配信・録画
 - **AppleAVE(ハードウェア動画エンコーダ)がマシン全体で壊れ、再起動まで戻らない**(2026-10-17〜18・M2 Ultra で3回)
   - 症状: 切り出しが `-17691` で失敗/合成映像も固まる。Simulator の録画の試し撮りが空になり、iOS の h264 配信も巻き添え
   - 確かめた範囲: 単独要因(切り出し・Simulator の録画・配信・Android の E2E・それらの組み合わせ)では再現しない(maintainer-notes §86)

@@ -879,6 +879,22 @@ struct ApiLiveServe: AsyncParsableCommand {
         return element
     }
 
+    /// ref で撃つ type / clear の門(判定は `TapTargetGeometry.typeTargetVerdict` = DSL・MCP と共有)。
+    /// 型でボタン等と言い切れる要素は撃つ前に断る —— ドライバはまず対象をタップするので、押してから「入力欄が無い」で
+    /// 失敗する。断る範囲は DSL と同じ(`clickable` 等は自前描画の本物の欄でありうるので撃つ)。
+    /// 木に無い ref は判定せずドライバの断りに任せる
+    private static func requireTextInputTarget(ref: Int, driver: AppDriver) async throws {
+        let snapshot = try await driver.snapshot()
+        guard let target = snapshot.elements.first(where: { $0.ref == ref }),
+              TapTargetGeometry.typeTargetVerdict(target, in: snapshot.elements) == .notATextField(positively: true)
+        else { return }
+        throw ServeCommandError.invalidArguments(
+            "[\(ref)] is a \(target.type), not a text field, and it does not contain exactly one text field"
+            + " either — refusing before anything is typed or cleared (the element would be tapped first,"
+            + " firing whatever it is). Click the input field itself, or omit ref to act on the field that"
+            + " has focus.")
+    }
+
     /// **撃つ前にセッションを前面へ追従させる**コマンド(画面を触る操作)。セッションそのものを
     /// 動かすコマンド(launch / activate / terminate / clearAppData / install)は通さない ——
     /// あちらは対象のアプリを引数で名指ししており、追従させると自分で決めた向き先を上書きする
@@ -959,8 +975,10 @@ struct ApiLiveServe: AsyncParsableCommand {
             guard let text = command.text else {
                 throw ServeCommandError.invalidArguments("type requires text")
             }
+            if let ref = command.ref { try await Self.requireTextInputTarget(ref: ref, driver: driver) }
             try await driver.type(ref: command.ref, text: text)
         case "clear":
+            if let ref = command.ref { try await Self.requireTextInputTarget(ref: ref, driver: driver) }
             try await driver.clearInput(ref: command.ref)
         case "hideKeyboard":
             try await driver.hideKeyboard()
@@ -1558,7 +1576,8 @@ struct ApiLiveServeCommand {
 
     /// {"scale":2} のような整数値も number として通す(NSNumber は Int/Double のどちらでも来うる)
     private static func numberValue(_ value: Any?) -> Double? {
-        (value as? Double) ?? (value as? Int).map(Double.init)
+        guard let value, !ArgumentBounds.isJSONBoolean(value) else { return nil }
+        return (value as? Double) ?? (value as? Int).map(Double.init)
     }
 
     /// 型違い・値域違反とも1件目のエラー文だけを残す(複数同時に違っても最初の1つで足りる)。
@@ -1568,7 +1587,8 @@ struct ApiLiveServeCommand {
     /// (MCP と同じ表を引く — 2箇所に値を持たない)
     private static func intField(_ raw: [String: Any], _ key: String, error: inout String?) -> Int? {
         guard let value = raw[key] else { return nil }
-        guard let number = value as? Int else {
+        // true は `as? Int` で 1 として通る(ArgumentBounds.isJSONBoolean)
+        guard !ArgumentBounds.isJSONBoolean(value), let number = value as? Int else {
             if error == nil { error = typeError(key: key, value: value, expected: "an integer", numeric: true) }
             return nil
         }
@@ -1582,7 +1602,8 @@ struct ApiLiveServeCommand {
     private static func doubleField(_ raw: [String: Any], _ key: String, error: inout String?) -> Double? {
         guard let value = raw[key] else { return nil }
         // {"scale":2} のような整数値も通す
-        guard let number = (value as? Double) ?? (value as? Int).map(Double.init) else {
+        guard !ArgumentBounds.isJSONBoolean(value),
+              let number = (value as? Double) ?? (value as? Int).map(Double.init) else {
             if error == nil { error = typeError(key: key, value: value, expected: "a number", numeric: true) }
             return nil
         }
@@ -1602,7 +1623,7 @@ struct ApiLiveServeCommand {
             if error == nil { error = typeError(key: key, value: value, expected: "a string", numeric: false) }
             return nil
         }
-        if let violation = ArgumentBounds.emptyViolation(key, string) {
+        if let violation = ArgumentBounds.emptyViolation(key, string) ?? ArgumentBounds.nulViolation(key, string) {
             if error == nil { error = violation }
             return nil
         }
@@ -1610,14 +1631,18 @@ struct ApiLiveServeCommand {
     }
 
     private static func typeError(key: String, value: Any, expected: String, numeric: Bool) -> String {
-        "\(key) must be \(expected) (got \(describeValue(value))) — \(ArgumentBounds.typeMismatchRemedy(value: value, expectsNumber: numeric))"
+        // 配列の欄に「JSON の文字列を渡せ」と言わない(typeMismatchRemedy は数値か文字列の欄の文言しか持たない)
+        let remedy = expected == "an array"
+            ? "pass a JSON array" : ArgumentBounds.typeMismatchRemedy(value: value, expectsNumber: numeric)
+        return "\(key) must be \(expected) (got \(describeValue(value))) — \(remedy)"
     }
 
     /// MCPServer.describeArgumentValue と同じ書式(型が分かる形。文字列 "8" と数値 8 を見分ける)
     private static func describeValue(_ value: Any) -> String {
+        // 判定は束縛の前の値で(`as Bool` で束縛した後は数値の 1 も CFBoolean に戻る)
+        if ArgumentBounds.isJSONBoolean(value) { return "the boolean \((value as? Bool) == true)" }
         switch value {
         case let value as String: return "the string \"\(value)\""
-        case let value as Bool: return "the boolean \(value)"
         case is [Any]: return "an array"
         case is [String: Any]: return "an object"
         case is NSNull: return "null"

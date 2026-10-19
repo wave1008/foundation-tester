@@ -180,7 +180,7 @@ struct RemoteRunDispatcher {
             reportDir: remoteReportDir)
 
         collectReports(project: project, remoteReportDir: remoteReportDir,
-                      interrupted: interruptFlag.interrupted)
+                      interrupted: interruptFlag.interrupted, exitCode: exitCode)
         if let localJUnitPath, let remoteJUnitPath {
             collectJUnit(remotePath: remoteJUnitPath, localPath: localJUnitPath, layout: layout,
                         stamp: stamp, project: project.name)
@@ -201,7 +201,7 @@ struct RemoteRunDispatcher {
         writeLastResults(texts: texts, project: project)
         cleanupDispatchDir(layout: layout, stamp: stamp)
 
-        log("==> remote run finished (exit \(exitCode))")
+        log(Self.finishedLine(exitCode: exitCode))
         return exitCode
     }
 
@@ -269,7 +269,7 @@ struct RemoteRunDispatcher {
             reportDir: remoteReportDir)
 
         collectReports(project: project, remoteReportDir: remoteReportDir,
-                      interrupted: interruptFlag.interrupted)
+                      interrupted: interruptFlag.interrupted, exitCode: exitCode)
         let transferredScenarioPaths = collectArtifacts(project: project, layout: layout)
         // 理由は dispatch() と同じ(読むのは今回転送された分だけ・結果は1回だけ作って共有)
         let texts = collectedScenarioTexts(
@@ -282,7 +282,7 @@ struct RemoteRunDispatcher {
         writeLastResults(texts: texts, project: project)
         cleanupDispatchDir(layout: layout, stamp: stamp)
 
-        log("==> remote run finished (exit \(exitCode))")
+        log(Self.finishedLine(exitCode: exitCode))
         return exitCode
     }
 
@@ -1022,7 +1022,8 @@ struct RemoteRunDispatcher {
     /// **interrupted**: このディスパッチが自分から中断した(SIGINT/SIGTERM)かどうか。
     /// 中断は正常に閉じて0件なだけで「失敗」ではない(実測: 4機ファンアウトへの
     /// SIGTERM 中断でも「the run failed」と出ていた。reportsMissingNote の宣言参照)
-    private func collectReports(project: TestProject, remoteReportDir: String, interrupted: Bool) {
+    private func collectReports(project: TestProject, remoteReportDir: String, interrupted: Bool,
+                                exitCode: Int32) {
         log("==> collecting reports")
         let localReports = project.reportsDir
         try? FileManager.default.createDirectory(at: localReports, withIntermediateDirectories: true)
@@ -1030,7 +1031,7 @@ struct RemoteRunDispatcher {
         // --safe-links の理由は RemoteArtifactCollection.rsyncArgs のコメント(回収は共有ディレクトリからの入力)
         collectRsync(["rsync", "-az", "--safe-links"] + SSHOptions.rsyncRemoteShellArgs
                         + [remoteReports, localReports.path + "/"],
-                     what: "reports", missingNote: Self.reportsMissingNote(interrupted: interrupted))
+                     what: "reports", missingNote: Self.reportsMissingNote(interrupted: interrupted, exitCode: exitCode))
     }
 
     /// 実績 JSON(run.json/scenarios/*.json/host-metrics.ndjson)と録画を含め results/ を
@@ -1217,10 +1218,27 @@ struct RemoteRunDispatcher {
     /// SIGINT/SIGTERM で止めた)と本当の失敗(何も書く前に落ちた)を混同しない** —— 中断は
     /// 正常に閉じて0件なだけで「失敗」ではない
     // internal(not private): tested directly (RemoteDispatcherScenarioTextsTests)
-    static func reportsMissingNote(interrupted: Bool) -> String {
-        interrupted
-            ? "note: the remote produced no reports (the run was interrupted before writing any)"
-            : "note: the remote produced no reports (the run failed before writing any)"
+    /// **ssh 自身の失敗(255)も「失敗」と言わない** —— 接続前のタイムアウト(banner exchange)でも 255 になり、
+    /// その回は run が始まったかどうかすら分からない(負荷テストで飽和した M1Max で実測)
+    static func reportsMissingNote(interrupted: Bool, exitCode: Int32) -> String {
+        if interrupted {
+            return "note: the remote produced no reports (the run was interrupted before writing any)"
+        }
+        if exitCode == sshConnectionFailureStatus {
+            return "note: the remote produced no reports (ssh exited 255, so whether the run started at all is unknown)"
+        }
+        return "note: the remote produced no reports (the run failed before writing any)"
+    }
+
+    /// ssh が自身の失敗(接続できない・途中で切れた)に返す終了コード(ssh(1) の規約。リモートのコマンドの
+    /// 終了コードはそのまま返る)。ロックの取得・セットアップの経路も同じ値で到達不能を判定している
+    static let sshConnectionFailureStatus: Int32 = 255
+
+    /// run の終わりの1行。255 は ssh 自身の失敗なので、向こうの run が「終わった」とは言わない
+    static func finishedLine(exitCode: Int32) -> String {
+        exitCode == sshConnectionFailureStatus
+            ? "==> ssh exited 255 (the connection failed or dropped) — the remote run's own result is unknown"
+            : "==> remote run finished (exit \(exitCode))"
     }
 
     /// scenario JSON の `"<key>": true|false` の値を取り出す(`recordedField` は引用符付きの

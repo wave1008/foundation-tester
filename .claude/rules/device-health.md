@@ -21,7 +21,8 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   受け渡しは `FTCore.DeviceFrozenStore`(`.fleetest/frozen-<key>.json`。RunLease と同じ
   pid 生存 + mtime)。**新しい根拠は `isConclusive=false`(警告)から入れる**
 - **「表示が止まった」(一様でない凍結)は run の境目の `DisplayFreezeWatch` が見る**(判定は `FTCore.DisplayFreezeDetector`
-  の 1 箇所 = 同じ絵が 60 秒以上・home で変わらない。docs/design.md の該当節)。**疑いだけでデバイスを触らない**(確定は
+  の 1 箇所 = 同じ絵が 60 秒以上・home で変わらない。docs/design.md の該当節)。**前回の境目の絵は run をまたいで引き継ぐ**
+  (`DisplayFreezeWatch.Baseline`。run ごとの控えに戻すと、レーンあたりの本数が少ない run では凍結を永久に疑えない)。**疑いだけでデバイスを触らない**(確定は
   home の確認)・**実機は見ない**・確定したら `.frozen` と同じ経路(直前の結果を捨てて振り直し → 回復 → revive)。
   **プロセス内の `StaleFrameDetector` を凍結の根拠に流用しない**(通ったステップに大量に立つ注記で、精度が違う)。
   回復の段(sleep/wake → ゲストの再起動 → 停止と起動)を足す・変えるときは `WorkerRecoveryKind` と docs/results-json.md も

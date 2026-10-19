@@ -572,6 +572,23 @@ public enum TapTargetGeometry {
             + " end up something you did not type). Target the field itself: \(how)"
     }
 
+    /// type / clear の対象の判定(DSL の `nonTextInputPreflightRefusal`・MCP の ft_type / ft_clear_input・ライブ操作が共有。
+    /// 文言と「どこまで断るか」は呼び手ごと)。入力欄でないものへ撃つと、ドライバはまず対象をタップしてから入力する =
+    /// ボタンなら押してしまい、in-app では焦点のある**別の**欄へ入って黙って通る。容器(内側に入力欄がちょうど1つ)は警告して撃つ。
+    /// `positively`: 型だけで入力欄でないと言い切れる(`TypeReadback.positivelyNonTextInputTypes` = ボタン等)。
+    /// false は `clickable` 等 —— 自前描画の本物の欄がこの型で来ることがあるので、DSL とライブ操作は撃ち、MCP は断る
+    public enum TypeTargetVerdict: Equatable, Sendable {
+        case textInput
+        case containerWithOneField(note: String)
+        case notATextField(positively: Bool)
+    }
+
+    public static func typeTargetVerdict(_ target: ElementInfo, in elements: [ElementInfo]) -> TypeTargetVerdict {
+        if TypeReadback.isTextInput(target) { return .textInput }
+        if let note = nonInputTypeTargetNote(target, in: elements) { return .containerWithOneField(note: note) }
+        return .notATextField(positively: TypeReadback.positivelyNonTextInputTypes.contains(target.type))
+    }
+
     /// **人が読む名指しであって、セレクタとして貼れる保証はしない**。
     /// `#id` はそのまま貼れることが多いが、ラベル側は `型 "ラベル"` という複合表示で、
     /// 記法として読まれる先頭文字(`#`/`.` 等)のエスケープも通していない —— ここを直すなら

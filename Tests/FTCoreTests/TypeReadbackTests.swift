@@ -130,6 +130,25 @@ final class TypeReadbackTests: XCTestCase {
         XCTAssertNil(TapTargetGeometry.nonInputTypeTargetNote(wrapper, in: [wrapper, a, b]))
     }
 
+    /// type / clear の門の共有判定(DSL・MCP・ライブ操作)。`positively` で DSL・ライブ操作は撃ち、MCP は断る
+    func testTypeTargetVerdictSeparatesPositiveNonInputsFromUnknownTypes() {
+        func el(_ ref: Int, _ type: String, depth: Int = 2) -> ElementInfo {
+            ElementInfo(ref: ref, type: type, identifier: nil, label: nil, value: nil, placeholder: nil,
+                        enabled: true, frame: FTRect(x: 0, y: 0, width: 100, height: 40), depth: depth)
+        }
+        let field = el(1, "textField")
+        XCTAssertEqual(TapTargetGeometry.typeTargetVerdict(field, in: [field]), .textInput)
+        let button = el(2, "button")
+        XCTAssertEqual(TapTargetGeometry.typeTargetVerdict(button, in: [button]), .notATextField(positively: true))
+        let clickable = el(3, "clickable")
+        XCTAssertEqual(TapTargetGeometry.typeTargetVerdict(clickable, in: [clickable]),
+                       .notATextField(positively: false))
+        let inner = el(4, "textField", depth: 3)
+        guard case .containerWithOneField = TapTargetGeometry.typeTargetVerdict(button, in: [button, inner]) else {
+            return XCTFail("入力欄をちょうど1つ含む容器は警告して撃つ側")
+        }
+    }
+
     func testValueMatchesByIdentifier() {
         let target = element(ref: 1, id: "field_single")
         // キーボード出現で frame が動いても identifier で追える

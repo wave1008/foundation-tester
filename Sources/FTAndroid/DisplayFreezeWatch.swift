@@ -39,6 +39,7 @@ public actor DisplayFreezeWatch {
     public static let nudgeChangePollSeconds: Double = 0.3
 
     private var last: [String: DisplayFreezeDetector.Sample] = [:]
+    private let baseline: Baseline
     private let capture: Capture
     private let nudge: Nudge
     private let restore: Restore
@@ -46,8 +47,9 @@ public actor DisplayFreezeWatch {
     private let now: @Sendable () -> TimeInterval
 
     public init(capture: @escaping Capture, nudge: @escaping Nudge, restore: @escaping Restore,
-                repair: @escaping Repair,
+                repair: @escaping Repair, baseline: Baseline = .inMemoryOnly,
                 now: @escaping @Sendable () -> TimeInterval = { Date().timeIntervalSince1970 }) {
+        self.baseline = baseline
         self.capture = capture
         self.nudge = nudge
         self.restore = restore
@@ -67,10 +69,13 @@ public actor DisplayFreezeWatch {
         guard let key = Self.key(of: worker) else { return .notChecked }
         guard let png = await capture(worker) else { return .notChecked }
         let sample = DisplayFreezeDetector.Sample(png: png, at: now())
-        let previous = last[key]
+        // **基準は run をまたいで引き継ぐ**(`Baseline`)。run ごとの控えだけだと、レーンあたり 1〜2 本の run が続く間は
+        // 同じ run の中で 60 秒離れた境目を2回迎えず、凍結した Emulator を一度も疑えない(負荷テストで実測:
+        // ブリッジが 7 分前の絵を返し続け、可視性検証が見えている要素を赤にした)
+        let previous = last[key] ?? baseline.load(key)
         // **同じ絵なら最初に見た時刻を保つ**(境目ごとに上書きすると、60 秒より短いシナリオが続く間は間隔が
         // 毎回リセットされて永久に疑えない)。絵が変わったときだけ基準を進める
-        if previous?.digest != sample.digest { last[key] = sample }
+        if previous?.digest != sample.digest { remember(key, sample) } else if last[key] == nil { last[key] = previous }
         guard case .suspect(let span) = DisplayFreezeDetector.judge(previous: previous, current: sample) else {
             return .healthy
         }
@@ -82,7 +87,7 @@ public actor DisplayFreezeWatch {
         }
         switch await changedAfterNudge(worker, from: sample.digest) {
         case .changed(let after):
-            last[key] = after
+            remember(key, after)
             log("✅ \(worker.label): the screen changed after the home press — the display is not frozen")
             await restore(worker, appID)
             return .healthy
@@ -101,8 +106,51 @@ public actor DisplayFreezeWatch {
             return DisplayFreezeDetector.digest(png) == digest
         }, log)
         // 回復の後は基準を捨てる(張り直したブリッジの最初の絵と、凍結前の絵を比べない)
-        last[key] = nil
+        remember(key, nil)
         return .frozen(detail: detail, recovery: recovery)
+    }
+
+    private func remember(_ key: String, _ sample: DisplayFreezeDetector.Sample?) {
+        last[key] = sample
+        baseline.save(key, sample)
+    }
+
+    /// 境目の絵の基準の置き場(run をまたぐ)。時刻は壁時計(`now` の既定)なので別のプロセスの控えと比べられる。
+    /// 読めない・壊れた控えは nil(= 基準なし。疑いが1回遅れるだけで、誤って疑う側には倒れない)
+    public struct Baseline: Sendable {
+        public let load: @Sendable (String) -> DisplayFreezeDetector.Sample?
+        public let save: @Sendable (String, DisplayFreezeDetector.Sample?) -> Void
+
+        public init(load: @escaping @Sendable (String) -> DisplayFreezeDetector.Sample?,
+                    save: @escaping @Sendable (String, DisplayFreezeDetector.Sample?) -> Void) {
+            self.load = load
+            self.save = save
+        }
+
+        /// 控えを持たない(テスト用。本番は `files(in:)`)
+        public static let inMemoryOnly = Baseline(load: { _ in nil }, save: { _, _ in })
+
+        private struct Record: Codable { let digest: String; let at: TimeInterval }
+
+        /// `<dir>/<鍵>.json`。1台の Mac で run は同時に1本(dispatch.lock)なので、書き手は1人
+        public static func files(in dir: URL) -> Baseline {
+            @Sendable func url(_ key: String) -> URL {
+                let safe = key.map { $0.isLetter || $0.isNumber || $0 == "-" ? String($0) : "_" }.joined()
+                return dir.appendingPathComponent("\(safe).json")
+            }
+            return Baseline(
+                load: { key in
+                    guard let data = try? Data(contentsOf: url(key)),
+                          let record = try? JSONDecoder().decode(Record.self, from: data) else { return nil }
+                    return DisplayFreezeDetector.Sample(digest: record.digest, at: record.at)
+                },
+                save: { key, sample in
+                    guard let sample else { try? FileManager.default.removeItem(at: url(key)); return }
+                    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                    guard let data = try? JSONEncoder().encode(Record(digest: sample.digest, at: sample.at)) else { return }
+                    try? data.write(to: url(key), options: .atomic)
+                })
+        }
     }
 
     private enum NudgeResult {
@@ -137,7 +185,8 @@ public actor DisplayFreezeWatch {
             restore: { worker, appID in await productionRestore(worker, appID: appID) },
             repair: { worker, stillFrozen, log in
                 await productionRepair(worker, stillFrozen: stillFrozen, repoRoot: repoRoot, locale: locale, log: log)
-            })
+            },
+            baseline: .files(in: repoRoot.appendingPathComponent(".fleetest/display-freeze")))
     }
 
     /// 注入されたデバイスに返す固定の絵(中身は見ない = 同一バイトであることだけが要る)

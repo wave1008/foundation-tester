@@ -27,6 +27,8 @@ final class LiveControlExitParityTests: XCTestCase {
         // ポートの中身が別のデバイスに替わった(hybridFallbackDrift の3値のうち differentDevice)。
         // 黙って起動し直すと片方だけ別のデバイスへ操作を撃ち続ける
         "differentDevice",
+        // ref で撃つ type / clear の対象が入力欄か(入力欄でなければ撃つ前に断る。撃つとボタン等を押してから失敗する)
+        "typeTargetVerdict",
     ]
 
     /// **コメントを落としてから走査する** —— 判定の名前は doc コメントにも書かれているので、

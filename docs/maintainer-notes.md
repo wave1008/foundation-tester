@@ -5009,3 +5009,33 @@ emulator-5568 = ライブ操作・実機 3 台(SE3・Pixel 4a・Pixel 3a)= MCP�
 - ライブ操作(5568)は 10:06〜10:07 の 2 分間、約 300 回「Cannot reach the driver … The network connection was lost」→ 自然に回復。同時刻はホストの
   負荷平均 250〜400(worktree のテストの並列ビルド)
 - 可視性検証の FM の空の転写(§84.4)は今日も 1 件(09:28・WebView `wv_result=-`・`ocr-shortcut-not-ready`・ocrMs 0 = 最初のガード)
+
+## 89. 10/19 の3時間負荷テスト(2026-10-19 05:50〜08:50)
+構成は §88 と同じ + **リモート 3 機(M1Ultra・M1Max・M1mini)へ `--runner <機械>` の run ループを1本ずつ**(ユーザー指示)。
+フリート run はローカル 58・リモート 265(緑 261)・MCP 約 6.8 万・ライブ操作 約 1.5 万・CLI 約 2,100・障害注入 30。HANG 0・CRASH は注入した kill の 9 件だけ。
+**ローカルの赤の大半は環境**: 05:51 から CMP の iOS アプリが全 Simulator で白紙(Simulator 内に `MTLCommandBufferErrorDomain error 1`。SwiftUI と設定は描ける・
+起動し直しても戻らない = docs/open-issues.md)、AVE の一時死、Vision の自己点検での不採用、Emulator 5 台の撮影が黒/古い絵 —— ホストの GPU 周りがまとめて崩れた。
+
+### 89.1 直したもの
+- **凍結の基準が run をまたがない**(`DisplayFreezeWatch.Baseline`): emulator-5558 のブリッジが 7 分前の絵を返し続け(adb は新しい絵)、可視性検証が見えている
+  要素を赤にした。基準は run ごとの actor の中だけで、レーンあたり 1〜2 本の run が続くと同じ run で 60 秒離れた境目を2回迎えず、一度も疑えなかった →
+  `.fleetest/display-freeze/<鍵>.json` に残す。陽性対照: worktree のバイナリで 5564 に注入し 1 本だけの run を 65 秒あけて2本 → 2本目の最初の境目で「74s」
+  → home で変わらず → sleep/wake → adb reboot → 離脱 → 振り直し緑
+- **ライブ操作の入口の型検査**: JSON の true/false が `intField`/`doubleField`/gesture の点で 1/0 として通った(`{"cmd":"type","ref":true}` がドライバへ)。
+  MCP は `isJSONBoolean` で弾いていた → `ArgumentBounds.isJSONBoolean` に移して共有。逆向き(数値 1 を「the boolean true」と書く)も。
+  **`case let v as Bool where isJSONBoolean(v)` は束縛後の値を見るので数値の 1 も真になる** —— 判定は束縛前の値で
+- **ライブ操作の ref 付き type/clear に「入力欄でない要素」の門が無い**: ボタンを先にタップしてから 4 秒待って 500/409。判定を
+  `TapTargetGeometry.typeTargetVerdict` に1つ置き DSL・MCP・ライブ操作が呼ぶ(`LiveControlExitParityTests.sharedJudgements`)。断る範囲は呼び手ごと ——
+  DSL・ライブ操作は型で言い切れるボタン等だけ(`clickable` は自前描画の本物の欄でありうる)、MCP は従来どおり入力型以外を全部
+- **ライブ操作の文字列の欄に NUL の門が無い**(MCP は宣言欄の NUL を断る = `Process` が abort するため)→ `ArgumentBounds.nulViolation` を共有。
+  配列の欄の型違いに「pass a JSON string」と言っていた → 「pass a JSON array」
+- **リモートの ssh の 255 を「run が終わった/失敗した」と言い切っていた**: 飽和した M1Max(load 658)で banner exchange のタイムアウト = run が始まったかも
+  分からない回に「remote run finished (exit 255)」「the run failed before writing any」→ 事実だけ(`finishedLine` / `reportsMissingNote(exitCode:)`)
+
+### 89.2 記録だけ
+- sut-ec-mobile のチェックアウト.S0010 は Android で毎回 `type "#field_phone"` が解決できない(住所を打つうちに欄がキーボードの下・窓の外へ。`scroll:` が無い)。利用者の資産なので触らない
+- 写真の権限アラートが負荷で遅れて出て、次のシナリオの開始前の片付けの後に湧く(間に湧いた分 = シナリオ側の方針どおり)
+- `clean --dry-run` が 24〜94 秒(静かでも 23 秒・I/O 待ち)
+- **ハーネスの誤り**: fuzz の宛先 emulator-5566/5568 が E2E の Pixel 9 ではなく別作業の Pixel 10 だった(AVD 名で確かめる: `adb -s <serial> shell getprop ro.boot.qemu.avd_name`)。
+  zsh の `log` は組み込み —— `log show` は `/usr/bin/log` で
+

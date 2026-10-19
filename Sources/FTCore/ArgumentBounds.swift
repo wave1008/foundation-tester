@@ -200,7 +200,7 @@ public enum ArgumentBounds {
     /// 「引用符を外して JSON の数値を」と言うと、既に数値を渡している読み手を誤らせる(負荷テストで実測)。
     /// MCP(MCPServer.numericArgumentTypeError 等)とライブ操作(ApiLiveServeCommand.typeError)が共有する
     public static func typeMismatchRemedy(value: Any, expectsNumber: Bool) -> String {
-        let isBoolean = (value as? NSNumber).map { CFGetTypeID($0) == CFBooleanGetTypeID() } ?? false
+        let isBoolean = isJSONBoolean(value)
         if expectsNumber {
             if value is String { return "pass a JSON number, not a quoted string" }
             if isBoolean { return "pass a JSON number, not true/false" }
@@ -210,5 +210,19 @@ public enum ArgumentBounds {
         if isBoolean { return "pass a JSON string, not true/false" }
         if value is NSNumber { return "pass a JSON string, not a number" }
         return "pass a JSON string"
+    }
+
+    /// **JSON の boolean は NSNumber(内部は CFBoolean)で来る**ので、`as? Int` / `as? Double` は true を 1 として通し、
+    /// `as? Bool` は数値の 0/1 を真偽値と読む。`JSONSerialization` で読んだ入力の型を見る呼び手(MCP・ライブ操作)は
+    /// 数値・真偽値の判定の前にこれで分ける(唯一の判別)
+    public static func isJSONBoolean(_ value: Any) -> Bool {
+        guard let number = value as? NSNumber else { return false }
+        return CFGetTypeID(number) == CFBooleanGetTypeID()
+    }
+
+    /// 文字列の欄の NUL の断り(MCP・ライブ操作が共有)。外部コマンドの引数へ流れると `Process` が ObjC 例外で
+    /// abort する = サーバ / serve ごと落ちる(`Shell.runRaw` も断るが、`Process` を直に起こす経路がある)
+    public static func nulViolation(_ key: String, _ text: String) -> String? {
+        text.contains("\u{0}") ? "\(key) must not contain a NUL character (\\u0000)" : nil
     }
 }

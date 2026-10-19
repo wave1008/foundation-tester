@@ -300,7 +300,7 @@ extension MCPServer {
             return false
         }
         guard let key = args.keys.sorted().first(where: { properties[$0] != nil && hasNUL(args[$0]!) }) else { return nil }
-        return "\(key) must not contain a NUL character (\\u0000)"
+        return ArgumentBounds.nulViolation(key, "\u{0}")
     }
 
     /// 型違いに**専用の文言**(直し方つき)を持つ引数。入口の汎用の文で先に断ると、その案内が消える
@@ -323,10 +323,7 @@ extension MCPServer {
     }
 
     /// **`private` ではない**: `describeArgumentValue` も同じ判別を使う
-    static func isJSONBoolean(_ value: Any) -> Bool {
-        guard let number = value as? NSNumber else { return false }
-        return CFGetTypeID(number) == CFBooleanGetTypeID()
-    }
+    static func isJSONBoolean(_ value: Any) -> Bool { ArgumentBounds.isJSONBoolean(value) }
 
     /// 単独型は `numericArgumentTypeError`/`stringArgumentTypeError`/`booleanArgumentTypeError`
     /// をそのまま呼ぶ(2つの文言を作らない)。複数型宣言(`scrollFrame` の `["string","integer"]` 等)
