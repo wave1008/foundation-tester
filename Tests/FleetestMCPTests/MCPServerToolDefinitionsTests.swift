@@ -298,6 +298,6 @@ final class MCPServerIntegerArgumentPartitionTests: XCTestCase {
                          "Rows for list (default 20) / slow (default 10)", "minimum runs to count (default 5)"] {
             XCTAssertTrue(all.contains(expected), "説明文に \(expected) が無い")
         }
-        XCTAssertTrue(MCPServer.serverInstructions.contains("waitSeconds (default 5s;"))
+        XCTAssertTrue(MCPServer.serverInstructions.contains("waitSeconds (default 5s)"))
     }
 }

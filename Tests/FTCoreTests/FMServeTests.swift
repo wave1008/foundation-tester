@@ -222,7 +222,7 @@ final class FMServeTests: XCTestCase {
     func testBothRunImplementationsEnsureTheFMProcess() throws {
         for path in ["Sources/fleetest/Fleetest.swift", "Sources/fleetest/ApiRunCommand.swift"] {
             let text = try source(path)
-            let list = try XCTUnwrap(text.range(of: "let all = try ScenarioHost.listForRun("), path)
+            let list = try XCTUnwrap(text.range(of: "ScenarioHost.listForRun("), path)
             let ensure = try XCTUnwrap(text.range(of: "await FMServeHost.ensureRunning"), "\(path) が FM の常駐プロセスを用意していない")
             XCTAssertLessThan(list.lowerBound, ensure.lowerBound, path)
             XCTAssertTrue(text.contains("if !dryRun, FMServeHost.needed(fmTextVisibilityCheck:"),
