@@ -163,7 +163,7 @@ test("AVE チップ: 生存・停止・不明を記号で出し、停止は理�
   assert.equal(deadChip.textContent, "✕");
   assert.ok(deadChip.classList.contains("mh-fm-dead"));
   assert.equal(deadChip.getAttribute("aria-label"), "AVE dead");
-  assert.match(tipOf(dead), /ハードウェア動画エンコーダー/);
+  assert.match(tipOf(dead), /ハードウェアビデオエンコーダー/);
   assert.match(tipOf(dead), /-17691/);
   assert.match(tipOf(dead), /確認: /);
   const alive = byLabel.m3.children[2].querySelector(".mh-chip");

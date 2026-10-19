@@ -351,7 +351,7 @@ function renderDevicesPanel(): string {
                MEM/CPU/… の列が行ごとにずれる(実害。錠前と同じ理由)。
                最後尾なので出し入れは display で切ってよい(右端が伸び縮みするだけ)。 -->
           <span class="hm-fm-dead-badge"></span>
-          <!-- HW 動画エンコーダー故障のときだけ語を出す(hostCharts.js の hmRenderEncoderBadge)。FM バッジと同じく最後尾 -->
+          <!-- ハードウェアビデオエンコーダー故障のときだけ語を出す(hostCharts.js の hmRenderEncoderBadge)。FM バッジと同じく最後尾 -->
           <span class="hm-encoder-dead-badge"></span>
         </div>
       </div>

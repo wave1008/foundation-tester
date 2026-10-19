@@ -1013,9 +1013,9 @@ test("エンコーダーが dead のときだけバッジを出し、理由と�
   send(window, withEncoder(hostMetricsSample("mac2", 0.9), "dead", "VTCompressionSession -12902"));
   send(window, hostMetricsSample(undefined, 0.1));
 
-  assert.equal(encoderBadge(document, "mac2"), "⚠︎HWE");
+  assert.equal(encoderBadge(document, "mac2"), "⚠︎AVE");
   const tip = encoderTip(document, "mac2");
-  assert.match(tip, /^mac2 — この Mac のハードウェア動画エンコーダーが使えません/);
+  assert.match(tip, /^mac2 — この Mac のハードウェアビデオエンコーダーが使えません/);
   assert.match(tip, /VTCompressionSession -12902/);
   assert.match(tip, /秒前/);
 });

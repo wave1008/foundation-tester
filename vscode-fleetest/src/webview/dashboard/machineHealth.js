@@ -164,7 +164,7 @@ function fmCell(live) {
   return withTip(cell, tips.join('\n'));
 }
 
-/** AVE(ハードウェア動画エンコーダー)。経路は1つ・3値は FM と同じ(不明と生を混ぜない) */
+/** AVE(ハードウェアビデオエンコーダー)。経路は1つ・3値は FM と同じ(不明と生を混ぜない) */
 function aveCell(live) {
   const cell = document.createElement('td');
   cell.className = 'mh-fm';

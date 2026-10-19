@@ -103,8 +103,8 @@ type HostMetricsRawEvent = {
   readonly fmVisionState: string | null;
   readonly fmDeadReason: string | null;
   readonly fmCheckedAt: number | null;
-  /** ハードウェア動画エンコーダーの死活("alive" / "dead" / null=不明)・理由(200 文字以内)・観測時刻(epoch 秒)。
-   *  FM と違い経路は1つ。Sources/FTCore の動画エンコーダー台帳と同期。 */
+  /** ハードウェアビデオエンコーダーの死活("alive" / "dead" / null=不明)・理由(200 文字以内)・観測時刻(epoch 秒)。
+   *  FM と違い経路は1つ。Sources/FTCore のビデオエンコーダー台帳と同期。 */
   readonly videoEncoderState: string | null;
   readonly videoEncoderError: string | null;
   readonly videoEncoderCheckedAt: number | null;
@@ -179,7 +179,7 @@ export type HostMetricsToWebviewMessage =
       /** 死んでいる経路の理由(`text: …` / `vision: …`。CLI 側で 200 文字に切ってある)。 */
       readonly fmDeadReason: string | null;
       readonly fmCheckedAt: number | null;
-      /** HW 動画エンコーダーの死活。"dead" のときだけ webview がバッジを出す(alive/null は何も出さない)。 */
+      /** ハードウェアビデオエンコーダーの死活。"dead" のときだけ webview がバッジを出す(alive/null は何も出さない)。 */
       readonly videoEncoderState: string | null;
       readonly videoEncoderError: string | null;
       readonly videoEncoderCheckedAt: number | null;

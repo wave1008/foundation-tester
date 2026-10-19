@@ -53,7 +53,7 @@ is unavailable.
   and Foundation Models (FM). When FM becomes unusable, the FM chart turns gray and **N/A** appears
   to its right (hover it for the stopped path, the reason and when it was observed). While it is shown, checks
   that use FM (`screenLooksLike` and the FM stage of text visibility check) may not run.
-  When this Mac's hardware video encoder is not working, **⚠︎HWE** appears next to it
+  When this Mac's hardware video encoder is not working, **⚠︎AVE** appears next to it
   (recording clips are still extracted with the software encoder, which is slower; hover it for the reason and when it was observed).
   Only for a run with the OCR text visibility check (`ocrTextVisibilityCheck`) turned on: while the OCR model is being compiled (for example on the first run after a rebuild; tens of seconds), the run waits
   for the compile to finish before starting its first scenario ("Compiling Vision…" appears in the running list).

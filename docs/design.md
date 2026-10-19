@@ -4361,7 +4361,7 @@ RecordingIndex.swift・RecordingWallClock.swift)。録画自体の失敗は run 
 再起動だけで、Simulator の録画と iOS の配信も巻き添えになる(原因は未特定 → maintainer-notes §86)。書き手: 切り出し(成功 = 生・
 期限超過 = 死。失敗の後は合成映像の確かめ `HardwareEncoderProbe` を run につき1回撃ってその結果を書く = 切り替えの判断には使わない)と
 `api host-metrics --video-encoder-probe`(拡張のモニターだけが渡す。台帳が 60 秒より古いときだけ確かめる)。モニターはホスト負荷の行に
-「⚠︎HWE」を出す(死のときだけ)。**故障の兆候は履歴に追記する**(`VideoEncoderHistory` = `~/.fleetest/video-encoder-history.ndjson`。
+「⚠︎AVE」を出す(死のときだけ)。**故障の兆候は履歴に追記する**(`VideoEncoderHistory` = `~/.fleetest/video-encoder-history.ndjson`。
 切り出しの失敗・固まり、台帳の死への変わり目・死からの回復。起動の識別子と起動からの経過つき = 監視して改善する方針・ユーザー決定)。
 注入は `FT_FAKE_VIDEO_ENCODER_DEAD=1`(ハードウェアに触らずに死を返す)。
 診断手順は docs/verification.md「録画(record:true)の検証」。

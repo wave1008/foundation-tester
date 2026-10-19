@@ -97,7 +97,7 @@ function hmMakeRow(rowEl, machine) {
     // FM が死んでいるときの語を出す枠(行の最後尾。監視の対象は FM だけなので entries には入れない。
     // Vision は死活を持たないのでバッジも無い)
     deadBadge: rowEl.querySelector('.hm-fm-dead-badge'),
-    // HW 動画エンコーダー故障の語(FM バッジの右。死んでいるときだけ出す)
+    // ハードウェアビデオエンコーダー故障の語(FM バッジの右。死んでいるときだけ出す)
     encoderBadge: rowEl.querySelector('.hm-encoder-dead-badge'),
     entries,
     capacity: {}, // metric → 容量(CPU/GPU はコア数・MEM は GB)。未着はキー無し
@@ -447,7 +447,7 @@ function hmRenderDeadBadge(row, { dead, deadPaths, stats }) {
       seconds: String(HM_COUNT_RATE_WINDOW_TICKS), failures: String(stats.failures) }));
 }
 
-/** HW 動画エンコーダー故障の語。**dead のときだけ出す** —— alive と不明は何も出さない
+/** ハードウェアビデオエンコーダー故障の語。**dead のときだけ出す** —— alive と不明は何も出さない
  *  (不明を出すとプローブの谷間で点滅する)。要素は作り直さず文字・クラス・ツールチップだけ書く。 */
 function hmRenderEncoderBadge(row) {
   const badge = row.encoderBadge;
@@ -459,7 +459,7 @@ function hmRenderEncoderBadge(row) {
     return;
   }
   // 日英とも同じ語なので辞書を通さない(FM の N/A と同じ)。意味はツールチップが持つ
-  badge.textContent = '⚠︎HWE';
+  badge.textContent = '⚠︎AVE';
   badge.classList.add('hm-visible');
   setHoverTip(badge, [
     hmTitlePrefix(row) + t('wvMonitor2.hostCharts.encoderDeadLine'),

@@ -112,7 +112,7 @@ actor VideoRecordingCoordinator {
     private let hardwareDeadline: @Sendable (Int) -> Double
     /// 切り出しをハードウェアエンコーダで始める(失敗・期限超過・配信で遅いならこの run の残りはソフトウェア)
     private let hardwareFirst: Bool
-    /// ハードウェアの失敗の後に台帳(VideoEncoderLiveness → モニターの ⚠︎HWE)へ書く確かめ。**切り替えの判断には使わない**。
+    /// ハードウェアの失敗の後に台帳(VideoEncoderLiveness → モニターの ⚠︎AVE)へ書く確かめ。**切り替えの判断には使わない**。
     /// 本番(RunOrchestrator)は HardwareEncoderProbe.check を渡す。init の既定は撃たない(単体テストで本物のエンコーダを叩かない)
     private let probeHardwareEncoder: @Sendable () async -> VideoEncoderLiveness.Verdict?
     /// この Mac でハードウェアエンコーダを使う配信(ライブ更新の iOS の h264)が動いているか。本番(RunOrchestrator)は
@@ -548,7 +548,7 @@ actor VideoRecordingCoordinator {
     }
 
     /// ハードウェアの1回の結果をこの run の切り替えと台帳に映す。**失敗・期限超過は1回でこの run の残りをソフトウェアに**
-    /// (素材のせいかもしれないが、壊れかけのエンコーダを使い続けるより安全側)。台帳(⚠︎HWE)へは合成映像の確かめ・期限超過の
+    /// (素材のせいかもしれないが、壊れかけのエンコーダを使い続けるより安全側)。台帳(⚠︎AVE)へは合成映像の確かめ・期限超過の
     /// 事実だけを書く —— 実際の切り出しの失敗1回は素材のせいかもしれないので死と書かない
     private func observeHardware(_ outcome: ExtractOutcome, clip: PendingClip) {
         switch outcome {

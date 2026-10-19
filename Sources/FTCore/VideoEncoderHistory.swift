@@ -1,4 +1,4 @@
-// ハードウェア動画エンコーダの故障の兆候の履歴(追記)。台帳(VideoEncoderLiveness)は最新1件の上書きなので、
+// ハードウェアビデオエンコーダの故障の兆候の履歴(追記)。台帳(VideoEncoderLiveness)は最新1件の上書きなので、
 // 「いつ・再起動から何分・何の直後に壊れたか」を後から突き合わせるためにここへ残す(故障の原因は未特定 =
 // 監視して改善する方針。~/.fleetest/video-encoder-history.ndjson)。
 // 書くのは: 切り出しのハードウェアの失敗・固まり(VideoRecordingCoordinator)/ 台帳の状態の変わり目(VideoEncoderLiveness.record)。

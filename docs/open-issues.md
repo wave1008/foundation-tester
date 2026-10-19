@@ -44,7 +44,7 @@
     `IOGPUSysMemory::retainCPUWireMapping: failed to map memory for CPU wire mapping` / `AGXk: map block failed for cpu`(05:58:36)。
     GPU の稼働率は 10%・Alloc system memory 36 GB。この回は白紙(05:51)の後に AVE の一時死(05:57)で、10/18 とは前後が逆。
     負荷: Simulator 12 台(うち 2 台は別作業の iOS 27.2)・Emulator 10 台・配信・録画
-- **AppleAVE(ハードウェア動画エンコーダ)がマシン全体で壊れ、再起動まで戻らない**(2026-10-17〜18・M2 Ultra で3回)
+- **AppleAVE(ハードウェアビデオエンコーダ)がマシン全体で壊れ、再起動まで戻らない**(2026-10-17〜18・M2 Ultra で3回)
   - 症状: 切り出しが `-17691` で失敗/合成映像も固まる。Simulator の録画の試し撮りが空になり、iOS の h264 配信も巻き添え
   - 確かめた範囲: 単独要因(切り出し・Simulator の録画・配信・Android の E2E・それらの組み合わせ)では再現しない(maintainer-notes §86)
   - 要る材料: 次に壊れたときの `~/.fleetest/video-encoder-history.ndjson`(起動からの経過・直前の出来事)と、その日の run の並び

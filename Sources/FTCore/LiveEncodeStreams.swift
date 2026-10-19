@@ -1,4 +1,4 @@
-// この Mac でホストのハードウェア動画エンコーダを使っている配信(ライブ更新)の有無。
+// この Mac でホストのハードウェアビデオエンコーダを使っている配信(ライブ更新)の有無。
 // 録画のクリップの切り出し(VideoRecordingCoordinator.extractAtRunEnd)が「ハードウェアに余力があるか」を
 // 確かめる合図にだけ使う。対象は iOS Simulator の h264 配信(fleetest-simstream --codec h264 = VTCompressionSession を
 // 1台1本張る)。Android の配信は端末側で符号化する(screenrecord)のでホストのエンコーダを使わない。

@@ -353,7 +353,7 @@ public struct HostMetricsSample: Encodable {
     public let fmDeadReason: String?
     /// 上の死活を観測した時刻(epoch 秒)。新しいほうの経路の時刻。null = 観測が無い
     public let fmCheckedAt: Double?
-    /// ハードウェア動画エンコーダの死活(FTCore.VideoEncoderLiveness)。"alive" / "dead" / **null = 不明**。
+    /// ハードウェアビデオエンコーダの死活(FTCore.VideoEncoderLiveness)。"alive" / "dead" / **null = 不明**。
     /// 理由は死のときだけ(errorLimit で切り詰め済み)。対向: vscode-fleetest/src/monitorProcessManager.ts の HostMetricsRawEvent
     public let videoEncoderState: String?
     public let videoEncoderError: String?
