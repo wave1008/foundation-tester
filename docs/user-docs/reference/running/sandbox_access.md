@@ -54,7 +54,8 @@ What is unreadable by default is the usual places for credentials and personal d
 
 Only the environment variables fleetest uses are passed to scenarios (`PATH`, `HOME`, `USER`, `LANG`,
 `DEVELOPER_DIR`, `JAVA_HOME`, `ANDROID_HOME` and so on, plus those starting with `FT_` / `LC_`). Tokens set in your
-shell or in the `env` of `.mcp.json` are not visible. Put secrets a scenario needs in this Mac's file for
+shell or in the `env` of `.mcp.json` are not visible, except that names starting with `FT_` are passed, so do not use
+them for secrets. Put secrets a scenario needs in this Mac's file for
 [`account()`](../commands/dataset.md).
 
 ## Destinations
@@ -63,7 +64,7 @@ shell or in the `env` of `.mcp.json` are not visible. Put secrets a scenario nee
 
 | Destination | Reachable? |
 |---|---|
-| This Mac's localhost (bridges and so on) | Yes. Only the adb server (5037 by default) and the Emulator ports (5554–5585) are closed |
+| This Mac's localhost (bridges and so on) | Yes. Only the adb server (5037 by default), the Emulator ports (5554–5585) and Docker's API published on TCP (2375 / 2376) are closed |
 | The bridge of a physical iOS device connected over Wi-Fi | Yes, on that bridge's port number. The sandbox can narrow this only by port number, so **any host, not just the device, is reachable on that number** (without the proxy or `allowedDomains`) |
 | Destinations listed in `sandbox.allowedDomains` | Yes, through fleetest's proxy |
 | Anything else (the internet, the company LAN) | No |

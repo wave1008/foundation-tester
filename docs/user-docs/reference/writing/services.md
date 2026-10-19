@@ -58,7 +58,7 @@ volumes:
   dbdata:
 ```
 
-The app and the scenarios reach `api` at `127.0.0.1:8080`.
+The app and the scenarios reach `api` at `127.0.0.1:8080` (an app inside an Android Emulator uses `10.0.2.2:8080`).
 
 ## What you can write
 
@@ -75,7 +75,8 @@ The syntax is the same as compose.
 
 ## Rules
 
-- **Containers cannot reach the outside network.** The exception is the domains listed in `sandbox.allowedDomains` in
+- **While running, containers cannot reach the outside network.** (A `build:` build is different and can go out; on a
+  closed network, build the image beforehand and point to it with `image:`.) The exception is the domains listed in `sandbox.allowedDomains` in
   this Mac's settings, reached through fleetest's proxy (the containers receive `HTTP_PROXY` / `HTTPS_PROXY` /
   `NO_PROXY`). See [Network access from scenarios](network_access.md) for the entries.
 - **Published ports (`ports`) are bound to `127.0.0.1` only** (physical devices: see below).

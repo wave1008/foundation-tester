@@ -96,7 +96,10 @@ traffic a scenario sends out. What allows a scenario's outbound traffic per dest
 
 - **fleetest opens no externally reachable port on this Mac.** The CLI, the MCP server and the monitor talk over
   standard input/output, and the bridges and the proxy listen only on loopback (`127.0.0.1`). Loopback is outside the
-  firewall's scope, so fleetest works with the firewall on and without adding per-app permissions.
+  firewall's scope, so fleetest works with the firewall on and without adding per-app permissions. **There are two
+  exceptions, both in runs that use compose.yaml services**: with Apple Container the proxy's forwarder listens on the
+  container network's gateway IP (the table above), and in a run with a physical device lane the services' published
+  ports open on every interface (the machine setting `services.publishForPhysicalDevices` is the consent to that).
 - When you use a physical iOS device over Wi-Fi, the device listens and the Mac connects to it. No setting is needed
   on the Mac.
 - **Only on a Mac you use as a remote runner**, turn off the firewall's "Block all incoming connections" (when it is

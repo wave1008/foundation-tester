@@ -16,7 +16,7 @@ fleetest run --project SampleApp --profile all
 A scenario declared with no `platform:` runs on whichever OS is the run's default (the first
 platform with a worker, normally `ios` if any iOS device is present). **A scenario that declares
 `platform:` explicitly, and whose declared OS isn't among the run's devices, is skipped rather
-than queued** — the other OS's devices in the same profile just sit idle for it. To run a
+than queued** — the other OS's devices in the same profile just sit idle for it. If every selected scenario is skipped this way, the run ends as a success (exit code `0`) without running any. To run a
 platform-agnostic scenario on both OSes, run `--profile ios-run` and `--profile android-run` separately.
 
 ## Without a run profile (manual `--port`)

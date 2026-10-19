@@ -56,10 +56,29 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
 - **飛ばすもの**: ブリッジの整定(iOS の XCUITest は XCTest の完了通知の待ちを含む・in-app ブリッジの整定・Android ブリッジの静止待ち)、コマンド後にホストが木を比べて行う整定、次のステップへ持ち越される待ち(`type` 後のキーボード確認・Android の `hideKeyboard` の待ち)
 - **残すもの**: 結果を確かめる待ち(`rotateTo` の向き到達・`home` の到達・`type` の読み返し・焦点待ち・起動の準備待ち)と、操作の**前**の待ち。複数回スワイプするコマンドの中の**アルゴリズムとしての整定**(`scrollToBottom` 等の端の計測・スクロール探索のループ)も残り、ホスト側で省くのは**コマンド最後の整定だけ**。ただしヘッダはステップの全要求に付くので、**探索・端送りの1本ごとのブリッジ側の待ち(XCUITest の XCTest の完了通知の待ちを含む)は飛ぶ** = 慣性の残ったまま次の1本を判定しうる
-- **対象**: `tap`(セレクタ・`x:y:`)・`doubleTap`・`hold`・`type`・`clearInput`・`pressEnter`・`swipe` / `swipePointToPoint` / `swipeBy` / `swipeElementToElement`・`flick*`(8本)・`scrollDown/Up/Right/Left`・`scrollToBottom/Top/RightEdge/LeftEdge`・`scrollTo`・`pinchOut` / `pinchIn`・`gesture`・`rotateTo`・`back`・`hideKeyboard`。`ft_batch` も同じコマンドで `settle` キーを受ける
+- **対象**: `tap`(セレクタ・`x:y:`)・`doubleTap`・`hold`・`type`・`clearInput`・`pressEnter`・`swipe` / `swipePointToPoint` / `swipeBy` / `swipeElementToElement`・`flick*`(8本)・`scrollDown/Up/Right/Left`・`scrollToBottom/Top/RightEdge/LeftEdge`・`scrollTo`・`pinchOut` / `pinchIn`・`gesture`・`rotateTo`・`back`・`hideKeyboard`。`ft_batch` も、このうちバッチが持つコマンド(`hold`・`flick*`・`gesture`・`back` は持たない)では `settle` キーを受ける
 - **使いどころ**: 速さを優先したく、次のステップが最終的な位置に依存しないとき(連続入力・結果を見ない連打など)。**ステップの減速(Mac の CPU が高いときの操作前の待ち)もこのコマンドでは入らない**(消える表示を叩く操作に付ける)
 - **注意**: 次のステップは**まだ動いている最中の画面**を見ることがある(位置がずれうる)。慣性のあるスクロールの直後にタップする、のような使い方は避ける
 - **仕組み**: ホストが該当ステップの実行中、ブリッジへの HTTP リクエストに `X-FT-Settle: 0` ヘッダを付ける(`BridgeAPI.settleHeader`)。`FlowStep.settle` → `StepExecutor.execute` が TaskLocal `SettleOverride.skip` に載せる。ブリッジの版は iOS `bridgeProtocolVersion` 165・Android `VERSION_CODE` 89。設計は docs/design.md
+
+### `engine: inapp` 単独で失敗するコマンド(iOS)
+
+既定の **hybrid** は、in-app エンジンにできない操作を XCUITest へ自動で回す。**`engine: inapp` を単独で指定したデバイス**には回し先が無いので、
+次のコマンドはそのステップで失敗する(この文書の「XCUITest へ自動フォールバック」は、どれも hybrid での話)。
+事前の検査は無い(dry-run はプロファイルを読まない)ので、デバイス実行の途中で初めて分かる。
+
+| 失敗するもの | 理由 |
+|---|---|
+| `home` / `back` / `appSwitcher` / `tapAppIcon` / `fold` / `unfold` / `hinge` | アプリの外(SpringBoard・ハードウェア)を操作する。in-app はアプリの中しか触れない |
+| `swipePointToPoint` / `swipeBy` / `swipeElementToElement` / `tap(holdSeconds:)` / `tap(x:y:holdSeconds:)` / `hold` | 座標のドラッグ・押し続けを in-app は持たない |
+| `gesture` | in-app にこの経路が無い |
+| `doubleTap` / `pinchOut` / `pinchIn`(UIKit / SwiftUI / RN のアプリ) | 合成タッチを UIGestureRecognizer が受理しない(Compose / Flutter は in-app で動く) |
+| `swipe`(Compose / Flutter のアプリは常に。他は指の下にスクロールビューが無いとき) | ジェスチャ目的の払いは in-app では送れない(Compose / Flutter は AX の scroll に流すと別の容器が受けるので、hybrid でも XCUITest へ回している) |
+| `flick*` / `scroll*`(送れる容器が無いとき・React Native の PagerView) | in-app の送り(`contentOffset` / AX の scroll)を受ける容器が無い |
+| `clearInput` / `pressEnter`(Flutter のアプリ) | 入力欄の受け口に届かない |
+| `waitForSettle` | 画面の撮影を XCUITest ランナーで行う |
+| `appIs(他のアプリ)` | in-app は自分のアプリが前面かどうかしか答えられない(hybrid も同じ) |
+| SpringBoard のダイアログを指すセレクタ・`iosAlertHandler` | アプリのプロセスしか見えない(下の §システムダイアログ) |
 
 ## 操作
 
@@ -222,7 +241,7 @@ Android の入力欄は**容器**(Material の `TextInputLayout`)と**中身**(`
 = **どちらになるかはフィールドが決める**。Android も末尾の改行は Enter として送る。
 **確定アクションを撃つ意図なら `pressEnter()` を使う**(意図が読み手に伝わる。
 `type("腕時計\n")` は「改行を入れたいのか送信したいのか」がコードから読めない)。
-エンジン(in-app / XCUITest)によって結果が変わることはない(docs/design.md)。
+エンジン(in-app / XCUITest)によって結果が変わることはない(docs/design.md)。**ただし `engine: inapp` を単独で指定したときは例外**: XCUITest へ回せないので in-app の入力で打ち、末尾の `\n` だけを Return として扱い、文中の `\n` はフレームワークによって改行になったり握り潰されたりする。
 **Return キーを撃てなかったときは失敗する**(文字は入っている。Flutter で returnKey が
 action を持たない欄など)—— 黙って「全部入った」にはしない。その場合は `pressEnter()` を分けて書く。
 
@@ -1075,8 +1094,8 @@ XCTest の既定の割り込みハンドラ(ボタンを押して撃ち直す。
 | エンジン | 書き方 |
 |---|---|
 | **hybrid**(実行プロファイルの既定) | **普通に書ける** —— `tap("許可")` のように、アプリ側で解決できないセレクタはホストが SpringBoard 参照セッションへ照会して掴む(`exist` / `textIs` / `ifCanSelect` / `repeatWhileCanSelect` も同じ。**`ifCanSelect` 系は 2026-08-19 まで照会していなかった** = 出るか不定のダイアログを書けなかった)。**既定では自動で閉じないので、出る画面では明示的に書くこと** |
-| **xcuitest 単独** | この照会経路を持たないので掴めない。ダイアログを操作する必要があるシナリオは hybrid で回す |
-| **inapp 単独** | 同上(注入先アプリのプロセスしか見えない) |
+| **xcuitest 単独** | hybrid と同じく書ける(ランナーが SpringBoard 参照のドライバも持つ。実機はこの構成) |
+| **inapp 単独** | 掴めない(注入先アプリのプロセスしか見えない)。ダイアログを操作するシナリオは hybrid か xcuitest で回す |
 
 ```swift
 // 位置情報の許可が出る画面(hybrid)
@@ -1148,7 +1167,7 @@ ifCanSelect("#btnAgree||同意する") { tap("#btnAgree||同意する") }
 並びもラベルもロケールと OS 版で変わる。推測して取り違えると、症状は
 「意図しない権限のまま run が緑で進む」= 沈黙になる。だから押してよいラベルは書かれた分だけとし、
 一覧に無いボタンには触らない(bare の指定は完全一致なので、`"許可"` の指定が「許可しない」を押すことはない)。
-**自動拒否も同じ仕組み**で、並べるラベルを拒否側にするだけ。`engine=hybrid` のときだけ効く。
+**自動拒否も同じ仕組み**で、並べるラベルを拒否側にするだけ。`engine=hybrid` / `xcuitest` で効く(`inapp` 単独では効かない)。
 
 **押したら run ログに残る**(何を押したかまで出す)。権限は後に響く状態なので、自動で
 変えておいて痕跡が無いのは沈黙になる —— **対象アプリと無関係のアラート**(別アプリの許可要求が

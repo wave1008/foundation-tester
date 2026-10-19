@@ -17,6 +17,8 @@ read the runbook when you need the full rules.
 3. **Draft.** `ft_draft_scenario` turns the operations since the last `ft_launch` into Swift and
    returns it as text (it writes no file). Cut detours with `drop:` / `lastN:`.
    **The expectation blocks come back empty on purpose** — fill them from what the snapshots showed.
+   **The waits you paid while exploring (`waitFor`) are not carried over either** — a drafted `tap("#id")` looks for its
+   target for only about 0.7 s, so add `waitSeconds:` or an `exist(...)` before steps on a screen that appears late.
 4. **Write the file** under `TestProjects/<project>/scenarios/<name>.swift`.
 5. **Compile.** `ft_list_scenarios` builds the project and returns compile errors as-is.
 6. **Dry-run.** `ft_dry_run` needs no device. A selector syntax error fails it (isError).

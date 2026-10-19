@@ -30,8 +30,8 @@ separate process — they never appear in the app's own accessibility tree, so
 | engine | how to handle alerts |
 |---|---|
 | **hybrid** (run profile default) | Write them normally — `tap("Allow")`, `exist(...)`, `ifCanSelect(...)` all reach across to SpringBoard when the app itself cannot resolve the selector. Nothing closes automatically unless you register it with `iosAlertHandler`. |
-| **xcuitest alone** | Cannot resolve SpringBoard-side selectors. Run alert-handling scenarios with hybrid instead. |
-| **inapp alone** | Same limitation (only sees the process it is injected into). |
+| **xcuitest alone** | Write them as with hybrid (a physical iOS device always runs this way). |
+| **inapp alone** | Cannot resolve SpringBoard-side selectors (only sees the process it is injected into). Run alert-handling scenarios with hybrid or xcuitest. |
 
 The only alert closed automatically without any declaration is `openURL`'s first-time
 confirmation.

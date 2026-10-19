@@ -79,7 +79,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `sendKeys` | `type("…")` / `type(sel, "…")` / `select(sel).type("…")`(掴んだ要素へ。Shirates の `TestElement.sendKeys` の形) | 🟡 **承認済み差分**: Shirates は `sendKeys` と `clearInput` が別コマンドで結合形を持たないが、fleetest は `type(sel, "…", replace: true)` でクリア+入力を1コマンドに畳める(セレクタ解決も1回で済む) |
 | `pressEnter` | 同名 | ✅ |
 | `clearInput` | 同名(`clearInput()` / `clearInput(sel, …)`) | ✅ |
-| `hideKeyboard` | 同名。Android は戻るキー・iOS は木から選んだ何もない点のタップ(閉じなければ Enter) | 🟢 |
+| `hideKeyboard` | 同名。Android は戻るキー・iOS は木から選んだ何もない点のタップ(閉じなければ Enter) | 🟡 iOS の閉じ方が違う |
 | `keyboardIsShown` / `keyboardIsNotShown` | 同名 | ✅ 取得元は OS で違う(下記) |
 | `pressHome` | `home()` | 🟡 OS 共通で提供 |
 | `pressBack` | `back()` | 🟡 **両 OS で提供**(iOS はエッジスワイプ) |
@@ -280,6 +280,8 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `optional:` 引数なし | `throwsException: false` | ➖ **全廃**(ユーザー決定 2026-08-02)。空振りを許す引数が操作系にあると腐ったセレクタが緑で残る。代替は `irregularHandler` / `ifCanSelect`、値を読む用途は `select` の空要素。**再提案しない**。唯一の例外は `waitForSettle` の `throwsException`(効くのは時間切れだけ・要素が見つからなければ常に失敗。「同期」の表) |
 
 ## OS で挙動が割れるもの(利用者に見える差)
+
+**代表例で、網羅ではない**。OS・エンジン・端末の種別で割れる全件は docs/commands.md の各コマンドの説明にある。
 
 | コマンド | 差 |
 |---|---|

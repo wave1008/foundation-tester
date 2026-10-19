@@ -5460,7 +5460,7 @@ trigger)は CLI エントリでしか分からないため、`RunRecorder` を C
 ### 14.3 分析
 
 - 集計は `Sources/FTCore/RunResultsQuery.swift` の純関数に集約(閾値定数も同ファイル冒頭)。
-  CLI(`fleetest results list/summary/flaky/trend/devices/slow/insights/log`)と
+  CLI(`fleetest results list/summary/flaky/trend/devices/slow/insights/log/response`)と
   拡張向け `fleetest api results`(1 行 JSON)の両方がこれを使う
 - ダッシュボード: デバイスモニターの「ダッシュボード」タブ
   (`vscode-fleetest/src/monitorDashboardController.ts` + `src/webview/dashboard/`。
@@ -5469,8 +5469,7 @@ trigger)は CLI エントリでしか分からないため、`RunRecorder` を C
 - スキーマ進化: 全ファイルに schemaVersion。フィールド追加は Optional でバージョン据え置き、
   読み側は自分より新しい version をスキップ。既存ファイルの書き換えマイグレーションは
   しない(git 履歴とマージ安全性を壊すため)
-- インデックス/キャッシュは未導入(月別プルーニング+全走査で当面十分。遅くなったら
-  `.fleetest/` 配下に再構築可能キャッシュを足す)
+- `fleetest api results` の出力キャッシュと `RunRecordPack` がある(契約・無効化の条件は docs/results-json.md が唯一の定義元)
 
 ## 15. 外部パッケージ配布と mint 配布の履歴(2026-07-19・07-20 外部構成を既定化)
 

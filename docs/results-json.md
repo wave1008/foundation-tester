@@ -374,7 +374,7 @@ Android の凍結事後判定(`AndroidHealthProbe.observeBlankAndRepair`)が試�
 | errorLogs | [String]? | ❌/⚠️/⏱ で始まるログの末尾5件。**失敗時のみ** |
 | fm | FMUsageRecord? | FM 呼び出しの実測(成否によらず) |
 | timeline | [TimelineStepRecord]? | 全ステップ(到着順)。`notes` を含む |
-| skipKind | String? | `notApplicable`(対象プラットフォーム外 = 意図された未実行)/ `noWorker`(ワーカー不在等の事故)/ `interrupted`(run の中断で始まらなかった。run の失敗数には数えるが、`results insights`・flaky の判定と成功率からは外す) |
+| skipKind | String? | `notApplicable`(対象プラットフォーム外 = 意図された未実行)/ `noWorker`(ワーカー不在等の事故)/ `interrupted`(run の中断で始まらなかった。run の失敗数には数えるが、`results insights`・flaky の判定と成功率からは外す)。**run の前に合成する platform 対象外(`notApplicable` で `skipReason` の無いもの)は run.json の `total` の外**(下の `skipReason` の恒等式は、シナリオが実行中に宣言した対象外だけで成り立つ) |
 | skipReason | String? | シナリオ自身が実行中に「この環境では成り立たない」と宣言した理由(今は iOS のホームボタン機での `appSwitcher()`)。`skipKind: notApplicable` と対で、`passed: true`(失敗ではない)・宣言以降の step は skipped。`fleetest run` の合成レコード(platform 対象外)の理由は `failedSteps[0].description` で、こちらは持たない。**run のまとめでは緑でも赤でもない skipped**(コンソール `⏭ skipped (not applicable)`・NDJSON は `scenarioFinished.notApplicableReason` と `runFinished.skipped`・拡張はテスト結果を skipped にする)。run.json にキーは足さず、`total` には含めて `passed` には数えない(skipped = total - passed - failed)。成功率・フレークの統計からは外す |
 | interrupted | Bool? | **run が中断(SIGINT/SIGTERM)された後に失敗で終わった**(中断は走っているシナリオ子を止めるので、シナリオの性質とは無関係に落ちる)。true のときだけ書く。`skipKind: interrupted` と同じく `results insights` と flaky の判定からは外す。**成功率からは外さない**(印は書いた時点の中断の状態だけで付き、中断の前に確定した本当の失敗も混ざる) |
 | reportPath | String? | Markdown レポート(リポジトリルート相対。**gitignore なので他マシンからは開けない**) |

@@ -30,8 +30,8 @@ iosAlertHandler(alert: "*トラッキング*||*wants to track*",
 | エンジン | 書き方 |
 |---|---|
 | **hybrid**(実行プロファイルの既定) | 普通に書けます —— `tap("許可")` / `exist(...)` / `ifCanSelect(...)` は、アプリ側で解決できないセレクタを SpringBoard 側へ照会して掴みます。`iosAlertHandler` で登録しない限り、自動では何も閉じません。 |
-| **xcuitest 単独** | SpringBoard 側のセレクタを解決できません。アラートを操作するシナリオは hybrid で回してください。 |
-| **inapp 単独** | 同じ制約があります(注入先アプリのプロセスしか見えません)。 |
+| **xcuitest 単独** | hybrid と同じく書けます(iOS 実機はこの構成です)。 |
+| **inapp 単独** | SpringBoard 側のセレクタを解決できません(注入先アプリのプロセスしか見えません)。アラートを操作するシナリオは hybrid か xcuitest で回してください。 |
 
 宣言なしで既定で自動的に閉じるのは、`openURL` の初回確認アラートだけです。
 

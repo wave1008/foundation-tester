@@ -9,9 +9,10 @@ The sandbox exists to protect this Mac. It does not stop the following.
 | Not stopped | Description |
 |---|---|
 | Operations on the app under test and its accounts | Deleting, purchasing, sending and so on are the test itself, so they are not blocked. Check the contents of scenarios you received from others before running them |
-| Services on this Mac's localhost | To reach the bridges, every localhost port is open (only the adb server and the Emulator ports are closed). If a service listening there has weak authentication, a scenario can go through it to run things outside the sandbox (see the list below) |
+| Services on this Mac's localhost | To reach the bridges, every localhost port is open (only the adb server, the Emulator and Docker's TCP API ports are closed). If a service listening there has weak authentication, a scenario can go through it to run things outside the sandbox (see the list below) |
 | Bridges of other devices | Bridges of other devices on the same Mac are reachable too, so a scenario can read and drive other devices' screens |
 | Outbound traffic in runs that use a physical iOS device over Wi-Fi | The port numbers of the device's bridge (those in use within the default 8123–8154) are open to any destination host. A scenario can connect to a server on the internet listening on that number without going through `allowedDomains`. Run untrusted scenarios on a physical device over USB (iproxy) or a Simulator |
+| Listeners opened by the scenario | A scenario can listen on a port on every address of this Mac, the LAN side included, and answer a peer that connects from the LAN with the contents of files it could read. Run untrusted scenarios on a Mac that is not on a LAN, or on a network that does not let others connect in |
 | Exfiltration through the device | Contents of files a scenario could read can be sent to the device as input to the app. Nothing stops the app from sending it out |
 | Reading secrets that are not in the list | The read denial is a list of the usual places and is not exhaustive. Add places to `sandbox.denyRead` |
 | What runs outside the sandbox | fleetest itself, evaluating `Package.swift` and building dependencies, the containers of the compose.yaml services, the app under test |
