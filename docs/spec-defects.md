@@ -31,8 +31,7 @@
 | # | 欠陥 | 重要度 | コスト | 区分 | 直し方の要点 | 場所 |
 |---|---|---|---|---|---|---|
 | 4 | Wi-Fi で繋いだ iOS 実機を含む run は Seatbelt に `*:<port>` を開け、そのポート番号なら任意のホストへ出られる(プロキシ・allowedDomains を通らない)。**docs への明記は済み**(sandbox_access・limitations・network_security・quality の ja/en) | 高 | 大 | コード | iproxy 必須化か、ポート限定の中継で宛先を実機に絞る | `Sources/FTCore/ScenarioSandbox.swift:644` / `docs/user-docs/reference/running/sandbox_access_ja.md:65`・`overview/quality_ja.md:52`・`security/network_security_ja.md:81` |
-| 5 | `~/.config/fleetest` を丸ごと読み直しで開けるので、どのシナリオも別プロジェクトの `dataset/*/accounts.json` と `config.json` を読める。伏せ字は `account()` 経由にしか効かない | 高 | 中 | コード | 開け直しを `dataset/<そのプロジェクト名>/` と `config.json` に絞る(子が読む他のファイルを先に洗い出す)。limitations に「伏せ字は直接読みで迂回できる」を書く | `Sources/FTCore/ScenarioSandbox.swift:531`・`:622` / `docs/user-docs/security/limitations_ja.md` |
-| 6 | 自己修復(指紋照合)は profile 実行で既定 ON で、治した run も ✅・exit 0・JUnit に印が無い。指紋は型とラベルだけで画面の文脈を持たないので、遷移に失敗して前の画面に同名ボタンが1つあれば「治って」緑になる | 高 | 中/大 | 要決定 | JUnit と run 末尾に healed の集計を出すのは中。既定 OFF・CI で赤にするのはユーザー決定で大 | `Sources/FTCore/LocatorFingerprint.swift:15` / `Sources/FTCore/RunOrchestrator.swift:2102` |
+| 6 | 自己修復(指紋照合)は profile 実行で既定 ON。指紋は型とラベルだけで画面の文脈を持たないので、遷移に失敗して前の画面に同名ボタンが1つあれば「治って」緑になる。**治した回の印は出すようになった**(JUnit の `<system-out>` と run 末尾の ⚠️ の行。`HealedScenarios`)が、合否は変えない | 高 | 大 | 要決定 | 既定 OFF にするか、CI では治した回を赤にするか(ユーザー決定) | `Sources/FTCore/LocatorFingerprint.swift:15` / `Sources/FTCore/HealedScenarios.swift` |
 | 7 | 振り直し(requeue)はシナリオを最初から再実行し、凍結確定時は直前の**成功した**シナリオも対象。購入・送信を済ませたシナリオが2回走り得る。止める口が無い。**docs への明記は済み**(docs/ci.md・user-docs の ci の ja/en) | 高 | 大 | 要決定 | `@Test` かプロファイルに「振り直し不可」の宣言口を足し、run / api run の両方へ通す | `Sources/FTCore/RunOrchestrator.swift:898`(`requeuesWithoutRetiring`)/ `docs/design.md:2768` / `docs/ci.md:158` |
 | 8 | 中断(SIGINT/SIGTERM)で始まらなかったシナリオが JUnit では `<skipped>`。exit code と run.json は failed に数える。ci.md は「対象外の未実行だけが skipped」 | 中 | 小 | コード | `isSkipped` の除外に `.interrupted` を足す | `Sources/FTCore/JUnitReportWriter.swift:59` / `docs/ci.md:40` |
 | 9 | MCP の操作ツールに `waitSeconds` だけを渡すと黙って無視される(`waitFor` / `waitForChange` が無いと読まれず、注記も無い)。DSL の `waitSeconds:` とは意味(対象を探す待ち・既定約 0.7 秒)も違うのに、サーバ説明は同一性を強調する | 中 | 小 | コード | 注記関数に `waitSeconds` 単独も加える。説明文に DSL との差を1文 | `Sources/fleetest-mcp/MCPServer+Snapshot.swift:597` / `MCPServer+ToolDefs.swift:168` |
@@ -104,4 +103,4 @@
 
 ## 着手の順の目安
 
-高 × 小は 2026-10-20 に片付けた(1・2 は修正、3 は設計どおりと確認、4・7 は docs への明記)。次は中 × 小の 8〜17。要決定の 6・7・22・24・34 は、直す前に方針を決める。
+高 × 小は 2026-10-20 に片付けた(1・2 は修正、3 は設計どおりと確認、4・7 は docs への明記)。高 × 中も同日に片付けた(5 は修正、6 は治した回の印まで)。次は中 × 小の 8〜17。要決定の 6・7・22・24・34 は、直す前に方針を決める。

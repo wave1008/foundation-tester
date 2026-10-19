@@ -31,6 +31,10 @@ Self-healing is fingerprint matching only — it does not call FM (Foundation Mo
 
 ## What happens on a repair
 
+- A scenario that passed through a repair **stays passed** (the exit code is still `0`). Instead, `fleetest run` ends
+  with a ⚠️ line saying that N scenarios passed only after self-healing. In the JUnit report from `--junit`, that
+  scenario's `<system-out>` carries the number of repaired steps and the fix suggestions (file, line, old and new
+  selector). This is where you catch selectors going stale while CI stays green.
 - A repair by locator fingerprint is not cached; the fingerprint is matched again on every run.
   Fingerprints are kept in `TestProjects/<name>/.fleetest/locator-fingerprints.json` and are
   updated each time the step's own selector resolves directly.

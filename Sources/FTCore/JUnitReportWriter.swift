@@ -127,6 +127,11 @@ public enum JUnitReportWriter {
                     ?? "inconclusive"
                 return open + ">\n      <skipped message=\"\(escape(reason))\"/>\n    </testcase>"
             }
+            // **自己修復で通った回は印を残す**(合否は変えない)。素の `<testcase/>` にすると、CI は
+            // 「緑だがセレクタは壊れている」を1件も見られない。JUnit に警告の語彙は無いので `<system-out>`
+            if let healedNote = HealedScenarios.note(for: record) {
+                return open + ">\n      <system-out>\(escape(healedNote))</system-out>\n    </testcase>"
+            }
             return open + "/>"
         }
 

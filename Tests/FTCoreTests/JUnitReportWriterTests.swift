@@ -112,6 +112,23 @@ final class JUnitReportWriterTests: XCTestCase {
         XCTAssertTrue(xml.contains("cannot find &apos;tapp&apos; in scope &lt;&amp;&gt;</failure>"), xml)
     }
 
+    /// **自己修復で通ったシナリオは合格のまま `<system-out>` に印と修正提案を残す**。素の `<testcase/>` だと
+    /// CI は「緑だがセレクタは壊れている」を見られない。治していない合格は従来どおり素の `<testcase/>`
+    func testHealedScenarioStaysPassedButCarriesTheFixSuggestion() {
+        var healed = record(id: "ログイン.S0010", passed: true,
+                            steps: StepCountsRecord(total: 3, passed: 2, healed: 1))
+        healed.fixSuggestions = [FixSuggestionRecord(file: "scenarios/Login.swift", line: 17,
+                                                     oldSelector: "#email_input", newSelector: "#email")]
+        let xml = JUnitReportWriter.xml(project: "E2E", records: [
+            healed, record(id: "ログイン.S0020", passed: true)])
+        XCTAssertTrue(xml.contains(#"failures="0""#), xml)
+        XCTAssertTrue(xml.contains("<system-out>passed only after self-healing: 1 step(s)"), xml)
+        XCTAssertTrue(xml.contains("scenarios/Login.swift:17: change &quot;#email_input&quot; to &quot;#email&quot;"), xml)
+        XCTAssertTrue(xml.contains(#"name="S0020" time="1.000"/>"#), xml)
+        XCTAssertEqual(HealedScenarios.summaryLine(records: [healed, healed])?.hasPrefix("⚠️ 1 scenario(s)"), true)
+        XCTAssertNil(HealedScenarios.summaryLine(records: [record(id: "A.s", passed: true)]))
+    }
+
     /// recordSkipped の形(全ステップ skipped・failed 0・skipKind なし = 旧形式)は failure ではなく skipped
     func testSkippedRecordBecomesSkippedNotFailure() {
         let xml = JUnitReportWriter.xml(project: "E2E", records: [
