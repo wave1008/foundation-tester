@@ -4,7 +4,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.android.settings", platform: "android")
+@TestClass(platform: "android")
 class ネットワーク設定_並列テスト_07 {
 
     @Test("ネットワーク設定 並列テスト 07")
@@ -12,7 +12,7 @@ class ネットワーク設定_並列テスト_07 {
         scenario {
             scene(1) {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     tap("Network & internet||.clickable[3]")  // 「Network & internet」に移動するステップ1を実行する
                 }.expectation {

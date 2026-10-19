@@ -55,7 +55,8 @@ element tree.)
 ## Always put an assertion in `expectation`
 
 An `expectation { }` block with no assertion in it compiles and runs fine, but proves nothing —
-the scenario stays green no matter how the app breaks. `fleetest run --dry-run` catches this
+the scenario stays green no matter how the app breaks. `screenLooksLike` does not count as an assertion (it is
+a rough check whose result can flip with the wording or with how the screen was captured). `fleetest run --dry-run` catches this
 before you ever touch a device: it flags any `expectation` block with zero assertions, and any
 `#id` that doesn't appear in a screen you've actually captured with `ft_snapshot`. Always run
 dry-run once after writing a scenario, before running it on a device.
@@ -67,12 +68,12 @@ skipped. The one exception is `afterEach()`, which always runs even after a fail
 there (deleting data your scenario created, for example) so a failed run doesn't leave state
 behind for the next run.
 
-## Don't pin `app:` / `platform:` if the scenario should run on both OS
+## Don't pin `platform:` if the scenario should run on both OS
 
-Leaving `@TestClass(app:)` and `platform:` unset lets the same scenario run against both
-`--profile ios-run` and `--profile android-run`, resolving the target app from whichever run profile is
-active. Only set them when a scenario is genuinely OS-specific (a platform-only setting screen,
-for instance) — otherwise you'd need to duplicate the class per OS.
+`@TestClass` takes no `app:` — the target app always comes from the active run profile. Leaving
+`platform:` unset lets the same scenario run against both `--profile ios-run` and
+`--profile android-run`. Only set it when a scenario is genuinely OS-specific (a platform-only
+setting screen, for instance) — otherwise you'd need to duplicate the class per OS.
 
 ## Read a value before it can change
 
@@ -88,6 +89,18 @@ double-fire. A scenario may re-attempt this itself after confirming where it lan
 to check the resulting screen, then tap again), but **only for an action that's safe to repeat**.
 Never write a retry around something irreversible — submitting a form, confirming a purchase, and
 the like.
+
+## Write every scenario to survive being re-run from the start
+
+A scenario that fails because of the device (a freeze, a lost bridge connection) is **run again from the start**
+within the run, not necessarily on the same device. On a device whose display is confirmed to have frozen, the
+scenario that passed just before is run again too. This cannot be turned off, so write each scenario so that
+**running it again from the start still passes**.
+
+- Create the starting state yourself (start from `clearAppData()` or a logout; don't rely on what an earlier run left)
+- Use different values for the data you create on every run (so a second sign-up with the same email does not fail)
+- Point operations that cannot be undone, such as sending or purchasing, at an environment where receiving them twice
+  does no harm (test payments, a staging server)
 
 ### Link
 - [index](../../index.md)

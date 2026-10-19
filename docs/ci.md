@@ -110,6 +110,8 @@ pipeline {
 - 自己修復(ロケータの指紋照合)は FM を使わないので、この節(Apple Intelligence の有効化)とは
   無関係に CI で動く。`heal` を CI で有効にするかはチーム方針: 有効なら UI 変更起因の失敗は
   減るが、セレクタ陳腐化が隠れやすい。延命中のシナリオは `fleetest results insights` が検出する
+- 自己修復が働くと、直ったセレクタはチェックアウトしたシナリオのソースへ書き戻される(ツールはコミットしない)。
+  チェックアウトを汚したくなければ `--set heal=false`、気にしなければ無視してよい
 
 ## flaky の扱い(リトライ機構は意図的に無い)
 
@@ -124,7 +126,8 @@ CI 用のシナリオ単位リトライは**実装していない**。自動リ�
 - **振り直しはシナリオ単位の再実行**(同じデバイスのことも別のデバイスのこともある。`RunOrchestrator.requeuesWithoutRetiring`)。
   表示の凍結を確定したデバイスでは直前の**成功**も捨てて振り直す(docs/design.md の DisplayFreezeWatch)。
   ステップ単位の「撃ち直さない」原則(CLAUDE.md)の例外で、取り消せない操作を含むシナリオは1 run で2回走りうる。
-  止める口は無い(利用者向けは docs/user-docs/in_action/ci_ja.md に明記)
+  **止める口は作らない**(ユーザー決定: シナリオは再実行される前提で作るもの。利用者向けは
+  docs/user-docs/in_action/ci_ja.md と reference/writing/writing_robust_scenarios_ja.md に明記)
 
 ## 関連
 

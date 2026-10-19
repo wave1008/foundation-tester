@@ -32,7 +32,7 @@ private struct UnusedDriver: AppDriver {
 final class BroadcastPlanTests: XCTestCase {
 
     private func item(_ id: String, platform: String? = nil) -> ScenarioRunItem {
-        ScenarioRunItem(info: ScenarioInfo(id: id, title: id, app: "App", platform: platform, deleted: false))
+        ScenarioRunItem(info: ScenarioInfo(id: id, title: id, platform: platform, deleted: false))
     }
 
     private let lanes = [

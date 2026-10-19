@@ -12,9 +12,6 @@ public struct ScenarioInfo: Codable, Sendable, Hashable {
     /// クラス名.メソッド名
     public let id: String
     public let title: String
-    /// `@TestClass(app:)` の明示値。nil(null / キー欠落)= 未指定 = 実行プロファイルから解決する
-    /// (FTCore.ScenarioAppResolution)
-    public let app: String?
     /// "ios" / "android" / nil(両OS対応)
     public let platform: String?
     /// `@Test(scenarioTimeout:)` の秒。nil = 未指定(プロファイル → 既定の順に解く。
@@ -25,16 +22,21 @@ public struct ScenarioInfo: Codable, Sendable, Hashable {
     /// @Draft(実装中マーク)。一覧に残るが一括実行から除外される
     /// (@Deleted との違いは意味だけ。両方付いていれば deleted の表示を優先する)
     public let draft: Bool
+    /// クラスが `beforeAll()` を持つか(マクロが一覧に載せる)。親はこれを見て、そのクラスの beforeAll が
+    /// 終わるまで他のデバイスでそのクラスのシナリオを起動しない(`RunSharedSession.takeBeforeAll`)。
+    /// 子 → ホストの一覧(同一ビルド)だけを通り、`fleetest api` の契約には載せない
+    public let beforeAll: Bool
 
-    public init(id: String, title: String, app: String? = nil, platform: String? = nil,
-                scenarioTimeout: Int? = nil, deleted: Bool = false, draft: Bool = false) {
+    public init(id: String, title: String, platform: String? = nil,
+                scenarioTimeout: Int? = nil, deleted: Bool = false, draft: Bool = false,
+                beforeAll: Bool = false) {
         self.id = id
         self.title = title
-        self.app = app
         self.platform = platform
         self.scenarioTimeout = scenarioTimeout
         self.deleted = deleted
         self.draft = draft
+        self.beforeAll = beforeAll
     }
 }
 
@@ -454,8 +456,7 @@ public enum ScenarioHost {
     /// appName はアプリの表示名(プロファイルの appName)。子へ `--app-name` として渡し、
     /// tapAppIcon() の引数省略時の既定になる(installHandler と無関係に常に渡す)。
     /// appBundleID は実行プロファイルが解決した bundle ID。子へ `--app` として渡し、
-    /// `@TestClass(app:)` 未指定のシナリオの既定アプリになる。**明示があっても常に渡す** ——
-    /// 渡さないと食い違いの警告が原理的に出せない(FTCore.ScenarioAppResolution)
+    /// シナリオのアプリになる(FTCore.ScenarioAppResolution)
     @discardableResult
     /// 子へ渡すインストール関連の引数。**`--host-install` と `--app-path` は排他ではない**:
     /// 前者は installApp() の実行先(親へ RPC)、後者は「アプリのバンドルがどこにあるか」。
@@ -472,9 +473,13 @@ public enum ScenarioHost {
 
     public static func run(project: TestProject, scenarioID: String,
                            connection: DriverConnection,
-                           /// このデバイス × この run(呼び出し)で共有するメモと setUpDevice の済み印。
+                           /// このデバイスの setUpDevice の済み印と、run 全体で共有するメモ・beforeAll の済み印。
                            /// 既定値を置かない = 渡し忘れ(デバイスごとに別のセッションを作る誤配線)をコンパイルで止める
                            deviceSession: RunDeviceSession,
+                           /// このシナリオのクラスが `beforeAll()` を持つか(`ScenarioInfo.beforeAll`)。true なら、
+                           /// 別のデバイスがこのクラスの beforeAll を受け持っている間は起動を待つ。
+                           /// 既定値を置かない = 渡し忘れると beforeAll より先にシナリオが走る
+                           classHasBeforeAll: Bool,
                            /// このシナリオの `@Test(scenarioTimeout:)`(`ScenarioInfo.scenarioTimeout`)。
                            /// 既定値を置かない = 呼び手が info を持たない経路を明示させる(tearDownDevice 等は nil)
                            scenarioTimeoutOverride: Int?,
@@ -503,12 +508,27 @@ public enum ScenarioHost {
                            /// scenarioID は "<Class>.tearDownDevice"。結果の記録(LastResultsStore)には載せない
                            /// = `--failed` が存在しないシナリオを拾わない
                            deviceTearDownOnly: Bool = false,
+                           /// true = シナリオではなくクラスの afterAll だけを走らせる(runAfterAlls 専用)。
+                           /// scenarioID は "<Class>.afterAll"。扱いは deviceTearDownOnly と同じ(記録に載せない)
+                           afterAllOnly: Bool = false,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
         // 所要(startedAt / clockStart)に含めないよう、計時より前で待つ(awaitOCRModelCompile の doc)。
         // RunOrchestrator 経由ならシナリオの印より前で待ち終えているので、ここは即抜ける
         if !dryRun {
             await awaitOCRModelCompileBeforeScenarios { onEvent(ScenarioEvent.log($0)) }
         }
+        let className = RunDeviceSession.className(ofScenarioID: scenarioID)
+        // 起動の可否と子へ渡す写し。**計時より前**: 別のデバイスがこのクラスの beforeAll を受け持っている間は
+        // ここで待つ(待ちをこのシナリオの所要・打ち切りに入れない)。
+        // tearDownDevice は setUpDevice の成否に関わらず走らせる(片付け)。setUpDevice も beforeAll も走らせない
+        // クラスの片付けだけを走らせる専用の子(tearDownDevice / afterAll)。シナリオではない
+        let lifecycleOnly = deviceTearDownOnly || afterAllOnly
+        let handoffDecision: RunDeviceSession.HandoffDecision = lifecycleOnly
+            ? .launch(deviceSession.tearDownHandoff())
+            : await deviceSession.handoff(className: className, classHasBeforeAll: classHasBeforeAll)
+        // 受け持った beforeAll を、子を起こさずに抜ける経路でも手放す(待っている他のデバイスが受け持ち直す)。
+        // 子を起こした後は scenarioEnded が先に手放すので、ここは何もしない
+        defer { deviceSession.releaseBeforeAll(className: className) }
         let fm = settings.fm
         let containerInference = settings.containerInference
         let occlusionOCR = settings.occlusionOCR
@@ -561,7 +581,7 @@ public enum ScenarioHost {
             finished.passed = false
             eventLog?.appendHost(finished)
             emit(finished)
-            if !dryRun, !deviceTearDownOnly {
+            if !dryRun, !lifecycleOnly {
                 LastResultsStore.record(project: project, scenarioID: scenarioID, passed: false,
                                         profile: settings.profileName)
             }
@@ -577,11 +597,15 @@ public enum ScenarioHost {
         if let reason = ScenarioTimeoutResolution.invalidScenarioValueReason(scenarioTimeoutOverride) {
             return abortBeforeLaunch(reason)
         }
-        let className = RunDeviceSession.className(ofScenarioID: scenarioID)
-        // tearDownDevice は setUpDevice の成否に関わらず走らせる(片付け)。setUpDevice も走らせない
-        guard let handoff = deviceTearDownOnly
-                ? deviceSession.tearDownHandoff() : deviceSession.handoff(className: className) else {
+        let handoff: DeviceSessionHandoff
+        switch handoffDecision {
+        case .launch(let value):
+            handoff = value
+        case .setUpDeviceFailed:
             return abortBeforeLaunch("setUpDevice of \(className) failed earlier on this device in this run,"
+                                     + " so this scenario was not run")
+        case .beforeAllFailed:
+            return abortBeforeLaunch("beforeAll of \(className) failed earlier in this run,"
                                      + " so this scenario was not run")
         }
 
@@ -596,7 +620,7 @@ public enum ScenarioHost {
         process.executableURL = runner
         process.environment = childEnvironment()
         // tearDownDevice は @Test ではないので、子へはクラス名だけを渡す
-        var args = ["run", "--scenario", deviceTearDownOnly ? className : scenarioID,
+        var args = ["run", "--scenario", lifecycleOnly ? className : scenarioID,
                     "--platform", connection.platform,
                     "--report-dir", reportDir, "--json",
                     "--project-dir", project.rootURL.path,
@@ -646,6 +670,7 @@ public enum ScenarioHost {
         }
         args.append("--device-session-stdin")
         if deviceTearDownOnly { args.append("--device-teardown-only") }
+        if afterAllOnly { args.append("--after-all-only") }
         args += installArguments(hostInstall: installHandler != nil, appPath: appPath)
         if let appName { args += ["--app-name", appName] }
         if let appBundleID { args += ["--app", appBundleID] }
@@ -849,7 +874,7 @@ public enum ScenarioHost {
                     idleTracker?.activity(at: idleClock.now)
                     continue
                 }
-                if deviceSession.apply(event, className: className) { continue }
+                if deviceSession.apply(event, className: className, platform: connection.platform) { continue }
                 if event.kind == "idleAllowance" {
                     if event.status == "began" {
                         idleTracker?.beginAllowance(.milliseconds(max(0, event.durationMs ?? 0)))
@@ -920,7 +945,7 @@ public enum ScenarioHost {
             finished.passed = false
             eventLog?.appendHost(finished)
             emit(finished)
-            if !dryRun, !deviceTearDownOnly {
+            if !dryRun, !lifecycleOnly {
                 LastResultsStore.record(project: project, scenarioID: scenarioID, passed: false,
                                         profile: settings.profileName)
             }
@@ -936,7 +961,7 @@ public enum ScenarioHost {
         let result = passed ?? (process.terminationStatus == 0)
         // dry-run は実機能を動かしていないため直近結果を上書きしない(実失敗を消さない)。
         // 対象外の宣言(notApplicable)も同じ —— 走っていないので直近の合否を上書きしない
-        if !dryRun, !deviceTearDownOnly, !notApplicable {
+        if !dryRun, !lifecycleOnly, !notApplicable {
             LastResultsStore.record(project: project, scenarioID: scenarioID, passed: result,
                                     profile: settings.profileName)
         }
@@ -982,6 +1007,9 @@ public enum ScenarioHost {
         let passed = await run(project: project, scenarioID: scenarioID,
                                connection: DriverConnection(platform: "ios"),
                                deviceSession: RunDeviceSession(),
+                               // 1本だけの使い捨てのセッションなので受け持っても待つ相手がいない。
+                               // beforeAll を持つクラスならその手順も一覧に出る(持たないクラスの子は無視する)
+                               classHasBeforeAll: true,
                                scenarioTimeoutOverride: nil,
                                // **`enabled: false`**(デバイスも画面も無いので FM を引く経路をまとめて止める。
                                // 個別に切ると残った経路が FM の呼び出しの枠の待ちを払う)

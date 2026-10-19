@@ -53,10 +53,11 @@ public enum ScenarioCodeGen {
         lines.append("import FTDSL")
         lines.append("")
 
-        var attr = "@TestClass(app: \(literal(flow.app))"
-        if let platform = flow.platform { attr += ", platform: \(literal(platform))" }
-        attr += ")"
-        lines.append(attr)
+        if let platform = flow.platform {
+            lines.append("@TestClass(platform: \(literal(platform)))")
+        } else {
+            lines.append("@TestClass")
+        }
         lines.append("class \(className) {")
         lines.append("")
         // @Test の説明文は flow.name を使う(gen-scenario が付けるシナリオ名)

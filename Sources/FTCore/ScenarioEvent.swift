@@ -12,8 +12,8 @@
 // — installRequest と同じく **fleetest api の NDJSON 契約には現れない**。
 // idleAllowance は IdleAllowance(同じく observer で橋渡し)の子→親通知専用。status "began"(durationMs = 上限 ms)/ "ended"。
 // ScenarioHost.run が横取りして idle 打ち切りの許容へ積み(締め切りからは差し引かない)、emit へは渡さない。
-// memoWrite / memoClear / deviceSetUp / deviceTearDown はデバイスセッション(DeviceSessionHandoff.swift)の子→親通知専用。
-// memoWrite は memoKey/memoValue、deviceSetUp は status に "began"/"passed"/"failed"、deviceTearDown は "declared"(クラスが tearDownDevice を持つ)。
+// memoWrite / memoClear / deviceSetUp / beforeAll / deviceTearDown はデバイスセッション(DeviceSessionHandoff.swift)の子→親通知専用。
+// memoWrite は memoKey/memoValue、deviceSetUp と beforeAll は status に "began"/"passed"/"failed"、deviceTearDown は "declared"(クラスが tearDownDevice を持つ)。
 // ScenarioHost.run が横取りして RunDeviceSession へ反映し、emit へは渡さない(同じく api 契約に現れない)。
 // responseReady は応答時間計測の t2 の後追い確定(index = 宛先の計測ステップの添字、readyUpdate = 確定)。ScenarioRecordBuilder が
 // その添字の timeline[].response へ当てる。ライブの NDJSON(fleetest api run)には流さない: 宛先の step 行は確定の前に流れ終わっており、

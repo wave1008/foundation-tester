@@ -13,7 +13,7 @@ final class ScenarioTimingTrackerTests: XCTestCase {
     private let base = Date(timeIntervalSince1970: 1_700_000_000)
 
     private func item(_ id: String) -> ScenarioRunItem {
-        ScenarioRunItem(info: ScenarioInfo(id: id, title: id, app: "SampleApp",
+        ScenarioRunItem(info: ScenarioInfo(id: id, title: id,
                                            platform: nil, deleted: false))
     }
 

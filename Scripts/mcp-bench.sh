@@ -195,7 +195,7 @@ fi
 # selector-inventory.json。2026-09-25 まではここを消しておらず run をまたいで残っていた)。
 # フィクスチャに `fleetest/` があれば、それをプロジェクトの `.fleetest/` として置く(指紋の控えの種)
 reset_authoring() {
-  local fixture="$1"
+  local fixture="$1" app_id="$2"
   local proj="$PKG/TestProjects/$PKG_PROJECT"
   local scen="$proj/scenarios"
   rm -rf "$PKG/.claude" "$PKG/.vscode" "$PKG/CLAUDE.md" "$PKG/AGENTS.md" "$PKG/.fleetest" "$proj/.fleetest"
@@ -206,6 +206,13 @@ reset_authoring() {
     cp "$FIXTURE_DIR/$fixture/fleetest"/* "$proj/.fleetest/"
   fi
   find "$PKG/TestProjects/$PKG_PROJECT/reports" -mindepth 1 -delete 2>/dev/null || true
+  # シナリオはアプリを宣言しない(実行プロファイルかアプリプロファイルで決まる)。profile 無しの ft_run_scenario は
+  # アプリプロファイルが1つだけのときそれを使うので、タスクの appId を1つだけ置く
+  [ -n "$app_id" ] || die "タスクに appId が無い(フィクスチャ $fixture のアプリを決められない)"
+  rm -rf "$proj/profiles/apps"
+  mkdir -p "$proj/profiles/apps"
+  printf '{\n  "platform": "hybrid",\n  "ios": { "app": "%s" },\n  "android": { "app": "%s" }\n}\n' \
+    "$app_id" "$app_id" > "$proj/profiles/apps/bench.json"
 }
 
 # 1 run ぶんの盤面を作り直す(システムアプリ): 起動中の全シミュレータでアプリを終了し、保存された画面の状態
@@ -276,7 +283,7 @@ drop: や lastN: で刈り込んでから、もう一度呼んでください。
       # **最初の run だけがビルドを払わないよう、先に1回ビルドしておく**(2 分級。手数ではなく
       # wall が歪む)。フィクスチャは実行時にだけ落ちる形なのでコンパイルは通る
       if [ "$DRY_RUN" = 0 ]; then
-        reset_authoring "$fixture"
+        reset_authoring "$fixture" "$(task_field "$f" appId)"
         (cd "$PKG" && swift build --product "fleetest-scenarios-$PKG_PROJECT") >>"$LOG" 2>&1 \
           || die "フィクスチャのビルドに失敗($LOG)"
       fi
@@ -285,7 +292,7 @@ drop: や lastN: で刈り込んでから、もう一度呼んでください。
     for n in $(seq 1 "$REPEAT"); do
       transcript="$vdir/$id-$n.jsonl"
       final=""
-      [ "$kind" != authoring ] || [ "$DRY_RUN" = 1 ] || reset_authoring "$fixture"
+      [ "$kind" != authoring ] || [ "$DRY_RUN" = 1 ] || reset_authoring "$fixture" "$(task_field "$f" appId)"
       reset_bundle="$(task_field "$f" resetSavedState)"
       [ -z "$reset_bundle" ] || [ "$DRY_RUN" = 1 ] || reset_saved_state "$reset_bundle"
       set -- claude -p "$prompt" \

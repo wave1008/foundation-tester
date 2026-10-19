@@ -230,17 +230,19 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `beforeEach(context)` | `beforeEach()` | ✅ 同名(引数 `context` は無い)。各 `@Test` の前に走る(Shirates の `setup()` = testrun・プロファイルを読みドライバを用意する枠組み側の処理には当たらない。fleetest では実行プロファイルと親プロセスが受け持つ)。失敗したらそのシナリオだけ中断 |
 | `afterEach(context)` | `afterEach()` | ✅ 同名(引数 `context` は無い)。各 `@Test` の後に走り、**失敗後でも走る** |
 | `setEventHandlers(context)` | `beforeEach()` の中で `irregularHandler(...)` を呼ぶ | 🟡 専用の口は無い。登録はシナリオのプロセスの中でしか効かないので、毎回走る `beforeEach()` に書く(`setUpDevice()` に書くと2本目以降のシナリオでは消えている) |
-| `beforeAll` / `beforeAllAfterSetup`(クラス単位) | `setUpDevice()` | 🟡 **スコープがデバイス単位**: 1回の run × 1デバイス × 1クラスで高々1回(そのデバイスに配られた最初のシナリオの `beforeEach()` の前)。クラスの全シナリオの前に1回ではない(シナリオが別デバイスへ散るため)。失敗なら同じデバイスの後続は走らせずに失敗。値の受け渡しは `writeMemo` / `readMemo` |
-| `afterAll`(クラス単位) | `tearDownDevice()` | 🟡 **スコープがデバイス単位で、走る時点がデバイスの仕事の後**: そのデバイスでそのクラスのシナリオが1本でも走っていれば、デバイスがキューを掃き切った後に1回(専用のプロセス)。結果は run ログとレポートに残り、合否には数えない。離脱・中断したデバイスでは走らない |
+| `beforeAll`(クラス単位) | `beforeAll()` | 🟢 同名。**1回の run × 1クラスで1回だけ**、そのクラスのどのシナリオよりも前に(どのデバイスでも)走る(そのクラスの最初のシナリオのプロセスの中。他のデバイスは終わるまで待つ)。失敗したらその run のそのクラスの残りは走らせずに失敗。run が複数のマシンに分かれるときはマシンごとに1回(制約)。値の受け渡しは `writeMemo` / `readMemo`(run 共有) |
+| `beforeAllAfterSetup` | `setUpDevice()` | 🟡 **スコープがデバイス単位**: 1回の run × 1デバイス × 1クラスで高々1回(そのデバイスに配られた最初のシナリオの `beforeEach()` の前)。失敗なら同じデバイスの後続は走らせずに失敗 |
+| `afterAll`(クラス単位) | `afterAll()` | 🟢 同名。**1回の run × 1クラスで1回だけ**、run の全デバイスの仕事が終わった後に専用のプロセスで走る(その run でそのクラスのシナリオが1本でも走っていたときだけ)。結果は run ログとレポートに残り、合否には数えない。中断した run では走らない。run が複数のマシンに分かれるとマシンごとに1回 |
+| (対応なし) | `tearDownDevice()` | デバイス単位の片付け: そのデバイスでそのクラスのシナリオが1本でも走っていれば、デバイスがキューを掃き切った後に1回(専用のプロセス)。結果は run ログとレポートに残り、合否には数えない。離脱・中断したデバイスでは走らない |
 
 ## データストレージ・キャッシュ
 
 | Shirates | fleetest | |
 |---|---|---|
-| `writeMemo` / `readMemo` / `clearMemo` / `memoTextAs` | 同名・同挙動(`writeMemo` は履歴に追記・`readMemo` は最後の値か `""`・`memoTextAs` は要素と String の両方) | 🟢 **スコープは「1回の run × 1デバイス」**。Shirates は1 run で1デバイスを動かすので JVM グローバルのメモと同じ範囲。fleetest はシナリオごとに別プロセスなので、親(run を束ねる側)がデバイスごとに持って子へ渡す。別デバイスの値は見えない(`readMemo` は `""` + 注記 `memo-key-not-found`)。`ft_batch` は受けない |
+| `writeMemo` / `readMemo` / `clearMemo` / `memoTextAs` | 同名・同挙動(`writeMemo` は履歴に追記・`readMemo` は最後の値か ``・`memoTextAs` は要素と String の両方) | 🟢 **スコープは「1回の run のすべてのシナリオ(どのデバイスでも)」**。fleetest はシナリオごとに別プロセスなので、親(run を束ねる側)が run で1つ持って子へ渡す。`beforeAll()` で書いた値は全シナリオが読める。制約: シナリオが受け取るのは開始時点のメモ(走行中の他デバイスの書き込みは見えない)・複数デバイスからの同時書き込みは直列化しない・`clearMemo()` は run 全体を消す・run が複数のマシンに分かれるときはマシンごとに別のメモ。キーが無ければ `""` + 注記 `memo-key-not-found`。`ft_batch` は受けない |
 | `TestLog.directoryForLog` | `TestLog.directoryForLog`(`URL`) | 🟢 同名・同じ単位(run × テストクラス。パスは `<reportDir>/<run の開始 yyyy-MM-dd_HHmmss>/<クラス名>/`。Shirates は `testResults` 配下・fleetest はレポートの出力先の配下)。Shirates に無い一時フォルダの口 `TestLog.directoryForTemp`(シナリオごと・終わりに消す)を足した = サンドボックスの中では `NSTemporaryDirectory()` に書けないため |
 | `account` / `data` | 同名・同じ引数(`account("[account1].password")` と `account("[account1]", "password")`)・同じキーの書式(最後の `.` で分ける)・同じ dataset JSON の形 | 🟢 Shirates と揃えた。**fleetest の追加**: ①データセットの置き場は `<プロジェクト>/dataset/accounts.json`・`data.json` に、マシン側 `~/.config/fleetest/dataset/<プロジェクト名>/` が**属性単位で上書き**する(パスワードをリポジトリに入れない) ②マシン側の `redactAccountValues: true` で、`account()` の値(データセットの全属性・4 文字以上)をレポート・実行ログ・結果 JSON で `***` に伏せる(既定は伏せない・`data()` は伏せない) ③値が無い・ファイルが壊れているときはステップを失敗にして中断(Shirates は例外) ④dry-run・一覧はキーをそのまま返す(Shirates の `isNoLoadRun` と同じ)。成功時はステップを記録しない(Shirates も記録しない)。`ft_batch` は受けない |
-| `app` / `dataPattern` | — | ➖ **持たない**。`app` は `@TestClass(app:)` と実行プロファイルの対象で足りる。`dataPattern` は Swift のループ・配列で書ける |
+| `app` / `dataPattern` | — | ➖ **持たない**。`app` は実行プロファイル(→ アプリプロファイル)が決めるので `@TestClass` には持たない。`dataPattern` は Swift のループ・配列で書ける |
 | — | `dataFile(filename)` | 🟢 **fleetest 独自**(Shirates に無い)。データセットのフォルダのファイル(CSV・JSON・画像)の `URL`。置き場は `account` / `data` と同じ2つで、マシン側がファイル単位で差し替える。`ft_batch` は受けない |
 | — | `addMedia(filename)` | 🟢 **fleetest 独自**(Shirates に無い)。データセットのフォルダの画像・動画を写真ライブラリへ入れる(置き場は `dataFile` と同じ)。**OS で挙動が割れる**: iOS Simulator は `simctl addmedia`・Android は Pictures / Movies へ push して登録を確認・**iOS 実機は失敗**(写真ライブラリへの口が無い)。入れたものを消すコマンドは無い。`ft_batch` は受けない |
 | — | `httpRequest(url, method:, headers:, body:, waitSeconds:)` / `fleetestURLSession` | 🟢 **fleetest 独自**(Shirates に無い)。サンドボックスの中から外部の API を叩く口(プロキシ設定済みの `URLSession`)。4xx/5xx は失敗にしない・通信の失敗と時間切れは失敗にして中断。`ft_batch` は受けない |

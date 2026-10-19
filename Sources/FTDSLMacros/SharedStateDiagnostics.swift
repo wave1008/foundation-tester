@@ -1,7 +1,8 @@
 // @TestClass のプロパティで「別プロセスで走る部分」の間の値の受け渡しを試みている形を警告する(TestClassMacro が呼ぶ)。
-// 各 @Test は別プロセスで、setUpDevice はデバイスで最初の @Test のプロセスの中、tearDownDevice は専用のプロセスで走る
+// 各 @Test は別プロセスで、beforeAll は run で最初の @Test のプロセスの中、setUpDevice はデバイスで最初の @Test の
+// プロセスの中、tearDownDevice と afterAll は専用のプロセスで走る
 // (ScenarioHost / RunDeviceSession)。同じプロセスで後に走る部分にだけ値が見える(visible(write:read:))。
-// **出れば正しい側だけの検知**: 見るのはライフサイクル4つと @Test の本体での `x = …` / `x += …` / `self.x` / `Self.x` だけ。
+// **出れば正しい側だけの検知**: 見るのはライフサイクル6つと @Test の本体での `x = …` / `x += …` / `self.x` / `Self.x` だけ。
 // ヘルパー関数・メソッドによる変更(`x.append`)・ファイル直下のグローバルは拾わない(拾うと誤検知が増える)。
 
 import SwiftDiagnostics
@@ -11,11 +12,13 @@ import SwiftSyntaxMacros
 enum SharedStateDiagnostics {
 
     enum Role: Hashable {
-        case setUpDevice, tearDownDevice, beforeEach, afterEach
+        case beforeAll, afterAll, setUpDevice, tearDownDevice, beforeEach, afterEach
         case test(String)
 
         var display: String {
             switch self {
+            case .beforeAll: return "beforeAll()"
+            case .afterAll: return "afterAll()"
             case .setUpDevice: return "setUpDevice()"
             case .tearDownDevice: return "tearDownDevice()"
             case .beforeEach: return "beforeEach()"
@@ -40,16 +43,24 @@ enum SharedStateDiagnostics {
 
         private var reason: String {
             switch writer {
+            case .beforeAll:
+                return "beforeAll() runs only once in a run, before the first @Test of the class, in that test's"
+                    + " process, so the other tests do not see it"
             case .setUpDevice:
                 return "setUpDevice() runs only before the first @Test that lands on each device, in that test's"
                     + " process, so the other tests do not see it"
             case .tearDownDevice:
                 return "tearDownDevice() runs in a process of its own after the device has finished its tests"
+            case .afterAll:
+                return "afterAll() runs in a process of its own after every device has finished the run"
             case .afterEach:
                 return "afterEach() runs after its test, and the next test starts in a new process"
             case .beforeEach, .test:
                 if readers.allSatisfy({ $0 == .tearDownDevice }) {
                     return "tearDownDevice() runs in a process of its own after the device has finished its tests"
+                }
+                if readers.allSatisfy({ $0 == .afterAll }) {
+                    return "afterAll() runs in a process of its own after every device has finished the run"
                 }
                 return "every @Test runs in its own process, so the value does not carry over"
             }
@@ -57,7 +68,7 @@ enum SharedStateDiagnostics {
     }
 
     /// write で書いた値が read から見えるか = 同じプロセスで read が write の後に走る。
-    /// setUpDevice → 他は「最初の @Test だけ」なので見えない側に倒す(他の @Test は確実に見えない)
+    /// beforeAll / setUpDevice → 他は「最初の @Test だけ」なので見えない側に倒す(他の @Test は確実に見えない)
     static func visible(write: Role, read: Role) -> Bool {
         if write == read { return true }
         switch (write, read) {
@@ -108,12 +119,14 @@ enum SharedStateDiagnostics {
         }
     }
 
-    /// ライフサイクル4つ(引数なし)と @Test だけ。ヘルパー関数はいつ呼ばれるか分からないので対象外
+    /// ライフサイクル6つ(引数なし)と @Test だけ。ヘルパー関数はいつ呼ばれるか分からないので対象外
     private static func role(of fn: FunctionDeclSyntax, testMethods: Set<String>) -> Role? {
         let name = fn.name.text
         if testMethods.contains(name) { return .test(name) }
         guard fn.signature.parameterClause.parameters.isEmpty else { return nil }
         switch name {
+        case "beforeAll": return .beforeAll
+        case "afterAll": return .afterAll
         case "setUpDevice": return .setUpDevice
         case "tearDownDevice": return .tearDownDevice
         case "beforeEach": return .beforeEach

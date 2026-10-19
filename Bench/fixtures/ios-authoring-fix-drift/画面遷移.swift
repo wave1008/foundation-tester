@@ -7,7 +7,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class 画面遷移 {
     @Test("セレクタ画面へ遷移して戻れる")
     func S0010() {

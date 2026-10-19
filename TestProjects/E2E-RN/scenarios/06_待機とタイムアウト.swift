@@ -13,7 +13,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.rn")
+@TestClass
 class 待機とタイムアウトが正しく効くこと {
 
     @Test("既定タイムアウト内の遅延表示は暗黙待ちで拾える・否定/個数/方向/スコープの各セレクタ・appIs/screenshot/waitForDisplay/verify")

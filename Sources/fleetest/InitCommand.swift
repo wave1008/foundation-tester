@@ -138,7 +138,7 @@ struct InitCommand: AsyncParsableCommand {
     }
 
     /// bundle ID / package name として妥当な文字だけを許す(`AndroidWebViewDOM.probeCommand` と
-    /// 同じ許容集合)。値は install/launch や profiles/apps/*.json・雛形シナリオの `@TestClass(app:)` /
+    /// 同じ許容集合)。値は install/launch や profiles/apps/*.json・雛形シナリオの
     /// `appIs(...)` へそのまま入るので、注入にはならなくても分かりにくい後段の失敗になる前に弾く
     static func isValidAppID(_ value: String) -> Bool {
         let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")

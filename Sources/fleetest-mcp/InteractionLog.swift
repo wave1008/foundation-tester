@@ -24,7 +24,7 @@ struct InteractionLog {
         var unresolved: String?
         /// ft_launch の位置を覚えて「直近の launch 以降」を既定範囲にする
         var isLaunch: Bool = false
-        /// @TestClass(app:) に使う bundleID(launch のときだけ)
+        /// ft_launch の bundleID(launch のときだけ)
         var bundleID: String?
         /// @TestClass(platform:) に使う
         var platform: String?

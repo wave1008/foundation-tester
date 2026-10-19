@@ -14,7 +14,7 @@ final class ApiRunNDJSONPathParityTests: XCTestCase {
     private let scenarioID = "ログインテスト.S0010"
     private let workerLabel = "ios:8123"
     private var item: ScenarioRunItem {
-        ScenarioRunItem(info: ScenarioInfo(id: scenarioID, title: "t", app: "A", platform: nil, deleted: false))
+        ScenarioRunItem(info: ScenarioInfo(id: scenarioID, title: "t", platform: nil, deleted: false))
     }
 
     private func object(_ line: String) throws -> NSDictionary {

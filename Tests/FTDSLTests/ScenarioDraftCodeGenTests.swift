@@ -7,7 +7,7 @@ import FTCore
 final class ScenarioDraftCodeGenTests: XCTestCase {
 
     private func render(_ draft: ScenarioDraft, platform: String? = "ios") -> String {
-        ScenarioDraftCodeGen.render(draft: draft, className: "下書き", app: "com.example.app",
+        ScenarioDraftCodeGen.render(draft: draft, className: "下書き",
                                     platform: platform, source: "login.md",
                                     generatedBy: "test")
     }
@@ -18,7 +18,7 @@ final class ScenarioDraftCodeGenTests: XCTestCase {
                        action: ["ログインボタンを押す"], expectation: ["ホームが表示されること"]),
         ])
         let code = render(draft)
-        XCTAssertTrue(code.contains("@TestClass(app: \"com.example.app\", platform: \"ios\")"))
+        XCTAssertTrue(code.contains("@TestClass(platform: \"ios\")"))
         XCTAssertTrue(code.contains("@Draft("), "下書きは一括実行から外す")
         XCTAssertFalse(code.contains("@Deleted("), "下書きは @Deleted ではなく @Draft を使う")
         XCTAssertTrue(code.contains("@Test(\"ログイン\")"))
@@ -85,7 +85,7 @@ final class ScenarioDraftCodeGenTests: XCTestCase {
 
     func testPlatformOmittedWhenNil() {
         let draft = ScenarioDraft(title: "t", scenes: [DraftScene(number: 1, title: "s", action: ["押す"])])
-        XCTAssertTrue(render(draft, platform: nil).contains("@TestClass(app: \"com.example.app\")"))
+        XCTAssertTrue(render(draft, platform: nil).contains("@TestClass"))
     }
 
     func testQuotesInTextAreEscaped() {

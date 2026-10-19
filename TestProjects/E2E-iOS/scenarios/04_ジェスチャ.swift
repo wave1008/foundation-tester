@@ -12,7 +12,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class ジェスチャが正しく検出されること {
 
     @Test("タップ連打・長押し・4方向スワイプ・座標スワイプ・ピンチ・ダブルタップ・斜めドラッグが区別して検出される")

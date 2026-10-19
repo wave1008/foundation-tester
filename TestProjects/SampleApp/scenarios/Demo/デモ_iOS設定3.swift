@@ -10,7 +10,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.apple.Preferences", platform: "ios")
+@TestClass(platform: "ios")
 class デモ_iOS設定3 {
 
     @Test("検索の設定項目とインストール済みアプリ一覧を確認できる")
@@ -18,7 +18,7 @@ class デモ_iOS設定3 {
         scenario {
             scene(1, "検索を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.action {
                     scrollTo("#com.apple.settings.search||検索")
                     tap("#com.apple.settings.search||検索")
@@ -60,7 +60,7 @@ class デモ_iOS設定3 {
         scenario {
             scene(1, "検索から検索エンジン設定を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.action {
                     scrollTo("#com.apple.settings.search||検索")
                     tap("#com.apple.settings.search||検索")
@@ -97,7 +97,7 @@ class デモ_iOS設定3 {
         scenario {
             scene(1, "一般 > トラックパッドを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.action {
                     tap("#com.apple.settings.general||一般")
                     scrollTo("#com.apple.settings.general.pointerDevice||トラックパッド")
@@ -132,7 +132,7 @@ class デモ_iOS設定3 {
         scenario {
             scene(1, "一般 > 自動入力とパスワードを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.action {
                     tap("#com.apple.settings.general||一般")
                     scrollTo("#com.apple.settings.general.autoFillAndPasswords||自動入力とパスワード")
@@ -167,7 +167,7 @@ class デモ_iOS設定3 {
         scenario {
             scene(1, "一般 > 画面の取り込みを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.action {
                     tap("#com.apple.settings.general||一般")
                     scrollTo("#com.apple.settings.general.screenCapture||画面の取り込み")

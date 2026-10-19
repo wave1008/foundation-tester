@@ -39,7 +39,7 @@ public struct DSLCommandInfo: Sendable, Encodable {
 public enum DSLCommandIndex {
 
     /// 索引に載せない `public func`(マクロが生成する呼び出し口で、利用者は書かない)
-    public static let internalNames: Set<String> = ["ftRunBeforeEach", "ftRunSetUpDevice", "ftRunAfterEach", "ftRunTearDownDevice"]
+    public static let internalNames: Set<String> = ["ftRunBeforeAll", "ftRunAfterAll", "ftRunBeforeEach", "ftRunSetUpDevice", "ftRunAfterEach", "ftRunTearDownDevice"]
 
     /// 分類の一覧(索引に出てくる順)。`api dsl-commands --category` の help はここから導出する
     /// (手書きの列挙は分類を足したときに必ずずれる)
@@ -442,15 +442,16 @@ public enum DSLCommandIndex {
         .init("doUntilTrue", "control", "doUntilTrue(description, waitSeconds:, intervalSeconds:, maxLoopCount:) { condition }",
               "Repeats the block (DSL commands allowed inside) until it returns true."),
 
-        // MARK: memo (per-device values shared by the scenarios of one run)
+        // MARK: memo (values shared by every scenario of one run, on every device)
         .init("writeMemo", "memo", "writeMemo(key, text)",
-              "Appends a value to the key's history in the device memo. The memo is shared only by the"
-                  + " scenarios that run on the same device in one run (see setUpDevice)."),
+              "Appends a value to the key's history in the memo. The memo is shared by every scenario of one run on"
+                  + " every device (write shared values in beforeAll). A scenario sees the memo as it was when it"
+                  + " started; writes are not serialized across devices."),
         .init("readMemo", "memo", "readMemo(key)",
               "Returns the last value written under the key, or \"\" when there is none (not a failure;"
                   + " the step carries the memo-key-not-found note)."),
         .init("clearMemo", "memo", "clearMemo()",
-              "Clears the whole device memo."),
+              "Clears the whole memo of the run."),
         .init("memoTextAs", "memo", "element.memoTextAs(key) / string.memoTextAs(key)",
               "Writes an element's text (the first non-empty of label and value) or a String to the memo under the key and"
                   + " returns the element or string, so it chains: select(\"#total\").memoTextAs(\"total\")."),

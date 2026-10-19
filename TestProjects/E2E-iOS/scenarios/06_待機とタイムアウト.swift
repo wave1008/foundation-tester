@@ -10,7 +10,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class 待機とタイムアウトが正しく効くこと {
 
     @Test("既定タイムアウト内の遅延表示は暗黙待ちで拾える・notExist/countIs/方向/スコープ・appIs/screenshot/waitForDisplay/verify")

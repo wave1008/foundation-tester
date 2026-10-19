@@ -69,7 +69,7 @@ hybrid は in-app と XCUITest の両ブリッジを張るので、ジェスチ�
 - `RunOrchestrator` は `@TestClass` の `platform:` 未指定シナリオを**その既定 platform のキューにだけ**入れる
 - 自分の platform のキューが無いワーカーは**1本も受け取らずに終わる**
 
-E2E のシナリオは全て `@TestClass(app: "com.ftester.e2e")` で `platform:` を持たない(=両OS共通で
+E2E のシナリオは全て `@TestClass` で `platform:` を持たない(=両OS共通で
 書いてある)ため、両OS混在のプロファイルでは全 18 本が iOS キューに入り、Android エミュレータは
 起動されるだけで空回りする。実測でもレポート 18 件すべて `platform: ios` だった。
 シナリオ数や負荷には依存しない決定的な挙動(規則は docs/design.md §11.4)。

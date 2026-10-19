@@ -1,7 +1,7 @@
 // デモ_Androidアプリ.swift
 // 4台並列デモ用(エミュ標準アプリ: Files com.google.android.documentsui / 連絡先 com.google.android.contacts)。
 // 連絡先の実パッケージは com.google.android.contacts(AOSP の com.android.contacts は本エミュ未導入)。
-// @TestClass の app は Files(初回ダイアログなし・安定)。連絡先は launchApp(パッケージ名) で個別起動する
+// 起点の app は Files(初回ダイアログなし・安定)。連絡先は launchApp(パッケージ名) で個別起動する
 // (デモ_Android設定.S0060 のアプリ切替パターンと同型)。
 // 全セレクタは 日本語||英語 の連鎖。Android フォルダ名(DCIM/Download等)はロケール非依存のため単独表記。
 // データ作成はしない: 連絡先の新規作成フォームは開かない(閉じるボタンに識別子が無く安全に戻せないため未使用)。
@@ -11,7 +11,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.google.android.documentsui", platform: "android")
+@TestClass(platform: "android")
 class デモ_Androidアプリ {
 
     @Test("Filesアプリでダウンロードと画像フォルダを行き来できる")
@@ -19,7 +19,7 @@ class デモ_Androidアプリ {
         scenario {
             scene(1, "起動直後はダウンロードフォルダが開いている") {
                 condition {
-                    launchApp()
+                    launchApp("com.google.android.documentsui")
                 }.expectation {
                     exist("#breadcrumb_text")
                     exist(".staticText&&ダウンロード||.staticText&&Downloads")
@@ -41,7 +41,7 @@ class デモ_Androidアプリ {
         scenario {
             scene(1, "リスト表示とグリッド表示を切り替えて戻す(起動直後はグリッド表示)") {
                 condition {
-                    launchApp()
+                    launchApp("com.google.android.documentsui")
                 }.action {
                     tap("リスト表示||List view")
                     tap("グリッド表示||Grid view")
@@ -67,7 +67,7 @@ class デモ_Androidアプリ {
         scenario {
             scene(1, "内部ストレージを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.google.android.documentsui")
                 }.action {
                     tap("ルートを表示||Show roots")
                     tap("sdk_gphone64_arm64")
@@ -95,7 +95,7 @@ class デモ_Androidアプリ {
         scenario {
             scene(1, "内部ストレージへ切り替える") {
                 condition {
-                    launchApp()
+                    launchApp("com.google.android.documentsui")
                 }.action {
                     tap("ルートを表示||Show roots")
                     tap("sdk_gphone64_arm64")

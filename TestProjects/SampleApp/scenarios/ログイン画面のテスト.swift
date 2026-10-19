@@ -3,7 +3,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.example.sampleapp", platform: "ios")
+@TestClass(platform: "ios")
 class ログイン画面のテスト {
 
     @Test("メールアドレスを入力してログインボタンを押すテストを行う")

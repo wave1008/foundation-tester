@@ -1,6 +1,6 @@
 // シナリオ経路の InAppDriver は、dylib を注入するアプリ(`ownBundleID`)と違うアプリの launch を断る。
 // 断らないと別アプリへ同じ FT_PORT で注入して起動し、ポートを取り合った旧ブリッジが答えて裏のアプリを操作した。
-// 別アプリの手順は @TestClass(app:) の別シナリオへ(注入先と違うシナリオは丸ごと XCUITest で動く)。
+// 別アプリの手順は、そのアプリの実行プロファイルで回す別シナリオへ。
 // **実際の注入起動は撃たない**(simctl を呼ぶ = ホストの共有資源)ので、断りは launcher より前で返ることだけを見る
 
 import XCTest
@@ -17,7 +17,7 @@ final class InAppDriverForeignLaunchTests: XCTestCase {
             XCTFail("別アプリの launch が断られていない")
         } catch let DriverError.badResponse(status, body) {
             XCTAssertEqual(status, 422)
-            XCTAssertTrue(body.contains("@TestClass(app: \"com.apple.Preferences\")"), body)
+            XCTAssertTrue(body.contains("run profile"), body)
         } catch {
             XCTFail("想定外のエラー: \(error)")
         }

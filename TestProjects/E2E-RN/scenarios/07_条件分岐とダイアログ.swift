@@ -18,7 +18,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.rn")
+@TestClass
 class 条件分岐とダイアログ操作が正しく働くこと {
 
     @Test("ダイアログの OK/キャンセルで結果が反映される・ifCanSelect の交互ダイアログ・back(Android)・repeatWhileCanSelect・waitForClose")

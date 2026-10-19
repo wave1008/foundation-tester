@@ -318,6 +318,9 @@ public final class FTDriveCore {
     /// true = このシナリオの beforeEach の前に setUpDevice を走らせる。親だけが決める(子は従うだけ)。
     /// 既定 true = 人が子を直接起動した場合(親の台帳が無い)
     public var runSetUpDevice = true
+    /// true = このシナリオの最初に beforeAll を走らせる(この run でこのクラスの beforeAll を受け持つ)。親だけが決める。
+    /// 既定 true = 人が子を直接起動した場合(親の台帳が無い)
+    public var runBeforeAll = true
     /// verify() のブロック内で走ったアサーション数を数えるスタック。ネストした verify を
     /// support するため「今アクティブな全フレーム」に加算する(noteAssertion 参照)。
     /// group と同様 DSL スレッド専有で lock 不要
@@ -711,7 +714,7 @@ public final class FTDriveCore {
         let title = (scene?.title).map { $0.isEmpty ? "" : " (\"\($0)\")" } ?? ""
         let location = scene.map { "scene \($0.number)\(title)" } ?? "a scene"
         let message = "the expectation block of \(location) contains no assertions "
-            + "(it checks nothing). Add exist / textIs / thisIs etc."
+            + "(it checks nothing; screenLooksLike does not count). Add exist / textIs / thisIs etc."
         emit(.log("⚠️ " + message))
         addSuggestion(FixSuggestion(isStrong: false, message: message),
                       emitEvent: false, file: "", line: 0)
@@ -846,7 +849,7 @@ public final class FTDriveCore {
         // 「宣言されている」と数える。書かれてもいないのに lint が「アサーションが無い」と誤るのは、
         // 前段の失敗でシナリオが止まっただけの普通の赤い run で誤誘導になる
         func noteAssertionUnlessSkipped(_ status: StepResult.Status) {
-            guard step.isVerification else { return }
+            guard step.countsAsAssertion else { return }
             if case .skipped = status { return }
             noteAssertion()
         }
@@ -855,7 +858,7 @@ public final class FTDriveCore {
             let status = StepResult.Status.skipped(skipReason)
             recordStep(description: description, status: status, file: filePath, line: Int(line),
                        command: command)
-            if step.isVerification { noteAssertion() }
+            if step.countsAsAssertion { noteAssertion() }
             return PerformResult(status: status, element: nil)
         }
         // 構文検証はデバイスに触る前(dry-run でも)に行う。パースは失敗しない契約のため、
@@ -1184,7 +1187,7 @@ public final class FTDriveCore {
               notApplicableReason == nil,
               withState({ !record.scenes.isEmpty }) else { return }
         let message = "this scenario contains no assertions at all "
-            + "(it only operates the app, so it stays green no matter how the app breaks). "
+            + "(it only operates the app, so it stays green no matter how the app breaks; screenLooksLike does not count). "
             + "Add exist / textIs / thisIs etc. to the expectation blocks"
         emit(.log("⚠️ " + message))
         addSuggestion(FixSuggestion(isStrong: true, message: message),

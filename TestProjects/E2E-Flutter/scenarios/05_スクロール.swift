@@ -18,7 +18,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.flutter")
+@TestClass
 class スクロールで折り返し下の要素に到達できること {
 
     @Test("scrollTo 到達・Cell ラベル・非スクロール契約・swipeElementToElement・notExist(scroll:)・固定ヘッダ")

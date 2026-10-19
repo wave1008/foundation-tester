@@ -152,7 +152,8 @@ final class MCPBatchTests: XCTestCase {
         let tapAt = try XCTUnwrap(driver.calls.firstIndex { $0.hasPrefix("tap(") }, "\(driver.calls)")
         XCTAssertLessThan(launchAt, tapAt, "\(driver.calls)")
         let draft = body(try await server.call(tool: "ft_draft_scenario", args: [:]))
-        XCTAssertTrue(draft.contains("@TestClass(app: \"com.example.app\""), draft)
+        XCTAssertTrue(draft.contains("@TestClass"), draft)
+        XCTAssertFalse(draft.contains("@TestClass(app:"), draft)
     }
 
     /// **起動し直す前に読んだ ref は使わせない**(起動後の画面に同じ ref は無い)。デバイスに触る前に断る

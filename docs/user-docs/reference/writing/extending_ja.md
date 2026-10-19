@@ -68,7 +68,7 @@ procedure("テスト用の注文を API で作る") {
   [`irregularHandler`](../commands/irregular_handler_ja.md) を宣言しておくと自動で閉じます。
   割り込みに吸われたかもしれない操作をツールは撃ち直さないので、復帰が要るなら関数で書きます。
   **もう一度実行しても安全な操作(画面遷移のタップなど)だけ**にしてください。送信・購入を撃ち直すと二重に実行されることがあります。
-- クラスの前後処理は `beforeEach()` / `afterEach()`、デバイスごとに1回だけの準備と片付けは
+- クラスの前後処理は `beforeEach()` / `afterEach()`、run で1回だけの準備は `beforeAll()`、デバイスごとに1回だけの準備と片付けは
   `setUpDevice()` / `tearDownDevice()` に書きます。
 
 ## 3. テストデータ・外部のサーバとつなぐ
@@ -79,7 +79,7 @@ procedure("テスト用の注文を API で作る") {
 | `dataFile()` | CSV・JSON・画像などをファイルのまま使います |
 | `addMedia()` | 写真・動画をデバイスの写真ライブラリへ入れます(iOS 実機には入れられません) |
 | `httpRequest` / `fleetestURLSession` | API でテストデータを用意する・後片付けする・サーバ側の状態を読む |
-| [`writeMemo` / `readMemo`](../commands/memo_ja.md) | `setUpDevice()` で用意した値を他のシナリオへ渡す |
+| [`writeMemo` / `readMemo`](../commands/memo_ja.md) | `beforeAll()` で用意した値を他のシナリオへ渡す |
 
 よくある使い方:
 

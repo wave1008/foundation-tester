@@ -21,7 +21,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e")
+@TestClass
 class 画面全体をFMで検証できること {
 
     @Test("ホーム画面を screenLooksLike が肯定する")

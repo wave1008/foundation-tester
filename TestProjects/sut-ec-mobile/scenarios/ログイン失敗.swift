@@ -10,7 +10,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.sutec.mobile")  // iOS(xcuitest)/Android(inapp)対応。#id は両プラットフォーム共通
+@TestClass  // iOS(xcuitest)/Android(inapp)対応。#id は両プラットフォーム共通
 class ログイン失敗が表示されること {
 
     // このテストは**ログアウト状態**が前提。アプリのデータは launchApp で消えないため、

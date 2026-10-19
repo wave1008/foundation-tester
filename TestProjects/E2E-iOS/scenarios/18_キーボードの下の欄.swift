@@ -13,7 +13,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class キーボードの下の入力欄 {
 
     @Test("キーボードに潜った欄へ打つと、送って外してから入る")

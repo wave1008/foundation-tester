@@ -52,7 +52,7 @@ extension MCPServer {
         let lines = scenarios.map { info in
             "\(info.id)"
                 + (info.title.isEmpty ? "" : " — \(info.title)")
-                + " (\(info.platform ?? "ios/android"), app: \(info.app ?? "from the run profile"))"
+                + " (\(info.platform ?? "ios/android"))"
                 + (info.deleted ? " [deleted @Deleted — excluded from bulk runs]"
                    : (info.draft ? " [draft @Draft — excluded from bulk runs]" : ""))
         }
@@ -65,7 +65,6 @@ extension MCPServer {
                     var row: [String: Any] = ["id": info.id, "title": info.title,
                                               "deleted": info.deleted, "draft": info.draft]
                     if let platform = info.platform { row["platform"] = platform }
-                    if let app = info.app { row["app"] = app }
                     return row
                 },
             ])]
@@ -127,6 +126,7 @@ extension MCPServer {
                 project: project, scenarioID: info.id,
                 connection: DriverConnection(platform: info.platform ?? fallbackPlatform),
                 deviceSession: deviceSession,
+                classHasBeforeAll: info.beforeAll,
                 scenarioTimeoutOverride: info.scenarioTimeout,
                 // **`enabled: false`(= 子へ --no-fm)**。dry-run にはデバイスも画面も無いので、
                 // FM を引く経路をまとめて止める(個別に切ると残った経路が FM の直列化待ちを払う)
@@ -143,6 +143,15 @@ extension MCPServer {
             deviceSession: deviceSession, settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
             reportDir: tempDir.path, dryRun: true,
             appPath: nil, appName: nil, appBundleID: nil, registerChildProcess: nil) {
+            lines.append(ScenarioHost.describe(outcome))
+        }
+        for outcome in await ScenarioHost.runAfterAlls(
+            project: project, shared: deviceSession.shared,
+            target: { platforms in ScenarioHost.LifecycleTarget(
+                connection: DriverConnection(platform: platforms.sorted().first ?? fallbackPlatform),
+                appPath: nil, appName: nil, appBundleID: nil) },
+            settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
+            reportDir: tempDir.path, dryRun: true, registerChildProcess: nil) {
             lines.append(ScenarioHost.describe(outcome))
         }
         // レポートは一時ディレクトリに書かれ、この関数を抜けると消える。
@@ -202,7 +211,7 @@ extension MCPServer {
         var reportDir = project.reportsDir.path
         var connection: DriverConnection
         var prologue: [String] = []
-        // @TestClass(app:) 省略時の既定アプリ解決(FTCore.ScenarioAppResolution)に必要な3つ。
+        // アプリ解決(FTCore.ScenarioAppResolution)に必要な3つ。
         // installHandler は渡さない(MCP の run はホスト install の RPC を持たない —
         // ft_install か profile のブリッジ準備(autoInstall)で入れ済みという前提。appPath は installApp() の引数省略時のフォールバックにも
         // 使われるが、install を呼ばないこの経路では uiFrameworkHint の判定材料としてのみ働く)
@@ -242,7 +251,7 @@ extension MCPServer {
             let platform = try Self.profileLessScenarioPlatform(declared: infos.first?.platform,
                                                                 scenarioID: infos.first?.id ?? "", args: args)
 
-            // @TestClass(app:) が無いシナリオの既定アプリを、このプロジェクトのアプリプロファイル
+            // 既定アプリを、このプロジェクトのアプリプロファイル
             // (profiles/apps/*.json)から解決する。profile 引数が無いこの経路だけが持つ穴
             // (resolveProfileTarget 側は resolved.apps[platform] からすでに埋めている)
             switch Self.defaultAppFromProjectApps(Self.loadAppProfiles(project: project), platform: platform) {
@@ -250,12 +259,9 @@ extension MCPServer {
                 appBundleID = bundleID
                 appName = name
                 appPath = path
-                prologue.append("ℹ️ using the app from profiles/apps/\(profileName).json (\(bundleID))"
-                    + " — the scenario declares no @TestClass(app:)")
+                prologue.append("ℹ️ using the app from profiles/apps/\(profileName).json (\(bundleID))")
             case .ambiguous(let profileNames):
-                if let refusal = Self.ambiguousDefaultAppRefusal(profileNames: profileNames, infos: infos) {
-                    throw MCPError(refusal)
-                }
+                throw MCPError(Self.ambiguousDefaultAppRefusal(profileNames: profileNames))
             case .none:
                 break
             }
@@ -317,16 +323,22 @@ extension MCPServer {
         var outcomes: [(id: String, passed: Bool, reportPath: String?, skipped: Bool)] = []
         // 1回の呼び出し = 1デバイス(connection は1つ)= 1セッション
         let deviceSession = RunDeviceSession()
+        // 自己修復の修正提案(この経路は run を通らないので、書き戻しもここで行う。`HealSourceWriteBack`)
+        var healSuggestions: [HealWriteBack.Suggestion] = []
         for info in infos {
             var declaredNotApplicable = false
             let passed = await ScenarioHost.run(project: project, scenarioID: info.id,
                                        connection: connection,
                                        deviceSession: deviceSession,
+                                       classHasBeforeAll: info.beforeAll,
                                        scenarioTimeoutOverride: info.scenarioTimeout,
                                        settings: exec, reportDir: reportDir,
                                        appPath: appPath, appName: appName,
                                        appBundleID: appBundleID) { event in
                 lines.append(contentsOf: ScenarioLogFormatter.lines(for: event))
+                if let suggestion = HealWriteBack.suggestion(from: event, fallbackScenarioID: info.id) {
+                    healSuggestions.append(suggestion)
+                }
                 if event.kind == "scenarioFinished", event.passed != true, firstFailedReport == nil {
                     firstFailedReport = event.reportPath
                 }
@@ -345,6 +357,15 @@ extension MCPServer {
             appPath: appPath, appName: appName, appBundleID: appBundleID, registerChildProcess: nil) {
             lines.append(ScenarioHost.describe(outcome))
         }
+        // 1回の呼び出し = 1デバイスなので、afterAll もこのデバイスで走らせる
+        for outcome in await ScenarioHost.runAfterAlls(
+            project: project, shared: deviceSession.shared,
+            target: { _ in ScenarioHost.LifecycleTarget(connection: connection, appPath: appPath,
+                                                       appName: appName, appBundleID: appBundleID) },
+            settings: exec, reportDir: reportDir, dryRun: false, registerChildProcess: nil) {
+            lines.append(ScenarioHost.describe(outcome))
+        }
+        HealSourceWriteBack.run(suggestions: healSuggestions, project: project) { lines.append($0) }
         if infos.count > 1 {
             lines.append("\(passedCount) passed / \(failedCount) failed"
                 + (skippedCount > 0 ? " / \(skippedCount) skipped" : ""))
@@ -446,15 +467,11 @@ extension MCPServer {
         case none
     }
 
-    /// 既定アプリが曖昧(アプリプロファイルが2つ以上)なときに断る文。**既定アプリを使うシナリオが
-    /// 1本も無い(全部が @TestClass(app:) を宣言している)なら断らない** —— 宣言を見ずに断っていた頃は、
-    /// アプリプロファイルを2つ持つプロジェクトで profile 無しの ft_run_scenario が1本も走らなかった
-    static func ambiguousDefaultAppRefusal(profileNames: [String], infos: [ScenarioInfo]) -> String? {
-        guard infos.contains(where: { $0.app == nil }) else { return nil }
-        return "this project has \(profileNames.count) app profiles"
+    /// 既定アプリが曖昧(アプリプロファイルが2つ以上)なときに断る文
+    static func ambiguousDefaultAppRefusal(profileNames: [String]) -> String {
+        "this project has \(profileNames.count) app profiles"
             + " (\(profileNames.joined(separator: ", ")))"
-            + " and the scenario declares no @TestClass(app:) — add @TestClass(app:"
-            + " \"<bundleID>\") to the scenario, or run it with profile: <run profile name>"
+            + " — the app cannot be chosen from the platform alone. Run it with profile: <run profile name>"
             + " (then drop udid/port/serial)"
     }
 

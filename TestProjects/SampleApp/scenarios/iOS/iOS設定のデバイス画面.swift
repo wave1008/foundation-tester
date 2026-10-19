@@ -7,7 +7,7 @@ import FTDSL
 // 注意: このシナリオはデバイスのトグル実状態に依存する(iPhone 17 Pro は ON 設定済み。
 // iPhone Air 等 OFF のデバイスに分配されると NG になる)。並列実行から外す場合は
 // scenarios/_disabled/ へ移動する。
-@TestClass(app: "com.apple.Preferences", platform: "ios")
+@TestClass(platform: "ios")
 class iOS設定のデバイス画面 {
 
     @Test("Resource Upload Test Mode が ON であること")
@@ -15,7 +15,7 @@ class iOS設定のデバイス画面 {
         scenario {
             scene(1) {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.action {
                     scrollTo("#com.apple.settings.developer||デベロッパ||Developer")  // 設定トップを下へスクロールして「デベロッパ」行を探す
                     tap("#com.apple.settings.developer||デベロッパ||Developer")

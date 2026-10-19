@@ -16,7 +16,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→accessibilityId/resource-id で共通)
+@TestClass  // iOS/Android 両対応(#id は testTag→accessibilityId/resource-id で共通)
 class UIベンチマークの密度チップが正しいこと {
 
     // 状態の正規化(各 @Test の前に毎回実行される)。launchApp は直前画面から再開するため、

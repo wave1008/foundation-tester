@@ -13,7 +13,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
+@TestClass  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class 注文履歴に確定した注文が並ぶこと {
 
     // **アカウントはシナリオごとに分ける**。カートも注文履歴もサーバ側でアカウント単位なので、

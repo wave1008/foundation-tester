@@ -53,6 +53,7 @@ final class ScenarioHostIdleWatchTests: XCTestCase {
             project: project, scenarioID: "Login.S0010",
             connection: DriverConnection(platform: "ios"),
             deviceSession: RunDeviceSession(),
+            classHasBeforeAll: false,
             scenarioTimeoutOverride: nil,
             settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false), tunables: tunables,
                                                 scenarioTimeout: scenarioTimeout),

@@ -112,7 +112,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// こちらに無いと「言われたとおりにしたらオプションが無い」で行き止まりになる
     /// (受け手報告)
     @Option(name: .customLong("app-id"),
-            help: "Default app (bundle ID / package name) for scenarios that declare no @TestClass(app:). Cannot be combined with --profile (the app profile supplies the bundle ID)")
+            help: "Default app (bundle ID / package name) for runs without --profile. Cannot be combined with --profile (the app profile supplies the bundle ID)")
     var appID: String?
 
     /// **用語**(ユーザー決定): machine = 登録簿の名前(このマシンだけのローカル
@@ -1145,6 +1145,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
                 deviceSession: deviceSessions.session(for: scenarioPlatform),
+                classHasBeforeAll: info.beforeAll,
                 scenarioTimeoutOverride: info.scenarioTimeout,
                 settings: settings, reportDir: reportDirPath,
                 dryRun: dryRun, debug: debugOptions, recording: recording,
@@ -1177,6 +1178,20 @@ struct ApiRunCommand: AsyncParsableCommand {
                     registerChildProcess: { interruptState.registerChildProcess($0) }) {
                     logStderr(ScenarioHost.describe(outcome))
                 }
+            }
+            for outcome in await ScenarioHost.runAfterAlls(
+                project: project, shared: deviceSessions.shared,
+                target: { platforms in
+                    let platform = platforms.sorted().first ?? effectivePlatform
+                    return ScenarioHost.LifecycleTarget(
+                        connection: platform == "android"
+                            ? DriverConnection(platform: "android", serial: serial)
+                            : PortDirectIOSTarget(port: effectivePort).connection(simulatorUDID: iosUdid),
+                        appPath: nil, appName: nil, appBundleID: appID)
+                },
+                settings: settings, reportDir: reportDirPath, dryRun: dryRun,
+                registerChildProcess: { interruptState.registerChildProcess($0) }) {
+                logStderr(ScenarioHost.describe(outcome))
             }
         }
         return RunOutcome(passed: passedCount, failed: failedCount, skipped: skippedCount,
@@ -1349,6 +1364,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
                 deviceSession: deviceSessions.session(for: sessionKey),
+                classHasBeforeAll: info.beforeAll,
                 scenarioTimeoutOverride: info.scenarioTimeout,
                 settings: ApiRun.withDryRunFM(ScenarioExecutionSettings(resolved), dryRun: dryRun),
                 reportDir: reportDirPath,
@@ -1386,6 +1402,24 @@ struct ApiRunCommand: AsyncParsableCommand {
                     registerChildProcess: { interruptState.registerChildProcess($0) }) {
                     logStderr(ScenarioHost.describe(outcome))
                 }
+            }
+            for outcome in await ScenarioHost.runAfterAlls(
+                project: project, shared: deviceSessions.shared,
+                target: { platforms in
+                    guard let key = sessionTargets.keys.sorted().first(where: {
+                        platforms.isEmpty || platforms.contains(sessionTargets[$0]?.platform ?? "")
+                    }), let target = sessionTargets[key] else { return nil }
+                    return ScenarioHost.LifecycleTarget(
+                        connection: target.connection,
+                        appPath: dryRun ? nil : resolved.apps[target.platform]?
+                            .packagePath(physical: target.connection.physical),
+                        appName: resolved.apps[target.platform]?.appName,
+                        appBundleID: resolved.apps[target.platform]?.bundleID)
+                },
+                settings: ApiRun.withDryRunFM(ScenarioExecutionSettings(resolved), dryRun: dryRun),
+                reportDir: reportDirPath, dryRun: dryRun,
+                registerChildProcess: { interruptState.registerChildProcess($0) }) {
+                logStderr(ScenarioHost.describe(outcome))
             }
         }
         return RunOutcome(passed: passedCount, failed: failedCount, skipped: skippedCount,

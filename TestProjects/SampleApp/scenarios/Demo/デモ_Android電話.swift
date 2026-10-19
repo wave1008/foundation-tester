@@ -7,7 +7,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.google.android.dialer", platform: "android")
+@TestClass(platform: "android")
 class デモ_Android電話 {
 
     @Test("起動してボトムナビの主要タブが表示される")
@@ -15,7 +15,7 @@ class デモ_Android電話 {
         scenario {
             scene(1, "起動直後の初回ダイアログを無害化する") {
                 condition {
-                    launchApp()
+                    launchApp("com.google.android.dialer")
                 }.action {
                     ifCanSelect("#permission_deny_button", waitSeconds: 2) {
                         tap("#permission_deny_button")
@@ -50,7 +50,7 @@ class デモ_Android電話 {
         scenario {
             scene(1, "初回ダイアログを無害化して履歴タブへ切り替える") {
                 condition {
-                    launchApp()
+                    launchApp("com.google.android.dialer")
                 }.action {
                     ifCanSelect("#permission_deny_button", waitSeconds: 2) {
                         tap("#permission_deny_button")
@@ -100,7 +100,7 @@ class デモ_Android電話 {
         scenario {
             scene(1, "初回ダイアログを無害化してダイヤルパッドを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.google.android.dialer")
                 }.action {
                     ifCanSelect("#permission_deny_button", waitSeconds: 2) {
                         tap("#permission_deny_button")
@@ -159,7 +159,7 @@ class デモ_Android電話 {
         scenario {
             scene(1, "初回ダイアログを無害化する") {
                 condition {
-                    launchApp()
+                    launchApp("com.google.android.dialer")
                 }.action {
                     ifCanSelect("#permission_deny_button", waitSeconds: 2) {
                         tap("#permission_deny_button")

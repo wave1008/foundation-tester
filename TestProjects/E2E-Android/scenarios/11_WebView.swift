@@ -9,7 +9,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.android", platform: "android")
+@TestClass(platform: "android")
 class WebViewの中身を操作できること {
 
     @Test("WebView 内のリンク・入力・ボタンを操作し結果を検証する")

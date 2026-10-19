@@ -58,6 +58,7 @@ final class ScenarioHostDebugTests: XCTestCase {
                 project: project, scenarioID: "ログイン画面.S0010",
                 connection: DriverConnection(platform: "ios"),
                 deviceSession: RunDeviceSession(),
+                classHasBeforeAll: false,
                 scenarioTimeoutOverride: nil,
                 settings: ScenarioExecutionSettings(fm: FMConfig()),
                 reportDir: tempDir.path,

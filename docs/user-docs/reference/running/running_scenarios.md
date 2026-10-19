@@ -41,7 +41,7 @@ foundation-tester clone itself, `swift run fleetest` does the same.
 | `--device <name>` | Run on only that device of the run profile (repeatable). Also narrows `--broadcast` |
 | `--all-machines` | When a `--device` name matches devices on more than one machine, run on every matching machine instead of refusing |
 | `--platform <ios\|android>` | Target platform without `--profile` (default `ios`) |
-| `--app-id <bundleID>` | Default app for scenarios with no `@TestClass(app:)`, only needed without `--profile`. Unrelated to `--set app=...` (the run profile's `app` key names an app *profile*, not a bundle ID) |
+| `--app-id <bundleID>` | Bundle ID of the app under test, only needed without `--profile` (with a profile the app comes from the run profile's app profile). Unrelated to `--set app=...` (the run profile's `app` key names an app *profile*, not a bundle ID) |
 | `--serial <s>` | Android device serial (without `--profile`) |
 
 Run `fleetest run --help` for the full, current list.

@@ -14,7 +14,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class システムアラートの操作 {
 
     @Test("権限アラートは fallback 経由で見えて操作できる")

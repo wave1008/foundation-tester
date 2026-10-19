@@ -7,7 +7,7 @@ final class ScenarioSourceEditorTests: XCTestCase {
     private let source = """
     import FTDSL
 
-    @TestClass(app: "com.example.app", platform: "android")
+    @TestClass(platform: "android")
     class ログインテスト {
 
         @Test("ログインとエラー表示")
@@ -27,7 +27,7 @@ final class ScenarioSourceEditorTests: XCTestCase {
         }
     }
 
-    @TestClass(app: "com.example.app")
+    @TestClass
     class Network_internet_を開いて {
 
         @Deleted("旧仕様")
@@ -43,7 +43,7 @@ final class ScenarioSourceEditorTests: XCTestCase {
     private let selectorSource = """
     import FTDSL
 
-    @TestClass(app: "com.example.app")
+    @TestClass
     class ログインテスト {
 
         @Test("ログイン")
@@ -129,7 +129,7 @@ final class ScenarioSourceEditorTests: XCTestCase {
     private let commentSource = """
     import FTDSL
 
-    @TestClass(app: "com.example.app")
+    @TestClass
     class 設定 {
 
         @Test
@@ -279,6 +279,6 @@ final class ScenarioSourceEditorTests: XCTestCase {
             inSource: "class ただのクラス {\n}\n", className: "ただのクラス"))
         // メソッドが無い空クラスでも @TestClass があれば true(本機能の対象)
         XCTAssertTrue(ScenarioSourceEditor.isTestClass(
-            inSource: "@TestClass(app: \"a\")\nclass 空 {\n\n}\n", className: "空"))
+            inSource: "@TestClass\nclass 空 {\n\n}\n", className: "空"))
     }
 }

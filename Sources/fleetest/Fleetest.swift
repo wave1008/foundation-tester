@@ -414,10 +414,10 @@ struct RunScenarios: AsyncParsableCommand {
         visibility: .hidden))
     var workspace: String?
 
-    /// `@TestClass(app:)` を書かないシナリオを **実行プロファイル無し**で回すときの逃げ道。
+    /// **実行プロファイル無し**で回すときのアプリの指定。
     /// --profile があればそちらのアプリプロファイルから解決されるので併用不可(validate() 参照)
     @Option(name: .customLong("app-id"),
-            help: "Default app (bundle ID / package name) for scenarios that declare no @TestClass(app:). Cannot be combined with --profile (the app profile supplies the bundle ID)")
+            help: "Default app (bundle ID / package name) for runs without --profile. Cannot be combined with --profile (the app profile supplies the bundle ID)")
     var appID: String?
 
     @Option(help: "Target platform: ios / android (default ios)")
@@ -1338,6 +1338,7 @@ struct RunScenarios: AsyncParsableCommand {
                 project: project, scenarioID: item.info.id,
                 connection: DriverConnection(platform: platform),
                 deviceSession: deviceSession,
+                classHasBeforeAll: item.info.beforeAll,
                 scenarioTimeoutOverride: item.info.scenarioTimeout,
                 // **`enabled: false`(= 子へ --no-fm)**。デバイスも画面も無いので FM を引く経路を
                 // まとめて止める(個別に切ると残った経路が FM の直列化待ちを払う)
@@ -1363,6 +1364,15 @@ struct RunScenarios: AsyncParsableCommand {
             deviceSession: deviceSession, settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
             reportDir: tempDir.path, dryRun: true,
             appPath: nil, appName: nil, appBundleID: appID, registerChildProcess: nil) {
+            ConsoleOut.out(ScenarioHost.describe(outcome))
+        }
+        for outcome in await ScenarioHost.runAfterAlls(
+            project: project, shared: deviceSession.shared,
+            target: { platforms in ScenarioHost.LifecycleTarget(
+                connection: DriverConnection(platform: platforms.sorted().first ?? defaultPlatform),
+                appPath: nil, appName: nil, appBundleID: appID) },
+            settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
+            reportDir: tempDir.path, dryRun: true, registerChildProcess: nil) {
             ConsoleOut.out(ScenarioHost.describe(outcome))
         }
         return failedCount
@@ -1402,6 +1412,8 @@ struct RunScenarios: AsyncParsableCommand {
         var skippedCount = 0
         // 逐次実行のデバイスは platform ごとに1台(ios = --port・android = --serial)
         var deviceSessions: [String: RunDeviceSession] = [:]
+        // メモと beforeAll の済み印は run 全体で1つ(OS ごとのセッションが同じものを持つ)
+        let sharedSession = RunSharedSession()
         var sessionConnections: [String: DriverConnection] = [:]
         for (index, item) in items.enumerated() {
             if interruptState.isStopped {
@@ -1425,7 +1437,7 @@ struct RunScenarios: AsyncParsableCommand {
             _ = try await driver.status()
             let worker = RunWorker(label: platform, platform: platform,
                                    driver: driver, connection: connection)
-            let deviceSession = deviceSessions[platform] ?? RunDeviceSession()
+            let deviceSession = deviceSessions[platform] ?? RunDeviceSession(shared: sharedSession)
             deviceSessions[platform] = deviceSession
             sessionConnections[platform] = connection
             // quiet: 全行をバッファし、成功なら結果1行のみ・失敗ならバッファ全体(失敗詳細)を出す
@@ -1468,6 +1480,17 @@ struct RunScenarios: AsyncParsableCommand {
                     registerChildProcess: { interruptState.registerChildProcess($0) }) {
                     ConsoleOut.out(ScenarioHost.describe(outcome))
                 }
+            }
+            for outcome in await ScenarioHost.runAfterAlls(
+                project: project, shared: sharedSession,
+                target: { platforms in
+                    guard let platform = sessionConnections.keys.sorted().first(where: { platforms.isEmpty || platforms.contains($0) }),
+                          let connection = sessionConnections[platform] else { return nil }
+                    return ScenarioHost.LifecycleTarget(connection: connection, appPath: nil, appName: nil, appBundleID: appID)
+                },
+                settings: settings, reportDir: reportDir, dryRun: false,
+                registerChildProcess: { interruptState.registerChildProcess($0) }) {
+                ConsoleOut.out(ScenarioHost.describe(outcome))
             }
         }
         return (failedCount, skippedCount, interruptState.isStopped)

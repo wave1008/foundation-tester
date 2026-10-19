@@ -75,7 +75,6 @@ fleetest draft-scenario --project SampleApp --testbase docs/testbases/login.md
 | `--project <project>` | テストプロジェクト名(省略時は唯一のプロジェクト、または既定のプロジェクト) |
 | `--testbase <パス>` | テストベースのファイル(省略時は `docs/testbases/` にある唯一のファイル) |
 | `--name <名前>` | 生成するテストクラスの名前(省略時はテストベースの見出しから決める) |
-| `--app-id <ID>` | テスト対象のアプリの bundle ID。指定すると生成コードの `@TestClass(app:)` に書く。省略時はアプリプロファイルの値で解決し、コードには書かない |
 | `--platform <ios\|android>` | 対象の OS(省略時は両方)。指定すると `@TestClass(platform:)` に書く |
 | `--no-fm` | FM を使わず、Markdown の見出しと箇条書きだけで構造化する |
 | `--dry-run` | ファイルを書かず、生成コードを標準出力に出す |

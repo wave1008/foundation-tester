@@ -442,7 +442,8 @@ final class MCPDraftAndBulkTests: XCTestCase {
 
         let text = body(try await server.call(tool: "ft_draft_scenario", args: [:]))
 
-        XCTAssertTrue(text.contains("@TestClass(app: \"com.example.app\""), text)
+        XCTAssertTrue(text.contains("@TestClass"), text)
+        XCTAssertFalse(text.contains("@TestClass(app:"), text)
         XCTAssertTrue(text.contains("launchApp()"), text)
         XCTAssertTrue(text.contains("tap(\"#login_btn\")"), text)
         XCTAssertTrue(text.contains("type(\"#login_btn\", \"abc\")"), text)

@@ -24,10 +24,6 @@ struct DraftScenarioCommand: AsyncParsableCommand {
     @Option(help: "Name of the generated test class (defaults to one derived from the test base heading)")
     var name: String?
 
-    @Option(name: .customLong("app-id"),
-            help: "Bundle ID of the app under test (defaults to the value from the app profile)")
-    var appID: String?
-
     @Option(help: "Target platform: ios / android (defaults to both)")
     var platform: String?
 
@@ -62,16 +58,12 @@ struct DraftScenarioCommand: AsyncParsableCommand {
         }
         let outline = draft ?? TestbaseOutline.parse(markdown: markdown, fallbackTitle: fallbackTitle)
 
-        // プロファイルから導いた値は生成コードに焼かない(実行プロファイルで解決させる)。
-        // --app-id で明示された値だけは書き手の意図として残す
-        let bundleID = try resolveApp(in: testProject)
-        let declaredApp = appID == nil ? nil : bundleID
         let className = ScenarioCodeGen.suggestedClassName(
             fromName: name ?? outline.title,
             existing: name == nil
                 ? ScenarioCodeGen.existingClassNames(in: [testProject.scenariosDir]) : [])
         let code = ScenarioDraftCodeGen.render(
-            draft: outline, className: className, app: declaredApp, platform: platform,
+            draft: outline, className: className, platform: platform,
             source: source.lastPathComponent, generatedBy: "fleetest draft-scenario")
 
         if dryRun {
@@ -110,25 +102,5 @@ struct DraftScenarioCommand: AsyncParsableCommand {
         }
         let list = candidates.map { "  - \($0.lastPathComponent)" }.joined(separator: "\n")
         throw ValidationError("multiple test bases exist. Pick one with --testbase:\n\(list)")
-    }
-
-    /// --app-id 明示 > アプリプロファイル(指定 platform → ios → android の順で最初に見つかった bundle ID)
-    private func resolveApp(in project: TestProject) throws -> String {
-        if let appID { return appID }
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: project.appsDir, includingPropertiesForKeys: nil))?
-            .filter { $0.pathExtension == "json" }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent } ?? []
-        for file in files {
-            guard let data = try? Data(contentsOf: file),
-                  let profile = try? JSONDecoder().decode(AppProfile.self, from: data) else { continue }
-            for candidate in [platform, "ios", "android"].compactMap({ $0 }) {
-                if let bundleID = profile.section(for: candidate).app, !bundleID.isEmpty {
-                    return bundleID
-                }
-            }
-        }
-        throw ValidationError("cannot determine the app under test. Give a bundle ID with --app-id, "
-                              + "or add an app profile under \(project.appsDir.path)")
     }
 }

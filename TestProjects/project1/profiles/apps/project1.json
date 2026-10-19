@@ -2,10 +2,10 @@
   "platform": "hybrid",
   "ios": {
     "appName": "project1",
-    "app": "com.example.myapp"
+    "app": "com.example.sampleapp"
   },
   "android": {
     "appName": "project1",
-    "app": "com.example.myapp"
+    "app": "com.example.sampleapp"
   }
 }

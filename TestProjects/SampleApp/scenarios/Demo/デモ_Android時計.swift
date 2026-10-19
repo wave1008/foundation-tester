@@ -5,7 +5,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.google.android.deskclock", platform: "android")
+@TestClass(platform: "android")
 class デモ_Android時計 {
 
     // アラームの有無はエミュ個体差(既定アラームが無い環境あり)。一覧コンテナ(#alarm_recycler_view)と
@@ -15,7 +15,7 @@ class デモ_Android時計 {
         scenario {
             scene(1, "アラームタブを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.google.android.deskclock")
                 }.action {
                     tap("#tab_menu_alarm")
                 }.expectation {
@@ -31,7 +31,7 @@ class デモ_Android時計 {
         scenario {
             scene(1, "アラームタブを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.google.android.deskclock")
                 }.action {
                     tap("#tab_menu_alarm")
                 }.expectation {
@@ -57,7 +57,7 @@ class デモ_Android時計 {
         scenario {
             scene(1, "時計タブを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.google.android.deskclock")
                 }.action {
                     tap("#tab_menu_clock")
                 }.expectation {
@@ -73,7 +73,7 @@ class デモ_Android時計 {
         scenario {
             scene(1, "タイマータブを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.google.android.deskclock")
                 }.action {
                     tap("#tab_menu_timer")
                 }.expectation {
@@ -97,7 +97,7 @@ class デモ_Android時計 {
         scenario {
             scene(1, "ストップウォッチタブを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.google.android.deskclock")
                 }.action {
                     tap("#tab_menu_stopwatch")
                 }.expectation {
@@ -122,7 +122,7 @@ class デモ_Android時計 {
         scenario {
             scene(1, "おやすみ時間タブを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.google.android.deskclock")
                 }.action {
                     tap("#tab_menu_bedtime")
                 }.expectation {

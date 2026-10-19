@@ -4,7 +4,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.example.sampleapp", platform: "ios")
+@TestClass(platform: "ios")
 class ログイン並列テスト_07 {
 
     @Test("ログイン並列テスト 07")

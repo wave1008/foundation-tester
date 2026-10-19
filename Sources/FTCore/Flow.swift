@@ -95,6 +95,11 @@ public struct FlowStep: Codable, Sendable {
     /// 探索を通すためアクションとして実行するが、見つからなければ落ちる検証
     public var isVerification: Bool { assert != nil || action == "existImage" }
 
+    /// 「アサーションが無い」の判定で数えるか。**`screenLooksLike`(screenMatches)は数えない** —— 説明文の言い回しや
+    /// 撮り方で結果が裏返る大づかみの確認で、合否ゲートに使わない(docs/commands.md)。数えると、それしか無い
+    /// expectation / verify / シナリオの「何も検証していない」警告が黙る(ユーザー決定)。合否と中断の扱いは変えない
+    public var countsAsAssertion: Bool { isVerification && assert != "screenMatches" }
+
     /// action を持つが画面を動かさないもの: 画面を読むだけ(select・findImages = 検証とセットで使う)/
     /// 待つだけ(waitForSettle)。hold の押している間は FTDriveCore が別に止める
     static let nonOperationActions: Set<String> = ["select", "findImages", "waitForSettle"]

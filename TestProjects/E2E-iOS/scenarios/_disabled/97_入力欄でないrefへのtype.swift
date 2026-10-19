@@ -9,7 +9,7 @@
 // **type が緑になったら退行**(前の欄へ打っている)。
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class 入力欄でないrefへのtype {
 
     @Test("欄に焦点を残してボタンへ type すると断る(落ちるのが正常)")

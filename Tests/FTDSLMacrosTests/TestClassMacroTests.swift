@@ -19,7 +19,7 @@ final class TestClassMacroTests: XCTestCase {
     func test日本語クラスとシナリオの展開() {
         assertMacroExpansion(
             """
-            @TestClass(app: "com.example.sampleapp")
+            @TestClass
             class ログインテスト {
                 @Test("ログインとエラー表示")
                 func ログイン() {
@@ -43,7 +43,6 @@ final class TestClassMacroTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "ログインテスト",
-                        app: "com.example.sampleapp",
                         platform: nil,
                         scenarios: [
                         FTDSL.FTScenarioDescriptor(
@@ -63,7 +62,7 @@ final class TestClassMacroTests: XCTestCase {
     func testPlatform指定と複数シナリオ() {
         assertMacroExpansion(
             """
-            @TestClass(app: "com.app", platform: "android")
+            @TestClass(platform: "android")
             class 設定 {
                 @Test
                 func 到達() {
@@ -96,7 +95,6 @@ final class TestClassMacroTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "設定",
-                        app: "com.app",
                         platform: "android",
                         scenarios: [
                         FTDSL.FTScenarioDescriptor(
@@ -123,7 +121,7 @@ final class TestClassMacroTests: XCTestCase {
         assertMacroExpansion(
             """
             @Deleted("旧UIのため")
-            @TestClass(app: "com.app")
+            @TestClass
             class 旧テスト {
                 @Test
                 func S0010() {
@@ -147,7 +145,6 @@ final class TestClassMacroTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "旧テスト",
-                        app: "com.app",
                         platform: nil,
                         scenarios: [
                         FTDSL.FTScenarioDescriptor(
@@ -168,7 +165,7 @@ final class TestClassMacroTests: XCTestCase {
     func testDeletedメソッドは当該シナリオのみ削除済み() {
         assertMacroExpansion(
             """
-            @TestClass(app: "com.app")
+            @TestClass
             class 混在 {
                 @Test
                 func S0010() {
@@ -198,7 +195,6 @@ final class TestClassMacroTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "混在",
-                        app: "com.app",
                         platform: nil,
                         scenarios: [
                         FTDSL.FTScenarioDescriptor(
@@ -245,7 +241,7 @@ final class TestClassMacroTests: XCTestCase {
         assertMacroExpansion(
             """
             @Draft("未実装")
-            @TestClass(app: "com.app")
+            @TestClass
             class 新テスト {
                 @Test
                 func S0010() {
@@ -269,7 +265,6 @@ final class TestClassMacroTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "新テスト",
-                        app: "com.app",
                         platform: nil,
                         scenarios: [
                         FTDSL.FTScenarioDescriptor(
@@ -290,7 +285,7 @@ final class TestClassMacroTests: XCTestCase {
     func testDraftメソッドは当該シナリオのみ実装中() {
         assertMacroExpansion(
             """
-            @TestClass(app: "com.app")
+            @TestClass
             class 混在 {
                 @Test
                 func S0010() {
@@ -320,7 +315,6 @@ final class TestClassMacroTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "混在",
-                        app: "com.app",
                         platform: nil,
                         scenarios: [
                         FTDSL.FTScenarioDescriptor(
@@ -366,7 +360,7 @@ final class TestClassMacroTests: XCTestCase {
     func testクラス以外への付与はエラー() {
         assertMacroExpansion(
             """
-            @TestClass(app: "com.app")
+            @TestClass
             struct テスト {
             }
             """,
@@ -385,7 +379,7 @@ final class TestClassMacroTests: XCTestCase {
     func testシグネチャ違反のシナリオはエラー() {
         assertMacroExpansion(
             """
-            @TestClass(app: "com.app")
+            @TestClass
             class テスト {
                 @Test("x")
                 func 悪い(値: Int) {
@@ -409,7 +403,6 @@ final class TestClassMacroTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "テスト",
-                        app: "com.app",
                         platform: nil,
                         scenarios: [
 
@@ -428,7 +421,7 @@ final class TestClassMacroTests: XCTestCase {
     func testBeforeEachとAfterEachがrunに織り込まれる() {
         assertMacroExpansion(
             """
-            @TestClass(app: "com.example.app")
+            @TestClass
             class T {
                 func beforeEach() {
                 }
@@ -460,7 +453,6 @@ final class TestClassMacroTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "T",
-                        app: "com.example.app",
                         platform: nil,
                         scenarios: [
                         FTDSL.FTScenarioDescriptor(
@@ -487,7 +479,7 @@ final class TestClassMacroTests: XCTestCase {
     func testSetUpDeviceはbeforeEachの前に織り込まれる() {
         assertMacroExpansion(
             """
-            @TestClass(app: "com.example.app")
+            @TestClass
             class T {
                 func setUpDevice() {
                 }
@@ -515,7 +507,6 @@ final class TestClassMacroTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "T",
-                        app: "com.example.app",
                         platform: nil,
                         scenarios: [
                         FTDSL.FTScenarioDescriptor(
@@ -537,10 +528,124 @@ final class TestClassMacroTests: XCTestCase {
     }
 
     /// tearDownDevice はシナリオの run に入らず、descriptor の欄になる(親が専用の子で呼ぶ)
+    /// afterAll は run クロージャに入れず、descriptor の欄になる(親が run の最後に専用の子で呼ぶ)
+    func testAfterAllはdescriptorの欄になりrunには入らない() {
+        assertMacroExpansion(
+            """
+            @TestClass
+            class T {
+                func afterAll() {
+                }
+                @Test("t")
+                func S0010() {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class T {
+                func afterAll() {
+                }
+                func S0010() {
+                }
+            }
+
+            final class __FTReg_T: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    T.ftDescriptor
+                }
+            }
+
+            extension T: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "T",
+                        platform: nil,
+                        scenarios: [
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0010",
+                            title: "t",
+                            run: {
+                                T().S0010()
+                            }),
+                        ],
+                        afterAll: {
+                            let ftInstance = T();
+                            FTDSL.ftRunAfterAll {
+                                ftInstance.afterAll()
+                            }
+                        })
+                }
+            }
+            """,
+            macroSpecs: macros
+        )
+    }
+
+    /// beforeAll は run の最初(setUpDevice より前)に織り込まれ、descriptor に印が付く(親が一覧で知り、他のデバイスを待たせる)
+    func testBeforeAllはsetUpDeviceの前に織り込まれdescriptorに印が付く() {
+        assertMacroExpansion(
+            """
+            @TestClass
+            class T {
+                func beforeAll() {
+                }
+                func setUpDevice() {
+                }
+                @Test("t")
+                func S0010() {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class T {
+                func beforeAll() {
+                }
+                func setUpDevice() {
+                }
+                func S0010() {
+                }
+            }
+
+            final class __FTReg_T: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    T.ftDescriptor
+                }
+            }
+
+            extension T: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "T",
+                        platform: nil,
+                        scenarios: [
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0010",
+                            title: "t",
+                            run: {
+                                let ftInstance = T();
+                                FTDSL.ftRunBeforeAll {
+                                    ftInstance.beforeAll()
+                                };
+                                FTDSL.ftRunSetUpDevice {
+                                    ftInstance.setUpDevice()
+                                };
+                                ftInstance.S0010()
+                            }),
+                        ],
+                        hasBeforeAll: true)
+                }
+            }
+            """,
+            macroSpecs: macros
+        )
+    }
+
     func testTearDownDeviceはdescriptorの欄になりrunには入らない() {
         assertMacroExpansion(
             """
-            @TestClass(app: "com.example.app")
+            @TestClass
             class T {
                 func tearDownDevice() {
                 }
@@ -568,7 +673,6 @@ final class TestClassMacroTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "T",
-                        app: "com.example.app",
                         platform: nil,
                         scenarios: [
                         FTDSL.FTScenarioDescriptor(
@@ -584,53 +688,6 @@ final class TestClassMacroTests: XCTestCase {
                                 ftInstance.tearDownDevice()
                             }
                         })
-                }
-            }
-            """,
-            macroSpecs: macros
-        )
-    }
-
-    /// `app:` を書かないと descriptor は nil を持つ = 実行プロファイルから解決される
-    /// (FTCore.ScenarioAppResolution)。空文字にすると「未指定」と「空文字指定」が区別できず
-    /// プロファイルへ落ちなくなるので、**nil であることが契約**
-    func testApp未指定は展開でnilになる() {
-        assertMacroExpansion(
-            """
-            @TestClass
-            class T {
-                @Test("t")
-                func S0010() {
-                }
-            }
-            """,
-            expandedSource:
-            """
-            class T {
-                func S0010() {
-                }
-            }
-
-            final class __FTReg_T: FTDSL.FTScenarioRegistration {
-                override class var descriptor: FTDSL.FTTestClassDescriptor {
-                    T.ftDescriptor
-                }
-            }
-
-            extension T: FTDSL.FTTestClassDefinition {
-                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
-                    FTDSL.FTTestClassDescriptor(
-                        className: "T",
-                        app: nil,
-                        platform: nil,
-                        scenarios: [
-                        FTDSL.FTScenarioDescriptor(
-                            name: "S0010",
-                            title: "t",
-                            run: {
-                                T().S0010()
-                            }),
-                        ])
                 }
             }
             """,
@@ -666,7 +723,6 @@ final class TestClassMacroTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "T",
-                        app: nil,
                         platform: "ios",
                         scenarios: [
                         FTDSL.FTScenarioDescriptor(
@@ -689,7 +745,7 @@ final class TestClassMacroTests: XCTestCase {
     func testTestのscenarioTimeout引数が展開される() {
         assertMacroExpansion(
             """
-            @TestClass(app: "com.app")
+            @TestClass
             class T {
                 @Test("t", scenarioTimeout: 1800)
                 func S0010() {
@@ -713,7 +769,6 @@ final class TestClassMacroTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "T",
-                        app: "com.app",
                         platform: nil,
                         scenarios: [
                         FTDSL.FTScenarioDescriptor(
@@ -734,7 +789,7 @@ final class TestClassMacroTests: XCTestCase {
     func testTestのscenarioTimeout省略時は欄を出さない() {
         assertMacroExpansion(
             """
-            @TestClass(app: "com.app")
+            @TestClass
             class T {
                 @Test("t")
                 func S0010() {
@@ -758,7 +813,6 @@ final class TestClassMacroTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "T",
-                        app: "com.app",
                         platform: nil,
                         scenarios: [
                         FTDSL.FTScenarioDescriptor(
@@ -778,7 +832,7 @@ final class TestClassMacroTests: XCTestCase {
     func testTestのscenarioTimeoutリテラル以外の式は転写される() {
         assertMacroExpansion(
             """
-            @TestClass(app: "com.app")
+            @TestClass
             class T {
                 @Test("t", scenarioTimeout: limits.long)
                 func S0010() {
@@ -802,7 +856,6 @@ final class TestClassMacroTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "T",
-                        app: "com.app",
                         platform: nil,
                         scenarios: [
                         FTDSL.FTScenarioDescriptor(
@@ -823,7 +876,7 @@ final class TestClassMacroTests: XCTestCase {
     func testTestのscenarioTimeoutが0はエラー() {
         assertMacroExpansion(
             """
-            @TestClass(app: "com.app")
+            @TestClass
             class T {
                 @Test("t", scenarioTimeout: 0)
                 func S0010() {
@@ -847,7 +900,6 @@ final class TestClassMacroTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "T",
-                        app: "com.app",
                         platform: nil,
                         scenarios: [
                         FTDSL.FTScenarioDescriptor(
@@ -873,7 +925,7 @@ final class TestClassMacroTests: XCTestCase {
     func testTestのscenarioTimeoutが負はエラー() {
         assertMacroExpansion(
             """
-            @TestClass(app: "com.app")
+            @TestClass
             class T {
                 @Test("t", scenarioTimeout: -5)
                 func S0010() {
@@ -897,7 +949,6 @@ final class TestClassMacroTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "T",
-                        app: "com.app",
                         platform: nil,
                         scenarios: [
                         FTDSL.FTScenarioDescriptor(

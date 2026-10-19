@@ -154,6 +154,7 @@ To enable it on bare metal:
   calls still fail, so doctor really runs an inference.
 - FM is a resource shared by the whole Mac, and only one call runs at a time. A suite that uses `screenLooksLike` heavily takes longer.
 - Self-healing (locator fingerprint matching) does not use FM, so it runs in CI regardless of Apple Intelligence.
+- When self-healing fires, the fixed selectors are written back to the scenario sources in the checkout (the tool does not commit). If you don't want a dirty checkout, pass `--set heal=false`, or just ignore it.
 
 ### Flaky scenarios (no retry mechanism, by design)
 
@@ -171,6 +172,8 @@ Instead:
   When a device's display is confirmed to have frozen, the scenario that **passed** just before on that device is also
   discarded and run again (it was judged on a frozen screen). A scenario with an operation that cannot be undone, such as
   sending, purchasing or registering, can therefore run twice within one run. There is no setting to turn requeuing off.
+  **Write scenarios on the assumption that they may be re-run from the start**
+  ([Writing Robust Scenarios](../reference/writing/writing_robust_scenarios.md)).
   Point operations that cannot be undone at an environment where running them twice does no harm (test payments, a
   staging server).
 

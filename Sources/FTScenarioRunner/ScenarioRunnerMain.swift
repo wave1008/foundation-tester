@@ -83,8 +83,7 @@ struct ListScenarios: AsyncParsableCommand {
             }
             for testClass in classes {
                 let platform = testClass.platform ?? "ios/android"
-                let app = testClass.app ?? "(from the run profile)"
-                ConsoleOut.out("\(testClass.className) [\(platform)] app=\(app)")
+                ConsoleOut.out("\(testClass.className) [\(platform)]")
                 for scenario in testClass.scenarios {
                     let title = scenario.title.isEmpty ? "" : " — \(scenario.title)"
                     // 両方付いていれば deleted の表示を優先する(@Deleted が勝つ)
@@ -233,7 +232,7 @@ struct RunScenario: AsyncParsableCommand {
     var appName: String?
 
     @Option(name: .customLong("app"),
-            help: "Default app (bundle ID / package name) resolved from the run profile, used when the scenario declares no @TestClass(app:). Always passed when known: a mismatch with an explicit @TestClass(app:) is reported")
+            help: "App (bundle ID / package name) resolved from the run profile. Passed by the host whenever it is known")
     var app: String?
 
     @Flag(help: "Emit NDJSON events (for the host)")
@@ -262,6 +261,10 @@ struct RunScenario: AsyncParsableCommand {
           help: "Run only the tearDownDevice() of the test class named by --scenario (set by ScenarioHost after the device finished its scenarios)")
     var deviceTeardownOnly = false
 
+    @Flag(name: .customLong("after-all-only"),
+          help: "Run only the afterAll() of the test class named by --scenario (set by ScenarioHost after every device finished the run)")
+    var afterAllOnly = false
+
     func run() async throws {
         let runTunables = try Self.decodeTunables(tunables)
         let runHostLoadPacing = try Self.decodeHostLoadPacing(hostLoadPacing)
@@ -286,7 +289,19 @@ struct RunScenario: AsyncParsableCommand {
         let scenarioTitle: String
         let runPlatform: String
         let body: @Sendable () -> Void
-        if deviceTeardownOnly {
+        if afterAllOnly {
+            // --scenario はクラス名。記録上の ID は "<Class>.afterAll"(tearDownDevice と同じ形)
+            guard let found = ScenarioDiscovery.allTestClasses().first(where: { $0.className == scenario }),
+                  let afterAll = found.afterAll else {
+                ConsoleOut.err("--after-all-only: no test class named \(scenario) declares afterAll()")
+                throw ExitCode(64)
+            }
+            testClass = found
+            scenarioID = "\(found.className).afterAll"
+            scenarioTitle = "afterAll"
+            runPlatform = found.platform ?? platform
+            body = afterAll
+        } else if deviceTeardownOnly {
             // --scenario はクラス名。記録上の ID は "<Class>.tearDownDevice"(@Test と衝突しない = メソッド名は1つだけ)
             guard let found = ScenarioDiscovery.allTestClasses().first(where: { $0.className == scenario }),
                   let tearDownDevice = found.tearDownDevice else {
@@ -312,16 +327,13 @@ struct RunScenario: AsyncParsableCommand {
             body = descriptor.run
         }
 
-        // 既定アプリ(bundle ID)。優先順・警告文・未解決時の文言は FTCore.ScenarioAppResolution が
+        // アプリ(bundle ID)。解決規則・未解決時の文言は FTCore.ScenarioAppResolution が
         // 唯一の定義元で、ここは転写するだけ(MCP・他経路と判断を割らないため)
         let appBundleID: String
-        switch ScenarioAppResolution.resolve(declared: testClass.app, fromProfile: app,
+        switch ScenarioAppResolution.resolve(fromProfile: app,
                                              scenarioID: scenarioID, dryRun: dryRun) {
-        case .resolved(let bundleID, let warning):
+        case .resolved(let bundleID):
             appBundleID = bundleID
-            if let warning {
-                ConsoleOut.err(warning)
-            }
         case .unresolved(let message):
             ConsoleOut.err(message)
             throw ExitCode(64)
@@ -540,8 +552,14 @@ struct RunScenario: AsyncParsableCommand {
         started.title = scenarioTitle
         emit(started)
         // 親はこの申告があったクラスだけを、デバイスの仕事の後に片付ける(RunDeviceSession.takePendingTearDowns)
-        if !deviceTeardownOnly, testClass.tearDownDevice != nil {
+        if !deviceTeardownOnly, !afterAllOnly, testClass.tearDownDevice != nil {
             var declared = ScenarioEvent(kind: "deviceTearDown")
+            declared.status = "declared"
+            emit(declared)
+        }
+        // 親はこの申告があったクラスだけを、run の全デバイスの仕事の後に1回片付ける(RunSharedSession.takePendingAfterAlls)
+        if !deviceTeardownOnly, !afterAllOnly, testClass.afterAll != nil {
+            var declared = ScenarioEvent(kind: "afterAll")
             declared.status = "declared"
             emit(declared)
         }
@@ -593,6 +611,7 @@ struct RunScenario: AsyncParsableCommand {
         if let deviceSession {
             core.deviceMemo = deviceSession.memo
             core.runSetUpDevice = deviceSession.runSetUpDevice
+            core.runBeforeAll = deviceSession.runBeforeAll
         }
         core.redactAccountValues = redactAccountValues
         core.hostLoadPacing = runHostLoadPacing

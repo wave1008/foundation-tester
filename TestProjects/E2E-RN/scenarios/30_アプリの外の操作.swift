@@ -9,7 +9,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.rn")
+@TestClass
 class アプリの外へ出ても戻ってこられること {
 
     @Test("home で背面へ送り、tapAppIcon でそのプロセスのまま前面へ戻せる")

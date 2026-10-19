@@ -183,13 +183,13 @@ swift run fleetest run --profile ios-run       # 実行プロファイル(ブリ
 | `--version` | `<git の短い revision> (protocol <版>)` を表示(`api version` はプロトコル版だけを JSON で返す別口) |
 | `doctor` | FM・Xcode・シミュレータ・adb の事前診断 |
 | `bridge up / down / status` | iOS ブリッジ(常駐 XCUITest ランナー)の管理 |
-| `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--set heal=...` 自己修復、`--report-dir`、`--port` 並列(繰り返し指定)、`--skip-build`、`--no-lpt` 投入順を ID 順に固定、`--lpt-history-runs` 実績を読む run 数、`--broadcast` 選んだシナリオを実行プロファイルの**全デバイスで1回ずつ**回す(ブロードキャスト。warmup 向け。供給・フック・復帰・レポートは通常 run と同じで、結果はデバイスごとに `worker` で区別)、`--quiet`/`--junit` CI 向け出力、`--set enableAnimations=true` アプリのアニメーションを残す、操作コマンドごとの `settle: false`(docs/commands.md)で整定待ちを飛ばせる)。**`--dry-run` はデバイスに触れずステップを列挙・検証する**(下記「dry-run」) |
+| `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--set heal=...` 自己修復(直したセレクタは実行の終わりにシナリオのソースへ書き戻す。dry-run は書かない)、`--report-dir`、`--port` 並列(繰り返し指定)、`--skip-build`、`--no-lpt` 投入順を ID 順に固定、`--lpt-history-runs` 実績を読む run 数、`--broadcast` 選んだシナリオを実行プロファイルの**全デバイスで1回ずつ**回す(ブロードキャスト。warmup 向け。供給・フック・復帰・レポートは通常 run と同じで、結果はデバイスごとに `worker` で区別)、`--quiet`/`--junit` CI 向け出力、`--set enableAnimations=true` アプリのアニメーションを残す、操作コマンドごとの `settle: false`(docs/commands.md)で整定待ちを飛ばせる)。**`--dry-run` はデバイスに触れずステップを列挙・検証する**(下記「dry-run」) |
 | `run-file <path.swift>...` | Package.swift に**登録していない** .swift をそのまま実行(プロファイル・レポート・自己修復は `--project` のものを借りる。`--profile`、`--scenario`、`--set heal=...`、`--port`) |
 | `project create / list / sync / copy / rename / delete / lint-selectors` | テストプロジェクトの作成・一覧・Package.swift 再整合・複製・改名・削除・セレクタの lint |
 | `services up / down / status / pull / load / reset` | `scripts/compose.yaml` に宣言したサービスの起動・停止・確認・イメージの取得/読み込み・片付け(詳細は [docs/user-docs/reference/writing/services_ja.md](docs/user-docs/reference/writing/services_ja.md)) |
 | `devices up / down` | 実行プロファイルのデバイスを一括起動・停止(ブリッジ供給込み) |
 | `results list / summary / flaky / trend / devices / slow / insights / log` | 実行結果の集約・分析(reports/ を横断) |
-| `draft-scenario` | テストベース(`docs/testbases/*.md`)からシナリオの下書きを生成(`--testbase`、`--app-id`、`--platform`、`--no-fm` で FM 不使用、`--dry-run`) |
+| `draft-scenario` | テストベース(`docs/testbases/*.md`)からシナリオの下書きを生成(`--testbase`、`--platform`、`--no-fm` で FM 不使用、`--dry-run`) |
 | `init` | 外部パッケージ構成の scaffold(プロファイルは書かない。`profile setup` が作る)(受け手ディレクトリを fleetest テストパッケージ化。スキル入口 `/fleetest-setup` の既定経路) |
 | `profile setup` | アプリ/実行プロファイルを整合させて作成(冪等。`--platform`、`--device-name`(iOS はシミュレータ自身の名前)/`--avd`、`--app-id`、`--auto-device` は自動選定(iOS は選択中の Xcode の最新ランタイム(無ければ `xcodebuild -downloadPlatform iOS` で自動導入。数 GB で時間がかかる)と、それが対応する最新の `iPhone <N>`(Pro・Pro Max・Plus・Air・e・mini・SE 等の装飾つきは除く)/ Android は最新の Pixel(`pixel_<数字>` か `pixel_<数字>a`。同じ数字なら無印。Pro・Fold 等は除く)と tag `google_apis` で API が最大のシステムイメージ。未導入のイメージは `--accept-licenses` が必要で、付けなければ何も入れずに止まる)し、「機種(OS)-NN」(例 `iPhone 17 Pro(iOS 27.0)-01`)の名前で登録する。OS 部分は iOS が runtime 名・Android が `Android 16, API 36, APIs`。名前が合い、かつ機種・イメージも同じものがあれば番号最小を再利用し、無ければ空いている最小の番号で新規作成する。利用者の既存デバイスは改名・削除しない。ランタイムだけを先に導入するのは `fleetest api install-ios-runtime --version <SDK の版>`(NDJSON。導入済みなら何もしない・SDK の版と違う版は拒む。拡張の「デバイスを追加」が create-device の前に1回だけ呼ぶ)) |
 | `profile list` | 実行プロファイルの一覧とそのデバイスの解決チェック |
@@ -307,7 +307,7 @@ Android シナリオも iOS と同様に `--platform android` を付けて実行
 **対象アプリはコードに書かない** —— 実行プロファイル(`runs/<name>.json`)→ アプリプロファイル
 (`apps/<name>.json`)→ 実行中 platform の `ios.app` / `android.app` から解決されるので、
 OS で bundle ID が違っても同じシナリオを `--profile ios-run` / `--profile android-run` で回せる
-(コード側で固定したいときだけ `@TestClass(app: "...")` と書く。そちらが勝つ)。
+(`@TestClass` に `app:` は書けない。プロファイル無しの直指定は `--app-id`)。
 
 ```swift
 import FTDSL
@@ -481,7 +481,7 @@ condition {
 ## UI(VSCode 拡張)
 
 シナリオ実行・デバッグ実行(ブレークポイント/ステップ実行)・ライブ操作・デバイスモニター・
-ライブ操作(録画→シナリオ生成)・結果ダッシュボード・自己修復候補の確認・プロファイル編集支援と
+ライブ操作(録画→シナリオ生成)・結果ダッシュボード・自己修復の書き戻しの通知・プロファイル編集支援と
 いった対話的な UI は、VSCode 拡張(`vscode-fleetest/`)に一本化している。CLI と同じ `fleetest api ...` サブコマンド経由で
 fleetest 本体を呼び出すため、挙動は CLI・MCP と共通のモジュールに基づく。
 

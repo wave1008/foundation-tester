@@ -8,7 +8,7 @@ import FTCore
 
 // MARK: - アプリ制御
 
-/// アプリを起動する(引数省略時は @TestClass の app)。url を渡すと「起動 → URL 配送」を
+/// アプリを起動する(引数省略時は実行プロファイルのアプリ)。url を渡すと「起動 → URL 配送」を
 /// 1ステップで行う(driver.openURL が再起動直後の warm な状態へそのまま届く)。
 /// **配送は最初の画面が描かれてから**(`StepExecutor.awaitInteractiveUI` / LaunchURLReadiness): in-app の
 /// launch はブリッジが答えた時点で返るので、JS が listener を登録する前に撃つと React Native は URL を捨てる
@@ -755,6 +755,25 @@ public func ftRunBeforeEach(_ body: () -> Void) {
     FTRuntime.requireCore(command: "beforeEach").runLifecycle("beforeEach", allowAfterFailure: false, body)
 }
 
+/// @TestClass マクロが beforeAll() の呼び出しを包むために生成する(利用者が直接書くものではない)。
+/// **run 全体でクラスごとに1回**(Shirates の beforeAll と同じ名前)。受け持つシナリオは親が決め(`core.runBeforeAll`)、
+/// 親はそれが終わるまで他のデバイスでこのクラスのシナリオを起動しない。"began" を出した後は結果が不明でも撃ち直さない
+/// (at-most-once)。失敗はシナリオ中断で、このクラスの残りのシナリオは親が走らせずに落とす。
+/// 中断・画面凍結・ユーザー停止で本体が走らなかったときは "began" も出さない(親は未試行へ戻し、別のシナリオが受け持ち直す)。
+/// 値を他のシナリオへ渡すのは writeMemo(メモは run 全体で共有)
+public func ftRunBeforeAll(_ body: () -> Void) {
+    let core = FTRuntime.requireCore(command: "beforeAll")
+    guard core.runBeforeAll, !core.scenarioAborted, !core.deviceFrozen, !core.stoppedByUser else { return }
+    func event(_ status: String) -> ScenarioEvent {
+        var event = ScenarioEvent(kind: "beforeAll")
+        event.status = status
+        return event
+    }
+    core.emit(event("began"))
+    core.runLifecycle("beforeAll", allowAfterFailure: false, body)
+    core.emit(event(core.scenarioAborted || core.deviceFrozen || core.stoppedByUser ? "failed" : "passed"))
+}
+
 /// @TestClass マクロが setUpDevice() の呼び出しを包むために生成する(利用者が直接書くものではない)。
 /// 走らせるかは親が決める(`core.runSetUpDevice`)。**親は「試行した」時点で済み印を付ける**ので、
 /// 結果が不明でも同じデバイスで撃ち直されない。失敗はシナリオ中断(後続シナリオは親が走らせずに落とす)。
@@ -781,6 +800,13 @@ public func ftRunAfterEach(_ body: () -> Void) {
     // 本体の検証の描画崩壊は afterEach が画面を動かす前に確かめる(片付けの起動で壊れた絵が消える)
     core.renderCollapseCheckpoint("at the end of the scenario")
     core.runLifecycle("afterEach", allowAfterFailure: true, body)
+}
+
+/// @TestClass マクロが afterAll() の呼び出しを包むために生成する(利用者が直接書くものではない)。
+/// 呼ばれるのは `--after-all-only` の専用の子だけ(親が run の全デバイスの仕事の後に、run × クラスで1回起こす)。
+/// beforeAll の成否に関わらず走る(片付け)。メモは読める
+public func ftRunAfterAll(_ body: () -> Void) {
+    FTRuntime.requireCore(command: "afterAll").runLifecycle("afterAll", allowAfterFailure: true, body)
 }
 
 /// @TestClass マクロが tearDownDevice() の呼び出しを包むために生成する(利用者が直接書くものではない)。

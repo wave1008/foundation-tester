@@ -6,7 +6,7 @@ final class HealFixApplierTests: XCTestCase {
     private let source = """
     import FTDSL
 
-    @TestClass(app: "com.example.app", platform: "ios")
+    @TestClass(platform: "ios")
     class ログインテスト {
 
         @Test("ログイン")

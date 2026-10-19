@@ -1164,7 +1164,7 @@ fleetest bridge up|down|status [--platform ios|android] [--device ...] [--serial
 fleetest run [--project P] [--profile 名] [--scenario id...] \
     [--set キー=値] [--report-dir ...] [--port 8123 --port 8124] [--skip-build]
                                            # Swift シナリオの決定的実行(プロファイル実行は§11)
-fleetest draft-scenario [--project P] [--testbase 資料.md] [--app-id ...] [--no-fm] [--dry-run]
+fleetest draft-scenario [--project P] [--testbase 資料.md] [--no-fm] [--dry-run]
                                            # テスト設計資料からシナリオ下書きを生成(§17)
 fleetest project create|list|sync          # テストプロジェクトの作成・一覧・Package.swift 再整合(§11)
 fleetest profile list                      # 実行プロファイルの一覧と現在マシンでの解決チェック(§11)
@@ -1534,19 +1534,18 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
 
 ### 記述形式
 
-- `@TestClass(app:platform:)` クラス + `@Test(_:platform:scenarioTimeout:)` メソッド + `scene(n)`(Shirates の case 相当)
+- `@TestClass(platform:)` クラス + `@Test(_:platform:scenarioTimeout:)` メソッド + `scene(n)`(Shirates の case 相当)
   + `condition/action/expectation`(CAE)の3層構造
-- **`app:` は通常書かない**(2026-08-19)。既定アプリは
+- **`@TestClass` に `app:` は無い**(書くとコンパイルエラー)。アプリは
   **実行プロファイル → アプリプロファイル → 実行中 platform の `ios.app` / `android.app`** から
   解決される(`FTCore.ScenarioAppResolution` が唯一の定義元。親が `--app` で子へ渡す)。
   これで**同じシナリオを `--profile ios-run` と `--profile android-run` で別 bundle ID の
-  アプリに対して回せる**(OS で ID が違うアプリのためにクラスを複製しなくてよい)。
-  `app:` を書いた場合は**そちらが勝つ** —— 1プロジェクトに複数アプリのシナリオが混在する構成を
-  壊さないため(実行プロファイル側にシナリオを絞り込む仕組みが無く、プロファイルを常に勝たせると
-  別アプリのシナリオが**黙って**誤ったアプリを起動する)。食い違いは警告1行だけ出す。
-  どちらからも決まらなければ明示エラー(`fleetest run --app-id <bundleID>` が逃げ道。
-  **dry-run だけは代替表記で通す** —— デバイスに触らず bundle ID を使わないので、
-  ここで落とすと「実行プロファイル無しでは構文検査もできない」になる)
+  アプリに対して回せる**。実行プロファイル無し(`--port` / `--serial` の直指定)は `--app-id <bundleID>` で渡す。
+  どちらからも決まらなければ明示エラー(**dry-run だけは代替表記で通す** —— デバイスに触らず bundle ID を使わないので、
+  ここで落とすと「実行プロファイル無しでは構文検査もできない」になる)。MCP `ft_run_scenario` は `profile` 無しなら
+  プロジェクトの唯一のアプリプロファイルを使い、2つ以上あれば断る(`profile:` を渡す)。
+  複数アプリを扱うプロジェクトは、アプリごとに実行プロファイル(とフォルダ)を分けるか、切り替えるステップで
+  `launchApp("<id>")` に明示する
 - **`@Test(scenarioTimeout:)`**(秒・メソッドのみ)はそのシナリオ全体の watchdog 秒。優先順位は
   `@Test` > プロファイル `scenarioTimeout` / `--scenario-timeout` > `ScenarioHost.defaultScenarioTimeout`(600)で、
   解くのは `FTCore.ScenarioTimeoutResolution` の1箇所。シナリオ側が短くても勝つ。マクロは整数リテラル 0 以下をコンパイルエラーにし(式で届いた 0 以下は `ScenarioHost.run` が子を起こさずに赤 = `invalidScenarioValueReason`)、
@@ -2788,7 +2787,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   **直前のシナリオの結果は合否を問わず捨てて振り直す**(その画像判定は止まった絵で下されている。振り直しの上限で捨てられない成功は
   記録を失敗へ書き換える = `RunRecorder.markLastFailed`。読み手への終了イベントは確認まで保留し、凍結なら失敗として流す)・
   録画の合否も確認の後に決める・レーンを離脱・回復してから revive で張り直す。対象外(notApplicable)のシナリオの後は確かめない。
-  確認の後に前面へ戻すのはそのシナリオが使ったアプリ(`@TestClass(app:)` が実行プロファイルに勝つ = 子と同じ `ScenarioAppResolution`)。
+  確認の後に前面へ戻すのはそのシナリオが使ったアプリ(子と同じ `ScenarioAppResolution` で解く)。
   **モニター(run の外)は警告だけ**(`MonitorStaleFrameTracker`: 同じ絵が 60 秒以上で stderr に 1 行・絵が変われば解けた旨を 1 行)。
   モニターはデバイスを触らず、`frozen` の欄は確定だけなのでタイルには出さない。Android のモニターは adb で撮るので、止まった表示は黒 = 既存の一様判定が拾う回復の順: Emulator = sleep/wake(ブリッジの絵で確かめる)→ ゲストの再起動
   (`adb reboot`)→ ブートを確認できなければ停止と起動 / Simulator = shutdown → boot。再起動の後は絵で確かめない
@@ -2897,13 +2896,24 @@ iOS Simulator ではアプリのプロセスの描画が壊れ、アプリを起
   (メッセージ送信なしの class_getSuperclass のみ)で自動発見する
 - **1 プロセス = 1 シナリオ実行**のサブプロセス方式。ホスト(CLI/GUI/MCP)は ScenarioHost 経由で
   起動し、NDJSON イベント(FTCore/ScenarioEvent)を受信。ビルドはホスト側で1回だけ
-- **デバイスセッション**(メモと `setUpDevice` の済み印。契約は `FTCore/DeviceSessionHandoff.swift`):
-  状態は**親が 1 run × レーンキー(デバイス)ごとに持つ**(`RunDeviceSession`)。子は
-  `--device-session-stdin` で起動され、**stdin の 1 行目**に `DeviceSessionHandoff`(メモの写し +
-  `runSetUpDevice`)を受け取る(制御コマンドの読み手より先に読む)。子→親は `ScenarioEvent` の
-  `memoWrite` / `memoClear` / `deviceSetUp` を**片道通知**(応答なし)で送り、`ScenarioHost.run` が
-  横取りして状態へ反映する(`fleetest api` の NDJSON 契約には出さない)。1 デバイスはシナリオを
-  1 本ずつ順に回し、親は子の stdout を読み切ってから次を起こすので、次の子は必ず最新の写しを受ける。
+- **セッションの状態**(契約は `FTCore/DeviceSessionHandoff.swift`): 親が持つ状態は2層。
+  **run 共有の `RunSharedSession`**(メモと `beforeAll` の状態。1 run に 1 つ)と、
+  **1 run × レーンキー(デバイス)ごとの `RunDeviceSession`**(`setUpDevice` / `tearDownDevice` の済み印)。
+  子は `--device-session-stdin` で起動され、**stdin の 1 行目**に `DeviceSessionHandoff`(その時点のメモの写し +
+  `runSetUpDevice` + `runBeforeAll`)を受け取る(制御コマンドの読み手より先に読む)。子→親は `ScenarioEvent` の
+  `memoWrite` / `memoClear` / `deviceSetUp` / beforeAll の開始・結果を**片道通知**(応答なし)で送り、`ScenarioHost.run` が
+  横取りして状態へ反映する(`fleetest api` の NDJSON 契約には出さない)。メモは run 共有なので、シナリオが受け取るのは
+  起動時点の写しで、走行中の他デバイスの書き込みは見えない(書き込みの直列化・ロックなし)。
+  **`beforeAll` は 1 run × 1 クラスで 1 回**: そのクラスの最初のシナリオの子が走らせ(`runBeforeAll = true` を受ける)、
+  走っている間、同じクラスのシナリオを受け取った他デバイスの親は終わるまで待つ(待ちはシナリオの所要・タイムアウトに数えない)。
+  開始後に失敗・子が落ちたら撃ち直さず、そのクラスの残りは走らせずに失敗として記録する。beforeAll の開始前にそのシナリオが
+  終わった場合(起動失敗等)は別のデバイスが引き継ぐ。run が複数のマシンに分かれるとマシンごとに別の状態になる。
+  **`afterAll` は 1 run × 1 クラスで 1 回・全デバイスの仕事の後**: 各シナリオの子が開始時に afterAll の申告を出し
+  (`afterAll` "declared"。親はその OS を添えて `RunSharedSession` に貯める)、親は全レーンの合流後(各デバイスの
+  tearDownDevice の後)に `ScenarioHost.runAfterAlls` で `--after-all-only` の専用の子を1クラス1本起こす。走らせる先は
+  申告した OS で仕事を最後まで終えた(離脱しなかった)デバイスで、その間だけ run-lease を取り直す。選べなければ走らせず
+  「was not run」と1行残す。中断した run では呼ばない。直指定・dry-run・MCP の経路は tearDownDevice の直後に同じ関数を呼ぶ
+  (`AfterAllWiringTests` が経路ごとの呼び出しの数を揃える)。
   **`setUpDevice` は高々 1 回**: 親が「試行した」時点で済み印を付け、結果不明(子が落ちた等)でも
   同じデバイスで撃ち直さず、デバイスの復旧後も同じ run では再実行しない。失敗したクラスの後続は
   走らせずに失敗として記録する。**`tearDownDevice` はシナリオの子では走らせない** —— 共有キューでは
@@ -2946,7 +2956,7 @@ iOS Simulator ではアプリのプロセスの描画が壊れ、アプリを起
 ### 自己修復(ロケータの指紋照合のみ。2026-09-15 に FM 版とヒールキャッシュを撤去)
 
 現在の解決順は **プライマリ → フォールバック → 指紋照合**(FM は呼ばない)。ソース位置付きの
-修正提案をレポートに出し続け、ソース自動書換はしない。`heal` は他のトグルから独立(自己修復は
+修正提案をレポートに出し、実行の終わりにソースへ自動で書き戻す(下記「ソースへの書き戻し」)。`heal` は他のトグルから独立(自己修復は
 FM 機能ではないため。ユーザー決定 2026-09-15)。
 
 **経緯**: YAML 時代の healedFlow 書き戻しに代わり、当初は解決順を
@@ -2956,6 +2966,26 @@ FM が採用した修復だけがキャッシュへ書かれ、2回目以降は�
 設計だった。**FM ヒールの採用門(confidence == high)が本番で実測 0/272 しか開かず**
 (詳細は本節末尾および maintainer-notes §22)、ヒールキャッシュは FM 版だけが書き手だったため
 2026-09-15 に両方撤去し、指紋照合だけの1層構成にした。
+
+#### ソースへの書き戻し
+
+git 管理を前提に、修正提案(ファイル・行・変更前・変更後が揃ったもの)を結果を記録した実行の終わりに
+シナリオの `.swift` へ書く(`FTCore.HealWriteBack` が規則(純粋)、`FTCore.HealSourceWriteBack` が読み書きとロック)。
+書くのは `fleetest run`(プロファイルの有無を問わない)・`fleetest api run`・MCP の `ft_run_scenario`(プロセス内で回すので
+イベントから集める)、リモート実行では結果を集めた発行元(ランナー機の子は `FT_DISPATCHED_RUN=1` で書かない)。
+`ft_start_run` は `fleetest run` を起こすのでそちらで書く。
+**分割した run**(`FleetRunner`・`DeviceMachineRunner`・`ApiRunMachineFanout`)の子は書かずに親の受け口
+(`HealSourceWriteBack.Collection`。子へは `DispatchTicketIssuer.childEnvironment` の必須の引数で `FT_HEAL_SUGGESTIONS_OUT` を渡す)へ
+追記し、親が全部の子のあとで1回だけ計画して書く —— 子ごとに書くと、子をまたいで食い違う提案を先に書いた子が採る。
+受け口は親の一時フォルダ(シナリオの子は書けない)。dry-run は書かない。規則: 変更前のセレクタがその行に Swift の
+文字列リテラルとしてちょうど1回出現するときだけ置換する / 同じ場所(ファイル・行・変更前)に別々の変更後が
+あれば何も書かない / 同一の提案は1回 / このプロジェクトの `scenarios/` の外とシンボリックリンクは書かない / 行に変更後があり
+変更前が無ければ書き込み済み(エラーにしない) / 行が変わっていれば書かず理由を報告する。
+同じプロジェクトへの同時の書き込みは `<project>/.fleetest/heal-writeback.lock` で直列化する。出力は既存の ⚠️ の行のあとに
+`✏️ Self-healing wrote N selector fix(es) back …`(失敗は `⚠️ Self-healing could not write …`。`api run` では標準エラー)。
+レポートと JUnit の提案は書き戻しの有無にかかわらず残る。利用者が避けるには `heal=false`。
+VSCode 拡張は確認パネルを持たず、書き戻した実行の終わりに通知(「変更を表示」でソース管理ビュー)を出す。
+`fleetest api apply-heal` は無い。
 
 ### ロケータの指紋(2026-09-02。2026-09-15 に自己修復の唯一の層になった)
 
@@ -5031,8 +5061,8 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
 - **「ライブ操作」タブ**: 「デバイスモニター」タブの右隣。**起動時は出さない**(プロセスタブと同じ
   `HIDDEN_AT_STARTUP`・× で隠す)。開く口はコマンド `fleetest.showLiveControl`・タイルの
   右クリック・Run Test の自動表示(`liveControlOnRun`)。ロジックは `liveTabHost.ts`(モニターに同居)
-- **右クリックの既定メニュー(Cut/Copy/Paste)は拡張の全画面で出さない**(モニターの `main.js` と
-  `src/webview/healReview/main.js` が同じ規則を持つ。文字を打つ入力欄だけ残す)
+- **右クリックの既定メニュー(Cut/Copy/Paste)は拡張の全画面で出さない**(モニターの `main.js` が
+  この規則を持つ。文字を打つ入力欄だけ残す)
 - **「プロセス」タブ(常駐プロセス一覧・停止)**(2026-07-19): **起動時は出さない** —— 設定タブ「ツール」の
   「プロセス」で設定タブの右に現れ、タブの × で隠す(`tabs.js` の `HIDDEN_AT_STARTUP`。復元もしない)。
   `ps` の fleetest 関連常駐を分類表示

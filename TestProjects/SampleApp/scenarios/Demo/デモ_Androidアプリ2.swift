@@ -5,7 +5,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.google.android.documentsui", platform: "android")
+@TestClass(platform: "android")
 class デモ_Androidアプリ2 {
 
     @Test("Filesアプリで内部ストレージのフォルダ構成と表示形式を確認できる")
@@ -13,7 +13,7 @@ class デモ_Androidアプリ2 {
         scenario {
             scene(1, "内部ストレージを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.google.android.documentsui")
                 }.action {
                     tap("ルートを表示||Show roots")
                     tap("sdk_gphone64_arm64")
@@ -47,7 +47,7 @@ class デモ_Androidアプリ2 {
         scenario {
             scene(1, "ルート一覧から画像フォルダへ切り替える") {
                 condition {
-                    launchApp()
+                    launchApp("com.google.android.documentsui")
                 }.action {
                     tap("ルートを表示||Show roots")
                     tap("画像||Images")

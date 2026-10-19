@@ -9,7 +9,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class イレギュラーハンドラでダイアログが自動的に閉じられること {
 
     func beforeEach() {

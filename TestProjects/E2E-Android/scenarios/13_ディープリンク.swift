@@ -5,7 +5,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.android", platform: "android")
+@TestClass(platform: "android")
 class ディープリンクが正しく届くこと {
 
     @Test("launchApp(url:) で目的の画面から始まる")

@@ -9,7 +9,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class ID無し画面を方向セレクタで操作できること {
 
     @Test("方向セレクタで id の無いスイッチとボタンを選び分ける")

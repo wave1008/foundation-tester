@@ -10,7 +10,7 @@
 import Foundation
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class 出力の途切れの打ち切り {
 
     @Test("長さの分からない処理が 240 秒を超えて黙ると打ち切られる(落ちるのが正常)")

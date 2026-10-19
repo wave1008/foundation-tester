@@ -4,7 +4,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.example.sampleapp")
+@TestClass
 class ログインテスト {
 
     @Test("ログインとエラー表示")

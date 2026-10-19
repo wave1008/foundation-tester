@@ -269,7 +269,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         XCTAssertTrue(core.finalRecord.passed)
     }
 
-    /// 引数省略時は @TestClass(app:) の bundleID(makeCore の "com.example.app")を使うこと
+    /// 引数省略時は実行コアのアプリ(makeCore の "com.example.app")を使うこと
     func testClearAppDataDefaultsToTestClassBundleID() {
         let driver = StubDriver()
         let core = makeCore(driver: driver, dryRun: false)

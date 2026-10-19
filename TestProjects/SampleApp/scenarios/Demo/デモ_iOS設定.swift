@@ -6,7 +6,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.apple.Preferences", platform: "ios")
+@TestClass(platform: "ios")
 class デモ_iOS設定 {
 
     @Test("表示と外観の設定(外観モード・アクセシビリティ)を確認できる")
@@ -14,7 +14,7 @@ class デモ_iOS設定 {
         scenario {
             scene(1, "外観モード画面を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.action {
                     tap("#com.apple.settings.appearance||外観||Appearance")
                 }.expectation {
@@ -67,7 +67,7 @@ class デモ_iOS設定 {
         scenario {
             scene(1, "一般 > 情報 でバージョンと機種を確認") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.action {
                     tap("#com.apple.settings.general||一般||General")
                     tap("#com.apple.settings.general.about||情報||About")
@@ -119,7 +119,7 @@ class デモ_iOS設定 {
         scenario {
             scene(1, "カメラ設定を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.action {
                     tap("#com.apple.settings.camera||カメラ||Camera")
                 }.expectation {
@@ -161,7 +161,7 @@ class デモ_iOS設定 {
         scenario {
             scene(1, "下端付近(デベロッパ)までスクロールする") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.action {
                     scrollTo("#com.apple.settings.developer||デベロッパ||Developer", maxSwipes: 15)
                 }.expectation {
@@ -196,13 +196,13 @@ class デモ_iOS設定 {
     }
 
     // アプリ切り替えデモ: 設定 ⇔ サンプルアプリ。SampleApp は実行プロファイル(app: sampleapp)が全台に導入済み。
-    // 切替は launchApp(別bundle) / home() / appSwitcher()。戻り先の既定 bundle は @TestClass の設定アプリ。
+    // 切替は launchApp(別bundle) / home() / appSwitcher()。戻り先の bundle は launchApp に明示する。
     @Test("設定アプリとサンプルアプリを行き来できる")
     func S0050() {
         scenario {
             scene(1, "設定アプリを起動する") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.expectation {
                     exist("#com.apple.settings.general||一般||General")
                 }
@@ -224,7 +224,7 @@ class デモ_iOS設定 {
             }
             scene(4, "設定アプリへ戻る") {
                 action {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.expectation {
                     exist("#com.apple.settings.general||一般||General")
                 }

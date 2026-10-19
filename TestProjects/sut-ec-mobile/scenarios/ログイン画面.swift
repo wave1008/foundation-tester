@@ -8,7 +8,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
+@TestClass  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class ログイン画面を開けること {
 
     // 状態の正規化まで(**ログイン画面を開く操作そのものはこのテストの検証対象**なので本体に残す)。

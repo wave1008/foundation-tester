@@ -5,7 +5,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
+@TestClass  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class カートの数量を操作できること {
 
     /// カート画面で対象行を削除して空にする(基準化)

@@ -43,10 +43,10 @@ struct RunFileCommand: AsyncParsableCommand {
     @Option(name: .customLong("port"), help: "Bridge port for running iOS scenarios in parallel. Repeatable (--port 8123 --port 8124)")
     var ports: [UInt16] = []
 
-    /// `@TestClass(app:)` を書かないシナリオを --profile 無しで回すときの逃げ道
+    /// --profile 無しで回すときのアプリの指定
     /// (--profile があればアプリプロファイルから解決されるので不要)
     @Option(name: .customLong("app-id"),
-            help: "Default app ID (bundle ID / package name) for scenarios that declare no @TestClass(app:). Only needed without --profile")
+            help: "Default app (bundle ID / package name) for runs without --profile. Not needed with --profile")
     var appID: String?
 
     // DriverOptions を @OptionGroup にすると --port が(上の repeatable --port と)二重宣言になるため、

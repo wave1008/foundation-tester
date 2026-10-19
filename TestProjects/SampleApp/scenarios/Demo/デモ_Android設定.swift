@@ -7,7 +7,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.android.settings", platform: "android")
+@TestClass(platform: "android")
 class デモ_Android設定 {
 
     @Test("ネットワークと接続(ネットワークとインターネット・接続設定)を確認できる")
@@ -15,7 +15,7 @@ class デモ_Android設定 {
         scenario {
             scene(1, "ネットワークとインターネットを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     tap("ネットワークとインターネット||Network & internet")
                 }.expectation {
@@ -33,7 +33,7 @@ class デモ_Android設定 {
             }
             scene(3, "設定トップへ戻して接続設定を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     tap("接続設定||Connected devices")
                 }.expectation {
@@ -56,7 +56,7 @@ class デモ_Android設定 {
         scenario {
             scene(1, "ディスプレイ設定を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("ディスプレイ||Display")
                     tap("ディスプレイ||Display")
@@ -75,7 +75,7 @@ class デモ_Android設定 {
             }
             scene(3, "設定トップへ戻して通知を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     tap("通知||Notifications")
                 }.expectation {
@@ -98,7 +98,7 @@ class デモ_Android設定 {
         scenario {
             scene(1, "バッテリー画面を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("バッテリー||Battery")
                     tap("バッテリー||Battery")
@@ -117,7 +117,7 @@ class デモ_Android設定 {
             }
             scene(3, "設定トップへ戻して音とバイブレーションを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("音とバイブレーション||Sound & vibration")
                     tap("音とバイブレーション||Sound & vibration")
@@ -143,7 +143,7 @@ class デモ_Android設定 {
         scenario {
             scene(1, "デバイス情報を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     // Android 16/ja は「エミュレートされたデバイスについて」、15/en は「About emulated device」(実機は「デバイス情報」/「About phone」)
                     scrollTo("エミュレートされたデバイスについて||About emulated device||デバイス情報||About phone", maxSwipes: 12)
@@ -163,7 +163,7 @@ class デモ_Android設定 {
             }
             scene(3, "設定トップへ戻してアプリを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     tap("アプリ||Apps")
                 }.expectation {
@@ -172,7 +172,7 @@ class デモ_Android設定 {
             }
             scene(4, "設定トップへ戻して位置情報を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("位置情報||Location", maxSwipes: 12)
                     tap("位置情報||Location")
@@ -182,7 +182,7 @@ class デモ_Android設定 {
             }
             scene(5, "設定トップへ戻してユーザー補助を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("ユーザー補助||Accessibility", maxSwipes: 12)
                     tap("ユーザー補助||Accessibility")
@@ -207,7 +207,7 @@ class デモ_Android設定 {
         scenario {
             scene(1, "ユーザー補助まで下方向にスクロールする") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("ユーザー補助||Accessibility", maxSwipes: 15)
                 }.expectation {
@@ -249,7 +249,7 @@ class デモ_Android設定 {
         scenario {
             scene(1, "設定アプリを起動する") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.expectation {
                     exist("ネットワークとインターネット||Network & internet")
                 }
@@ -268,7 +268,7 @@ class デモ_Android設定 {
             }
             scene(4, "設定アプリへ戻る") {
                 action {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.expectation {
                     exist("ネットワークとインターネット||Network & internet")
                 }

@@ -11,7 +11,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.flutter")
+@TestClass
 class 待機とタイムアウトが正しく効くこと {
 
     @Test("暗黙待ち・notExist/countIs・相対セレクタとスコープ・状態フィルタ・appIs/screenshot/waitForDisplay/verify")

@@ -10,7 +10,7 @@
 // ModelManagerError(1001))幾何は効く = FM 不在時のフォールバックの確認でもある。
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class 可視性の幾何 {
 
     @Test("木に居るが中心が画面外の要素への exist は落ちる(陽性対照・落ちるのが正常)")

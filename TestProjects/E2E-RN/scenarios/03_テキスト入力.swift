@@ -20,7 +20,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.rn")
+@TestClass
 class テキスト入力が正しくechoされること {
 
     @Test("単一行・パスワードの入力値が echo され送信/クリアが効く・secureTextField 型(予測)・clearInput・キーボード表示状態・pressEnter/末尾改行の IME アクション")

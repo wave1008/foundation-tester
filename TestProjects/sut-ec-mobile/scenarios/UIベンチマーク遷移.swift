@@ -16,7 +16,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
+@TestClass  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class UIベンチマークを操作できること {
 
     // launchApp は直前画面から再開する。各 @Test の前に毎回実行され、

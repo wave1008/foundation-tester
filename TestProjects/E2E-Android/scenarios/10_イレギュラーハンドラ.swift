@@ -8,7 +8,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.android", platform: "android")
+@TestClass(platform: "android")
 class イレギュラーハンドラーが不定なダイアログを自動的に閉じること {
 
     // 宣言の寿命はシナリオ1本。以降どのステップでも #txt_dialog_title が出た時点で

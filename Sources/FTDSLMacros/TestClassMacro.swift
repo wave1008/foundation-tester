@@ -1,4 +1,4 @@
-// @TestClass(app:platform:) の実装。
+// @TestClass(platform:) の実装。
 // - extension ロール: FTTestClassDefinition conformance と ftDescriptor(@Test メソッドの一覧)を生成
 // - peer ロール: objc ランタイム発見用の登録クラス __FTReg_<クラス名> を生成
 // マクロは糖衣であり、生成物は FTDSL の普通のプロトコル conformance +クラス。手書きでも同じものが書ける。
@@ -56,7 +56,7 @@ public struct TestClassMacro {
     }
 
     /// 同一クラス内に「引数なし・非async・非throws」の指定名メソッドがあるか
-    /// (beforeEach / afterEach / setUpDevice / tearDownDevice のライフサイクル検出。基底クラスからの継承は見ない = 同じクラスに書く)
+    /// (beforeAll / afterAll / beforeEach / afterEach / setUpDevice / tearDownDevice のライフサイクル検出。基底クラスからの継承は見ない = 同じクラスに書く)
     static func hasLifecycleMethod(_ name: String, in declaration: some DeclGroupSyntax) -> Bool {
         declaration.memberBlock.members.contains { member in
             guard let fn = member.decl.as(FunctionDeclSyntax.self), fn.name.text == name else {
@@ -156,22 +156,14 @@ public struct TestClassMacro {
         return nil
     }
 
-    /// @TestClass(app: "...", platform: "...") の引数式を取り出す(式は verbatim 転写)。
-    /// 省略時は "nil" ―― 空文字にすると「アプリ未指定」と「空文字を指定した」が descriptor で
-    /// 区別できなくなり、実行プロファイルからの解決へ落ちない
-    static func arguments(of node: AttributeSyntax) -> (app: String, platform: String) {
-        var app = "nil"
-        var platform = "nil"
+    /// @TestClass(platform: "...") の引数式を取り出す(式は verbatim 転写)。省略時は "nil"
+    static func platformArgument(of node: AttributeSyntax) -> String {
         if let args = node.arguments?.as(LabeledExprListSyntax.self) {
-            for arg in args {
-                switch arg.label?.text {
-                case "app": app = arg.expression.trimmedDescription
-                case "platform": platform = arg.expression.trimmedDescription
-                default: break
-                }
+            for arg in args where arg.label?.text == "platform" {
+                return arg.expression.trimmedDescription
             }
         }
-        return (app, platform)
+        return "nil"
     }
 
     static func requireClass(_ declaration: some DeclGroupSyntax,
@@ -202,7 +194,7 @@ extension TestClassMacro: ExtensionMacro {
         guard !protocols.isEmpty else { return [] }
 
         let className = cls.name.text
-        let (app, platform) = arguments(of: node)
+        let platform = platformArgument(of: node)
         let methods = scenarioMethods(in: declaration, context: context)
         // 診断は extension ロールの1箇所だけで出す(peer ロールでも出すと同じ警告が2回出る)
         diagnoseRenamedLifecycle(in: declaration, context: context)
@@ -215,10 +207,12 @@ extension TestClassMacro: ExtensionMacro {
         // クラスに @Draft が付いていれば全シナリオが実装中扱い
         let classDraft = hasDraft(cls.attributes)
 
-        // setUpDevice/beforeEach/afterEach があれば run クロージャに織り込む。ftRunSetUpDevice/ftRunBeforeEach/ftRunAfterEach で
+        // beforeAll/setUpDevice/beforeEach/afterEach があれば run クロージャに織り込む。ftRunBeforeAll/ftRunSetUpDevice/ftRunBeforeEach/ftRunAfterEach で
         // 包むのは記録のセクション分けと、失敗時の扱い(beforeEach 失敗=シナリオ中断 / afterEach=失敗後も実行)のため。
         // setUpDevice を走らせるかは実行時に親が決める(ftRunSetUpDevice が core.runSetUpDevice を見る)。
-        // 順序は setUpDevice → beforeEach → 本体 → afterEach
+        // beforeAll も同じ(ftRunBeforeAll が core.runBeforeAll を見る。run 全体で1回)。
+        // 順序は beforeAll → setUpDevice → beforeEach → 本体 → afterEach
+        let hasBeforeAll = hasLifecycleMethod("beforeAll", in: declaration)
         let hasSetUpDevice = hasLifecycleMethod("setUpDevice", in: declaration)
         let hasBeforeEach = hasLifecycleMethod("beforeEach", in: declaration)
         let hasAfterEach = hasLifecycleMethod("afterEach", in: declaration)
@@ -228,13 +222,19 @@ extension TestClassMacro: ExtensionMacro {
             ? ",\n            tearDownDevice: { let ftInstance = \(className)(); "
               + "FTDSL.ftRunTearDownDevice { ftInstance.tearDownDevice() } }"
             : ""
+        // afterAll も run クロージャに入れない(親が run の最後に専用の子で呼ぶ。Descriptors.swift の欄)
+        let afterAllArg = hasLifecycleMethod("afterAll", in: declaration)
+            ? ",\n            afterAll: { let ftInstance = \(className)(); "
+              + "FTDSL.ftRunAfterAll { ftInstance.afterAll() } }"
+            : ""
         let entries = methods.map { m in
             let deletedArg = (classDeleted || m.deleted) ? "\n                deleted: true," : ""
             let draftArg = (classDraft || m.draft) ? "\n                draft: true," : ""
             // ライフサイクル無しのときは 1 式のまま(生成コードを増やさない)
             var body = "\(className)().\(m.name)()"
-            if hasSetUpDevice || hasBeforeEach || hasAfterEach {
+            if hasBeforeAll || hasSetUpDevice || hasBeforeEach || hasAfterEach {
                 body = "let ftInstance = \(className)(); "
+                if hasBeforeAll { body += "FTDSL.ftRunBeforeAll { ftInstance.beforeAll() }; " }
                 if hasSetUpDevice { body += "FTDSL.ftRunSetUpDevice { ftInstance.setUpDevice() }; " }
                 if hasBeforeEach { body += "FTDSL.ftRunBeforeEach { ftInstance.beforeEach() }; " }
                 body += "ftInstance.\(m.name)()"
@@ -256,11 +256,10 @@ extension TestClassMacro: ExtensionMacro {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: \(raw: literalString(className)),
-                        app: \(raw: app),
                         platform: \(raw: platform),
                         scenarios: [
             \(raw: entries)
-                        ]\(raw: tearDownDeviceArg))
+                        ]\(raw: tearDownDeviceArg)\(raw: hasBeforeAll ? ",\n            hasBeforeAll: true" : "")\(raw: afterAllArg))
                 }
             }
             """)

@@ -7,7 +7,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.android.settings", platform: "android")
+@TestClass(platform: "android")
 class デモ_Android設定2 {
 
     @Test("ストレージの使用量とカテゴリを確認できる")
@@ -15,7 +15,7 @@ class デモ_Android設定2 {
         scenario {
             scene(1, "ストレージを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("ストレージ||Storage", maxSwipes: 12)
                     tap("ストレージ||Storage")
@@ -41,7 +41,7 @@ class デモ_Android設定2 {
         scenario {
             scene(1, "システムを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("システム||System", maxSwipes: 12)
                     tap("システム||System")
@@ -67,7 +67,7 @@ class デモ_Android設定2 {
         scenario {
             scene(1, "モードを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     tap("モード||Modes")
                 }.expectation {
@@ -91,7 +91,7 @@ class デモ_Android設定2 {
         scenario {
             scene(1, "パスワードとアカウントを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("パスワード、パスキー、アカウント||Passwords, passkeys & accounts", maxSwipes: 12)
                     tap("パスワード、パスキー、アカウント||Passwords, passkeys & accounts")
@@ -116,7 +116,7 @@ class デモ_Android設定2 {
         scenario {
             scene(1, "ネットワークとインターネット > インターネット を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     tap("ネットワークとインターネット||Network & internet")
                     tap("インターネット||Internet")

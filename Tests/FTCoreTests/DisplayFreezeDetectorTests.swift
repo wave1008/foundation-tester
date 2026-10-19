@@ -76,11 +76,10 @@ final class LaneDisplayCheckOrchestratorPartsTests: XCTestCase {
         XCTAssertEqual(na, "android only")
     }
 
-    /// 前面へ戻すのはシナリオが使ったアプリ(`@TestClass(app:)` がプロファイルに勝つ)
-    func testRestoreAppFollowsTheScenarioDeclarationFirst() {
-        XCTAssertEqual(RunOrchestrator.restoreAppID(declared: "com.b", fromProfile: "com.a", scenarioID: "X.S1"), "com.b")
-        XCTAssertEqual(RunOrchestrator.restoreAppID(declared: nil, fromProfile: "com.a", scenarioID: "X.S1"), "com.a")
-        XCTAssertNil(RunOrchestrator.restoreAppID(declared: nil, fromProfile: nil, scenarioID: "X.S1"))
+    /// 前面へ戻すのは実行プロファイルのアプリ。決まらなければ戻さない
+    func testRestoreAppFollowsTheRunProfile() {
+        XCTAssertEqual(RunOrchestrator.restoreAppID(fromProfile: "com.a", scenarioID: "X.S1"), "com.a")
+        XCTAssertNil(RunOrchestrator.restoreAppID(fromProfile: nil, scenarioID: "X.S1"))
     }
 }
 

@@ -8,7 +8,7 @@ final class ScenarioSourceLocationTests: XCTestCase {
     private let source = """
     import FTDSL
 
-    @TestClass(app: "com.example.app", platform: "android")
+    @TestClass(platform: "android")
     class ログインテスト {
 
         @Test("ログインとエラー表示")
@@ -23,7 +23,7 @@ final class ScenarioSourceLocationTests: XCTestCase {
         }
     }
 
-    @TestClass(app: "com.example.app")
+    @TestClass
     public final class Network_internet_を開いて {
 
         @Test("「Network & internet」を開いて確認する")

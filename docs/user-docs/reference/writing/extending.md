@@ -71,7 +71,7 @@ To verify values that do not depend on the screen (API responses, computed value
   that the interruption may have swallowed, so write the recovery in a function if you need one. **Only do this for
   operations that are safe to repeat (such as a tap that moves to another screen).** Resending a submit or a purchase
   can run it twice.
-- Per-test setup and cleanup go in `beforeEach()` / `afterEach()`; preparation and cleanup that should run once per
+- Per-test setup and cleanup go in `beforeEach()` / `afterEach()`; preparation that should run once per run goes in `beforeAll()`; preparation and cleanup that should run once per
   device go in `setUpDevice()` / `tearDownDevice()`.
 
 ## 3. Use test data and talk to external servers
@@ -82,7 +82,7 @@ To verify values that do not depend on the screen (API responses, computed value
 | `dataFile()` | Using CSV, JSON, images and other files as files |
 | `addMedia()` | Adding photos and videos to the device's photo library (not possible on a physical iOS device) |
 | `httpRequest` / `fleetestURLSession` | Creating test data through an API, cleaning up, reading server-side state |
-| [`writeMemo` / `readMemo`](../commands/memo.md) | Passing values prepared in `setUpDevice()` to other scenarios |
+| [`writeMemo` / `readMemo`](../commands/memo.md) | Passing values prepared in `beforeAll()` to other scenarios |
 
 Common uses:
 

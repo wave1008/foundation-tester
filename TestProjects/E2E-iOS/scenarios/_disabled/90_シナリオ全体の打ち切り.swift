@@ -7,7 +7,7 @@
 // **緑になったら退行**(@Test の値が watchdog に届いていない)。
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class シナリオ全体の打ち切り {
 
     @Test("出力を続けていても @Test の上限(15 秒)で打ち切られる(落ちるのが正常)", scenarioTimeout: 15)

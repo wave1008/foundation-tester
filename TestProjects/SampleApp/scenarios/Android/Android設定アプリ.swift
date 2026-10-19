@@ -4,7 +4,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.android.settings", platform: "android")
+@TestClass(platform: "android")
 class Android設定アプリ {
 
     @Test("「Network & internet」を開いて、「Internet」が表示されることを確認する")
@@ -12,7 +12,7 @@ class Android設定アプリ {
         scenario {
             scene(1) {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     tap("ネットワークとインターネット||Network & internet")  // 「Network & internet」を開く(日本語/英語ロケール両対応)
                 }.expectation {

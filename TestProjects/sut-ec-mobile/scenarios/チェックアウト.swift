@@ -17,7 +17,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
+@TestClass  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class チェックアウトできること {
 
     private let 氏名 = "E2E チェックアウト"

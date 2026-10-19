@@ -41,7 +41,7 @@
 | `--device <名>` | 実行プロファイルのそのデバイスだけで実行する(複数回指定可)。`--broadcast` の絞り込みにも使える |
 | `--all-machines` | `--device` の名前が複数のマシンのデバイスに当たるとき、断らずに当たった全マシンで実行する |
 | `--platform <ios\|android>` | `--profile` 無しでの対象プラットフォーム(既定 `ios`) |
-| `--app-id <bundleID>` | `@TestClass(app:)` 未指定シナリオの既定アプリ。`--profile` 無しのときだけ必要。`--set app=...` とは別物(実行プロファイルの `app` キーはアプリ**プロファイル名**を指す) |
+| `--app-id <bundleID>` | テスト対象のアプリの bundle ID。`--profile` 無しのときだけ必要(プロファイルがあれば実行プロファイルのアプリプロファイルから決まる)。`--set app=...` とは別物(実行プロファイルの `app` キーはアプリ**プロファイル名**を指す) |
 | `--serial <s>` | Android デバイスの serial(`--profile` 無しのとき) |
 
 最新の全一覧は `fleetest run --help` を実行してください。

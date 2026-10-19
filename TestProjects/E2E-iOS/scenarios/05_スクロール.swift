@@ -14,7 +14,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class スクロールで折り返し下の要素に到達できること {
 
     @Test("scrollTo 到達・Cell ラベル・非スクロール契約・swipeElementToElement・notExist(scroll:)・固定ヘッダ・部分一致・Shirates 準拠コマンド")

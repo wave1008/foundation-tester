@@ -773,7 +773,7 @@ extension RunProfileDocument {
     /// `fleetest run`(reportDir)/`fleetest api run`(reportDir/defaultTimeout/scenarioTimeout)が
     /// それぞれ自分の持つ専用フラグの分だけ呼ぶ。**`--app-id`/`--runner` はここでは扱わない** ——
     /// CLI の `--app-id`/`--runner` とプロファイルキー `app` は別物(前者は
-    /// `@TestClass(app:)` 省略時の既定アプリ/ディスパッチ先、後者はアプリ**プロファイル名**)
+    /// プロファイル無しの実行のアプリ/ディスパッチ先、後者はアプリ**プロファイル名**)
     public static func flagOverrideCollision(
         flag: String, key: String, flagIsSet: Bool, overrides: [String: RunProfileSetValue]
     ) -> String? {

@@ -143,7 +143,7 @@ scenarios the AI assistant wrote, or to write some yourself.
 - Syncing
     - [wait, waitForDisplay, waitForClose, waitForSettle](reference/commands/wait.md)
 - Descriptor
-    - [group, procedure, beforeEach, afterEach, setUpDevice, tearDownDevice](reference/commands/descriptors.md)
+    - [group, procedure, beforeEach, afterEach, beforeAll, afterAll, setUpDevice, tearDownDevice](reference/commands/descriptors.md)
 - Screenshot
     - [screenshot](reference/commands/screenshot.md)
 - Handling irregulars

@@ -8,7 +8,7 @@ import XCTest
 final class LPTSchedulerTests: XCTestCase {
 
     private func item(_ id: String) -> ScenarioRunItem {
-        ScenarioRunItem(info: ScenarioInfo(id: id, title: id, app: "SampleApp",
+        ScenarioRunItem(info: ScenarioInfo(id: id, title: id,
                                            platform: nil, deleted: false))
     }
 
@@ -80,7 +80,7 @@ final class LPTSchedulerTests: XCTestCase {
     // MARK: - platform 別の実績
 
     private func iosItem(_ id: String) -> ScenarioRunItem {
-        ScenarioRunItem(info: ScenarioInfo(id: id, title: id, app: "SampleApp",
+        ScenarioRunItem(info: ScenarioInfo(id: id, title: id,
                                            platform: "ios", deleted: false))
     }
 

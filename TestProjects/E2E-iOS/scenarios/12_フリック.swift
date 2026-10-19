@@ -5,7 +5,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class フリックが正しく動くこと {
 
     @Test("flick 8方向がスクロール容器と横カルーセルを実際に動かす")

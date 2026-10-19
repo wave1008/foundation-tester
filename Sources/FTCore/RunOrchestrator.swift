@@ -785,6 +785,7 @@ public enum ScenarioRunner {
         let passed = await ScenarioHost.run(
             project: project, scenarioID: item.info.id, connection: worker.connection,
             deviceSession: deviceSession,
+            classHasBeforeAll: item.info.beforeAll,
             scenarioTimeoutOverride: item.info.scenarioTimeout,
             settings: settings, reportDir: reportDir.path,
             debug: debug, recording: recording,
@@ -984,6 +985,14 @@ public final class RunOrchestrator: Sendable {
     /// run 全体で1つ。レーン鍵(論理名)ごとのデバイスセッション。復帰したワーカーも同じ論理名なので
     /// 同じセッションを引き継ぐ(復帰はアプリのデータを消さないので setUpDevice は再実行しない)
     private let deviceSessions = RunDeviceSessionBook()
+    /// 仕事を最後まで終えた(離脱しなかった)デバイス。afterAll を走らせる先の候補(終えた順)
+    private struct FinishedLane: Sendable {
+        let label: String
+        let platform: String
+        let connection: DriverConnection
+        let leaseKey: String?
+    }
+    private let finishedLanes = LockedValue<[FinishedLane]>([])
     /// run profile の record:true 時のワーカー動画録画(nil = 無効)。VideoRecordingCoordinator.swift
     private let videoRecording: VideoRecordingCoordinator?
     /// recordingFinalizing を出す時点の判定(TestingSlots の宣言参照)
@@ -1080,7 +1089,7 @@ public final class RunOrchestrator: Sendable {
     /// 呼び出し側(fleetest ターゲット)が InstallHandlerFactory 経由で注入する
     private let installHandler: (@Sendable (RunWorker, String?) async -> (ok: Bool, message: String))?
     /// 実行プロファイルが解決した bundle ID。**platform 別**(ios/android で
-    /// 別の ID になりうるので単一値にできない)。`@TestClass(app:)` 未指定シナリオの既定アプリ
+    /// 別の ID になりうるので単一値にできない)。シナリオのアプリ
     private let appBundleIDs: [String: String]
     /// 実行プロファイルが解決したアプリ。**platform 別**(appBundleIDs と同じ理由)。
     /// 子の UI フレームワーク判定にパッケージのパスを渡すために持つ —— 実機は simctl で
@@ -1491,6 +1500,45 @@ public final class RunOrchestrator: Sendable {
             return failedAcrossWorkers
         }
 
+        // **全デバイスの仕事が終わってから** afterAll を run × クラスで1回(RunSharedSession の申告順)。
+        // 走らせる先はそのクラスのシナリオが走った OS で、仕事を最後まで終えたデバイスのうち最初のもの。
+        // そのデバイスの lease は runWorker が外し済みなので、走らせる間だけ取り直す(モニターを割り込ませない)
+        if await !interruptRequested.isRequested() {
+            let lanes = finishedLanes.withLock { $0 }
+            // 選んだデバイスの名前(runAfterAlls はクラスごとに target を1回ずつ申告順に呼び、結果も同じ順で返す)
+            let chosenLabels = LockedValue<[String]>([])
+            let outcomes = await ScenarioHost.runAfterAlls(
+                project: project, shared: deviceSessions.shared,
+                target: { [appTargets, appBundleIDs] platforms in
+                    guard let lane = lanes.first(where: { platforms.isEmpty || platforms.contains($0.platform) })
+                    else {
+                        chosenLabels.withLock { $0.append("run") }
+                        return nil
+                    }
+                    chosenLabels.withLock { $0.append(lane.label) }
+                    return ScenarioHost.LifecycleTarget(
+                        connection: lane.connection,
+                        appPath: appTargets[lane.platform]?.packagePath(physical: lane.connection.physical),
+                        appName: appTargets[lane.platform]?.appName,
+                        appBundleID: appBundleIDs[lane.platform])
+                },
+                settings: settings, reportDir: reportDir.path, dryRun: false,
+                registerChildProcess: registerChildProcess,
+                acquire: { [runLeases] connection in
+                    guard let key = connection.serial ?? connection.udid else { return }
+                    await runLeases.acquire(key)
+                },
+                release: { [runLeases] connection in
+                    guard let key = connection.serial ?? connection.udid else { return }
+                    await runLeases.release(key)
+                })
+            let labels = chosenLabels.withLock { $0 }
+            for (index, outcome) in outcomes.enumerated() {
+                let label = index < labels.count ? labels[index] : "run"
+                continuation.yield(.workerLog(worker: label, message: ScenarioHost.describe(outcome)))
+            }
+        }
+
         heartbeat?.cancel()
         // 外し忘れた lease がないよう最終掃除(通常は runWorker / superviseWorker が既に外している)
         await runLeases.releaseAll()
@@ -1592,6 +1640,9 @@ public final class RunOrchestrator: Sendable {
         while true {
             switch await runWorker(current, queue: queue, revived: revives > 0) {
             case .completed(let f):
+                let lane = FinishedLane(label: current.label, platform: current.platform,
+                                        connection: current.connection, leaseKey: Self.leaseKey(current))
+                finishedLanes.withLock { $0.append(lane) }
                 return totalFailed + f
             case .retired(let f, let retired):
                 totalFailed += f
@@ -1642,11 +1693,11 @@ public final class RunOrchestrator: Sendable {
     /// 振り直しの上限で取り消せない回は、記録を失敗へ書き換えて数と揃える(成功の記録のまま failed だけ増やすと、個別 JSON・
     /// `ft_run_status` の失敗一覧・`--failed` が run の集計と食い違う)。読み手への終了イベントは確認まで保留して失敗として
     /// 流している(runWorker の heldFinish)。理由はそのレーンのログに 1 行出す
-    /// 確認の後に前面へ戻すアプリ = **そのシナリオが使ったアプリ**(`@TestClass(app:)` が勝つ。子と同じ `ScenarioAppResolution`)。
+    /// 確認の後に前面へ戻すアプリ = **そのシナリオが使ったアプリ**(子と同じ `ScenarioAppResolution`)。
     /// 決まらなければ nil(戻さない)
-    static func restoreAppID(declared: String?, fromProfile: String?, scenarioID: String) -> String? {
-        if case .resolved(let bundleID, _) = ScenarioAppResolution.resolve(
-            declared: declared, fromProfile: fromProfile, scenarioID: scenarioID) { return bundleID }
+    static func restoreAppID(fromProfile: String?, scenarioID: String) -> String? {
+        if case .resolved(let bundleID) = ScenarioAppResolution.resolve(
+            fromProfile: fromProfile, scenarioID: scenarioID) { return bundleID }
         return nil
     }
 
@@ -1816,7 +1867,7 @@ public final class RunOrchestrator: Sendable {
             if outcome != .frozen, outcome != .notApplicable, let checkLaneDisplay,
                await !interruptRequested.isRequested(),
                case .frozen(let detail, let recovery) = await checkLaneDisplay(
-                   worker, Self.restoreAppID(declared: item.info.app, fromProfile: appBundleIDs[worker.platform],
+                   worker, Self.restoreAppID(fromProfile: appBundleIDs[worker.platform],
                                              scenarioID: item.info.id), { [continuation] message in
                        continuation.yield(.workerLog(worker: worker.label, message: message))
                    }) {

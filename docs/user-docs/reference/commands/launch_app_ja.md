@@ -30,17 +30,18 @@ terminateApp()
   どの呼び出しもエントリー画面から始まります。
 - **iOS の既定(hybrid)では、シナリオの途中にそのシナリオのアプリ以外を `launchApp` / `restartApp` すると失敗します。**
   in-app エンジンはテスト対象のアプリの中で動くので、別のアプリを駆動できないためです。別のアプリ(設定アプリ等)の手順は、
-  そのアプリを `@TestClass(app: "com.apple.Preferences")` のように書いた別のシナリオに置いてください。そのシナリオは
+  そのアプリをアプリプロファイルに持つ実行プロファイルの別のシナリオに置いてください。そのシナリオは
   自動で XCUITest エンジンで動きます。
 - **既定アプリ**(`appID` を省略したとき。`launchApp` / `restartApp` / `terminateApp` /
-  `removeApp` / `clearAppData` / `appIs` 共通)は次の順で決まります。
-  1. `@TestClass(app: "...")` の明示(書いてあればこれが勝ちます)
-  2. 実行プロファイルの `app` → アプリプロファイル → 実行中 platform の `ios.app` / `android.app`
-
-  **通常は `app:` を書きません** — 書かなければ同じシナリオが `--profile ios-run` と
+  `removeApp` / `clearAppData` / `appIs` 共通)は実行プロファイルの
+  `app` → アプリプロファイル → 実行中 platform の `ios.app` / `android.app` の順で決まります。
+  `@TestClass` に `app:` は書けない(書くとコンパイルエラー)ので、同じシナリオが `--profile ios-run` と
   `--profile android-run` でそれぞれのアプリを対象に走り、クラスを複製する必要がありません。
-  `app:` を書くのは、1プロジェクトに複数アプリのシナリオが混在していてシナリオ側で対象を
-  固定したいときだけです。
+  プロファイル無し(`--port` / `--serial`)のときは `--app-id <bundleID>` で渡します。
+
+  複数のアプリをテストするプロジェクトは、アプリごとに実行プロファイルを分けてそのシナリオを置くか、
+  別のアプリへ切り替えるステップで bundle ID を明示します(`launchApp("<ID>")`。
+  `restartApp("<ID>")`・`clearAppData("<ID>")` も同じ)。
 - **`openURL` はプロセスを再起動しません** — ここが `launchApp(url:)` との違いです(あちらは
   先にプロセスを再起動してから配送します)。アプリが起動済みの状態でディープリンクの着信を
   検証したいときに使います。

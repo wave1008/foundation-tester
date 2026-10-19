@@ -7,7 +7,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.rn")
+@TestClass
 class ディープリンクで意図した画面に遷移すること {
 
     @Test("launchApp(url:) で目的の画面から始まる")

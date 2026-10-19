@@ -36,7 +36,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class システムアラートの陽性対照 {
 
     @Test("覆われている間に背面を撃つと止まる(失敗するのが正解)")

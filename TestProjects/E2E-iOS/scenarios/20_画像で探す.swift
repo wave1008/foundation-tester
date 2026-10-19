@@ -10,7 +10,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class 画像で要素を探す {
 
     @Test("id の無いスイッチを画像で掴んで叩く")

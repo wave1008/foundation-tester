@@ -9,7 +9,7 @@ import FTCore
 final class ScenarioSelectionTests: XCTestCase {
 
     private func info(_ id: String, deleted: Bool = false, draft: Bool = false) -> ScenarioInfo {
-        ScenarioInfo(id: id, title: id, app: "SampleApp", platform: nil, deleted: deleted, draft: draft)
+        ScenarioInfo(id: id, title: id, platform: nil, deleted: deleted, draft: draft)
     }
 
     private lazy var all: [ScenarioInfo] = [
@@ -134,7 +134,7 @@ final class ScenarioSelectionTests: XCTestCase {
             let dir = folder.isEmpty ? scenariosDir : scenariosDir.appendingPathComponent(folder)
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             for className in classNames {
-                let source = "@TestClass(app: \"SampleApp\")\nclass \(className) {}\n"
+                let source = "@TestClass\nclass \(className) {}\n"
                 try Data(source.utf8).write(to: dir.appendingPathComponent("\(className).swift"))
             }
         }

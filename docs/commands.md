@@ -78,7 +78,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `clearInput` / `pressEnter`(Flutter のアプリ) | 入力欄の受け口に届かない |
 | `waitForSettle` | 画面の撮影を XCUITest ランナーで行う |
 | `appIs(他のアプリ)` | in-app は自分のアプリが前面かどうかしか答えられない(hybrid は XCUITest のランナーに聞くので答えられる) |
-| `launchApp(他のアプリ)` / `restartApp(他のアプリ)`(**hybrid でも**) | in-app は注入したアプリしか駆動できない。断って失敗する(422)。別のアプリの手順は、そのアプリを `@TestClass(app:)` に書いた別のシナリオに置く(注入先と違うシナリオは丸ごと XCUITest で動く) |
+| `launchApp(他のアプリ)` / `restartApp(他のアプリ)`(**hybrid でも**) | in-app は注入したアプリしか駆動できない。断って失敗する(422)。別のアプリの手順は、そのアプリを対象にする別の実行プロファイル(別フォルダ)のシナリオに置く(注入先と違うシナリオは丸ごと XCUITest で動く) |
 | SpringBoard のダイアログを指すセレクタ・`iosAlertHandler` | アプリのプロセスしか見えない(下の §システムダイアログ) |
 
 ## 操作
@@ -459,7 +459,7 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 | `checkIsON(prefer:)` / `checkIsOFF(prefer:)` | チェック状態の検証。**対象は直前に掴んだ要素**。**`prefer:`(`.classifier` / `.accessibility`。省略 = 実行プロファイルの `preferCheckStateClassifier`)は状態を読む先の優先を1コマンドだけ上書きする**(`FlowStep.preferCheckStateClassifier`。意味はプロファイルのキーと同じ = `.accessibility` でも a11y が状態を報告しない要素は分類器へ落ちる。指定は記録の説明に `(prefer: …)` と出る。witness は全 SUT の `21_チェック状態の判定元.swift`)。状態の読み方は `CheckStateReading`(selected trait・スイッチの value "1"/"0"・RN の `checkbox, checked` 等。docs/design.md)。**状態を報告しない要素**(SwiftUI の Button で自作したチェックボックス等)の `checkIsON` は「reports no check state」で失敗し(見本はあるのに分類器を使えなかった = 学習・読み込み・対照の失敗のときは、見本を置く案内の代わりに「CheckStateClassifier could not judge it from its image」とその理由を前に出す = `StepExecutor.checkStateFailure`)、`checkIsOFF` は通して run 終了時に警告する。indeterminate(一部だけ選択)はどちらでも失敗。オンしか報告しない実装(Compose iOS の Checkbox 等)は、同じシナリオで一度オンを見た要素なら報告の欠落をオフと読む。**プロジェクトの `vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]` に見本画像があれば、要素の画像を分類器(Shirates Vision の移植)で判定する**(実行プロファイルの `preferCheckStateClassifier` = 既定 true で a11y より優先・false なら a11y が状態を報告しない要素だけ。判定した回は注記 `check-state-classified`。`[INDETERMINATE]` の見本を置けば indeterminate も判定する。**分類器の判定で落ちたステップは、判定に使ったスクリーンショット全体をレポートのそのステップ行に添える**(`StepOutcome.evidenceImage`。`imageIs` も同じ)。**スクショのアプリの領域が一色なら分類しない**(黒でも白でも。a11y だけで判定・注記 `check-state-classifier-failed`・待ちの次の周回で撮り直す。黒い切り出しを ON の要素でも [OFF]・確信度 1.00 と答えた実測)。**推論のたびにラベルの違う見本2枚(対照)も掛け、どちらかを取り違えたら答えを使わない**(`VisionClassifier.Model.classify` → `ClassifyError.controlMismatch`。checkIsON/OFF は a11y だけで判定して注記 `check-state-classifier-failed`・`imageIs` は理由を添えて失敗。壊れた Vision / Core ML はエラーを返さず全部に同じラベルを確信度 1.00 で答える = 2026-09-19 負荷テストで ON の crop を [OFF] と 7 回。所要は 1 回 4.7ms → 15ms)。**Android は `isChecked` と `isSelected` の両方を見る**(2026-08-07) — タブや選択行は `isChecked` を立てず `isSelected` だけで選択状態を出すため、以前はこの種の要素で永久に通らなかった |
 | `imageIs(label)` | 要素の**画像**のラベル検証(Shirates Vision の移植)。**対象は直前に掴んだ要素**。要素の枠で切ったスクリーンショットを DefaultClassifier(プロジェクトの `vision/classifiers/DefaultClassifier/` 以下の見本画像で学習。ラベル = 親フォルダの相対パスを `_` でつないだもの)に掛け、1位のラベルの最後の `[` 以降が `label` を含めば通る。見本が無い・`label` を含むラベルの見本が無いときは待たずに失敗。失敗文言に分類されたラベルと確信度が出る |
 | `keyboardIsShown(waitSeconds:)` / `keyboardIsNotShown(waitSeconds:)` | ソフトキーボードの表示/非表示の検証。開閉はアニメーションを伴うためタイムアウトまでポーリングする。**「非表示」を確定できるのは iOS in-app と Android だけ** — iOS の xcuitest エンジンは「キーボードを見た/不明」しか言えないため、`keyboardIsNotShown` は失敗する(キーボードが見えていれば「keyboard is still shown」、見ていなければ「cannot determine the keyboard state」。不明を非表示と読んで嘘の成功にしない設計) |
-| `screenLooksLike("画面の説明文")` | FM による**見た目の**画面検証(スクリーンショットと説明文の照合)。実行プロファイルで `screenLooksLike:false` の場合はスキップ(素通り)。**スクショがステータスバー以外真っ黒なら判定せずに見送る**(注記 `blank-screenshot`。FM は黒い絵を必ず「一致しない」と読む。凍結の根拠にはしない = 回復は撃たない。撮り直しだけが黒なら 1 枚目の不一致を返す) |
+| `screenLooksLike("画面の説明文")` | FM による**見た目の**画面検証(スクリーンショットと説明文の照合)。**アサーションには数えない**(これしか無い `expectation` / `verify` / シナリオには「アサーションが無い」警告が出る。落ちたときの中断は他の検証と同じ)。実行プロファイルで `screenLooksLike:false` の場合はスキップ(素通り)。**スクショがステータスバー以外真っ黒なら判定せずに見送る**(注記 `blank-screenshot`。FM は黒い絵を必ず「一致しない」と読む。凍結の根拠にはしない = 回復は撃たない。撮り直しだけが黒なら 1 枚目の不一致を返す) |
 | `appIs(id, waitSeconds: 15)` | フォアグラウンドのアプリが `id`(iOS=bundle ID / Android=package 名)と一致することの検証。**ニックネーム機構は無く ID を直接書く**(Shirates 準拠だが引数の意味だけ異なる)。`waitSeconds` までポーリング。**Android は失敗時に actual の package 名をメッセージへ含める**(iOS は前面 bundle ID を取得する手段が無いため含まれない) |
 
 > `screenLooksLike` とテキストの可視性検証の FM 段(`requireVisible` / `fmTextVisibilityCheck`)は FM に画像を渡すため
@@ -783,14 +783,14 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 `launchApp()` / `restartApp()` / `terminateApp()` / `removeApp()` / `clearAppData()` / `appIs()` が
 引数を省略したときの対象は、次の順で決まる:
 
-1. `@TestClass(app: "...")` の明示(**書いてあればこれが勝つ**)
-2. 実行プロファイル(`runs/<name>.json` の `app`)→ アプリプロファイル(`apps/<name>.json`)→
-   **実行中 platform の `ios.app` / `android.app`**
+実行プロファイル(`runs/<name>.json` の `app`)→ アプリプロファイル(`apps/<name>.json`)→
+**実行中 platform の `ios.app` / `android.app`** の順で決まる。
 
-**通常は `app:` を書かない**。書かなければ同じシナリオが `--profile ios-run` と `--profile android-run` で
-それぞれのアプリを対象に走る(OS で bundle ID が違っていてもクラスを複製しなくてよい)。
-`app:` を書くのは、1プロジェクトに複数アプリのシナリオが混在していてシナリオ側で固定したいときだけ。
-明示とプロファイルが食い違うと、明示を採ったうえで run ログに警告が1行出る。
+**`@TestClass` に `app:` は書けない**(書くとコンパイルエラー。`@TestClass` / `@TestClass(platform: "ios")` の2形だけ)。
+同じシナリオが `--profile ios-run` と `--profile android-run` でそれぞれのアプリを対象に走る
+(OS で bundle ID が違っていてもクラスを複製しなくてよい)。1プロジェクトで複数のアプリをテストするときは、
+アプリごとに実行プロファイル(とフォルダ)を分けるか、別のアプリへ切り替えるステップで
+`launchApp("<bundleID>")`(`restartApp("<bundleID>")`・`clearAppData("<bundleID>")` も同じ)に明示する。
 
 どちらからも決まらないとき(実行プロファイル無しの単独実行など)は明示エラーになる。
 `fleetest run --app-id <bundleID>` で渡すか、`--profile` を使う。
@@ -798,7 +798,7 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 
 | コマンド | 説明 |
 |---|---|
-| `launchApp(bundleID?, url:?)` | 起動(省略時は**この run の既定アプリ** = 実行プロファイル → アプリプロファイルの `<platform>.app`。`@TestClass(app:)` が書かれていればそちらが勝つ)。**iOS の hybrid / inapp で、シナリオの途中にこのシナリオのアプリ以外を起動すると失敗する**(in-app は注入したアプリしか駆動できない。別のアプリの手順は `@TestClass(app:)` に書いた別のシナリオへ)。**起動済みでも前面化ではなく、常にプロセスを終了してから起動し直す**(Android はブリッジが force-stop+起動、iOS は terminate 込み launch。エントリー画面から始まる)。`url:` を渡すと起動直後にその URL を配送する(配送の詳細・制約は `openURL` を参照)。**配送は最初の画面が描かれてから**(利用者が触れる要素が木に載るまで既定の待ち時間だけ待つ。React Native は JS が listener を登録するまで warm な URL を捨てるので、ブリッジが答えた直後に撃つと届かない。載らないまま配送したときは注記 `launch-url-before-interactive-ui`)。**起動の後の最初のロケータ操作は、解決の前に1回だけ配置の静止を待つ**(`StepExecutor.pendingLaunchSettle`。最初の1枚の後で全体が動く画面 = RN の safe area が後から効く形で、ずれる前の座標がすぐ上のボタンに当たった実測。静止した画面なら約 130ms。待っている間に動いた回は注記 `settled-after-launch`) |
+| `launchApp(bundleID?, url:?)` | 起動(省略時は**この run の既定アプリ** = 実行プロファイル → アプリプロファイルの `<platform>.app`。)。**iOS の hybrid / inapp で、シナリオの途中にこのシナリオのアプリ以外を起動すると失敗する**(in-app は注入したアプリしか駆動できない。別のアプリの手順は、そのアプリを対象にする別の実行プロファイルのシナリオへ)。**起動済みでも前面化ではなく、常にプロセスを終了してから起動し直す**(Android はブリッジが force-stop+起動、iOS は terminate 込み launch。エントリー画面から始まる)。`url:` を渡すと起動直後にその URL を配送する(配送の詳細・制約は `openURL` を参照)。**配送は最初の画面が描かれてから**(利用者が触れる要素が木に載るまで既定の待ち時間だけ待つ。React Native は JS が listener を登録するまで warm な URL を捨てるので、ブリッジが答えた直後に撃つと届かない。載らないまま配送したときは注記 `launch-url-before-interactive-ui`)。**起動の後の最初のロケータ操作は、解決の前に1回だけ配置の静止を待つ**(`StepExecutor.pendingLaunchSettle`。最初の1枚の後で全体が動く画面 = RN の safe area が後から効く形で、ずれる前の座標がすぐ上のボタンに当たった実測。静止した画面なら約 130ms。待っている間に動いた回は注記 `settled-after-launch`) |
 | `openURL(url)` | 起動済みのアプリへ URL(ディープリンク)を配送し、今の画面の上に遷移を積む(**アプリを再起動しない** = warm 配送。`launchApp(url:)` は逆に先にプロセスを再起動してから配送する)。配送はホスト側の外部コマンドで行う(ブリッジは経由しない): iOS シミュレータ = `simctl openurl` / iOS 実機 = `devicectl device process openURL` / Android = `adb shell am start -W -a android.intent.action.VIEW -d '<url>' <package>`。**カスタムスキーム前提** —— Universal Links/App Links(`https://`)は AASA/assetlinks.json の取得状態に左右され、シミュレータでは Safari に流れることがある。未起動のアプリに撃つと OS がアプリを起動して開くが、想定用途ではない。**iOS の in-app エンジンでは未起動のまま撃つと dylib が注入されずブリッジが死ぬ**ため、ドライバがブリッジ無応答を検知して注入起動してから配送し直す(利用者が意識する必要はないが、**cold start 検証そのものは in-app エンジンでは表現できない**)。iOS シミュレータでは配送直後に SpringBoard が出す初回の確認アラート(「"<表示名>"で開きますか?」。以後は端末+アプリの組で同意が永続する)を xcuitest/hybrid エンジンでは自動了承するが、**in-app エンジン単独では SpringBoard を見られないため自動了承できない**(初回は手動でアラートを閉じるか、事前に一度 xcuitest/hybrid で同意を済ませておく)。遷移は非同期なので直後の検証は通常どおりポーリングで待つ |
 | `restartApp(bundleID?)` | 終了してから起動(プロセス内状態のリセットに)。省略時の既定アプリは `launchApp()` と同じ解決 |
 | `terminateApp()` | 終了 |
@@ -832,8 +832,10 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 | `group("名前") { … }` | 記録に `[名前]` を前置するだけのまとまり(実行・失敗の扱いは素の列と同じ) |
 | `procedure("説明") { … }` | 手順に名前を付けて1つにまとめる(Shirates の `procedure` = `describe` + `silent`)。**中で DSL のコマンドを呼べる**(同期のブロック。DSL スレッドで実行)。中のステップは `[説明]` を前置して記録し、**レポート(.md)では畳む**(成功・skip は出さず `procedure "説明"` の1行だけ。失敗・判定不能・フォールバック・自己修復・`screenshot()` の絵は畳まない)。結果 JSON には全部残る。前段が失敗していれば中を実行しない(失敗後に走らせたくない処理の置き場)。throw は NG としてシナリオ中断。120 秒の上限は掛からない。データの投入は中で `httpRequest` を使う |
 | `func beforeEach()` / `func afterEach()` | テストクラスに書くと各 `@Test` の前後で自動実行。**afterEach は失敗後でも実行される**。改名前の `setUp()` / `tearDown()` は呼ばれない(普通のメソッドになる)ので、`@TestClass` の中に書くとビルド時に警告が出る |
-| `func setUpDevice()` | テストクラスに書くと、**1回の run × 1デバイス × 1クラスで高々1回**、そのデバイスに配られたそのクラスの最初のシナリオの `beforeEach()` の前に走る(順序は setUpDevice → beforeEach → 本体 → afterEach)。走らせるかは親(run を束ねる側)が決める。値を他のシナリオへ渡すなら §メモ。**インスタンスのプロパティはそのシナリオのプロセスだけで見える**(シナリオごとに別プロセス) |
+| `func beforeAll()` | テストクラスに書くと、**1回の run × 1クラスで1回だけ**、そのクラスのどのシナリオよりも前に(どのデバイスでも)走る。そのクラスの最初のシナリオのプロセスの中で走る(順序は beforeAll → setUpDevice → beforeEach → 本体 → afterEach)。走っている間、そのクラスのシナリオを受け取った他のデバイスは終わるまで待つ(待ちはシナリオの所要・タイムアウトに数えない)。run 共有の値は §メモ に書く。**失敗したら(または開始後にプロセスが落ちたら)撃ち直さず**、その run のそのクラスの残りのシナリオは走らせずに失敗として記録する(「beforeAll of <クラス> failed earlier in this run, so this scenario was not run」)。beforeAll を走らせるはずのシナリオが beforeAll の開始前に終わった場合(アプリが起動できない等)は、別のデバイスが引き継ぐ。**1つの run = 1つの fleetest プロセス**なので、run が複数のマシンに分かれる場合(`--fleet`・プロファイルのデバイスが複数のマシンにまたがる)はマシンごとに1回ずつ走る(制約) |
+| `func setUpDevice()` | テストクラスに書くと、**1回の run × 1デバイス × 1クラスで高々1回**、そのデバイスに配られたそのクラスの最初のシナリオの `beforeEach()` の前に走る(順序は setUpDevice → beforeEach → 本体 → afterEach)。走らせるかは親(run を束ねる側)が決める。デバイスごとの準備用(run 全体で1回なら `beforeAll()`)。値を他のシナリオへ渡すなら §メモ。**インスタンスのプロパティはそのシナリオのプロセスだけで見える**(シナリオごとに別プロセス) |
 | `func tearDownDevice()` | テストクラスに書くと、**そのデバイスがその run の仕事を終えた後**(キューを掃き切った後)に、そのデバイスでそのクラスのシナリオが1本でも走っていれば**1回だけ**、専用のプロセスで走る(共有キューでは「このデバイスでのクラス最後のシナリオ」が取り出し時点で決まらないため、シナリオのプロセスの中では走らせない)。`setUpDevice` の成否に関わらず走る(片付け)。メモは読める。**デバイスが途中で離脱した・中断した run では走らない**。結果は results / JUnit に載らず、run ログの1行(失敗なら ⚠️ と最初の失敗ステップ・レポートのパス)とレポート(`<クラス>.tearDownDevice`)に残る(合否・exit code は変えない) |
+| `func afterAll()` | テストクラスに書くと、**1回の run × 1クラスで1回だけ**、run の**全デバイスの仕事が終わった後**(各デバイスの `tearDownDevice()` の後)に、専用のプロセスで走る(Shirates の `afterAll` と同じ名前)。走るのは、その run でそのクラスのシナリオが1本でも走っていたときだけ。走らせるデバイスは、そのクラスのシナリオが走った OS で、仕事を最後まで終えたデバイスのうち1台。`beforeAll()` の成否に関わらず走る(片付け)。メモは読める。**中断した run では走らない**。走らせるデバイスが残っていなければ走らせず、run ログに「was not run」と1行残す。結果は results / JUnit に載らず、run ログの1行とレポート(`<クラス>.afterAll`)に残る(合否・exit code は変えない)。run が複数のマシンに分かれるとマシンごとに1回 |
 | `@TestClass(platform:)` / `@Test(platform:)` | **対象 OS の宣言**(`"ios"` / `"android"`)。両方あるとメソッド側が勝つ。宣言した OS を回さない実行プロファイルでは**そのシナリオを実行せず skipped(対象外)として記録する**(失敗ではなく、exit code も汚さない)。「iOS では意味がないテスト」(Wi-Fi プロキシ設定など)を、`ios { }` を空にして緑にする代わりに意図として残すためのもの。**実行プロファイルを使う run でだけ効く** —— `--port` / `--serial` の直指定は「この run が回す OS の集合」を宣言しないので従来どおり |
 | `@Test(scenarioTimeout:)` | **そのシナリオ1本だけの全体の打ち切り秒**(メソッドのみ・整数)。実行プロファイルの `scenarioTimeout`(`fleetest run` は `--set scenarioTimeout=`、`--scenario-timeout` は `fleetest api run` だけのフラグ。既定 600)より優先し、短くする向きも効く。0 以下はコンパイルエラー(式で渡して実行時に 0 以下なら、そのシナリオを起動せずに赤)。打ち切りの行には値の出所(`@Test scenarioTimeout` / `run profile scenarioTimeout` / `default`)が付く |
 | `@Deleted("理由")` | テストクラスまたは `@Test` メソッドに付けて**論理削除**する。一覧には「削除済み」として残り、全実行・フォルダ実行・クラス名指定の一括実行から**除外**される。完全一致 ID の明示指定でだけ実行できる。コードは残るので復活はアノテーションを外すだけ |
@@ -854,7 +856,7 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 - シナリオの外(MCP の `ft_batch` 等)では `lastElement` と同じく fatalError
 - dry-run でも本体は動くので返す(出力先は使い捨て)
 
-### メモ(デバイス単位の値の共有)
+### メモ(run 共有の値)
 
 シナリオ(`@Test`)は1本ずつ別プロセスで動くので、本の間で値を渡す口がメモ。名前・挙動は Shirates の Memo と同じ。
 
@@ -866,19 +868,23 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 | `element.memoTextAs(key)` | 掴んだ要素のテキスト(ラベル → 値のうち空でない最初のもの)を書き、要素を返す。要素を掴めていなければ失敗 |
 | `string.memoTextAs(key)` | 文字列を書き、その文字列を返す |
 
-- **共有範囲は「1回の run の同じデバイスで動くシナリオ」だけ**。別デバイスで書いた値は見えない
-  (読むと `""` + `memo-key-not-found`)。run をまたいでは持ち越さない。MCP の単発呼び出し・人が
-  ランナーを直接起動した実行は空から始まる(`ft_batch` はメモのコマンドを受けない)
-- **確実な使い方は「`setUpDevice()` で書き、各テストで読む」**。どのシナリオがどのデバイスに配られても、
-  そのデバイスの最初のシナリオが先に書くので読める
-- `setUpDevice()` が失敗したら、そのデバイスで同じクラスの後続シナリオは**走らせずに失敗として記録する**
-- `setUpDevice()` は**高々1回**。結果が不明でも(子が落ちた等)同じデバイスで撃ち直さない。
-  デバイスの復旧で同じ run の中に再実行もしない
-- 値の履歴は親が持ち(書き込みは子から親へ片道通知)、次のシナリオの起動時に写しが渡る。
+- **共有範囲は「1回の run のすべてのシナリオ(どのデバイスでも)」**。run をまたいでは持ち越さない。
+  MCP の単発呼び出し・人がランナーを直接起動した実行は空から始まる(`ft_batch` はメモのコマンドを受けない)
+- **確実な使い方は「`beforeAll()` で書き、各テストで読む」**。`beforeAll()` はどのシナリオよりも前に
+  1回だけ走る(他のデバイスは終わるまで待つ)ので、どのシナリオがどのデバイスに配られても読める
+- **制約**: シナリオが受け取るメモは**そのシナリオの開始時点のもの**(走っている間に別デバイスが書いた値は見えない)。
+  複数デバイスからの同時書き込みは直列化しない(ロックなし)。`clearMemo()` は run 全体のメモを消す。
+  run が複数のマシンに分かれる場合はマシンごとに別のメモ・別の `beforeAll()` になる
+- `beforeAll()` が失敗したら、その run のそのクラスの残りのシナリオは**走らせずに失敗として記録する**。
+  `beforeAll()` は撃ち直さない(結果が不明でも・デバイスの復旧でも)
+- `setUpDevice()` が失敗したら、そのデバイスで同じクラスの後続シナリオは**走らせずに失敗として記録する**。
+  `setUpDevice()` は**高々1回**で、結果が不明でも同じデバイスで撃ち直さない
+- 値の履歴は親が持ち(書き込みは子から親へ片道通知)、シナリオの起動時にその時点の写しが渡る。
   プロトコルは docs/design.md §デバイスセッション
 - **テストクラスのプロパティで受け渡そうとする形はビルド時に警告する**(`@TestClass` マクロの `SharedStateDiagnostics`)。
   書いた部分と読む部分が別プロセスで、読む側に同じプロセスの書き込み(`beforeEach` や自分自身)が1つも無いときだけ出す
-  (`beforeEach` で初期化して各テストで書き換える形は出さない)。見るのはライフサイクル4つと `@Test` の本体の
+  (`beforeEach` で初期化して各テストで書き換える形は出さない)。見るのはライフサイクル6つ(beforeAll / afterAll /
+  setUpDevice / tearDownDevice / beforeEach / afterEach)と `@Test` の本体の
   `x = …` / `x += …` / `self.x` / `Self.x` だけ = 出れば正しいが、出なければ安全とは限らない
 
 ### テストデータ・アカウント(`account` / `data`)

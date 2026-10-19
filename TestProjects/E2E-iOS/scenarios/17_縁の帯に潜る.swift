@@ -16,7 +16,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class 縁の帯に潜った対象 {
 
     @Test("固定フッタに潜ったボタンは送って外してから撃たれる")

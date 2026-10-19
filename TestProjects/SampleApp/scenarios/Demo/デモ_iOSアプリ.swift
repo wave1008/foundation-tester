@@ -1,5 +1,5 @@
 // デモ_iOSアプリ.swift
-// 4台並列デモ用(iOS 標準アプリ)。連絡先(@TestClass の app)を起点に、
+// 4台並列デモ用(iOS 標準アプリ)。連絡先(launchApp に明示)を起点に、
 // リマインダー・カレンダー・ファイルへ launchApp で切り替えて巡回する。
 // セレクタは iPhone 17 Pro(iOS 27.0)/ja_JP で実機確認済み。連絡先・カレンダー・ファイルは
 // 確認環境で初回ダイアログなし。リマインダーのみ「ようこそ」→iCloud同期確認 の2段ダイアログが出る
@@ -11,7 +11,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.apple.MobileAddressBook", platform: "ios")
+@TestClass(platform: "ios")
 class デモ_iOSアプリ {
 
     /// リマインダーの初回ダイアログ(ようこそ→iCloud同期確認)を消費する(出ない場合は無害)
@@ -37,7 +37,7 @@ class デモ_iOSアプリ {
         scenario {
             scene(1, "連絡先アプリを起動する") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.MobileAddressBook")
                 }.action {
                     ensureContactsList()
                 }.expectation {
@@ -215,7 +215,7 @@ class デモ_iOSアプリ {
         scenario {
             scene(1, "連絡先アプリを起動する") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.MobileAddressBook")
                 }.action {
                     ensureContactsList()
                 }.expectation {
@@ -238,7 +238,7 @@ class デモ_iOSアプリ {
             }
             scene(4, "連絡先アプリへ戻る") {
                 action {
-                    launchApp()
+                    launchApp("com.apple.MobileAddressBook")
                     ensureContactsList()
                 }.expectation {
                     exist("#連絡先")

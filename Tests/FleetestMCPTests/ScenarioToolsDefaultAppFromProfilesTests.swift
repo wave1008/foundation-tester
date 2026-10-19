@@ -1,5 +1,5 @@
 // `MCPServer.defaultAppFromProjectApps` — profile 引数の無い ft_run_scenario 呼び出しで、
-// @TestClass(app:) を書いていないシナリオの既定アプリをプロジェクトのアプリプロファイル
+// シナリオの既定アプリをプロジェクトのアプリプロファイル
 // (profiles/apps/*.json)から解決する判定(ディスク走査(loadAppProfiles)から切り出した純粋関数)。
 // この解決が無いと、profile を付けずに「今自分が駆動しているデバイス」でシナリオを回す手段が無く、
 // 案内どおり profile を足すと今度は「profile は udid と併用できない」で行き止まりになっていた。
@@ -57,19 +57,12 @@ final class ScenarioToolsDefaultAppFromProfilesTests: XCTestCase {
         XCTAssertEqual(result, .none)
     }
 
-    // MARK: - 曖昧なときに断るのは、既定アプリを使うシナリオがあるときだけ
+    // MARK: - 曖昧なときの断り文
 
-    func testAmbiguousDefaultAppIsNoReasonToRefuseWhenEveryScenarioNamesItsApp() {
-        let infos = [ScenarioInfo(id: "A.S0010", title: "", app: "com.example.a", platform: "ios"),
-                     ScenarioInfo(id: "A.S0020", title: "", app: "com.example.a", platform: "ios")]
-        XCTAssertNil(MCPServer.ambiguousDefaultAppRefusal(profileNames: ["x", "y"], infos: infos))
-    }
-
-    func testAmbiguousDefaultAppRefusesWhenAScenarioNeedsTheDefault() throws {
-        let infos = [ScenarioInfo(id: "A.S0010", title: "", app: "com.example.a", platform: "ios"),
-                     ScenarioInfo(id: "A.S0020", title: "", app: nil, platform: "ios")]
-        let refusal = try XCTUnwrap(
-            MCPServer.ambiguousDefaultAppRefusal(profileNames: ["x", "y"], infos: infos))
+    func testAmbiguousDefaultAppRefusalNamesTheProfilesAndPointsToTheRunProfile() {
+        let refusal = MCPServer.ambiguousDefaultAppRefusal(profileNames: ["x", "y"])
         XCTAssertTrue(refusal.contains("x, y"), refusal)
+        XCTAssertTrue(refusal.contains("profile: <run profile name>"), refusal)
+        XCTAssertFalse(refusal.contains("@TestClass"), refusal)
     }
 }

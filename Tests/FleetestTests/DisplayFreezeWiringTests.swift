@@ -41,6 +41,6 @@ final class DisplayFreezeWiringTests: XCTestCase {
         XCTAssertTrue(text.contains("continuation.yield(.flowStartedAt(worker: worker, flowURL: flowURL, at: Date()))"),
                       "開始も送った時刻で運ぶ(片方だけ送り手の時刻にすると所要が負になる)")
         XCTAssertLessThan(check.lowerBound, release.lowerBound, "保留した終了イベントを流すのは確認の後")
-        XCTAssertTrue(text.contains("Self.restoreAppID(declared: item.info.app"), "前面へ戻すアプリはシナリオの宣言が先")
+        XCTAssertTrue(text.contains("Self.restoreAppID(fromProfile: appBundleIDs[worker.platform]"), "前面へ戻すアプリは実行プロファイルのもの")
     }
 }

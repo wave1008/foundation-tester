@@ -10,7 +10,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.rn")
+@TestClass
 class OCRで読める薄いテキスト {
 
     @Test("薄い文字は Tier-1 を通り抜けて OCR まで届き、読めれば素通りする")

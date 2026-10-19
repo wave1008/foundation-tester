@@ -5,7 +5,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.apple.Preferences", platform: "ios")
+@TestClass(platform: "ios")
 class デモ_iOS設定2 {
 
     @Test("プライバシーとセキュリティの主要項目が表示される")
@@ -13,7 +13,7 @@ class デモ_iOS設定2 {
         scenario {
             scene(1, "プライバシーとセキュリティを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.action {
                     scrollTo("#com.apple.settings.privacyAndSecurity||プライバシーとセキュリティ")
                     tap("#com.apple.settings.privacyAndSecurity||プライバシーとセキュリティ")
@@ -47,7 +47,7 @@ class デモ_iOS設定2 {
         scenario {
             scene(1, "スクリーンタイムを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.action {
                     tap("#com.apple.settings.screenTime||スクリーンタイム")
                 }.expectation {
@@ -78,7 +78,7 @@ class デモ_iOS設定2 {
         scenario {
             scene(1, "アプリを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.action {
                     // label フォールバック不可: 「アプリ」は「ホーム画面とアプリライブラリ」に部分一致で誤タップする
                     scrollTo("#com.apple.settings.apps")
@@ -120,7 +120,7 @@ class デモ_iOS設定2 {
         scenario {
             scene(1, "スタンバイを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.action {
                     scrollTo("#com.apple.settings.standBy||スタンバイ")
                     tap("#com.apple.settings.standBy||スタンバイ")
@@ -153,7 +153,7 @@ class デモ_iOS設定2 {
         scenario {
             scene(1, "一般 > キーボード を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.action {
                     tap("#com.apple.settings.general||一般")
                     scrollTo("#com.apple.settings.general.keyboard||キーボード")
@@ -189,7 +189,7 @@ class デモ_iOS設定2 {
         scenario {
             scene(1, "一般 > フォント を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.apple.Preferences")
                 }.action {
                     tap("#com.apple.settings.general||一般")
                     scrollTo("#com.apple.settings.general.fonts||フォント")

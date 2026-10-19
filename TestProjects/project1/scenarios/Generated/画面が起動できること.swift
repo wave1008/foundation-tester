@@ -5,7 +5,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.example.sampleapp", platform: "ios")
+@TestClass(platform: "ios")
 class 画面が起動できること {
 
     @Test("画面が起動できること")

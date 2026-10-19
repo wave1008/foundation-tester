@@ -9,7 +9,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.rn")
+@TestClass
 class チェック状態を分類器とa11yの両方で判定できること {
 
     @Test("checkIsON / checkIsOFF は prefer: .classifier でも .accessibility でも判定できる")

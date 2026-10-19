@@ -41,14 +41,14 @@ final class ScenarioFoldersTests: XCTestCase {
         try write("A.swift", """
         import FTDSL
 
-        @TestClass(app: "com.example.sampleapp")
+        @TestClass
         class ログインテスト {
             @Test("ログイン")
             func S0010() {}
         }
         """)
         try write("スモーク/B.swift", """
-        @TestClass(app: "com.example.sampleapp", platform: "ios")
+        @TestClass(platform: "ios")
         final class Network_internet {
         }
         """)
@@ -73,7 +73,7 @@ final class ScenarioFoldersTests: XCTestCase {
         public final class 本物 {
             let text = "note"
         }
-        @TestClass(app: "com.example.app")
+        @TestClass
         class Second {}
         """)
         XCTAssertEqual(names, ["本物", "Second"])
@@ -81,9 +81,9 @@ final class ScenarioFoldersTests: XCTestCase {
 
     func testFilterByFolders() {
         let infos = [
-            ScenarioInfo(id: "Alpha.S1", title: "t", app: "a", platform: nil),
-            ScenarioInfo(id: "Beta.S1", title: "t", app: "a", platform: nil),
-            ScenarioInfo(id: "Gamma.S1", title: "t", app: "a", platform: nil),
+            ScenarioInfo(id: "Alpha.S1", title: "t", platform: nil),
+            ScenarioInfo(id: "Beta.S1", title: "t", platform: nil),
+            ScenarioInfo(id: "Gamma.S1", title: "t", platform: nil),
         ]
         let folderOf: (String) -> String? = { className in
             switch className {

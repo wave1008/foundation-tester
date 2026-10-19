@@ -9,7 +9,7 @@
 // 登録がある側の回帰は 16_システムアラート、登録はあるが一致しない側は _disabled/94。
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class 未登録のシステムアラート {
 
     @Test("登録無しでアラート越しに操作すると注記が付き、時間切れの失敗には題名が出る(落ちるのが正常)")

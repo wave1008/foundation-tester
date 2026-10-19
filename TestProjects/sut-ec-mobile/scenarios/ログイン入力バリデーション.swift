@@ -8,7 +8,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.sutec.mobile")  // iOS(xcuitest)/Android(inapp)対応。#id は両プラットフォーム共通
+@TestClass  // iOS(xcuitest)/Android(inapp)対応。#id は両プラットフォーム共通
 class ログイン入力バリデーションが働くこと {
 
     // 3 本の @Test すべてが「ログイン画面を開いた状態」から始まるので前提整備は beforeEach に置く

@@ -10,7 +10,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class ライフサイクルとコントロールが正しく働くこと {
 
     @Test("restartApp / terminateApp でプロセス内カウンタと永続カウンタが期待どおり動く")

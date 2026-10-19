@@ -10,7 +10,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.android", platform: "android")
+@TestClass(platform: "android")
 class ジェスチャが正しく検出されること {
 
     @Test("タップ連打・長押し・4方向スワイプ・swipePointToPoint・ピンチ・ダブルタップ・斜めドラッグが区別して検出される")

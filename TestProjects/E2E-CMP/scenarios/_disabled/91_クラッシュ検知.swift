@@ -8,7 +8,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e")
+@TestClass
 class クラッシュ検知でブリッジ切断とレポートが記録されること {
 
     @Test("クラッシュ後にブリッジ切断がクラッシュレポート付きで報告される")

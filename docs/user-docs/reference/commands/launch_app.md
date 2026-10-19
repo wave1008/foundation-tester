@@ -30,18 +30,17 @@ terminateApp()
   brings the app to the foreground. Every call starts at the entry screen.
 - **On iOS with the default (hybrid) engine, `launchApp` / `restartApp` of an app other than the scenario's own app
   fails in the middle of a scenario.** The in-app engine runs inside the app under test and cannot drive another app.
-  Put the steps on another app (such as Settings) in a separate scenario that names it, like
-  `@TestClass(app: "com.apple.Preferences")`; that scenario runs on the XCUITest engine automatically.
+  Put the steps on another app (such as Settings) in a separate scenario under a run profile whose app profile names that app; that scenario runs on the XCUITest engine automatically.
 - **Default app** (when `appID` is omitted, for `launchApp` / `restartApp` / `terminateApp` /
-  `removeApp` / `clearAppData` / `appIs`): resolved in this order —
-  1. `@TestClass(app: "...")` on the scenario, if present — this always wins.
-  2. The run profile's `app`, then the app profile, then the current platform's `ios.app` /
-     `android.app`.
+  `removeApp` / `clearAppData` / `appIs`): resolved from the run profile's `app`, then the app profile, then the current platform's `ios.app` /
+  `android.app`. `@TestClass` has no `app:` argument (writing one is a compile error), so the same
+  scenario targets each platform's own app when run with `--profile ios-run` and
+  `--profile android-run`, without duplicating the class. Without a profile (`--port` / `--serial`),
+  pass the app with `--app-id <bundleID>`.
 
-  Normally you do not write `app:` at all: the same scenario then targets each platform's own
-  app when run with `--profile ios-run` and `--profile android-run`, without duplicating the class.
-  Write `app:` only when a project mixes scenarios for more than one app and a scenario needs to
-  pin its target explicitly.
+  A project that tests several apps keeps each app's scenarios under a run profile for that app, or
+  passes the bundle ID explicitly — `launchApp("<id>")` (also `restartApp("<id>")`,
+  `clearAppData("<id>")`) — in the steps that switch to another app.
 - **`openURL` does not restart the process** — that is the difference from `launchApp(url:)`,
   which restarts first and then delivers. Use `openURL` to test deep links arriving while the
   app is already open.

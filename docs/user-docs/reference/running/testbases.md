@@ -78,7 +78,6 @@ fleetest draft-scenario --project SampleApp --testbase docs/testbases/login.md
 | `--project <project>` | Test project name (defaults to the only one in `TestProjects/`, or the default project) |
 | `--testbase <path>` | Path to the test base file (defaults to the only file in the project `docs/testbases/`) |
 | `--name <name>` | Name of the generated test class (defaults to one derived from the test base heading) |
-| `--app-id <app-id>` | Bundle ID of the app under test. When given, it is written to `@TestClass(app:)` in the generated code. Without it the app is resolved from the app profile and is not written into the code |
 | `--platform <ios\|android>` | Target platform (defaults to both). When given, it is written to `@TestClass(platform:)` |
 | `--no-fm` | Structure the draft from the Markdown headings and bullets alone, without Foundation Models |
 | `--dry-run` | Print the generated code to stdout instead of writing a file |

@@ -9,7 +9,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.android", platform: "android")
+@TestClass(platform: "android")
 class 連続ジェスチャが1回のタッチ列として検出されること {
 
     @Test("保持を挟んだ折れ線・2本指の同時移動・タップの空振りが drag カウントで区別される")

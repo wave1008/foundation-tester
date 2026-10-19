@@ -5,7 +5,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e")
+@TestClass
 class 指紋照合の前提を切り替える {
 
     @Test("自己修復画面の schema を v1 にする")

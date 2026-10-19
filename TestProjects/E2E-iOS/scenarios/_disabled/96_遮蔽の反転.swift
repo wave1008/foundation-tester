@@ -31,7 +31,7 @@
 //   fm.byKind.occlusion.calls = **2**(選別 + 詳細)/ crop も保存された / S0020 は緑・FM 呼び出し 0。
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class 遮蔽の反転 {
 
     @Test("無地の面で覆われた要素への exist は FM 判定で反転する(落ちるのが正常)")

@@ -76,7 +76,7 @@ Details: [HTTP request (httpRequest)](../commands/http_request.md), [Network acc
 
 ## Passing values between scenarios (memo)
 
-Pass values prepared in `setUpDevice()` to other scenarios on the same device. You do not need to write and exchange
+Pass values prepared in `beforeAll()` to the other scenarios of the run (on any device). You do not need to write and exchange
 files yourself.
 
 Details: [Memo (writeMemo, readMemo, clearMemo, memoTextAs)](../commands/memo.md)

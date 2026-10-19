@@ -26,7 +26,7 @@ final class LPTOrderingTests: XCTestCase {
     }
 
     private func item(_ id: String) -> ScenarioRunItem {
-        ScenarioRunItem(info: ScenarioInfo(id: id, title: id, app: "SampleApp",
+        ScenarioRunItem(info: ScenarioInfo(id: id, title: id,
                                            platform: nil, deleted: false))
     }
 

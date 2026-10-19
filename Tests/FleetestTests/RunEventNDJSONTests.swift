@@ -22,7 +22,7 @@ final class RunEventNDJSONTests: XCTestCase {
     private let scenarioID = "ログインテスト.S0010"
     private var item: ScenarioRunItem {
         ScenarioRunItem(info: ScenarioInfo(id: scenarioID, title: "ログインできる",
-                                           app: "SampleApp", platform: nil, deleted: false))
+                                           platform: nil, deleted: false))
     }
     private var flowURL: URL { item.url }
     private var itemByURL: [URL: ScenarioRunItem] { [flowURL: item] }

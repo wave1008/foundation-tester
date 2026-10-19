@@ -132,7 +132,7 @@ final class SharedStateDiagnosticsWiringTests: XCTestCase {
     func testTestClassMacroEmitsTheWarning() {
         assertMacroExpansion(
             """
-            @TestClass(app: "com.app")
+            @TestClass
             class T {
                 var x = ""
                 @Test("a")
@@ -167,7 +167,6 @@ final class SharedStateDiagnosticsWiringTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "T",
-                        app: "com.app",
                         platform: nil,
                         scenarios: [
                         FTDSL.FTScenarioDescriptor(
@@ -205,7 +204,7 @@ final class RenamedLifecycleDiagnosticsTests: XCTestCase {
     func testOldLifecycleNamesAreFlagged() {
         assertMacroExpansion(
             """
-            @TestClass(app: "com.app")
+            @TestClass
             class T {
                 func setUp() {
                 }
@@ -236,7 +235,6 @@ final class RenamedLifecycleDiagnosticsTests: XCTestCase {
                 public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
                     FTDSL.FTTestClassDescriptor(
                         className: "T",
-                        app: "com.app",
                         platform: nil,
                         scenarios: [
 

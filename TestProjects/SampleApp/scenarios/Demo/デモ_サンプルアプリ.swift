@@ -6,7 +6,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.example.sampleapp", platform: "ios")
+@TestClass(platform: "ios")
 class デモ_サンプルアプリ {
 
     /// iOS 27 のパスワード保存シートを閉じる(出た場合のみ)。アニメーション中のタップは

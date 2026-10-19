@@ -49,9 +49,6 @@ public struct FTScenarioDescriptor: Sendable {
 /// テストクラス(@TestClass)のメタデータ
 public struct FTTestClassDescriptor {
     public let className: String
-    /// 対象アプリの bundle ID / パッケージ名。nil = `@TestClass(app:)` 未指定 =
-    /// 実行プロファイルから解決する(FTCore.ScenarioAppResolution)
-    public let app: String?
     /// "ios" / "android" / nil(両OS対応)
     public let platform: String?
     public let scenarios: [FTScenarioDescriptor]
@@ -59,24 +56,34 @@ public struct FTTestClassDescriptor {
     /// 終わった後に親が `--device-teardown-only` の専用の子で呼ぶ(ScenarioHost.runDeviceTearDowns)。
     /// 非 nil の間、各シナリオの子は親へ deviceTearDown "declared" を申告する
     public let tearDownDevice: (@Sendable () -> Void)?
+    /// クラスが beforeAll() を持つか(マクロ生成)。親が一覧(`ScenarioInfo.beforeAll`)で知り、その run で
+    /// このクラスの beforeAll が終わるまで他のデバイスでこのクラスのシナリオを起動しない
+    public let hasBeforeAll: Bool
+    /// クラスの afterAll()(マクロ生成。無ければ nil)。シナリオの子では走らせず、run の全デバイスの仕事が終わった後に
+    /// 親が `--after-all-only` の専用の子で run × クラスで1回呼ぶ(ScenarioHost.runAfterAlls)。
+    /// 非 nil の間、各シナリオの子は親へ afterAll "declared" を申告する
+    public let afterAll: (@Sendable () -> Void)?
 
-    public init(className: String, app: String? = nil, platform: String? = nil,
+    public init(className: String, platform: String? = nil,
                 scenarios: [FTScenarioDescriptor],
-                tearDownDevice: (@Sendable () -> Void)? = nil) {
+                tearDownDevice: (@Sendable () -> Void)? = nil,
+                hasBeforeAll: Bool = false,
+                afterAll: (@Sendable () -> Void)? = nil) {
         self.className = className
-        self.app = app
         self.platform = platform
         self.scenarios = scenarios
         self.tearDownDevice = tearDownDevice
+        self.hasBeforeAll = hasBeforeAll
+        self.afterAll = afterAll
     }
 
     /// 子の `list --json` が親へ渡す1クラス分の行(親は `ScenarioHost.list` でこれを decode する)
     public var scenarioInfos: [ScenarioInfo] {
         scenarios.map { scenario in
-            ScenarioInfo(id: "\(className).\(scenario.name)", title: scenario.title, app: app,
+            ScenarioInfo(id: "\(className).\(scenario.name)", title: scenario.title,
                          platform: scenario.effectivePlatform(classPlatform: platform),
                          scenarioTimeout: scenario.scenarioTimeout,
-                         deleted: scenario.deleted, draft: scenario.draft)
+                         deleted: scenario.deleted, draft: scenario.draft, beforeAll: hasBeforeAll)
         }
     }
 }

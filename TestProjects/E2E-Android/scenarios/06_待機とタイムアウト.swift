@@ -9,7 +9,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.android", platform: "android")
+@TestClass(platform: "android")
 class 待機とタイムアウトが正しく効くこと {
 
     @Test("既定タイムアウト内の遅延表示・否定/個数/方向/スコープの各セレクタ・appIs/screenshot/waitForDisplay/verify")

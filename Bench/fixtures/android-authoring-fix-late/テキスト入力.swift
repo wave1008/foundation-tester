@@ -8,7 +8,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.android", platform: "android")
+@TestClass(platform: "android")
 class テキスト入力 {
     @Test("単一行とパスワードを入力して送信できる")
     func S0010() {

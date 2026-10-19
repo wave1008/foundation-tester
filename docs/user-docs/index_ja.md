@@ -142,7 +142,7 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 - 同期
     - [wait, waitForDisplay, waitForClose, waitForSettle](reference/commands/wait_ja.md)
 - 記述子
-    - [group, procedure, beforeEach, afterEach, setUpDevice, tearDownDevice](reference/commands/descriptors_ja.md)
+    - [group, procedure, beforeEach, afterEach, beforeAll, afterAll, setUpDevice, tearDownDevice](reference/commands/descriptors_ja.md)
 - スクリーンショット
     - [screenshot](reference/commands/screenshot_ja.md)
 - イレギュラーの処理

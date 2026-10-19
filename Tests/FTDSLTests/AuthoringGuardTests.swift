@@ -134,6 +134,23 @@ final class AuthoringGuardTests: XCTestCase {
                       "skipped の assert がカウントされ、警告が出なかった")
     }
 
+    /// **screenLooksLike は通っても数えない**(大づかみの確認で合否ゲートに使わない = それしか無い expectation は
+    /// 「何も検証していない」と言う。ユーザー決定)。dry-run は assert を .passed で返すので「通った」形になる
+    func testPassingScreenLooksLikeDoesNotCountAsAnAssertion() {
+        let core = makeCore()
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "見た目だけ") {
+                action { tap("#field") }
+                    .expectation { screenLooksLike("何か") }
+            }
+        }
+        XCTAssertTrue(suggestions(core).contains { $0.contains("contains no assertions") },
+                      "screenLooksLike がアサーションに数えられ、警告が出なかった")
+    }
+
     /// 実行(dryRun:false)経路でも通常の assert は引き続き数える(skipped だけを除く修正であること)
     func testOrdinaryAssertionStillCountsInRealExecution() {
         let core = makeCore(dryRun: false)
@@ -293,7 +310,10 @@ final class AuthoringGuardTests: XCTestCase {
         }
 
         let assertionCategories: Set<String> = ["existence", "id", "text", "value"]
-        let expected = DSLCommandIndex.all.filter { assertionCategories.contains($0.category) }.count
+        // screenLooksLike は呼んでいるが数えない(testPassingScreenLooksLikeDoesNotCountAsAnAssertion)
+        let expected = DSLCommandIndex.all.filter {
+            assertionCategories.contains($0.category) && $0.name != "screenLooksLike"
+        }.count
         XCTAssertEqual(core.scenarioAssertionCount, expected,
                        "検証コマンドの一部が noteAssertion に合流していない"
                        + "(または上の呼び出し列が索引に追随していない)")

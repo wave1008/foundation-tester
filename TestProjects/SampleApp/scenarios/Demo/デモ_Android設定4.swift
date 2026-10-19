@@ -10,7 +10,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.android.settings", platform: "android")
+@TestClass(platform: "android")
 class デモ_Android設定4 {
 
     @Test("接続設定の画面を確認できる")
@@ -18,7 +18,7 @@ class デモ_Android設定4 {
         scenario {
             scene(1, "接続設定を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("接続設定||Connected devices", maxSwipes: 12)
                     tap("接続設定||Connected devices")
@@ -42,7 +42,7 @@ class デモ_Android設定4 {
         scenario {
             scene(1, "ディスプレイを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("ディスプレイ||Display", maxSwipes: 12)
                     tap("ディスプレイ||Display")
@@ -66,7 +66,7 @@ class デモ_Android設定4 {
         scenario {
             scene(1, "通知を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("通知||Notifications", maxSwipes: 12)
                     tap("通知||Notifications")
@@ -90,7 +90,7 @@ class デモ_Android設定4 {
         scenario {
             scene(1, "音とバイブレーションを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("音とバイブレーション||Sound & vibration", maxSwipes: 12)
                     tap("音とバイブレーション||Sound & vibration")
@@ -114,7 +114,7 @@ class デモ_Android設定4 {
         scenario {
             scene(1, "バッテリーを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("バッテリー||Battery", maxSwipes: 12)
                     tap("バッテリー||Battery")
@@ -138,7 +138,7 @@ class デモ_Android設定4 {
         scenario {
             scene(1, "位置情報を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("位置情報||Location", maxSwipes: 12)
                     tap("位置情報||Location")

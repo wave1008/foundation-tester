@@ -12,7 +12,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.android.settings", platform: "android")
+@TestClass(platform: "android")
 class デモ_Android設定3 {
 
     @Test("アプリの一覧(すべてのアプリ)を確認できる")
@@ -20,7 +20,7 @@ class デモ_Android設定3 {
         scenario {
             scene(1, "すべてのアプリを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     tap("アプリ||Apps")
                     // 実ラベル「30 個のアプリをすべて表示」— 先頭に可変数(アプリ数)が入るため
@@ -58,7 +58,7 @@ class デモ_Android設定3 {
         scenario {
             scene(1, "アプリの通知を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     tap("通知||Notifications")
                     tap("アプリの通知||App notifications")
@@ -69,7 +69,7 @@ class デモ_Android設定3 {
             }
             scene(2, "設定トップへ戻して通知の履歴を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     tap("通知||Notifications")
                     tap("通知履歴||Notification history")  // 実ラベルは「通知履歴」(「の」なし)
@@ -85,7 +85,7 @@ class デモ_Android設定3 {
         scenario {
             scene(1, "ディスプレイ > 画面のタイムアウトを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     // A15/16 実ラベルは「ディスプレイとタップ」(旧「ディスプレイ」は消滅)。
                     // 「ディスプレイ」単体はユーザー補助の要約にも部分一致し曖昧解決不能になる
@@ -114,7 +114,7 @@ class デモ_Android設定3 {
         scenario {
             scene(1, "システム > 言語と地域を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("システム||System", maxSwipes: 12)
                     tap("システム||System")
@@ -141,7 +141,7 @@ class デモ_Android設定3 {
         scenario {
             scene(1, "システム > ジェスチャーを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("システム||System", maxSwipes: 12)
                     tap("システム||System")
@@ -160,7 +160,7 @@ class デモ_Android設定3 {
         scenario {
             scene(1, "システム > 日付と時刻を開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.action {
                     scrollTo("システム||System", maxSwipes: 12)
                     tap("システム||System")

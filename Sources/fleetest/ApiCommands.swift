@@ -70,7 +70,7 @@ struct ApiListScenarios: AsyncParsableCommand {
             guard let sourceURL = classFileMap[className] else {
                 logStderr("⚠️ Scenario source file not found: \(info.id)")
                 scenarioOutputs.append(ApiScenarioInfo(
-                    id: info.id, title: info.title, app: info.app, platform: info.platform,
+                    id: info.id, title: info.title, platform: info.platform,
                     deleted: info.deleted, draft: info.draft, file: nil, classLine: nil, methodLine: nil,
                     folder: nil))
                 continue
@@ -104,7 +104,7 @@ struct ApiListScenarios: AsyncParsableCommand {
             }
 
             scenarioOutputs.append(ApiScenarioInfo(
-                id: info.id, title: info.title, app: info.app, platform: info.platform,
+                id: info.id, title: info.title, platform: info.platform,
                 deleted: info.deleted, draft: info.draft, file: sourceURL.path, classLine: classLine,
                 methodLine: methodLine, folder: folder))
         }
@@ -164,8 +164,6 @@ struct ApiListScenarios: AsyncParsableCommand {
 private struct ApiScenarioInfo: Encodable {
     let id: String
     let title: String
-    /// `@TestClass(app:)` の明示値。null = 未指定 = 実行プロファイルで解決される
-    let app: String?
     let platform: String?
     let deleted: Bool
     /// @Draft(実装中マーク)。加算フィールドなので ProtocolVersion は変えない
@@ -180,14 +178,13 @@ private struct ApiScenarioInfo: Encodable {
     let folder: String?
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, app, platform, deleted, draft, file, classLine, methodLine, folder
+        case id, title, platform, deleted, draft, file, classLine, methodLine, folder
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(title, forKey: .title)
-        try container.encode(app, forKey: .app)
         try container.encode(platform, forKey: .platform)
         try container.encode(deleted, forKey: .deleted)
         try container.encode(draft, forKey: .draft)

@@ -10,7 +10,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class クラッシュ検知でブリッジ切断とレポートが記録されること {
 
     @Test("クラッシュ後に操作失敗がレポートに記録される")

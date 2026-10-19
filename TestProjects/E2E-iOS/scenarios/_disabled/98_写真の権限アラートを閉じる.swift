@@ -7,7 +7,7 @@
 // アラートが出ていなければ何もせずに通る(ハンドラは一致したときだけ押す)。
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class 写真の権限アラートを閉じる {
 
     @Test("残った写真の権限アラートを「許可しない」で閉じる")

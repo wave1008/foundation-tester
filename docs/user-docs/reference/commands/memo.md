@@ -3,8 +3,7 @@
 [in Japanese(日本語)](memo_ja.md)
 
 Share values between scenarios. Every `@Test` runs as its own process, so a Swift variable does
-not carry over; the memo carries over **to later scenarios on the same device** (not to other
-devices — see Scope below). Names and behavior follow Shirates.
+not carry over; the memo is shared by **every scenario of the run, on every device** (see Scope below). Names and behavior follow Shirates.
 
 ## Functions
 
@@ -18,21 +17,28 @@ devices — see Scope below). Names and behavior follow Shirates.
 
 ## Scope
 
-- The memo is shared by the scenarios that run **on the same device in one run**. A value written
-  on another device is not visible (`readMemo` returns `""` with `memo-key-not-found`). Nothing
-  carries over to the next run.
+- The memo is shared by **every scenario of the run, on every device**. Nothing carries over to the
+  next run.
 - A single invocation (an MCP call, or running the scenario runner by hand) starts with an empty
   memo.
-- The reliable pattern is **write in `setUpDevice()`, read in each test**: the first scenario that
-  lands on a device runs `setUpDevice()` first, so the value exists wherever the others land.
-- If `setUpDevice()` fails, the remaining scenarios of that class on that device are recorded as
-  failed without running. It runs at most once per device in a run, even when its outcome is
-  unknown, and is not re-run after the device recovers.
-- `tearDownDevice()` can read the memo too (it runs after the device has finished its work, so it
-  sees the final values).
+- The reliable pattern is **write in `beforeAll()`, read in each test**: `beforeAll()` runs once per
+  run per class, before any scenario of that class on any device (other devices wait until it
+  finishes), so the value exists wherever the scenarios land.
+- If `beforeAll()` fails, the remaining scenarios of that class in the run are recorded as failed
+  without running; it is never re-run. Values written in `setUpDevice()` (once per run, device and
+  class) are also visible to the whole run, so the same key is overwritten by whichever device runs
+  it later — don't use the memo for per-device values. If `setUpDevice()` fails, the remaining
+  scenarios of that class on that device are recorded as failed without running.
+- Limitations: a scenario receives the memo as it was **when the scenario started** — values another
+  device writes while it runs are not visible to it. Concurrent writes from several devices are not
+  serialized (no locking). `clearMemo()` clears the memo for the whole run. A run is one fleetest
+  process: when a run is split across machines (`--fleet`, or a profile whose devices span several
+  machines), each machine has its own memo and runs its own `beforeAll()`.
+- `tearDownDevice()` and `afterAll()` can read the memo too (`afterAll()` runs after every device has
+  finished the run, so it sees the final values).
 - Trying to pass a value through a test-class property (`var`) produces a build warning when the writer
   and the reader run in different processes — written in one `@Test` and read in another, or written in
-  `setUpDevice()` and read in the tests. Writing in `beforeEach()` and reading in the same test or
+  `beforeAll()` and read in the tests. Writing in `beforeEach()` and reading in the same test or
   `afterEach()` works and is not flagged. Writes through helper functions and mutations such as
   `x.append(…)` are not detected, so no warning is not a guarantee.
 
@@ -41,7 +47,7 @@ devices — see Scope below). Names and behavior follow Shirates.
 ```swift
 @TestClass
 class OrderFlow {
-    func setUpDevice() {
+    func beforeAll() {
         launchApp()
         select("#shop_name").memoTextAs("shop")
     }

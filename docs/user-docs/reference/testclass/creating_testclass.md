@@ -75,9 +75,20 @@ class LoginTest {
 **`afterEach()` still runs even after a failure** — it is the place to put cleanup that must
 not be skipped when a scenario is aborted mid-way.
 
+`func beforeAll()` (optional) runs **once per run, per class**, before any scenario of that class on
+any device — for preparation shared by the whole run (for example creating test data and writing
+the values it produces with `writeMemo`; see [memo](../commands/memo.md)). Other devices that
+pick up a scenario of that class wait until it finishes. If it fails, the remaining scenarios of
+that class in the run are recorded as failed without running.
+
+`func afterAll()` (optional) runs **once per run, per class**, after every device has finished the
+run, in a process of its own — for run-wide cleanup such as deleting the test data `beforeAll()`
+created. It runs whether or not `beforeAll()` passed and can read the memo. It does not run in an
+interrupted run.
+
 `func setUpDevice()` (optional) runs **at most once per run, per device, per class**, before
 `beforeEach()` of the first scenario of that class that lands on the device — for preparation that
-should not repeat for every test (for example switching the app's language). Each scenario is
+should not repeat for every test but is needed on each device (for example switching the app's language). Each scenario is
 its own process, so instance properties set there are visible only to that first scenario; share
 values with `writeMemo` / `readMemo` (see [memo](../commands/memo.md)).
 

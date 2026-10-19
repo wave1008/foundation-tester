@@ -6,7 +6,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class 折りたたみの開閉を跨いで操作できること {
 
     @Test("開いた画面と閉じた画面の両方でタップが正しい要素に当たる")

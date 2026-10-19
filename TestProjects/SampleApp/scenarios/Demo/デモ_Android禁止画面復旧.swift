@@ -10,7 +10,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.android.settings", platform: "android")
+@TestClass(platform: "android")
 class デモ_Android禁止画面復旧 {
 
     @Test("禁止画面(セキュリティとプライバシー=SafetyCenter)を踏んでも launchApp が自己復旧する")
@@ -18,7 +18,7 @@ class デモ_Android禁止画面復旧 {
         scenario {
             scene(1, "設定トップを開く") {
                 condition {
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.expectation {
                     exist("ネットワークとインターネット||Network & internet")
                 }
@@ -36,7 +36,7 @@ class デモ_Android禁止画面復旧 {
                 condition {
                     // 復旧枝: 前面が別パッケージのままだと launchApp は前面判定タイムアウト後に
                     // 前面を force-stop+HOME して再試行する。10数秒かかる(BridgeClient session=45s 内)
-                    launchApp()
+                    launchApp("com.android.settings")
                 }.expectation {
                     exist("ネットワークとインターネット||Network & internet")
                 }

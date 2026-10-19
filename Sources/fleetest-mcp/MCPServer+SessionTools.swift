@@ -221,7 +221,7 @@ extension MCPServer {
         }
         // 前面が入れ替わったので、古い木を起点にした覆い探針の記憶は使い回さない(F 節)
         lastScreenProbe[launchKey] = nil
-        // 下書きの起点(F-3 の既定範囲は「直近の ft_launch 以降」)。@TestClass(app:) にも使う。
+        // 下書きの起点(F-3 の既定範囲は「直近の ft_launch 以降」)。
         // **resume は isLaunch を立てない** —— 立てると draft の既定スコープがここから始まり、
         // ScenarioCodeGen は scene 0 の condition に無条件で launchApp() を出すので、
         // 実際には状態を保ったまま activate しただけの手順が「新規起動」に化けて嘘になる

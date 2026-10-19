@@ -150,7 +150,7 @@ Steps in this draft:
   2. tap "#ok"
   3. tap ".clickable&&送信"
 
-@TestClass(app: "com.example", platform: "android")
+@TestClass(platform: "android")
 class DraftedScenario {
     func S0010() {
         scenario {
@@ -179,7 +179,7 @@ test('索引セレクタと TODO を弱い側へ数える', () => {
 
 test('**冒頭の手順一覧は数えない**(同じ手を二重に数えてしまう)', () => {
   // 一覧の形は `2. tap "#ok"`(括弧が無い)。Swift の呼び出しだけを数えること
-  const listingOnly = 'Steps in this draft:\n  1. tap "#ok"\n  2. tap "#ng"\n@TestClass(app: "x")\n'
+  const listingOnly = 'Steps in this draft:\n  1. tap "#ok"\n  2. tap "#ng"\n@TestClass\n'
   assert.deepEqual(draftQuality(listingOnly), { stable: 0, indexed: 0, todo: 0 })
 })
 
@@ -352,7 +352,7 @@ test('作成フロー: 検証を削って緑にしたら未完了(削った文�
 
 test('作成フロー: Read したシナリオ本文を下書きと数えない', () => {
   const m = metricsFromTranscript([
-    use('a', 'Read'), answer('a', '@TestClass(app: "x")\nclass A { tap("#a") }'),
+    use('a', 'Read'), answer('a', '@TestClass\nclass A { tap("#a") }'),
     use('b', RUN), answer('b', passedRun),
     result('RESULT: passed'),
   ], null, authoring)

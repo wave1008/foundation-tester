@@ -11,7 +11,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.ios", platform: "ios")
+@TestClass(platform: "ios")
 class 別ウィンドウのモーダルが木に載ること {
 
     @Test("別ウィンドウのモーダルは木に載り、閉じられる")

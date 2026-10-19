@@ -13,9 +13,8 @@
 /// objc ランタイム発見用の登録クラス(__FTReg_<クラス名>)を追加する。
 /// 付与先クラスには引数なし init() が必要(シナリオ毎に新しいインスタンスが作られる)。
 ///
-/// 対象アプリは既定で**実行プロファイル**(runs/<name>.json → apps/<name>.json の
-/// `<platform>.app`)から解決される。`app:` は書かなくてよく、書いた場合はそちらが勝つ
-/// (1プロジェクトに複数アプリのシナリオが混在する構成のための上書き。食い違いは警告が出る)。
+/// 対象アプリは**実行プロファイル**(runs/<name>.json → apps/<name>.json の
+/// `<platform>.app`)から解決される(プロファイル無しの実行は `--app-id`)。クラス側では指定しない。
 ///
 /// 同じクラスに `func beforeEach()` / `func afterEach()`(引数なし・非async・非throws)を書くと、
 /// 各 @Test の前後で自動実行される(基底クラスからの継承は見ない)。
@@ -32,7 +31,7 @@
 /// 終わった後**に専用の子(`--device-teardown-only`)で1デバイス1回呼ぶ(ScenarioHost.runDeviceTearDowns)。
 @attached(extension, conformances: FTTestClassDefinition, names: named(ftDescriptor))
 @attached(peer, names: prefixed(__FTReg_))
-public macro TestClass(app: String? = nil, platform: String? = nil) =
+public macro TestClass(platform: String? = nil) =
     #externalMacro(module: "FTDSLMacros", type: "TestClassMacro")
 
 /// シナリオメソッドに付与するマーカー。

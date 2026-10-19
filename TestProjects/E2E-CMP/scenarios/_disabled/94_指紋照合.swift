@@ -17,7 +17,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e")
+@TestClass
 class 指紋でid変更を追従できること {
 
     @Test("前回成功した要素の指紋で id 変更に追従する(2周目で照合)")

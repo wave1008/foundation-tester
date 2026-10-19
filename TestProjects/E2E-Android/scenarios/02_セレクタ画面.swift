@@ -15,7 +15,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e.android", platform: "android")
+@TestClass(platform: "android")
 class セレクタ画面の機能一式が正しく動くこと {
 
     @Test("#id 完全一致・ラベル一致規則・型と序数とフォールバック・OR/否定フィルタと対称アサーション")

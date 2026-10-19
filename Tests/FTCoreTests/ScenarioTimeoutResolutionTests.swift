@@ -102,6 +102,7 @@ final class ScenarioHostPerScenarioTimeoutTests: XCTestCase {
             project: project, scenarioID: "Login.S0010",
             connection: DriverConnection(platform: "ios"),
             deviceSession: RunDeviceSession(),
+            classHasBeforeAll: false,
             scenarioTimeoutOverride: perScenario,
             settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false), scenarioTimeout: profile),
             reportDir: root.appendingPathComponent("reports").path) { sink.append($0) }

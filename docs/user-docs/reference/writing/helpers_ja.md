@@ -76,7 +76,7 @@ response.status.thisIs(201)
 
 ## シナリオ間で値を渡す(memo)
 
-`setUpDevice()` で用意した値を、同じデバイスの他のシナリオへ渡します。ファイルを自分で書いて受け渡す必要はありません。
+`beforeAll()` で用意した値を、run の他のシナリオへ(どのデバイスでも)渡します。ファイルを自分で書いて受け渡す必要はありません。
 
 詳細: [メモ(writeMemo, readMemo, clearMemo, memoTextAs)](../commands/memo_ja.md)
 

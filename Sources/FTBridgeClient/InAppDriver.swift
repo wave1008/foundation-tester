@@ -21,7 +21,7 @@ public final class InAppDriver: AppDriver {
     /// "booted" は UDID ではないので渡さない(デバイスが複数 booted だと simctl の宛先として曖昧)
     /// `ownBundleID`: このシナリオで dylib を注入するアプリ(シナリオ経路だけが渡す)。**これと違うアプリの launch は断る** ——
     /// 断らないと別アプリへ同じ `FT_PORT` で注入して起動し、ポートを取り合った旧ブリッジが答えて裏のアプリを操作した。
-    /// 別アプリの手順は、そのアプリを `@TestClass(app:)` に書いた別のシナリオに置く(注入先と違うシナリオは丸ごと XCUITest で動く)
+    /// 別アプリの手順は、そのアプリの実行プロファイルで回す別のシナリオに置く
     private let ownBundleID: String?
 
     public init(repoRoot: URL, udid: String, port: UInt16, ownBundleID: String? = nil) {
@@ -273,7 +273,7 @@ public final class InAppDriver: AppDriver {
         return .badResponse(status: 422,
                      body: "launching \(bundleID) is not supported in this scenario: the in-app engine is injected into"
                          + " \(own) and cannot drive another app. Put the steps on \(bundleID) in a separate scenario"
-                         + " with @TestClass(app: \"\(bundleID)\"), which runs on XCUITest automatically")
+                         + " run with a run profile for that app")
     }
 
     private static func inappOnly(_ action: String) -> DriverError {
