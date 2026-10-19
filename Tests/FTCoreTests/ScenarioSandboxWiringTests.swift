@@ -34,6 +34,9 @@ final class ScenarioSandboxWiringTests: XCTestCase {
         XCTAssertTrue(block.contains("drivesDevice: !dryRun") || host.contains("drivesDevice: !dryRun"))
         // 枠を組めないときは枠なしで起こさない
         XCTAssertTrue(block.contains("return abortBeforeLaunch("))
+        // マシン設定で外したとき(sandboxedLaunch が nil)も黙らない。リモートのランナー機の設定は発行した側から見えない
+        XCTAssertTrue(block.contains("ScenarioEvent.log(ScenarioSandbox.disabledNotice)"),
+                      "sandbox.disabled で枠が外れた run に告知が出ていない")
 
         XCTAssertTrue(host.contains("+ [launch.executable.path] + launch.arguments"), "list が枠の形で起こしていない")
         XCTAssertTrue(host.contains("process.executableURL = launch?.executable ?? runner"), "compile-ocr が枠の形で起こしていない")

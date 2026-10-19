@@ -374,6 +374,24 @@ extension MCPServer {
         return args.filter { properties[$0.key] != nil }
     }
 
+    /// **`waitSeconds` だけを渡した呼び出しは黙って無視されていた**。`waitFor` / `waitForChange` を宣言するツールでは
+    /// `waitSeconds` はその待ちの上限でしかなく(`ft_fold` のように単独で使うツールは `waitFor` を宣言しない)、
+    /// DSL の操作の `waitSeconds:`(対象が出るまで探す再試行の上限)と同じ名前なので「出るまで待って撃つ」と読まれる。
+    /// 断らない(操作は既に撃てる形で、断ると二度撃ちを誘う)・注記するだけ
+    static func ignoredWaitSecondsNote(tool: String, args: [String: Any]) -> String {
+        guard args["waitSeconds"] != nil, args["waitFor"] == nil, args["waitForChange"] as? Bool != true,
+              let definition = toolDefinitions.first(where: { $0["name"] as? String == tool }),
+              let schema = definition["inputSchema"] as? [String: Any],
+              let properties = schema["properties"] as? [String: Any],
+              properties["waitFor"] != nil || properties["waitForChange"] != nil else { return "" }
+        // **ft_open_url は snapshotAfter で待ちを省くと自分で waitForChange を立てる**(配送後の着地を待つ =
+        // MCPServer+SessionTools.swift の wantsLandingWait)。その形の waitSeconds は使われるので言わない
+        if tool == "ft_open_url", args["snapshotAfter"] as? Bool == true, args["waitForChange"] == nil { return "" }
+        return "⚠️ waitSeconds was ignored: in \(tool) it only bounds waitFor / waitForChange, and neither was"
+            + " given. It does not wait for the target to appear (in a scenario, an action's waitSeconds: is the"
+            + " retry for finding its target, about 0.7 s by default)"
+    }
+
     static func unknownArgumentNote(tool: String, args: [String: Any]) -> String {
         guard let definition = toolDefinitions.first(where: { $0["name"] as? String == tool }),
               let schema = definition["inputSchema"] as? [String: Any],
@@ -473,7 +491,9 @@ extension MCPServer {
         // 投げるより前に確定させ、成功(decorated)・失敗(下の catch)の両方へ同じ注記を乗せる
         // **改名した引数は、宣言していない欄を落とす前に断る**(落とした後では本体に届かない)
         if let refusal = Self.renamedArgumentRefusal(tool: tool, args: cleaned) { throw MCPError(refusal) }
-        let unknownArgumentNote = Self.unknownArgumentNote(tool: tool, args: cleaned)
+        let unknownArgumentNote = [Self.unknownArgumentNote(tool: tool, args: cleaned),
+                                   Self.ignoredWaitSecondsNote(tool: tool, args: cleaned)]
+            .filter { !$0.isEmpty }.joined(separator: " ")
         try Self.checkDeclaredArgumentTypes(tool: tool, args: cleaned)
         if let refusal = Self.nulCharacterRefusal(tool: tool, args: cleaned) { throw MCPError(refusal) }
         // **値域は入口で1回だけ全数見る**(`intArgument`/`doubleArgument` の門だけでは足りない)

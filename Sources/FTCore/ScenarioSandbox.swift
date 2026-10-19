@@ -13,6 +13,9 @@ import Foundation
 public enum ScenarioSandbox {
     static let sandboxExecPath = "/usr/bin/sandbox-exec"
 
+    /// マシン設定の `sandbox.disabled: true` で枠を外したシナリオに毎回出す(`ScenarioHost`)
+    static let disabledNotice = "⚠️ sandbox: disabled on this Mac (sandbox.disabled in ~/.config/fleetest/config.json)"
+        + " — this scenario runs without Seatbelt and can read and write anything this user can"
     static let notice = "🔒 sandbox: this scenario runs inside Seatbelt — on this Mac it can write"
         + " only under the report directory, .fleetest and temporary directories, cannot read credential"
         + " stores, and connects only to this machine (and allowedDomains through the proxy)"

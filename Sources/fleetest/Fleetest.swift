@@ -904,15 +904,18 @@ struct RunScenarios: AsyncParsableCommand {
                 // (finishedAt 無し = results insights が「クラッシュ/強制終了」に誤分類する)。
                 // ここへ来るのは常にシナリオ実行が
                 // 1本も始まる前なので、items 分すべて未実行という分かっている事実だけを記録する。
-                // fmSettings は resolve 前で実効値が無いため noProfileSettings で近似する
-                // (この run は abortReason 付きなので実効値の断定ではないと読み手に伝わる)
+                // fmSettings は**ロックの前に解決したプロファイル**(`earlyResolved` = `--set` の上書きを当てた実効値)から作る。
+                // プロファイル無しの基底で近似すると heal: false 等の効いていなかった値を「実効値」として残す
+                // (results-json の fmSettings は実効値の欄)。dry-run ではないのでここで nil にはならない
+                let effective = earlyResolved
                 recorder.finish(total: items.count, passed: 0, failed: items.count,
                                 performanceMode: performanceMode,
                                 fmSettings: FMSettingsRecord(
-                                    heal: noProfileSettings.heal,
-                                    fmTextVisibilityCheck: noProfileSettings.fm.fmTextVisibilityCheck,
-                                    screenLooksLike: noProfileSettings.fm.screenLooksLike,
-                                    ocrTextVisibilityCheck: noProfileSettings.ocrTextVisibilityCheck),
+                                    heal: effective?.heal ?? noProfileSettings.heal,
+                                    fmTextVisibilityCheck: (effective?.fm ?? noProfileSettings.fm).fmTextVisibilityCheck,
+                                    screenLooksLike: (effective?.fm ?? noProfileSettings.fm).screenLooksLike,
+                                    ocrTextVisibilityCheck: effective?.ocrTextVisibilityCheck
+                                        ?? noProfileSettings.ocrTextVisibilityCheck),
                                 setOverrides: profileOverrides.mapValues(\.token),
                                 servicesWarnings: [],
                                 // resolve 前の失敗で計測モードかどうかを断定できない

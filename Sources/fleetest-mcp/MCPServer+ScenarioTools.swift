@@ -31,6 +31,13 @@ extension MCPServer {
     static let fmAndVisionOffNote = "ℹ️ ran without Foundation Models and Vision (MCP default): no text visual"
         + " verification, screenLooksLike steps are skipped, checkIsON reads the tree only. Pass fmAndVision: true"
         + " to use them"
+
+    /// iOS で走らせた ft_run_scenario の応答に必ず添える。**MCP の iOS は常に XCUITest**(ユーザー決定)なのに、
+    /// `fleetest run` / ft_start_run はプロファイルのエンジン(既定 hybrid = in-app 優先)で走る。黙ると、
+    /// エンジンで割れる挙動(Compose の doubleTap・in-app に無い慣性)の結果を本番の結果と読まれる
+    static let iosXCUITestEngineNote = "ℹ️ ran on the XCUITest engine (MCP drives iOS through XCUITest only)."
+        + " fleetest run and ft_start_run use the run profile's engine (hybrid = in-app first by default), so a step"
+        + " whose result depends on the engine (a Compose doubleTap, scroll inertia) can differ there"
 }
 
 extension MCPServer {
@@ -300,6 +307,7 @@ extension MCPServer {
             exec = Self.withoutFMAndVision(exec)
             prologue.append(Self.fmAndVisionOffNote)
         }
+        if connection.platform == "ios" { prologue.append(Self.iosXCUITestEngineNote) }
         var lines: [String] = prologue
         var passedCount = 0
         var failedCount = 0

@@ -71,6 +71,15 @@ final class JUnitReportWriterTests: XCTestCase {
         XCTAssertTrue(xml.contains(#"failures="1""#), xml)
         XCTAssertTrue(xml.contains("<failure"), xml)
         XCTAssertFalse(xml.contains("<skipped"), xml)
+        // 中断で始まらなかった(`.interrupted`)も run.json と exit code では失敗 = JUnit も `<failure>`
+        let interrupted = JUnitReportWriter.xml(project: "E2E", records: [
+            record(id: "A.s", passed: false, durationMs: 0,
+                   steps: StepCountsRecord(total: 1, skipped: 1),
+                   failedSteps: [FailedStepRecord(index: 0, description: "the run was interrupted")],
+                   skipKind: .interrupted),
+        ])
+        XCTAssertTrue(interrupted.contains(#"failures="1""#), interrupted)
+        XCTAssertFalse(interrupted.contains("<skipped"), interrupted)
         // 意図された未実行(platform 対象外)は従来どおり skipped
         let intended = JUnitReportWriter.xml(project: "E2E", records: [
             record(id: "A.s", passed: false, durationMs: 0,

@@ -677,6 +677,12 @@ public enum ScenarioHost {
                 let notice = ScenarioEvent.log(ScenarioSandbox.notice)
                 eventLog?.appendHost(notice)
                 emit(notice)
+            } else {
+                // **外れていることも毎回言う**(nil = マシン設定の `sandbox.disabled` だけ)。リモートのランナー機では
+                // その機械の設定が効くので、発行した側は「🔒 の行が無い」以外に気付けなかった
+                let notice = ScenarioEvent.log(ScenarioSandbox.disabledNotice)
+                eventLog?.appendHost(notice)
+                emit(notice)
             }
         } catch {
             return abortBeforeLaunch("sandbox: " + error.localizedDescription)

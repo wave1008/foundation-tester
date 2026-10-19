@@ -92,8 +92,10 @@ public enum JUnitReportWriter {
     /// **`skipKind == .noWorker`(ワーカー不在・全滅などの事故)は `<failure>` に出す** —— 意図された
     /// 未実行(`notApplicable`)と同じ顔にすると、JUnit の failures だけを見る CI が「緑で 1 本も
     /// 走っていない」run を通す(exit code は 1 でも Jenkins の JUnit 集計は failures を見る)
+    /// **`.interrupted`(中断で始まらなかった)も `<failure>`** —— run.json と exit code は失敗に数えるので、JUnit だけ
+    /// skipped にすると、CI の中断で failures=0 の緑に見える。`<skipped>` は意図された未実行(`notApplicable`)と旧形式だけ
     static func isSkipped(_ record: ScenarioRunRecord) -> Bool {
-        record.skipKind != .noWorker
+        record.skipKind != .noWorker && record.skipKind != .interrupted
             && !record.passed && record.steps.failed == 0
             && record.steps.total > 0 && record.steps.skipped == record.steps.total
     }

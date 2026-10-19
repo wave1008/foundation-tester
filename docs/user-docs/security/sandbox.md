@@ -13,7 +13,7 @@ send them out. The OS refuses what is not allowed, whatever the scenario's code 
 | What it protects | What a scenario cannot do |
 |---|---|
 | This Mac's secrets | Read the usual places for credentials, such as `~/.ssh`, the keychain and browser profiles |
-| This Mac's files | Write anywhere but the report output folder and the temporary folder |
+| This Mac's files | Write anywhere but the report output folder, the temporary folder and fleetest's state records (`.fleetest/` and so on) |
 | Outbound traffic | Talk to a destination that is not allowed |
 | Other programs | Start other apps, or drive Simulators and Android devices other than in fixed ways |
 | The launching environment | Read environment variables such as tokens put in the shell or `.mcp.json` |
@@ -456,7 +456,9 @@ It is not written when the work folder is inside the clone.
 - There are things the sandbox **does not stop** (operations on the app under test, services on this Mac's localhost
   and so on). The points for judging are in [Notes and limitations](limitations.md).
 - It is always on. Whether you run with `fleetest run`, a dry-run, MCP, the VSCode extension or a remote runner, the
-  scenario runs inside the frame.
+  scenario runs inside the frame. The only exception is `sandbox.disabled: true` in the machine settings of the Mac that runs
+  it; then every scenario prints `⚠️ sandbox: disabled on this Mac` (on a remote runner that Mac's settings apply, so this
+  line is how you notice).
 - Only the scenario binary and its descendants go into the sandbox. fleetest itself, the app under test, evaluating
   `Package.swift` and building dependencies run outside. `services.buildSources`, which widens the places a compose.yaml
   `build:` may refer to, is in [Services the app depends on (compose.yaml)](../reference/writing/services.md).

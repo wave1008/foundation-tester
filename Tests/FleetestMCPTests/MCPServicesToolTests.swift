@@ -77,4 +77,13 @@ final class MCPServicesToolTests: XCTestCase {
                           "\(error.localizedDescription)", file: file, line: line)
         }
     }
+
+    /// `physical` / `androidSerials` は up だけが読む。他の動詞では黙って捨てずに断る(status で reverse を確かめたつもりにさせない)
+    func testUpOnlyArgumentsAreRefusedOnOtherActions() {
+        XCTAssertNil(MCPServices.upOnlyArgumentRefusal(action: "up", physical: true, serials: ["emulator-5554"]))
+        XCTAssertNil(MCPServices.upOnlyArgumentRefusal(action: "status", physical: false, serials: []))
+        let refusal = MCPServices.upOnlyArgumentRefusal(action: "status", physical: false, serials: ["emulator-5554"])
+        XCTAssertEqual(refusal?.contains("androidSerials only apply to action up"), true, refusal ?? "nil")
+        XCTAssertNotNil(MCPServices.upOnlyArgumentRefusal(action: "down", physical: true, serials: []))
+    }
 }

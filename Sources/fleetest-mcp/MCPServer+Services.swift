@@ -30,6 +30,14 @@ enum MCPServices {
         return args
     }
 
+    /// `physical` / `androidSerials` は `up` だけが読む。**他の動詞に渡されたら断る**(`arguments` は黙って捨てていた =
+    /// `status androidSerials: [...]` で reverse を張った状態を確かめたつもりになる。`ft_results` の `appliesTo` と同じ規律)
+    static func upOnlyArgumentRefusal(action: String, physical: Bool, serials: [String]) -> String? {
+        guard action != "up", physical || !serials.isEmpty else { return nil }
+        let given = [physical ? "physical" : nil, serials.isEmpty ? nil : "androidSerials"].compactMap { $0 }
+        return "\(given.joined(separator: " and ")) only apply to action up (got \(action)) — drop them"
+    }
+
     /// `-` で始まる値を断る。**`arguments` へ渡す前に必ず呼ぶ** —— 子の `fleetest services` でフラグとして読まれる
     /// (`optionLikeValueRefusal` と同じ理由。プロファイル名・プロジェクト名に `-` 始まりの正当な値は無い)
     static func optionLikeValueRefusal(project: String?, profile: String?, serials: [String] = []) -> String? {
@@ -68,6 +76,9 @@ extension MCPServer {
         let physical = try Self.flagArgument(args, "physical")
         let serials = try Self.stringListArgument(args, "androidSerials")
         if let refusal = MCPServices.optionLikeValueRefusal(project: project, profile: profile, serials: serials) {
+            throw MCPError(refusal)
+        }
+        if let refusal = MCPServices.upOnlyArgumentRefusal(action: action, physical: physical, serials: serials) {
             throw MCPError(refusal)
         }
         guard let packageRoot = ScenarioHost.packageRoot() else {

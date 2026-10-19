@@ -387,7 +387,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var reportDir: String?
     /// DSL コマンドの既定タイムアウト秒(小数可。省略時は DSL 側の既定値)
     public var defaultTimeout: Double?
-    /// シナリオ単位の壁時計タイムアウト秒(ホスト側 watchdog。子には渡さない。省略時 90)。
+    /// シナリオ単位の壁時計タイムアウト秒(ホスト側 watchdog。子には渡さない。省略時 600 = `ScenarioHost.defaultScenarioTimeout`)。
     /// defaultTimeout(子内部の検証待ち)とは別物
     public var scenarioTimeout: Int?
     /// iOS の高速な in-app エンジン(ハイブリッド)を使うか(既定 true=ON)。

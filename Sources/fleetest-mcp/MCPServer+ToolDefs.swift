@@ -133,7 +133,7 @@ extension MCPServer {
         pass udid: the server picks the device's XCUITest bridge) / allowVersionSkew (off by default: a stale bridge answers with its own \
         version's behaviour and notes, so selectors written from them are silently wrong; every \
         skewed response carries a warning). Once a call explicitly gives udid/port (iOS) or \
-        serial (Android), this server process remembers it for its lifetime: a later call that \
+        serial (Android), or a profile, this server process remembers it for its lifetime: a later call that \
         omits udid, port, AND serial entirely defaults to that same device. Giving udid/port or \
         serial again on a later call overrides the memory for that call and replaces it. \
         That default only applies while the target is unambiguous: once this session has driven \
@@ -165,9 +165,11 @@ extension MCPServer {
         changed", not "the final content arrived": a screen that first shows a loading or empty \
         intermediate (a search still fetching) satisfies it early — the response notes when the \
         difference was already on the first read, and only checking for the expected content \
-        guarantees it is there. Both waits run to waitSeconds (default \(number(defaultWaitSeconds))s; the same name as the DSL's \
-        waitSeconds:) when they miss — pass a smaller waitSeconds on a wait you expect to miss, a larger \
-        one for a slow load. \
+        guarantees it is there. Both waits run to waitSeconds (default \(number(defaultWaitSeconds))s) when they miss, \
+        except that a waitFor miss ends early once the tree has stayed still for \(number(waitForQuietCutoffSeconds))s — pass a \
+        smaller waitSeconds on a wait you expect to miss, a larger one for a slow load. Here waitSeconds bounds only these \
+        two waits (given alone it is ignored); it is not the DSL action's waitSeconds:, which is the retry for finding \
+        the target. \
         Every tree-returning call (ft_snapshot, snapshotAfter, ft_scroll_to) inherits interactiveOnly/expandBulk from \
         the last call that passed them unless passed explicitly; the first response that inherits a value says so.
 
@@ -411,8 +413,8 @@ extension MCPServer {
                 + "the only or default project)"],
         ], scope: .none),
         tool("ft_double_tap", "Double-tap an element (ref) or a point (x,y); two ft_tap calls miss the OS "
-            + "double-tap window. On iOS pass profile: — without it XCUITest is used, and Compose apps "
-            + "never receive the double tap. " + coordinateCaveat, [
+            + "double-tap window. MCP drives iOS through XCUITest only, where Compose apps never receive the "
+            + "double tap — a scenario on the default (hybrid) engine delivers it. " + coordinateCaveat, [
             "ref": refProperty, "x": pointXProperty, "y": pointYProperty,
         ], extra: afterActionProperties()),
         tool("ft_drag", "Drag between points — for diagonal pans, and to expand a bottom sheet (drag its "
@@ -431,8 +433,7 @@ extension MCPServer {
         ], extra: afterActionProperties()),
         tool("ft_pinch", "Pinch to zoom: scale > 1 zooms in, < 1 out. Target a ref, or x/y on a map or "
             + "canvas; with neither it pinches the content at the screen centre (a bottom sheet on top "
-            + "may take it). The zoom can fall short (fingers stay inside the target). On iOS pass "
-            + "profile: — without it Flutter apps do not zoom", [
+            + "may take it). The zoom can fall short (fingers stay inside the target)", [
             "ref": refProperty,
             "x": ["type": "number", "description": "Pinch centre (ft_snapshot coordinates)"],
             "y": ["type": "number", "description": "Pinch centre (ft_snapshot coordinates)"],

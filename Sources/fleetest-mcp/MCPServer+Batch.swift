@@ -511,7 +511,7 @@ extension MCPServer {
     /// `doubleKeys` の鍵名はどのコマンドでも共通なので、戻り値を1回舐めれば全コマンドに効く。
     /// 座標・ref のような `.unbounded` 登録の鍵は `ArgumentBounds.violation` が常に nil を返すので
     /// 素通しされる
-    private static func checkBatchArgumentBounds(_ raw: [String: Any], command: String) throws {
+    static func checkBatchArgumentBounds(_ raw: [String: Any], command: String) throws {
         for (key, value) in raw {
             let numeric: Double?
             switch value {
@@ -519,7 +519,11 @@ extension MCPServer {
             case let doubleValue as Double: numeric = doubleValue
             default: numeric = nil
             }
-            guard let numeric, let violation = ArgumentBounds.violation(key, numeric) else { continue }
+            guard let numeric else { continue }
+            // `holdSeconds: 0` は DSL の既定(通常のタップ = `FlowStep.defaultTapHoldSeconds`)。ft_tap / ft_long_press の
+            // 値域(0 を含まない)をそのまま当てると、シナリオから写した正当な行が断られる(通ったバッチは 1:1 で写せる、の逆向き)
+            if key == "holdSeconds", numeric == FlowStep.defaultTapHoldSeconds { continue }
+            guard let violation = ArgumentBounds.violation(key, numeric) else { continue }
             throw MCPError("\(command): \(violation)")
         }
     }

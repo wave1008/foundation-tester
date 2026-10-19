@@ -41,7 +41,7 @@ fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml
   Markdown レポートのパス・実行 worker が入る。
   **inconclusive**(`verify` のアサーション0個)は JUnit に語彙が無いため、
   シナリオの**全ステップ**が inconclusive のときだけ `<skipped>` になる(**ワーカー不在・全滅などの
-  事故で走らなかったシナリオは `<failure>`** —— failures を見る CI が「1 本も走っていない」run を
+  事故と、run の中断で走らなかったシナリオは `<failure>`** —— failures を見る CI が「1 本も走っていない」run を
   緑に読まないため。`@Test(platform:)` で対象外の未実行だけが `<skipped>`)—
   通常のステップと混在する場合は passed の `<testcase>` に埋もれる
   (気付く経路は実行ログ・Markdown レポートの ❓ と修正提案)

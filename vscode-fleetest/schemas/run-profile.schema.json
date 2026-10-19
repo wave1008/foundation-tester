@@ -122,7 +122,7 @@
     },
     "scenarioTimeout": {
       "type": "integer",
-      "description": "シナリオ単位の壁時計タイムアウト秒(ホスト側 watchdog。超過で子を強制終了し失敗扱い。省略時 90)。defaultTimeout(子内部の検証待ち)とは別物。",
+      "description": "シナリオ単位の壁時計タイムアウト秒(ホスト側 watchdog。超過で子を強制終了し失敗扱い。省略時 600)。defaultTimeout(子内部の検証待ち)とは別物。",
       "minimum": 1
     },
     "iosInappEngine": {
