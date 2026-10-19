@@ -52,8 +52,8 @@ before(async () => {
 });
 
 /** window.close() を忘れると main.js の setInterval が残ってプロセスが終わらない */
-function createWebview() {
-  const dom = new JSDOM(panelHtml, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://localhost/" });
+function createWebview(html = panelHtml) {
+  const dom = new JSDOM(html, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://localhost/" });
   const { window } = dom;
   const posts = [];
   window.acquireVsCodeApi = () => ({ postMessage: (m) => posts.push(m), setState: () => {}, getState: () => undefined });
@@ -163,3 +163,25 @@ test("コピーで「コピーしました」の短命ツールチップが出�
   assert.match(bannerText(document), /ブリッジを起動できません/, "ツールチップを出してもバナーは残る");
 });
 
+
+// CLI の文言は英語だけ。日本語 UI のときだけ「原文【日本語訳】訳文」で出す(cliMessageTranslation.ts)
+const CLI_MESSAGE = "the bridge did not become ready in time (port 8129): port 8129 is in use by another process";
+
+test("日本語 UI では CLI の英語文言に訳を添える", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  failOp(window, CLI_MESSAGE);
+  assert.equal(
+    document.querySelector("#banner .banner-text").textContent,
+    `シム1: ${CLI_MESSAGE}【日本語訳】シム1: ブリッジが時間内に準備完了になりませんでした (ポート 8129): ポート 8129 は別のプロセスによって使用されています`,
+  );
+});
+
+test("英語 UI では訳を添えない", (t) => {
+  const englishHtml = panelHtml.replace(/<html lang="ja"/, '<html lang="en"');
+  assert.notEqual(englishHtml, panelHtml, "前提: lang を差し替えられた");
+  const { window, document } = createWebview(englishHtml);
+  t.after(() => window.close());
+  failOp(window, CLI_MESSAGE);
+  assert.equal(document.querySelector("#banner .banner-text").textContent, `シム1: ${CLI_MESSAGE}`);
+});

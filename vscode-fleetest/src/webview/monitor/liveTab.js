@@ -3,7 +3,7 @@
 // (対向: src/liveModel.ts の LiveWebviewEnvelope、処理は src/monitorLiveController.ts。
 // host 側の窓口は src/liveTabHost.ts)。
 
-import { t } from '../i18n.js';
+import { t, withCliTranslation } from '../i18n.js';
 import { vscode, persistedState } from './vscodeApi.js';
 import { clampMenuPosition } from './menu.js';
 import { createH264Renderer } from './h264Decoder.js';
@@ -198,7 +198,7 @@ function clearAppProfileDetail() {
 
 function showBanner(text) {
   if (!text) { banner.classList.remove('visible'); banner.textContent = ''; return; }
-  banner.textContent = text;
+  banner.textContent = withCliTranslation(text);
   banner.classList.add('visible');
 }
 
@@ -211,7 +211,7 @@ function showActionError(text, neutral) {
     actionErrorText.textContent = '';
     return;
   }
-  actionErrorText.textContent = text;
+  actionErrorText.textContent = withCliTranslation(text);
   actionError.classList.toggle('neutral', !!neutral);
   actionError.classList.add('visible');
 }

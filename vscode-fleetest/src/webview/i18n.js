@@ -13,6 +13,7 @@ import { webviewMonitorBStrings } from '../i18n/strings/webviewMonitorB';
 import { webviewDashboardStrings } from '../i18n/strings/webviewDashboard';
 import { recordingsStrings } from '../i18n/strings/recordings';
 import { runBoardStrings } from '../i18n/strings/runBoard';
+import { translateCliMessage } from '../i18n/cliMessageTranslation';
 
 const merged = {
   ...webviewMonitorAStrings,
@@ -42,4 +43,13 @@ export function t(key, params) {
     return key;
   }
   return formatMessage(entry[locale], params);
+}
+
+/** CLI の英語のエラー文言に、日本語 UI のときだけ訳を添える(訳せないときは原文のまま)。 */
+export function withCliTranslation(text) {
+  if (locale !== 'ja') {
+    return text;
+  }
+  const translation = translateCliMessage(text);
+  return translation === null ? text : text + t('wvMonitor2.banner.translationLabel') + translation;
 }

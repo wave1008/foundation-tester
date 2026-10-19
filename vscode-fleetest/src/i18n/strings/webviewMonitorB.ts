@@ -133,6 +133,8 @@ export const webviewMonitorBStrings = {
   // 台帳由来の形(`N/A`)は日英同じ語なので hostCharts.js が直に組む。
   // 台帳が無く、窓の中の呼び出しが全部失敗した形だけは**経路を名指しできない**ので事実を言う
   "wvMonitor2.hostCharts.fmDeadBadgeAllFailed": { ja: "⚠︎ FM 全呼び出し失敗", en: "⚠︎ all FM calls failed" },
+  // エラーバーの CLI 文言(英語)と訳の区切り(cliMessageTranslation.ts)。訳を付けるのは日本語 UI だけ
+  "wvMonitor2.banner.translationLabel": { ja: "【日本語訳】", en: "[Japanese translation]" },
   // ハードウェアビデオエンコーダー故障のバッジ。dead のときだけ出る(alive/不明は何も出さない)
   "wvMonitor2.hostCharts.encoderDeadLine": {
     ja: "この Mac のハードウェアビデオエンコーダーが使えません。録画の切り出しはソフトウェアで続けます(遅くなります)。Simulator の録画とライブ更新の配信にも影響します。これまでは Mac の再起動で戻りました",

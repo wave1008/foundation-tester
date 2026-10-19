@@ -5,7 +5,7 @@
 // footer 優先順位: opBusy > wipeStatus > bridgeWatch/healthWatch。wipeStatus は Wipe 中に
 // offline/booted を経由する(state==='connected' に限定できない)ため他2つと別枠で判定する。
 
-import { t } from '../i18n.js';
+import { t, withCliTranslation } from '../i18n.js';
 import { setDevicesWaiting } from './waitingNote.js';
 import { vscode } from './vscodeApi.js';
 import { grid, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuSelectOnlyBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, btnRestart, btnRunTests, projectSelect, profileSelect, tilePane, tileMarquee, lineViewSelection, platformFilterBadges } from './domRefs.js';
@@ -1883,7 +1883,8 @@ export function applyDeviceError(message) {
 
 // **自動では消えない**(監視サイクルで消すと読む前に消える。main.js の 'devices' 参照)。
 // 消えるのは3つだけ: 利用者が閉じた・次のバナーで置き換わった・「モニター再起動」。
-export function showBanner(text) {
+export function showBanner(message) {
+  const text = withCliTranslation(message);
   banner.textContent = '';
   const body = document.createElement('span');
   body.className = 'banner-text';
