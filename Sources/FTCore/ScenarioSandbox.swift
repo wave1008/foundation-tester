@@ -256,7 +256,7 @@ public enum ScenarioSandbox {
     /// シェルのトークン(`GITHUB_TOKEN` 等)をシナリオが読み、UI 操作でデバイスへ持ち出せる。
     /// 子が読む鍵は `FT_*` とこの一覧(Sources の `environment["…"]` / `getenv` を棚卸しした結果)。
     /// 子が読む鍵を足したらここにも足す(足し忘れると子では未設定に見える)。設定の場所を差し替える鍵は渡さない
-    /// (子が読めるのは実ホームの `~/.config/fleetest` だけ = `readReopenedHomeSubpaths`)
+    /// (子が読めるのは実ホームの `~/.config/fleetest` の決まった場所だけ = `readReopenedPaths`)
     static let inheritedEnvironmentKeys: Set<String> = [
         "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "LANG", "__CF_USER_TEXT_ENCODING",
         "DEVELOPER_DIR", "JAVA_HOME", "SSH_CONNECTION", "SSH_TTY",
@@ -503,7 +503,7 @@ public enum ScenarioSandbox {
 
     /// 常に読ませない場所(ホーム相対)。シナリオの駆動に要らない認証情報・個人データの定番の置き場で、
     /// **網羅ではない**(ここに無い秘密は読める。足すのはマシン側の `denyRead`)。
-    /// `.config` は丸ごと閉じ、`readReopenedHomeSubpaths` だけ開け直す
+    /// `.config` は丸ごと閉じ、`readReopenedPaths` だけ開け直す
     static let defaultDenyReadHomeSubpaths = [
         ".ssh", ".aws", ".azure", ".gnupg", ".kube", ".docker", ".config",
         ".netrc", ".git-credentials", ".npmrc", ".pypirc",
@@ -526,9 +526,35 @@ public enum ScenarioSandbox {
         "Library/Application Support/Slack", "Library/Application Support/Claude",
     ]
 
-    /// 閉じた場所の中で、子が読む必要のある場所。`~/.config/fleetest/config.json` は子が FM の並列枠
-    /// (`FMCallSlots.concurrency` → `LocalConfig.load`)を読む
-    static let readReopenedHomeSubpaths = [".config/fleetest"]
+    /// 閉じた `~/.config` の中で、子が読む必要のある場所だけを開け直す。`config.json` は子が FM の並列枠
+    /// (`FMCallSlots.concurrency` → `LocalConfig.load`)を読む。データセットは**そのプロジェクトの分だけ**
+    /// (`account` / `data` / `dataFile` / `addMedia` の置き場 = `PhotoLibraryMedia.datasetRoots` の2つ目)。
+    /// **`~/.config/fleetest` を丸ごと開けない** —— 開けると別プロジェクトの `accounts.json` を読め、
+    /// 伏せ字(`account()` 経由で返した値だけを登録する)も直接読みで迂回できた
+    static func readReopenedPaths(_ scope: Scope) -> [String] {
+        [machineSettingsURL(home: scope.home).path,
+         PhotoLibraryMedia.datasetRoots(projectRoot: scope.projectRoot, home: scope.home)[1]]
+    }
+
+    /// 開け直す経路のうち、閉じた `~/.config` の中で**シンボリックリンクになっている段**(リンクそのものの位置)。
+    /// `subpath` は実体パスに直して許すので、リンクの節点は閉じた `.config` に残り、リンク経由の読みが EPERM になる
+    /// (実測: `dataset/<名前>` を別の場所へのリンクにすると読めなかった。丸ごと開けていた頃は読めた)。
+    /// **リンクの段だけ**を `literal` で開ける —— 途中の段を全部開けると `dataset/` の一覧(他のプロジェクト名)が見える
+    static func symlinkHopsUnderConfig(_ path: String, home: String) -> [String] {
+        let base = home + "/.config"
+        guard path.hasPrefix(base + "/") else { return [] }
+        var hops: [String] = []
+        var current = base
+        for component in path.dropFirst(base.count + 1).split(separator: "/") {
+            let parent = current
+            current += "/" + component
+            var info = stat()
+            if lstat(current, &info) == 0, (info.st_mode & S_IFMT) == S_IFLNK {
+                hops.append(canonicalPath(parent) + "/" + component)
+            }
+        }
+        return hops
+    }
 
     /// adb の鍵(Emulator の adbd へ直に繋げば認証が通る)と Emulator のコンソールの鍵。子の adb は親が代行する
     /// (`AdbPolicy`)ので子は読まない。`allowDirectAdb` のときだけ開ける(子の adb がこの鍵を使う)
@@ -615,7 +641,9 @@ public enum ScenarioSandbox {
         let unreadable = try scope.denyRead.map { try subpath($0) }
         if !unreadable.isEmpty {
             lines.append("(deny file-read* " + unreadable.joined(separator: " ") + ")")
-            let reopened = try readReopenedHomeSubpaths.map { try subpath(scope.home + "/" + $0) }
+            let paths = readReopenedPaths(scope)
+            let reopened = try paths.map { try subpath($0) }
+                + (try paths.flatMap { symlinkHopsUnderConfig($0, home: scope.home) }.map { "(literal " + (try quoted($0)) + ")" })
             lines.append("(allow file-read* " + reopened.joined(separator: " ") + ")")
         }
         // 開け直した `.config/fleetest` の中の秘密の置き場を名指しで閉じ直す(後に書いた規則が勝つ)

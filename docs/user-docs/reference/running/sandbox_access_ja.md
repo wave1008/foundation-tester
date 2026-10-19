@@ -37,7 +37,7 @@
 
 | 種類 | 読めない場所(ホームからの相対) |
 |---|---|
-| 認証情報・鍵 | `.ssh`・`.aws`・`.azure`・`.gnupg`・`.kube`・`.docker`・`.config`(ただし `.config/fleetest` は読めます)・`.netrc`・`.git-credentials`・`.npmrc`・`.pypirc`・`.pgpass`・`.vault-token`・`.terraform.d` |
+| 認証情報・鍵 | `.ssh`・`.aws`・`.azure`・`.gnupg`・`.kube`・`.docker`・`.config`(ただし `.config/fleetest` の `config.json` と、そのプロジェクトのデータセットは読めます)・`.netrc`・`.git-credentials`・`.npmrc`・`.pypirc`・`.pgpass`・`.vault-token`・`.terraform.d` |
 | AIアシスタントの設定 | `.claude`・`.claude.json`・`.codex` |
 | ビルド・配布の資格情報 | `.gradle`・`.m2`・`.gem/credentials`・`.cargo/credentials`(`.toml` も)・`.pub-cache/credentials.json`・`.yarnrc`・`.yarnrc.yml`・`.bundle/config`・`.appstoreconnect`・`private_keys`・`.private_keys`・`.fastlane`・`.expo` |
 | Android の鍵 | `.android`(adb の鍵)・`.emulator_console_auth_token` |
@@ -46,8 +46,9 @@
 
 - **この一覧は網羅ではありません**。ここに無い場所に秘密を置いているなら、設定の `sandbox.denyRead` に足してください
   (既定の一覧に**足す**形で、置き換えはしません)。
-- `~/.config/fleetest` が読めるのは、`account()` / `data()` / `dataFile()` がこの Mac だけの値
-  (`~/.config/fleetest/dataset/`)を読むためです。書くことはできません。
+- `~/.config/fleetest` のうち読めるのは、`config.json` と、実行中のプロジェクトのデータセット
+  (`~/.config/fleetest/dataset/<プロジェクト名>/`)だけです。`account()` / `data()` / `dataFile()` がこの Mac だけの値を読むためです。
+  別のプロジェクトのデータセットは読めません。どれも書くことはできません。
 
 ## 環境変数
 

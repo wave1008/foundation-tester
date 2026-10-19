@@ -37,7 +37,7 @@ What is unreadable by default is the usual places for credentials and personal d
 
 | Kind | Unreadable places (relative to home) |
 |---|---|
-| Credentials and keys | `.ssh`, `.aws`, `.azure`, `.gnupg`, `.kube`, `.docker`, `.config` (but `.config/fleetest` is readable), `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, `.pgpass`, `.vault-token`, `.terraform.d` |
+| Credentials and keys | `.ssh`, `.aws`, `.azure`, `.gnupg`, `.kube`, `.docker`, `.config` (but `config.json` and the running project's dataset under `.config/fleetest` are readable), `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, `.pgpass`, `.vault-token`, `.terraform.d` |
 | AI assistant settings | `.claude`, `.claude.json`, `.codex` |
 | Build and distribution credentials | `.gradle`, `.m2`, `.gem/credentials`, `.cargo/credentials` (and `.toml`), `.pub-cache/credentials.json`, `.yarnrc`, `.yarnrc.yml`, `.bundle/config`, `.appstoreconnect`, `private_keys`, `.private_keys`, `.fastlane`, `.expo` |
 | Android keys | `.android` (adb keys), `.emulator_console_auth_token` |
@@ -46,8 +46,9 @@ What is unreadable by default is the usual places for credentials and personal d
 
 - **This list is not exhaustive.** If you keep secrets somewhere not listed, add it to `sandbox.denyRead` in the
   settings (it is **added** to the default list; it does not replace it).
-- `~/.config/fleetest` is readable because `account()`, `data()` and `dataFile()` read the values for this Mac only
-  (`~/.config/fleetest/dataset/`). It cannot be written.
+- Under `~/.config/fleetest`, only `config.json` and the running project's dataset
+  (`~/.config/fleetest/dataset/<project name>/`) are readable, so that `account()`, `data()` and `dataFile()` can read the values
+  for this Mac only. Other projects' datasets cannot be read. None of them can be written.
 
 ## Environment variables
 

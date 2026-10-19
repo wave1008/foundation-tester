@@ -508,6 +508,40 @@ final class ScenarioSandboxTests: XCTestCase {
         XCTAssertNotEqual(try touch("home/.config/fleetest/config.json"), 0)
     }
 
+    /// `~/.config/fleetest` は丸ごとは開けない: 読めるのは `config.json` と**実行中のプロジェクトの**データセットだけ。
+    /// 別プロジェクトの accounts.json は読めない(読めると伏せ字を迂回して他人の資格情報を持ち出せた)
+    func testOnlyTheRunningProjectsDatasetIsReadableUnderTheMachineConfig() throws {
+        let own = "home/.config/fleetest/dataset/project"
+        let other = "home/.config/fleetest/dataset/other-project"
+        for dir in [own, other] {
+            try FileManager.default.createDirectory(at: root.appendingPathComponent(dir), withIntermediateDirectories: true)
+            try Data("{}".utf8).write(to: root.appendingPathComponent(dir + "/accounts.json"))
+        }
+        XCTAssertEqual(try runSandboxed(["/bin/cat", path(own + "/accounts.json")]), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/cat", path(other + "/accounts.json")]), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/ls", path("home/.config/fleetest/dataset")]), 0,
+                          "データセットの一覧(他のプロジェクト名)も見えない")
+    }
+
+    /// **データセットを別の場所へのシンボリックリンクにしていても読める**(dotfiles・秘密の置き場を別に持つ運用)。
+    /// 開け直しは実体パスで許すので、リンクの節点を許さないとリンク経由の読みが EPERM になる。別プロジェクトは読めないまま
+    func testRunningProjectsDatasetIsReadableThroughASymlink() throws {
+        let target = root.appendingPathComponent("outside/vault/project")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: target.appendingPathComponent("accounts.json"))
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("home/.config/fleetest/dataset"),
+                                                withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: root.appendingPathComponent("home/.config/fleetest/dataset/project"), withDestinationURL: target)
+        let other = "home/.config/fleetest/dataset/other-project"
+        try FileManager.default.createDirectory(at: root.appendingPathComponent(other), withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: root.appendingPathComponent(other + "/accounts.json"))
+
+        XCTAssertEqual(try runSandboxed(["/bin/cat", path("home/.config/fleetest/dataset/project/accounts.json")]), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/cat", path(other + "/accounts.json")]), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/ls", path("home/.config/fleetest/dataset")]), 0)
+    }
+
     /// 書く場所を差し替える環境変数は、書ける場所の中を指すときだけ通す(足す形にすると、環境変数だけで
     /// 任意の場所を書けるようにできる)
     func testRedirectedDirectoriesMustStayInsideTheWritableLocations() throws {

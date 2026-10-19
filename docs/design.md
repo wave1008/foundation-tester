@@ -4543,8 +4543,10 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
 - **設定が壊れていたら止める**(`LocalConfig.load` の「壊れていたら空設定」に倒さない。追加した `denyRead` が
   黙って消えた状態で走る)。未知のキーもエラー
 - **読み取り**: 内蔵の `defaultDenyReadHomeSubpaths`(認証情報・個人データの定番の置き場。網羅ではない)+
-  マシン側の `denyRead`(足すだけ)。`~/.config` は丸ごと閉じ、子が FM の並列枠を読む `~/.config/fleetest` だけ
-  読み直しを許す(書けない = 子は `disabled` を立てられない)。受け手の `.claude/settings.json` には
+  マシン側の `denyRead`(足すだけ)。`~/.config` は丸ごと閉じ、子が FM の並列枠を読む `~/.config/fleetest/config.json` と
+  そのプロジェクトのデータセット(`dataset/<プロジェクト名>/`)だけ読み直しを許す(`ScenarioSandbox.readReopenedPaths`。
+  丸ごと開けると別プロジェクトの accounts.json を読めた。リンクになっている段はリンクの位置も許す = `symlinkHopsUnderConfig`。
+  書けない = 子は `disabled` を立てられない)。受け手の `.claude/settings.json` には
   `~/.config/fleetest` の Edit deny を書く(`ProjectScaffold.machineConfigEditDeny`)
 - **Simulator と iOS 実機の操作は親が代行する**。子はドライバそのものなので CoreSimulator / CoreDevice が要るが、
   繋がせると `simctl spawn` 等で枠の外にプロセスを起こせる。子の `Shell.runRaw` が `xcrun simctl …` /
