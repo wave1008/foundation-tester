@@ -61,6 +61,8 @@ enum FleetRunner {
         // 食い違って互いに相手を待つ)。--split と共用するので分岐より前で採る。
         // **--fleet に runGroup は無い**(エントリごとに別の run。束ね鍵を持たない)ので pid で区別する
         let ticket = DispatchTicketIssuer.issue(runGroup: nil)
+        // 自己修復の書き戻しは全エントリが終わってから親が1回だけ(HealSourceWriteBack.Collection)
+        let healCollection = HealSourceWriteBack.Collection()
 
         // --split は別経路(FleetSplit.swift の項参照)。**この分岐より下は --junit 配線を除き無改修**
         // (プレーンな --fleet の挙動を1バイトも変えない契約)
@@ -71,7 +73,8 @@ enum FleetRunner {
                 setOverrides: setOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                 performanceMode: performanceMode,
                 forceLock: forceLock, waitLock: waitLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
-                quiet: quiet, junit: junit, junitTempDir: junitTempDir, ticket: ticket)
+                quiet: quiet, junit: junit, junitTempDir: junitTempDir, ticket: ticket,
+                healCollection: healCollection)
         }
 
         let binary = selfBinaryPath()
@@ -104,7 +107,8 @@ enum FleetRunner {
                     let start = Date()
                     let exitCode = await runEntry(binary: binary, args: args,
                                                   hostLabel: entry.host, ticket: ticket,
-                                                  lockMarker: lockMarkers[entry.host])
+                                                  lockMarker: lockMarkers[entry.host],
+                                                  healCollection: healCollection)
                     return (index, FleetEntryOutcome(
                         host: entry.host, profile: entry.profile, exitCode: exitCode,
                         duration: Date().timeIntervalSince(start)))
@@ -119,6 +123,7 @@ enum FleetRunner {
         }
 
         printSummary(fleetName: fleetName, outcomes: outcomes)
+        healCollection.finish(project: project) { log($0) }
         if let junit, let junitTempDir {
             mergeAndWriteJUnit(junit: junit, project: project.name, tempDir: junitTempDir,
                                 entries: fleet.runs.enumerated().map { (host: $0.element.host, index: $0.offset) })
@@ -150,7 +155,8 @@ enum FleetRunner {
         setOverrides: [String: RunProfileSetValue] = [:], noLPT: Bool, lptHistoryRuns: Int?,
         performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?,
-        quiet: Bool, junit: String?, junitTempDir: URL?, ticket: DispatchTicket
+        quiet: Bool, junit: String?, junitTempDir: URL?, ticket: DispatchTicket,
+        healCollection: HealSourceWriteBack.Collection
     ) async throws -> Int32 {
         log("==> fleet \"\(fleetName)\" --split: building \(project.name) locally to resolve"
             + " the scenario list (plain --fleet skips this build)")
@@ -252,7 +258,8 @@ enum FleetRunner {
                     let start = Date()
                     let exitCode = await runEntry(binary: binary, args: args,
                                                   hostLabel: entry.host, ticket: ticket,
-                                                  lockMarker: lockMarkers[entry.host])
+                                                  lockMarker: lockMarkers[entry.host],
+                                                  healCollection: healCollection)
                     return (index, FleetEntryOutcome(
                         host: entry.host, profile: entry.profile, exitCode: exitCode,
                         duration: Date().timeIntervalSince(start)))
@@ -267,6 +274,7 @@ enum FleetRunner {
         }
 
         printSplitSummary(fleetName: fleetName, fleet: fleet, outcomes: outcomes, buckets: buckets)
+        healCollection.finish(project: project) { log($0) }
         // active だけを対象にする(0本割当で見送ったエントリは --junit を渡していないので
         // 「出力が無い」合成失敗の対象に含めない)
         if let junit, let junitTempDir {
@@ -558,11 +566,13 @@ enum FleetRunner {
     /// ロックを取れたときだけ非 nil(DispatchPrelock)。**既定値を置かない** ——
     /// 呼び忘れた経路の子だけが自分で取りに行き、親の握っているロックを待って詰む
     static func runEntry(binary: String, args: [String], hostLabel: String,
-                         ticket: DispatchTicket, lockMarker: String?) async -> Int32 {
+                         ticket: DispatchTicket, lockMarker: String?,
+                         healCollection: HealSourceWriteBack.Collection) async -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
         process.environment = DispatchTicketIssuer.childEnvironment(ticket: ticket,
-                                                                     lockHeldTarget: lockMarker)
+                                                                     lockHeldTarget: lockMarker,
+                                                                     healCollection: healCollection)
         process.arguments = args
         process.standardInput = FileHandle.nullDevice
         let pipe = Pipe()

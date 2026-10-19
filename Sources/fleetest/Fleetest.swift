@@ -977,9 +977,11 @@ struct RunScenarios: AsyncParsableCommand {
                   : "❌ \(failedCount) of \(ranCount) \(unit) failed\(skippedSuffix)"
                     + (runSummary.interrupted ? Self.interruptedCountNote : ""))
             // 自己修復で通ったシナリオ(合否は変えない。✅ の行と同じ顔なので、ここで言わないと選択子の腐りが見えない)
-            if let healed = HealedScenarios.summaryLine(records: RunResultsStore.records(runDir: recorder.runDir)) {
+            let records = RunResultsStore.records(runDir: recorder.runDir)
+            if let healed = HealedScenarios.summaryLine(records: records) {
                 ConsoleOut.out(healed)
             }
+            HealSourceWriteBack.run(records: records, project: testProject) { ConsoleOut.out($0) }
             // **合否は変えず、劣化だけ伝える**。FM(vision 経路)が死んでいると screenLooksLike は素通りし、
             // occlusion-guard は OCR だけで判定する(OCR が判定できない形は素通り)ので、緑は「守りが効いた緑」ではない。
             // **text 経路の死は言わない** —— run の中で text 経路を使う機能は無い
@@ -1084,9 +1086,11 @@ struct RunScenarios: AsyncParsableCommand {
               ? "✅ All \(items.count - skippedCount) scenario(s) passed\(skippedNote)"
               : "❌ \(failedCount) of \(items.count) scenario(s) failed\(skippedNote)"
                 + (interrupted ? Self.interruptedCountNote : ""))
-        if let healed = HealedScenarios.summaryLine(records: RunResultsStore.records(runDir: recorder.runDir)) {
+        let records = RunResultsStore.records(runDir: recorder.runDir)
+        if let healed = HealedScenarios.summaryLine(records: records) {
             ConsoleOut.out(healed)
         }
+        HealSourceWriteBack.run(records: records, project: testProject) { ConsoleOut.out($0) }
         // デバイスそのものが遅いことの観測(SlowWorkerDetector)。自動では何もしない・除外もしない
         for finding in slowWorkers { ConsoleOut.out(finding.consoleWarning) }
         if failedCount > 0 {

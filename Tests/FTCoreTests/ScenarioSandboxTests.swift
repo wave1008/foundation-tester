@@ -25,6 +25,7 @@ final class ScenarioSandboxTests: XCTestCase {
         }
         try Data("secret".utf8).write(to: root.appendingPathComponent("home/.ssh/id"))
         try Data("{}".utf8).write(to: root.appendingPathComponent("repo/.fleetest/services.lock/fleetest-ab.lock"))
+        try Data("".utf8).write(to: root.appendingPathComponent("project/.fleetest/heal-writeback.lock"))
         try Data("plain".utf8).write(to: root.appendingPathComponent("home/readable"))
         try Data("{}".utf8).write(to: root.appendingPathComponent("home/.config/fleetest/config.json"))
         try Data("token".utf8).write(to: root.appendingPathComponent("home/.config/gh/hosts.yml"))
@@ -129,6 +130,16 @@ final class ScenarioSandboxTests: XCTestCase {
         XCTAssertNotEqual(try touch("tool/.fleetest/services.lock/new.lock"), 0)
         XCTAssertTrue(FileManager.default.fileExists(atPath: path(file)))
         XCTAssertFalse(FileManager.default.fileExists(atPath: path("repo/.fleetest/services.lock.old")))
+    }
+
+    /// 自己修復の書き戻しの排他(`<project>/.fleetest/heal-writeback.lock` の flock)。子が消す・置き換えると、
+    /// 別の inode を握った 2 つの run が同じシナリオを同時に書き換える
+    func testHealWriteBackLockStaysReadOnlyInsideTheProjectStateDirectory() throws {
+        let file = "project/.fleetest/heal-writeback.lock"
+        XCTAssertNotEqual(try runSandboxed(["/bin/rm", path(file)]), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/mv", path(file), path("project/.fleetest/moved.lock")]), 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path(file)))
+        XCTAssertEqual(try touch("project/.fleetest/other.json"), 0, "隣は書ける(拒否は排他のファイルだけ)")
     }
 
     /// `clearAppData` は Simulator のデータコンテナの中身を直接消す。開けるのはデータ側だけで、

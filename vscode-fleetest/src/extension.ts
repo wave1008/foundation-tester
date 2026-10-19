@@ -17,7 +17,7 @@ import {
 } from "./config";
 import { registerDebugAdapter } from "./debugConfig";
 import { defaultProjectState, ensureDefaultProject } from "./defaultProject";
-import { registerHealReviewPanel } from "./healReviewPanel";
+import { registerHealNotice } from "./healNotice";
 import { initI18n, setLocaleFromConfig, t } from "./i18n";
 import { handleLanguageChange } from "./languageChangeHandler";
 import { registerLastResultsSync } from "./lastResultsSync";
@@ -171,7 +171,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   registerDebugAdapter(context, workspaceRoot, getConfig, outputChannel);
   registerStepsView(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel);
-  const healReviewPanel = registerHealReviewPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus, cli);
+  registerHealNotice(context, runEventBus);
   registerProfileDiagnostics(context, cli, workspaceRoot, getConfig, outputChannel);
 
   // 表示言語(fleetest.language)変更。パネル群の登録後に置く(relocalizePanels がその時点の
@@ -185,10 +185,7 @@ export function activate(context: vscode.ExtensionContext): void {
         setLocale: setLocaleFromConfig,
         isRunActive,
         rebuildTestTree: () => testTree.rebuildFromLastData(),
-        relocalizePanels: [
-          monitorPanel.relocalize,
-          healReviewPanel.relocalize,
-        ],
+        relocalizePanels: [monitorPanel.relocalize],
       });
     }),
   );

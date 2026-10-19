@@ -16,25 +16,23 @@ absorbed on the spot by fleetest's **self-healing**, and the test continues.
 - It does not use AI. The result is the same every time.
 - It is enabled in runs that use a run profile, through the run profile's `heal` setting (default `true`).
 
-If a step passed thanks to self-healing, the report keeps a **suggestion** like "change this line of the scenario this way".
-**Scenario files are never rewritten automatically**.
+If a step passed thanks to self-healing, the report keeps a **suggestion** like "change this line of the scenario this way", and at the end of the run that selector is **written back to the scenario source automatically** (this assumes the project is kept in git: review the diff and commit).
 
-### Apply the suggestions to the scenario
+### Check the written-back selectors
 
 #### Prompt for the AI
 
 ```text
-Review the self-healing suggestions in the latest fleetest report and apply the reasonable ones to the scenarios.
-Then run those scenarios and confirm they pass.
+Review in the git diff the selectors that fleetest self-healing wrote back to the scenarios.
+Keep the reasonable ones, then run those scenarios and confirm they pass.
 ```
 
 <details>
 <summary><b>If you do it manually (click to show details)</b></summary>
 
-If you run from the VSCode Test Explorer and repair suggestions are produced, a "fleetest Heal Review" panel opens at the end of the run (`heal` in the run profile is on by default).
-Compare the before and after, choose the suggestions to apply, and press "Apply N selected".
-
-<img src="../images/tutorial/en/vscode_heal_review.png" width="720" alt="fleetest Heal Review panel">
+Selectors fixed by self-healing are written back to the scenario sources automatically at the end of the run (`heal` in the run profile is on by default).
+If you run from the VSCode Test Explorer, a notification appears; press "Show Changes" to open the Source Control view, then review the git diff and commit.
+To avoid write-back, set `heal` to `false` in the run profile to turn self-healing off.
 
 </details>
 

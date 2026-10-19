@@ -6,7 +6,7 @@
 // 末尾に2本の統合テストを含む:
 //   - test/fixtures/mock-validate-profile.mjs を FleetestCli(src/cli.ts)経由で実際に spawn し、
 //     cli.ts → profileModel.ts の配線(result.json → isValidateProfileOutput → toDiagnosticsByPath)
-//     を通す(cli.test.mjs の mock-apply-heal 統合テストと同じ方針)。
+//     を通す(cli.test.mjs の node 子プロセス統合テストと同じ方針)。
 //   - 実バイナリ(.build/debug/fleetest)が存在する場合だけ、`api validate-profile --project
 //     SampleApp` の実出力が isValidateProfileOutput を通ることを確認する(存在しなければ skip。
 //     デバイス不要な検証コマンドなので FLEETEST_E2E フラグなしで安全に実行できる)。

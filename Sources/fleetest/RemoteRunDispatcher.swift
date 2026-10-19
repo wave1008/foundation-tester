@@ -199,6 +199,7 @@ struct RemoteRunDispatcher {
         // ScenarioHost.run() は手元の LastResultsStore を書けないので、回収した scenario JSON
         // (scenarioID/passed/profile)から直接書く
         writeLastResults(texts: texts, project: project)
+        writeBackHealedSelectors(texts: texts, project: project)
         cleanupDispatchDir(layout: layout, stamp: stamp)
 
         log(Self.finishedLine(exitCode: exitCode))
@@ -280,6 +281,7 @@ struct RemoteRunDispatcher {
         relinkCollectedReports(project: project, stamp: stamp, texts: texts)
         // 理由は dispatch() と同じ
         writeLastResults(texts: texts, project: project)
+        writeBackHealedSelectors(texts: texts, project: project)
         cleanupDispatchDir(layout: layout, stamp: stamp)
 
         log(Self.finishedLine(exitCode: exitCode))
@@ -1201,6 +1203,14 @@ struct RemoteRunDispatcher {
     /// から直接書く。**同じ stamp に複数シナリオが乗る(broadcast 含む)のは後勝ちでよい** ——
     /// LastResultsStore はローカル実行でも「直近の1件」の記録
     // internal(not private): tested directly (RemoteDispatcherScenarioTextsTests)
+    /// 自己修復の修正提案を**手元の**シナリオへ書き戻す(ランナー機の子は `FT_DISPATCHED_RUN` で書かない)。
+    /// 記録の `file` はランナー機のパスなので `HealWriteBack.plan` が手元へ読み替える
+    func writeBackHealedSelectors(texts: [(url: URL, text: String)], project: TestProject) {
+        let decoder = JSONDecoder()
+        let records = texts.compactMap { try? decoder.decode(ScenarioRunRecord.self, from: Data($0.text.utf8)) }
+        HealSourceWriteBack.run(records: records, project: project) { log($0) }
+    }
+
     func writeLastResults(texts: [(url: URL, text: String)], project: TestProject) {
         for (_, text) in texts {
             guard let scenarioID = Self.recordedField(in: text, key: "scenarioID"),

@@ -505,7 +505,8 @@ public enum ScenarioSandbox {
             // `mcp-runs/` = MCP の ft_start_run のログと拒否の記録(`DispatchRefusalReport`)。子が記録を置けると緑の run が「始まらなかった」に化ける
             ["hooks", "services", "services.lock", "mcp-ask-offered.json", "mcp-runs", "DerivedData", "DerivedData-device", "cleanup.log", "recording-probe"]
                 .map { root + "/.fleetest/" + $0 }
-        } + ["ftbridge.apk", "dispatch.lock", "dispatch.queue", "retention-sweep.lock"]
+        } + [scope.projectRoot + "/.fleetest/" + HealWriteBack.lockFileName]
+            + ["ftbridge.apk", "dispatch.lock", "dispatch.queue", "retention-sweep.lock"]
             .map { scope.home + "/.fleetest/" + $0 }
             + ["Library/Caches/fleetest/webview", "Library/Logs/fleetest/emulator"].map { scope.home + "/" + $0 }
     }
@@ -677,7 +678,7 @@ public enum ScenarioSandbox {
         // スクリプトは何も待ち受けず、ブリッジにも繋がない。adb・Emulator の拒否も開けていないので要らない
         guard isScenario else { return lines.joined(separator: "\n") + "\n" }
         // **待ち受け(network-bind / network-inbound)は開けない**。子は何も待ち受けず、外向きの接続は bind の許可が無くても
-        // 通る(2026-10-20 実測: curl・urllib・UDP の送信)。`localhost` は自機の全アドレスを含み Seatbelt ではループバック
+        // 通る(実測: curl・urllib・UDP の送信)。`localhost` は自機の全アドレスを含み Seatbelt ではループバック
         // だけに絞れないので、開けると 0.0.0.0 で待ち受けて LAN から繋いだ相手へ応答できた(同日実測)
         for port in scope.remoteBridgePorts {
             lines.append("(allow network-outbound (remote ip \"*:\(port)\"))")

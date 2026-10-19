@@ -19,29 +19,19 @@
 //   `api live serve` = stdin EOF で即終わる)だけに使い、呼び手が `escalateAfterMs` を明示する。
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
-import type { Readable, Writable } from "node:stream";
+import type { Readable } from "node:stream";
 import type * as vscode from "vscode";
 import { childEnv } from "./childEnv";
 import { checkForDyldLaunchFailure } from "./dyldLaunchNotice";
 import { t } from "./i18n";
 import { NdjsonParser } from "./ndjson";
 
-/**
- * stdout/stderr=pipe で spawn したプロセスの型。stdin は invocation.stdin の有無で
- * "pipe"(Writable)/"ignore"(null)のどちらにもなりうるため union で受ける
- * (readonly プロパティなので、より狭い型で spawn した戻り値もそのまま代入できる)。
- */
-type FleetestProcess = ChildProcessByStdio<Writable | null, Readable, Readable>;
+/** stdin=ignore, stdout/stderr=pipe で spawn したプロセスの型。 */
+type FleetestProcess = ChildProcessByStdio<null, Readable, Readable>;
 
 export interface CliInvocation {
   /** "api" 以降を含む CLI 引数配列(例: ["api", "list-scenarios", "--project", "P"])。 */
   args: string[];
-  /**
-   * 指定すると、プロセス起動直後にこの文字列を stdin へ書き込んでから閉じる(EOF)。
-   * 省略時は stdin を使わない(stdio: "ignore")。`fleetest api apply-heal` 等、
-   * stdin から JSON を受け取る CLI 呼び出し用。
-   */
-  stdin?: string;
   /**
    * 指定すると stdout を NDJSON として1行ずつパースし、JSON化できた値をここに渡す。
    * 省略時は stdout 全体をまとめて JSON.parse し、CliResult.json として返す。
@@ -247,30 +237,16 @@ export class FleetestCli {
     return new Promise<CliResult>((resolve, reject) => {
       let proc: FleetestProcess;
       try {
-        // stdio[0] は stdin を使うかどうかで literal tuple を分ける("pipe"/"ignore" の
-        // union にすると spawn の戻り値型が ChildProcess に緩んでしまうため)。
-        proc =
-          invocation.stdin !== undefined
-            ? spawn(binaryPath, invocation.args, {
-                cwd, shell: false, env: childEnv(),
-                stdio: ["pipe", "pipe", "pipe"],
-              })
-            : spawn(binaryPath, invocation.args, {
-                cwd, shell: false, env: childEnv(),
-                stdio: ["ignore", "pipe", "pipe"],
-              });
+        proc = spawn(binaryPath, invocation.args, {
+          cwd, shell: false, env: childEnv(),
+          stdio: ["ignore", "pipe", "pipe"],
+        });
       } catch (error) {
         reject(new CliError(t("run.cli.spawnFailed", { error: String(error) }), error));
         return;
       }
       this.currentProcess = proc;
       task.proc = proc;
-      if (invocation.stdin !== undefined) {
-        // 子が読む前に終わる(または 64KB 超で pipe が詰まったまま終わる)と EPIPE が非同期の
-        // 'error' で来る。リスナーが無いと拡張ホストごと落ちる(他の spawn 箇所と同じ)。
-        proc.stdin?.on("error", () => undefined);
-        proc.stdin?.end(invocation.stdin, "utf8");
-      }
 
       const parseNdjson = invocation.onNdjsonValue !== undefined;
       const stdoutChunks: Buffer[] = [];

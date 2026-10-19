@@ -1,6 +1,7 @@
 // 自己修復(ロケータの指紋照合)で通ったシナリオを、合否を変えずに run の出口で知らせる。
 // 治した回はステップの表示も結果も ✅ と同じで、exit code も 0 = CI からは選択子の腐りが見えなかった。
-// 読み手は2つ: JUnit の `<system-out>`(`JUnitReportWriter`)と `fleetest run` の末尾の1行。文言は英語(CLI の出力)
+// 読み手は2つ: JUnit の `<system-out>`(`JUnitReportWriter`)と `fleetest run` の末尾の1行。文言は英語(CLI の出力)。
+// 書き戻した結果の行は続けて `HealSourceWriteBack` が出す(書けなかった提案があるので、この行は書き戻しの有無を言わない)
 
 import Foundation
 
@@ -30,6 +31,7 @@ public enum HealedScenarios {
         let ids = Set(records.filter(healed).map(\.scenarioID))
         guard !ids.isEmpty else { return nil }
         return "⚠️ \(ids.count) scenario(s) passed only after self-healing — their selectors no longer match the"
-            + " screen. The fix suggestions are in the scenario reports (results: steps.healed / fixSuggestions)"
+            + " screen (each scenario report has the suggestions: steps.healed / fixSuggestions; what was written back"
+            + " to the scenarios follows)"
     }
 }

@@ -16,10 +16,9 @@ test("handleLanguageChange: setLocale → ツリー再構築 → 全パネルの
     relocalizePanels: [
       () => calls.push("live"),
       () => calls.push("monitor"),
-      () => calls.push("healReview"),
     ],
   });
-  assert.deepEqual(calls, ["setLocale", "rebuildTestTree", "live", "monitor", "healReview"]);
+  assert.deepEqual(calls, ["setLocale", "rebuildTestTree", "live", "monitor"]);
 });
 
 test("handleLanguageChange: 実行中は rebuildTestTree を呼ばないが、relocalize は呼ぶ(実行中の run を壊さないため)", () => {
@@ -33,9 +32,9 @@ test("handleLanguageChange: 実行中は rebuildTestTree を呼ばないが、re
   assert.deepEqual(calls, ["setLocale", "panel"]);
 });
 
-test("handleLanguageChange: relocalizePanels の全件(3パネルぶん)を1回ずつ呼ぶ", () => {
+test("handleLanguageChange: relocalizePanels の全件(2パネルぶん)を1回ずつ呼ぶ", () => {
   let count = 0;
-  const relocalizePanels = Array.from({ length: 3 }, () => () => {
+  const relocalizePanels = Array.from({ length: 2 }, () => () => {
     count += 1;
   });
   handleLanguageChange({
@@ -44,5 +43,5 @@ test("handleLanguageChange: relocalizePanels の全件(3パネルぶん)を1回�
     rebuildTestTree: () => {},
     relocalizePanels,
   });
-  assert.equal(count, 3);
+  assert.equal(count, 2);
 });

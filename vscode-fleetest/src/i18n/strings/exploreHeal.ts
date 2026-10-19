@@ -1,5 +1,5 @@
 // バッチH 辞書。namespace: exploreHeal.
-// 対象ソース: healReviewPanel.ts, healModel.ts, monitorDashboardController.ts, dashboardModel.ts
+// 対象ソース: healNotice.ts, monitorDashboardController.ts, dashboardModel.ts
 // キーは "exploreHeal." 始まり。ja は元の日本語と byte-identical(既存テスト互換)。
 import type { MessageDict } from "../core";
 
@@ -10,74 +10,14 @@ export const exploreHealStrings = {
     en: "Could not resolve the target test project. Check the fleetest.project setting.",
   },
 
-  // ---- healReviewPanel.ts ----
-  "exploreHeal.heal.panelTitle": {
-    ja: "fleetest 自己修復の確認",
-    en: "fleetest Heal Review",
+  // ---- healNotice.ts ----
+  "exploreHeal.heal.notice.message": {
+    ja: "自己修復で {count} 件のセレクタを直しました。直したセレクタはシナリオに書き戻されます(書き戻した結果と書き戻せなかったものは実行ログに出ます)。git の差分を確認してコミットしてください。",
+    en: "Self-healing fixed {count} selector(s). The fixed selectors are written back to the scenarios (the run log lists what was written back and what could not be). Review the git diff and commit.",
   },
-  "exploreHeal.heal.heading": {
-    ja: "自己修復の確認",
-    en: "Review Heal Fixes",
-  },
-  "exploreHeal.heal.intro": {
-    ja: "自己修復されたセレクタがあります。修復内容をシナリオのソースに反映しますか?\n    (「変更後」と「説明」は反映前に編集できます)",
-    en: 'Some selectors were healed. Apply the fixes to the scenario source?\n    (You can edit "After" and "Comment" before applying)',
-  },
-  "exploreHeal.heal.empty": {
-    ja: "対象の候補はありません。",
-    en: "No candidates.",
-  },
-  "exploreHeal.heal.applyButtonLabel": {
-    ja: "選択した {count} 件を適用",
-    en: "Apply {count} selected",
-  },
-  "exploreHeal.heal.closeButton": {
-    ja: "閉じる",
-    en: "Close",
-  },
-  "exploreHeal.heal.busyLabel": {
-    ja: "適用中...",
-    en: "Applying...",
-  },
-  "exploreHeal.heal.fieldBefore": {
-    ja: "変更前",
-    en: "Before",
-  },
-  "exploreHeal.heal.fieldAfter": {
-    ja: "変更後",
-    en: "After",
-  },
-  "exploreHeal.heal.fieldComment": {
-    ja: "説明",
-    en: "Comment",
-  },
-  "exploreHeal.heal.selectorWarn": {
-    ja: '⚠️ 適用できません(セレクタは空にできず、「"」と改行は使えません)',
-    en: "⚠️ Cannot apply (the selector can't be empty, and \" or newlines aren't allowed)",
-  },
-  "exploreHeal.heal.commentWarn": {
-    ja: "⚠️ 適用できません(説明に改行は使えません)",
-    en: "⚠️ Cannot apply (the comment can't contain newlines)",
-  },
-  "exploreHeal.heal.unavailableWarn": {
-    ja: "⚠️ 適用できません(ソースが変更されています)",
-    en: "⚠️ Cannot apply (the source has changed)",
-  },
-  "exploreHeal.heal.log.readFailed": {
-    ja: "[fleetest] 自己修復確認: {file} を読み込めません({error})",
-    en: "[fleetest] Heal review: failed to read {file} ({error})",
-  },
-  "exploreHeal.heal.applyResponseParseFailed": {
-    ja: "apply-heal の応答を解析できませんでした(exit code: {exitCode})。出力パネル「fleetest」を確認してください。",
-    en: "Failed to parse the apply-heal response (exit code: {exitCode}). Check the “fleetest” output panel.",
-  },
-  "exploreHeal.heal.log.applyFailed": {
-    ja: "[fleetest] apply-heal の実行に失敗しました: {message}",
-    en: "[fleetest] apply-heal failed: {message}",
-  },
-  "exploreHeal.heal.applyFailed": {
-    ja: "apply-heal の実行に失敗しました: {message}",
-    en: "apply-heal failed: {message}",
+  "exploreHeal.heal.notice.showChanges": {
+    ja: "変更を表示",
+    en: "Show Changes",
   },
 
   // ---- ダッシュボードタブ(monitorDashboardController.ts / monitorHtml.ts renderDashboardPanel()) ----

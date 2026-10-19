@@ -20,7 +20,7 @@
 //                出力される(2件目のシナリオは失敗させる)。
 //     heal     : 成功実行の途中で fixSuggestion イベントを2件(うち1件は scenario/file/line/
 //                oldSelector が同一 = 同一id の重複)流してから成功で終わる
-//                (healModel.ts の HealFixCollector・healReviewPanel.ts のテスト用)。
+//                (healModel.ts の HealFixCollector のテスト用)。
 //
 //   --debug 指定時、シナリオ ID が「クラッシュ.T1」のときも --pattern crash と同じ扱いにする
 //   (debugAdapter.ts 経由では launch 引数に任意の CLI フラグを追加できないため、
@@ -212,7 +212,7 @@ function runParallel() {
 /**
  * 成功実行の途中で fixSuggestion を2件流す(scenario/file/line/oldSelector が同一 = 同一id の
  * 重複。detail だけ変えて「後勝ち」で上書きされることも確認できるようにする)。
- * healModel.ts の HealFixCollector・healReviewPanel.ts の統合テスト用。
+ * healModel.ts の HealFixCollector の統合テスト用。
  */
 function runHeal() {
   const file = "TestProjects/Mock/scenarios/Mock.swift";

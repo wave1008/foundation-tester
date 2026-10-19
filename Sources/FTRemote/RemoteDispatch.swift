@@ -1230,7 +1230,7 @@ public enum RemoteShell {
             + "{ echo \"no runner workspace at \(layout.workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
             + "\(pathCmd) && \(issuerCmd)\(streamOwnerCmd(streamOwner))"
-            + "\(devDirCmd)\(fmCmd)\(lockHeldCmd)\(guardCmd) && \(syncCmd) && \(launch)"
+            + "\(devDirCmd)\(fmCmd)\(lockHeldCmd)\(dispatchedRunCmd)\(guardCmd) && \(syncCmd) && \(launch)"
     }
 
     /// **ディスパッチが向こうで起こす run に「このロックは親が握っている」印を運ぶ**。
@@ -1243,6 +1243,13 @@ public enum RemoteShell {
     private static var lockHeldCmd: String {
         "export \(DispatchLockHandoff.environmentKey)="
             + "\(quote(DispatchLockHandoff.localTarget)) && "
+    }
+
+    /// **ランナー機の run は自己修復の書き戻しをしない印**。書き戻すのは結果を回収した発行側
+    /// (`RemoteRunDispatcher.writeBackHealedSelectors`)。向こうの写しを書き換えても利用者の手元には届かず、
+    /// 次の同期で消える。exec にも置く(`remote exec -- run` の結果は回収されないので、書き戻す相手がいない)
+    private static var dispatchedRunCmd: String {
+        "export \(HealWriteBack.dispatchedRunEnvironmentKey)=1 && "
     }
 
     /// `fleetest remote exec`(docs/remote-runner.md §14「単発コマンドの転送は汎用化する」)。
@@ -1270,7 +1277,7 @@ public enum RemoteShell {
             + "{ echo \"no runner workspace at \(layout.workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
             + "\(pathCmd) && \(issuerCmd)\(streamOwnerCmd(streamOwner))"
-            + "\(devDirCmd)\(guardCmd) && \(launch)"
+            + "\(devDirCmd)\(dispatchedRunCmd)\(guardCmd) && \(launch)"
     }
 
     /// 配信の所有者の印(FTCore.StreamOwner)を ssh 越しへ運ぶ。**`FT_PARENT_PID` は運ばない**

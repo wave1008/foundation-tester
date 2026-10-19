@@ -16,8 +16,6 @@
 //   触れずに単体で構成できる(Monitor 本体はコンストラクタ自体が
 //   vscode.workspace.createFileSystemWatcher を呼ぶため、コンストラクタすら実行できない。
 //   Monitor 本体は対象外)。
-// - HealReviewController は資産の URI 解決(vscode.Uri.joinPath)を注入で受けるため、fake を渡せば
-//   パネルが開いている場合も実行できる。
 // Monitor の relocalize()(html 再構築 → deviceStream.restartAllStreams() → live.restartStream() の
 // 順)は test/panelRelocalizeSourceContract.test.mjs がソース走査で検証する(同ファイル冒頭コメント参照)。
 // 「結果ダッシュボード」は単独パネルを廃止しモニターパネルのタブへ統合済み(旧 dashboardPanel.ts)。
@@ -27,7 +25,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { FleetestCli } from "../src/cli";
-import { HealReviewController } from "../src/healReviewPanel";
 import { LiveTabHost } from "../src/liveTabHost";
 import { RunEventBus } from "../src/runEventBus";
 
@@ -51,14 +48,6 @@ function newLiveTabHost() {
   return new LiveTabHost(deps, getConfig, cli, testTree, new RunEventBus(), "/tmp/proj", outputChannel);
 }
 
-function newHealReviewController() {
-  const assets = {
-    localResourceRoots: [],
-    resolve: () => ({ styleUri: "https://x/style.css", scriptUri: "https://x/main.js", cspSource: "https://x" }),
-  };
-  return new HealReviewController("/tmp/proj", getConfig, outputChannel, {}, new RunEventBus(), assets);
-}
-
 test("LiveTabHost.restartStream(): MonitorLiveController.restartStream() へ委譲する(例外なし)", () => {
   const host = newLiveTabHost();
   let restarted = 0;
@@ -67,20 +56,4 @@ test("LiveTabHost.restartStream(): MonitorLiveController.restartStream() へ委�
   };
   assert.doesNotThrow(() => host.restartStream());
   assert.equal(restarted, 1);
-});
-
-test("HealReviewController.relocalize(): パネル未生成なら何もしない", () => {
-  const controller = newHealReviewController();
-  assert.doesNotThrow(() => controller.relocalize());
-});
-
-test("HealReviewController.relocalize(): パネルが開いていれば items を埋め込んだ html を組み直す", () => {
-  const controller = newHealReviewController();
-  const panel = { webview: { html: "old-html" } };
-  controller.panel = panel;
-
-  controller.relocalize();
-
-  assert.notEqual(panel.webview.html, "old-html");
-  assert.match(panel.webview.html, /<!doctype html>/);
 });

@@ -291,7 +291,7 @@ final class LocalDispatchLockTests: XCTestCase {
     func testTheChildOfAFanoutDoesNotTakeTheLockItsParentHolds() throws {
         let ticket = DispatchTicket(requestedAtMillis: 1_000, issuer: "alice", group: "G")
         let childEnv = DispatchTicketIssuer.childEnvironment(
-            ticket: ticket, lockHeldTarget: DispatchLockHandoff.localTarget, base: [:])
+            ticket: ticket, lockHeldTarget: DispatchLockHandoff.localTarget, healCollection: HealSourceWriteBack.Collection(), base: [:])
         XCTAssertTrue(LocalDispatchLock.parentHoldsTheLock(environment: childEnv))
 
         XCTAssertNil(try lock(pid: 7777, environment: childEnv).acquire())

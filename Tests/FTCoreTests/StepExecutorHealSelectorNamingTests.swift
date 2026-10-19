@@ -1,8 +1,8 @@
 import XCTest
 @testable import FTCore
 
-/// 自己修復(指紋照合)の結果は `fleetest api apply-heal` が利用者の .swift ソースへ
-/// 書き戻す(FTRuntime.perform → FixSuggestion → apply-heal)。書き戻すセレクタの選び方は
+/// 自己修復(指紋照合)の結果は run の終わりに利用者の .swift ソースへ
+/// 書き戻す(FTRuntime.perform → FixSuggestion → HealSourceWriteBack)。書き戻すセレクタの選び方は
 /// `SelectorNaming`(MCP と共有)に一本化されており、**一意に書けるセレクタが無い要素では
 /// 修復を成立させてはいけない**。一意性を見ずに id/label をそのまま採ると、同じ id を持つ要素が
 /// 複数ある画面では「掴んだ要素とは別の要素に解決するセレクタ」を書き戻すことになる。

@@ -187,14 +187,13 @@ visible while it re-fetches in the background.
   screenshot, and — when available — self-healing suggestions).
 - The Test Explorer toolbar's **"Show Failed Tests Only"** filter narrows the tree to failed tests.
 
-## Self-Healing Review
+## Self-Healing
 
 Setting `fleetest.heal` to `true` adds `--set heal=true` to Run (not Run (dry-run)) and Debug, enabling
-selector self-healing (fingerprint matching). If the run reports fix suggestions, a confirmation panel opens
-automatically afterward: each candidate shows the file/line, the old and new selector (the new
-one is editable), an optional description, and a live diff preview. Approving applies the change
-directly to the scenario source; a candidate whose target line no longer matches the recorded old
-selector is shown as not applicable.
+selector self-healing (fingerprint matching). When a run produces fix suggestions, it writes the fixed
+selectors back to the scenario sources at the end and shows a notification. **"Show Changes"** opens
+VS Code's Source Control view; review the git diff and commit. Anything that could not be written back
+is listed in the run log (see [Self-healing](../running/self_healing.md)).
 
 ## Update Check
 
@@ -273,7 +272,7 @@ categories above or the Settings tab.
 | `fleetest.binaryPath` | `.build/debug/fleetest` | Path to the `fleetest` binary; falls back to `PATH` if not found |
 | `fleetest.project` | `""` | Test project name; auto-resolved when empty (the only project, or `project1` when there are several) |
 | `fleetest.profile` | `""` | Run profile name; when set, it decides devices/app instead of `fleetest.platform`/`port`/`serial` |
-| `fleetest.heal` | `false` | Enable `--set heal=true` on Run/Debug and open the self-healing review panel |
+| `fleetest.heal` | `false` | Enable `--set heal=true` on Run/Debug (fixed selectors are written back to the scenarios) |
 | `fleetest.buildBeforeRun` | `true` | Build the Swift project before each run |
 | `fleetest.lptScheduling` | `true` | Schedule longer-running scenarios first (LPT), using recent run history |
 | `fleetest.monitorInterval` | `2` | Device Monitor polling interval, in seconds |

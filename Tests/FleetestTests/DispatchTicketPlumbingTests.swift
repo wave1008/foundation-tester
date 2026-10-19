@@ -42,7 +42,7 @@ final class DispatchTicketPlumbingTests: XCTestCase {
     func testChildEnvironmentCarriesTheTicketAndTheParentPID() {
         let ticket = DispatchTicketIssuer.issue(runGroup: "G1", environment: environment, pid: 4242,
                                                 now: Date(timeIntervalSince1970: 1_700_000_000))
-        let env = DispatchTicketIssuer.childEnvironment(ticket: ticket, base: [:])
+        let env = DispatchTicketIssuer.childEnvironment(ticket: ticket, healCollection: HealSourceWriteBack.Collection(), base: [:])
         XCTAssertEqual(env[DispatchTicket.environmentKey], ticket.environmentValue)
         XCTAssertEqual(DispatchTicket.fromEnvironment(env), ticket)
         XCTAssertEqual(env[ParentDeathWatch.environmentKey], String(getpid()))
@@ -50,15 +50,35 @@ final class DispatchTicketPlumbingTests: XCTestCase {
                      "親がロックを取っていないのに印が載っている")
     }
 
+    /// 子の環境に自己修復の受け口が載る(子は書かずにここへ渡し、親が全部の子のあとで1回だけ書く)
+    func testChildEnvironmentCarriesTheHealSuggestionCollection() {
+        let ticket = DispatchTicketIssuer.issue(runGroup: "G1", environment: environment, pid: 4242,
+                                                now: Date(timeIntervalSince1970: 1_700_000_000))
+        let collection = HealSourceWriteBack.Collection()
+        let env = DispatchTicketIssuer.childEnvironment(ticket: ticket, healCollection: collection, base: [:])
+        XCTAssertEqual(env["FT_HEAL_SUGGESTIONS_OUT"], collection.url.path)
+    }
+
+    /// 分割した run の親は、全部の子が終わったあとに受け口を書き戻しへ回す(呼び忘れると提案が黙って消える)。
+    /// 子へ渡すのは `childEnvironment` の必須の引数がコンパイルで縛るが、`finish` の呼び忘れは型で止まらない
+    func testEverySplittingParentFinishesTheHealCollection() throws {
+        for (path, count) in [("Sources/fleetest/FleetRunner.swift", 2), ("Sources/fleetest/DeviceMachineRunner.swift", 1),
+                              ("Sources/fleetest/ApiRunMachineFanout.swift", 1)] {
+            let text = try source(path)
+            XCTAssertEqual(text.components(separatedBy: "healCollection.finish(project: project)").count - 1, count,
+                           "\(path): 子の提案を書き戻しへ回していない経路がある")
+        }
+    }
+
     /// 親がその機械のロックを取れたときだけ印が載る(`DispatchPrelock`)
     func testTheHandoffMarkerIsAddedOnlyForMachinesTheParentLocked() {
         let ticket = DispatchTicketIssuer.issue(runGroup: "G1", environment: environment, pid: 4242,
                                                 now: Date(timeIntervalSince1970: 1_700_000_000))
         let locked = DispatchTicketIssuer.childEnvironment(
-            ticket: ticket, lockHeldTarget: "tester@max.local", base: [:])
+            ticket: ticket, lockHeldTarget: "tester@max.local", healCollection: HealSourceWriteBack.Collection(), base: [:])
         XCTAssertTrue(DispatchLockHandoff.isHeldByParent(environment: locked,
                                                         sshTarget: "tester@max.local"))
-        let notLocked = DispatchTicketIssuer.childEnvironment(ticket: ticket, base: [:])
+        let notLocked = DispatchTicketIssuer.childEnvironment(ticket: ticket, healCollection: HealSourceWriteBack.Collection(), base: [:])
         XCTAssertFalse(DispatchLockHandoff.isHeldByParent(environment: notLocked,
                                                          sshTarget: "tester@max.local"))
     }
@@ -70,7 +90,7 @@ final class DispatchTicketPlumbingTests: XCTestCase {
         let ticket = DispatchTicketIssuer.issue(runGroup: "G1", environment: environment, pid: 4242,
                                                 now: Date(timeIntervalSince1970: 1_700_000_000))
         let machineEnvironments = ["local", "M1Max", "M1Ultra"].map { _ in
-            DispatchTicketIssuer.childEnvironment(ticket: ticket, base: [:])
+            DispatchTicketIssuer.childEnvironment(ticket: ticket, healCollection: HealSourceWriteBack.Collection(), base: [:])
         }
         XCTAssertEqual(Set(machineEnvironments.compactMap { $0[DispatchTicket.environmentKey] }).count, 1,
                        "同じ run の子が別々のチケットを受け取っている(機械ごとに順番が食い違う)")

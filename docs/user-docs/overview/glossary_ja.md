@@ -19,7 +19,7 @@ fleetest 固有の用語を五十音順に並べました。英字で始まる�
 - **シナリオ** — AIアシスタントが書く Swift のファイルです(1ファイルに複数のテストが入ります)。個々のテスト(`@Test` メソッド)を指すこともあり、実行時のシナリオ ID は `クラス名.メソッド名` です。 詳しくは [テストクラスの作成](../reference/testclass/creating_testclass_ja.md)。
 - **シーン(CAE)** — シナリオの中の場面の単位 `scene(n, "題")` です。中を `condition`(前提)・`action`(操作)・`expectation`(検証)の3層で書きます(CAE)。番号と題はレポートの見出しになります。 詳しくは [テストコードの構造](../reference/testclass/testcode_structure_ja.md)。
 - **JUnit** — `fleetest run --junit <パス>` で追加出力する JUnit XML 形式のレポートです。JUnit XML を読める CI システムでテスト結果を扱うために使います。 詳しくは [CI で回す](../in_action/ci_ja.md)。
-- **自己修復** — セレクタが解決できなくなったとき、直前に解決できた要素の型とラベルの「ロケータの指紋」が今の画面でちょうど1件だけ一致すれば、その要素を使う仕組みです。FM は使いません。ソースは自動では書き換わりません。 詳しくは [自己修復](../reference/running/self_healing_ja.md)。
+- **自己修復** — セレクタが解決できなくなったとき、直前に解決できた要素の型とラベルの「ロケータの指紋」が今の画面でちょうど1件だけ一致すれば、その要素を使う仕組みです。FM は使いません。直ったセレクタは実行の終わりにシナリオのソースへ自動で書き戻されます(git で差分を確認してコミットします)。 詳しくは [自己修復](../reference/running/self_healing_ja.md)。
 - **実機** — 物理端末(本物の iPhone / Android)だけを指す語です。Simulator・Emulator は含みません(それらは「仮想デバイス」です)。実行プロファイルには `"kind": "physical"` と端末の識別子を書きます。 詳しくは [実機を追加する](../fleet/adding_physical_devices_ja.md)。
 - **実行プロファイル** — どのアプリを、どのデバイス(それぞれ居るマシンを名乗る)で、どんな実行時設定で回すかを決める設定です。`profiles/runs/<name>.json` に置きます。 詳しくは [実行プロファイルの設定項目](../reference/project/run_profile_ja.md)。
 - **スキル** — 導入・プロファイル設定・シナリオ作成などを自動化する Claude Code のスキルです。インストーラが作業フォルダの `.claude/skills/` へコピーし、`/fleetest-scenario` のように名前で呼び出します。 詳しくは [Claude Code のスキル](../reference/tools/claude_code_skills_ja.md)。

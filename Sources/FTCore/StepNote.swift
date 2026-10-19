@@ -109,7 +109,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 自己修復(指紋照合)が代わりの要素を見つけたのに、**この画面でそれを一意に指せる書き方が無い**
     /// (`SelectorNaming.graded` が nil)。操作はその要素で続けるが、修正提案は作らない ——
     /// 書けないセレクタを利用者の .swift へ書き戻さないため
-    /// (`fleetest api apply-heal` が直接書き込む経路がある)。
+    /// (run の終わりに `HealSourceWriteBack` が直接書き込む)。
     /// **率が上がったら id/ラベルの一意性を疑う**
     case healUnwritable = "heal-unwritable"
 

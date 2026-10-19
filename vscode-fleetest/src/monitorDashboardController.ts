@@ -69,7 +69,7 @@ export class MonitorDashboardController {
   /** results/results-run のワンショット spawn(runOneShot 経由。同時に複数走りうる ——
    * refresh と runDetail/trend が重なるケース ——ので Set で持つ)。 */
   private readonly activeChildren = new Set<PipeProcess>();
-  /** runStarted の isDryRun を runEnded まで持ち越す(healReviewPanel.ts の HealFixCollector と同じ理由:
+  /** runStarted の isDryRun を runEnded まで持ち越す(healNotice.ts の HealFixCollector と同じ理由:
    * dry-run 実行は結果 DB に記録されないため runEnded 時点で除外判定するのにここで覚えておく必要がある)。 */
   private lastRunWasDryRun = false;
   /** 同時に複数 refresh() が走らないようにする簡易ガード(更新ボタン連打・runEnded と手動更新の重なり対策)。 */

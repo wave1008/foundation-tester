@@ -126,14 +126,13 @@ I moved the iOS Simulator used for tests to a new OS. Add the sample images used
 
 ### Self-healing suggestions
 
-If you use self-healing, review the fix suggestions that appear after a test run and apply them
-([Self-healing](../reference/running/self_healing.md)). fleetest never rewrites your scenario source by itself, so
-the same suggestions keep appearing on every run until you apply them.
+If you use self-healing, fleetest writes the fixed selectors back to your scenario sources at the end of the run
+([Self-healing](../reference/running/self_healing.md)). Review them with `git diff` and commit.
 
 #### Prompt for the AI
 
 ```text
-List the self-healing suggestions from the most recent run. If they look right, apply them to the scenarios and check with a dry-run.
+Show the selectors that self-healing wrote back to the scenarios in the most recent run, using git diff. If they look right, check with a dry-run.
 ```
 
 ### Link

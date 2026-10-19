@@ -1,12 +1,9 @@
 // cli.test.mjs
-// FleetestCli(src/cli.ts)の stdin 対応 spawn(CliInvocation.stdin)と cancelCurrent() の
-// キャンセル方針のユニット/統合テスト。node:test で実行する。esbuild が "../src/cli"
+// FleetestCli(src/cli.ts)の cancelCurrent() のキャンセル方針のユニット/統合テスト。node:test で実行する。esbuild が "../src/cli"
 // (拡張子なし)を cli.ts に解決してバンドルする。
 //
-// 相手は本物の fleetest CLI ではなく test/fixtures/mock-apply-heal.mjs
-// (stdin の JSON をそのまま読んで応答を返すダミー)にする。binaryPath には process.execPath
-// (node)を渡し、args の先頭にフィクスチャのパスを置くことで「node <fixture> ...」として
-// spawn させる(dap.test.mjs や runReducer.test.mjs の mock-runner 統合テストと同じ方針)。
+// 相手は本物の fleetest CLI ではなく node(binaryPath に process.execPath を渡し、args に
+// `-e <script>` を置く)。
 //
 // FleetestCli は vscode.OutputChannel を1引数で受け取るが、このテストでは
 // appendLine だけ実装したダミーで足りる(cli.ts は他のメソッドを呼ばない)。
@@ -24,7 +21,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { FleetestCli } from "../src/cli";
 
-const MOCK_APPLY_HEAL = path.resolve(process.cwd(), "test", "fixtures", "mock-apply-heal.mjs");
+const JSON_ECHO_ARGS = ["-e", "process.stdout.write(JSON.stringify({ok:true}))"];
 const MOCK_SLOW_CLEANUP = path.resolve(process.cwd(), "test", "fixtures", "mock-slow-cleanup.mjs");
 const CWD = process.cwd();
 
@@ -61,77 +58,6 @@ function stillPending(resultPromise) {
     new Promise((resolve) => setImmediate(() => resolve(true))),
   ]);
 }
-
-test("stdin 対応 spawn: invocation.stdin を書き込んで EOF を送り、mock-apply-heal.mjs が読んだ内容をそのまま応答に反映する", async () => {
-  const outputChannel = makeOutputChannel();
-  const cli = new FleetestCli(outputChannel);
-
-  const request = {
-    fixes: [
-      {
-        scenarioID: "S.T1",
-        file: "TestProjects/P/scenarios/S.swift",
-        line: 12,
-        oldSelector: "#old_id",
-        newSelector: "#new_id",
-        newComment: null,
-      },
-      {
-        scenarioID: "S.T2",
-        file: "TestProjects/P/scenarios/S.swift",
-        line: 20,
-        oldSelector: "#old2",
-        newSelector: "#FAIL_new2",
-        newComment: "説明",
-      },
-    ],
-  };
-
-  const result = await cli.invoke(process.execPath, CWD, {
-    args: [MOCK_APPLY_HEAL],
-    stdin: JSON.stringify(request),
-  });
-
-  assert.equal(result.exitCode, 0);
-  assert.equal(result.cancelled, false);
-  assert.deepEqual(result.json, {
-    applied: ["S.T1|TestProjects/P/scenarios/S.swift:12|#old_id"],
-    failures: [
-      {
-        id: "S.T2|TestProjects/P/scenarios/S.swift:20|#old2",
-        message: "模擬エラー: #FAIL_new2",
-      },
-    ],
-  });
-});
-
-test("stdin 対応 spawn: fixes が空でも往復できる(applied/failures とも空配列)", async () => {
-  const outputChannel = makeOutputChannel();
-  const cli = new FleetestCli(outputChannel);
-
-  const result = await cli.invoke(process.execPath, CWD, {
-    args: [MOCK_APPLY_HEAL],
-    stdin: JSON.stringify({ fixes: [] }),
-  });
-
-  assert.equal(result.exitCode, 0);
-  assert.deepEqual(result.json, { applied: [], failures: [] });
-});
-
-test("stdin 未指定の呼び出し(既存の挙動)は引き続き動作する(stdin を使わない CLI 呼び出しの回帰確認)", async () => {
-  const outputChannel = makeOutputChannel();
-  const cli = new FleetestCli(outputChannel);
-
-  // mock-apply-heal.mjs は stdin が空でも({fixes:[]} 相当として)正常応答するため、
-  // stdin を渡さない(stdio: "ignore")呼び出しでも同じフィクスチャで検証できる。
-  const result = await cli.invoke(process.execPath, CWD, { args: [MOCK_APPLY_HEAL] });
-
-  assert.equal(result.exitCode, 1);
-  // stdin が閉じている(EOF 即時)ため mock-apply-heal.mjs 側は空文字列 → JSON パース失敗
-  // → exitCode 1 で {applied:[],failures:[]} を返す実装になっている。stdio:"ignore" でも
-  // プロセスが正しく起動・完走し、cli.ts が結果を受け取れることの確認が目的。
-  assert.deepEqual(result.json, { applied: [], failures: [] });
-});
 
 // ---- cancelCurrent() のキャンセル方針(2026-09-06 Codex 指摘)----
 // 後始末を持つ fleetest の子(`api run` 等)には時限 SIGKILL を送らない。既定(escalateAfterMs
@@ -256,8 +182,7 @@ test("enqueue().cancel(): 実行中の自分の呼び出しだけを止め、後
   const first = invokeSlowCleanup(cli);
   await first.readyPromise;
   const second = cli.enqueue(process.execPath, CWD, {
-    args: [MOCK_APPLY_HEAL],
-    stdin: JSON.stringify({ fixes: [] }),
+    args: JSON_ECHO_ARGS,
   });
 
   first.handle.cancel({ escalateAfterMs: 1 });
@@ -268,30 +193,15 @@ test("enqueue().cancel(): 実行中の自分の呼び出しだけを止め、後
   const secondResult = await second.result;
   assert.equal(secondResult.cancelled, false, "後ろの呼び出しは巻き込まれない");
   assert.equal(secondResult.exitCode, 0);
-  assert.deepEqual(secondResult.json, { applied: [], failures: [] });
+  assert.deepEqual(secondResult.json, { ok: true });
 });
 
 test("enqueue().cancel(): 終了済みの呼び出しに対しては何もしない(二重解決・例外なし)", async () => {
   const cli = new FleetestCli(makeOutputChannel());
-  const handle = cli.enqueue(process.execPath, CWD, { args: [MOCK_APPLY_HEAL], stdin: "{\"fixes\":[]}" });
+  const handle = cli.enqueue(process.execPath, CWD, { args: JSON_ECHO_ARGS });
   const result = await handle.result;
   assert.equal(result.exitCode, 0);
   handle.cancel();
   handle.cancel({ escalateAfterMs: 1 });
-  assert.equal(result.cancelled, false);
-});
-
-// ---- stdin の EPIPE(2026-09-07)----
-// 子が stdin を読む前に終わる(または 64KB 超で pipe が詰まったまま終わる)と、書き込みの EPIPE が
-// 非同期の 'error' で来る。リスナーが無いと未処理エラーで拡張ホストごと落ちる。
-
-test("stdin 対応 spawn: 子が読む前に終わっても(EPIPE)未処理の 'error' にならず結果が返る", async () => {
-  const cli = new FleetestCli(makeOutputChannel());
-  // 1MB は pipe のバッファ(64KB)を確実に超え、子は読まずに即終了する
-  const result = await cli.invoke(process.execPath, CWD, {
-    args: ["-e", "process.exit(0)"],
-    stdin: "x".repeat(1 << 20),
-  });
-  assert.equal(result.exitCode, 0);
   assert.equal(result.cancelled, false);
 });

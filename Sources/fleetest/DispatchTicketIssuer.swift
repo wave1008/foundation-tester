@@ -53,10 +53,14 @@ enum DispatchTicketIssuer {
     /// (`DispatchPrelock`)。**取れなかった機械には渡さない** —— その子はそのまま自分で
     /// 取りに行き、同じ失敗を同じ文言で出す。継承した印を消さないのは、値が宛先を名乗っており
     /// (`DispatchLockHandoff`)、別の宛先へ向かう子には効かないから
+    /// `healCollection` = 子が自己修復の修正提案を書かずに渡す先(`HealSourceWriteBack.Collection`)。
+    /// **既定値を置かない** —— 渡し忘れた経路の子だけが自分で書き、子をまたぐ食い違いの検出が黙って効かなくなる
     static func childEnvironment(ticket: DispatchTicket, lockHeldTarget: String? = nil,
+                                 healCollection: HealSourceWriteBack.Collection,
                                  base: [String: String]? = nil) -> [String: String] {
         var env = ParentDeathWatch.childEnvironment(base: base)
         env[DispatchTicket.environmentKey] = ticket.environmentValue
+        env[healCollection.environment.key] = healCollection.environment.value
         if let lockHeldTarget {
             env[DispatchLockHandoff.environmentKey] =
                 DispatchLockHandoff.environmentValue(sshTarget: lockHeldTarget)

@@ -984,6 +984,11 @@ struct ApiRunCommand: AsyncParsableCommand {
             logStderr("⏱️❌ Measurement invalid: this run's timing cannot be used for performance"
                 + " comparisons (\(validity.reasons.joined(separator: "; ")))")
         }
+        // 書き戻しは finished の前(拡張は finished で通知を出し、利用者は直後に差分を開く)
+        if let recorder {
+            HealSourceWriteBack.run(records: RunResultsStore.records(runDir: recorder.runDir),
+                                    project: testProject) { logStderr($0) }
+        }
         emitLine(ApiRunFinishedEvent(passed: outcome.passed, failed: outcome.failed, skipped: outcome.skipped,
                                      testSeconds: outcome.testSeconds,
                                      scenarioTotalSeconds: outcome.scenarioTotalSeconds,

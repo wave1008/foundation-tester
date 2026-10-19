@@ -1,11 +1,11 @@
 // HealFixApplier.swift
-// 自己修復(ロケータ指紋)の修正提案をソースへ確定反映するロジック。CLI(fleetest api apply-heal)が使う
+// 自己修復(ロケータ指紋)の修正提案をソースへ確定反映するロジック。run の終わりの書き戻し(`HealWriteBack.apply`)が使う
 // 副作用を持たない純粋ロジック。ファイル I/O は呼び出し側の責務とし、ここではソース文字列の変換だけを扱う
 // (テスト容易性のため)。
 
 import Foundation
 
-/// 修復候補 1 件。id は "scenarioID|file:line|oldSelector"(拡張の修復確認パネルとの対応付け用。
+/// 修復候補 1 件。id は "scenarioID|file:line|oldSelector"(失敗の対応付け用。
 /// 指紋の鍵 `LocatorFingerprintCache.key` とは別物で、OS を含まない)
 public struct HealFixInput: Sendable, Equatable {
     public let scenarioID: String

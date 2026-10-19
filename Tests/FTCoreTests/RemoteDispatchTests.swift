@@ -703,7 +703,7 @@ final class RemoteDispatchTests: XCTestCase {
             + "{ echo \"no runner workspace at \(workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
             + "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && "
-            + "export FT_DISPATCH_LOCK_HELD='local' && test -x '\(binary)' || "
+            + "export FT_DISPATCH_LOCK_HELD='local' && export FT_DISPATCHED_RUN=1 && test -x '\(binary)' || "
             + "{ echo \"fleetest binary not found on remote — run: swift build --product fleetest\" >&2; exit 90; } && "
             + "'\(binary)' project sync >/dev/null 2>&1 || true && "
             + "'\(binary)' 'run' '--project' 'E2E' '--profile' 'ios-inapp' '--quiet'")
@@ -723,6 +723,18 @@ final class RemoteDispatchTests: XCTestCase {
 
         let exec = RemoteShell.remoteExecCommand(layout: layout, args: ["api", "monitor"])
         XCTAssertFalse(exec.contains("FT_DISPATCH_LOCK_HELD"), exec)
+    }
+
+    /// **ランナー機で走る fleetest は自己修復をシナリオへ書き戻さない**(書き戻すのは回収した発行側)。
+    /// run と exec の両方が印を運ぶ。値は子が見る鍵と同じ
+    func testRunnerSideCommandsCarryTheNoWriteBackMarker() {
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
+        let marker = "export FT_DISPATCHED_RUN=1 && "
+        XCTAssertEqual(HealWriteBack.dispatchedRunEnvironmentKey, "FT_DISPATCHED_RUN")
+        let run = RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: ["run"])
+        XCTAssertTrue(run.contains(marker), run)
+        let exec = RemoteShell.remoteExecCommand(layout: layout, args: ["run"])
+        XCTAssertTrue(exec.contains(marker), exec)
     }
 
     /// 登録簿に枠が設定されている機械へは `FT_FM_CONCURRENCY` を運ぶ。
@@ -1493,7 +1505,7 @@ final class RemoteDispatchTests: XCTestCase {
             + "{ echo \"no runner workspace at \(workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
             + "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && "
-            + "export FT_ISSUER='alice' && test -x '\(binary)' || "
+            + "export FT_ISSUER='alice' && export FT_DISPATCHED_RUN=1 && test -x '\(binary)' || "
             + "{ echo \"fleetest binary not found on remote — run: swift build --product fleetest\" >&2; exit 90; } && "
             + "'\(binary)' 'doctor' '--fm-only'")
     }

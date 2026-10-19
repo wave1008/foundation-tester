@@ -5,6 +5,7 @@
 // 偽のランナー群を注入し、「2つ目の run が来たときに順序どおりに待つ」ことを単体で通す。
 // 陽性対照(順序付けが無ければ同じ2台で循環が作れる)も同じ偽ランナーで撃つ。
 
+import FTCore
 import FTRemote
 import FTTestSupport
 import Foundation
@@ -395,7 +396,7 @@ final class DispatchPrelockTests: XCTestCase {
 
         let childEnv = DispatchTicketIssuer.childEnvironment(
             ticket: DispatchTicket(requestedAtMillis: 1, issuer: "alice", group: "G"),
-            lockHeldTarget: prelock.markers["local"], base: [:])
+            lockHeldTarget: prelock.markers["local"], healCollection: HealSourceWriteBack.Collection(), base: [:])
         XCTAssertTrue(LocalDispatchLock.parentHoldsTheLock(environment: childEnv),
                       "local の子が親の印を読めない(子が自分で取りに行って詰む)")
         prelock.releaseAll()

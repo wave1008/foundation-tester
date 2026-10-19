@@ -10,6 +10,8 @@
 #      刈られない」の確認 —— 2周だけだと踏まない不具合が実際にあった)
 #   ③ --set heal=false で 94(指紋を使わずに赤)
 #   最後に schema=v1 へ戻す(途中で落ちても trap で戻す)
+#   ②の各周は run の終わりに修正提案を 94 のソースへ書き戻す(HealSourceWriteBack)。書き戻されたことを
+#   確かめてから、**周ごとに元の 94 へ戻す**(戻さないと次の周がプライマリで解決し、③が緑になる)
 #
 # 指紋の控え(<project>/.fleetest/locator-fingerprints.json)は退避して空から回し、最後に戻す
 # (過去の控えに結果を左右させない・この検証の控えを残さない)。
@@ -55,16 +57,21 @@ LEDGER="$ROOT/TestProjects/$PROJECT/.fleetest/locator-fingerprints.json"
 WITNESS="指紋でid変更を追従できること"
 SWITCH="指紋照合の前提を切り替える"
 SCHEMA_TOUCHED=0
+WITNESS_FILE="$SCEN_DIR/${FILES[0]}"
+WITNESS_ORIG="$(mktemp -t healverify-witness)"
+WRITEBACK=""
 
 run_step() {  # デバイスを固定して1回回す(合否は問わない。結果は results/ から読む)
   "$FLEETEST" run --project "$PROJECT" --profile "$PROFILE" --device "$DEVICE" --runner local "$@"
 }
 
-restore() {  # 途中で落ちても必ず戻す(schema → シナリオの配置 → 指紋の控え の順)
+restore() {  # 途中で落ちても必ず戻す(schema → 書き戻されたソース → シナリオの配置 → 指紋の控え の順)
   if [ "$SCHEMA_TOUCHED" = 1 ]; then
     run_step --skip-build --scenario "$SWITCH.S0010" >/dev/null 2>&1 \
       || echo "⚠️ schema を v1 へ戻せなかった(台: $DEVICE)" >&2
   fi
+  [ -s "$WITNESS_ORIG" ] && [ -f "$WITNESS_FILE" ] && cp "$WITNESS_ORIG" "$WITNESS_FILE"
+  rm -f "$WITNESS_ORIG"
   for f in "${FILES[@]}"; do
     [ -f "$SCEN_DIR/$f" ] && mv "$SCEN_DIR/$f" "$DISABLED/$f"
   done
@@ -78,6 +85,7 @@ for f in "${FILES[@]}"; do
   [ -f "$DISABLED/$f" ] || { echo "❌ $DISABLED/$f がありません" >&2; exit 1; }
   mv "$DISABLED/$f" "$SCEN_DIR/$f"
 done
+cp "$WITNESS_FILE" "$WITNESS_ORIG"
 [ -f "$LEDGER" ] && mv "$LEDGER" "$LEDGER.healverify.bak"
 
 list_runs() { find "$RUNS_DIR" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | sort; }
@@ -89,6 +97,16 @@ step() {
   echo "--- $label ---"
   run_step "$@" >&2 || true
   STEPS+="$label $(comm -13 <(printf '%s\n' "$before") <(list_runs) | tail -1)"$'\n'
+  # 書き戻しの観測(v1 の tap が v2 に置き換わったか)→ 元へ戻す(以降の周の前提を保つ)
+  if cmp -s "$WITNESS_FILE" "$WITNESS_ORIG"; then
+    WRITEBACK+="$label unchanged"$'\n'
+  elif grep -q 'tap("#btn_heal_v2")' "$WITNESS_FILE" && ! grep -q 'tap("#btn_heal_v1")' "$WITNESS_FILE" \
+       && [ "$(diff "$WITNESS_ORIG" "$WITNESS_FILE" | grep -c '^[<>]')" = 2 ]; then
+    WRITEBACK+="$label written"$'\n'
+  else
+    WRITEBACK+="$label unexpected"$'\n'
+  fi
+  cp "$WITNESS_ORIG" "$WITNESS_FILE"
 }
 
 echo "═══ $PROJECT / $PROFILE / $DEVICE(自己修復=指紋照合の検証)═══"
@@ -105,10 +123,11 @@ SCHEMA_TOUCHED=0
 restore
 trap - EXIT
 
-STEPS="$STEPS" python3 - <<'PY'
+STEPS="$STEPS" WRITEBACK="$WRITEBACK" python3 - <<'PY'
 import glob, json, os, sys
 
 problems = []
+writeback = dict(line.split(" ", 1) for line in os.environ.get("WRITEBACK", "").splitlines() if " " in line)
 
 def result(run):
     files = sorted(glob.glob(os.path.join(run, "scenarios/*.json"))) if run else []
@@ -138,7 +157,7 @@ for label, d in rows.items():
         problems.append(f"{label}: 結果が無い(実行されていない)")
         continue
     healed = (d.get("steps") or {}).get("healed", 0)
-    print(f"  {label:8} passed={d.get('passed')} healed={healed} heal={d['_heal']}"
+    print(f"  {label:8} passed={d.get('passed')} healed={healed} heal={d['_heal']} source={writeback.get(label)}"
           f" notes={sorted(d['_notes'])} fixes={d['_fixes']}"
           + (f" FAIL: {d['_fail'][:160]}" if d["_fail"] else ""))
 
@@ -159,6 +178,11 @@ for label in ("heal1", "heal2"):
     check(label, ("#btn_heal_v1", "#btn_heal_v2") in d["_fixes"],
           f"修正提案が #btn_heal_v1 → #btn_heal_v2 でない: {d['_fixes']}")
     check(label, not ((d.get("fm") or {}).get("byKind") or {}).get("heal"), "自己修復で FM を呼んだ")
+    check(label, writeback.get(label) == "written",
+          f"94 のソースへ #btn_heal_v1 → #btn_heal_v2 の1行だけが書き戻されていない: {writeback.get(label)}")
+
+for label in ("setV1", "record", "setV2", "healOff", "restore"):
+    check(label, writeback.get(label) == "unchanged", f"直していない周でソースが変わった: {writeback.get(label)}")
 
 d = rows.get("healOff")
 if d:

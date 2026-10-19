@@ -13,7 +13,6 @@ final class ShellSourceScanTests: XCTestCase {
 
     /// Sources からの相対パス → 許す理由
     private static let allowed: [String: String] = [
-        "fleetest/ApiApplyHealCommand.swift": "自分の stdin(拡張が JSON を書いて閉じる契約)。子プロセスではない",
         "FTCoreSimShim/FTCoreSimShim.m": "`xcode-select -p`(端末に触らない・孫無し・出力 1 行)。刺さる形が無い",
         "fleetest-simstream/main.m": "同上(`xcode-select -p`)",
     ]

@@ -62,6 +62,8 @@ enum ApiRunMachineFanout {
         // 追い越される
         let ticket = DispatchTicketIssuer.issue(runGroup: runGroup)
         setenv(DispatchTicket.environmentKey, ticket.environmentValue, 1)
+        // 自己修復の書き戻しは全機械の子が終わってから親が1回だけ(HealSourceWriteBack.Collection)
+        let healCollection = HealSourceWriteBack.Collection()
         // **この Mac のロックを、ビルド/一覧取得より前に取る**(DeviceMachineRunner.run と同じ
         // 理由・同じ位置。ユーザー決定「1つのマシンで同時に複数の run は走らせない」)。
         // **build を直列化するための一時的な先取り** —— 配分が確定したら local に配られるかどうかに
@@ -188,6 +190,7 @@ enum ApiRunMachineFanout {
                     let exitCode = await runChild(
                         index: position, binary: binary, args: args, machineLabel: group.machineLabel,
                         ticket: ticket, lockMarker: lockMarkers[group.machineLabel],
+                        healCollection: healCollection,
                         continuation: continuation, registry: registry)
                     return (position, FleetEntryOutcome(
                         host: group.machineLabel, profile: profileName, exitCode: exitCode,
@@ -209,6 +212,8 @@ enum ApiRunMachineFanout {
         continuation.finish()
 
         let (totalPassed, totalFailed, totalSkipped, runID, testSeconds) = await multiplexed
+        // finished の前(単機の api run と同じ。拡張は finished で通知を出す)
+        healCollection.finish(project: project) { logStderr($0) }
         writeLine(encode(ApiRunFinishedEvent(
             passed: totalPassed, failed: totalFailed, skipped: totalSkipped,
             testSeconds: testSeconds, scenarioTotalSeconds: nil,
@@ -280,13 +285,14 @@ enum ApiRunMachineFanout {
     /// ロックを取れたときだけ非 nil(DispatchPrelock)
     private static func runChild(
         index: Int, binary: String, args: [String], machineLabel: String, ticket: DispatchTicket,
-        lockMarker: String?,
+        lockMarker: String?, healCollection: HealSourceWriteBack.Collection,
         continuation: AsyncStream<ChildEvent>.Continuation, registry: ChildProcessRegistry
     ) async -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
         process.environment = DispatchTicketIssuer.childEnvironment(ticket: ticket,
-                                                                    lockHeldTarget: lockMarker)
+                                                                    lockHeldTarget: lockMarker,
+                                                                    healCollection: healCollection)
         process.arguments = args
         process.standardInput = FileHandle.nullDevice
         let stdoutPipe = Pipe()

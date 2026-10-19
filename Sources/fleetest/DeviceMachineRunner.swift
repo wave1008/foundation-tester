@@ -116,6 +116,8 @@ enum DeviceMachineRunner {
         // 早い epoch になり、build を終えて戻ってきた自分が FIFO で追い越される
         let ticket = DispatchTicketIssuer.issue(runGroup: runGroup)
         setenv(DispatchTicket.environmentKey, ticket.environmentValue, 1)
+        // 自己修復の書き戻しは全機械の子が終わってから親が1回だけ(HealSourceWriteBack.Collection)
+        let healCollection = HealSourceWriteBack.Collection()
         // **この Mac のロックを、ビルド/一覧取得より前に取る**(ユーザー決定
         // 「1つのマシンで同時に複数の run は走らせない」・規律③「取るのは run の入口」)。
         // **build を直列化するための一時的な先取り** —— 配分が確定したら local に配られるかどうかに
@@ -244,7 +246,7 @@ enum DeviceMachineRunner {
                     let start = Date()
                     let exitCode = await FleetRunner.runEntry(
                         binary: binary, args: args, hostLabel: group.machineLabel, ticket: ticket,
-                        lockMarker: lockMarkers[group.machineLabel])
+                        lockMarker: lockMarkers[group.machineLabel], healCollection: healCollection)
                     return (index, FleetEntryOutcome(
                         host: group.machineLabel, profile: profileName, exitCode: exitCode,
                         duration: Date().timeIntervalSince(start)))
@@ -265,6 +267,7 @@ enum DeviceMachineRunner {
             outcomes.map { ($0.host, $0.exitCode) }, uniquingKeysWith: { first, _ in first }))
 
         printSummary(profileName: profileName, outcomes: outcomes)
+        healCollection.finish(project: project) { FleetRunner.log($0) }
         // **broadcast はここを呼ばない** —— 同じ ID を台数ぶん走らせるので、1台でも記録が
         // あれば「走った」であり「欠落」の意味が変わる(呼び手で分岐。実装を分けない)
         if !broadcast {

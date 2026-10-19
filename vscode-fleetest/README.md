@@ -53,10 +53,10 @@ fleetest(Swift 製の iOS/Android UI テストツール。リポジトリルー�
   Markdown レポートを開く)・Test Explorer ツールバーの **「失敗したテストのみ表示」**
   (`fleetest.enableFailedTestsFilter`/`fleetest.disableFailedTestsFilter`、設定
   `fleetest.showOnlyFailedTests` と同期)を提供する
-- 自己修復(`fleetest.heal` 設定)と、修復候補の確認・確定(`src/healModel.ts` /
-  `src/healReviewPanel.ts`)。`--set heal=true` 付きの実行で修復候補(`fixSuggestion`)が見つかると、
-  実行終了後に確認パネルが自動的に開き、承認するとシナリオソースへ反映される
-  (詳細は下記「自己修復(heal)と修復候補の確定」)
+- 自己修復(`fleetest.heal` 設定)と、直したセレクタの通知(`src/healModel.ts` /
+  `src/healNotice.ts`)。`--set heal=true` 付きの実行で修復候補(`fixSuggestion`)が見つかると、
+  CLI が run の終わりにシナリオソースへ書き戻し、実行終了後に通知を出す
+  (詳細は下記「自己修復(heal)と通知」)
 - 実行プロファイルの編集支援(`src/profileModel.ts` / `src/profileDiagnostics.ts`)。
   コマンド **「fleetest: 実行プロファイルを選択」**(`fleetest.selectProfile`)による
   `fleetest.profile` 設定の切り替え、プロファイルJSON保存時の自動検証+
@@ -475,10 +475,9 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
 - 逐次実行(`fleetest.profile` 未設定、または dry-run/デバッグ実行)では worker 情報を伴わない
   ため、「全体」という1本のレーンにまとめて表示されます。
 
-## 自己修復(heal)と修復候補の確定
+## 自己修復(heal)と通知
 
-自己修復トグルと、修復候補を確かめて適用する確認パネル(`src/healReviewPanel.ts`。webview 資産は
-`src/webview/healReview/`)です。
+自己修復トグルと、直したセレクタの件数を知らせる通知(`src/healNotice.ts`)です。
 
 ### 設定と実行
 
@@ -491,42 +490,14 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
   `heal` を設定できます。`fleetest.heal` が `true` のときだけプロファイル側の設定より優先されます
   (`fleetest.heal` が `false`(既定)のときは何も付与せず、プロファイル側の `heal` 設定がそのまま
   使われます)。
-- 確認パネルは `fleetest.heal` 設定に関わらず、実行中に `fixSuggestion` イベントが1件以上届けば
-  自動的に開きます(プロファイル側の `heal` 設定だけが有効な場合でも確認できるようにするため)。
+- 通知は `fleetest.heal` 設定に関わらず、実行中に `fixSuggestion` イベントが1件以上届けば出ます
+  (プロファイル側の `heal` 設定だけが有効な場合でも知らせるため)。
 
-### 確認パネル
+### 通知
 
-実行が終了すると(dry-run では発生しません)、修復候補があれば **「fleetest 自己修復の確認」**
-Webview パネルが自動的に開きます。各候補について以下を確認・編集できます。
-
-- チェックボックス(既定 ON。ただしソースが変更されていて適用できない候補は既定 OFF・操作不可)
-- シナリオ ID・`file:line`
-- 「変更前」セレクタ(読み取り専用)
-- 「変更後」セレクタ(テキスト入力で編集可。空・`"` を含む・改行を含む場合は警告してチェックが
-  強制的に外れます)
-- 「説明」(対象行の行末 `//` コメントをプリフィル。改行を含む場合のみ警告してチェックが外れます。
-  空にするとコメント削除の指示になります)
-- diff プレビュー(拡張がパネルを開く時点でソース行を1回読み、`-` 変更前行(赤)/`+` 変更後行
-  (緑)を表示します。変更後行はセレクタ・説明の編集にライブ追従します)
-- 対象行に変更前セレクタが引用符付きでちょうど1回出現しない場合は
-  **「適用できません(ソースが変更されています)」**と表示され、チェックは無効化されます
-
-「選択した N 件を適用」を押すと、拡張が `fleetest api apply-heal --project <project>` を
-stdin 経由の JSON(`{"fixes":[...]}`)で呼び出し、シナリオソースへ確定反映します。適用に成功した
-候補はパネルから消え、失敗した候補は理由とともに残ります。**失敗が0件になったときだけ**パネルが
-自動的に閉じます。「閉じる」を押すと何も反映せずパネルを閉じます(ソースが直っていない箇所は
-次回 `--set heal=true` 付きで実行しても指紋照合で同じ置き換えが見つかり、同じ候補が再度提案されます)。
-
-適用後のシナリオツリー再読込は `watcher`(ファイル変更検知)が拾うため、拡張側で明示的な
-リフレッシュは行いません。
-
-### GUI 版との差分
-
-- GUI 版は説明の初期提案に FM(自然言語生成)を使いますが、拡張ホストからは FM を呼び出せないため、
-  VSCode 版の説明欄は既存の行末コメントのみをプリフィルします(コメントが無い行は空欄から編集を
-  始めます)。
-- パネルを開いた状態でさらに `--set heal=true` 付き実行を行った場合、GUI 版と異なりパネルは閉じずに
-  新しい候補(重複しない ID のみ)を追記します。
+dry-run ではない run の終了時に、修復候補(同じ file・line・変更前/変更後セレクタは1件)が1件以上あれば
+情報通知を出します。書き戻しは CLI が run の終わりに行います(書き戻せなかったものは実行ログに出ます)。
+「変更を表示」でソース管理ビューを開きます。git の差分を確認してコミットしてください。
 
 ## ライブ操作
 
@@ -662,7 +633,7 @@ Swift 側 `fleetest api gen-scenario`(`Sources/fleetest/ApiGenScenarioCommand.sw
 クリック位置(画像内の表示px)と表示サイズだけを postMessage で送ります。ホバー時の枠オーバーレイは
 即応性のため webview 内で完結させる必要があり、CSP により `liveModel.ts` を import できないため、
 `frameToDisplayRect` と同じ小さな計算式だけを webview 内の素の JS(`src/webview/monitor/liveTab.js`)に
-複製しています(`healReviewPanel.ts` が `healModel.ts` の一部ロジックを複製しているのと同じ方針)。
+複製しています。
 
 ### CLI 呼び出しについて(FleetestCli のキューを使わない理由)
 
@@ -887,17 +858,11 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
 
 31. `.vscode/settings.json` に `"fleetest.heal": true` を設定し、ロケータが一致しなくなる
     シナリオ(あらかじめ対象要素のセレクタをソース側だけ変えておく等)を「実行」する。
-    実行完了後、**「fleetest 自己修復の確認」** パネルが自動的に開くことを確認する
-    (「実行 (dry-run)」では `--set heal=true` が付与されずパネルも開かないことを合わせて確認する)。
-32. パネル上で「変更後」セレクタと「説明」を編集し、diff プレビュー(`-`/`+` の行)が
-    ライブに追従することを確認する。変更後セレクタを空にする・`"` を含める・改行を含めると
-    警告が表示されチェックが自動的に外れることを確認する。
-33. 1件以上チェックした状態で「選択した N 件を適用」を押すと、対象の `.swift` ファイルの
-    該当行のセレクタ(および編集した場合は行末コメント)が書き換わることを確認する。
-    適用に成功した候補がパネルから消え、失敗が無ければパネルが自動的に閉じることを確認する。
-34. 「閉じる」を押すとソースが変更されずパネルが閉じることを確認する。この状態で再度
-    `--set heal=true` 付きで同じシナリオを実行すると、同じ候補が再度提案されることを確認する
-    (ソースが直っていないので指紋照合が同じ置き換えを見つけ直すため)。
+    実行完了後、「自己修復で N 件のセレクタを直し、シナリオに書き戻しました」の通知が出ることを確認する。
+32. 通知の「変更を表示」を押すとソース管理ビューが開き、対象の `.swift` ファイルの該当行のセレクタが
+    書き換わっていることを確認する。
+33. 「実行 (dry-run)」では `--set heal=true` が付与されず通知も出ないことを確認する。
+34. 書き戻せなかった候補がある場合、実行ログにその旨が出ることを確認する。
 
 ### ライブ操作
 
@@ -1086,8 +1051,8 @@ vscode-fleetest/
 │   ├── runBoardModel.ts          # デバイスモニターの「run ボード」(フリート横断の実行状況)の純粋ロジック(拡張・webview 両バンドルに入る。vscode 非依存)
 │   ├── deviceStream.ts           # 映像ストリーミング常駐 helper のプロセス管理(iOS/Android 共通。ライブ操作・モニタータイル両方が使う)
 │   ├── remoteStreamAdmission.ts  # リモート機への画面配信(`api device-stream`)を一斉に張らないための入場制限(sshd MaxStartups 対策)
-│   ├── healModel.ts              # HealFixCollector・検証/diffロジック・apply-heal 契約の変換(vscode 非依存)
-│   ├── healReviewPanel.ts        # 自己修復確認の WebviewPanel(fleetestHealReview)。RunEventBus購読・ソース読込・apply-heal 呼び出し
+│   ├── healModel.ts              # HealFixCollector・候補の件数(vscode 非依存)
+│   ├── healNotice.ts             # RunEventBus 購読。run 終了時に自己修復の件数を通知
 │   ├── profileModel.ts           # `fleetest api validate-profile` の出力の検証・変換、プロファイルファイルパスの種別判定(vscode 非依存)
 │   ├── profileDiagnostics.ts     # DiagnosticCollection("fleetest-profile")。保存時自動検証・fleetest.validateProfiles コマンド
 │   ├── liveModel.ts              # `fleetest api list-devices`/`fleetest api live serve`/`fleetest api gen-scenario` の検証・NDJSONコマンド組み立て・座標変換・要素行フォーマット・CLI引数組み立て・レコーディング→FlowStep変換・webviewメッセージプロトコル(vscode 非依存)
@@ -1113,8 +1078,7 @@ vscode-fleetest/
 │   └── webview/
 │       ├── i18n.js                # webview 側 i18n ランタイム(locale は <html lang> 経由)
 │       ├── monitor/               # デバイスモニターの webview 資産(main.js/tabs.js/deviceTiles.js/liveTab.js/各プロファイルタブ/h264Decoder.js 等。liveTab.js が「ライブ操作」タブの UI 本体)
-│       ├── dashboard/             # 結果ダッシュボードの webview モジュール(render.js/format.js/summaryTable.js/deviceHealth.js/machineHealth.js/insights.js/headlineDiff.js/headlineDiffLogic.js/style.css 等。monitor/dashboardTab.js が読む)
-│       └── healReview/            # 自己修復の確認パネルの webview 資産(main.js/style.css。healModel.ts を直接 import する)
+│       └── dashboard/             # 結果ダッシュボードの webview モジュール(render.js/format.js/summaryTable.js/deviceHealth.js/machineHealth.js/insights.js/headlineDiff.js/headlineDiffLogic.js/style.css 等。monitor/dashboardTab.js が読む)
 └── test/
     ├── ndjson.test.mjs           # NdjsonParser のユニットテスト(node:test)
     ├── runReducer.test.mjs       # runReducer のユニットテスト(並列実行ケース含む) + mock-runner を使った統合テスト
@@ -1139,7 +1103,7 @@ vscode-fleetest/
     ├── deviceStream.test.mjs     # deviceStream(StreamPipeline)のユニットテスト
     ├── webviewLiveDrag.test.mjs  # webview 側ドラッグ処理のユニットテスト(jsdom)
     ├── healModel.test.mjs        # healModel のユニットテスト + mock-runner(--pattern heal)を使った統合テスト
-    ├── cli.test.mjs              # FleetestCli の stdin 対応 spawn のテスト(mock-apply-heal 相手)
+    ├── cli.test.mjs              # FleetestCli のキャンセル方針のテスト
     ├── profileModel.test.mjs     # profileModel のユニットテスト + mock-validate-profile を使った統合テスト + 実バイナリ(存在すれば)確認
     ├── profileSchema.test.mjs    # schemas/*.schema.json が実在の TestProjects/SampleApp/profiles/*.json を受理することの確認(ajv 不使用の最小評価器)
     ├── liveModel.test.mjs        # liveModel のユニットテスト(検証・NDJSONコマンド組み立て/イベント検証・座標変換・要素行フォーマット・CLI引数組み立て・webviewメッセージプロトコル) + mock-live を使った統合テスト + 実バイナリ(存在すれば)確認
@@ -1151,7 +1115,6 @@ vscode-fleetest/
         ├── mock-runner.mjs      # `fleetest api run` を模したダミー NDJSON エミッタ(--debug 対応、--pattern parallel/heal で並列実行/自己修復の契約を模す)
         ├── mock-monitor.mjs     # `fleetest api monitor` を模したダミー NDJSON エミッタ
         ├── mock-device-op.mjs   # `fleetest api start-device`/`fleetest api stop-device` を模したダミースクリプト(--fail で ok:false を模せる)
-        ├── mock-apply-heal.mjs  # `fleetest api apply-heal` を模したダミースクリプト(stdin の JSON をそのまま読んで応答を返す)
         ├── mock-validate-profile.mjs  # `fleetest api validate-profile` を模したダミースクリプト(--kind/--name 絞り込みに対応)
         ├── mock-live.mjs         # `fleetest api list-devices`(ワンショット)/`fleetest api live serve`(常駐・stdin の NDJSON コマンドに応答)を模したダミースクリプト(--fail で ok:false を模せる)
         └── dapDriver.mjs        # FleetestDebugSession を直接駆動するテストヘルパー(dap/e2e で共用)
