@@ -10,7 +10,7 @@
 //   {"cmd":"type","text":<String>,"ref":<Int省略可>}     テキスト入力(ref省略時はフォーカス中の要素)
 //   {"cmd":"clear","ref":<Int省略可>}                    入力欄をクリア(ref省略時はフォーカス中の要素)
 //   {"cmd":"hideKeyboard"}                              フォーカス中の入力のソフトキーボードを閉じる
-//                                                        (**Android のみ**。iOS は 501 で、閉じるのは pressEnter)
+//                                                        (**Android のみ**。iOS はブリッジへ送らずに断る = hideKeyboardRefusal)
 //   {"cmd":"swipe","direction":"up"|"down"|"left"|"right"}
 //   {"cmd":"drag","fromX":..,"fromY":..,"toX":..,"toY":..,"press":<秒省略可>,"duration":<秒省略可>,
 //    "maxGestureSeconds":<秒省略可>}                    **斜めのパンはこれで撃つ**(両軸を動かす)
@@ -908,6 +908,16 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// `XCUIApplication.launch()` を撃つとランナーが約60秒でハングして自壊する(実測 L2)。
     /// own app(hybrid で in-app が既に繋がっているアプリ)への launch/activate は素通しする ——
     /// in-app は XCUITest を経由せず、繋がっている時点でインストール済みが確定している
+    /// iOS の hideKeyboard はライブ操作では撃たない(ユーザー決定)。iOS にはキーボードだけを閉じるキーが無く、DSL・MCP の
+    /// hideKeyboard は「キーボードの上の空きを叩く(DSL はさらに Enter)」= 人が画面を見て自分でできる操作。ブリッジの 501 の
+    /// 古い文言(「Android 専用・pressEnter を使え」)を出さないよう、ブリッジへ送る前にここで断る。nil = 撃ってよい(Android)
+    static func hideKeyboardRefusal(platform: String?) -> String? {
+        guard platform != "android" else { return nil }
+        return "hideKeyboard is not available in live control on iOS — iOS has no key that only closes the keyboard."
+            + " Tap an empty spot outside the field, or press Return (which also fires the field's action:"
+            + " submit, search or moving to the next field)"
+    }
+
     private func launchGuard(bundle: String, driver: AppDriver, ownAppBundleID: String?) async throws {
         guard bundle != ownAppBundleID else { return }
         let isAndroid = driverOptions.resolvedPlatform == "android"
@@ -981,6 +991,9 @@ struct ApiLiveServe: AsyncParsableCommand {
             if let ref = command.ref { try await Self.requireTextInputTarget(ref: ref, driver: driver) }
             try await driver.clearInput(ref: command.ref)
         case "hideKeyboard":
+            if let refusal = Self.hideKeyboardRefusal(platform: driverOptions.resolvedPlatform) {
+                throw ServeCommandError.invalidArguments(refusal)
+            }
             try await driver.hideKeyboard()
         case "swipe":
             guard let raw = command.direction, let direction = FTSwipeDirection(rawValue: raw) else {
