@@ -28,6 +28,10 @@ terminateApp()
 
 - **`launchApp` always terminates first, even if the app is already running** — it never just
   brings the app to the foreground. Every call starts at the entry screen.
+- **On iOS with the default (hybrid) engine, `launchApp` / `restartApp` of an app other than the scenario's own app
+  fails in the middle of a scenario.** The in-app engine runs inside the app under test and cannot drive another app.
+  Put the steps on another app (such as Settings) in a separate scenario that names it, like
+  `@TestClass(app: "com.apple.Preferences")`; that scenario runs on the XCUITest engine automatically.
 - **Default app** (when `appID` is omitted, for `launchApp` / `restartApp` / `terminateApp` /
   `removeApp` / `clearAppData` / `appIs`): resolved in this order —
   1. `@TestClass(app: "...")` on the scenario, if present — this always wins.

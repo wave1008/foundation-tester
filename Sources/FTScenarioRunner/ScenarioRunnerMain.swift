@@ -402,7 +402,7 @@ struct RunScenario: AsyncParsableCommand {
                     } else {
                         // in-app は launch=simctl 再起動+dylib 注入(自己再起動できないため)
                         let repoRoot = try RepoRoot.find()
-                        let inapp = InAppDriver(repoRoot: repoRoot, udid: udid ?? "booted", port: port)
+                        let inapp = InAppDriver(repoRoot: repoRoot, udid: udid ?? "booted", port: port, ownBundleID: appBundleID)
                         if engine == "hybrid", let xcuiPort {
                             let xcuiHost = bridgeHost ?? BridgeEndpoint.loopbackHost
                             fallbackDriver = SystemUIDriver(port: xcuiPort, host: xcuiHost,

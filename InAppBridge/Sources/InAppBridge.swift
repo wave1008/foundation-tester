@@ -508,9 +508,11 @@ final class FTInAppBridge {
             // **キーボードの上も撃たない**。in-app はキーを押せない(キーボードは別プロセスが描く)うえ、
             // 下の topmostHitView はキーボードの窓を拾えず、下に隠れた要素を activate していた
             // (実測: キーボードの下へ押し上げられた #tab_home の枠内を撃つと遷移した)。
-            // 枠は通知由来の keyboardFrameIfVisible(TextEffects 窓の frame は全画面のまま居残るので使わない)
+            // 枠は通知由来の keyboardFrameIfVisible(TextEffects 窓の frame は全画面のまま居残るので使わない)。
+            // **501(このエンジンにはできない)で返す**: 人の指はキーを押せるので、hybrid ではホストが XCUITest で撃つ
+            // (`StepExecutor` の `isEngineIncapable`)。422 だと hybrid でも失敗した。画面の外は人も押せないので 422 のまま
             if let keyboard = Self.keyboardFrameIfVisible(), keyboard.contains(p) {
-                throw InAppError(422, "the point (\(Int(p.x)), \(Int(p.y))) is on the software keyboard"
+                throw InAppError(501, "the point (\(Int(p.x)), \(Int(p.y))) is on the software keyboard"
                     + " (\(Int(keyboard.minX)),\(Int(keyboard.minY)) \(Int(keyboard.width))x\(Int(keyboard.height)))"
                     + " — the in-app engine cannot press keys, and what lies beneath is not visible."
                     + " Use type to enter text; pressEnter closes the keyboard so what is under it can be reached")

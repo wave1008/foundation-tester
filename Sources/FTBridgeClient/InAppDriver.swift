@@ -19,7 +19,13 @@ public final class InAppDriver: AppDriver {
     /// 前のシナリオがアプリを終了した直後の `removeApp` は「接続拒否」で落ちる
     /// (受け手報告: シナリオ先頭の removeApp が同じデバイスで連続して driver-unreachable)。
     /// "booted" は UDID ではないので渡さない(デバイスが複数 booted だと simctl の宛先として曖昧)
-    public init(repoRoot: URL, udid: String, port: UInt16) {
+    /// `ownBundleID`: このシナリオで dylib を注入するアプリ(シナリオ経路だけが渡す)。**これと違うアプリの launch は断る** ——
+    /// 断らないと別アプリへ同じ `FT_PORT` で注入して起動し、ポートを取り合った旧ブリッジが答えて裏のアプリを操作した。
+    /// 別アプリの手順は、そのアプリを `@TestClass(app:)` に書いた別のシナリオに置く(注入先と違うシナリオは丸ごと XCUITest で動く)
+    private let ownBundleID: String?
+
+    public init(repoRoot: URL, udid: String, port: UInt16, ownBundleID: String? = nil) {
+        self.ownBundleID = ownBundleID
         let simulatorUDID = udid == "booted" ? nil : udid
         self.simulatorUDID = simulatorUDID
         self.client = BridgeClient(port: port, simulatorUDID: simulatorUDID)
@@ -29,6 +35,7 @@ public final class InAppDriver: AppDriver {
     // launch/terminate だけ simctl(注入起動)
 
     public func launch(bundleID: String) async throws {
+        if let refusal = Self.foreignLaunchRefusal(bundleID: bundleID, own: ownBundleID) { throw refusal }
         lastBundleID = bundleID
         lastLaunchTimingValue = nil   // 失敗時に前回成功分の内訳を出さないための明示リセット
         uiFrameworkCache = nil        // 再注入先が変わり得るため判定も採り直す
@@ -258,6 +265,15 @@ public final class InAppDriver: AppDriver {
         throw DriverError.badResponse(status: 501,
             body: "waitForSettle cannot run on the in-app engine (it only sees the app's own drawing:"
                 + " no keyboard, no system alerts). Switch the run profile to hybrid or xcuitest")
+    }
+
+    /// 注入先と違うアプリの launch / activate を断る文(422 = エンジンにできないではない = XCUITest へ黙って回さない)
+    static func foreignLaunchRefusal(bundleID: String, own: String?) -> DriverError? {
+        guard let own, bundleID != own else { return nil }
+        return .badResponse(status: 422,
+                     body: "launching \(bundleID) is not supported in this scenario: the in-app engine is injected into"
+                         + " \(own) and cannot drive another app. Put the steps on \(bundleID) in a separate scenario"
+                         + " with @TestClass(app: \"\(bundleID)\"), which runs on XCUITest automatically")
     }
 
     private static func inappOnly(_ action: String) -> DriverError {

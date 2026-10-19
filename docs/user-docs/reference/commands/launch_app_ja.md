@@ -28,6 +28,10 @@ terminateApp()
 
 - **`launchApp` は起動済みでも前面化ではなく、常にプロセスを終了してから起動し直します。**
   どの呼び出しもエントリー画面から始まります。
+- **iOS の既定(hybrid)では、シナリオの途中にそのシナリオのアプリ以外を `launchApp` / `restartApp` すると失敗します。**
+  in-app エンジンはテスト対象のアプリの中で動くので、別のアプリを駆動できないためです。別のアプリ(設定アプリ等)の手順は、
+  そのアプリを `@TestClass(app: "com.apple.Preferences")` のように書いた別のシナリオに置いてください。そのシナリオは
+  自動で XCUITest エンジンで動きます。
 - **既定アプリ**(`appID` を省略したとき。`launchApp` / `restartApp` / `terminateApp` /
   `removeApp` / `clearAppData` / `appIs` 共通)は次の順で決まります。
   1. `@TestClass(app: "...")` の明示(書いてあればこれが勝ちます)

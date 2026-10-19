@@ -199,7 +199,10 @@ public func appIs(_ appID: String, waitSeconds: Double? = nil,
                   file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "appIs")
     let waitSeconds = waitSeconds ?? core.tunables.screenWaitTimeout
-    let driver = core.driver
+    // **前面のアプリは XCUITest のランナーに聞く**(hybrid / xcuitest では `homeScreenDriver` = SpringBoard 参照のドライバ)。
+    // 主ドライバ(hybrid では in-app)は自分のアプリが前面かどうかしか答えられず、`appIs("com.apple.Preferences")` が
+    // 既定の hybrid で必ず赤になった。inapp 単独と Android は主ドライバに戻る(homeScreenDriver の既定)
+    let driver = core.homeScreenDriver
     core.performCustom(description: "appIs \"\(appID)\"", command: "appIs", file: file, line: line,
                        isAssertion: true) {
         let matched = try await pollForegroundMatch(
