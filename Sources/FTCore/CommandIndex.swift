@@ -151,7 +151,7 @@ public enum DSLCommandIndex {
         .init("pressEnter", "operation", "pressEnter(settle:)",
               "Fires the Enter/IME action on the focused input."),
         .init("hideKeyboard", "operation", "hideKeyboard(settle:)",
-              "Closes the soft keyboard. Android only; on iOS use pressEnter()."),
+              "Closes the soft keyboard (iOS: taps an empty spot above it, then Enter if that did not close it)."),
         .init("clearInput", "operation",
               "clearInput(selector, settle:, waitSeconds:, scroll:, maxSwipes:) / clearInput(settle:)",
               "Empties an input field. type appends, so clear first to replace."

@@ -730,6 +730,7 @@ public final class StepExecutor {
         suppressedInterruptionSeenThisStep = false
         observedCheckedThisStep = nil
         guardEnteredThisStep = false
+        pixelsShowedTextThisStep = false
         resolvedElementThisStep = nil
         notVisibleSelectionThisStep = nil
         scrollSwipesThisStep = nil
@@ -829,6 +830,11 @@ public final class StepExecutor {
                 // 時間切れの原因が前面のシステムアラートなら題名を添える(登録が無いときだけ・1往復)
                 status = await annotatedWithSystemAlert(status, phase: &phase)
                 noteHoldAlreadyReleased(onFailureOf: step, status: status)
+                noteAssertionForRenderCollapse(assert, step: step, status: status)
+                if renderCollapseEveryAssertion, Self.isSuccess(status) {
+                    assertionsWithoutPixelProof = [assert]
+                    if let message = await renderCollapseVerdict() { status = .failed(message) }
+                }
                 return StepOutcome(status: status,
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
@@ -1028,6 +1034,20 @@ public final class StepExecutor {
     /// `occlusionFlip` の入口ガードを通った直後に立てる(それより後ろの早期 return では立て直さない)。
     /// observedCheckedThisStep と同じ受け渡し形
     var guardEnteredThisStep = false
+    /// このステップの検証が、**画素に文字が描かれている**と確かめたか(テキストの可視性検証の合格のうち、文字の型のインク・
+    /// OCR・FM が読めた回だけ)。描画崩壊の確かめ(`renderCollapseVerdict`)の義務を下ろす根拠。execute が毎ステップ false へ戻す
+    var pixelsShowedTextThisStep = false
+    /// 描画崩壊を確かめるか(Simulator の iOS だけ。FTRuntime が立てる。既定は確かめない)
+    public var renderCollapseCheckEnabled = false
+    /// iOS の hideKeyboard が、背景を叩いても閉じないとき Enter まで送るか。DSL は送る(ユーザー決定)。MCP は送らない ——
+    /// エージェントは「閉じたい」だけで送信・検索を起こしうる(Return は欄の確定操作)。要るなら Enter を明示して送る
+    public var hideKeyboardFallsBackToEnter = true
+    /// 計測用: 緑の検証のたびに確かめる(`renderCollapseEveryAssertionKey`。正常な画面での誤検知を数えるデバイス実行だけで使う)
+    public var renderCollapseEveryAssertion = false
+    /// 陽性対照: 判定の答えを崩壊に差し替える(`renderCollapseInjectionKey`)
+    public var renderCollapseInjected = false
+    /// 画素で文字を確かめないまま緑になった検証(最後に確かめた後から)。空でなければ次の区切りで1回撮って確かめる
+    var assertionsWithoutPixelProof: [String] = []
     /// このステップの assert が **SpringBoard 側の木**で解決したか(= シナリオ自身が
     /// システムアラートを検証している)。立っていれば SystemUIGate は緑を取り消さない ——
     /// 取り消すと `exist("許可しない")` のような、アラートを対象にした検証が一切書けなくなる。

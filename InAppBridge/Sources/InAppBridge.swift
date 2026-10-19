@@ -134,6 +134,7 @@ final class FTInAppBridge {
             case ("POST", "/clear"): return try handleClear(req.body)
             case ("POST", "/pressEnter"): return try handlePressEnter()
             case ("POST", "/hidekeyboard"): return try handleHideKeyboard()
+            case ("POST", "/tapprobe"): return try handleTapProbe(req.body)
             case ("POST", "/swipe"): return try handleSwipe(req.body)
             case ("POST", "/doubletap"): return try handleDoubleTap(req.body)
             case ("POST", "/pinch"): return try handlePinch(req.body)
@@ -319,7 +320,7 @@ final class FTInAppBridge {
     /// 実測 2026-08-08: (0,0 402x874) が返り、画面上部の要素まで「キーボード下」と誤警告した。
     /// 配下の UIInputSetHostView をクラス名で探す案も iOS 27 で不発を実測)。
     /// 通知値が無ければ frame は申告しない(誤検知側に倒さない。keyboardShown だけ true になる)
-    private static func keyboardFrameIfVisible() -> CGRect? {
+    static func keyboardFrameIfVisible() -> CGRect? {
         guard keyboardIsVisible(), let observed = observedKeyboardFrame,
               observed.height >= 1 else { return nil }
         return observed
@@ -785,7 +786,7 @@ final class FTInAppBridge {
     /// 捕まらない**(実測: キーボードの下の要素の枠内を撃つとその要素が返った)—— キーボードの上の点は
     /// handleTap が通知由来の枠(keyboardFrameIfVisible)で先に断る。前から順に見て最初に hitTest が
     /// 当たった窓で決める(実際のタッチ配送と同じ規則)
-    private static func topmostHitView(at point: CGPoint) -> (view: UIView, window: UIWindow)? {
+    static func topmostHitView(at point: CGPoint) -> (view: UIView, window: UIWindow)? {
         for window in backToFront(UIApplication.shared.windows).reversed() {
             guard !window.isHidden, window.alpha > 0.01 else { continue }
             // point は screen 座標(from: nil = 画面の固定座標系。isCovered と同じ変換)
@@ -1692,7 +1693,7 @@ final class FTInAppBridge {
     // MARK: - 実行ヘルパ
 
     /// バックグラウンドのハンドラからメインで同期実行する。UIKit 参照用。
-    private func mainSync<T>(_ block: @escaping () throws -> T) rethrows -> T {
+    func mainSync<T>(_ block: @escaping () throws -> T) rethrows -> T {
         if Thread.isMainThread { return try block() }
         return try DispatchQueue.main.sync { try block() }
     }
@@ -1798,7 +1799,7 @@ final class FTInAppBridge {
         throw InAppError(400, "ref or x/y is required")
     }
 
-    private func decode<T: Decodable>(_ type: T.Type, _ body: Data) throws -> T {
+    func decode<T: Decodable>(_ type: T.Type, _ body: Data) throws -> T {
         do {
             return try JSONDecoder().decode(type, from: body)
         } catch {

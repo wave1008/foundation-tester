@@ -123,5 +123,11 @@ left. FM judges those. Where FM is unavailable, they pass unverified.
 - The `On-device OCR` line of `fleetest doctor` tells you whether OCR works (it reads an image with known text).
   While OCR reads nothing, no OCR-based judgement can be relied on (rebooting the Mac has cleared this state before).
 
+## Screen rendering check (iOS Simulator only)
+
+On an iOS Simulator the app's drawing can break and stay broken until the app is relaunched, while the element tree still looks normal. The app area becomes a single colour, or shapes are drawn but no text at all. A check that only reads the element tree would pass on such a screen. When an assertion passes without the text visibility check having confirmed by pixels that text is drawn, the tool takes one screenshot at the next checkpoint (right before `launchApp` / `restartApp` / `clearAppData` / `terminateApp`, before `afterEach`, and at the end of the scenario). If the screenshot is still a single colour, or none of the text elements in the tree is drawn (at least 3 of them), after a retake 1 second later, the scenario fails with a step named `screen rendering check (…)`. The message lists the facts: what was seen, and the names of the checks that passed without looking at the screen.
+
+What to do: run the scenario again. If it keeps failing, relaunch the app (or restart the Simulator) and check that the app draws normally. This check does not run on physical devices or Android, and the tool does not say what caused the broken drawing.
+
 ### Link
 - [index](../../index.md)

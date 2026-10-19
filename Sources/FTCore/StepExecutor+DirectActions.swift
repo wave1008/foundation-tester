@@ -541,10 +541,8 @@ extension StepExecutor {
         return StepOutcome(status: .passed, driverFallback: focusNote)
     }
 
-    // hideKeyboard もロケータを持たない(フォーカス中の入力欄からファーストレスポンダを外す)。
-    // pressEnter と同じ理由でロケータ解決を挟まないが、フォールバック判定は 409 ではなく
-    // isEngineIncapable(501/ルート不明404): このエンジンでは原理的に非対応、という意味だから
-    // (409 は「今フォーカス無し」等の一時的競合で、pressEnter/type の 409 とは事情が違う)
+    // hideKeyboard もロケータを持たない。Android はブリッジ(出ているときだけ戻るキー)、iOS は入力欄の外を叩く
+    // (executeIOSHideKeyboard。iOS のブリッジは 501 のまま撃たない)
     func executeDirectHideKeyboard(step: FlowStep, phase: inout PhaseAccumulator) async throws -> StepOutcome {
         // **直前の type のキーボードが出るのを先に待つ**: type はキーボードの表示を待たずに返るので、すぐ閉じに行くと
         // 「まだ出ていない = 閉じるものが無い」で何もせずに返り、その後に出たキーボードが次の back() を飲む
@@ -552,20 +550,194 @@ extension StepExecutor {
         if pendingTypeKeyboardCheck {
             _ = try await consumePendingTypeKeyboardCheck(try await freshSnapshot(.afterOwnMove), phase: &phase)
         }
+        if !isAndroid { return try await executeIOSHideKeyboard(step: step, phase: &phase) }
         let clock = ContinuousClock()
         let start = clock.now
-        do {
-            try await driver.hideKeyboard()
-        } catch {
-            guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
-            try await td.hideKeyboard()
-            phase.actionMs += Self.ms(clock.now - start)
-            return StepOutcome(status: .passed, driverFallback: "fell back to XCUITest")
-        }
+        try await driver.hideKeyboard()
         phase.actionMs += Self.ms(clock.now - start)
         // 木からキーボードが消えるのを待つのは次のロケータ操作の解決(pendingHideKeyboardWait の doc)
         if isAndroid, !step.skipsSettle { pendingHideKeyboardWait = step.timeout ?? tunables.defaultTimeout }
         return StepOutcome(status: .passed)
+    }
+
+    /// **iOS の hideKeyboard はキーボードの上の空きを叩く**(エンジンに依らない = 座標のタップだけ。ユーザー決定)。
+    /// iOS には閉じる共通の手段が無い(`KeyboardDismissPoint` の doc)。叩く点はキーボードの上を下から上へ走査した空き
+    /// (`KeyboardDismissPoint.candidates`。押せる部品が木に無い点)で、**木に載らないもの(キーボード・ステータスバー・
+    /// トースト等の別のウィンドウ)の上でないとブリッジの当たり判定で確かめた点**(`AppDriver.tapProbe` = in-app だけが答える。
+    /// 答えないエンジンは木だけで決め、木に載る最も上の要素より上は叩かない)。見つからなければ待って撮り直す(トーストが消えれば空きが出る)。
+    /// 上限 = 検証の既定の待ち。叩いても閉じない・叩ける点が無いときは **Enter を送る**(ユーザー決定。欄の確定操作が走るので
+    /// 注記に出す)。それでも閉じなければ失敗。**黙って成功にしない**: 叩いた点と、キーボード以外で画面が変わったかを注記に出す。
+    /// キーボードが出ていなければ何もしない(Android と同じく冪等)
+    func executeIOSHideKeyboard(step: FlowStep, phase: inout PhaseAccumulator) async throws -> StepOutcome {
+        let tried: String
+        switch try await closeKeyboardByTappingOutside(step: step, phase: &phase) {
+        case .notShown: return StepOutcome(status: .passed)
+        case .closed(let note, _): return StepOutcome(status: .passed, driverFallback: note)
+        case .notClosed(let what): tried = what
+        }
+        guard hideKeyboardFallsBackToEnter else {
+            return StepOutcome(status: .failed("the keyboard is still shown: \(tried); Enter was not sent"))
+        }
+        // **背景で閉じなければ Enter**(ユーザー決定)。Enter はキーボードを閉じる操作ではなく欄の確定操作(検索・送信・
+        // 次の欄への移動)なので、撃ったことを必ず注記に出す
+        let enter = try await executeDirectPressEnter(phase: &phase)
+        guard StepExecutor.isSuccess(enter.status) else {
+            return StepOutcome(status: .failed("the keyboard was not closed: \(tried), and"
+                + " sending Enter failed too"))
+        }
+        let afterEnter = try await awaitKeyboardClosed(within: step.timeout ?? tunables.defaultTimeout, phase: &phase)
+        let enterNote = "sent Enter, which also fires the field's return-key action (search, submit or moving to the next field)"
+        guard !KeyboardWait.isShown(afterEnter) else {
+            return StepOutcome(status: .failed("the keyboard is still shown: \(tried), and \(enterNote)"
+                + " did not close it either"))
+        }
+        return StepOutcome(status: .passed,
+                           driverFallback: Self.joinNotes("closed the keyboard: \(tried), so \(enterNote)",
+                                                          enter.driverFallback))
+    }
+
+    /// キーボードを閉じた結果。`after` は閉じたのを確かめた木(主ドライバ)
+    enum KeyboardClose {
+        case notShown
+        case closed(note: String, after: SnapshotResponse)
+        /// 閉じなかった。値は試したこと(失敗文・Enter の注記に入れる)
+        case notClosed(String)
+    }
+
+    /// **副作用の無い手段だけで**キーボードを閉じる: iOS はキーボードの上の空きを叩く(`closeKeyboardByTappingOutside`)、
+    /// Android は出ているときだけ戻るキー(ブリッジの hideKeyboard)。Enter は撃たない(欄の確定操作 = 送信・検索が走る)。
+    /// 呼び手はキーボードの下の対象へ届かせる tap・type・clearInput(人も閉じてから押す。ユーザー決定)
+    func closeKeyboardWithoutSideEffects(step: FlowStep, phase: inout PhaseAccumulator) async throws -> KeyboardClose {
+        guard isAndroid else { return try await closeKeyboardByTappingOutside(step: step, phase: &phase) }
+        let clock = ContinuousClock()
+        var start = clock.now
+        let before = try await freshSnapshot(.afterOwnMove)
+        phase.snapshotMs += Self.ms(clock.now - start)
+        guard KeyboardWait.isShown(before) else { return .notShown }
+        start = clock.now
+        try await driver.hideKeyboard()
+        phase.actionMs += Self.ms(clock.now - start)
+        let after = try await awaitKeyboardClosed(within: step.timeout ?? tunables.defaultTimeout, phase: &phase)
+        guard !KeyboardWait.isShown(after) else { return .notClosed("hiding the keyboard (back key) did not close it") }
+        return .closed(note: "closed the keyboard (back key)", after: after)
+    }
+
+    /// iOS: キーボードの上の空きを叩いて閉じる(手順は `executeIOSHideKeyboard` の doc。Enter へは進まない)
+    func closeKeyboardByTappingOutside(step: FlowStep, phase: inout PhaseAccumulator) async throws -> KeyboardClose {
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(step.timeout ?? tunables.defaultTimeout)
+        var lastReason = ""
+        var point: KeyboardDismissPoint.Choice?
+        var unconfirmed = false
+        var before: SnapshotResponse
+        var keyboard: FTRect
+        searching: while true {
+            var start = clock.now
+            before = try await freshSnapshot(.afterOwnMove)
+            phase.snapshotMs += Self.ms(clock.now - start)
+            guard KeyboardWait.isShown(before) else { return .notShown }
+            let occlusion = KeyboardOcclusion.resolve(reported: before.keyboardFrame, in: before.elements,
+                                                      screen: before.screen)
+            guard let frame = occlusion.frame ?? before.keyboardFrame else { return .notShown }
+            keyboard = frame
+            let candidates = KeyboardDismissPoint.candidates(
+                elements: before.elements, screen: before.screen, keyboard: keyboard,
+                overlays: before.overlayWindowFrames ?? [])
+            if candidates.isEmpty {
+                lastReason = "there is no empty spot above the keyboard (every point is on an element that could react"
+                    + " or on a text, an image, a card or an overlay)"
+            }
+            var refusals: [String] = []
+            for candidate in candidates.prefix(Self.keyboardDismissProbeLimit) {
+                start = clock.now
+                let answer = await driver.tapProbe(x: candidate.x, y: candidate.y)
+                phase.actionMs += Self.ms(clock.now - start)
+                guard let answer else {
+                    // 答えられないエンジン(XCUITest だけ)は木だけで決める。別のウィンドウは木の overlayWindowFrames で
+                    // 除いてある。木に載らないステータスバーは、木に載る最も上の要素より上を叩かないことで避ける
+                    if let contentTop = Self.topmostElementY(before), candidate.y >= contentTop {
+                        point = candidate; unconfirmed = true; break searching
+                    }
+                    lastReason = "this engine cannot check a spot for a status bar or another window, and every"
+                        + " empty spot is above the topmost element in the tree"
+                    continue
+                }
+                if answer.background { point = candidate; break searching }
+                refusals.append("(\(Int(candidate.x)), \(Int(candidate.y))) \(answer.reason ?? "could react")"
+                    + (answer.receiver.map { " on \($0)" } ?? ""))
+            }
+            if !refusals.isEmpty { lastReason = "every spot checked could react to a tap — " + refusals.prefix(3).joined(separator: "; ") }
+            guard clock.now < deadline else { break }
+            try await Task.sleep(for: .milliseconds(Int(FocusWait.pollSeconds * 1000)))
+        }
+        var tried: [String] = []
+        if let point {
+            var start = clock.now
+            try await driver.tap(x: point.x, y: point.y)
+            phase.actionMs += Self.ms(clock.now - start)
+            let place = "(\(Int(point.x)), \(Int(point.y))) above the keyboard"
+            let after = try await awaitKeyboardClosed(within: Self.keyboardCloseAfterTapWaitSeconds, phase: &phase)
+            if !KeyboardWait.isShown(after) {
+                var notes = ["closed the keyboard by tapping \(place)"
+                    + (unconfirmed ? " (this engine cannot check for a status bar or another window there; chosen from"
+                        + " the tree only)" : "")]
+                let vanished = Self.contentAbove(keyboard, in: before).subtracting(Self.contents(of: after))
+                if !vanished.isEmpty {
+                    let named = vanished.sorted().prefix(3).map { $0.replacingOccurrences(of: "|", with: " ") }
+                    notes.append("\(vanished.count) element(s) that were above the keyboard are gone after that tap"
+                        + " (\(named.joined(separator: ", "))) — check that it did not trigger something")
+                }
+                return .closed(note: notes.joined(separator: " / "), after: after)
+            }
+            tried.append("tapping \(place) did not close it")
+        } else {
+            tried.append("\(lastReason) (waited \(FTSeconds.format(step.timeout ?? tunables.defaultTimeout))s), so nothing"
+                + " was tapped")
+        }
+        return .notClosed(tried.joined(separator: "; "))
+    }
+
+    /// キーボードが消えるまで撮り直して待つ(上限 `seconds`)。最後に撮った木を返す
+    private func awaitKeyboardClosed(within seconds: Double, phase: inout PhaseAccumulator) async throws -> SnapshotResponse {
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(seconds)
+        while true {
+            let start = clock.now
+            let snapshot = try await freshSnapshot(.afterOwnMove)
+            phase.snapshotMs += Self.ms(clock.now - start)
+            if !KeyboardWait.isShown(snapshot) || clock.now >= deadline { return snapshot }
+            try await Task.sleep(for: .milliseconds(Int(FocusWait.pollSeconds * 1000)))
+        }
+    }
+
+    /// 背景を叩いた後、キーボードが閉じるのを待つ上限(秒)。**根拠**: iOS のキーボードが閉じるアニメーションは約 0.3 秒で、
+    /// 閉じる作りのアプリはその直後の木で消える(閉じた瞬間に抜ける)。**尽きたときの発話**: 「叩いても閉じなかった」として Enter へ進む
+    static let keyboardCloseAfterTapWaitSeconds: Double = 1.5
+
+    /// 木に載る要素の最も上の y(画面の内側だけ)。木に載らないステータスバーより下を叩くための境
+    static func topmostElementY(_ snapshot: SnapshotResponse) -> Double? {
+        snapshot.elements.map(\.frame.y).filter { $0 > snapshot.screen.y }.min()
+    }
+
+    /// iOS の hideKeyboard で当たり判定を聞く候補の数の上限。**根拠**: 1点 = in-app への HTTP 1往復(数〜数十 ms)。
+    /// 候補は領域ごとの代表なので、Compose・Flutter のように画面全体が1つの面のアプリでは全部同じ答えになる =
+    /// 多く聞いても結果は変わらず待ちが延びるだけ。**尽きたときの発話**: 確かめた点と理由を3つまで失敗文に出す
+    static let keyboardDismissProbeLimit = 8
+
+    /// キーボードの上端より上の要素の顔ぶれ(id、無ければ型・ラベル。位置は見ない)。叩いた後に**消えた要素**があるかを見る比較用 ——
+    /// キーボードが閉じると画面が伸び直して位置が変わり、隠れていた要素が現れるので、増えた・動いたは数えない
+    /// (画面遷移・ダイアログやトーストが消えた形だけを拾う)
+    static func contentAbove(_ keyboard: FTRect, in snapshot: SnapshotResponse) -> Set<String> {
+        Set(snapshot.elements.filter { $0.frame.y + $0.frame.height <= keyboard.y }.map(signature))
+    }
+
+    static func contents(of snapshot: SnapshotResponse) -> Set<String> { Set(snapshot.elements.map(signature)) }
+
+    /// id があれば id だけで見る(キーボードに一部隠れた要素は Compose の iOS でラベルが空で来て、閉じると付く =
+    /// 型・id・ラベルで比べると、残っている要素を「消えた」と言った)
+    private static func signature(_ element: ElementInfo) -> String {
+        if let id = element.identifier, !id.isEmpty { return "#\(id)" }
+        return "\(element.type)|\(element.label ?? "")"
     }
 
     // clearInput もロケータ無しならフォーカス中欄へ作用する(type(ref: nil) と同じくロケータ解決を

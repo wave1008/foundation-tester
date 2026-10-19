@@ -167,6 +167,10 @@ jq -r 'select(.workerAnomalies == null) | .runID' results/runs/2026-08/*/run.jso
 | `system-ui-covered` | **OS のシステム UI(権限アラート等)がアプリを覆っていた**。XCUITest ランナーの `GET /systemalert` の申告で、**`iosAlertHandler` の登録が残っている間だけ**出る |
 | (欄が無い) | **言えない** —— 推測で埋めない |
 
+**描画崩壊の検査**(iOS Simulator のみ)の失敗は、`description` が `screen rendering check (before launchApp | at the end of the scenario …)` の
+失敗ステップで、**`failureKind` も `command` も無い**(経路も DSL コマンドも言えない)。`detail` に事実(アプリの領域が一色 / N 個の文字要素のどれも描かれていない・
+1 秒あけた2枚のスクリーンショット・最後に描画を確認してから画面を見ずに通った検証 N 件の名前)だけが入る。設計は docs/design.md「描画崩壊の検査」。
+
 `not-found` は「画面が違う」と「セレクタが古い」を区別しない(どちらもこの経路)。
 そこの判断は読み手が持つ情報(直前のステップ・注記・host-metrics)と合わせて行う。
 
@@ -313,7 +317,7 @@ FM を呼ぶ構成だったかは `fmTextVisibilityCheck || screenLooksLike` で
 
 | フィールド | 型 | 意味 |
 |---|---|---|
-| kind | String | `degraded`(劣化・離脱)/ `requeued`(振り直し。その回の `scenarios/*.json` は消える。**Android のドライバ不達(ブリッジ断)も 2026-09-16 よりここに入る**)/ `retryLimit`(上限到達。**最後の失敗記録はそのまま残る** —— `failedSteps` / `errorLogs` / `timeline` を持つ実物で、合成の skipped 記録には置き換えない)/ `circuitHeld`(連続失敗が閾値に達したが、その間に他のレーンが1本も通っていないので離脱させなかった。streak ごとに1件)/ `preRunExcluded`(run **前**の blank 判定で除外した。2026-09-27 より)/ `preRunRepaired`(run **前**の blank 判定で修復して復帰させた。2026-09-27 より)/ `recovered`(run **中**の回復操作を1回実行した。効いたかは判定しない。2026-09-27 より) |
+| kind | String | `degraded`(劣化・離脱)/ `requeued`(振り直し。その回の `scenarios/*.json` は消える。**Android のドライバ不達(ブリッジ断)も 2026-09-16 よりここに入る**)/ `retryLimit`(上限到達。**最後の失敗記録はそのまま残る** —— `failedSteps` / `errorLogs` / `timeline` を持つ実物で、合成の skipped 記録には置き換えない)/ `circuitHeld`(連続失敗が閾値に達したが、その間に他のレーンが1本も通っていないので離脱させなかった。streak ごとに1件)/ `preRunExcluded`(run **前**の点検で除外した。2026-09-27 より。点検は blank 判定と、Android Emulator のホストへの経路(2026-10-19 より)。**理由は `reason` に台ごと**)/ `preRunRepaired`(run **前**の点検で修復して復帰させた。2026-09-27 より)/ `recovered`(run **中**の回復操作を1回実行した。効いたかは判定しない。2026-09-27 より) |
 | worker | String? | `"<platform>:<デバイス論理名>"`。**`scenarios/*.json` の `worker` と同じ規則 = join できる** |
 | label | String | 表示用の識別子(`degradedWorkers` の1行と同一) |
 | scenarioID | String? | `requeued` / `retryLimit` / `circuitHeld` の対象 |
@@ -591,8 +595,8 @@ LC_UUID が入るので再ビルドでコールドに戻る。docs/performance-t
 | removed | Int | run から外された回数。**`workerAnomalies` の `kind == "degraded"` の件数**(cause の無い古い記録も数える) |
 | removedByCause | [String: Int] | `removed` のうち `cause` を持つものだけの内訳(キーは `cause` の値。上表参照) |
 | requeued | Int | このデバイスから振り直しに回したシナリオ数(`kind == "requeued"`) |
-| preRunExcluded | Int | run 前の blank 判定で除外した回数(`kind == "preRunExcluded"`) |
-| preRunRepaired | Int | run 前の blank 判定で修復して復帰させた回数(`kind == "preRunRepaired"`) |
+| preRunExcluded | Int | run 前の点検(blank 判定・Emulator のホストへの経路)で除外した回数(`kind == "preRunExcluded"`) |
+| preRunRepaired | Int | run 前の点検(blank 判定・Emulator のホストへの経路)で修復して復帰させた回数(`kind == "preRunRepaired"`) |
 | recovered | Int | run 中の回復操作を実行した回数(`kind == "recovered"`) |
 | recoveredByKind | [String: Int] | `recovered` のうち `recovery` を持つものだけの内訳 |
 | appCrashes | Int | `appCrash` を持つシナリオ記録の数 |

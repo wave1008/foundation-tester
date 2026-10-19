@@ -446,6 +446,7 @@ public final class WebViewDelegatingDriver: AppDriver {
     public var reachedEdgeOnLastSwipe: Bool? { screenDriver.reachedEdgeOnLastSwipe }
     /// DOM 経路の tap は screenDriver を通らない = そちらの値は前回の tap のまま残っているので返さない
     public var lastTapHitAreaMiss: TapHitAreaMiss? { lastTapWentToScreen ? screenDriver.lastTapHitAreaMiss : nil }
+    public func tapProbe(x: Double, y: Double) async -> TapProbeResponse? { await screenDriver.tapProbe(x: x, y: y) }
     /// launch は常に primary(in-app)固定(launch(bundleID:) 参照)。screenDriver/mode の状態には無関係
     public var lastLaunchTiming: LaunchTiming? { primary.lastLaunchTiming }
 }

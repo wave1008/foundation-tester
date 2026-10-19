@@ -16,6 +16,8 @@ paths:
   - "Sources/FTCore/OCROnlyVisibility.swift"
   - "Sources/FTCore/OcclusionCrop.swift"
   - "Sources/FTCore/OverlayWindowOcclusion.swift"
+  - "Sources/FTCore/RenderCollapse*.swift"
+  - "Tests/FTCoreTests/RenderCollapse*.swift"
   - "Sources/FTCore/RegionText*.swift"
   - "Sources/FTCore/RegionText.swift"
   - "Sources/FTCore/ScenarioHost.swift"
@@ -204,3 +206,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   認識器は ANE を避ける(装置で読みが変わる分はコーパスに固定。**指定しても `_e5` の検出・向き・ラテンは ANE に読み込まれ、
   指定が効くのは日本語の認識器だけ** = docs/performance-tuning.md §3.33)。
   **締め切り・予算のテストは戻り値でなく所要を直接測る**(`TaskBudgetTests`)
+
+- **描画崩壊の検査(iOS Simulator のみ)の検査点を、通る検証ごとに動かさない**。今は「画素で文字を確認した検証が無い区間の終わり」に1回(スクリーンショット約 100〜115ms)で、
+  検証ごとに動かすなら費用を測り直す。**崩壊の判定は `FTCore.RenderCollapse` の1箇所だけ**(呼び手は答えを写す。閾値 3 と向きの門の根拠は maintainer-notes §90)。
+  アプリのログの Metal エラーを信号にしない

@@ -79,7 +79,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `sendKeys` | `type("…")` / `type(sel, "…")` / `select(sel).type("…")`(掴んだ要素へ。Shirates の `TestElement.sendKeys` の形) | 🟡 **承認済み差分**: Shirates は `sendKeys` と `clearInput` が別コマンドで結合形を持たないが、fleetest は `type(sel, "…", replace: true)` でクリア+入力を1コマンドに畳める(セレクタ解決も1回で済む) |
 | `pressEnter` | 同名 | ✅ |
 | `clearInput` | 同名(`clearInput()` / `clearInput(sel, …)`) | ✅ |
-| `hideKeyboard` | 同名だが **Android のみ**(iOS は 501) | 🟡 iOS は実装手段が無い(下記) |
+| `hideKeyboard` | 同名。Android は戻るキー・iOS は木から選んだ何もない点のタップ(閉じなければ Enter) | 🟢 |
 | `keyboardIsShown` / `keyboardIsNotShown` | 同名 | ✅ 取得元は OS で違う(下記) |
 | `pressHome` | `home()` | 🟡 OS 共通で提供 |
 | `pressBack` | `back()` | 🟡 **両 OS で提供**(iOS はエッジスワイプ) |
@@ -283,7 +283,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 | コマンド | 差 |
 |---|---|
-| `hideKeyboard()` | **Android のみ**。iOS は 501 で失敗する(`XCUIKeyboardKey.escape` / `resignFirstResponder` / nil ターゲット `sendAction` をデバイス上で試して3手とも不発。Compose の入力受け口が自前でフォーカスを保持し UIKit の標準手段が届かない)。iOS で閉じるなら `pressEnter()` |
+| `hideKeyboard()` | Android・iOS とも対応(冪等)。iOS は木から「何もない点」を選んでタップし(撃つ前に in-app ブリッジの `/tapprobe` で確認)、閉じなければ Enter を送って注記する。詳細は docs/commands.md・docs/design.md「キーボードの観測と `hideKeyboard`」 |
 | `back()` | iOS は**スワイプバック対応のナビ**(NavigationStack 等)を持つ画面でのみ戻れる。独自ナビのアプリではアプリ内の戻るボタンを `tap` する。Android はキーボードが開いていると1回目がキーボードを閉じるのに消費される(OS 仕様) |
 | `keyboardIsShown` / `keyboardIsNotShown` | 取得元が OS で違う(iOS xcuitest = AX ツリーの `.keyboard` / iOS in-app = `UITextEffectsWindow` の可視判定 / Android = ホストが `dumpsys` の `InputMethod` window を見る)。**IME が別プロセスの window でアプリの a11y ツリーに出ない**ため |
 | `clearInput(sel)` | **Flutter の iOS は in-app エンジンでは消せず XCUITest 経由**になる(自動フォールバック。1〜2秒)。engine への editing state 配送は3回実測して不採用(design.md) |

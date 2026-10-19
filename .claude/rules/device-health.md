@@ -10,6 +10,7 @@ paths:
   - "Sources/FTAndroid/DisplayFreezeWatch.swift"
   - "Tests/FTCoreTests/DisplayFreezeDetectorTests.swift"
   - "Tests/FTAndroidTests/DisplayFreezeWatchTests.swift"
+  - "Sources/FTAndroid/AndroidHealthProbe.swift"
 ---
 
 # デバイスの健康状態(凍結) の規律
@@ -27,3 +28,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **プロセス内の `StaleFrameDetector` を凍結の根拠に流用しない**(通ったステップに大量に立つ注記で、精度が違う)。
   回復の段(sleep/wake → ゲストの再起動 → 停止と起動)を足す・変えるときは `WorkerRecoveryKind` と docs/results-json.md も
 
+- **run の前の Android の点検は「凍結」と「ホストへの経路」の2段**(`excludeOrRepairBlankScreenWorkers` の1入口)。経路は
+  `AndroidHealthProbe.hostRoute` の3値で、**不明は撃たない**。Emulator の停止と起動は `ProfileWorkerFactory.stopAndStartEmulator` の
+  1箇所(DisplayFreezeWatch と共有)で、呼び手は撃つ前に持ち主を確かめる。点検の結果を run.json へ載せるのは `triage.anomalies`
+  (除外の理由を台ごとに持つ。`PreRunTriageRecordWiringTests`)

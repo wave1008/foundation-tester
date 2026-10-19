@@ -74,6 +74,9 @@ class チェックアウトできること {
             type("#field_prefecture", "東京都")
             type("#field_city", "千代田区")
             type("#field_address_line", "千代田1-1")
+            // 住所のフォームはスクロールしない。キーボードが出ている間 #field_phone はその下。Compose の iOS は欄の外を叩いても
+            // 閉じず Return でだけ閉じる(欄の確定操作なので type は自動で撃たない)。hideKeyboard は閉じなければ Enter まで送る
+            hideKeyboard()
             type("#field_phone", "09012345678")
             pressEnter()
             tap("#btn_save")

@@ -547,6 +547,12 @@ public final class FTDriveCore {
                                      containerInference: containerInference,
                                      responseMeasurement: responseMeasurement,
                                      commandTimeoutSeconds: tunables.commandTimeout)
+        executor.renderCollapseCheckEnabled = StepExecutor.checksRenderCollapse(
+            platform: platform, physical: physical, framework: uiFramework)
+        executor.renderCollapseEveryAssertion = executor.renderCollapseCheckEnabled
+            && ProcessInfo.processInfo.environment[StepExecutor.renderCollapseEveryAssertionKey] == "1"
+        executor.renderCollapseInjected = executor.renderCollapseCheckEnabled
+            && ProcessInfo.processInfo.environment[StepExecutor.renderCollapseInjectionKey] == "1"
         self.scenarioID = scenarioID
         self.scenarioTitle = scenarioTitle
         self.dryRun = dryRun
@@ -776,6 +782,19 @@ public final class FTDriveCore {
     /// 画面凍結(deviceFrozen)とユーザー中断(debug の stop)では両方とも実行しない —
     /// 前者は別デバイスで振り直すので死んだデバイスへの操作が無駄、後者は「止めた」のに
     /// 片付けで再びブレークポイントに掛かるのが不合理なため。
+    /// アプリのプロセスを入れ替えるコマンド(描画崩壊の確かめの区切り)
+    static let processReplacingCommands: Set<String> = ["launchApp", "restartApp", "clearAppData", "terminateApp"]
+
+    /// 描画崩壊の区切り(StepExecutor.renderCollapseVerdict の doc)。崩壊していれば失敗のステップを1つ残してシナリオを止める
+    public func renderCollapseCheckpoint(_ place: String) {
+        guard !dryRun, !scenarioAborted, !deviceFrozen, !stoppedByUser else { return }
+        guard let message = FTSync.run({ [executor] in await executor.renderCollapseVerdict() }) ?? nil else { return }
+        let description = "screen rendering check (\(place))"
+        recordStep(description: description, status: .failed(message), file: "", line: 0,
+                   at: ISO8601Millis.string(from: Date()))
+        handleFailure(stepDescription: description, reason: message)
+    }
+
     func runLifecycle(_ name: String, allowAfterFailure: Bool, _ body: () -> Void) {
         guard !deviceFrozen, !stoppedByUser else { return }
         let previousSection = currentSection
@@ -1322,6 +1341,11 @@ public final class FTDriveCore {
         let filePath = relativePath("\(file)")
         if isAssertion { noteAssertion() }
         debugCheckpoint(description: description, file: filePath, line: Int(line))
+        // プロセスが入れ替わると壊れた絵が消えて確かめられなくなるので、その直前が区切り。afterEach の中は
+        // ftRunAfterEach が入る前に確かめ済み(片付けの起動を崩壊の赤で飛ばさない)
+        if let command, Self.processReplacingCommands.contains(command), currentSection != "afterEach" {
+            renderCollapseCheckpoint("before \(command)")
+        }
         if scenarioAborted {
             let status = StepResult.Status.skipped(skipReason)
             recordStep(description: description, status: status, file: filePath, line: Int(line))

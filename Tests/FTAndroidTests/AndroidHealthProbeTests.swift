@@ -6,6 +6,17 @@ import XCTest
 
 final class AndroidHealthProbeTests: XCTestCase {
 
+    // MARK: - hostRoute
+
+    /// `ip route get 10.0.2.2` の終了コード: 0 = 経路あり / 2 = 経路なし(実測)/ それ以外・取れない = 不明(何も撃たない)
+    func testHostRouteReadsOnlyTheTwoKnownExitCodes() {
+        XCTAssertEqual(AndroidHealthProbe.hostRoute(exitStatus: 0), .reachable)
+        XCTAssertEqual(AndroidHealthProbe.hostRoute(exitStatus: 2), .unreachable)
+        XCTAssertEqual(AndroidHealthProbe.hostRoute(exitStatus: 1), .unknown)
+        XCTAssertEqual(AndroidHealthProbe.hostRoute(exitStatus: 255), .unknown, "adb 自身の失敗を経路なしと読まない")
+        XCTAssertEqual(AndroidHealthProbe.hostRoute(exitStatus: nil), .unknown)
+    }
+
     // MARK: - wifiDisabled
 
     func testWifiDisabledDetectsMultilineOutput() {

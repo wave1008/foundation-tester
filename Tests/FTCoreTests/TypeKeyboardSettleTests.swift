@@ -243,16 +243,13 @@ final class TypeKeyboardSettleTests: XCTestCase {
         XCTAssertTrue(awaits(before: hidden, after: hidden), "画面外の矩形は「無い」扱い")
     }
 
+    /// `buttonYs` は撮影ごとの送信ボタンの y(既定 = キーボードが上がってボタンが押し上がる形)
     private func androidScript(isAndroid: Bool, keyboardFrames: [FTRect?],
-                               typeText: String = "hello") async throws
+                               typeText: String = "hello",
+                               buttonYs: [Double] = [700, 700, 700, 520, 480]) async throws
         -> (count: Int, notes: Set<StepNote>, driver: FakeAppDriver, executor: StepExecutor) {
-        let driver = FakeAppDriver(name: "primary", log: CallLog(), snapshotElements: [
-            [inputField(value: nil), sendButton(y: 700)],
-            [inputField(value: nil), sendButton(y: 700)],
-            [inputField(value: nil), sendButton(y: 700)],
-            [inputField(value: nil), sendButton(y: 520)],
-            [inputField(value: nil), sendButton(y: 480)],
-        ])
+        let driver = FakeAppDriver(name: "primary", log: CallLog(),
+                                   snapshotElements: buttonYs.map { [inputField(value: nil), sendButton(y: $0)] })
         driver.keyboardFrames = keyboardFrames
         driver.verifiesTypedText = true
         let executor = StepExecutor(driver: driver, isAndroid: isAndroid, tunables: RunTunables())
@@ -307,10 +304,13 @@ final class TypeKeyboardSettleTests: XCTestCase {
         XCTAssertEqual(newline.count, ios.count, "改行で終わる type は待たない")
         XCTAssertFalse(newline.notes.contains(.keyboardNotShownAfterType))
 
-        let before = try await androidScript(isAndroid: true, keyboardFrames: [shown, shown, shown, shown, shown])
+        // 打つ前から出ている形は、送信ボタンを最初からキーボードの上に置く(下にあるとキーボードを閉じてから押す別の経路になる)
+        let above: [Double] = [480, 480, 480, 480, 480]
+        let before = try await androidScript(isAndroid: true, keyboardFrames: [shown, shown, shown, shown, shown],
+                                             buttonYs: above)
         XCTAssertFalse(before.notes.contains(.keyboardNotShownAfterType), "打つ前から出ていれば出現待ちはしない")
         let iosBefore = try await androidScript(isAndroid: false,
-                                                keyboardFrames: [shown, shown, shown, shown, shown])
+                                                keyboardFrames: [shown, shown, shown, shown, shown], buttonYs: above)
         XCTAssertEqual(before.count, iosBefore.count)
     }
 

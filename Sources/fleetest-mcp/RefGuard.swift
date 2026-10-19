@@ -182,7 +182,7 @@ enum RefGuard {
         if keyboardShown {
             return "[\(ref)] \(describe(target)) is no longer in the tree — the on-screen keyboard"
                 + " is up and may be covering it (or the screen changed after that ft_snapshot)\(truncated)."
-                + " Dismiss the keyboard (ft_hide_keyboard on Android, ft_type pressEnter: true on iOS) and take a fresh ft_snapshot,"
+                + " Dismiss the keyboard (ft_hide_keyboard) and take a fresh ft_snapshot,"
                 + " then use the new ref."
         }
         return "[\(ref)] \(describe(target)) is no longer in the tree — the screen changed after"

@@ -335,6 +335,7 @@ public final class AppAttachDriver: AppDriver {
     public var lastActionNote: String? { client.lastActionNote }
     public var reachedEdgeOnLastSwipe: Bool? { client.reachedEdgeOnLastSwipe }
     public var lastTapHitAreaMiss: TapHitAreaMiss? { client.lastTapHitAreaMiss }
+    public func tapProbe(x: Double, y: Double) async -> TapProbeResponse? { await client.tapProbe(x: x, y: y) }
     public func backGestureEdgeWidths() async -> (left: Double, right: Double, bottom: Double)? {
         await client.backGestureEdgeWidths()
     }

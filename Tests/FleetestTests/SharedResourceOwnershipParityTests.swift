@@ -144,6 +144,10 @@ final class SharedResourceOwnershipParityTests: XCTestCase {
         // 他プロセスのデバイスは触らない(docs/design.md「run の途中で「表示が止まった」仮想デバイスを見つけて再起動する」)
         "DisplayFreezeWatch.productionRepair",
         "DisplayFreezeWatch.repairEmulator",
+        // ②Emulator の停止と起動の実体(関数分割の内側)。呼び手は2つで、どちらも持ち主を確かめた後にだけ呼ぶ ——
+        // DisplayFreezeWatch.repairEmulator(上の①= この run 自身のレーン)と
+        // ProfileWorkerFactory.restartEmulatorsWithoutNetwork(撃つ前に deviceInUseRefusal を通す)
+        "ProfileWorkerFactory.stopAndStartEmulator",
         // ②呼び出し元 DeviceWiper.wipeOne(android) が deviceInUseRefusal を通した後にだけ呼ぶ
         // 実体部分(関数分割の内側。単体では判定語彙が現れない)
         "AndroidDataWiper.stopIfRunning",

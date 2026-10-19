@@ -281,22 +281,7 @@ public actor DisplayFreezeWatch {
             return .deviceRestart
         }
         log("🔁 \(label): could not confirm the guest restart — stopping and starting the emulator (\(avdID))")
-        if let adbPath = try? AndroidDriver.findADB() {
-            _ = try? Shell.run([adbPath, "-s", serial, "emu", "kill"], timeout: AndroidHealthProbe.adbTimeoutSeconds)
-            // serial が消えるのを待ってから起こす(残ったまま起こすとポートの採番で別の serial になり、レーンの張り直しが迷う)
-            let deadline = Date().addingTimeInterval(30)
-            while Date() < deadline, ((try? AndroidDeviceCatalog.allEmulatorSerials()) ?? []).contains(serial) {
-                try? await Task.sleep(for: .seconds(1))
-            }
-        }
-        do {
-            let newSerial = try await DeviceBooter.startEmulator(avd: avdID, log: log)
-            try await DeviceBooter.waitForAndroidBoot(serial: newSerial)
-            await DeviceBooter.applyLocale(serial: newSerial, locale: locale, deviceName: label, log: log)
-            log("✅ \(label): the emulator restarted (\(newSerial))")
-        } catch {
-            log("❌ \(label): could not restart the emulator — \(error.localizedDescription)")
-        }
+        _ = await ProfileWorkerFactory.stopAndStartEmulator(serial: serial, avd: avdID, label: label, locale: locale, log: log)
         return .deviceRestart
     }
 }

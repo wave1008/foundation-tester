@@ -678,6 +678,8 @@ struct RunScenario: AsyncParsableCommand {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let thread = Thread {
                 body()
+                // afterEach の無いクラスの終わりの区切り(ある場合は ftRunAfterEach が先に確かめて義務は空)
+                core.renderCollapseCheckpoint("at the end of the scenario")
                 continuation.resume()
             }
             thread.name = "fleetest-dsl"

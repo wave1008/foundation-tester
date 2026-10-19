@@ -289,6 +289,34 @@ public enum AndroidHealthProbe {
 
     /// `adb shell cmd wifi status` の出力に "Wifi is disabled" が含まれるかで判定
     /// (正常時は "Wifi is enabled" / "Wifi is connected to ..." が出る)
+    /// Emulator のゲストからホスト(10.0.2.2 = Emulator が用意するホストのループバックへの入口)への経路の有無。
+    /// 実測(負荷の高い時間帯に起動した Emulator): 擬似モデムが繋がらず(`RADIO_NOT_AVAILABLE`・SIM が空)、モバイル回線も
+    /// Wi-Fi も上がらないまま起動を終え、アプリはサーバーへ1件も届かない。機内モード・Wi-Fi の切り替え・ゲストの再起動では
+    /// 戻らず、**Emulator の停止と起動で戻る**。`eth0` の状態では判定できない(Wi-Fi 経由で届く正常機もある)
+    public enum HostRoute: Equatable, Sendable {
+        case reachable
+        case unreachable
+        /// adb が答えない・想定外の終了コード(判定しない = 何も撃たない)
+        case unknown
+    }
+
+    /// `ip route get 10.0.2.2` の終了コードから(純粋関数)。0 = 経路あり / 2 = 経路なし("RTNETLINK answers:
+    /// Network is unreachable"。モバイル回線と Wi-Fi を切った Emulator で実測)/ それ以外・取れない = 不明
+    static func hostRoute(exitStatus: Int32?) -> HostRoute {
+        switch exitStatus {
+        case 0: return .reachable
+        case 2: return .unreachable
+        default: return .unknown
+        }
+    }
+
+    public static func hostRoute(serial: String) -> HostRoute {
+        guard let adb = try? AndroidDriver.findADB(),
+              let result = try? Shell.run([adb, "-s", serial, "shell", "ip", "route", "get", "10.0.2.2"],
+                                          timeout: adbTimeoutSeconds) else { return .unknown }
+        return hostRoute(exitStatus: result.status)
+    }
+
     static func wifiDisabled(statusOutput: String) -> Bool {
         statusOutput.contains("Wifi is disabled")
     }

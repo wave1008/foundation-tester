@@ -64,6 +64,7 @@ public final class LaunchPreflightDriver: AppDriver {
     public var lastActionNote: String? { base.lastActionNote }
     public var reachedEdgeOnLastSwipe: Bool? { base.reachedEdgeOnLastSwipe }
     public var lastTapHitAreaMiss: TapHitAreaMiss? { base.lastTapHitAreaMiss }
+    public func tapProbe(x: Double, y: Double) async -> TapProbeResponse? { await base.tapProbe(x: x, y: y) }
     public var lastLaunchTiming: LaunchTiming? { base.lastLaunchTiming }
 
     public func launch(bundleID: String) async throws {

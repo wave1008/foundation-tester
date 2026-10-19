@@ -1436,11 +1436,14 @@ final class TapResolvedTargetNamingTests: XCTestCase {
 
     private final class TapDriver: AppDriver, @unchecked Sendable {
         let elements: [ElementInfo]
-        /// ブリッジ申告のキーボード矩形(2つ目の注記を出すために使う)
+        /// ブリッジ申告のキーボード矩形
         let keyboardFrame: FTRect?
-        init(elements: [ElementInfo], keyboardFrame: FTRect? = nil) {
+        /// 木に出ない重ねウィンドウの矩形(2つ目の注記を出すために使う)
+        let overlayWindowFrames: [FTRect]?
+        init(elements: [ElementInfo], keyboardFrame: FTRect? = nil, overlayWindowFrames: [FTRect]? = nil) {
             self.elements = elements
             self.keyboardFrame = keyboardFrame
+            self.overlayWindowFrames = overlayWindowFrames
         }
         func status() async throws -> StatusResponse {
             StatusResponse(ready: true, device: "-", osVersion: "-", sessionBundleID: nil)
@@ -1451,10 +1454,12 @@ final class TapResolvedTargetNamingTests: XCTestCase {
         func isAppForeground(bundleID: String) async throws -> Bool { true }
         func foregroundAppID() async throws -> String? { nil }
         func snapshot() async throws -> SnapshotResponse {
-            SnapshotResponse(sessionBundleID: nil,
-                             screen: FTRect(x: 0, y: 0, width: 1080, height: 2400),
-                             elements: elements, truncatedCount: 0,
-                             keyboardFrame: keyboardFrame)
+            var snapshot = SnapshotResponse(sessionBundleID: nil,
+                                            screen: FTRect(x: 0, y: 0, width: 1080, height: 2400),
+                                            elements: elements, truncatedCount: 0,
+                                            keyboardFrame: keyboardFrame)
+            snapshot.overlayWindowFrames = overlayWindowFrames
+            return snapshot
         }
         func tap(ref: Int) async throws {}
         func tap(x: Double, y: Double) async throws {}
@@ -1490,17 +1495,17 @@ final class TapResolvedTargetNamingTests: XCTestCase {
     /// 「無効」+「中心が覆われている」の2つが同時に出ていた)
     func testNamesTheTargetOnlyOnce() async throws {
         let target = field(ref: 8, id: "txtMailAddress", type: "other", enabled: false)
-        // キーボードの下 = 座標に依らず言える2つ目の注記(遮蔽判定は木の形に依存するので、
-        // ここではブリッジ申告のキーボード矩形を使って確実に2本出す)
+        // 木に出ない重ねウィンドウの下 = 座標に依らず言える2つ目の注記(遮蔽判定は木の形に依存するので、
+        // ここではブリッジ申告の重ねウィンドウの矩形を使って確実に2本出す。キーボードの下は閉じてから撃つので注記にならない)
         let driver = TapDriver(elements: [target],
-                               keyboardFrame: FTRect(x: 0, y: 380, width: 1080, height: 2020))
+                               overlayWindowFrames: [FTRect(x: 0, y: 380, width: 1080, height: 2020)])
         let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "txtMailAddress"), timeout: 1)
 
         let note = await executor.execute(step).driverFallback ?? ""
 
         XCTAssertTrue(note.contains("disabled"), "前提: 無効の注記: \(note)")
-        XCTAssertTrue(note.contains("keyboard"), "前提: 2つ目の注記も出ること: \(note)")
+        XCTAssertTrue(note.contains("window"), "前提: 2つ目の注記も出ること: \(note)")
         XCTAssertEqual(note.components(separatedBy: "resolved to").count - 1, 1, note)
     }
 

@@ -471,8 +471,15 @@ public enum ProfileWorkerFactory {
         public let workers: [RunWorker]
         public let repairedWorkers: [RunWorker]
         public let excludedWorkers: [RunWorker]
+        /// label → 除外の理由(凍結以外で除外した台だけ。無い label は凍結 = `WorkerAnomalyRecord.preRunTriage` の既定)
+        public var excludedReasons: [String: String] = [:]
         public var repaired: [String] { repairedWorkers.map(\.label) }
         public var excluded: [String] { excludedWorkers.map(\.label) }
+        /// run.json の `workerAnomalies` へ載せる記録(呼び手はこれを使う = 理由を落とさない)
+        public var anomalies: [WorkerAnomalyRecord] {
+            WorkerAnomalyRecord.preRunTriage(excluded: excludedWorkers, repaired: repairedWorkers,
+                                             excludedReasons: excludedReasons)
+        }
     }
 
     /// guest reboot 後にブート完了を待つ上限(秒)。実測 ~60s。超過分を待ち続けても run 開始が
@@ -504,9 +511,123 @@ public enum ProfileWorkerFactory {
     /// 全除外で空になっても throw しない(混在プロファイルの iOS 合流を殺さない。呼び出し側が判断)
     /// `stateDir` を渡すと判定を共有ストア(`DeviceFrozenStore`)へ公表する。**iOS 側と同じ口**で、
     /// これが無いと「run は凍結を知っているのにモニターの ❄️ に出ない」非対称が残る
+    ///
+    /// **凍結の後に、ホストへの経路が無い Emulator を停止と起動で戻す**(`restartEmulatorsWithoutNetwork`)。
+    /// run の前の Android の点検の入口はここ1つ(`run` / `api run` の両方・遅れて合流する分もここを通る)
     public static func excludeOrRepairBlankScreenWorkers(
         _ workers: [RunWorker], stateDir: URL? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment,
+        log: (String) -> Void) async -> BlankScreenTriage {
+        let blank = await blankScreenTriage(workers, stateDir: stateDir, environment: environment, log: log)
+        let network = await restartEmulatorsWithoutNetwork(blank.workers, log: log)
+        guard !network.restarted.isEmpty || !network.excluded.isEmpty else { return blank }
+        let restartedLabels = Set(network.restarted.map(\.label))
+        return BlankScreenTriage(
+            workers: network.workers,
+            repairedWorkers: blank.repairedWorkers.filter { !restartedLabels.contains($0.label) } + network.restarted,
+            excludedWorkers: blank.excludedWorkers + network.excluded,
+            excludedReasons: blank.excludedReasons.merging(
+                network.excluded.map { ($0.label, network.reasons[$0.label] ?? noNetworkExclusionReason) },
+                uniquingKeysWith: { $1 }))
+    }
+
+    static let noNetworkExclusionReason =
+        "excluded before the run started: the emulator could not reach the host network, and stopping and starting it did not bring it back"
+    static let noNetworkInUseExclusionReason =
+        "excluded before the run started: the emulator could not reach the host network, and it was not restarted because another session is using it"
+
+    /// ホストへの経路が無い Emulator(`AndroidHealthProbe.hostRoute` が `.unreachable`)を停止と起動で戻す。
+    /// 戻ったら同じ serial のまま本 run に残す(停止と起動は serial が消えるのを待ってから起こすので、通常は同じ番号)。
+    /// serial が変わった・まだ届かない・起動できなかった台は除外する(レーンの driver が古い serial を指すため)。
+    /// **不明(adb が答えない)は何もしない**。実機は見ない(経路はアプリと回線次第で、10.0.2.2 は Emulator だけの入口)。
+    /// 1台ずつ直列(同時の起動は描画の凍結の引き金になる = blank の guest reboot と同じ理由)
+    static func restartEmulatorsWithoutNetwork(_ workers: [RunWorker], log: (String) -> Void)
+        async -> (workers: [RunWorker], restarted: [RunWorker], excluded: [RunWorker], reasons: [String: String]) {
+        let targets = workers.filter { $0.platform == "android" && !$0.connection.physical && $0.connection.serial != nil }
+        // 確かめるのは並列(健全機は adb 1 往復)。撃つのは届かないと確定した台だけ
+        let unreachableLabels = await withTaskGroup(of: String?.self, returning: Set<String>.self) { group in
+            for worker in targets {
+                group.addTask {
+                    guard let serial = worker.connection.serial,
+                          AndroidHealthProbe.hostRoute(serial: serial) == .unreachable else { return nil }
+                    return worker.label
+                }
+            }
+            var labels: Set<String> = []
+            for await label in group { if let label { labels.insert(label) } }
+            return labels
+        }
+        var restarted: [RunWorker] = []
+        var excluded: [RunWorker] = []
+        var reasons: [String: String] = [:]
+        for worker in targets where unreachableLabels.contains(worker.label) {
+            guard let serial = worker.connection.serial else { continue }
+            // 止める前に持ち主を確かめる(この run の run-lease は数えない。MCP・ライブ操作が操作中なら撃たない)
+            if let refusal = DeviceBooter.deviceInUseRefusal(deviceName: worker.label, keys: [serial], force: false,
+                                                             offersForce: false, leaseStateDir: nil) {
+                log("⚠️ \(worker.label): the emulator cannot reach the host network (no route to 10.0.2.2), but it"
+                    + " was not restarted — \(refusal) Excluding it from dispatch")
+                excluded.append(worker)
+                reasons[worker.label] = noNetworkInUseExclusionReason
+                continue
+            }
+            guard let avd = EmulatorControl.avdName(serial: serial) else {
+                log("⚠️ \(worker.label): the emulator cannot reach the host network (no route to 10.0.2.2), and its AVD"
+                    + " name is unknown, so it cannot be restarted — excluding it from dispatch")
+                excluded.append(worker)
+                continue
+            }
+            log("🔁 \(worker.label): the emulator cannot reach the host network (no route to 10.0.2.2) —"
+                + " stopping and starting it (\(avd))")
+            let newSerial = await stopAndStartEmulator(serial: serial, avd: avd, label: worker.label, locale: nil,
+                                                       log: { ConsoleOut.err($0) })
+            guard newSerial == serial else {
+                log("⚠️ \(worker.label): " + (newSerial.map { "the emulator came back as \($0) instead of \(serial)" }
+                    ?? "the emulator did not come back") + " — excluding it from dispatch")
+                excluded.append(worker)
+                continue
+            }
+            guard AndroidHealthProbe.hostRoute(serial: serial) == .reachable else {
+                log("⚠️ \(worker.label): the emulator still cannot reach the host network after a restart"
+                    + " — excluding it from dispatch")
+                excluded.append(worker)
+                continue
+            }
+            log("✅ \(worker.label): the network is back after restarting the emulator (using it in this run)")
+            restarted.append(worker)
+        }
+        let excludedLabels = Set(excluded.map(\.label))
+        return (workers.filter { !excludedLabels.contains($0.label) }, restarted, excluded, reasons)
+    }
+
+    /// Emulator の停止と起動(`adb emu kill` → serial が消えるのを待つ → 起動 → ブート完了)。新しい serial を返す
+    /// (nil = 起動できなかった)。`locale` は nil なら当て直さない(停止と起動はユーザーデータを保つ)。
+    /// DisplayFreezeWatch(凍結の最後の段)とネットワークの無い Emulator の回復が共有する
+    static func stopAndStartEmulator(serial: String, avd: String, label: String, locale: String?,
+                                     log: @escaping @Sendable (String) -> Void) async -> String? {
+        if let adbPath = try? AndroidDriver.findADB() {
+            _ = try? Shell.run([adbPath, "-s", serial, "emu", "kill"], timeout: AndroidHealthProbe.adbTimeoutSeconds)
+            // serial が消えるのを待ってから起こす(残ったまま起こすとポートの採番で別の serial になり、レーンの張り直しが迷う)
+            let deadline = Date().addingTimeInterval(30)
+            while Date() < deadline, ((try? AndroidDeviceCatalog.allEmulatorSerials()) ?? []).contains(serial) {
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+        do {
+            let newSerial = try await DeviceBooter.startEmulator(avd: avd, log: log)
+            try await DeviceBooter.waitForAndroidBoot(serial: newSerial)
+            if let locale { await DeviceBooter.applyLocale(serial: newSerial, locale: locale, deviceName: label, log: log) }
+            log("✅ \(label): the emulator restarted (\(newSerial))")
+            return newSerial
+        } catch {
+            log("❌ \(label): could not restart the emulator — \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private static func blankScreenTriage(
+        _ workers: [RunWorker], stateDir: URL?,
+        environment: [String: String],
         log: (String) -> Void) async -> BlankScreenTriage {
         // 実機は対象外。blank 判定(blankScreenMaxPNGBytes=30KB)は 1080x2424 エミュレータ較正で
         // 解像度の違う実機では当てにならず、誤判定すると健全な実機に adb reboot を撃ってしまう。

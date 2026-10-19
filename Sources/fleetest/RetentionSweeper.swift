@@ -7,6 +7,7 @@
 // `apply` 1箇所**に閉じる —— 系統ごとに削除を書くと、どれかが「結果 JSON も消す」ような
 // 取り返しのつかない差分を静かに持つ。
 
+import Darwin
 import FTBridgeClient
 import FTCore
 import Foundation
@@ -61,10 +62,46 @@ enum RetentionSweeper {
 
     static func sessions(for category: Category, roots: Roots,
                          activeRunID: String?) -> [RetentionSweep.Session] {
+        sessions(for: category, roots: roots,
+                 scan: RunScan(packageRoot: roots.package, activeRunID: activeRunID), activeRunID: activeRunID)
+    }
+
+    /// 1回の掃除(`clean` / `usage`)の中で、録画と実行ログの2系統が共有する run の一覧と guarded の判定。
+    /// 系統ごとに読み直すと、run(約 1.6 万件)の一覧と run.json を系統の数だけ読む(実測: dry-run の採取の
+    /// 4〜6 割がこの2つ)。**1回の掃除の中だけで使う**(控えた guarded は掃除の間に run が終わっても更新しない =
+    /// 守る側に倒れるだけ)
+    final class RunScan {
+        private let packageRoot: URL
+        private let activeRunID: String?
+        private var cachedRunDirectories: [URL]?
+        private var guardedByPath: [String: Bool] = [:]
+
+        init(packageRoot: URL, activeRunID: String?) {
+            self.packageRoot = packageRoot
+            self.activeRunID = activeRunID
+        }
+
+        var runDirectories: [URL] {
+            if let cachedRunDirectories { return cachedRunDirectories }
+            let dirs = ProjectStore.all(repoRoot: packageRoot).flatMap { RetentionSweeper.runDirectories(project: $0) }
+            cachedRunDirectories = dirs
+            return dirs
+        }
+
+        func isGuarded(_ runDir: URL) -> Bool {
+            if let known = guardedByPath[runDir.path] { return known }
+            let guarded = RetentionSweeper.runIsGuarded(runDir: runDir, activeRunID: activeRunID)
+            guardedByPath[runDir.path] = guarded
+            return guarded
+        }
+    }
+
+    static func sessions(for category: Category, roots: Roots, scan: RunScan,
+                         activeRunID: String?) -> [RetentionSweep.Session] {
         switch category {
         case .deviceCaptures: return deviceCaptureSessions(toolRoot: roots.tool)
-        case .recordings: return recordingSessions(packageRoot: roots.package, activeRunID: activeRunID)
-        case .eventLogs: return eventLogSessions(packageRoot: roots.package, activeRunID: activeRunID)
+        case .recordings: return recordingSessions(scan: scan)
+        case .eventLogs: return eventLogSessions(scan: scan)
         case .reports: return reportSessions(packageRoot: roots.package, activeRunID: activeRunID)
         case .logs: return logSessions(roots: roots)
         case .xcresult: return xcresultSessions(toolRoot: roots.tool)
@@ -75,17 +112,15 @@ enum RetentionSweeper {
 
     /// 単位は run 1件。**消すのは `recordings/` だけ** —— runDir 自体・run.json・scenarios/ は
     /// 残す(結果 JSON を消すと run の履歴・LPT の実績が失われる)
-    static func recordingSessions(packageRoot: URL, activeRunID: String?) -> [RetentionSweep.Session] {
+    static func recordingSessions(scan: RunScan) -> [RetentionSweep.Session] {
         var sessions: [RetentionSweep.Session] = []
-        for project in ProjectStore.all(repoRoot: packageRoot) {
-            for runDir in runDirectories(project: project) {
-                let dir = runDir.appendingPathComponent(RecordingIndexIO.directoryName)
-                guard let measured = measure(directory: dir) else { continue }
-                sessions.append(RetentionSweep.Session(
-                    id: runDir.lastPathComponent, bytes: measured.bytes,
-                    newestModified: measured.newest, paths: [dir],
-                    guarded: runIsGuarded(runDir: runDir, activeRunID: activeRunID)))
-            }
+        for runDir in scan.runDirectories {
+            let dir = runDir.appendingPathComponent(RecordingIndexIO.directoryName)
+            guard let measured = measure(directory: dir) else { continue }
+            sessions.append(RetentionSweep.Session(
+                id: runDir.lastPathComponent, bytes: measured.bytes,
+                newestModified: measured.newest, paths: [dir],
+                guarded: scan.isGuarded(runDir)))
         }
         return sessions
     }
@@ -101,17 +136,15 @@ enum RetentionSweeper {
     /// (run.json・scenarios/ は残す)。guarded の判定も recordings と同じ `runIsGuarded`
     /// (進行中の run の events/ は消さない。`.inflight-*.ndjson` も run のディレクトリごと守られるので
     /// 個別に扱わない)
-    static func eventLogSessions(packageRoot: URL, activeRunID: String?) -> [RetentionSweep.Session] {
+    static func eventLogSessions(scan: RunScan) -> [RetentionSweep.Session] {
         var sessions: [RetentionSweep.Session] = []
-        for project in ProjectStore.all(repoRoot: packageRoot) {
-            for runDir in runDirectories(project: project) {
-                let dir = runDir.appendingPathComponent(eventLogsDirectoryName)
-                guard let measured = measure(directory: dir) else { continue }
-                sessions.append(RetentionSweep.Session(
-                    id: runDir.lastPathComponent, bytes: measured.bytes,
-                    newestModified: measured.newest, paths: [dir],
-                    guarded: runIsGuarded(runDir: runDir, activeRunID: activeRunID)))
-            }
+        for runDir in scan.runDirectories {
+            let dir = runDir.appendingPathComponent(eventLogsDirectoryName)
+            guard let measured = measure(directory: dir) else { continue }
+            sessions.append(RetentionSweep.Session(
+                id: runDir.lastPathComponent, bytes: measured.bytes,
+                newestModified: measured.newest, paths: [dir],
+                guarded: scan.isGuarded(runDir)))
         }
         return sessions
     }
@@ -485,10 +518,11 @@ enum RetentionSweeper {
                       log: (String) -> Void, notice: (String) -> Void) -> CleanReport {
         var reports: [CategoryReport] = []
         var freed: Int64 = 0
+        let scan = RunScan(packageRoot: roots.package, activeRunID: activeRunID)
         for category in Category.allCases where categories.contains(category) {
             let maxBytes = category.maxBytes(policy)
             let line = RetentionPolicy.sweepLine(forCap: maxBytes)
-            let collected = sessions(for: category, roots: roots, activeRunID: activeRunID)
+            let collected = sessions(for: category, roots: roots, scan: scan, activeRunID: activeRunID)
             let plan = RetentionSweep.plan(sessions: collected, maxBytes: line)
             let usage = collected.reduce(Int64(0)) { $0 + $1.bytes }
             if plan.overCapAfterGuards {
@@ -512,8 +546,9 @@ enum RetentionSweeper {
     /// 系統ごとの現在の使用量(guarded を含む合計)。`api retention` の `usage` 欄
     static func usage(roots: Roots) -> [Category: Int64] {
         var result: [Category: Int64] = [:]
+        let scan = RunScan(packageRoot: roots.package, activeRunID: nil)
         for category in Category.allCases {
-            result[category] = sessions(for: category, roots: roots, activeRunID: nil)
+            result[category] = sessions(for: category, roots: roots, scan: scan, activeRunID: nil)
                 .reduce(Int64(0)) { $0 + $1.bytes }
         }
         return result
@@ -534,7 +569,7 @@ enum RetentionSweeper {
     /// と確定できたときだけ保護を外す —— でなければ SIGKILL・クラッシュ・電源断で finish() に
     /// 届かなかった録画が永久に守られ続ける。**別の機械の run(host 不一致)・pid の無い記録は
     /// 判断できないので守る**
-    private static func runIsGuarded(runDir: URL, activeRunID: String?) -> Bool {
+    fileprivate static func runIsGuarded(runDir: URL, activeRunID: String?) -> Bool {
         if let activeRunID, runDir.lastPathComponent == activeRunID { return true }
         guard let meta = RunResultsStore.meta(runDir: runDir) else { return true }
         guard meta.finishedAt == nil else { return false }
@@ -550,23 +585,24 @@ enum RetentionSweeper {
         return ProcessLiveness.isAliveAndNotStartedAfter(pid_t(pid), recordedAt: startedAt)
     }
 
-    private static func runDirectories(project: TestProject) -> [URL] {
+    /// **並べ替えない** —— 消す順は plan の (mtime, id) が決めるので一覧の順序は効かず、パスでの並べ替えは
+    /// run 約 1.6 万件で採取の1割強を食った(`subdirectories` は他の系統のために並べ替えたまま)
+    fileprivate static func runDirectories(project: TestProject) -> [URL] {
         let runs = RunResultsStore.resultsDir(projectRoot: project.rootURL)
             .appendingPathComponent("runs")
-        return subdirectories(of: runs).flatMap { subdirectories(of: $0) }
+        return subdirectories(of: runs, sorted: false).flatMap { subdirectories(of: $0, sorted: false) }
     }
 
     private static func modified(_ url: URL) -> Date? {
         try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
     }
 
-    private static func subdirectories(of dir: URL) -> [URL] {
+    private static func subdirectories(of dir: URL, sorted: Bool = true) -> [URL] {
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: dir, includingPropertiesForKeys: [.isDirectoryKey],
             options: [.skipsHiddenFiles]) else { return [] }
-        return entries
-            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
-            .sorted { $0.path < $1.path }
+        let dirs = entries.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+        return sorted ? dirs.sorted { $0.path < $1.path } : dirs
     }
 
     /// `dir` 直下の通常ファイル(**辿らない・シンボリックリンクの先を見ない**)
@@ -579,23 +615,32 @@ enum RetentionSweeper {
     }
 
     /// ディレクトリ配下の合計バイトと最新 mtime(ディレクトリが無ければ nil)。
-    /// 起点はディレクトリ自身の mtime —— 中身が空の recordings/ も「いつのものか」を持たせる
+    /// 起点はディレクトリ自身の mtime —— 中身が空の recordings/ も「いつのものか」を持たせる。
+    /// **`fts(3)` で1回だけ辿る**: ファイルごとに URL の resourceValues を引くと、run 約 1.6 万件の events/ で
+    /// dry-run の採取の6割を食った。数える対象は従来と同じ(通常ファイルのバイト・全エントリの mtime・
+    /// シンボリックリンクは辿らない。起点だけは辿る = `fileExists(atPath:)` と同じ)
     private static func measure(directory: URL) -> (bytes: Int64, newest: Date)? {
-        let fm = FileManager.default
-        var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: directory.path, isDirectory: &isDir), isDir.boolValue,
-              let values = try? directory.resourceValues(forKeys: [.contentModificationDateKey])
-        else { return nil }
+        var rootStat = stat()
+        guard stat(directory.path, &rootStat) == 0, (rootStat.st_mode & S_IFMT) == S_IFDIR else { return nil }
+        func seconds(_ time: timespec) -> TimeInterval { TimeInterval(time.tv_sec) + TimeInterval(time.tv_nsec) / 1e9 }
         var bytes: Int64 = 0
-        var newest = values.contentModificationDate ?? Date.distantPast
-        guard let walker = fm.enumerator(at: directory, includingPropertiesForKeys: Array(fileKeys))
-        else { return (bytes, newest) }
-        for case let url as URL in walker {
-            guard let values = try? url.resourceValues(forKeys: fileKeys) else { continue }
-            if values.isRegularFile == true { bytes += Int64(values.fileSize ?? 0) }
-            if let modified = values.contentModificationDate, modified > newest { newest = modified }
+        var newest = seconds(rootStat.st_mtimespec)
+        guard let root = strdup(directory.path) else { return (bytes, Date(timeIntervalSince1970: newest)) }
+        defer { free(root) }
+        var paths: [UnsafeMutablePointer<CChar>?] = [root, nil]
+        guard let fts = fts_open(&paths, FTS_PHYSICAL | FTS_COMFOLLOW | FTS_NOCHDIR, nil) else {
+            return (bytes, Date(timeIntervalSince1970: newest))
         }
-        return (bytes, newest)
+        defer { fts_close(fts) }
+        while let entry = fts_read(fts) {
+            let info = Int32(entry.pointee.fts_info)
+            // FTS_DP は同じディレクトリの2度目の訪問(後順)。読めない項目は従来どおり飛ばす
+            guard info != FTS_DP, info != FTS_DNR, info != FTS_ERR, info != FTS_NS,
+                  let statp = entry.pointee.fts_statp else { continue }
+            if info == FTS_F { bytes += Int64(statp.pointee.st_size) }
+            newest = max(newest, seconds(statp.pointee.st_mtimespec))
+        }
+        return (bytes, Date(timeIntervalSince1970: newest))
     }
 
     /// ファイル群の合計バイトと最新 mtime(1件も読めなければ nil = セッションを作らない)

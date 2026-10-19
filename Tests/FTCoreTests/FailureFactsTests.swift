@@ -255,6 +255,20 @@ final class FailureFactsTests: XCTestCase {
         XCTAssertNil(records.first?.worker)
     }
 
+    /// 凍結以外で除外した台は、その理由を記録する(ネットワークの無い Emulator を「画面が凍結」と書かない)
+    func testPreRunTriageWritesThePerWorkerExclusionReason() {
+        let frozen = RunWorker(label: "Pixel 9(android:emulator-5554)", platform: "android", driver: QuietDriver(),
+                               connection: DriverConnection(platform: "android", physical: false), logicalName: "Pixel 9")
+        let offline = RunWorker(label: "Pixel 9(android:emulator-5556)", platform: "android", driver: QuietDriver(),
+                                connection: DriverConnection(platform: "android", physical: false), logicalName: "Pixel 9b")
+        let records = WorkerAnomalyRecord.preRunTriage(
+            excluded: [frozen, offline], repaired: [],
+            excludedReasons: [offline.label: "excluded before the run started: no network"])
+        XCTAssertEqual(records.first { $0.label == offline.label }?.reason, "excluded before the run started: no network")
+        XCTAssertEqual(records.first { $0.label == frozen.label }?.reason,
+                       "excluded before the run started: the screen was frozen and could not be recovered")
+    }
+
     // MARK: -
 
     private func stepEvent(index: Int, status: String, section: String?,

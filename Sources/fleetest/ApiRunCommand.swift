@@ -647,8 +647,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
                 workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { logSupply($0) }
                 triageBox.add(repaired: triage.repaired, excluded: triage.excluded,
-                              anomalies: WorkerAnomalyRecord.preRunTriage(
-                excluded: triage.excludedWorkers, repaired: triage.repairedWorkers))
+                              anomalies: triage.anomalies)
                 workers = triage.workers
                 workers = try await ProfileWorkerFactory.installIfNeeded(
                     apps: resolved.apps, workers: workers,
@@ -1239,8 +1238,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             // android は修復→guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
             let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
                 workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { logSupply($0) }
-            preRunAnomalies += WorkerAnomalyRecord.preRunTriage(
-                excluded: triage.excludedWorkers, repaired: triage.repairedWorkers)
+            preRunAnomalies += triage.anomalies
             workers = triage.workers
             // **実機はあちらの対象外**(閾値がエミュレータ較正で、誤判定すると健全な実機へ
             // `adb reboot` を撃つ)。観測と無害な修復(画面の sleep/wake)だけをここで通す。

@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 194
+    public static let bridgeProtocolVersion = 195
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1651,3 +1651,27 @@ public enum LiveRegionText {
         traits & updatesFrequently != 0 && !(label ?? "").isEmpty
     }
 }
+
+/// POST /tapprobe(in-app だけ)。iOS の hideKeyboard が叩く点が**木に載らないもの**(キーボード・ステータスバー・
+/// キーウィンドウ以外のウィンドウ = トースト等)の上でないかを答える(InAppBridge/Sources/InAppTapProbe.swift)。
+/// 押せる部品が無いかはホストがアクセシビリティの木で決める。XCUITest ランナーはこの経路を持たない(404 = 答えられない)
+public struct TapProbeRequest: Codable, Sendable {
+    public let x: Double
+    public let y: Double
+    public init(x: Double, y: Double) { self.x = x; self.y = y }
+}
+
+public struct TapProbeResponse: Codable, Sendable, Equatable {
+    /// true = 木に載らないもの(キーボード・ステータスバー・別のウィンドウ)の上ではない。false = その上
+    public let background: Bool
+    /// 根拠になった view のクラス名(背景なら実際にタッチを受ける view)
+    public let receiver: String?
+    /// false の理由("the point is on the status bar" 等)。true なら nil
+    public let reason: String?
+    public init(background: Bool, receiver: String?, reason: String?) {
+        self.background = background
+        self.receiver = receiver
+        self.reason = reason
+    }
+}
+

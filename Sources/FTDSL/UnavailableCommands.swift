@@ -257,7 +257,7 @@ public func pressBack() { fatalError() }
 @available(*, unavailable, message: "fleetest spells this home()")
 public func pressHome() { fatalError() }
 
-@available(*, unavailable, message: "fleetest spells this hideKeyboard() (Android only; on iOS use pressEnter())")
+@available(*, unavailable, message: "fleetest spells this hideKeyboard()")
 public func closeKeyboard() { fatalError() }
 
 // スワイプ系は**指の向きとコンテンツの向きが逆**なので、名前だけ直すと意味が反転する。

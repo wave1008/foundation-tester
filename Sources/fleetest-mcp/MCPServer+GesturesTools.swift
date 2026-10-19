@@ -207,6 +207,7 @@ extension MCPServer {
         let (isAndroid, uiFramework) = await resolveExecutorHints(hideDriver, args: args)
         let executor = StepExecutor(driver: hideDriver, releasesScrollTouch: !isAndroid,
                                     isAndroid: isAndroid, tunables: RunTunables(), uiFramework: uiFramework)
+        executor.hideKeyboardFallsBackToEnter = false
         let outcome = await executor.execute(FlowStep(action: "hideKeyboard"))
         guard StepExecutor.isSuccess(outcome.status) else {
             let reason: String
@@ -215,8 +216,8 @@ extension MCPServer {
             case .passed, .passedViaFallback, .healed: reason = "could not confirm the result"
             }
             throw MCPError("hideKeyboard failed: \(reason)" + (isAndroid ? ""
-                : " — iOS cannot close the keyboard without side effects; ft_type pressEnter: true"
-                    + " closes a single-line field's keyboard"))
+                : " — ft_type pressEnter: true may close it, but Return also fires the field's action"
+                    + " (submit, search or moving to the next field)"))
         }
         recordInteraction(action: "hideKeyboard", resolvedRef: nil, args: args)
         var note = outcome.driverFallback.map { " (\($0))" } ?? ""

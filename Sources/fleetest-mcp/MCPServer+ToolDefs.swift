@@ -370,9 +370,10 @@ extension MCPServer {
         tool("ft_navigate", "Go back / to the home screen / to the app switcher", [
             "target": ["type": "string", "enum": ["back", "home", "appSwitcher"]],
         ], extra: afterActionProperties(), required: ["target"]),
-        tool("ft_hide_keyboard", "Close the soft keyboard. Android only (sends back only while the "
-            + "keyboard is up, then waits until the tree stops reporting it). Refused on iOS — "
-            + "ft_type pressEnter: true closes a single-line field's keyboard",
+        tool("ft_hide_keyboard", "Close the soft keyboard (no-op when none is up). Android sends back and waits "
+            + "until the tree stops reporting it. iOS taps an empty spot above the keyboard (nothing operable "
+            + "there); if that does not close it, it fails without sending Return — ft_type pressEnter: true "
+            + "may close it but also fires the field's action (submit, search, next field)",
             afterActionProperties()),
         tool("ft_clear_app_data", "Wipe the app's data and permissions; stops the app (ft_launch after). "
             + "Scenarios start from clearAppData(), so explore from this state. An iOS physical device "

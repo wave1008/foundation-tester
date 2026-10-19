@@ -199,7 +199,17 @@ final class FakeAppDriver: AppDriver {
         afterTap?()
     }
 
-    func tap(x: Double, y: Double) async throws {}
+    /// 座標タップの記録(log には載せない = 既存のテストのログの完全一致を崩さない)
+    var coordinateTaps: [(x: Double, y: Double)] = []
+    /// tapProbe の答え(nil = 答えられない = 既定のドライバと同じ)
+    var tapProbeAnswer: TapProbeResponse?
+    func tapProbe(x: Double, y: Double) async -> TapProbeResponse? { tapProbeAnswer }
+    /// 座標タップの後に呼ぶ(キーボードが閉じる形を表すのに使う)
+    var afterCoordinateTap: (() -> Void)?
+    func tap(x: Double, y: Double) async throws {
+        coordinateTaps.append((x, y))
+        afterCoordinateTap?()
+    }
 
     func type(ref: Int?, text: String) async throws {
         if let typeError {
@@ -351,7 +361,10 @@ final class FakeAppDriver: AppDriver {
             throw pressEnterError
         }
         log.entries.append("\(name).pressEnter")
+        afterPressEnter?()
     }
+    /// pressEnter() の後に呼ぶ(Enter でキーボードが閉じる形を表すのに使う)
+    var afterPressEnter: (() -> Void)?
 
     /// 非 nil なら clearInput(ref:) がこのエラーを throw する(409/501 切替の検証用)
     var clearInputError: Error?
@@ -378,7 +391,10 @@ final class FakeAppDriver: AppDriver {
             throw hideKeyboardError
         }
         log.entries.append("\(name).hideKeyboard")
+        afterHideKeyboard?()
     }
+    /// hideKeyboard() の後に呼ぶ(キーボードが閉じて窓が戻る形を表すのに使う)
+    var afterHideKeyboard: (() -> Void)?
 }
 
 /// occlusion-guard 検証用の最小 delegate。verifyElementVisible だけ意味を持たせる。

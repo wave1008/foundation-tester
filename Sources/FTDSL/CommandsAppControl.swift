@@ -774,7 +774,10 @@ public func ftRunSetUpDevice(_ body: () -> Void) {
 /// @TestClass マクロが afterEach() の呼び出しを包むために生成する(利用者が直接書くものではない)。
 /// **失敗後でも実行される**(片付けが飛ぶと後続シナリオを汚すため)。中断フラグは実行後に復元する。
 public func ftRunAfterEach(_ body: () -> Void) {
-    FTRuntime.requireCore(command: "afterEach").runLifecycle("afterEach", allowAfterFailure: true, body)
+    let core = FTRuntime.requireCore(command: "afterEach")
+    // 本体の検証の描画崩壊は afterEach が画面を動かす前に確かめる(片付けの起動で壊れた絵が消える)
+    core.renderCollapseCheckpoint("at the end of the scenario")
+    core.runLifecycle("afterEach", allowAfterFailure: true, body)
 }
 
 /// @TestClass マクロが tearDownDevice() の呼び出しを包むために生成する(利用者が直接書くものではない)。

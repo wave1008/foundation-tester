@@ -714,6 +714,11 @@ public final class BridgeClient: AppDriver, Sendable {
     /// `AppDriver.hittable`。**XCUITest ブリッジだけが答えられる**(in-app / Android は既定の nil)。
     /// 版 67 より古いブリッジは 404 を返すので、その場合も nil(呼び手は黙る)。
     /// 費用は対象1件で 72〜146ms(実測)なので、**呼び手が疑ったときだけ**呼ぶこと
+    /// POST /tapprobe(in-app ブリッジだけが答える。XCUITest ランナーは経路を持たず 404)。失敗は全部 nil = 答えられない
+    public func tapProbe(x: Double, y: Double) async -> TapProbeResponse? {
+        try? await post("/tapprobe", body: TapProbeRequest(x: x, y: y), timeout: interactionTimeout)
+    }
+
     public func hitTest(ref: Int) async throws -> HitTestAnswer {
         // DOM の要素はランナーが引けない = 聞くと「引き当て不能」が返り、木が画面を代表していない
         // という別の検知の根拠に化ける。答えられない、と返す

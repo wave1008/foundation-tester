@@ -30,6 +30,7 @@ SWIFT_SOURCES=(
   Sources/InAppSnapshot.swift
   Sources/InAppSettle.swift
   Sources/DisplayHeartbeat.swift
+  Sources/InAppTapProbe.swift
   Sources/InAppBridge.swift
 )
 

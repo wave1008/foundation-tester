@@ -481,6 +481,11 @@ extension StepExecutor {
                 note(.healUnwritable, into: &notes)
             }
             driverFallback = Self.joinNotes(driverFallback, notes.joined(separator: " / "))
+        } else if let reached = try await resolveAfterClosingKeyboard(action, step: step, in: snapshot, phase: &phase) {
+            element = reached.element
+            snapshot = reached.snapshot
+            if let fallback = reached.usedFallback { status = .passedViaFallback(fallback) }
+            driverFallback = Self.joinNotes(driverFallback, reached.note)
         } else {
             // 惜しい候補を添える。これが無いと直すために snapshot を取り直す往復が必要になる
             // (レポート側の全要素一覧は ScenarioReportWriter が別途出す)
@@ -598,7 +603,10 @@ extension StepExecutor {
             // **申告 keyboardFrame はキー面だけ**なので木の chrome で広げ、chrome 自身とその
             // 部分木(地球儀キー等)は除外して渡す(KeyboardOcclusion の doc。MCP 側も同じ型で揃える)
             let tapKeyboardOcclusion = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame, in: snapshot.elements, screen: snapshot.screen)
-            adviseTarget(tapKeyboardOcclusion.advisory(for: element))
+            // 押すだけの tap はキーボードの下なら閉じてから届かせる(下の reachPastKeyboard)ので、覆われたまま撃つのは長押しだけ
+            if (step.duration ?? FlowStep.defaultTapHoldSeconds) > 0 {
+                adviseTarget(tapKeyboardOcclusion.advisory(for: element))
+            }
             // **木に出ないオーバーレイ・ウィンドウ**も同じ理由でここでしか言えない
             // (覆っている実体が elements に1要素も載らない。OverlayWindowOcclusion の doc)。
             // keyboard と同じく座標に依らないので、この時点で載せてよい
@@ -657,6 +665,18 @@ extension StepExecutor {
                 recordInteraction(step: step, element: liftedElement, in: lifted.snapshot)
                 lastTapTarget = liftedElement
                 driverFallback = Self.joinNotes(driverFallback, lifted.note)
+            }
+            switch try await reachPastKeyboard(
+                element, in: snapshot, step: step, action: "tap",
+                snapshotSource: switchedToFallbackDriver ? .driver(actingDriver) : .primary, phase: &phase) {
+            case nil: break
+            case .refused(let message)?: return StepOutcome(status: .failed(message))
+            case .reached(let reached, let after, let note)?:
+                element = reached
+                snapshot = after
+                recordInteraction(step: step, element: reached, in: after)
+                lastTapTarget = reached
+                driverFallback = Self.joinNotes(driverFallback, note)
             }
             // **出てきたばかりのダイアログ・シートの中を、本物の指と同じ経路で押す前だけ待つ**(切り替えの最中の tap は
             // UIKit に捨てられる。判定と根拠は PresentedOverlayTapWait)。打ち直さない・画素を撮らない
@@ -805,7 +825,8 @@ extension StepExecutor {
             // 当たるので焦点が移らず、**打鍵が直前に焦点のあった欄へ流れ込む**
             // (受け手の 4.7 インチ実機で実測: 市区町村の欄に住所が3回ぶん追記された。
             // 読み返しが 422 で止めるが、別の欄はすでに壊れている)。tap と同じ規則で
-            // 容器を送り、外せたら送った後の木で解決し直す。外せなければそのまま撃つ
+            // 容器を送り、外せたら送った後の木で解決し直す。**送っても中心がキーボードの下に残るなら閉じてから打つ**
+            // (reachPastKeyboard の doc。送れない画面 = 内容が収まっているフォーム等)
             if let lifted = try await liftCoveredTarget(
                 element, in: snapshot, step: step, verb: "typing",
                 snapshotSource: switchedToFallbackDriver ? .driver(actingDriver) : .primary, phase: &phase) {
@@ -815,6 +836,16 @@ extension StepExecutor {
                 element = liftedElement
                 snapshot = lifted.snapshot
                 driverFallback = Self.joinNotes(driverFallback, lifted.note)
+            }
+            switch try await reachPastKeyboard(
+                element, in: snapshot, step: step, action: "type",
+                snapshotSource: switchedToFallbackDriver ? .driver(actingDriver) : .primary, phase: &phase) {
+            case nil: break
+            case .refused(let message)?: return StepOutcome(status: .failed(message))
+            case .reached(let reached, let after, let note)?:
+                element = reached
+                snapshot = after
+                driverFallback = Self.joinNotes(driverFallback, note)
             }
             // **入力欄でないものへ打とうとしていないか**(TypeReadback の doc に実測)。
             // 検証は両側とも空になる経路なので、せめて内側の欄を名指しして知らせる
@@ -888,16 +919,26 @@ extension StepExecutor {
             if let refusal = nonTextInputPreflightRefusal(element, in: snapshot.elements, action: "clearInput") {
                 return StepOutcome(status: .failed(refusal))
             }
+            switch try await reachPastKeyboard(
+                element, in: snapshot, step: step, action: "clearInput",
+                snapshotSource: switchedToFallbackDriver ? .driver(actingDriver) : .primary, phase: &phase) {
+            case nil: break
+            case .refused(let message)?: return StepOutcome(status: .failed(message))
+            case .reached(let reached, let after, let note)?:
+                element = reached
+                snapshot = after
+                driverFallback = Self.joinNotes(driverFallback, note)
+            }
             if let td = typeDriver, preferTypeDriver,
                try await clearViaTypeDriver(td, step: step, phase: &phase) {
                 return StepOutcome(status: .passed, healedStep: healedStep,
-                                   healedByFingerprint: healedByFingerprint)
+                                   healedByFingerprint: healedByFingerprint, driverFallback: driverFallback)
             }
             switch try await performClearInput(element: element, step: step,
                                                actingDriver: actingDriver, in: snapshot.elements,
                                                phase: &phase) {
             case .cleared(let fallback):
-                driverFallback = fallback
+                driverFallback = Self.joinNotes(driverFallback, fallback)
             case .failed(let message):
                 return StepOutcome(status: .failed(message))
             }
@@ -1330,6 +1371,80 @@ extension StepExecutor {
         return "the target is a \(element.type), not a text field — refusing before anything is"
             + " \(action == "type" ? "typed" : "cleared") (\(action) taps its target first, so the"
             + " \(element.type) would fire — a submit or a purchase). Point the selector at the input field itself."
+    }
+
+    /// **キーボードの下の対象へ届かせる**(tap・type・clearInput)。ユーザー決定「人が操作できないときだけ失敗にし、
+    /// 人ができる操作はツールも最善を尽くす」—— 人はキーボードを閉じてから押す。送って外せる画面は呼び手が先に
+    /// `liftCoveredTarget` で外している。残ったら**副作用の無い手段だけで**閉じ(`closeKeyboardWithoutSideEffects`)、
+    /// 閉じた後の木で引き当て直す。閉じなければ失敗 —— 閉じられるのが Enter だけの画面(Compose の iOS の住所フォーム)で
+    /// Enter を勝手に撃つと欄の確定操作(送信・検索)が走るので撃たない(ユーザー決定)。シナリオが pressEnter を書く。
+    /// 覆われたまま撃たない理由: 焦点を当てるタップがキーボードに当たり、打鍵が前の欄へ流れ込む(受け手の 4.7 インチ実機で
+    /// 市区町村の欄に住所が3回追記された)。in-app は座標を使わず焦点を当てるので、**人ができない操作が iOS だけ緑になっていた**。
+    /// 判定は MCP の門(`MCPServer.keyboardRefusal`)と同じ `KeyboardOcclusion`。nil = 覆われていない
+    func reachPastKeyboard(_ element: ElementInfo, in snapshot: SnapshotResponse, step: FlowStep, action: String,
+                           snapshotSource: CoverLiftSnapshotSource,
+                           phase: inout PhaseAccumulator) async throws -> KeyboardReach? {
+        let occlusion = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame, in: snapshot.elements,
+                                                  screen: snapshot.screen)
+        guard occlusion.advisory(for: element) != nil else { return nil }
+        let nothing = "nothing was " + (action == "type" ? "typed" : action == "clearInput" ? "cleared" : "tapped")
+        let note: String
+        switch try await closeKeyboardWithoutSideEffects(step: step, phase: &phase) {
+        case .notClosed(let tried):
+            return .refused("the target's centre (\(Int(element.frame.centerX)), \(Int(element.frame.centerY))) is under"
+                + " the soft keyboard and the keyboard could not be closed without side effects (\(tried)) — \(nothing)."
+                + " The return key may close it, but it also fires the field's action (submit, search or moving to the"
+                + " next field), so it is not pressed automatically: call pressEnter() before this step if that is"
+                + " intended")
+        case .notShown: note = "the keyboard had closed by itself before reaching the target"
+        case .closed(let closedNote, _): note = closedNote + " — the target was under it"
+        }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let after: SnapshotResponse
+        switch snapshotSource {
+        case .primary: after = try await freshSnapshot(.afterOwnMove)
+        case .driver(let other): after = try await other.snapshot(bypassingCache: true)
+        }
+        phase.snapshotMs += Self.ms(clock.now - start)
+        guard let (found, _) = LocatorResolver.resolve(step: step, in: after) else {
+            return .refused("\(note), but the target is not on the screen afterwards: \(step.locatorSummary) (\(nothing))")
+        }
+        let still = KeyboardOcclusion.resolve(reported: after.keyboardFrame, in: after.elements, screen: after.screen)
+        guard still.advisory(for: found) == nil else {
+            return .refused("\(note), but the target is still under the soft keyboard afterwards (\(nothing))")
+        }
+        return .reached(element: found, snapshot: after, note: note)
+    }
+
+    /// **窓がキーボードの上へ縮んで、下の要素が木から消えている**(Android の adjustResize)ときの解決。Android は
+    /// キーボードの矩形を申告せず `keyboardShown` だけ来ることがある(sut-ec-mobile の住所フォーム)ので、出ていれば対象にする。
+    /// iOS は覆われた要素も木に載るので、窓が縮んだと言える木だけ。人はキーボードを
+    /// 閉じれば押せるので、見つからないと言う前に副作用の無い手段で閉じて探し直す(`reachPastKeyboard` と同じ方針)。
+    /// **待ち切った後だけ**撃つ(先に閉じると、キーボードと一緒に出る候補一覧などを待たずに消してしまう)。
+    /// tap・type・clearInput だけ(他の操作はキーボードの下を狙わない)。nil = 対象外・閉じても見つからない
+    func resolveAfterClosingKeyboard(_ action: String, step: FlowStep, in snapshot: SnapshotResponse,
+                                     phase: inout PhaseAccumulator)
+        async throws -> (element: ElementInfo, usedFallback: FlowLocator?, snapshot: SnapshotResponse, note: String)? {
+        guard ["tap", "type", "clearInput"].contains(action),
+              isAndroid ? KeyboardWait.isShown(snapshot)
+                : KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame, in: snapshot.elements,
+                                            screen: snapshot.screen).windowResizedAboveKeyboard,
+              case .closed(let note, _) = try await closeKeyboardWithoutSideEffects(step: step, phase: &phase) else {
+            return nil
+        }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let after = try await freshSnapshot(.afterOwnMove)
+        phase.snapshotMs += Self.ms(clock.now - start)
+        guard let (found, usedFallback) = LocatorResolver.resolve(step: step, in: after) else { return nil }
+        return (found, usedFallback, after, note + " — the target was not on the screen while the keyboard was up")
+    }
+
+    enum KeyboardReach {
+        /// 閉じた後の木で引き当て直した対象(撃つ前の ref は無効)
+        case reached(element: ElementInfo, snapshot: SnapshotResponse, note: String)
+        case refused(String)
     }
 
     /// type/clearInput が `TypeReadback.isPositivelyNonTextInput` で撃ち直しを断ったときの文言。

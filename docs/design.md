@@ -424,7 +424,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 |---|---|---|
 | XCUITest(Runner/) | `POST /drag`・`POST /gesture`・`POST /hold`・`POST /appswitcher`・`POST /home`・`POST /hinge`(折りたたみの Duo の Simulator のヒンジ角。仮想 HID・`FTCore.FoldControl`)・共通コアの /screenshot のクエリ `display=<id>`(追加のルートではない。内蔵画面が2枚以上 = `/status` の `multiDisplay` のとき必須。ホストが devicectl で確かめた表示中の画面を渡す。`DisplayRouting`)・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/covering`・`GET /systemui/snapshot`・`POST /systemui/tap`・`POST /systemui/drag`・`POST /systemui/swipe`・`POST /waitForSettle`(§4.7)・`POST /responsePrepare`・`POST /responseCollect`・`POST /responseObservation`・`POST /responseObservationStop`(応答時間計測。docs/response-measurement.md §5・§7) | 34 |
 | Android(AndroidRunner/) | `POST /gesture`・`POST /hold`・`POST /locale`・`POST /settle`・`POST /scrollAction`(§4.5)・`POST /waitForSettle`(§4.7)・`POST /responsePrepare`・`POST /responseCollect`・`POST /responseObservation`・`POST /responseObservationStop`(応答時間計測。docs/response-measurement.md §8.5) | 23 |
-| InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate` | 16 |
+| InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`POST /tapprobe`(iOS の hideKeyboard が叩く点がキーボード・ステータスバー・別のウィンドウの上でないか。`InAppTapProbe.swift`) | 17 |
 
 **ジェスチャの秒数(`/press` の duration・`/drag` の press+移動・速度つき `/swipe`・`/pinch`・`/gesture` の全体)の上限は2層**:
 方針(既定 10 秒・コマンドの `maxGestureSeconds` で最大 60 秒)は**ホスト側**(`FlowStep.gestureDurationViolation` /
@@ -434,9 +434,9 @@ Android は 60 秒に丸める。ブリッジに方針を持たせないのは�
 XCUITest で絶対上限を外せない理由は maintainer-notes §49.1(桁外れの秒数で `testmanagerd` が合成列を
 作り続けて数百 GB に膨らむ)。
 
-`/hidekeyboard` は iOS の2実装だけが持つが、**中身は 501 を返すだけ**(iOS に実装手段が無い。
-§10「キーボードの観測と `hideKeyboard`」)。Android は `hideKeyboard` をホスト側の
-戻るキーで実現するのでルートを持たない。
+`/hidekeyboard` は iOS の2実装だけが持つが、**中身は 501 を返すだけ**(`hideKeyboard` の iOS 経路はホスト側が
+木から決めてタップするのでこのルートを使わない。§10「キーボードの観測と `hideKeyboard`」)。Android は `hideKeyboard` を
+ホスト側の戻るキーで実現するのでルートを持たない。
 
 InApp の `GET /screenshot` は `drawHierarchy(afterScreenUpdates: false)` で可視の窓を奥から重ねて描くが、
 **自前描画のアプリ(`uiFramework` の `isSelfRendered` = Compose / Flutter)では、a11y の木が絵より先に進む**
@@ -2103,16 +2103,34 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
 keyboardFrame が遮蔽警告用の矩形で、**申告できる条件が違う**(例: in-app は通知値が無いと
 frame を申告しないが shown は言える)ため統合しない。
 
-**`hideKeyboard` は Android のみ**(戻るキー。**出ているときだけ撃つ** — 出ていないと画面が戻って
-しまうので、dumpsys で可視を確かめてから送る。これで冪等が保てる)。
+**`hideKeyboard` は Android・iOS とも動く**(ユーザー方針: 「人が操作できないときだけエラーにし、人ができる操作はツールも
+最善を尽くす」。以前は iOS を「空白点タップは透明なタップ領域を踏む副作用があるので採らない・再提案しない」としていたが、この方針で置き換えた)。
+出ていないときは何もせず成功する(冪等)。
 
-**iOS は実装手段が無く 501 で明示的に未対応**(3手すべてデバイス上で不発。2026-07-30):
-`XCUIKeyboardKey.escape` の `typeText` / 掴んだ responder への `resignFirstResponder` /
-**nil ターゲットの `sendAction(resignFirstResponder)`** のいずれもキーボードが閉じない
-(Compose の入力受け口が自前でフォーカスを保持するため UIKit の標準手段が届かない)。
-残る手段は「キーボード上端より上の空白点をタップ」だが、**透明なタップ領域を踏む副作用**があり
-`hideKeyboard` が副作用を持つコマンドになるため採らない(ユーザー決定)。
-iOS で閉じたいときは `pressEnter()`(単一行の欄なら閉じる)。**再提案しない**。
+- **Android**: 戻るキー。**出ているときだけ撃つ**(出ていないと画面が戻ってしまうので、dumpsys で可視を確かめてから送る)
+- **iOS(エンジン非依存・ホスト側 `StepExecutor`)**: 木を取り、キーボードの上の領域を**下から上・左から右**の行で走査して
+  「何もない点」を探す。何もない点 = どの要素にも載らない点、または画面幅の操作できない容器だけに載る点。
+  **文字・画像の葉の上、操作可能・入力の型の要素の上、`overlayWindowFrames` の上には置かない**。撃つ前に in-app ブリッジの
+  `POST /tapprobe`(ブリッジ版 195)で、その点がキーボード・ステータスバー・キーでない window(トースト等)の上でないことを確かめる。
+  答えられないエンジン(XCUITest)は木だけで決め、**木の最上端の要素より上は撃たない**(ステータスバーを避けるため)。
+  点が無ければ待って探し直す(ステップの制限時間まで。トーストが消えることがある)。撃った後は最大 1.5 秒キーボードが閉じるのを待つ。
+  閉じれば成功で、注記に撃った点を書く(撃った後にキーボードより上の要素が消えていれば、何も発火していないか確かめる注記も添える。
+  要素の比較は id があれば id で)。**閉じなければ(または点が無ければ)Enter を送る**(ユーザー決定)。注記に、Enter が欄の
+  リターンキーの動作(検索・送信・次の欄)も発火させることを書く。それでも出ていれば失敗
+- **木で判定する理由**: Compose・Flutter・RN・SwiftUI は全てのタッチを1つの面で受けるので、OS の hit-test では背景とボタンを
+  区別できない。区別できるのは a11y の木だけ。`/tapprobe` は木の判断を覆す裏取り(キーボード・
+  ステータスバー・トースト)に限る
+- **iOS Simulator での実測**: 背景タップで閉じるのは Compose(E2E-CMP)。Enter で閉じるのは SwiftUI(E2E-iOS)と Flutter。
+  React Native は自前 SUT ではどちらでも閉じなかった。sut-ec-mobile の Compose の住所フォームは背景タップで閉じず Enter で閉じる
+  (docs/framework-differences.md §2.5)
+
+**`tap` / `type` / `clearInput` が対象の中心をキーボードの下に見つけたとき**: まず従来どおり容器をスクロールして持ち上げる。
+それでも覆われていれば、**副作用のない手段だけ**でキーボードを閉じる(iOS = 上の背景タップから Enter フォールバックを除いたもの /
+Android = `hideKeyboard` の戻るキー)→ 木を読み直して対象を解決し直し、注記を添えて操作する。副作用なしに閉じられないときは
+何も触らずステップを失敗にする(文言に「リターンキーなら閉じられるが欄の動作も発火するので自動では押さない・意図するなら
+ステップの前に `pressEnter()`」を書く。ユーザー決定: ここでは Enter を自動で押さない)。閉じた後に対象が消えた・まだ覆われていれば失敗。
+**Android**: キーボードが出ている間に対象が見つからないとき(窓が縮み、下の要素が木に無い。Android は枠を申告せず `keyboardShown` だけの
+ことがある)は、通常の待ちの後に戻るキーで閉じて**1回だけ**解決し直す。長押し(`holdSeconds` > 0)は従来どおり注記だけ。
 
 **Android の adjustResize は「覆う」ではなく「消す」**(2026-09-05・実測 Pixel 4a): 窓がキーボード
 上端まで縮み、覆われていた要素が木から脱落する(iOS は窓が縮まないため要素は木に残ったまま覆われる)。
@@ -2809,6 +2827,31 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   docs/verification.md の heisenbug)。判定は変えず注記のみ。
   記録は `select` では消さない(`tap → select → textIs` が失敗の定型)。
   機構・署名の作り方・誤検知の向きは docs/verification.md「操作は ✅ なのに画面が変わらないとき」
+
+### 描画崩壊の検査(iOS Simulator のみ・ユーザー決定)
+
+iOS Simulator ではアプリのプロセスの描画が壊れ、アプリを起動し直すまで戻らないことがある(触らずに置いた壊れた Compose が
+26 分以上文字なしのままだった)。形は2つ: アプリの領域が**一色**(白・黒。観測の約 70%)/ 図形は描かれるが**文字が一つも無い**(約 30%・Compose のみ)。
+**木は正常なまま**なので、木だけを読む検証(`keyboardIsShown`・`checkIsON`・`exist("#id")` …)は壊れた画面で緑になっていた
+(文字の検証は既存のテキストの可視性検証が赤にする)。実機と Android は対象外。**自前描画(Compose・Flutter)のアプリと、フレームワークが分からないアプリだけ**を確かめる —— 失敗レポートの画面写真の全数当てで崩壊が当たったのは Compose・Flutter だけ(RN 0 / 192・SwiftUI は全面が黒い写真 3 / 648)。判定は `StepExecutor.checksRenderCollapse`。アプリのログの Metal エラーは信号に採らない
+(maintainer-notes §90)。
+
+- **負債の記録**: 検証が、テキストの可視性検証による**画素での文字の確認**(静的テキスト要素のインク・OCR の読み・FM の可視)無しで通ったら、負債を記録する
+- **検査点**(`launchApp` / `restartApp` / `clearAppData` / `terminateApp` の直前・`afterEach` の前・シナリオの末尾): 負債があれば
+  スクリーンショットと木を1回ずつ取り、判定する。**文字の確認が通った検証は負債を消す**ので、区間の全ての検証にそれがあれば撮らない
+- **判定は `FTCore.RenderCollapse` の純粋関数の1箇所**。アプリ領域(木の最上端の要素から導いたステータスバーの帯・下端の帯・キーボードの枠を除く)について
+  (a) 32×32 の格子で**一色**かつ木がその領域に静的テキスト要素(型 staticText / text / label)を1つ以上申告 /
+  (b) 静的テキスト要素(可視性検証の対象になる・アプリ領域内・覆われても切れてもいない・WebView の内側でない)の**全てにインクが無く**
+  (輝度の標準偏差がテキストの可視性検証と同じ閾値 12 未満)、かつ**3つ以上**。スクリーンショットと木の向きが違えば判定しない
+- **確定**: 見つかったら 1 秒待って撮り直し、**まだ見つかるときだけ**「screen rendering check (before launchApp | at the end of the scenario …)」の
+  失敗ステップを記録してシナリオを中断する。文言は事実だけ(一色 / N 個の文字要素のどれも描かれていない・1 秒あけた2枚・最後に描画を確認してから
+  画面を見ずに通った検証 N 件の名前)
+- **費用**: 画素で文字を確認した検証が無い区間だけ、スクリーンショット1枚(Simulator で約 100〜115ms)。E2E の iOS 実行の 15%(直近3日)
+- **閾値 3 の根拠**: iOS の失敗スクリーンショット 2,453 枚(レポートの要素一覧 + PNG)の全数走査で、目視で崩壊と確かめた最小は文字要素 2 個、
+  全てインク無しだが崩壊でなかった最大は 2 個(木と絵の取得時刻が違う)。向きの違う横長のスクリーンショットがもう一つの崩壊でない当たりで、向きの門の理由
+- **環境変数**(`FT_*` はシナリオの子に届く): `FT_RENDER_COLLAPSE_EVERY_ASSERTION=1`(計測用: 通る検証ごとに判定し、崩壊なら赤にする。
+  デバイス実行で誤検知の数を数えるときだけ使う)/ `FT_FAKE_RENDER_COLLAPSE=1`(陽性対照の注入。判定の答えだけを差し替える)
+- 結果 JSON: docs/results-json.md(`failureKind` / `command` は無い)。フレームワーク別の出方: docs/framework-differences.md §3
 
 ### 割り込みハンドラ(アプリ内メッセージ。2026-07-27)
 
@@ -4709,6 +4752,12 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     `AndroidHealthProbe.observeBlankAndRepair`。修復/除外は run.json の
     blankRepairs/blankExclusions に記録される。guest reboot は emulator プロセスを再起動しないので
     serial は変わらず、ワーカーの再構築は不要)。
+    **同じ点検の続きで、ホストへの経路の無い Emulator を停止と起動で戻す**(2026-10-19。
+    `ProfileWorkerFactory.restartEmulatorsWithoutNetwork`・判定は `AndroidHealthProbe.hostRoute` = `ip route get 10.0.2.2` の
+    終了コード 0/2。それ以外は判定しない)。負荷の高い時間帯に起動した Emulator は擬似モデムに繋がれず(`RADIO_NOT_AVAILABLE`)、
+    モバイル回線も Wi-Fi も上がらないまま起動を終える = アプリはサーバーへ1件も届かずログイン等で赤になる。機内モード・Wi-Fi の
+    切り替え・ゲストの再起動では戻らず、停止と起動で戻る(実測 2 台)。撃つ前に持ち主を確かめ(`deviceInUseRefusal`)、
+    戻らなかった・serial が変わった・他のセッションが使っている台は除外し、理由を `workerAnomalies` の `reason` に書く。実機は見ない。
   - **clock-skew 等その他**: down→up の host 再起動(`enqueueRestart`。クールダウン 5分・2回失敗で諦め)。
   - **無限ループ対策**: 「異常なし1回」ではエピソード(試行回数の記憶)を破棄せず、健全が 10 分持続して
     初めて破棄する(ブート直後の一時健全で restartAttempts が毎回リセットされ MAX 到達しなかった実害対策)。

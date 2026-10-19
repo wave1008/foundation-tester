@@ -740,7 +740,7 @@ extension StepExecutorTests {
     func testHideKeyboardCallsDriverDirectlyWithoutSnapshot() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log)
-        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
+        let executor = StepExecutor(driver: primary, isAndroid: true, tunables: RunTunables())
         let step = FlowStep(action: "hideKeyboard")
 
         let outcome = await executor.execute(step)
@@ -750,27 +750,6 @@ extension StepExecutorTests {
             return
         }
         XCTAssertTrue(log.entries.contains("primary.hideKeyboard"), "\(log.entries)")
-    }
-
-    /// 501(このドライバは原理的に非対応)はリアクティブに typeDriver へ切り替えること。
-    /// pressEnter の 409 切替と違い、hideKeyboard は isEngineIncapable(501/ルート不明404)で判定する
-    /// (409 は「今フォーカス無し」等の一時的競合で、実行不能の申告ではないため)
-    func testHideKeyboard501FallsBackToTypeDriverReactively() async throws {
-        let log = CallLog()
-        let primary = FakeAppDriver(name: "primary", log: log)
-        primary.hideKeyboardError = DriverError.badResponse(status: 501, body: "not supported")
-        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
-        let step = FlowStep(action: "hideKeyboard")
-
-        let outcome = await executor.execute(step)
-
-        guard case .passed = outcome.status else {
-            XCTFail("501 からの typeDriver 切替による passed を期待したが \(outcome.status) だった")
-            return
-        }
-        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
-        XCTAssertEqual(log.entries, ["primary.hideKeyboard(throws)", "typedriver.hideKeyboard"])
     }
 
     // MARK: - keyboardIsShown / keyboardIsNotShown(ロケータ無し。開閉アニメーションを待つポーリング)
@@ -1116,6 +1095,102 @@ extension StepExecutorTests {
         XCTAssertTrue(message.contains("refusing before anything is typed"), message)
         XCTAssertFalse(log.entries.contains { $0.hasPrefix("primary.type(") },
                        "断ったのに type を撃った: \(log.entries)")
+    }
+
+    /// **中心がソフトキーボードの下にある対象へは、副作用の無い手段でキーボードを閉じてから撃つ**(ユーザー決定
+    /// 「人ができる操作はツールも最善を尽くす」。reachPastKeyboard の doc)。実測の形(iOS・Compose の住所フォーム):
+    /// キーボード (0,538 402x336) の下に電話番号の欄 (16,619 370x65)。iOS はキーボードの上の空きを叩いて閉じる
+    func testTapTypeAndClearInputUnderTheKeyboardCloseItFirst() async throws {
+        for action in ["tap", "type", "clearInput"] {
+            let log = CallLog()
+            let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[Self.phoneUnderKeyboard]])
+            primary.keyboardFrame = FTRect(x: 0, y: 538, width: 402, height: 336)
+            primary.tapProbeAnswer = TapProbeResponse(background: true, receiver: "UIView", reason: nil)
+            primary.afterCoordinateTap = { primary.keyboardFrame = nil }
+            let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables(), uiFramework: .compose)
+            let outcome = await executor.execute(FlowStep(action: action, locator: FlowLocator(id: "field_phone"),
+                                                          text: action == "type" ? "09012345678" : nil))
+            XCTAssertEqual(primary.coordinateTaps.count, 1, "\(action): キーボードの上の空きを1回叩くはず")
+            XCTAssertLessThan(try XCTUnwrap(primary.coordinateTaps.first).y, 538, action)
+            XCTAssertTrue(log.entries.contains { $0.hasPrefix("primary.\(action)(") }, "\(action): 閉じた後に撃っていない: \(log.entries)")
+            XCTAssertTrue(outcome.driverFallback?.contains("the target was under it") == true,
+                          "\(action): \(outcome.driverFallback ?? "nil")")
+        }
+    }
+
+    /// 副作用の無い手段で閉じなければ撃たずに失敗(Enter は欄の確定操作なので勝手に撃たない = ユーザー決定)
+    func testTapTypeAndClearInputUnderAKeyboardThatWillNotCloseFailWithoutPressingEnter() async throws {
+        for action in ["tap", "type", "clearInput"] {
+            let log = CallLog()
+            let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[Self.phoneUnderKeyboard]])
+            primary.keyboardFrame = FTRect(x: 0, y: 538, width: 402, height: 336)
+            primary.tapProbeAnswer = TapProbeResponse(background: true, receiver: "UIView", reason: nil)
+            let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables(defaultTimeout: 0.2),
+                                        uiFramework: .compose)
+            let outcome = await executor.execute(FlowStep(action: action, locator: FlowLocator(id: "field_phone"),
+                                                          text: action == "type" ? "09012345678" : nil))
+            guard case .failed(let message) = outcome.status else {
+                XCTFail("\(action): 閉じないキーボードの下へは撃たないはずが \(outcome.status)"); continue
+            }
+            XCTAssertTrue(message.contains("could not be closed without side effects"), message)
+            XCTAssertTrue(message.contains("pressEnter()"), message)
+            XCTAssertFalse(log.entries.contains { $0.hasPrefix("primary.type(") || $0.hasPrefix("primary.clearInput(")
+                || $0.hasPrefix("primary.tap(") || $0.hasPrefix("primary.pressEnter") },
+                           "\(action): 撃った・Enter を送った: \(log.entries)")
+        }
+    }
+
+    /// Android の窓がキーボードの上へ縮んで対象が木に無いときは、見つからないと言う前に閉じて探し直す
+    /// (矩形の無い `keyboardShown` だけの申告でも同じ = 実機の住所フォームの形)
+    func testAndroidTargetBelowAShrunkenWindowIsReachedByHidingTheKeyboard() async throws {
+        for reportsFrame in [true, false] {
+            let log = CallLog()
+            let city = ElementInfo(ref: 1, type: "textField", identifier: "field_city", label: nil, value: nil,
+                                   placeholder: nil, enabled: true, frame: FTRect(x: 20, y: 400, width: 360, height: 50),
+                                   depth: 1)
+            let save = ElementInfo(ref: 2, type: "button", identifier: "btn_save", label: "保存", value: nil,
+                                   placeholder: nil, enabled: true, frame: FTRect(x: 20, y: 700, width: 360, height: 50),
+                                   depth: 1)
+            let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[city]])
+            if reportsFrame {
+                primary.keyboardFrame = FTRect(x: 0, y: 450, width: 400, height: 350)
+            } else {
+                primary.keyboardShownFrames = [true]
+            }
+            primary.afterHideKeyboard = {
+                primary.keyboardFrame = nil
+                primary.keyboardShownFrames = [false]
+                primary.snapshotElements = [[city, save]]
+            }
+            let executor = StepExecutor(driver: primary, isAndroid: true, tunables: RunTunables())
+            let outcome = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "btn_save")))
+            guard case .passed = outcome.status else { XCTFail("frame=\(reportsFrame): \(outcome.status) \(log.entries)"); continue }
+            XCTAssertEqual(log.entries.filter { $0 == "primary.hideKeyboard" }.count, 1, log.entries.description)
+            XCTAssertTrue(log.entries.contains("primary.tap(ref:2)"), log.entries.description)
+            XCTAssertTrue(outcome.driverFallback?.contains("not on the screen while the keyboard was up") == true,
+                          outcome.driverFallback ?? "nil")
+        }
+    }
+
+    private static let phoneUnderKeyboard = ElementInfo(
+        ref: 1, type: "textView", identifier: "field_phone", label: "電話番号", value: nil, placeholder: nil, enabled: true,
+        frame: FTRect(x: 16, y: 619, width: 370, height: 65), depth: 1)
+
+    /// キーボードの上に見えている欄へは従来どおり打つ(門は覆われた欄だけ)
+    func testTypeIntoAFieldAboveTheKeyboardStillTypes() async throws {
+        let log = CallLog()
+        let line = ElementInfo(ref: 1, type: "textView", identifier: "field_address_line", label: "番地", value: nil,
+                               placeholder: nil, enabled: true, frame: FTRect(x: 16, y: 474, width: 370, height: 64),
+                               depth: 1)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[line]])
+        primary.keyboardFrame = FTRect(x: 0, y: 538, width: 402, height: 336)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables(), uiFramework: .compose)
+        let outcome = await executor.execute(FlowStep(action: "type", locator: FlowLocator(id: "field_address_line"),
+                                                      text: "x"))
+        if case .failed(let message) = outcome.status {
+            XCTAssertFalse(message.contains("under the soft keyboard"), "見えている欄を断った: \(message)")
+        }
+        XCTAssertTrue(log.entries.contains { $0.hasPrefix("primary.type(") }, "見えている欄に打っていない: \(log.entries)")
     }
 
     /// clearInput も同じ(ドライバは消す前に対象をタップする)

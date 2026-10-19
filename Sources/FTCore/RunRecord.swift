@@ -87,17 +87,21 @@ public struct WorkerAnomalyRecord: Codable, Sendable {
     /// `ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers`)が除外・修復した**デバイスそのもの**を
     /// worker 鍵つきの anomaly に変換する。**label からデバイスを引き直さない** —— iOS は回復でポートが
     /// 変わり label も変わるので、triage 前の一覧で引くと修復したデバイスが黙って数から落ちる
-    public static func preRunTriage(excluded: [RunWorker], repaired: [RunWorker]) -> [WorkerAnomalyRecord] {
-        func make(_ workers: [RunWorker], kind: String, reason: String) -> [WorkerAnomalyRecord] {
+    /// `excludedReasons`: label → 除外の理由(無い label は凍結の理由。Android の run 前の点検は
+    /// ネットワークの無い Emulator も除外する = `ProfileWorkerFactory.BlankScreenTriage.excludedReasons`)
+    public static func preRunTriage(excluded: [RunWorker], repaired: [RunWorker],
+                                    excludedReasons: [String: String] = [:]) -> [WorkerAnomalyRecord] {
+        func make(_ workers: [RunWorker], kind: String, reason: (RunWorker) -> String) -> [WorkerAnomalyRecord] {
             workers.map { worker in
                 WorkerAnomalyRecord(
                     kind: kind, worker: worker.logicalName.map { "\(worker.platform):\($0)" },
-                    label: worker.label, reason: reason)
+                    label: worker.label, reason: reason(worker))
             }
         }
-        return make(excluded, kind: "preRunExcluded",
-                    reason: "excluded before the run started: the screen was frozen and could not be recovered")
-            + make(repaired, kind: "preRunRepaired", reason: "recovered before the run started")
+        return make(excluded, kind: "preRunExcluded", reason: {
+            excludedReasons[$0.label]
+                ?? "excluded before the run started: the screen was frozen and could not be recovered"
+        }) + make(repaired, kind: "preRunRepaired", reason: { _ in "recovered before the run started" })
     }
 }
 

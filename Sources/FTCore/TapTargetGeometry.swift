@@ -1045,8 +1045,8 @@ public enum TapTargetGeometry {
         guard cx >= keyboardFrame.x, cx <= keyboardFrame.x + keyboardFrame.width,
               cy >= keyboardFrame.y, cy <= keyboardFrame.y + keyboardFrame.height else { return nil }
         return "its centre (\(Int(cx)), \(Int(cy))) is under the soft keyboard — the tap will land"
-            + " on the keyboard, not this element. Dismiss the keyboard first (pressEnter, or tap"
-            + " outside the field), or scroll the element clear of it"
+            + " on the keyboard, not this element. Close the keyboard first (hideKeyboard), or scroll"
+            + " the element clear of it"
     }
 
     /// 容器の縁で細い帯に切れた要素(ラベルは付いているが実際には掴めないほど狭い)。

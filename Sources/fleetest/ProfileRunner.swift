@@ -499,8 +499,7 @@ enum ProfileRunner {
                 workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { ConsoleOut.out($0) }
         // run.json の workerAnomalies へ preRunExcluded/preRunRepaired として持たせる
         // (表示用の blankRepairs/blankExclusions は変えない)
-        var preRunAnomalies = WorkerAnomalyRecord.preRunTriage(
-                excluded: triage.excludedWorkers, repaired: triage.repairedWorkers)
+        var preRunAnomalies = triage.anomalies
         workers = triage.workers
         // **実機はあちらの対象外**(閾値がエミュレータ較正で、誤判定すると健全な実機へ
         // `adb reboot` を撃つ)。観測だけはここで通す —— 実機の判定は `.darkScreenPhysical`
@@ -513,7 +512,7 @@ enum ProfileRunner {
         ) { ConsoleOut.out($0) }
         if workers.isEmpty && beforeBlankCheck > 0 {
             throw ProfileWorkerFactory.InstallError(
-                message: "no usable devices (every Android device went blank)")
+                message: "no usable devices (the pre-run check excluded every Android device — the reason for each is in the lines above)")
         }
         workers = try await ProfileWorkerFactory.installIfNeeded(
             apps: resolved.apps, workers: workers,

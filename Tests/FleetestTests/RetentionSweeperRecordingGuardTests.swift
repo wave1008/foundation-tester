@@ -49,6 +49,27 @@ final class RetentionSweeperRecordingGuardTests: XCTestCase {
         return session.guarded
     }
 
+    /// **1回の掃除の中では run の一覧と guarded を系統をまたいで使い回す**(`RunScan`)。録画と実行ログが
+    /// それぞれ run.json を読み直すと、run 約 1.6 万件で dry-run の採取の大半を食った。
+    /// 同じ scan で2系統を採る間に run.json が書き換わっても、2系統目は1系統目の判定と同じ値を返す
+    func testOneScanSharesTheGuardVerdictAcrossCategories() throws {
+        let runID = "20260920-100000Z-shared"
+        let runDir = try makeRun(runID: runID, host: "another-mac", pid: 1,
+                                 startedAt: "2026-09-20T10:00:00Z", finishedAt: nil)
+        let events = runDir.appendingPathComponent("events")
+        try FileManager.default.createDirectory(at: events, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: events.appendingPathComponent("a.ndjson"))
+        let roots = RetentionSweeper.Roots(package: packageRoot, tool: packageRoot)
+        let scan = RetentionSweeper.RunScan(packageRoot: packageRoot, activeRunID: nil)
+        let recordings = RetentionSweeper.sessions(for: .recordings, roots: roots, scan: scan, activeRunID: nil)
+        XCTAssertEqual(recordings.first { $0.id == runID }?.guarded, true)
+        RunResultsStore.writeMeta(RunMetaRecord(runID: runID, project: projectName, profile: nil, host: "another-mac",
+                                                trigger: "cli", startedAt: "2026-09-20T10:00:00Z",
+                                                finishedAt: "2026-09-20T10:05:00Z", pid: 1), runDir: runDir)
+        let eventLogs = RetentionSweeper.sessions(for: .eventLogs, roots: roots, scan: scan, activeRunID: nil)
+        XCTAssertEqual(eventLogs.first { $0.id == runID }?.guarded, true, "同じ scan の中では読み直さない")
+    }
+
     func testAFinishedRunIsNotGuarded() throws {
         let runID = "20260920-100000Z-finished"
         try makeRun(runID: runID, host: RunRecorder.currentMachine(), pid: 1,

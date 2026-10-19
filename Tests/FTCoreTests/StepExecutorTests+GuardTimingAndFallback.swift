@@ -110,8 +110,9 @@ extension StepExecutorTests {
     /// **申告 keyboardFrame はキー面だけ**(TapTargetGeometry.effectiveKeyboardFrame の doc)。
     /// MCP 側(MCPRefGuardTests.testTapWarnsWhenTheCentreIsOnlyUnderTheExpandedKeyboardChrome)と
     /// 同じ witness を DSL 側(StepExecutor+Actions.swift)でも固定する —— 呼び出し元が申告のまま
-    /// 渡すよう後退すると、この注記が付かず落ちる
-    func testTapNotesKeyboardCoverageUsingTheExpandedChromeFrame() async throws {
+    /// 渡すよう後退すると、覆われていると見ずにキーボードを撃ち、閉じる手順を通らず落ちる
+    /// (覆われた対象はキーボードを閉じてから押す = reachPastKeyboard)
+    func testTapReachesATargetUnderTheExpandedChromeFrameByClosingTheKeyboard() async throws {
         let log = CallLog()
         let tabHome = ElementInfo(ref: 1, type: "button", identifier: "tab_home", label: "ホーム",
                                   value: nil, placeholder: nil, enabled: true,
@@ -126,17 +127,19 @@ extension StepExecutorTests {
                                     snapshotElements: [[tabHome, inputView, suggestBar]])
         // 申告は 590..816 —— tab_home の中心 y=579 はこの外(修正前は無警告)
         primary.keyboardFrame = FTRect(x: 0, y: 590, width: 402, height: 226)
+        primary.tapProbeAnswer = TapProbeResponse(background: true, receiver: "UIView", reason: nil)
+        primary.afterCoordinateTap = { primary.keyboardFrame = nil }
         let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "tab_home"))
 
         let outcome = await executor.execute(step)
 
-        guard case .passed = outcome.status else {
-            XCTFail("tap 自体は passed のはず(警告であって拒否ではない): \(outcome.status)"); return
-        }
-        XCTAssertTrue(outcome.driverFallback?.contains("soft keyboard") == true,
-                      "chrome で広げた実効矩形(546..874)なら中心 579 を拾って警告すること:"
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(primary.coordinateTaps.count, 1, "キーボードを閉じる背景タップが無い")
+        XCTAssertTrue(outcome.driverFallback?.contains("the target was under it") == true,
+                      "chrome で広げた実効矩形(546..874)なら中心 579 を覆われていると見ること:"
                       + " \(outcome.driverFallback ?? "nil")")
+        XCTAssertTrue(log.entries.contains("primary.tap(ref:1)"), log.entries.description)
     }
 
     /// **木に出ないオーバーレイ・ウィンドウ**の下を撃つときは注記に出す。MCP 側

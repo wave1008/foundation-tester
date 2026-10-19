@@ -200,7 +200,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | 長押し | — | SwiftUI は in-app で発火しない → XCUITest へ | C |
 | ジェスチャ目的の `swipe` | XCUITest へ(AX の scroll に流すと、パッドの上でもスクロール可能な親が受理して空振りする) | XCUITest へ | C |
 | `gesture`(多点・時刻つき経路) | XCUITest へ(in-app にこの経路自体が無い) | XCUITest へ | A(フレームワークを問わず同じ結果。座標ピンチと同じ非公開 API でフォールバック無し = 使えない Xcode では 422) |
-| `hideKeyboard` | Compose は受け口がフォーカスを持ち続け閉じられない(in-app は 501) | 閉じられる | B |
+| `hideKeyboard`(iOS) | 背景タップで閉じるのは Compose(E2E-CMP で実測)。SwiftUI(E2E-iOS)と Flutter は背景タップでは閉じず、続けて送る Enter で閉じる。React Native は自前 SUT では背景タップでも Enter でも閉じなかった。sut-ec-mobile の Compose の住所フォームは背景タップで閉じず Enter で閉じる(iOS Simulator で実測) | 背景タップと Enter の順で試す(経路は全フレームワーク共通・エンジン非依存。どれも閉じなければ失敗) | B |
 | 戻る | Compose / Flutter には BackButton が無い → エッジスワイプ | 戻るボタンがあれば押す | C |
 
 ---
@@ -264,6 +264,7 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 | Compose(Android) | スクロールした後に古い木が返る | A | 自分で画面を動かした直後の1枚はキャッシュを迂回して撮る |
 | Android の WebView(全フレームワーク) | DOM の変更が a11y へ 4〜8 秒遅れる | A | WebView の中のノードだけ `refresh()` してから読む |
 | Compose(iOS) | 縁のぼかし(scroll edge effect)のアニメーションが終わらず、整定が上限に張り付く | A | `filters.*` のアニメーションを動きとして数えない |
+| Compose・Flutter(iOS Simulator) | アプリのプロセスの描画が壊れ、起動し直すまで戻らない(木は正常)。**一色**(白・黒)になるのは Compose・Flutter、**図形だけで文字が一つも無い**形は Compose でだけ観測 | B | 通った検証が画素で文字を確認していない区間の終わりで「描画崩壊の検査」を1回撃ち、見つかったら失敗にする(iOS Simulator のみ・docs/design.md「描画崩壊の検査」) |
 | Flutter(iOS) | 慣性が 800ms でも収束しない | C | XCUITest ランナーの整定予算を固定(待ち切らない) |
 | Compose・Flutter(iOS・in-app) | 画面を切り替えた直後、a11y の木は新しい画面なのに絵(自前の Metal 描画)が追いつかない。CMP は起動後の初回訪問でタップが返ってから 0.27〜0.45 秒のあいだ**切り替え前の絵**をバイト同一で返す(2回目の訪問・SwiftUI では起きない) | A | 操作の直前に低解像度の画素と木の指紋を控え、**木が変わったのに画素が操作前のままの間だけ**待ってから撮る(`InAppRenderCatchUp`・v117)。遷移の完了は待たない。操作1回あたり約 12ms、待つのは追いついていない回だけ(初回訪問で約 0.3〜0.4 秒) |
 | Compose(iOS・XCUITest エンジン) | 上と同じ遅れが XCUITest のスクリーンショットでも起きる。タブを切り替えた直後の 0.3 秒以上、**切り替え前の画面**が返る(木は新しい画面)。ただし絵はバイト同一ではなく、押したタブの強調が載っている | B | **既知の制約**。待たずに1回だけ見る `findImage` / `findImages`(既定 `waitSeconds` 0)は別の画面を切って「無い」と答える。待つ `existImage` と、`waitSeconds` を渡した `findImage` は通る。in-app の v117 を移しても直らない(押した強調で画素が変わるので「画素が操作前のまま」の判定が発火しない)ので入れていない。fleetest 自身の E2E は、待つ版を E2E-CMP 20 S0020 に、待たない版(in-app の証人)を 23 に分け、後者は `Scripts/e2e.sh` が in-app のときだけ回す |

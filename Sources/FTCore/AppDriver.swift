@@ -154,6 +154,10 @@ public protocol AppDriver {
     /// 「次の tap(ref:) でクリアする」規約(lastActionNote と同じ)。**包むドライバは素通しすること**、
     /// **プロトコル要件として宣言すること**(reachedEdgeOnLastSwipe と同じ理由)
     var lastTapHitAreaMiss: TapHitAreaMiss? { get }
+    /// その点が木に載らないもの(キーボード・ステータスバー・別のウィンドウ)の上でないか(in-app ブリッジの POST /tapprobe。
+    /// iOS の hideKeyboard が叩く前に聞く)。nil = 答えられない(XCUITest・Android・通信の失敗)。**包むドライバは素通しすること**、
+    /// **プロトコル要件として宣言すること**(lastTapHitAreaMiss と同じ理由)
+    func tapProbe(x: Double, y: Double) async -> TapProbeResponse?
     /// 2点間ドラッグ(座標は snapshot の screen と同じ座標系)。pressSeconds=押下静止時間、
     /// durationSeconds=移動時間(実機ジェスチャの速度・長押しに反映される)。
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
@@ -470,6 +474,7 @@ public extension AppDriver {
     /// 素通しすること**(捨てると端送りが毎回ホストの署名判定まで回る)
     var reachedEdgeOnLastSwipe: Bool? { nil }
     var lastTapHitAreaMiss: TapHitAreaMiss? { nil }
+    func tapProbe(x: Double, y: Double) async -> TapProbeResponse? { nil }
     /// 既定は「答えられない」。答えられるのは XCUITest ブリッジを話す BridgeClient だけ
     func hitTest(ref: Int) async throws -> HitTestAnswer { .unavailable }
     var lastLaunchTiming: LaunchTiming? { nil }

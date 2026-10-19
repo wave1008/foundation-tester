@@ -129,7 +129,9 @@ final class MCPDesignReviewFixesTests: XCTestCase {
 
     // MARK: - ft_hide_keyboard
 
+    /// Android は戻るキー(ブリッジの hideKeyboard)を撃ち、下書きに DSL の1行が残る
     func testHideKeyboardRunsAndIsDraftedAsADSLLine() async throws {
+        server.engines[MCPServer.engineKey([:])] = "android"
         let text = body(try await server.call(tool: "ft_hide_keyboard", args: ["snapshotAfter": true]))
         XCTAssertTrue(text.hasPrefix("hideKeyboard sent."), text)
         XCTAssertTrue(text.contains("id=login_btn"), "木が付いていない: \(text)")
@@ -138,15 +140,26 @@ final class MCPDesignReviewFixesTests: XCTestCase {
         XCTAssertTrue(draft.contains("hideKeyboard()"), draft)
     }
 
-    /// iOS は閉じる手段が無く 501 → 断り、代わりの手(ft_type pressEnter)を名指しする。下書きにも残さない
-    func testHideKeyboardRefusalOnIOSNamesPressEnter() async throws {
-        driver.hideKeyboardError = DriverError.badResponse(status: 501, body: "not supported on iOS")
+    /// iOS は背景を叩き、閉じなければ **Enter を送らずに**断る(エージェントが「閉じたい」だけで送信・検索を起こさない)。
+    /// 代わりの手(ft_type pressEnter)と、その副作用を名指しする。下書きにも残さない
+    func testHideKeyboardOnIOSDoesNotSendEnterWhenTappingDoesNotCloseIt() async throws {
+        let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
+        let title = ElementInfo(ref: 1, type: "staticText", identifier: "title", label: "見出し", value: nil,
+                                placeholder: nil, enabled: true, frame: FTRect(x: 20, y: 60, width: 200, height: 30),
+                                depth: 0)
+        var withKeyboard = SnapshotResponse(sessionBundleID: "com.example.app", screen: screen,
+                                            elements: [title], truncatedCount: 0)
+        withKeyboard.keyboardFrame = FTRect(x: 0, y: 500, width: 400, height: 300)
+        driver.snapshotResponse = withKeyboard
         do {
             _ = try await server.call(tool: "ft_hide_keyboard", args: [:])
-            XCTFail("501 が通った")
+            XCTFail("閉じないのに通った")
         } catch {
+            XCTAssertTrue(error.localizedDescription.contains("Enter was not sent"), error.localizedDescription)
             XCTAssertTrue(error.localizedDescription.contains("pressEnter"), error.localizedDescription)
         }
+        XCTAssertTrue(driver.calls.contains { $0.hasPrefix("tap(x:") }, "背景を叩いていない: \(driver.calls)")
+        XCTAssertFalse(driver.calls.contains("pressEnter"), "Enter を送った: \(driver.calls)")
         let draft = body(try await server.call(tool: "ft_draft_scenario", args: ["all": true]))
         XCTAssertFalse(draft.contains("hideKeyboard()"), draft)
     }

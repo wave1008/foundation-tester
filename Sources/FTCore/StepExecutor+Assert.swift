@@ -195,6 +195,8 @@ extension StepExecutor {
         if !geo, occlusionInkThreshold > 0 {
             sd = RegionInk.luminanceStdDev(pngData: screenshot, frame: element.frame, screen: screen)
             if let value = sd, value >= occlusionInkThreshold {
+                // 入力欄・ボタンは枠や背景で構造が出るので、文字が描けた証拠にするのは文字の型だけ
+                if RenderCollapse.textTypes.contains(element.type.lowercased()) { pixelsShowedTextThisStep = true }
                 return nil
             }
         }
@@ -263,6 +265,7 @@ extension StepExecutor {
             phase.guardMs += ocrElapsed
             phase.ocrMs += ocrElapsed
             if occlusionOCRMode == .on, ocrReadable {
+                pixelsShowedTextThisStep = true
                 return nil
             }
         } else if occlusionOCRMode != .off {
@@ -354,6 +357,7 @@ extension StepExecutor {
         consumeFirstFrameGate(visible: merged.visible, sd: sd, screenshot: screenshot, element: element, screen: screen)
         if merged.visible {
             notePartialVisibility(merged.state)
+            pixelsShowedTextThisStep = true
             return nil
         }
         // observedText は原因切り分けの鍵: 空なら「FM に画像が渡っていない/白紙を見た」
@@ -443,6 +447,7 @@ extension StepExecutor {
         case .visible(let state):
             consumeFirstFrameGate(visible: true, sd: ink, screenshot: screenshot, element: element, screen: screen)
             notePartialVisibility(state)
+            pixelsShowedTextThisStep = true
             return nil
         case .notVisible(let state):
             if countsAsSkipped { noteCodesThisStep.insert(.visibilityGuardSkipped) }
@@ -556,7 +561,7 @@ extension StepExecutor {
         return " (the soft keyboard is up at (\(Int(kb.x)),\(Int(kb.y))"
             + " \(Int(kb.width))x\(Int(kb.height))) and the window has shrunk to fit above it,"
             + " so elements that sat below the keyboard are gone from the tree, not just covered."
-            + " Close it first (hideKeyboard() on Android, pressEnter() on iOS) or scroll inside"
+            + " Close it first (hideKeyboard()) or scroll inside"
             + " the container, then retry.)"
     }
 

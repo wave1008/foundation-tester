@@ -217,5 +217,6 @@ public final class FastLaunchDriver: AppDriver {
     public func terminate() async throws { try await base.terminate() }
     public var lastActionNote: String? { base.lastActionNote }
     public var lastTapHitAreaMiss: TapHitAreaMiss? { base.lastTapHitAreaMiss }
+    public func tapProbe(x: Double, y: Double) async -> TapProbeResponse? { await base.tapProbe(x: x, y: y) }
     public var lastLaunchTiming: LaunchTiming? { lastLaunchTimingValue }
 }
