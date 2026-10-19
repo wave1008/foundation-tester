@@ -497,10 +497,17 @@ BOOL FTPressEnterOnComposeFirstResponder(void) {
             // EditingDidEndOnExit(SwiftUI の onSubmit もこの経路)
             UITextField *field = (UITextField *)v;
             id<UITextFieldDelegate> delegate = field.delegate;
+            BOOL shouldReturn = YES;
             if ([delegate respondsToSelector:@selector(textFieldShouldReturn:)]) {
-                [delegate textFieldShouldReturn:field];
+                shouldReturn = [delegate textFieldShouldReturn:field];
             }
             [field sendActionsForControlEvents:UIControlEventEditingDidEndOnExit];
+            // UIKit の Return は、許可され、かつ EditingDidEndOnExit に受け手があれば焦点を外す(キーボードが閉じる)。
+            // 抜かすと、焦点を外すのを UIKit に任せる欄(React Native の blurOnSubmit)でキーボードが閉じず、
+            // 人が Return を押したときと食い違う(E2E-RN のタブへ戻る手前で、キーボードの下のタブを押せなかった)
+            if (shouldReturn && (field.allControlEvents & UIControlEventEditingDidEndOnExit)) {
+                [field resignFirstResponder];
+            }
             return YES;
         }
         // secure 欄はサブクラス(別名)なので prefix 一致では取りこぼす(ftIsFlutterTextInput 参照)
