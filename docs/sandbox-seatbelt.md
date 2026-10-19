@@ -94,9 +94,9 @@ IP アドレスもドメイン名も書けない。書けるのは `"localhost:8
 ```
 (deny network*)
 (allow network-outbound (remote ip "localhost:*"))
-(allow network-bind (local ip "localhost:*"))
-(allow network-inbound (local ip "localhost:*"))
 ```
+
+(当初は `network-bind` / `network-inbound` も `localhost:*` で開けていたが、2026-10-20 に外した = 子は何も待ち受けない。§8.5.1 の残件①)
 
 この誤りは、最初に書いた単体テストが落ちて見つかった。文字列の形だけを見るテストでは見つからない。
 
@@ -399,7 +399,7 @@ UI 操作で持ち出せる(§8.3)。渡すのは `FT_*`・`LC_*` と、Sources 
 | 穴 | 実測・根拠 | 塞ぎ方 |
 |---|---|---|
 | `/dev` を丸ごと書けた | 枠の中から同じユーザーの `/dev/ttys000` を書き込みで開けた(他の端末へ偽の表示・エスケープシーケンス。TIOCSTI は `file-ioctl` の拒否で通らない) | `/dev/null`・`/dev/zero`・`/dev/tty`・`/dev/random`・`/dev/urandom`・`/dev/dtracehelper` の literal と `/dev/fd` だけ |
-| 全 Simulator のデータコンテナが書けた | 正規表現の UDID が `[^/]+` | レーンの UDID(iOS の Simulator・UUID の形)が分かるときはその1台だけ。ポートだけを指定した run は従来どおり全台 |
+| 全 Simulator のデータコンテナが書けた | 正規表現の UDID が `[^/]+` | レーンの UDID(iOS の Simulator・UUID の形)が分かるときはその1台だけ。**分からないときはコンテナを1つも開けず、子の simctl と devicectl もデバイスを名指しする操作を断る**(2026-10-20 に全台から変えた。今のブリッジは /status で udid を申告するので、親が知らないのはブリッジが答えなかった起動だけ = 子も引けず、閉じて失う正当な操作が無い) |
 | 読ませない一覧の抜け | `~/.gradle`(署名鍵のパスワード)・`~/.m2`・App Store Connect の API 鍵・fastlane のセッション・シェルの履歴など | `defaultDenyReadHomeSubpaths` に足した。**`Library/Mobile Documents` は入れない**(iCloud の「デスクトップと書類」では `~/Documents` の実体がその下にあり、そこのプロジェクトを読めなくなる) |
 | 親の環境変数が全部子へ渡っていた | `ScenarioHost` が親の環境に入口の分を `merging` していた | 上の許可リスト |
 | 書ける場所の根・データコンテナを symlink に差し替えられた | 実測(§5.3) | 根は literal で拒否・親が作って symlink なら止める・正規表現を `<UUID>/` より下に |
@@ -409,7 +409,7 @@ UI 操作で持ち出せる(§8.3)。渡すのは `FT_*`・`LC_*` と、Sources 
 | broker の判定と実行の間にパスを差し替えられた | 子が送ったパスの文字列のまま実行していた(途中に子が書ける場所の symlink を挟むと「子が書けない場所」として検めさせ、実行の直前に向きを変えられる)。devicectl の出力ファイルは親が子の場所へ書いていた | 検めたパスを実体パスに固定して実行する(`BrokerPolicy.pinned`。install の元・注入するライブラリ・`.apks`)。devicectl の出力は親だけの一時ファイルに書かせ、中身を応答で返して子が枠の中で書く |
 | 親が子の書ける場所へ symlink を辿って書いていた | 棚卸し(コード)。最も重いのは WebView のキャッシュ(ホームの直下を消させられる) | 親だけが書く場所は拒否・子も使う場所は atomic と `O_NOFOLLOW`(§5.3) |
 
-**棚卸しで残したもの**(未着手。重い順): ①子が localhost で偽のブリッジを待ち受けられる ②レポートの Markdown プレビューが
+**棚卸しで残したもの**(未着手。重い順。①の「子が localhost で偽のブリッジを待ち受けられる」は 2026-10-20 に閉じた = 枠から`network-bind` / `network-inbound` を外した。子は待ち受けず、外向きの接続は bind の許可が無くても通る(curl・urllib・UDP で実測)。開けていた頃は `localhost` が自機の全アドレスを含むので 0.0.0.0 で待ち受けて LAN から繋げた): ②レポートの Markdown プレビューが
 外部の画像を読む ③子が中身を偽れる台帳(`iproxy-<port>.pid`・`install-check/` = 親がアプリを入れ直さない)④書ける根の下の
 サブフォルダを symlink にする型(親は決まった名前のファイルを作る・消すだけ)⑤分類器の学習の一時物(`model.tmp.mlmodel`・
 `training/`)と補助プロセスのソケットの `chmod` のレース。

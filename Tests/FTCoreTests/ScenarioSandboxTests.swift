@@ -135,10 +135,13 @@ final class ScenarioSandboxTests: XCTestCase {
     /// アプリ本体(Bundle)と、コンテナの外の Simulator のファイルは開けない
     func testSimulatorDataContainerIsWritableButTheRestOfTheSimulatorIsNot() throws {
         let device = "home/Library/Developer/CoreSimulator/Devices/UDID-1/data"
+        var lane = scope()
+        lane.simulatorUDID = "UDID-1"
         XCTAssertEqual(try runSandboxed(
-            ["/bin/rmdir", path(device + "/Containers/Data/Application/APP-1/Library")]), 0)
-        XCTAssertNotEqual(try touch(device + "/Containers/Bundle/Application/APP-1/a"), 0)
-        XCTAssertNotEqual(try touch(device + "/a"), 0)
+            ["/bin/rmdir", path(device + "/Containers/Data/Application/APP-1/Library")], scope: lane), 0)
+        XCTAssertNotEqual(try runSandboxed(["/usr/bin/touch", path(device + "/Containers/Bundle/Application/APP-1/a")],
+                                           scope: lane), 0)
+        XCTAssertNotEqual(try runSandboxed(["/usr/bin/touch", path(device + "/a")], scope: lane), 0)
     }
 
     /// レーンの UDID が分かるときは、その1台のデータコンテナだけが書ける(他の Simulator のアプリのデータを
@@ -151,8 +154,10 @@ final class ScenarioSandboxTests: XCTestCase {
         let lane = "home/Library/Developer/CoreSimulator/Devices/UDID-1/data/Containers/Data/Application/APP-1/a"
         XCTAssertEqual(try runSandboxed(["/usr/bin/touch", path(lane)], scope: narrowed), 0)
         XCTAssertNotEqual(try runSandboxed(["/usr/bin/touch", path(other + "/a")], scope: narrowed), 0)
-        // UDID が分からないときは全 Simulator(ポートだけを指定した run)
-        XCTAssertEqual(try runSandboxed(["/usr/bin/touch", path(other + "/b")]), 0)
+        // **UDID が分からないときはどの Simulator のコンテナも書けない**(全台を開けると別のレーンのアプリを壊せた。
+        // 今のブリッジは /status で udid を申告するので、親が知らないのはブリッジが答えなかった起動だけ = 子も引けない)
+        XCTAssertNotEqual(try runSandboxed(["/usr/bin/touch", path(other + "/b")]), 0)
+        XCTAssertNotEqual(try runSandboxed(["/usr/bin/touch", path(lane)]), 0)
     }
 
     func testSimulatorUDIDComesOnlyFromAnIOSSimulatorLaneWithAUUID() {
@@ -463,8 +468,11 @@ final class ScenarioSandboxTests: XCTestCase {
     /// アプリのデータコンテナ(`<UUID>`)そのものは差し替えられない(親の clearAppData が symlink の先を消す)
     func testTheAppDataContainerItselfCannotBeReplaced() throws {
         let app = "home/Library/Developer/CoreSimulator/Devices/UDID-1/data/Containers/Data/Application/"
-        XCTAssertNotEqual(try runSandboxed(["/bin/mv", path(app + "APP-1"), path(app + "OLD")]), 0)
-        XCTAssertNotEqual(try runSandboxed(["/bin/ln", "-s", path("outside"), path(app + "APP-2")]), 0)
+        // コンテナの中は書けるレーンの枠で確かめる(UDID の無い枠はコンテナを1つも開けないので、それでは何も言えない)
+        var lane = scope()
+        lane.simulatorUDID = "UDID-1"
+        XCTAssertNotEqual(try runSandboxed(["/bin/mv", path(app + "APP-1"), path(app + "OLD")], scope: lane), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/ln", "-s", path("outside"), path(app + "APP-2")], scope: lane), 0)
         XCTAssertTrue(FileManager.default.fileExists(atPath: path(app + "APP-1/Library")))
     }
 

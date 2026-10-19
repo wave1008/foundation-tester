@@ -68,8 +68,8 @@ public enum ScenarioSandbox {
         public var helperSockets: [String] = []
         /// adb サーバと Emulator のポートを閉じないか(`MachineSettings.allowDirectAdb`)
         public var allowDirectAdb = false
-        /// レーンの Simulator の UDID。あればデータコンテナの書き込みをこの1台に絞る。nil = 全 Simulator
-        /// (ポートだけを指定した run では親に UDID が分からない)
+        /// レーンの Simulator の UDID。あればデータコンテナの書き込みをこの1台に絞る。**nil ならコンテナを1つも開けない**
+        /// (ポートだけを指定した run では親に UDID が分からない。全 Simulator を開けると別のレーンのアプリを壊せた)
         public var simulatorUDID: String?
         /// 許可ドメインへプロキシ経由で出るか(`allowedDomains` が空でないとき)。TLS の証明書の検証に
         /// 要るサービスを開ける
@@ -344,10 +344,16 @@ public enum ScenarioSandbox {
 
     /// 子が書ける正規表現の場所(データコンテナ・Foundation の作業フォルダ・Core ML のコンパイル先)。
     /// broker の「子が書ける場所からの install を断る」判定にも同じ集合を使う
-    static func childWritableRegexes(_ scope: Scope, containerUDID: String?) throws -> [String] {
+    /// `includesContainers`: Simulator のデータコンテナを入れるか。**枠では、レーンの UDID が分からなければ入れない**
+    /// (`profile`)—— 入れると全 Simulator・全アプリのコンテナが書け、別のレーンのアプリのデータを壊せた。UDID が
+    /// 分からないレーンでは `clearAppData` もコンテナを引けないので、閉じて失う機能は無い。broker の「子が書ける場所からの
+    /// install を断る」判定は広い側(`containerUDID: nil` = 全 Simulator)が要るので `true` で呼ぶ
+    static func childWritableRegexes(_ scope: Scope, containerUDID: String?,
+                                     includesContainers: Bool = true) throws -> [String] {
         // スクリプトは Simulator・Foundation の作業フォルダ・Core ML を使わない
         guard scope.purpose == .scenario else { return [] }
-        return [try simulatorDataContainerRegex(home: scope.home, udid: containerUDID)]
+        let containers = includesContainers ? [try simulatorDataContainerRegex(home: scope.home, udid: containerUDID)] : []
+        return containers
             + [try childReplacementDirectoryRegex(runnerName: scope.runnerName), try compiledModelRegex()].compactMap { $0 }
     }
 
@@ -436,7 +442,7 @@ public enum ScenarioSandbox {
     }
 
     /// Simulator のアプリのデータコンテナ(正規表現)。`clearAppData` が中身を直接消す
-    /// (`BridgeClient.clearAppDataOnSimulator`)。`udid` が nil なら全 Simulator(`Scope.simulatorUDID`)
+    /// (`BridgeClient.clearAppDataOnSimulator`)。`udid` が nil なら全 Simulator(broker の拒否の判定だけが使う広い形)
     static func simulatorDataContainerRegex(home: String, udid: String?) throws -> String {
         let real = canonicalPath(home)
         guard !real.contains("\""),
@@ -629,7 +635,8 @@ public enum ScenarioSandbox {
             .joined(separator: " ") + ")")
         let writable = try writablePaths(scope).map { try subpath($0) }
         let dev = devWritableLiterals.map { "(literal \"\($0)\")" } + ["(subpath \"/dev/fd\")"]
-        let regexes = try childWritableRegexes(scope, containerUDID: scope.simulatorUDID).map { "(regex #\"" + $0 + "\")" }
+        let regexes = try childWritableRegexes(scope, containerUDID: scope.simulatorUDID,
+                                               includesContainers: scope.simulatorUDID != nil).map { "(regex #\"" + $0 + "\")" }
         lines.append("(allow file-write* " + (dev + writable + regexes).joined(separator: " ") + ")")
         // Core ML がコンパイルキャッシュを ANE のデーモンへ見せるための権利の発行
         if isScenario {
@@ -669,8 +676,9 @@ public enum ScenarioSandbox {
         }
         // スクリプトは何も待ち受けず、ブリッジにも繋がない。adb・Emulator の拒否も開けていないので要らない
         guard isScenario else { return lines.joined(separator: "\n") + "\n" }
-        lines.append("(allow network-bind (local ip \"localhost:*\"))")
-        lines.append("(allow network-inbound (local ip \"localhost:*\"))")
+        // **待ち受け(network-bind / network-inbound)は開けない**。子は何も待ち受けず、外向きの接続は bind の許可が無くても
+        // 通る(2026-10-20 実測: curl・urllib・UDP の送信)。`localhost` は自機の全アドレスを含み Seatbelt ではループバック
+        // だけに絞れないので、開けると 0.0.0.0 で待ち受けて LAN から繋いだ相手へ応答できた(同日実測)
         for port in scope.remoteBridgePorts {
             lines.append("(allow network-outbound (remote ip \"*:\(port)\"))")
         }

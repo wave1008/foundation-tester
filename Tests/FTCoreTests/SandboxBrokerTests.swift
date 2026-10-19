@@ -36,6 +36,17 @@ final class SimctlPolicyTests: XCTestCase {
 
     private func simctl(_ arguments: String...) -> [String] { ["xcrun", "simctl"] + arguments }
 
+    /// **レーンの UDID が分からなければ、デバイスを名指しする simctl は断る**(素通しすると別のレーンの Simulator へ
+    /// install / uninstall / terminate を撃てた)。デバイスを名指ししない list は従来どおり通す
+    func testDeviceTargetedCommandsAreRefusedWhenTheLanesUDIDIsUnknown() {
+        var unknown = context
+        unknown.udid = nil
+        XCTAssertNotNil(refusal(simctl("terminate", "UDID-2", "com.example.app"), context: unknown))
+        XCTAssertNotNil(refusal(simctl("uninstall", "UDID-1", "com.example.app"), context: unknown))
+        XCTAssertNil(refusal(simctl("list", "devices", "-j"), context: unknown))
+        XCTAssertNil(refusal(simctl("terminate", "UDID-1", "com.example.app")))
+    }
+
     func testTheShapesTheDriversUseAreAllowed() {
         let bridge = path("tool/InAppBridge/build/libFTInAppBridge.dylib")
         let allowed: [[String]] = [
@@ -86,10 +97,7 @@ final class SimctlPolicyTests: XCTestCase {
         XCTAssertNotNil(refusal(simctl("terminate", "UDID-2", "com.example.app")))
         XCTAssertNotNil(refusal(simctl("launch", "booted", "com.example.app")))
         XCTAssertNotNil(refusal(simctl("spawn", "UDID-2", "launchctl", "list")))
-        // ポートだけを指定した run は UDID が親に分からないので、デバイスは問わない
-        var unknown = context
-        unknown.udid = nil
-        XCTAssertNil(refusal(simctl("terminate", "UDID-2", "com.example.app"), context: unknown))
+        // UDID が分からないレーンは testDeviceTargetedCommandsAreRefusedWhenTheLanesUDIDIsUnknown(断る側)
     }
 
     /// 子が書ける場所のアプリを入れさせない(枠の中で作った実行物を Simulator = 枠の外で動かせる)
@@ -282,6 +290,15 @@ final class DevicectlPolicyTests: XCTestCase {
 
     private func refusal(_ arguments: [String]) -> String? {
         BrokerPolicy.check(["xcrun", "devicectl"] + arguments, context: context)?.reason
+    }
+
+    /// **レーンの UDID が分からなければ、デバイスを名指しする devicectl は断る**(simctl と同じ。素通しすると別の実機へ撃てた)
+    func testDeviceTargetedCommandsAreRefusedWhenTheLanesUDIDIsUnknown() {
+        var unknown = context
+        unknown.udid = nil
+        let uninstall = ["xcrun", "devicectl", "device", "uninstall", "app", "--device", "PHONE-2", "com.example.app"]
+        XCTAssertNotNil(BrokerPolicy.check(uninstall, context: unknown))
+        XCTAssertNil(BrokerPolicy.check(["xcrun", "devicectl", "list", "devices", "--json-output", "-", "-q"], context: unknown))
     }
 
     /// ドライバが実際に使う形(`IOSPhysical*` / `BridgeClient`)は通る

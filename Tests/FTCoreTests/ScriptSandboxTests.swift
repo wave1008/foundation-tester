@@ -131,6 +131,22 @@ final class ScriptSandboxTests: XCTestCase {
         }
     }
 
+    /// **シナリオの枠も待ち受けられない**(Seatbelt の localhost は自機の全アドレスで、開けると 0.0.0.0 で待ち受けて
+    /// LAN から繋いだ相手へ応答できた)。全アドレスでもループバックでも断る
+    func testScenarioCannotListenEither() throws {
+        var scenario = scriptScope()
+        scenario.purpose = .scenario
+        for address in ["0.0.0.0", "127.0.0.1"] {
+            do {
+                let result = try runSandboxedOutput(["/usr/bin/nc", "-l", address, "59872", "-w", "1"],
+                                                    scope: scenario, timeout: 5)
+                XCTAssertNotEqual(result.status, 0, "\(address): \(result.output)")
+            } catch ShellError.timedOut {
+                XCTFail("nc kept listening on \(address) inside the scenario sandbox (bind was allowed)")
+            }
+        }
+    }
+
     func testProfileOmitsWhatOnlyScenariosNeed() throws {
         let script = try ScenarioSandbox.profile(scriptScope(ports: [8080]))
         for absent in ["iokit", "MTLCompilerService", "lsd.mapdb", "appleneuralengine", "modelmanager",
@@ -141,9 +157,12 @@ final class ScriptSandboxTests: XCTestCase {
         var scenarioScope = scriptScope()
         scenarioScope.purpose = .scenario
         let scenario = try ScenarioSandbox.profile(scenarioScope)
-        for present in ["iokit", "MTLCompilerService", "lsd.mapdb", "appleneuralengine",
-                        "localhost:*", "network-bind"] {
+        for present in ["iokit", "MTLCompilerService", "lsd.mapdb", "appleneuralengine", "localhost:*"] {
             XCTAssertTrue(scenario.contains(present), present)
+        }
+        // シナリオも待ち受けは開けない(Seatbelt の localhost は自機の全アドレス = LAN から繋げた)
+        for absent in ["network-bind", "network-inbound"] {
+            XCTAssertFalse(scenario.contains(absent), absent)
         }
     }
 

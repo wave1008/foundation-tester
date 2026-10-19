@@ -73,8 +73,14 @@ public enum SimctlPolicy {
         if verb != "launch", !environment.isEmpty {
             return Refusal(reason: "environment variables are only accepted for simctl launch")
         }
+        // **レーンの UDID が分からなければ、デバイスを名指しする操作は断る**(素通しすると、子が別のレーンの
+        // Simulator へ install / uninstall / terminate / privacy reset / openurl を撃てた。UDID が分からないレーンでは
+        // 子もどの Simulator が自分のものか言えないので、正当な呼び出しは無い)
         func device(_ token: String) -> Refusal? {
-            guard let udid = context.udid else { return nil }
+            guard let udid = context.udid else {
+                return Refusal(reason: "simctl \(verb): this lane's Simulator is not known (no UDID), so a command that"
+                    + " names a device is refused")
+            }
             return token == udid || token == context.deviceName
                 ? nil : Refusal(reason: "simctl \(verb) targets another device: \(token)")
         }
@@ -188,8 +194,12 @@ public enum SimctlPolicy {
 public enum DevicectlPolicy {
     public static func check(_ args: [String], context: SimctlPolicy.Context) -> SimctlPolicy.Refusal? {
         func refuse(_ reason: String) -> SimctlPolicy.Refusal { SimctlPolicy.Refusal(reason: reason) }
+        // simctl と同じく、**レーンの UDID が分からなければデバイスを名指しする操作は断る**(素通しすると繋がっている
+        // 別の実機へ撃てた。iOS 実機のレーンは常に UDID を持つので、閉じて失う正当な操作は無い)
         func device(_ token: String) -> SimctlPolicy.Refusal? {
-            guard let udid = context.udid else { return nil }
+            guard let udid = context.udid else {
+                return refuse("devicectl: this lane's device is not known (no UDID), so a command that names a device is refused")
+            }
             return token == udid ? nil : refuse("devicectl targets another device: \(token)")
         }
         /// 親に書かせる出力先。`-`(標準出力)か、子が元々書ける場所だけ(親を使って任意の場所へ書かせない)
