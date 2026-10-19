@@ -894,32 +894,15 @@ extension MCPServer {
         return (snapshot, note)
     }
 
-    /// ref を撃つ直前の照合。**撮り直した木から同じ要素を引き直して、その新しい ref を返す**。
-    /// 引けない(消えた・ghost)なら撃たずに throw する —— 沈黙した誤操作を作らないため。
-    ///
-    /// 直前の木を覚えていないとき(ft_snapshot を挟まずに ref を撃たれたとき)は素通しする:
-    /// 照合の起点が無いので嘘の判断をするより、ブリッジの 404 に任せるほうが正しい。
-    /// **どの世代にも無い ref**(何か撮った後で、それでも一致しない番号)は素通しせず throw する
-    /// —— セッション内で ref は一意なので、世代があるのに見つからないのは番号の書き間違いか、
-    /// 直近5世代より前の snapshot からコピーしてきた番号のどちらか。
-    ///
-    /// **素通しの条件はセッション全体で見る**(実機+仮想デバイス混在の監査)。
-    /// 「この engineKey に世代が無いか」だけで判定すると、engineKey は**指し方**込み
-    /// (`profile:<project>:<name>` / `direct:ios:<port>:`)なので、**同じ機を profile: で撮って
-    /// port: で撃つ**だけで「世代なし」になり、番号がそのままブリッジへ渡ってしまう。
-    /// ブリッジは自前の 1..N で解決するので**別の要素に当たって成功と報告する** ——
-    /// 実機で再現: profile: で撮った木の ref は 70..93 なのに `port:8143 ref:10` が
-    /// `tap [10] done` を返し、ブリッジの #10 = `#btn_input_submit` を実際に押した
-    /// (`submitted=-` → `submitted=physical`)。既存の「機を跨いだ ref」テストが通っていたのは
     /// 「木が画面を代表していない」の申告由来の警告。**覆いを先に聞く**(実機で実測):
     /// 通知センターが出ているときは覆いの検知と `hitTest` の**両方**が発火し、後者は
     /// 「アプリスイッチャーが開いている」という**誤った説明**を並べてしまう。
     /// 面が分かっているならそちらが正確なので、当たったほうだけを言う。
     /// 覆っているときは `hitTest` を聞かずに済むので往復も1つ減る
-    static func screenNotRepresentedWarning(_ found: ElementInfo, driver: AppDriver) async -> String {
+    static func screenNotRepresentedWarning(_ found: ElementInfo, nativeRef: Int, driver: AppDriver) async -> String {
         let covering = await systemUICoveringWarning(found, driver: driver)
         if !covering.isEmpty { return covering }
-        return await treeDoesNotMatchScreenWarning(found, driver: driver)
+        return await treeDoesNotMatchScreenWarning(found, nativeRef: nativeRef, driver: driver)
     }
 
     /// **`screenNotRepresentedWarning` を毎タップ聞き直さない**。
@@ -947,7 +930,8 @@ extension MCPServer {
         if let memo = lastScreenProbe[key], memo.fingerprint == fingerprint {
             return memo.warning
         }
-        let warning = await Self.screenNotRepresentedWarning(found, driver: driver)
+        let warning = await Self.screenNotRepresentedWarning(found, nativeRef: nativeRef(found.ref, args: args),
+                                                             driver: driver)
         lastScreenProbe[key] = (fingerprint, warning)
         return warning
     }
@@ -1094,10 +1078,11 @@ extension MCPServer {
     /// **費用**: 対象1件で 72〜146ms。**MCP のタップ経路だけ**に置く —— こちらは
     /// エージェントが1手ずつ撃つので影響が無い。DSL は1 run で数千回撃つため、
     /// 同じ費用を毎ステップ払う判断は実測してから(今回は入れていない)
-    static func treeDoesNotMatchScreenWarning(_ found: ElementInfo,
+    /// `nativeRef` = ブリッジの番号(`found.ref` はセッションの番号 = 最初の世代以外は別の要素を指す)
+    static func treeDoesNotMatchScreenWarning(_ found: ElementInfo, nativeRef: Int,
                                               driver: AppDriver) async -> String {
         guard TapTargetGeometry.platformShouldResolve(found),
-              (try? await driver.hitTest(ref: found.ref)) == .unresolvable
+              (try? await driver.hitTest(ref: nativeRef)) == .unresolvable
         else { return "" }
         return " (warning: the platform cannot find \(RefGuard.describe(found)) at all, even though"
             + " the tree just listed it — the app is no longer the one being queried (the app"
@@ -1114,24 +1099,49 @@ extension MCPServer {
     ///
     /// **答えられないとき(nil)は黙る**: 旧ブリッジ・引き当て不能・Android はすべてここ。
     /// 木の限界を別の推測で置き換えないため、`false` と断言されたときだけ言う
-    static func hiddenUnderChromeWarning(_ found: ElementInfo, in fresh: SnapshotResponse,
+    /// `nativeRef` = ブリッジの番号(`found.ref` はセッションの番号 = 最初の世代以外は別の要素を指す)
+    static func hiddenUnderChromeWarning(_ found: ElementInfo, nativeRef: Int, in fresh: SnapshotResponse,
                                          driver: AppDriver) async -> String {
         guard TapTargetGeometry.suspectedHiddenUnderChrome(found, in: fresh.elements,
                                                            screen: fresh.screen),
-              (try? await driver.hitTest(ref: found.ref)) == .hittable(false)
+              (try? await driver.hitTest(ref: nativeRef)) == .hittable(false)
         else { return "" }
         return " (warning: the platform reports \(RefGuard.describe(found)) is NOT hittable at its"
             + " reported position — it is scrolled under the navigation bar or another overlay, so"
             + " this tap most likely landed on whatever is drawn there. Scroll it into view first)"
     }
 
-    /// 2台目も MCP で撮っていたからで、**撮っていない宛先へ撃つ形が丸ごと抜けていた**。
-    /// 素通しは `nextRefBase == 0`(このセッションが ref を1つも発行していない)ときだけにする。
+    /// ref を撃つ直前の照合。**撮り直した木から同じ要素を引き直して、その新しい ref を返す**。
+    /// 引けない(消えた・ghost)なら撃たずに throw する —— 沈黙した誤操作を作らないため。
+    ///
+    /// **このセッションが1つも撮っていない**(`nextRefBase == 0`)ときは撮ってから引く(`verifiedElement` と同じ)。
+    /// 素通しにしていた頃は、launch で空になったブリッジの番号表に当たって HTTP の 404 がそのまま出た。
+    /// **どの世代にも無い ref**(何か撮った後で、それでも一致しない番号)は throw する
+    /// —— セッション内で ref は一意なので、世代があるのに見つからないのは番号の書き間違いか、
+    /// 直近5世代より前の snapshot からコピーしてきた番号のどちらか。
+    ///
+    /// **世代の有無はセッション全体で見る**(実機+仮想デバイス混在の監査)。
+    /// 「この engineKey に世代が無いか」だけで判定すると、engineKey は**指し方**込み
+    /// (`profile:<project>:<name>` / `direct:ios:<port>:`)なので、**同じ機を profile: で撮って
+    /// port: で撃つ**だけで「世代なし」になり、番号がそのままブリッジへ渡ってしまう。
+    /// ブリッジは自前の 1..N で解決するので**別の要素に当たって成功と報告する** ——
+    /// 実機で再現: profile: で撮った木の ref は 70..93 なのに `port:8143 ref:10` が
+    /// `tap [10] done` を返し、ブリッジの #10 = `#btn_input_submit` を実際に押した
+    /// (`submitted=-` → `submitted=physical`)。
     /// 返す ref は**セッション ref**(ブリッジへ渡す前に呼び手が `nativeRef` を通すこと)
     func verifiedRef(_ ref: Int, driver: AppDriver,
                              args: [String: Any]) async throws -> (ref: Int, note: String) {
-        guard let resolved = resolveSessionRef(ref, args: args) else {
-            guard nextRefBase > 0 else { return (ref, "") }
+        var sessionRef = resolveSessionRef(ref, args: args)
+        if sessionRef == nil, nextRefBase == 0 {
+            // **1つも撮っていない = 撮ってから引く**(verifiedElement と同じ)。素通しすると、launch で空になった
+            // ブリッジの番号表に当たって HTTP の 404(「Run GET /snapshot first」)がそのまま出た
+            let fresh = try await freshSnapshot(driver, args: args)
+            guard fresh.elements.contains(where: { $0.ref == ref }) else {
+                throw MCPError("unknown ref [\(ref)]. Take an ft_snapshot first")
+            }
+            sessionRef = resolveSessionRef(ref, args: args)
+        }
+        guard let resolved = sessionRef else {
             if let owner = otherKeyHolding(ref, args: args) {
                 throw MCPError(Self.refFromAnotherTargetMessage(
                     ref: ref, takenUnder: owner, firedAt: Self.engineKey(args),
@@ -1221,7 +1231,8 @@ extension MCPServer {
                                         overlayWindows: overlayWindows)
                 + RefGuard.overlapWarning(found: found, in: fresh.elements, screen: fresh.screen,
                                         isAndroid: Self.platformName(args) == "android")
-                + (await Self.hiddenUnderChromeWarning(found, in: fresh, driver: driver))
+                + (await Self.hiddenUnderChromeWarning(found, nativeRef: nativeRef(found.ref, args: args),
+                                                       in: fresh, driver: driver))
                 // SpringBoard に attach している間は「面がアプリを覆っている」系の注記を出さない
                 // —— その面(許可アラート等)のボタンを撃っている最中に「SpringBoard へ attach して
                 // 読め」と言うことになる(実機 iPhone 13 で実際に出た)

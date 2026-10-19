@@ -74,8 +74,8 @@ public enum AndroidSerialResolver {
 
     // MARK: - 文言(1箇所に置く)
 
-    public static func adoptedNote(_ device: Device) -> String {
-        "using the only connected Android device: \(device.label). Pass serial: or profile: to pin it."
+    public static func adoptedNote(_ device: Device, names: TargetArgumentNames) -> String {
+        "using the only connected Android device: \(device.label). Pass \(names.either(names.serial)) to pin it."
     }
 
     public static let noDeviceMessage =
@@ -88,8 +88,8 @@ public enum AndroidSerialResolver {
             + " — a typo, an unplugged device, or an emulator that is not running). Check `adb devices -l`."
     }
 
-    public static func ambiguousMessage(_ devices: [Device]) -> String {
+    public static func ambiguousMessage(_ devices: [Device], names: TargetArgumentNames) -> String {
         "several Android devices are connected: \(devices.map(\.label).joined(separator: ", "))."
-            + " Pass serial: to pick one, or profile: to use a run profile's device."
+            + " \(names.pickOne(names.serial))"
     }
 }

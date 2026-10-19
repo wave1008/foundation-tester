@@ -10,6 +10,7 @@
 
 import FTAndroid
 import FTBridgeClient
+import FTCore
 import Foundation
 
 struct LiveDeviceLease {
@@ -28,7 +29,7 @@ struct LiveDeviceLease {
         let key = platform == "ios"
             ? udid
             // ログは既に driverOptions.makeDriver() 内の解決で1回出ている(重複させない)
-            : try? AndroidTargetResolution.serial(explicit: explicitAndroidSerial, log: { _ in })
+            : try? AndroidTargetResolution.serial(explicit: explicitAndroidSerial, names: .cliManual, log: { _ in })
         guard let key, !key.isEmpty else { return nil }
         return LiveDeviceLease(stateDir: repoRoot.appendingPathComponent(".fleetest"), key: key,
                                pid: ProcessInfo.processInfo.processIdentifier, log: log)

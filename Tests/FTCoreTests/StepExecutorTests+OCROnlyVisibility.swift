@@ -105,6 +105,39 @@ extension StepExecutorTests {
         }
     }
 
+    /// FM が空の転写で「見えない」と答え、OCR の近道が撃てなかった(起動時の探りが読めていない)とき、**OCR の段がオンなら**
+    /// 同じ領域を OCR に読ませ、丸ごと読めれば緑(`ocr-read-what-fm-missed`)。**オフなら OCR を使わず赤のまま**
+    /// (利用者が切った段を使わない)。実測: 負荷の下でプロセスの最初のガードが鮮明な `notify=off` を赤にした
+    func testEmptyFMTranscriptIsConfirmedByOCROnlyWhenTheOCRStageIsOn() async throws {
+        RegionText.modelReadyOverrideForTesting = false
+        RegionText.modelCompileFinishOverrideForTesting = {}
+        defer {
+            RegionText.modelReadyOverrideForTesting = nil
+            RegionText.modelCompileFinishOverrideForTesting = nil
+        }
+        for (mode, expectsPass) in [(RegionTextGateMode.on, true), (.off, false)] {
+            let label = "こんにちは"
+            let primary = FakeAppDriver(name: "primary", log: CallLog(),
+                                        snapshotElements: [[screenFillingTextElement(label: label)]],
+                                        screenshots: [screenFillingTextPNG(label)])
+            let delegate = FakeVisibilityDelegate(visible: false)
+            let executor = StepExecutor(driver: primary, delegate: delegate,
+                                        occlusionInkThreshold: 1000, isAndroid: false, tunables: RunTunables())
+            executor.occlusionOCRMode = mode
+            let outcome = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                                                          timeout: 0, occlusionGuard: true))
+            XCTAssertEqual(delegate.visibleCalls, 1, "\(mode): FM には訊く")
+            if expectsPass {
+                guard case .passed = outcome.status else { XCTFail("\(mode): 実際は \(outcome.status)"); continue }
+                XCTAssertTrue(outcome.notes.contains(.ocrReadWhatFMMissed), "\(mode): \(outcome.notes)")
+            } else {
+                guard case .failed = outcome.status else { XCTFail("\(mode): 実際は \(outcome.status)"); continue }
+                XCTAssertFalse(outcome.notes.contains(.ocrReadWhatFMMissed), "\(mode): \(outcome.notes)")
+                XCTAssertTrue(outcome.notes.contains(.fmEmptyTranscriptOnInk), "\(mode): \(outcome.notes)")
+            }
+        }
+    }
+
     /// FM が「見える」と判定したときも、先頭だけ読めた形(partiallyHidden / ellipsized)を注記に残す。
     /// fullyVisible なら何も付けない
     func testFMVisibleVerdictNotesPartialVisibility() async throws {

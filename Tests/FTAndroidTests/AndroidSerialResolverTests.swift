@@ -6,6 +6,7 @@
 
 import XCTest
 @testable import FTAndroid
+import FTCore
 
 final class AndroidSerialResolverTests: XCTestCase {
 
@@ -46,7 +47,7 @@ final class AndroidSerialResolverTests: XCTestCase {
         let ambiguous = AndroidSerialResolver.ambiguousMessage([
             AndroidSerialResolver.Device(serial: "emulator-5554", avd: "Pixel_9_Android_16"),
             AndroidSerialResolver.Device(serial: "emulator-5556", avd: nil),
-        ])
+        ], names: .mcp)
         XCTAssertTrue(ambiguous.contains("emulator-5554 (Pixel_9_Android_16)"), ambiguous)
         XCTAssertTrue(ambiguous.contains("emulator-5556"), ambiguous)
         XCTAssertTrue(ambiguous.contains("serial:"), ambiguous)

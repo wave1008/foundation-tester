@@ -99,14 +99,12 @@
   - 勝った所有者のログの先頭が消え、負けた理由(already up)は残らない。負けた側の CLI は、勝った側がその後止められた回に勝った側のログを
     自分の失敗理由として表示した。起動の調停そのものは正しい(片方が上げ、もう片方は already up)
 
-- **E2E-CMP の XCUITest で「テキスト入力が正しくechoされること」S0040 の `type(replace:)` の後の echo が空のまま**(2026-10-12・
-  ios-xcuitest の記録 205 回中 20 回赤)
-  - 症状: `type("#field_single", "abc")` → `type("#field_single", "xyz", replace: true)` がどちらも緑のまま、次の
-    `textIs "#txt_echo_single" == "single=xyz"` が `actual "single="` で赤(撃つ前の警告・撃った後の注記なし)
-  - 確かめた範囲: 10/11 22:03(ブリッジ v178)と 10/12 13:27(v179)に同じ形。ブリッジのホーム操作の変更とは別の経路。
-    同じシナリオの Android の不安定さ(docs/verification.md の表)とは失敗する段が違う(あちらは type が赤)
-  - 次に見るもの: 赤の回の type の読み返し(欄の値)と echo の時刻列 —— 欄には入ったが Compose の echo が再構成されていないのか、
-    欄も空なのか(後者なら読み返しが緑にした誤った緑)
+- **E2E-CMP の iOS で「テキスト入力が正しくechoされること」S0040 の `type(replace:)` の後、欄は `xyz` なのに echo が `single=` のまま**
+  (結果 JSON では 10 月に 442 回中 27 回赤。失敗レポートが残っていた 17 件のうち 13 件がこの形 = in-app 7・xcuitest 6。2026-10-20 に分類)
+  - 症状: 失敗時の木で `#field_single` の a11y の値は `xyz`・パスワード欄は空、`textIs "#txt_echo_single" == "single=xyz"` が
+    約 5.6 秒待っても `single=` のまま = 欄の値と Compose の状態が食い違う
+  - もう一つの形(`password=xyz` = 打鍵が別の欄へ入った 4 件)は原因が別で、2026-10-20 に直した(maintainer-notes §92.4)
+  - 次に見るもの: 赤の回の消去と打鍵の時刻列 —— 消去(Backspace の連打)の直後の打鍵が Compose の状態の更新と競っているのか
 
 - **E2E-iOS の XCUITest で「WebViewの中身を操作できること」が赤になる(状態に依存)**(2026-10-08)
   - 症状: `type "#wv_input||#WebView 入力"` の後の `tap "送信"` が、キーボードで WebView が中身を 141pt 上へ送る前の座標を撃ち、
@@ -163,6 +161,24 @@
   - 2026-10-11 の負荷テスト(E2EY-CMP の Android・3 件)で分けられた: 1 件は OCR へ渡した絵 3 枚のアプリ領域が一色(撮った絵が白い)、
     2 件は OCR の生死の確認(既知の文字を描いた絵)も読めなかった(同じ時刻に別プロセスの OCR は読めていた = 機械全体の死ではなく、
     その瞬間の読み手の失敗)。どちらもツールの判定の誤りではなく、高負荷の Emulator の描画と OCR の一時的な失敗
+
+## 直し方は分かっていて、判断か作業が残っているもの(2026-10-20 の負荷テスト)
+
+- **MCP の `ft_results` がときどき 11〜61 秒かかる**(呼び出しの約 8%。10/18・10/19・10/20 の負荷テストで同率)
+  - 場所: `Sources/fleetest-mcp/MCPServer+Results.swift` が毎回 90 日ぶんの結果 JSON を素でデコードする(E2E-CMP は約 7.3 万ファイル・14GB)。
+    CLI の `api results` は出力キャッシュと `RunRecordPack` で速くしてある
+  - 残っている判断: pack は run ごとに1つで実行ファイルの指紋が鍵 = MCP がそのまま使うと CLI と書き潰し合う。MCP 用に置き場を分けると
+    1 プロジェクトあたり約 120MB 増える(保持容量の方針に関わる)
+
+- **ブリッジ側の ref の二重の備え**(iOS)
+  - 場所: ランナー・in-app の `/type` `/clear` 等は ref の番号だけを受け、`refFrames[ref]` を引く(identifier の照合なし)。Android は
+    `refIds` で identifier も渡している
+  - 手がかり: 古い ref で別の要素へ打つ型はホスト側で塞いだ(maintainer-notes §92.4)。ref と一緒に期待する identifier を送り、食い違えば
+    422 で断る形にすれば、ホストの新しい経路が同じ誤りをしても黙って成功しない。ブリッジの版上げを伴う
+
+- **OCR の段をオフにした構成では、FM の空の転写(読める文字に `""`)が今も赤になる**
+  - 場所: `StepExecutor+Assert.swift` の空の転写の確認は `ocrTextVisibilityCheck` がオンのときだけ OCR を使う(オフの段は使わない)
+  - 手がかり: OCR を使わずに直すなら FM へ訊き直す等の別の手が要る。注記 `fm-empty-transcript-on-ink` の率で要否を見る
 
 ## 設計判断で据え置いているもの(直さないと決めた。症状が出たら見直す)
 

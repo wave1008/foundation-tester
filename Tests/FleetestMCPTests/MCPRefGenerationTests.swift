@@ -128,7 +128,7 @@ final class MCPRefGenerationTests: XCTestCase {
     }
 
     /// 5. どの世代にも無い ref で ft_tap(世代列はある)→ 「unknown ref」の throw。
-    /// 世代が無いとき(ft_snapshot を1度も挟んでいないとき)は素通しする既存の不変条件と対比する
+    /// 世代が無いとき(ft_snapshot を1度も挟んでいないとき)は撮ってから引く形と対比する
     func testTapWithARefFromNoGenerationThrowsUnknownRef() async throws {
         driver.snapshotResponse = screen([element(ref: 1, id: "btn_ok", label: "OK")])
         _ = try await server.call(tool: "ft_snapshot", args: [:])
@@ -142,11 +142,15 @@ final class MCPRefGenerationTests: XCTestCase {
         XCTAssertFalse(actions.contains { $0.hasPrefix("tap") }, "撃ってはいけない")
     }
 
-    /// 対比: 世代が1つも無ければ(ft_snapshot を挟んでいない)従来どおり素通しする
-    /// (既存の不変条件。ここが壊れると上のテストと矛盾する動作になる)
-    func testTapWithoutAnyPriorSnapshotStillPassesThrough() async throws {
-        _ = try await server.call(tool: "ft_tap", args: ["ref": 42])
-        XCTAssertEqual(actions, ["tap(ref:42)"])
+    /// 対比: 世代が1つも無ければ(ft_snapshot を挟んでいない)撮ってから引き、撮った木にも無い番号は撃たずに断る
+    func testTapWithoutAnyPriorSnapshotRefusesARefTheFreshTreeLacks() async throws {
+        do {
+            _ = try await server.call(tool: "ft_tap", args: ["ref": 42])
+            XCTFail("撮った木に無い ref は断るはず")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("Take an ft_snapshot first"), error.localizedDescription)
+        }
+        XCTAssertFalse(actions.contains { $0.hasPrefix("tap") }, "撃ってはいけない: \(actions)")
     }
 
     // MARK: - 機を跨いだ ref の衝突(2026-08-13・軸②「2台以上」の監査で実機再現)
@@ -226,12 +230,11 @@ final class MCPRefGenerationTests: XCTestCase {
         }
     }
 
-    /// 陰性対照: **セッションが ref を1つも発行していない**ときの素通しは残す
-    /// (ft_snapshot を挟まずに撃つ呼び方。判断の起点が無いのでブリッジの 404 に任せる)。
-    /// 上の2本が「常に拒否する検出器」になっていないことをここで確かめる
-    func testPassThroughSurvivesOnlyWhileTheSessionHasIssuedNoRefs() async throws {
-        _ = try await server.call(tool: "ft_tap", args: ["port": 8124, "ref": 42])
-        XCTAssertEqual(actions, ["tap(ref:42)"])
+    /// 陰性対照: **セッションが ref を1つも発行していない**とき、ft_snapshot を挟まずに撃つ呼び方は通る
+    /// (撮ってから引く)。上の2本が「常に拒否する検出器」になっていないことをここで確かめる
+    func testFiringWithoutASnapshotWorksWhileTheSessionHasIssuedNoRefs() async throws {
+        _ = try await server.call(tool: "ft_tap", args: ["port": 8124, "ref": 1])
+        XCTAssertEqual(actions.filter { $0.hasPrefix("tap") }, ["tap(ref:1)"])
     }
 
     /// 採番はセッションに1つ(機を跨いでも単調増加)。上のテストが「たまたま番号がずれた」で

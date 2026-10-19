@@ -343,6 +343,36 @@ extension StepExecutorTests {
                        "取りこぼした分を1回だけ追送すること: \(log.entries)")
     }
 
+    /// **追送は読み返しで撮り直した木の番号で撃つ**(in-app も最後の snapshot の表しか持たない)。番号がずれた木で
+    /// 元の番号のまま追送すると別の欄へ入る
+    func testTypeResendsWithTheRefFromTheReadbackTree() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(
+            name: "primary", log: log,
+            snapshotElements: [[inputField(ref: 1, id: "field", value: nil)],
+                              [inputField(ref: 1, id: "other", value: nil),
+                               inputField(ref: 4, id: "field", value: "h")]])
+        primary.verifiesTypedText = false
+        var mutations = 0
+        primary.onMutatingCall = {
+            mutations += 1
+            guard mutations > 1 else { return }
+            primary.snapshotElements.append([self.inputField(ref: 1, id: "other", value: nil),
+                                             self.inputField(ref: 4, id: "field", value: "hi")])
+        }
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("追送後に一致すれば passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(log.entries.filter { $0.hasPrefix("primary.type(ref:") },
+                       ["primary.type(ref:1)", "primary.type(ref:4)"],
+                       "最初は解決時の番号・追送は撮り直した木の番号: \(log.entries)")
+    }
+
     /// 読みが期待値を超えて長い(二重入力)場合: clearInput してから全文を打ち直して成功すること
     func testTypeDeletesExcessAndRetypesOnDoubleCommit() async throws {
         let log = CallLog()
@@ -443,6 +473,78 @@ extension StepExecutorTests {
         }
         XCTAssertEqual(log.entries.filter { $0.hasPrefix("primary.clearInput(ref:1)") }.count, 1,
                        "clearInput は1回だけであること: \(log.entries)")
+    }
+
+    /// **消去の後に撮り直した木の番号で打つ**。ブリッジは撮るたびに ref の表を作り直すので、消去の事後確認で撮った後に
+    /// 撃つ前の番号で打つと別の欄へ入る(実測 E2E-CMP S0040 の xcuitest: 番号が振り直されて元の番号がパスワード欄を指し、
+    /// xyz がパスワード欄へ入ったのに置き換えは成功と返った)
+    func testTypeWithReplaceTypesWithTheRefFromTheTreeTakenAfterClearing() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(
+            name: "primary", log: log,
+            snapshotElements: [[inputField(ref: 1, id: "field_single", value: "abc"),
+                                inputField(ref: 2, id: "field_password", value: nil)],
+                               // 消去の後: 先頭に別の要素が増えて番号がずれ、1 はパスワード欄を指す
+                               [inputField(ref: 1, id: "field_password", value: nil),
+                                inputField(ref: 3, id: "field_single", value: nil)]])
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field_single"), text: "xyz", replace: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertTrue(log.entries.contains("primary.clearInput(ref:1)"), "消去は撮る前の番号(まだ正しい)で撃つ: \(log.entries)")
+        XCTAssertTrue(log.entries.contains { $0.hasPrefix("primary.type(ref:3)") },
+                      "打鍵は消去の後の木の番号で撃つ: \(log.entries)")
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("primary.type(ref:1)") },
+                       "撃つ前の番号で打つと別の欄へ入る: \(log.entries)")
+        XCTAssertTrue(outcome.driverFallback?.contains("replaced the field's prior content") == true,
+                      "前の値は消去の前に控える(引き直した要素は空): \(outcome.driverFallback ?? "nil")")
+    }
+
+    /// **ラベルで指したロケータは、消去の後に現れるヒントの文字に当たりうる**(欄を空にするとヒントが別の staticText として
+    /// 木に出る実装がある)。引き直しは型が同じ要素だけを採り、ヒントの文字へは打たない
+    func testTypeWithReplaceDoesNotRetargetToTheHintTextAfterClearing() async throws {
+        let log = CallLog()
+        let frame = FTRect(x: 16, y: 318, width: 370, height: 57)
+        let field = ElementInfo(ref: 1, type: "textField", identifier: nil, label: "単一行", value: "abc",
+                                placeholder: nil, enabled: true, frame: frame, depth: 0)
+        let hint = ElementInfo(ref: 1, type: "staticText", identifier: nil, label: "単一行", value: nil,
+                               placeholder: nil, enabled: true, frame: FTRect(x: 32, y: 334, width: 60, height: 24), depth: 1)
+        let emptied = ElementInfo(ref: 2, type: "textField", identifier: nil, label: nil, value: nil,
+                                  placeholder: nil, enabled: true, frame: frame, depth: 0)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[field], [hint, emptied]])
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
+        let step = FlowStep(action: "type", locator: FlowLocator(label: "単一行"), text: "xyz", replace: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(log.entries.filter { $0.hasPrefix("primary.type(ref:") }, ["primary.type(ref:2)"],
+                       "ヒントの文字(ref 1)ではなく同じ枠の欄(ref 2)へ打つ: \(log.entries)")
+    }
+
+    /// 消去の後の木で対象を引き直せなければ打たずに失敗する(別の欄へ打つよりよい)
+    func testTypeWithReplaceRefusesWhenTheFieldIsGoneAfterClearing() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(
+            name: "primary", log: log,
+            snapshotElements: [[inputField(ref: 1, id: "field_single", value: "abc")],
+                               [inputField(ref: 1, id: "field_password", value: nil)]])
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field_single"), text: "xyz", replace: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let message) = outcome.status else {
+            XCTFail("failed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertTrue(message.contains("nothing was typed"), message)
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("primary.type(ref:") }, "\(log.entries)")
     }
 
     /// clear 後も残存値が消えない(typeDriver も無い)場合は type を撃たずに失敗させること。

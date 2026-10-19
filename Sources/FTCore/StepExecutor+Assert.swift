@@ -98,6 +98,11 @@ extension StepExecutor {
     /// (本物の覆い・減光)として扱う = 猶予を与えない
     static let firstFrameBlankStdDevCeiling: Double = 1.0
 
+    /// FM の空の転写を OCR で確かめる読みの予算。ここで諦めると誤った赤になるので、`OcclusionVerifier.nearMissOCRBudget`
+    /// (惜しい転写の確認・同じ理由)と同じく Vision の初回コンパイル(実測 25〜47 秒)を待ち切れる長さ。払うのは赤になりかけた回だけで、
+    /// コンパイル済みなら数百 ms で返る。尽きたら判定は FM のまま(赤)
+    static let emptyTranscriptOCRBudget: Duration = .seconds(60)
+
     func occlusionFlip(element: ElementInfo, expectedText: String, elements: [ElementInfo],
                               screen: FTRect, looseMatch: Bool, perStepGuard: Bool?,
                               expectedIsUserText: Bool = false,
@@ -347,6 +352,25 @@ extension StepExecutor {
         if !v.visible, v.observedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            let ink = sd ?? RegionInk.luminanceStdDev(pngData: screenshot, frame: element.frame, screen: screen),
            ink > Self.firstFrameBlankStdDevCeiling {
+            // **OCR の段がオンで、近道が撃てなかった(読みが無い)ときだけ**、同じ領域を OCR に読ませて確かめる。
+            // 近道は「起動時の探りが読めた」ことを条件にするので、負荷の下ではそのプロセスの最初のガードで撃てず、
+            // FM の1回の空振りがそのまま赤になった(maintainer-notes §92.1)。OCR は素通りの根拠にだけ使う
+            // (丸ごと読めたら緑・読めなければ判定は FM のまま)。**オフの構成では読まない**(利用者が切った段を使わない)
+            if occlusionOCRMode == .on, ocrReading == nil {
+                let ocrStart = clock.now
+                let confirmation = await RegionText.resolveWithinBudget(
+                    expected: expectedText, pngData: screenshot, frame: element.frame, screen: screen,
+                    budget: Self.emptyTranscriptOCRBudget)
+                let ocrElapsed = Self.ms(clock.now - ocrStart)
+                phase.guardMs += ocrElapsed
+                phase.ocrMs += ocrElapsed
+                if case .read(readable: true, _) = confirmation {
+                    noteCodesThisStep.insert(.ocrReadWhatFMMissed)
+                    consumeFirstFrameGate(visible: true, sd: sd, screenshot: screenshot, element: element, screen: screen)
+                    pixelsShowedTextThisStep = true
+                    return nil
+                }
+            }
             noteCodesThisStep.insert(.fmEmptyTranscriptOnInk)
             emptyTranscriptOnInk = " — FM transcribed nothing, but the element's area is not blank"
                 + " (luminance stdDev \(String(format: "%.1f", ink)))"

@@ -448,7 +448,7 @@ extension StepExecutor {
         var replaceFallbackNote: String?
         if step.replace == true {
             switch try await performClearInputFocused(phase: &phase) {
-            case .cleared(let fallback):
+            case .cleared(let fallback, _):
                 replaceFallbackNote = fallback
             case .failed(let message):
                 return StepOutcome(status: .failed(message))
@@ -745,7 +745,7 @@ extension StepExecutor {
     // typeDriver(xcuitest)へフォールバックする
     func executeDirectUnfocusedClearInput(phase: inout PhaseAccumulator) async throws -> StepOutcome {
         switch try await performClearInputFocused(phase: &phase) {
-        case .cleared(let fallback):
+        case .cleared(let fallback, _):
             return StepOutcome(status: .passed, driverFallback: fallback)
         case .failed(let message):
             return StepOutcome(status: .failed(message))

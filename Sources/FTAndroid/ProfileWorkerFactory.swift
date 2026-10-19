@@ -536,7 +536,8 @@ public enum ProfileWorkerFactory {
     static let noNetworkInUseExclusionReason =
         "excluded before the run started: the emulator could not reach the host network, and it was not restarted because another session is using it"
 
-    /// ホストへの経路が無い Emulator(`AndroidHealthProbe.hostRoute` が `.unreachable`)を停止と起動で戻す。
+    /// ホストへの経路が無い Emulator(`AndroidHealthProbe.awaitHostRoute` が `.unreachable`)を停止と起動で戻す。
+    /// **素の `hostRoute` で確定しない** —— 起動直後は経路がまだ無い(`hostRouteSettleSeconds` の doc)。
     /// 戻ったら同じ serial のまま本 run に残す(停止と起動は serial が消えるのを待ってから起こすので、通常は同じ番号)。
     /// serial が変わった・まだ届かない・起動できなかった台は除外する(レーンの driver が古い serial を指すため)。
     /// **不明(adb が答えない)は何もしない**。実機は見ない(経路はアプリと回線次第で、10.0.2.2 は Emulator だけの入口)。
@@ -549,7 +550,7 @@ public enum ProfileWorkerFactory {
             for worker in targets {
                 group.addTask {
                     guard let serial = worker.connection.serial,
-                          AndroidHealthProbe.hostRoute(serial: serial) == .unreachable else { return nil }
+                          await AndroidHealthProbe.awaitHostRoute(serial: serial) == .unreachable else { return nil }
                     return worker.label
                 }
             }
@@ -587,7 +588,7 @@ public enum ProfileWorkerFactory {
                 excluded.append(worker)
                 continue
             }
-            guard AndroidHealthProbe.hostRoute(serial: serial) == .reachable else {
+            guard await AndroidHealthProbe.awaitHostRoute(serial: serial) == .reachable else {
                 log("⚠️ \(worker.label): the emulator still cannot reach the host network after a restart"
                     + " — excluding it from dispatch")
                 excluded.append(worker)

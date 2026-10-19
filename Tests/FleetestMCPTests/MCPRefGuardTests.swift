@@ -56,10 +56,32 @@ final class MCPRefGuardTests: XCTestCase {
 
     // MARK: - 撃つ直前の照合(A-1 / A-2)
 
-    /// 前回の木を覚えていなければ素通し(照合の起点が無いので嘘の判断をしない)
-    func testTapWithoutAPriorSnapshotPassesTheRefStraightThrough() async throws {
+    /// 前回の木を覚えていなければ**撮ってから引く**(素通しすると launch で空になったブリッジの番号表に当たって
+    /// HTTP の 404 が出る・MCP を起こし直した直後は前のプロセスの表の同じ番号を照合なしに押す)
+    func testTapWithoutAPriorSnapshotTakesOneBeforeFiring() async throws {
         _ = try await server.call(tool: "ft_tap", args: ["ref": 1])
-        XCTAssertEqual(actions, ["tap(ref:1)"])
+        XCTAssertEqual(actions.first, "snapshot")
+        XCTAssertEqual(actions.filter { $0.hasPrefix("tap") }, ["tap(ref:1)"])
+    }
+
+    /// **hitTest にはブリッジの番号を渡す**。撮り直した木の要素はセッションの番号(base を足した番号)で、
+    /// 2つ目の世代からは別の要素を指す(警告が黙るか別の要素の答えで出ていた)
+    func testHitTestIsAskedWithTheBridgeRefNotTheSessionRef() async throws {
+        driver.snapshotResponse = screen([element(ref: 1, id: "row_a", label: "A", x: 10, y: 100),
+                                          element(ref: 2, id: "row_b", label: "B", x: 10, y: 200)])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "button", id: "com.apple.settings.primaryAppleAccount",
+                    label: "Apple Account", x: 16, y: 168, w: 370, h: 108),
+        ])
+        driver.hitTestAnswer = .unresolvable
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        // 1つ目の世代はネイティブ 1..2 → 2つ目の世代の base は 3 = ネイティブ 1 はセッションの 4
+        XCTAssertEqual(server.nextRefBase, 5)
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 4]))
+        XCTAssertTrue(driver.calls.contains("hitTest(1)"), "\(driver.calls)")
+        XCTAssertFalse(driver.calls.contains("hitTest(4)"), "\(driver.calls)")
+        XCTAssertTrue(text.contains("cannot find"), text)
     }
 
     /// **要素が動いていたら新しい ref へ撃ち直す**。ref はスナップショットごとに振り直されるので、

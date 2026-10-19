@@ -1401,9 +1401,10 @@ extension MCPServer {
     /// (文言は BridgeDiscovery のまま1文字も変えない)
     static func resolveIOSPort(explicit: UInt16?) async throws -> UInt16 {
         do {
-            return try await BridgeTargetResolution.iosPort(explicit: explicit, log: Self.logStderr)
+            return try await BridgeTargetResolution.iosPort(
+                explicit: explicit, names: .mcp, log: Self.logStderr)
         } catch let error as BridgeTargetError {
-            throw MCPError(error.errorDescription ?? "\(error)")
+            throw MCPError(error.message(.mcp))
         }
     }
 
@@ -1413,9 +1414,9 @@ extension MCPServer {
     /// ここは `AndroidTargetError` を `MCPError` へ包むだけ
     static func resolveAndroidSerial(explicit: String?) throws -> String {
         do {
-            return try AndroidTargetResolution.serial(explicit: explicit, log: Self.logStderr)
+            return try AndroidTargetResolution.serial(explicit: explicit, names: .mcp, log: Self.logStderr)
         } catch let error as AndroidTargetError {
-            throw MCPError(error.errorDescription ?? "\(error)")
+            throw MCPError(error.message(.mcp))
         }
     }
 

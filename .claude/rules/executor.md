@@ -132,3 +132,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   (mkdir + 「死んだ持ち主を照合して削除」に戻さない = 照合と削除の間の窓で他者のロックを消す)。親だけが書く場所(`services.lock/`・
   `services/`・`mcp-ask-offered.json` 等)を足したら `ScenarioSandbox.writeDeniedPaths` にも足す(flock は inode に付く = 消されると排他が崩れる)。`services up` の引数(`--physical` / `--serial`)と run の実機のレーンは `ServicesUpOptions` の1箇所で
   `ServicesSession.up` へ入る(呼び手ごとに別の経路を作らない)
+- **ブリッジの ref は、そのドライバが最後に撮った木の中でだけ有効**(ランナー・in-app・Android のブリッジは撮るたびに ref の表を作り直す)。
+  **撮ったら、その後に撃つ ref はその木から引き直す**(`liftCoveredTarget` / `ClearOutcome.cleared(actingDriverSnapshot:)` /
+  `awaitTypeCommit` の `liveRef`)。事後確認・読み返しの撮影の後に撃つ前の `element.ref` を使うと、番号のずれた別の要素に撃って
+  成功を返す(E2E-CMP S0040 で replace の打鍵がパスワード欄へ入った = maintainer-notes §92.4)。引き直せなければ撃たずに失敗にする

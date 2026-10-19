@@ -17,6 +17,47 @@ final class AndroidHealthProbeTests: XCTestCase {
         XCTAssertEqual(AndroidHealthProbe.hostRoute(exitStatus: nil), .unknown)
     }
 
+    /// 起動直後の「経路なし」は待てば消える(実測 boot_completed + 5.6 秒)。出たら即返し、出なければ上限で確定する
+    func testAwaitHostRouteWaitsOutTheBootWindow() async {
+        var answers: [AndroidHealthProbe.HostRoute] = [.unreachable, .unreachable, .reachable, .unreachable]
+        var clock = Date(timeIntervalSince1970: 0)
+        var probes = 0
+        let settled = await AndroidHealthProbe.awaitHostRoute(
+            settleSeconds: 60, probe: { probes += 1; return answers.removeFirst() },
+            sleep: { clock += $0 }, now: { clock })
+        XCTAssertEqual(settled, .reachable)
+        XCTAssertEqual(probes, 3)
+
+        clock = Date(timeIntervalSince1970: 0)
+        probes = 0
+        let broken = await AndroidHealthProbe.awaitHostRoute(
+            settleSeconds: 60, probe: { probes += 1; return .unreachable },
+            sleep: { clock += $0 }, now: { clock })
+        XCTAssertEqual(broken, .unreachable, "上限まで出なければ届かないと確定する")
+        XCTAssertEqual(probes, 61)
+
+        probes = 0
+        answers = [.unreachable, .unknown, .reachable]
+        let unknown = await AndroidHealthProbe.awaitHostRoute(
+            settleSeconds: 60, probe: { probes += 1; return answers.removeFirst() },
+            sleep: { clock += $0 }, now: { clock })
+        XCTAssertEqual(unknown, .unknown, "adb が答えなくなったら待たずに不明を返す(何も撃たない)")
+        XCTAssertEqual(probes, 2)
+    }
+
+    func testHostRouteSettleSecondsIsPinned() {
+        XCTAssertEqual(AndroidHealthProbe.hostRouteSettleSeconds, 60)
+    }
+
+    /// run 前の点検は素の 1 回の読みで「経路なし」を確定しない(起動直後の台を停止と起動 → 除外していた)
+    func testPreRunNetworkTriageWaitsForTheRoute() throws {
+        let source = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/FTAndroid/ProfileWorkerFactory.swift"), encoding: .utf8)
+        XCTAssertFalse(source.contains("AndroidHealthProbe.hostRoute(serial:"))
+        XCTAssertEqual(source.components(separatedBy: "AndroidHealthProbe.awaitHostRoute(serial:").count - 1, 2)
+    }
+
     // MARK: - wifiDisabled
 
     func testWifiDisabledDetectsMultilineOutput() {

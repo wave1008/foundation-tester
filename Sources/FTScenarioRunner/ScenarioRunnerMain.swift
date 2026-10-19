@@ -659,6 +659,7 @@ struct RunScenario: AsyncParsableCommand {
                 }
                 return ["process not running"] + evidence.crashSummary
             }
+            core.appProcessEvidenceRequiresLaunch = afterAllOnly
         }
 
         var debugControl: ScenarioDebugControl?

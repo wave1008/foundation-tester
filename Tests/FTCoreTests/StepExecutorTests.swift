@@ -707,7 +707,7 @@ final class StepExecutorTests: XCTestCase {
     /// 要素が画面全体を覆う frame(=FakeAppDriver の screen と同じ 400x800)にすると、
     /// OcclusionCrop.rect の適応余白は画像境界にクランプされて常に全画面が crop になる。
     /// テキストをどこに描いても crop に収まるので、CGContext の座標系(原点位置)を気にせず書ける。
-    private func screenFillingTextElement(label: String) -> ElementInfo {
+    func screenFillingTextElement(label: String) -> ElementInfo {
         ElementInfo(ref: 1, type: "staticText", identifier: "msg", label: label, value: nil,
                    placeholder: nil, enabled: true,
                    frame: FTRect(x: 0, y: 0, width: 400, height: 800), depth: 0)
@@ -715,7 +715,7 @@ final class StepExecutorTests: XCTestCase {
 
     /// 400x800 の白地に指定文字列を描いた PNG(全画面をほぼ白が占めるので Tier-1 のインク足切りは
     /// 素通りしない = Tier-2 まで確実に到達する)。AppKit(WindowServer)には依存しない
-    private func screenFillingTextPNG(_ text: String) -> Data {
+    func screenFillingTextPNG(_ text: String) -> Data {
         let width = 400, height = 800
         guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
                                   bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),

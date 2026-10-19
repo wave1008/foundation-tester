@@ -480,6 +480,11 @@ public final class FTDriveCore {
     /// 失敗時に「アプリの process が生きているか」を問い合わせる(Android のみ設定される。
     /// foregroundOverlays と同じ注入元・同じ理由)。戻り値は表示行(空 = 言うことなし)
     public var appProcessEvidence: (@Sendable () -> [String])?
+    /// true = このプロセスでアプリを起動したときだけ `appProcessEvidence` を問い合わせる(afterAll の専用の子 =
+    /// アプリを起動せずに走るので、メモの検証の失敗に「プロセスが無い・クラッシュしたかも」を添えると誤った帰属になる)
+    public var appProcessEvidenceRequiresLaunch = false
+    /// このプロセスで launchApp / restartApp を撃ったか(DSL スレッドからのみ触る。clearAppData / installApp は起動しないので数えない)
+    private var appLaunchedInThisProcess = false
     /// stop コマンドで中断した場合 true。expectation 未到達なので成功扱いにしない
     public private(set) var stoppedByUser = false
     /// スクショ時に画面凍結を検知して中断した場合 true。別デバイス再実行対象
@@ -1375,6 +1380,7 @@ public final class FTDriveCore {
         }
         // 上の一覧のうち、アプリを前面へ出すものだけ(起動の前の絵を控える対象)
         let launches = command == "launchApp" || command == "restartApp"
+        if launches { appLaunchedInThisProcess = true }
         if !isAssertion { captureStillFrameBeforeFirstAction() }
         let clock = ContinuousClock()
         let start = clock.now
@@ -1848,7 +1854,8 @@ public final class FTDriveCore {
         }
         // **process が無いことは window の覆いより優先度が高い容疑**なので先に確かめる
         // (プロセスが落ちていれば別プロセスの window どうこうは無意味な情報になる)
-        let processEvidence = appProcessEvidence?() ?? []
+        let processEvidence = appProcessEvidenceRequiresLaunch && !appLaunchedInThisProcess
+            ? [] : appProcessEvidence?() ?? []
         if !processEvidence.isEmpty {
             let recordedProcess = withState { () -> Bool in
                 guard let index = currentSceneIndex else { return false }

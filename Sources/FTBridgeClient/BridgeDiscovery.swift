@@ -309,9 +309,9 @@ public enum BridgeDiscovery {
 
     // MARK: - 文言(1箇所に置く。呼び出し側は throw / ログに載せるだけ)
 
-    public static func adoptedNote(preferred: UInt16, found: Found) -> String {
+    public static func adoptedNote(preferred: UInt16, found: Found, names: TargetArgumentNames) -> String {
         "no bridge is listening on the default port \(preferred) — using the only running one:"
-            + " \(found.label). Pass port: or profile: to pin it."
+            + " \(found.label). Pass \(names.either(names.port)) to pin it."
     }
 
     /// 走査したポート範囲の名乗り。**描くのはここ1箇所**(同じ事実を2箇所の文字列で描いていて、
@@ -321,24 +321,25 @@ public enum BridgeDiscovery {
         "\(portRange.lowerBound)-\(portRange.upperBound)"
     }
 
-    public static func noBridgeMessage(preferred: UInt16) -> String {
-        "no iOS bridge is running (scanned ports \(scannedPortsDescription))."
-            + " Start one with `fleetest bridge up --device \"<simulator name>\"`,"
-            + " or pass profile: to use a run profile's device."
+    public static func noBridgeMessage(preferred: UInt16, names: TargetArgumentNames) -> String {
+        let start = "no iOS bridge is running (scanned ports \(scannedPortsDescription))."
+            + " Start one with `fleetest bridge up --device \"<simulator name>\"`"
+        guard let profile = names.profile else { return start + "." }
+        return start + ", or pass \(profile) to use a run profile's device."
     }
 
     /// **乗り換えない理由まで書く**(黙って待たされたように見えないため)
-    public static func busyMessage(preferred: UInt16) -> String {
+    public static func busyMessage(preferred: UInt16, names: TargetArgumentNames) -> String {
         "the bridge on port \(preferred) is listening but did not answer within 2s — it is busy,"
             + " not gone (XCUITest blocks its thread while waiting for the screen to settle,"
             + " which can take tens of seconds). Retry in a moment."
             + " Another bridge is not used automatically: it would be a different device."
-            + " Pass port: or profile: to target one deliberately."
+            + " Pass \(names.either(names.port)) to target one deliberately."
     }
 
-    public static func ambiguousMessage(preferred: UInt16, found: [Found]) -> String {
+    public static func ambiguousMessage(preferred: UInt16, found: [Found], names: TargetArgumentNames) -> String {
         "no bridge is listening on the default port \(preferred), and several are running:"
             + " \(found.map(\.label).joined(separator: ", "))."
-            + " Pass port: to pick one, or profile: to use a run profile's device."
+            + " \(names.pickOne(names.port))"
     }
 }

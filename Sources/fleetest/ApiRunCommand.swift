@@ -915,7 +915,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                         recorder: recorder, supplyLease: supplyLease, interruptState: interruptState)
                 }
             } else {
-                outcome = await runDirect(
+                outcome = try await runDirect(
                     project: testProject, selected: selected, debugOptions: debugOptions,
                     recorder: recorder, interruptState: interruptState)
             }
@@ -1072,9 +1072,13 @@ struct ApiRunCommand: AsyncParsableCommand {
 
     private func runDirect(project: TestProject, selected: [ScenarioInfo],
                            debugOptions: ScenarioDebugOptions?,
-                           recorder: RunRecorder?, interruptState: RunInterruptState) async -> RunOutcome {
+                           recorder: RunRecorder?, interruptState: RunInterruptState) async throws -> RunOutcome {
         let effectivePlatform = FTCore.DeviceTargetConsistency.defaultPlatform(
             explicit: platform, gaveIOSTarget: !ports.isEmpty, gaveAndroidTarget: serial != nil)
+        // Android の宛先は1回決める(serial 省略で複数台なら断る = 生の adb エラーにしない。`fleetest run` と同じ)。
+        // dry-run はデバイスに触らないので決めない
+        let serial = !dryRun && selected.contains(where: { ($0.platform ?? effectivePlatform) == "android" })
+            ? try DirectAndroidSerial.resolve(explicit: self.serial, names: .cliRun) : self.serial
         // count<=1 は validate() が既に保証済み(--port を2回以上渡すと弾く)
         let effectivePort = ports.first ?? BridgeAPI.defaultPort
         // `--report-dir`/`--default-timeout`/`--scenario-timeout` が優先(run() が両方指定を

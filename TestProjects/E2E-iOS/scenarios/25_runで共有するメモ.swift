@@ -32,17 +32,20 @@ class runで共有するメモ {
     }
 
     // run の全デバイスの仕事が終わった後に専用のプロセスで1回(結果は run ログの「afterAll of runで共有するメモ: passed」)。
-    // beforeAll が書いたメモを読める(片付けの経路でもメモは run 全体)
+    // beforeAll とシナリオが書いたメモを読める(片付けの経路でもメモは run 全体)。scenarioRan は3本とも書く =
+    // `--scenario` で一部だけ流す run でも成り立つ(S0020 だけが書く scratch を見ると、S0020 を含まない run で必ず赤になる)
     func afterAll() {
         readMemo("beforeAllRan").thisIs("yes")
-        readMemo("scratch").thisIs("b")
+        readMemo("scenarioRan").thisIs("yes")
     }
 
     @Test("beforeAll が書いた値を読める(1本目)")
     func S0010() {
         scenario {
             scene(1, "メモを読む") {
-                expectation {
+                action {
+                    writeMemo("scenarioRan", "yes")
+                }.expectation {
                     readMemo("beforeAllRan").thisIs("yes")
                     readMemo("echo").thisIs("single=")
                 }
@@ -55,6 +58,7 @@ class runで共有するメモ {
         scenario {
             scene(1, "メモを読んで書き足す") {
                 action {
+                    writeMemo("scenarioRan", "yes")
                     writeMemo("scratch", "a")
                     writeMemo("scratch", "b")
                 }.expectation {
@@ -69,7 +73,9 @@ class runで共有するメモ {
     func S0030() {
         scenario {
             scene(1, "メモを読む") {
-                expectation {
+                action {
+                    writeMemo("scenarioRan", "yes")
+                }.expectation {
                     readMemo("beforeAllRan").thisIs("yes")
                     readMemo("echo").thisIs("single=")
                 }

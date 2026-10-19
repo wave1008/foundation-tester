@@ -317,6 +317,31 @@ public enum AndroidHealthProbe {
         return hostRoute(exitStatus: result.status)
     }
 
+    /// 「経路なし」を確定するまで経路の出現を待つ上限(秒)。**起動直後の Emulator は `sys.boot_completed` の後もしばらく
+    /// 経路が無い**(実測 M2Ultra・Emulator 13 台の負荷下: boot_completed から 5.6 秒 exit 2 が続き、その後に出た)。
+    /// 待たずに確定すると、起こしたばかりの台を停止と起動 → また直後に測って除外する(M1mini で使える端末 0 = run ごと失敗)。
+    /// 本物の故障(擬似モデムが繋がらない)は待っても出ないので、払うのは故障した台の回復の前だけ。実測の約 10 倍。
+    /// 尽きたら従来どおり「届かない」と確定する
+    public static let hostRouteSettleSeconds: Double = 60
+
+    /// `.unreachable` の間だけ経路の出現を待つ(`.reachable` が出たら即返す・`.unknown` は待たずに返す = 何も撃たない)。
+    /// `probe` / `sleep` / `now` は差し替え口(テスト用)
+    public static func awaitHostRoute(settleSeconds: Double = hostRouteSettleSeconds,
+                                      probe: () -> HostRoute,
+                                      sleep: (Double) async -> Void = { try? await Task.sleep(for: .seconds($0)) },
+                                      now: () -> Date = Date.init) async -> HostRoute {
+        let deadline = now().addingTimeInterval(settleSeconds)
+        while true {
+            let route = probe()
+            guard route == .unreachable, now() < deadline else { return route }
+            await sleep(1)
+        }
+    }
+
+    public static func awaitHostRoute(serial: String) async -> HostRoute {
+        await awaitHostRoute(probe: { hostRoute(serial: serial) })
+    }
+
     static func wifiDisabled(statusOutput: String) -> Bool {
         statusOutput.contains("Wifi is disabled")
     }

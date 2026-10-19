@@ -88,7 +88,7 @@ struct ApiListApps: AsyncParsableCommand {
     /// (ユーザーアプリのみ)には出ない。MCP の ft_list_apps が使う
     /// `AndroidDriver.listPackages(includeSystem:)` と同じものに揃える
     private static func androidApps(serial: String?) throws -> [ApiAppEntry] {
-        let driver = try AndroidDriver(serial: serial)
+        let driver = try AndroidDriver(serial: DirectAndroidSerial.resolve(explicit: serial, names: .cliManual))
         let packages = try driver.listPackages(includeSystem: true)
         return packages
             .map { ApiAppEntry(id: $0.id, name: $0.id, type: $0.isUser ? "user" : "system") }

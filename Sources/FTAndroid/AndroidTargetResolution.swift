@@ -11,7 +11,7 @@ public enum AndroidTargetResolution {
 
     /// serial 無しで adb を撃たない(複数台なら "more than one device/emulator" が生で出る)。
     /// `log` は自動採用したときの理由だけを渡す。
-    public static func serial(explicit: String?, log: (String) -> Void) throws -> String {
+    public static func serial(explicit: String?, names: TargetArgumentNames, log: (String) -> Void) throws -> String {
         if let explicit, !explicit.isEmpty {
             if let refusal = explicitSerialRefusal(
                 serial: explicit, listed: try? AndroidDeviceCatalog.listedSerialStates()) {
@@ -23,7 +23,7 @@ public enum AndroidTargetResolution {
         switch AndroidSerialResolver.decide(explicit: nil, connected: serials) {
         case .use(let serial):
             log(AndroidSerialResolver.adoptedNote(
-                AndroidSerialResolver.describe(serials: [serial])[0]))
+                AndroidSerialResolver.describe(serials: [serial])[0], names: names))
             return serial
         case .none:
             throw AndroidTargetError.noDevice
@@ -45,19 +45,19 @@ extension AndroidTargetResolution {
     }
 }
 
-/// Android デバイス選択の失敗。**文言は持たない** —— `errorDescription` は
-/// AndroidSerialResolver の対応する値/関数をそのまま返す
-public enum AndroidTargetError: Error, LocalizedError, Equatable {
+/// Android デバイス選択の失敗。**文言は持たない** —— `message(_:)` は
+/// AndroidSerialResolver の対応する値/関数へ呼び手の引数名を渡すだけ
+public enum AndroidTargetError: Error, Equatable {
     case noDevice
     case ambiguous(devices: [AndroidSerialResolver.Device])
     case notListed(serial: String)
 
-    public var errorDescription: String? {
+    public func message(_ names: TargetArgumentNames) -> String {
         switch self {
         case .noDevice:
             return AndroidSerialResolver.noDeviceMessage
         case .ambiguous(let devices):
-            return AndroidSerialResolver.ambiguousMessage(devices)
+            return AndroidSerialResolver.ambiguousMessage(devices, names: names)
         case .notListed(let serial):
             return AndroidSerialResolver.notListedMessage(serial: serial)
         }

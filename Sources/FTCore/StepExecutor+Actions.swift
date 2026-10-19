@@ -792,12 +792,33 @@ extension StepExecutor {
             // 空にできていないのに書き足すと検証対象と違う値になるので、clear が失敗したら
             // type を撃たずこのステップを失敗させる
             var replaceFallbackNote: String?
+            // 撃つ前の値(注記用)。replace は消去の後に要素を引き直すので、その前に控える
+            let priorValue = TypeReadback.normalizedValue(of: element)
             if step.replace == true {
                 switch try await performClearInput(element: element, step: step,
                                                    actingDriver: actingDriver, in: snapshot.elements,
                                                    phase: &phase) {
-                case .cleared(let fallback):
+                case .cleared(let fallback, let actingSnapshot):
                     replaceFallbackNote = fallback
+                    // **消去の後は撮り直した木で引き直してから撃つ**(ClearOutcome の doc)。最後の撮影が別のドライバなら
+                    // actingDriver で撮る。引けなければ撃たない(撃つ前の ref で打つと別の欄へ入って成功を報告した)
+                    let current: SnapshotResponse
+                    if let actingSnapshot {
+                        current = actingSnapshot
+                    } else {
+                        // one-shot なので撮る前に arm し直す(elementLimitCeilingLatchedThisStep の doc)
+                        if elementLimitCeilingLatchedThisStep {
+                            actingDriver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling)
+                        }
+                        let snapStart = clock.now
+                        current = try await actingDriver.snapshot()
+                        phase.snapshotMs += Self.ms(clock.now - snapStart)
+                    }
+                    guard let refound = Self.relocateAfterClear(element, step: step, in: current) else {
+                        return StepOutcome(status: failed(.notFound, Self.clearLostTargetMessage(step)))
+                    }
+                    element = refound
+                    snapshot = current
                 case .failed(let message):
                     return StepOutcome(status: .failed(message))
                 }
@@ -805,7 +826,6 @@ extension StepExecutor {
             // **既存値の連結警告**(MCP の同名警告と揃える)。追加のデバイス往復はしない —
             // 撃つ前に解決済みの `element.value` だけを見る。secureTextField は値を伏せる
             // (マスク欄の実値をログへ出さない)。**replace は clear 済みなので空として扱う**
-            let priorValue = TypeReadback.normalizedValue(of: element)
             let existingValue = step.replace == true ? "" : priorValue
             let existingValueNote: String? = step.replace == true
                 ? (priorValue.isEmpty ? nil : "replaced the field's prior content")
@@ -937,7 +957,7 @@ extension StepExecutor {
             switch try await performClearInput(element: element, step: step,
                                                actingDriver: actingDriver, in: snapshot.elements,
                                                phase: &phase) {
-            case .cleared(let fallback):
+            case .cleared(let fallback, _):
                 driverFallback = Self.joinNotes(driverFallback, fallback)
             case .failed(let message):
                 return StepOutcome(status: .failed(message))
@@ -1097,9 +1117,9 @@ extension StepExecutor {
 
         while true {
             rounds += 1
-            guard let actual = try await awaitTypeCommit(driver, element: element, expected: expected,
-                                                          typedOnly: typedOnly,
-                                                          deadline: deadline, phase: &phase) else {
+            guard let (actual, liveRef) = try await awaitTypeCommit(driver, element: element, expected: expected,
+                                                                     typedOnly: typedOnly,
+                                                                     deadline: deadline, phase: &phase) else {
                 return nil   // 読めない/曖昧 = 検証不能なので受理する(TypeReadback.value 参照)
             }
             let target = Self.readbackTarget(expected: expected, typedOnly: typedOnly, actual: actual)
@@ -1142,7 +1162,8 @@ extension StepExecutor {
                 // どちらの由来かここでは分からない)が、不可視文字は表示に現れないので、
                 // 見える文字を送り損ねるより実害が小さい
                 let start = clock.now
-                try await driver.type(ref: element.ref, text: missing)
+                // 読み返しで撮り直した後なので、その木の ref で撃つ(element.ref は別の要素を指しうる)
+                try await driver.type(ref: liveRef, text: missing)
                 phase.actionMs += Self.ms(clock.now - start)
             case .retype where retypes >= TypeReadback.maxRetypes:
                 // 打ち直しても同じ形 = アプリ側の加工。v104 より前と同じく受理する(TypeReadback.maxRetypes)
@@ -1158,8 +1179,8 @@ extension StepExecutor {
                     noteCodesThisStep.insert(.typeRetyped)
                 }
                 let start = clock.now
-                try await driver.clearInput(ref: element.ref)
-                try await driver.type(ref: element.ref, text: target)
+                try await driver.clearInput(ref: liveRef)
+                try await driver.type(ref: liveRef, text: target)
                 phase.actionMs += Self.ms(clock.now - start)
             }
             stagnantRounds = (actual == previous) ? stagnantRounds + 1 : 0
@@ -1239,14 +1260,16 @@ extension StepExecutor {
     /// 戻り値 nil = 読めない/複数候補(検証不能。TypeReadback.value 参照)
     private func awaitTypeCommit(_ driver: AppDriver, element: ElementInfo, expected: String,
                                  typedOnly: String,
-                                 deadline: Date, phase: inout PhaseAccumulator) async throws -> String? {
+                                 deadline: Date, phase: inout PhaseAccumulator) async throws
+        -> (value: String, liveRef: Int)? {
         let clock = ContinuousClock()
         // 正規化(readbackTarget と同じ理由・同じ関数)。呼び出し側(verifyTypedText)は既に
         // 正規化済みを渡すが、ここでも掛け直す(冪等なので害はない) —— これが無いと下の早期終了
         // 条件だけ素通りし、実質一致していても stableSeconds ぶん待たされる
         let expected = FlowMatchMode.normalizeInvisibleCharacters(expected)
         let typedOnly = FlowMatchMode.normalizeInvisibleCharacters(typedOnly)
-        func read() async throws -> String? {
+        /// 値と、最後に撮った木でのその欄の ref(追送・打ち直しはこの ref で撃つ)
+        func read() async throws -> (value: String, liveRef: Int)? {
             // one-shot なので毎回 arm し直す(elementLimitCeilingLatchedThisStep の doc)。
             // 無いと、上限で間引かれて撮り直した木で解決した対象を、この読み返しがまた
             // 既定上限で撮って見失う
@@ -1256,22 +1279,24 @@ extension StepExecutor {
             let start = clock.now
             let snap = try await driver.snapshot()
             phase.snapshotMs += Self.ms(clock.now - start)
-            return TypeReadback.value(of: element, in: snap.elements)
-                .map(FlowMatchMode.normalizeInvisibleCharacters)
+            return TypeReadback.match(of: element, in: snap.elements).map {
+                (FlowMatchMode.normalizeInvisibleCharacters(TypeReadback.normalizedValue(of: $0)), $0.ref)
+            }
         }
-        guard var lastValue = try await read() else { return nil }
+        guard var (lastValue, liveRef) = try await read() else { return nil }
         var lastChange = Date()
         while true {
             // **撃った文字だけになった形も「着いた」**(下の readbackTarget)。これが無いと
             // ヒントを value に載せる欄では毎回 stableSeconds ぶん待たされる
-            if lastValue == expected || lastValue == typedOnly { return lastValue }
-            if Date() >= deadline { return lastValue }
-            if Date().timeIntervalSince(lastChange) >= Self.typeVerifyStableSeconds { return lastValue }
+            if lastValue == expected || lastValue == typedOnly { return (lastValue, liveRef) }
+            if Date() >= deadline { return (lastValue, liveRef) }
+            if Date().timeIntervalSince(lastChange) >= Self.typeVerifyStableSeconds { return (lastValue, liveRef) }
             let waitStart = clock.now
             try? await Task.sleep(for: .seconds(Self.typeVerifyPollSeconds))
             phase.waitMs += Self.ms(clock.now - waitStart)
             guard let current = try await read() else { return nil }
-            if current != lastValue { lastChange = Date(); lastValue = current }
+            liveRef = current.liveRef
+            if current.value != lastValue { lastChange = Date(); lastValue = current.value }
         }
     }
 
@@ -1353,7 +1378,10 @@ extension StepExecutor {
     }
 
     enum ClearOutcome {
-        case cleared(driverFallback: String?)
+        /// `actingDriverSnapshot` = 消去の中で**最後に撮った木が actingDriver のものだったとき**のその木(nil = 撮っていない・
+        /// 最後の撮影が別のドライバ)。ブリッジは撮るたびに ref の表を作り直すので、消去の後に撃つ ref はこの木か
+        /// 撮り直した木から引く(撮る前の ref は別の欄を指しうる = E2E-CMP S0040 で xyz がパスワード欄へ入った)
+        case cleared(driverFallback: String?, actingDriverSnapshot: SnapshotResponse?)
         case failed(String)
     }
 
@@ -1483,16 +1511,16 @@ extension StepExecutor {
             try await td.clearInput(ref: nil)
             phase.actionMs += Self.ms(clock.now - start)
             // 焦点のある欄が木に無ければ読み返す材料が無い。黙って緑にせず注記で言う
-            guard let focusedBefore else { return .cleared(driverFallback: unverifiedClearNote("fell back to XCUITest")) }
+            guard let focusedBefore else { return .cleared(driverFallback: unverifiedClearNote("fell back to XCUITest"), actingDriverSnapshot: nil) }
             if let residual = try await residualClearValue(td, focusedBefore: focusedBefore,
                                                            phase: &phase) {
                 return .failed("clearInput reported success but the value remained: \"\(residual)\"")
             }
-            return .cleared(driverFallback: "fell back to XCUITest")
+            return .cleared(driverFallback: "fell back to XCUITest", actingDriverSnapshot: nil)
         }
         phase.actionMs += Self.ms(clock.now - start)
 
-        guard let focusedBefore else { return .cleared(driverFallback: unverifiedClearNote(nil)) }
+        guard let focusedBefore else { return .cleared(driverFallback: unverifiedClearNote(nil), actingDriverSnapshot: nil) }
         if let residual = try await residualClearValue(driver, focusedBefore: focusedBefore,
                                                        phase: &phase) {
             guard let td = typeDriver else {
@@ -1505,9 +1533,9 @@ extension StepExecutor {
                                                             phase: &phase) {
                 return .failed("clearInput reported success but the value remained: \"\(residual2)\"")
             }
-            return .cleared(driverFallback: "fell back to XCUITest")
+            return .cleared(driverFallback: "fell back to XCUITest", actingDriverSnapshot: nil)
         }
-        return .cleared(driverFallback: nil)
+        return .cleared(driverFallback: nil, actingDriverSnapshot: nil)
     }
 
     /// 焦点のある欄が木に無く読み返せなかったことを注記に立て、括弧書きの文言へ足す(`StepNote.clearInputUnverified`)
@@ -1523,28 +1551,32 @@ extension StepExecutor {
                                    in elements: [ElementInfo],
                                    phase: inout PhaseAccumulator) async throws -> ClearOutcome {
         let clock = ContinuousClock()
-        let before = try await valueBeforeClear(element: element, step: step,
-                                                driver: actingDriver, phase: &phase)
+        let (before, refreshed) = try await valueBeforeClear(element: element, step: step,
+                                                             driver: actingDriver, phase: &phase)
+        // 撮り直したなら、その木の番号で撃つ(撮る前の番号はブリッジの新しい表で別の要素を指しうる)
+        var actingSnapshot = refreshed?.snapshot
         do {
             let start = clock.now
-            try await actingDriver.clearInput(ref: element.ref)
+            try await actingDriver.clearInput(ref: refreshed?.element.ref ?? element.ref)
             phase.actionMs += Self.ms(clock.now - start)
             // 事後検証: ブリッジが 200 を返しても実際に消えていない(嘘の成功)場合の保険。
             // 同じ driver で snapshot を撮り直し、同じ locator を再解決して value を見る
-            if let residual = try await residualClearValue(actingDriver, step: step,
-                                                          before: before, phase: &phase) {
+            let check = try await residualClearValue(actingDriver, step: step, before: before, phase: &phase)
+            actingSnapshot = check.snapshot ?? actingSnapshot
+            if let residual = check.residual {
                 guard let td = typeDriver,
                       try await clearViaTypeDriver(td, step: step, phase: &phase) else {
                     return .failed("clearInput reported success but the value remained: \"\(residual)\"")
                 }
                 if let residual2 = try await residualClearValue(td, step: step,
                                                                before: before,
-                                                               phase: &phase) {
+                                                               phase: &phase).residual {
                     return .failed("clearInput reported success but the value remained: \"\(residual2)\"")
                 }
-                return .cleared(driverFallback: "fell back to XCUITest")
+                // 最後に撮ったのは typeDriver(同じブリッジなら actingDriver の表も作り直されている)
+                return .cleared(driverFallback: "fell back to XCUITest", actingDriverSnapshot: nil)
             }
-            return .cleared(driverFallback: nil)
+            return .cleared(driverFallback: nil, actingDriverSnapshot: actingSnapshot)
         } catch {
             guard DriverError.isClearInputFallback(error), let td = typeDriver else { throw error }
             // **対象が確実に入力欄でないなら撃ち直さない**(type ケースの catch と同じ理由・
@@ -1556,10 +1588,10 @@ extension StepExecutor {
             // フォールバック経路も同じ事後検証を通す(**どのパスなら検証されるかに例外を作らない**。
             // 規則が無いと将来の変更で無検証の穴が復活する)
             if let residual = try await residualClearValue(td, step: step,
-                                                          before: before, phase: &phase) {
+                                                          before: before, phase: &phase).residual {
                 return .failed("clearInput reported success but the value remained: \"\(residual)\"")
             }
-            return .cleared(driverFallback: "fell back to XCUITest")
+            return .cleared(driverFallback: "fell back to XCUITest", actingDriverSnapshot: nil)
         }
     }
 
@@ -1597,9 +1629,11 @@ extension StepExecutor {
     ///
     /// 迂回を持たないドライバ(iOS)は解決時の値を使う(費用ゼロ)。
     /// Android は 1 clearInput につき約 +65ms —— 沈黙する誤判定と引き換えなら安い
+    /// `refreshed` = 撮り直した木とそこで引き直した要素(撮っていない・引けないときは nil)
     private func valueBeforeClear(element: ElementInfo, step: FlowStep, driver clearDriver: AppDriver,
-                                  phase: inout PhaseAccumulator) async throws -> String? {
-        guard clearDriver.supportsCacheBypass else { return element.value }
+                                  phase: inout PhaseAccumulator) async throws
+        -> (value: String?, refreshed: (element: ElementInfo, snapshot: SnapshotResponse)?) {
+        guard clearDriver.supportsCacheBypass else { return (element.value, nil) }
         let clock = ContinuousClock()
         // one-shot なので毎回 arm し直す(elementLimitCeilingLatchedThisStep の doc)
         if elementLimitCeilingLatchedThisStep {
@@ -1609,8 +1643,8 @@ extension StepExecutor {
         let snapshot = try await clearDriver.snapshot(bypassingCache: true)
         phase.snapshotMs += Self.ms(clock.now - start)
         // 撃つ前に消えた/解決できないときは、判定を弱めるより解決時の値を残す
-        guard let (found, _) = LocatorResolver.resolve(step: step, in: snapshot) else { return element.value }
-        return found.value
+        guard let (found, _) = LocatorResolver.resolve(step: step, in: snapshot) else { return (element.value, nil) }
+        return (found.value, (found, snapshot))
     }
 
     /// clearInput 事後検証: 残っている値(nil = 消えている/判定不能)。
@@ -1642,11 +1676,14 @@ extension StepExecutor {
     /// Android の `ACTION_SET_TEXT` は a11y ツリーへの反映が数十〜数百ms遅れ、1発勝負では
     /// 消えているのに古い値を読んで誤検出する(実測。textIs がポーリングで
     /// 吸収しているのと同じ事情)
+    /// `snapshot` = 最後に撮った木(呼び手が次に撃つ ref をこの木から引くため)
     private func residualClearValue(_ driver: AppDriver, step: FlowStep, before: String?,
-                                    phase: inout PhaseAccumulator) async throws -> String? {
+                                    phase: inout PhaseAccumulator) async throws
+        -> (residual: String?, snapshot: SnapshotResponse?) {
         let clock = ContinuousClock()
         var backoff = PollBackoff()
         var residual: String?
+        var last: SnapshotResponse?
         for attempt in 0..<Self.residualClearAttempts {
             if attempt > 0 {
                 let waitStart = clock.now
@@ -1661,10 +1698,11 @@ extension StepExecutor {
             let snapshot = try await driver.snapshot(bypassingCache: Self.bypassOnLastAttempt(
                 attempt: attempt, driver: driver))
             phase.snapshotMs += Self.ms(clock.now - start)
+            last = snapshot
             residual = Self.residualClearValue(step: step, before: before, in: snapshot)
-            if residual == nil { return nil }
+            if residual == nil { return (nil, last) }
         }
-        return residual
+        return (residual, last)
     }
 
     /// clearInput(ref なし)の事後検証: クリア前に覚えた要素を撮り直した snapshot で突き合わせる。
@@ -2061,6 +2099,23 @@ extension StepExecutor {
         case primary
         /// フォールバック・typeDriver で撃つとき
         case driver(AppDriver)
+    }
+
+    /// 消去の後の木で、消した欄と**同じ欄**を引き直す(nil = 撃たない)。順は ①空でない identifier と型が同じ要素が1つ
+    /// ②ロケータの解決結果で型が同じもの ③型と枠が同じ要素が1つ。**ロケータの結果をそのまま採らない** —— ラベル・値で
+    /// 指したロケータは、欄を空にすると現れるヒントの文字(別の staticText になる実装がある = E2E-CMP の iOS)に当たりうる
+    static func relocateAfterClear(_ element: ElementInfo, step: FlowStep, in snapshot: SnapshotResponse) -> ElementInfo? {
+        func only(_ matches: [ElementInfo]) -> ElementInfo? { matches.count == 1 ? matches[0] : nil }
+        if let id = element.identifier, !id.isEmpty {
+            return only(snapshot.elements.filter { $0.identifier == id && $0.type == element.type })
+        }
+        if let (found, _) = LocatorResolver.resolve(step: step, in: snapshot), found.type == element.type { return found }
+        return only(snapshot.elements.filter { $0.type == element.type && $0.frame == element.frame })
+    }
+
+    static func clearLostTargetMessage(_ step: FlowStep) -> String {
+        "the field was cleared for replace:, but it could not be found on the screen afterwards:"
+            + " \(step.locatorSummary) (nothing was typed)"
     }
 
     /// 送った後に対象を見失ったときの失敗文(撃つ前の ref で撃たない理由を言う)

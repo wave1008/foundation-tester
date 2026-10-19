@@ -58,7 +58,7 @@ final class BridgeDiscoveryTests: XCTestCase {
 
     /// 待たせる側の文言は、**死んでいないこと**と再試行を言うこと
     func testBusyMessageSaysItIsNotGone() {
-        let busy = BridgeDiscovery.busyMessage(preferred: 8123)
+        let busy = BridgeDiscovery.busyMessage(preferred: 8123, names: .mcp)
         XCTAssertTrue(busy.contains("8123"), busy)
         XCTAssertTrue(busy.contains("not gone"), busy)
         XCTAssertTrue(busy.contains("Retry"), busy)
@@ -222,19 +222,19 @@ final class BridgeDiscoveryTests: XCTestCase {
 
     /// 文言はそのまま利用者(エージェント)への指示になる。**次の一手が書かれていること**
     func testMessagesCarryPortsDevicesAndTheNextStep() {
-        let adopted = BridgeDiscovery.adoptedNote(preferred: 8123, found: found(8124))
+        let adopted = BridgeDiscovery.adoptedNote(preferred: 8123, found: found(8124), names: .mcp)
         XCTAssertTrue(adopted.contains("8123"), adopted)
         XCTAssertTrue(adopted.contains("8124"), adopted)
         XCTAssertTrue(adopted.contains("iPhone 17 Pro"), adopted)
 
         let ambiguous = BridgeDiscovery.ambiguousMessage(
-            preferred: 8123, found: [found(8124), found(8130, "iPad Pro")])
+            preferred: 8123, found: [found(8124), found(8130, "iPad Pro")], names: .mcp)
         XCTAssertTrue(ambiguous.contains("8124"), ambiguous)
         XCTAssertTrue(ambiguous.contains("iPad Pro"), ambiguous)
         XCTAssertTrue(ambiguous.contains("port:"), ambiguous)
         XCTAssertTrue(ambiguous.contains("profile:"), ambiguous)
 
-        let none = BridgeDiscovery.noBridgeMessage(preferred: 8123)
+        let none = BridgeDiscovery.noBridgeMessage(preferred: 8123, names: .mcp)
         XCTAssertTrue(none.contains("bridge up"), none)
         XCTAssertTrue(none.contains("\(BridgeDiscovery.portRange.upperBound)"), none)
     }

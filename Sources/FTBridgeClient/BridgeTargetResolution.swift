@@ -18,7 +18,7 @@ public enum BridgeTargetResolution {
     /// 既定ポートが死んでいるのは珍しくない —— `bridge up` は稼働中ブリッジの再利用や
     /// pid ファイルの残りで別ポートを選ぶ。
     /// `log` は自動採用したときの理由だけを渡す(呼び手が stderr へ出す/出さないを選ぶ)。
-    public static func iosPort(explicit: UInt16?, log: (String) -> Void) async throws -> UInt16 {
+    public static func iosPort(explicit: UInt16?, names: TargetArgumentNames, log: (String) -> Void) async throws -> UInt16 {
         if let explicit { return explicit }
         let preferred = BridgeAPI.defaultPort
         let repoRoot = try? RepoRoot.find()
@@ -32,7 +32,7 @@ public enum BridgeTargetResolution {
         case .preferredBusy:
             throw BridgeTargetError.busy(preferred: preferred)
         case .adopt(let bridge):
-            log(BridgeDiscovery.adoptedNote(preferred: preferred, found: bridge))
+            log(BridgeDiscovery.adoptedNote(preferred: preferred, found: bridge, names: names))
             return bridge.port
         case .none:
             throw BridgeTargetError.noBridge(preferred: preferred)
@@ -50,22 +50,22 @@ public enum BridgeTargetResolution {
     }
 }
 
-/// iOS ブリッジ探索の失敗。**文言は持たない** —— `errorDescription` は BridgeDiscovery の
-/// 対応する関数(busyMessage 等)をそのまま返す。呼び手はこれを包むだけにすること
-/// (MCPError / ValidationError へ `errorDescription` を渡す。ここで新しい文言を作らない)
-public enum BridgeTargetError: Error, LocalizedError, Equatable {
+/// iOS ブリッジ探索の失敗。**文言は持たない** —— `message(_:)` は BridgeDiscovery の
+/// 対応する関数(busyMessage 等)へ呼び手の引数名を渡すだけ。呼び手はこれを包むだけにすること
+/// (MCPError / ValidationError へ `message(_:)` を渡す。ここで新しい文言を作らない)
+public enum BridgeTargetError: Error, Equatable {
     case busy(preferred: UInt16)
     case noBridge(preferred: UInt16)
     case ambiguous(preferred: UInt16, found: [BridgeDiscovery.Found])
 
-    public var errorDescription: String? {
+    public func message(_ names: TargetArgumentNames) -> String {
         switch self {
         case .busy(let preferred):
-            return BridgeDiscovery.busyMessage(preferred: preferred)
+            return BridgeDiscovery.busyMessage(preferred: preferred, names: names)
         case .noBridge(let preferred):
-            return BridgeDiscovery.noBridgeMessage(preferred: preferred)
+            return BridgeDiscovery.noBridgeMessage(preferred: preferred, names: names)
         case .ambiguous(let preferred, let found):
-            return BridgeDiscovery.ambiguousMessage(preferred: preferred, found: found)
+            return BridgeDiscovery.ambiguousMessage(preferred: preferred, found: found, names: names)
         }
     }
 }

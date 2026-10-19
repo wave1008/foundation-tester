@@ -4257,6 +4257,9 @@ ft_launch の 100ms 後に別の要求を送る)で、修正前は 2 回中 1 �
 - 直し: 全文が欠けたとき、打つ前からある**別の入力欄の値が変わっていれば**打鍵はそちらへ入ったとして 422 で断る
   (`TypeReadback.otherInputThatChanged`。消費の判定より先に見る・追送しない = その欄へ二重に入る)。OTP の消費の経路
   (E2EY 4 SUT の xcuitest)は緑のまま。叩く点がずれた原因(打つ前のタップが隣の欄に当たった)は再現できていない
+- **訂正(2026-10-20)**: この帰属は誤り。ランナーのログでは消去のタップは単一行の欄の中心・打鍵のタップはパスワード欄の中心で、
+  記述に消費の注記も付いていない = 消費の経路は通っていない。本当の原因は撮り直した後の古い ref(§92.4)。§80.1 の検査は別の欄へ入る
+  一般の形への備えとして残す
 
 ### 80.2 React Native の Modal の fade の最中の tap が捨てられる(`PresentedOverlayTapWait`)
 - E2E-RN の xcuitest でダイアログの3本が 4 周で 16 本中 10〜11 本赤。開いた直後のボタンの tap が何も起こさない。
@@ -5084,3 +5087,46 @@ worktree の run がそれらの端末を「別のワークスペースのブリ
 - 直し: 起動引数から持ち主を読み(`BridgeOwnership.runnerProcess`)、答えない別のワークスペースのランナーが居る端末は
   `.blockedByForeign` にする。restart-bridge も run の入口も同じ計画段を通るので両方に効く
 
+## 92. 3時間負荷テストで見つけた不具合(2026-10-20)
+
+リモート3機込み・手元は iOS 6 台 / Android 6 台。台帳は ~/github/wave1008/lt-harness-20261020/ledger.md(リポジトリの外)
+
+### 92.1 可視性検証: FM の空の転写を、OCR の段がオンなら OCR で確かめる
+- §84.4 の残り。探り直し(`requestReprobeIfDue`)は背景なので、OCR の近道が撃てないプロセスの最初のガードでは FM の `""` がそのまま赤
+  (`notify=off`・`wv_result=-`。切り抜きは文字が鮮明・注記は `fm-empty-transcript-on-ink` + `ocr-shortcut-not-ready`・ocrMs 0)
+- 直し: 空の転写で領域に濃淡があり、**`ocrTextVisibilityCheck` がオン**で近道の読みが無いときだけ、StepExecutor が同じ領域を OCR で読む
+  (`emptyTranscriptOCRBudget` = 60 秒。丸ごと読めたら緑・注記 `ocr-read-what-fm-missed`)。**オフの構成では読まない**
+  —— 最初は FM 側の「惜しい転写の OCR 確認」(オフでも読む例外 = ユーザー決定の範囲)に条件を足して広げ、レビューで
+  「OCR をオフにしているのに使う」と指摘されて置き直した。例外の範囲を自分で広げない
+### 92.2 起こしたばかりの Emulator を「ホストへ届かない」と確定していた
+- `ip route get 10.0.2.2` は `sys.boot_completed` の後も約 5.6 秒 exit 2(実測・M2Ultra の負荷下)。run 前の点検はその瞬間を測って停止と起動を撃ち、
+  起こし直した直後にまた測って除外した(M1mini で使える端末 0 = run ごと失敗)
+- 直し: 「経路なし」は `AndroidHealthProbe.awaitHostRoute`(上限 `hostRouteSettleSeconds` = 60 秒・出たら即返す・不明は待たない)で確定する
+
+### 92.3 MCP の ref: 撮っていないセッションの素通しと、hitTest に渡す番号
+- `verifiedRef` は「このセッションが ref を1つも発行していない」とき ref を照合せずブリッジへ素通ししていた。ft_launch でブリッジの番号表が空になった後は
+  HTTP の 404(「run GET /snapshot first」)がそのまま出て、MCP を起こし直した直後は前のプロセスの表の同じ番号を照合なしに押しうる → 撮ってから引く
+  (`verifiedElement` と同じ)
+- `hiddenUnderChromeWarning` / `treeDoesNotMatchScreenWarning` がセッションの番号(base 込み)を `hitTest` に渡していた = 2 つ目の世代からは別の要素を問う
+  (警告が黙るか別の要素の答えで出る。負荷テストのログでは区別できず、再現は未観測)→ `nativeRef` で戻して渡す
+
+### 92.4 type(replace:) が撮り直す前の ref で打ち、別の欄へ入ったのに成功を返した
+- E2E-CMP S0040(xcuitest)の `password=xyz` の形。消去の事後確認(`residualClearValue`)が `/snapshot` を撮るとランナーは ref の表を作り直すのに、
+  打鍵はステップ開始時の ref で撃っていた。番号がずれてパスワード欄を指し、ランナーはそこへ打って読み返し(CMP のパスワード欄は `textView` で
+  伏せ字扱いされず、`•••` は比べられない = `.unverifiable` で受理)、成功を返した
+- 直し(ホストだけ・版上げなし): 消去は最後に actingDriver が撮った木を返し(`ClearOutcome.cleared(actingDriverSnapshot:)`)、type はその木で
+  引き直してから撃つ。引けなければ撃たずに失敗。同型の掃討: Android の消去(`valueBeforeClear` で撮り直した後に古い ref で消していた)と、
+  in-app の読み返しの追送・打ち直し(`awaitTypeCommit` で撮った後に古い ref で撃っていた)も、撮った木の ref で撃つ
+- **規律**: ブリッジの ref はそのドライバが最後に撮った木の中でだけ有効。撮ったら、その後に撃つ ref はその木から引く(`liftCoveredTarget` と同じ)
+- 残り: ブリッジ側の二重の備え(ref と一緒に identifier を送り、食い違えば断る。Android は既に送っている)は版上げを伴うので未着手
+
+### 92.5 CLI の宛先省略
+- `api list-apps` と、`run` / `api run` のプロファイル無し経路が serial 省略時に `AndroidDriver(serial: nil)` を作り、端末が複数だと adb の
+  「more than one device/emulator」が生で出た → `DirectAndroidSerial`(`AndroidTargetResolution` と同じ判定)を通す
+- 宛先省略時の文言が共有層に MCP の引数名(`port:` / `serial:` / `profile:`)で置かれ、CLI の手動駆動コマンド(--profile を持たない)にもそのまま出ていた
+  → 判定は共有のまま文言を呼び手の引数名で組む(`TargetArgumentNames`。既定値なし)
+
+### 92.6 E2E のシナリオ: afterAll が一部だけ流す run で必ず赤
+- 5 SUT の `25_runで共有するメモ` の afterAll が S0020 だけが書く `scratch` を確かめていた → 3 本とも書く `scenarioRan` を見る
+- afterAll の専用の子はアプリを起動しないのに、失敗時に Android の「アプリのプロセスが動いていない(クラッシュしたかも)」を添えていた
+  → このプロセスでアプリを起動していなければ問い合わせない(`appProcessEvidenceRequiresLaunch`)

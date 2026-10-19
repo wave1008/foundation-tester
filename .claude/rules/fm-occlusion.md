@@ -149,7 +149,9 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **読ませる言語は期待文字列から決める**(`languages(for:)`。ASCII の期待値に日本語モデルを
   載せると所要が 2.3 倍になる)。**FM の「惜しい」転写の OCR 読み直し(`OcclusionVerifier.nearMissOCRBudget`)は `ocrTextVisibilityCheck` を見ない**
   (ユーザー決定: 精度優先。off でも字形の取り違えを誤った赤にしない。off はコンパイルしないのでその回だけ初回コンパイルを
-  払いうる。利用者向けは run_profile に明記)。**言語補正は日本語の集合でだけ掛ける**(`usesLanguageCorrection(for:)`。
+  払いうる。利用者向けは run_profile に明記)。**FM の空の転写(領域に濃淡あり)の OCR 確認は `ocrTextVisibilityCheck` がオンのときだけ**
+  (`StepExecutor.emptyTranscriptOCRBudget`。近道の読みが無いときだけ読む)。**「オフでも OCR を使う」は惜しい転写に限ったユーザー決定で、
+  別の確認へ広げない**(広げてレビューで止められた = maintainer-notes §92.1)。**言語補正は日本語の集合でだけ掛ける**(`usesLanguageCorrection(for:)`。
   en ロケールの端末は「単」を中国語フォントの字形で描き、補正なしだと Vision も FM も「单」と読む。
   ASCII は切ったまま = 欠けを推測で埋めさせない)。読めなければ crop を
   拡大して読み直す(`upscaleLadder = [1,2,3]`。×4 で悪化するので上げ続けない。**1行も読めない

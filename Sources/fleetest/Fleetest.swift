@@ -187,9 +187,9 @@ struct DriverOptions: ParsableArguments {
             let resolvedPort: UInt16
             do {
                 resolvedPort = try await BridgeTargetResolution.iosPort(
-                    explicit: port, log: { ConsoleOut.err($0) })
+                    explicit: port, names: .cliManual, log: { ConsoleOut.err($0) })
             } catch let error as BridgeTargetError {
-                throw ValidationError(error.errorDescription ?? "\(error)")
+                throw ValidationError(error.message(.cliManual))
             }
             let driver = PortDirectIOSTarget(port: resolvedPort).makeDriver()
             if let skew = await BridgeTargetResolution.versionSkew(driver: driver) {
@@ -201,13 +201,7 @@ struct DriverOptions: ParsableArguments {
             }
             return driver
         case "android":
-            do {
-                let resolvedSerial = try AndroidTargetResolution.serial(
-                    explicit: serial, log: { ConsoleOut.err($0) })
-                return try AndroidDriver(serial: resolvedSerial)
-            } catch let error as AndroidTargetError {
-                throw ValidationError(error.errorDescription ?? "\(error)")
-            }
+            return try AndroidDriver(serial: DirectAndroidSerial.resolve(explicit: serial, names: .cliManual))
         default:
             throw ValidationError("platform must be ios or android: \(platformOverride ?? resolvedPlatform)")
         }
@@ -1040,15 +1034,20 @@ struct RunScenarios: AsyncParsableCommand {
         let skippedCount: Int
         let interrupted: Bool
         do {
+            // Android の宛先は供給の前に1回決める(serial 省略で複数台なら断る = 生の adb エラーにしない)
+            let androidSerial = items.contains(where: { ($0.info.platform ?? resolvedPlatform) == "android" })
+                ? try DirectAndroidSerial.resolve(explicit: serial, names: .cliRun) : serial
             if iosPorts.count <= 1 {
                 (failedCount, skippedCount, interrupted) = try await runSequential(items, project: testProject,
-                                                      port: iosPorts[0], reportDir: reportDirPath,
+                                                      port: iosPorts[0], androidSerial: androidSerial,
+                                                      reportDir: reportDirPath,
                                                       settings: ScenarioExecutionSettings(noProfileSettings),
                                                       homeOnStart: noProfileSettings.homeOnStart,
                                                       recorder: recorder, interruptState: interruptState)
             } else {
                 (failedCount, skippedCount, interrupted) = await runParallel(items, project: testProject,
-                                                iosPorts: iosPorts, reportDir: reportDirPath,
+                                                iosPorts: iosPorts, androidSerial: androidSerial,
+                                                reportDir: reportDirPath,
                                                 settings: ScenarioExecutionSettings(noProfileSettings),
                                                 homeOnStart: noProfileSettings.homeOnStart,
                                                 recordingConfig: recordingConfig,
@@ -1379,7 +1378,7 @@ struct RunScenarios: AsyncParsableCommand {
     }
 
     private func runSequential(_ items: [ScenarioRunItem], project: TestProject,
-                               port: UInt16, reportDir: String,
+                               port: UInt16, androidSerial serial: String?, reportDir: String,
                                settings: ScenarioExecutionSettings,
                                homeOnStart: Bool,
                                recorder: RunRecorder?, interruptState: RunInterruptState
@@ -1499,7 +1498,7 @@ struct RunScenarios: AsyncParsableCommand {
     // MARK: - 並列実行(iOS はポート毎のワーカー、Android は専用ワーカー)
 
     private func runParallel(_ rawItems: [ScenarioRunItem], project: TestProject,
-                             iosPorts: [UInt16], reportDir: String,
+                             iosPorts: [UInt16], androidSerial serial: String?, reportDir: String,
                              settings: ScenarioExecutionSettings,
                              homeOnStart: Bool,
                              recordingConfig: VideoRecordingConfig?,

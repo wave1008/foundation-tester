@@ -4,6 +4,7 @@
 
 import XCTest
 @testable import FTAndroid
+import FTCore
 
 final class AndroidExplicitSerialRefusalTests: XCTestCase {
 
@@ -27,7 +28,7 @@ final class AndroidExplicitSerialRefusalTests: XCTestCase {
     }
 
     func testMessageNamesTheSerialAndTheCheck() {
-        XCTAssertEqual(AndroidTargetError.notListed(serial: "emulator-9999").errorDescription,
+        XCTAssertEqual(AndroidTargetError.notListed(serial: "emulator-9999").message(.mcp),
             "serial emulator-9999 is not connected to adb on this machine (`adb devices` does not list it"
             + " — a typo, an unplugged device, or an emulator that is not running). Check `adb devices -l`.")
     }
