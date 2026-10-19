@@ -722,10 +722,15 @@ struct RunScenarios: AsyncParsableCommand {
         }
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
         if !skipBuild {
-            try ScenarioHost.build(project: testProject, log: { ConsoleOut.out($0) }, willBuild: {
-                writeProgress(phase: "building")
-                ConsoleOut.out("→ Building scenarios (\(testProject.name))...")
-            })
+            do {
+                try ScenarioHost.build(project: testProject, log: { ConsoleOut.out($0) }, willBuild: {
+                    writeProgress(phase: "building")
+                    ConsoleOut.out("→ Building scenarios (\(testProject.name))...")
+                })
+            } catch {
+                writeJUnitForEarlyFailure(project: testProject, phase: "build", error: error)
+                throw error
+            }
             writeProgress(phase: "preparing")
         } else {
             // 食い違っていても止めない(警告のみ。)
@@ -738,11 +743,17 @@ struct RunScenarios: AsyncParsableCommand {
             throw RunInterruptedBeforeStartError(phase: "after the scenario build")
         }
         PhaseLog.mark("build")
-        let all = try ScenarioHost.listForRun(
-            project: testProject, dryRun: dryRun,
-            compilesOCR: ScenarioHost.ocrCompileNeeded(
-                fmTextVisibilityCheck: earlyResolved?.fm.fmTextVisibilityCheck ?? noProfileSettings.fm.fmTextVisibilityCheck,
-                ocrTextVisibilityCheck: earlyResolved?.ocrTextVisibilityCheck ?? noProfileSettings.ocrTextVisibilityCheck))
+        let all: [ScenarioInfo]
+        do {
+            all = try ScenarioHost.listForRun(
+                project: testProject, dryRun: dryRun,
+                compilesOCR: ScenarioHost.ocrCompileNeeded(
+                    fmTextVisibilityCheck: earlyResolved?.fm.fmTextVisibilityCheck ?? noProfileSettings.fm.fmTextVisibilityCheck,
+                    ocrTextVisibilityCheck: earlyResolved?.ocrTextVisibilityCheck ?? noProfileSettings.ocrTextVisibilityCheck))
+        } catch {
+            writeJUnitForEarlyFailure(project: testProject, phase: "scenario list", error: error)
+            throw error
+        }
         // FM の常駐プロセス(画像を伴う FM の呼び出しを1つのプロセスに集める。FTCore/FMServe.swift 冒頭)。
         // シナリオのプロセスを起こす前に用意する(子の環境とサンドボックスの許可がソケットのパスを読む)
         let fmForServe = earlyResolved?.fm ?? noProfileSettings.fm
@@ -907,6 +918,9 @@ struct RunScenarios: AsyncParsableCommand {
                                 // resolve 前の失敗で計測モードかどうかを断定できない
                                 responseMeasurement: nil,
                                 abortReason: error.localizedDescription)
+                // JUnit を書かないと CI の取り込みが「レポートが無い」で止まり、落ちた理由は標準出力にしか残らない
+                try? writeJUnitIfRequested(project: testProject, recorder: recorder,
+                                           abortedBeforeStart: (items, error.localizedDescription))
                 throw error
             }
             let failedCount = runSummary.failed
@@ -1029,6 +1043,8 @@ struct RunScenarios: AsyncParsableCommand {
                             servicesWarnings: [],
                             responseMeasurement: nil,
                             abortReason: error.localizedDescription)
+            try? writeJUnitIfRequested(project: testProject, recorder: recorder,
+                                       abortedBeforeStart: (items, error.localizedDescription))
             throw error
         }
         // --profile 無しの経路(runSequential/runParallel)は `--set` の上書きを当てた既定
@@ -1174,16 +1190,41 @@ struct RunScenarios: AsyncParsableCommand {
     /// --junit: run の記録(runDir/scenarios/*.json)から JUnit XML を書き出す。
     /// **ExitCode(1) を投げる前に呼ぶ**(失敗 run こそ CI がレポートを要る)。
     /// 書き込み失敗は run の成否を変えない(warn のみ。CI 側はファイル欠如で気付ける)
-    private func writeJUnitIfRequested(project: TestProject, recorder: RunRecorder) throws {
+    /// `abortedBeforeStart`: 供給段で落ちた run(1本も始まっていない)の対象と理由。
+    /// 渡すと記録の無いシナリオを `<failure>` にする(ci.md「JUnit は失敗時も書かれる」の契約)
+    private func writeJUnitIfRequested(project: TestProject, recorder: RunRecorder,
+                                       abortedBeforeStart: (items: [ScenarioRunItem], reason: String)? = nil) throws {
         guard let junit else { return }
         let records = RunResultsStore.records(runDir: recorder.runDir)
-        let xml = JUnitReportWriter.xml(project: project.name, records: records)
+        let xml = abortedBeforeStart.map { aborted in
+            JUnitReportWriter.xml(
+                project: project.name, records: records,
+                unstarted: aborted.items.map { ($0.info.id, $0.info.title, $0.info.platform ?? "") },
+                abortReason: aborted.reason)
+        } ?? JUnitReportWriter.xml(project: project.name, records: records)
         let url = URL(fileURLWithPath: junit)
         do {
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try xml.write(to: url, atomically: true, encoding: .utf8)
             ConsoleOut.out("📄 JUnit report: \(junit) (\(records.count) testcase(s))")
+        } catch {
+            ConsoleOut.out("⚠️ Failed to write the JUnit report: \(junit) (\(error.localizedDescription))")
+        }
+    }
+
+    /// --junit: シナリオ一覧が得られる前(ビルド・一覧の取得)に落ちた run の JUnit。段階を1つの `<failure>` にする。
+    /// 打ち間違い(シナリオ名・フォルダ名)と中断は CI の失敗ではないので呼ばない。書き込み失敗は warn だけ
+    private func writeJUnitForEarlyFailure(project: TestProject, phase: String, error: Error) {
+        guard let junit else { return }
+        let url = URL(fileURLWithPath: junit)
+        let xml = JUnitReportWriter.xml(project: project.name, failedPhase: phase,
+                                        reason: error.localizedDescription)
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try xml.write(to: url, atomically: true, encoding: .utf8)
+            ConsoleOut.out("📄 JUnit report: \(junit) (the \(phase) step failed)")
         } catch {
             ConsoleOut.out("⚠️ Failed to write the JUnit report: \(junit) (\(error.localizedDescription))")
         }

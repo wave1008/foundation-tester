@@ -45,6 +45,43 @@ public enum JUnitReportWriter {
         """ + "\n"
     }
 
+    /// 供給段(ワーカー構築・install 等)で run が1本も始まらずに落ちたときの JUnit。
+    /// `unstarted` のうち記録の無いシナリオを `<failure>`(理由 = abortReason)として足す。
+    /// **記録は書かない**(結果 DB には run.json の abortReason だけが残る = 集計を変えない)。
+    /// 足す形は `.noWorker` の合成レコード = `isSkipped` が `<failure>` に倒す形と対
+    public static func xml(project: String, records: [ScenarioRunRecord],
+                           unstarted: [(id: String, title: String?, platform: String)],
+                           abortReason: String) -> String {
+        let recorded = Set(records.map(\.scenarioID))
+        let startedAt = ISO8601DateFormatter().string(from: Date())
+        let synthetic = unstarted.filter { !recorded.contains($0.id) }.map {
+            ScenarioRunRecord(
+                scenarioID: $0.id, title: $0.title, platform: $0.platform, passed: false,
+                startedAt: startedAt, durationMs: 0, steps: StepCountsRecord(total: 1, skipped: 1),
+                failedSteps: [FailedStepRecord(
+                    index: 0, description: "the run aborted before this scenario started: " + abortReason)],
+                skipKind: .noWorker)
+        }
+        return xml(project: project, records: records + synthetic)
+    }
+
+    /// シナリオ一覧が得られる前(シナリオのビルド・一覧の取得)に run が落ちたときの JUnit。
+    /// シナリオ単位の `<testcase>` は作れないので、段階(`phase` = "build" 等)を1つの `<failure>` にする。
+    /// 書かないと、CI でいちばん多い失敗(シナリオのコンパイルエラー)で取り込みが「レポートが無い」で止まる
+    public static func xml(project: String, failedPhase phase: String, reason: String) -> String {
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <testsuites name="\(escape(project))" tests="1" failures="1" errors="0" skipped="0" time="0.000">
+          <testsuite name="fleetest" tests="1" failures="1" errors="0" skipped="0" time="0.000">
+            <testcase classname="fleetest" name="\(escape(phase))" time="0.000">
+              <failure message="\(escape("the run failed at the \(phase) step, before any scenario started"))">\
+        \(escape(reason))</failure>
+            </testcase>
+          </testsuite>
+        </testsuites>
+        """ + "\n"
+    }
+
     /// scenarioID の最初の "." より前(クラス名)。"." が無ければ全体
     static func className(of scenarioID: String) -> String {
         scenarioID.firstIndex(of: ".").map { String(scenarioID[..<$0]) } ?? scenarioID

@@ -30,6 +30,9 @@ fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml
 ```
 
 - **exit code**: 0 = 全シナリオ成功 / 1 = 失敗あり(JUnit は**失敗時も書かれる**)。
+  **始まる前に落ちた run も書く**: 供給段の失敗は記録の無いシナリオを `.noWorker` 形の `<failure>` で合成
+  (`JUnitReportWriter.xml(records:unstarted:abortReason:)`。結果 DB には書かない)・シナリオのビルド / 一覧の取得の失敗は
+  一覧が無いので段階1つの `<failure>`(`xml(failedPhase:)`)。打ち間違い(`ValidationError`)と中断では書かない
   **書けない出力先は run を始める前に断る**(exit 64)—— レポートは run 後に書くので、
   親ディレクトリが無い程度なら通すが、途中がファイル・書き込み不可のパスは即座に落とす
   (20 分走ってから「書けなかった」と言わない)
@@ -117,7 +120,11 @@ CI 用のシナリオ単位リトライは**実装していない**。自動リ�
   (`fleetest results insights` は回帰・インフラ起因失敗・セレクタ陳腐化も検出)
 - **ローカル再現**: `fleetest run --failed` が前回失敗したシナリオだけを再実行する
 - デバイス凍結など**インフラ起因の失敗は run 内で自動で振り直される**(結果取り消し+
-  別デバイスで再実行。JUnit には最終結果だけが載る)。ここはリトライではなく回復処理
+  再実行。JUnit には最終結果だけが載る)。ここはリトライではなく回復処理
+- **振り直しはシナリオ単位の再実行**(同じデバイスのことも別のデバイスのこともある。`RunOrchestrator.requeuesWithoutRetiring`)。
+  表示の凍結を確定したデバイスでは直前の**成功**も捨てて振り直す(docs/design.md の DisplayFreezeWatch)。
+  ステップ単位の「撃ち直さない」原則(CLAUDE.md)の例外で、取り消せない操作を含むシナリオは1 run で2回走りうる。
+  止める口は無い(利用者向けは docs/user-docs/in_action/ci_ja.md に明記)
 
 ## 関連
 

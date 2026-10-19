@@ -82,6 +82,36 @@ final class JUnitReportWriterTests: XCTestCase {
         XCTAssertFalse(intended.contains("<failure"), intended)
     }
 
+    /// **供給段で落ちた run も JUnit に `<failure>` で載る**(ci.md「JUnit は失敗時も書かれる」)。
+    /// 記録の残っているシナリオ(run の前に合成した OS 対象外)は二重に足さない
+    func testRunAbortedBeforeStartListsUnstartedScenariosAsFailures() {
+        let notApplicable = ScenarioRunRecord(
+            runID: "r1", scenarioID: "設定.S0020", platform: "android", passed: false,
+            startedAt: "2026-07-30T00:00:00Z", durationMs: 0, steps: StepCountsRecord(total: 1, skipped: 1),
+            failedSteps: [FailedStepRecord(index: 0, description: "declared for android")],
+            skipKind: .notApplicable)
+        let xml = JUnitReportWriter.xml(
+            project: "E2E", records: [notApplicable],
+            unstarted: [("ログイン.S0010", "ログインできる", "ios"), ("設定.S0020", nil, "android")],
+            abortReason: "no usable devices")
+        XCTAssertTrue(xml.contains(
+            #"<testsuites name="E2E" tests="2" failures="1" errors="0" skipped="1""#), xml)
+        XCTAssertTrue(xml.contains(
+            #"<failure message="the run aborted before this scenario started: no usable devices">"#), xml)
+        XCTAssertTrue(xml.contains(#"<skipped message="declared for android"/>"#), xml)
+    }
+
+    /// **シナリオ一覧の前(ビルド)で落ちた run も JUnit に `<failure>` で載る**。段階が testcase の名前になり、
+    /// 理由(コンパイルエラーの末尾)は本文にエスケープされて入る = XML として壊れない
+    func testRunFailedBeforeScenarioListBecomesOneFailedPhase() {
+        let xml = JUnitReportWriter.xml(project: "E2E", failedPhase: "build",
+                                        reason: "Login.swift:12: error: cannot find 'tapp' in scope <&>")
+        XCTAssertTrue(xml.contains(
+            #"<testsuites name="E2E" tests="1" failures="1" errors="0" skipped="0""#), xml)
+        XCTAssertTrue(xml.contains(#"<testcase classname="fleetest" name="build""#), xml)
+        XCTAssertTrue(xml.contains("cannot find &apos;tapp&apos; in scope &lt;&amp;&gt;</failure>"), xml)
+    }
+
     /// recordSkipped の形(全ステップ skipped・failed 0・skipKind なし = 旧形式)は failure ではなく skipped
     func testSkippedRecordBecomesSkippedNotFailure() {
         let xml = JUnitReportWriter.xml(project: "E2E", records: [

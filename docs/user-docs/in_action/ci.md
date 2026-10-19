@@ -41,7 +41,9 @@ fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml
 ```
 
 - **Exit code**: `0` = every scenario passed, `1` = at least one failure (JUnit is still written
-  on failure).
+  on failure). When the run fails before any scenario starts, JUnit is written too: a failure while preparing
+  devices lists each scenario as a failure, and a failure to build the scenarios shows up as a single failed
+  testcase named `build`. Mistakes in the command line itself (an unknown scenario or folder name) write no JUnit.
 - Device provisioning (Simulator boot, bridge) is handled automatically by a `--profile` run.
   Consecutive jobs reuse an already-running bridge; only the first run pays the cold-start cost.
 - **Investigating a failure**: `TestProjects/<name>/reports/` holds a Markdown report per failure
@@ -163,8 +165,14 @@ Instead:
   signature, and stale selectors).
 - **Local reproduction**: `fleetest run --failed` re-runs only the scenarios that failed last time.
 - Infrastructure-caused failures (e.g. a frozen device) are automatically requeued *within* a run
-  — the failed result is discarded and the scenario reruns on another device, so only the final
+  — the failed result is discarded and the scenario reruns, so only the final
   result reaches JUnit. This is a recovery mechanism, not a retry policy.
+- **A requeue runs the scenario again from the start** (on the same device or on another one).
+  When a device's display is confirmed to have frozen, the scenario that **passed** just before on that device is also
+  discarded and run again (it was judged on a frozen screen). A scenario with an operation that cannot be undone, such as
+  sending, purchasing or registering, can therefore run twice within one run. There is no setting to turn requeuing off.
+  Point operations that cannot be undone at an environment where running them twice does no harm (test payments, a
+  staging server).
 
 What to do once you have found one is in "What to do once you find one" in [Reading Results and Investigating Failures](../tutorial/investigating_failures.md).
 

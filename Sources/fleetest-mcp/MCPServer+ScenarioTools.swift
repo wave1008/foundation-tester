@@ -232,7 +232,8 @@ extension MCPServer {
             // 経由(profile あり)はそちらが `RunEnvironment.apply(resolved)` を呼ぶので、ここは
             // profile 無しのときだけ要る
             RunEnvironment.apply(DeviceIndependentRunSettings.resolve(DeviceIndependentRunSettings.profileLessBase))
-            let platform = infos.first?.platform ?? (args["platform"] as? String ?? "ios")
+            let platform = try Self.profileLessScenarioPlatform(declared: infos.first?.platform,
+                                                                scenarioID: infos.first?.id ?? "", args: args)
 
             // @TestClass(app:) が無いシナリオの既定アプリを、このプロジェクトのアプリプロファイル
             // (profiles/apps/*.json)から解決する。profile 引数が無いこの経路だけが持つ穴
@@ -447,6 +448,32 @@ extension MCPServer {
             + " and the scenario declares no @TestClass(app:) — add @TestClass(app:"
             + " \"<bundleID>\") to the scenario, or run it with profile: <run profile name>"
             + " (then drop udid/port/serial)"
+    }
+
+    /// profile 無しの ft_run_scenario の platform。**シナリオの宣言が呼び手の宛先を黙って上書きしない** ——
+    /// 宣言と、呼び手が名指しした宛先(platform / udid / port / serial。記憶から差し込まれた宛先も含む)の
+    /// OS が食い違えば断る。上書きすると、名指しした Emulator ではなく走査で見つかった iOS のブリッジのデバイスで
+    /// シナリオ(clearAppData を含みうる)が走る。宣言が無ければ呼び手の宛先から決める
+    /// (`serial` だけなら android = `DeviceTargetConsistency.defaultPlatform`。`?? "ios"` に倒すと同じ取り違えになる)。
+    /// **記憶から差し込まれた宛先(`injectedFromMemory`)では断らず宣言を採る** —— 記憶は platform も差し込むので
+    /// 呼び手が名指ししたかを区別できず、断ると別 OS のシナリオが明示しない限り回せなくなる。差し込まれた
+    /// 別 OS の宛先は読まれない(iOS の枝は port だけ・Android の枝は serial だけを読む)
+    static func profileLessScenarioPlatform(declared: String?, scenarioID: String,
+                                            args: [String: Any]) throws -> String {
+        let explicit = (args["platform"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let gaveIOS = argsGaveIOSTarget(args)
+        let gaveAndroid = argsGaveAndroidTarget(args)
+        let requested = DeviceTargetConsistency.defaultPlatform(
+            explicit: explicit, gaveIOSTarget: gaveIOS, gaveAndroidTarget: gaveAndroid)
+        guard let declared else { return requested }
+        guard !injectedFromMemory(args), explicit != nil || gaveIOS || gaveAndroid,
+              requested != declared else { return declared }
+        let named = explicit.map { "platform \"\($0)\"" }
+            ?? (gaveAndroid ? "serial (an Android device)" : "udid/port (an iOS device)")
+        throw MCPError("\(scenarioID) is declared for \(declared), but this call names \(named)"
+            + " — refusing to run it on a device that was not named. Pass the \(declared) device's"
+            + " target (\(declared == "ios" ? "udid or port" : "serial")), or drop platform/udid/port/serial"
+            + " to use the \(declared) device this server finds")
     }
 
     static func defaultAppFromProjectApps(
