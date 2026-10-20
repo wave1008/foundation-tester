@@ -1549,7 +1549,9 @@ public struct BridgeProvisioner: Sendable {
                 try? FileManager.default.removeItem(
                     at: InAppBridgeState.url(stateDir: stateDir, port: port))
             }
-            supplyStage?(name, "ios", .bridge)
+            // 起動済みの端末(実機を含む)だけここで立てる。未起動の Simulator は起動の後(下)で立てる ——
+            // 先に立てると「ブリッジを起動中」が「デバイスを起動中」より前に一瞬出る
+            if sim.physical || sim.booted { supplyStage?(name, "ios", .bridge) }
             log("→ \(name): starting the \(engine) bridge (port \(port), \(sim.name) \(sim.os))...")
             if engine == "inapp" {
                 // planBridge が bundleID 必須を検証済み(ここは保険)
