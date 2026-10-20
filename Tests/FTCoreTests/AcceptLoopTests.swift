@@ -63,6 +63,21 @@ final class AcceptLoopTests: XCTestCase {
         loop.stop()  // 2回目も返る
     }
 
+    /// stop() を呼ばずに手放しても待ち受けは閉じる(閉じなければ同じ番号へ立て直せないまま残る)
+    func testDroppingWithoutStopClosesTheListener() throws {
+        let first = try Self.listen(port: 0)
+        let port = Self.port(of: first)
+        _ = try AcceptLoop(listener: first, name: "test-dropped") { client in close(client); return true }
+        let deadline = Date().addingTimeInterval(5)
+        var rebound: Int32?
+        while rebound == nil, Date() < deadline {
+            rebound = try? Self.listen(port: port)
+            if rebound == nil { usleep(20_000) }
+        }
+        let fd = try XCTUnwrap(rebound, "手放した AcceptLoop の待ち受けが 5 秒たっても閉じていない")
+        close(fd)
+    }
+
     /// 生の accept を書いてよいのは、待ち受けを同じ関数(= 同じスレッド)の defer で閉じる型だけ。
     /// 待ち受けを持つ型を足すときは AcceptLoop を通すか、ここへ理由を書く
     private static let rawAcceptAllowed: [String: String] = [

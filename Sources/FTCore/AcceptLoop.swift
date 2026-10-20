@@ -30,6 +30,10 @@ public final class AcceptLoop: Sendable {
         thread.start()
     }
 
+    /// 持ち主が stop() を呼ばずに手放しても受付のスレッドを起こす(起こさないと wake の書き口・待ち受け・スレッドが
+    /// プロセスの終わりまで残る)。**待たない**: 最後の参照が受付・接続のスレッドの上で外れうる
+    deinit { requestStop() }
+
     /// 受付を止め、待ち受けが閉じ終わるまで待つ(何度呼んでもよい)。**受付・接続のスレッドの上からは呼ばない**
     /// (自分を待って詰まる。そこからは `requestStop`)
     public func stop() {
