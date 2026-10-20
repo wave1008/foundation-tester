@@ -54,8 +54,10 @@ struct MCPResultsRequest: Sendable, Equatable {
             minRuns: try MCPServer.intArgument(args, "minRuns"))
     }
 
-    /// CLI(`fleetest results <query>`)と同じ文面。**デバイス・ブリッジに触らない**
-    func render(project: TestProject, now: Date = Date()) throws -> String {
+    /// CLI(`fleetest results <query>`)と同じ文面。**デバイス・ブリッジに触らない**。
+    /// `memo` はサーバが持つ完了 run の解読結果(2回目以降は新しい run だけを読む)。中身は縮小記録なので
+    /// trend だけは元ファイルを読み直す(`RunResultsStore.fullRecords`)
+    func render(project: TestProject, memo: RunRecordMemo? = nil, now: Date = Date()) throws -> String {
         let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
         if query == "log" {
             let sections: [ResultsLogReport.Section]
@@ -71,35 +73,39 @@ struct MCPResultsRequest: Sendable, Equatable {
         guard let sinceDate = RunResultsQuery.parseSince(since, referenceDate: now) else {
             throw MCPError(TimeBoundParse.rejection(option: "since", raw: since))
         }
+        func scannedEntries() -> [RunResultsStore.ScannedRecord] {
+            RunResultsStore.scanRunsAndRecords(resultsDir: resultsDir, since: sinceDate, memo: memo).entries
+        }
         switch query {
         case "list":
             let runs = RunResultsStore.scanRuns(resultsDir: resultsDir, since: sinceDate)
             return ResultsRendering.list(
                 RunResultsQuery.recentRuns(runs, limit: limit ?? ResultsRendering.defaultListLimit))
         case "summary":
-            let records = RunResultsStore.scanRecords(resultsDir: resultsDir, since: sinceDate)
+            let records = scannedEntries().map(\.record)
             let filtered = scenario.map { id in records.filter { $0.scenarioID == id } } ?? records
             return ResultsRendering.summary(RunResultsQuery.scenarioSummary(filtered, recentRuns: .max))
         case "flaky":
-            let records = RunResultsStore.scanRecords(resultsDir: resultsDir, since: sinceDate)
+            let records = scannedEntries().map(\.record)
             let minRuns = minRuns ?? ResultsRendering.defaultMinRuns
             return ResultsRendering.flaky(
                 RunResultsQuery.flakyScenarios(records, minRuns: minRuns, recentRuns: .max),
                 minRuns: minRuns, minRunsOption: "minRuns")
         case "trend":
-            let records = RunResultsStore.scanRecords(resultsDir: resultsDir, since: sinceDate)
             let id = scenario ?? ""
+            let records = RunResultsStore.fullRecords(entries: scannedEntries(), scenarioID: id)
             return ResultsRendering.trend(RunResultsQuery.trend(records, scenarioID: id), scenario: id)
         case "devices":
-            let records = RunResultsStore.scanRecords(resultsDir: resultsDir, since: sinceDate)
+            let records = scannedEntries().map(\.record)
             return ResultsRendering.devices(RunResultsQuery.deviceSummary(records))
         case "slow":
-            let records = RunResultsStore.scanRecords(resultsDir: resultsDir, since: sinceDate)
+            let records = scannedEntries().map(\.record)
             return ResultsRendering.slow(
                 RunResultsQuery.slowTests(records, limit: limit ?? ResultsRendering.defaultSlowLimit))
         case "insights":
-            let records = RunResultsStore.scanRecords(resultsDir: resultsDir, since: sinceDate)
-            let runs = RunResultsStore.scanRuns(resultsDir: resultsDir, since: sinceDate)
+            let scanned = RunResultsStore.scanRunsAndRecords(resultsDir: resultsDir, since: sinceDate, memo: memo)
+            let records = scanned.entries.map(\.record)
+            let runs = scanned.runs
             // ソース走査だけ(ビルドしない)。走査できなければ空集合 = 供給なし扱い
             let defined = Set(ScenarioFolders.classFileMap(scenariosDir: project.scenariosDir).keys)
             return ResultsRendering.insights(
@@ -115,8 +121,9 @@ extension MCPServer {
         let request = try MCPResultsRequest.parse(args)
         let project = try ScenarioHost.project(named: args["project"] as? String)
         // 90 日窓の走査は重い。協調スレッドプールにディスク走査を載せない(他の ft_* と同居している)
+        let memo = resultsMemo
         let output = try await Task.detached(priority: .utility) {
-            try request.render(project: project)
+            try request.render(project: project, memo: memo)
         }.value
         return text(output)
     }

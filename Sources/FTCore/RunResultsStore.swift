@@ -602,10 +602,11 @@ public enum RunResultsStore {
     /// **entries の record は、パック経由の完了 run では `RunRecordPack.trimmedForStorage` で
     /// 縮小済み**(timeline が notes 付きステップだけ・4欄だけに縮む)。この配列を集計以外に
     /// 使ってはいけない(trend は呼び手が entries.url から元ファイルを読み直す。理由と縮小規則は
-    /// RunRecordPack.swift)
+    /// RunRecordPack.swift)。`memo` は長く動くプロセスがメモリに持つ同じ縮小記録(`RunRecordMemo`。MCP の ft_results)
     public static func scanRunsAndRecords(resultsDir: URL, since: Date? = nil, until: Date? = nil,
                                           packCacheDir: URL? = nil,
-                                          executableKey: String? = nil) -> (runs: [RunMetaRecord], entries: [ScannedRecord]) {
+                                          executableKey: String? = nil,
+                                          memo: RunRecordMemo? = nil) -> (runs: [RunMetaRecord], entries: [ScannedRecord]) {
         if let packCacheDir {
             RunRecordPack.sweepOrphans(cacheDir: packCacheDir, runsDir: resultsDir.appendingPathComponent("runs"))
         }
@@ -613,6 +614,7 @@ public enum RunResultsStore {
         for monthDir in relevantMonthDirs(resultsDir: resultsDir, since: since, until: until) {
             targetRunDirs += runDirs(in: monthDir)
         }
+        memo?.retainOnly(resultsDir: resultsDir, runDirs: Set(targetRunDirs.map(\.path)))
         guard !targetRunDirs.isEmpty else { return ([], []) }
 
         let ranges = chunkRanges(count: targetRunDirs.count,
@@ -634,8 +636,8 @@ public enum RunResultsStore {
                             var localMetaSkipped = SkipCounts()
                             var localRecordSkipped = SkipCounts()
                             for runDir in scanDirs[ranges[chunkIndex]] {
-                                let outcome = runOutcome(runDir: runDir, packCacheDir: packCacheDir,
-                                                         executableKey: executableKey)
+                                let outcome = runOutcome(runDir: runDir, resultsDir: resultsDir, packCacheDir: packCacheDir,
+                                                         executableKey: executableKey, memo: memo)
                                 localEntries += outcome.entries
                                 localRecordSkipped.add(outcome.recordSkipped)
                                 if let meta = outcome.meta {
@@ -694,20 +696,28 @@ public enum RunResultsStore {
         var recordSkipped: SkipCounts
     }
 
-    private static func runOutcome(runDir: URL, packCacheDir: URL?,
-                                   executableKey: String?) -> RunOutcome {
+    private static func runOutcome(runDir: URL, resultsDir: URL, packCacheDir: URL?,
+                                   executableKey: String?, memo: RunRecordMemo?) -> RunOutcome {
         let snapshot = runStat(runDir: runDir)
         let scenariosDir = runDir.appendingPathComponent("scenarios")
-
-        if !snapshot.inProgress, let packCacheDir, let executableKey,
-           let pack = RunRecordPack.read(cacheDir: packCacheDir, runDir: runDir,
-                                         executableKey: executableKey, runStatKey: snapshot.key) {
+        func outcome(_ pack: RunRecordPack.Contents) -> RunOutcome {
             let entries = pack.entries.map {
                 ScannedRecord(url: scenariosDir.appendingPathComponent($0.fileName), record: $0.record)
             }
             return RunOutcome(meta: pack.meta, metaSkip: pack.metaSkipReason, entries: entries,
                               recordSkipped: SkipCounts(decodeFailure: pack.decodeFailureCount,
                                                         schemaTooNew: pack.schemaTooNewCount))
+        }
+
+        if !snapshot.inProgress, let memo,
+           let remembered = memo.lookup(resultsDir: resultsDir, runDir: runDir, runStatKey: snapshot.key) {
+            return outcome(remembered)
+        }
+        if !snapshot.inProgress, let packCacheDir, let executableKey,
+           let pack = RunRecordPack.read(cacheDir: packCacheDir, runDir: runDir,
+                                         executableKey: executableKey, runStatKey: snapshot.key) {
+            memo?.remember(pack, resultsDir: resultsDir, runDir: runDir)
+            return outcome(pack)
         }
 
         let decoder = JSONDecoder()
@@ -745,15 +755,33 @@ public enum RunResultsStore {
             }
         }
 
-        if !snapshot.inProgress, let packCacheDir, let executableKey {
-            RunRecordPack.write(
-                RunRecordPack.Contents(executableKey: executableKey, runRecordSchemaVersion: RunRecordSchema.current,
-                                       runStatKey: snapshot.key, meta: meta, metaSkipReason: metaSkip,
-                                       entries: packEntries, decodeFailureCount: recordSkipped.decodeFailure,
-                                       schemaTooNewCount: recordSkipped.schemaTooNew),
-                cacheDir: packCacheDir, runDir: runDir)
+        if !snapshot.inProgress, (packCacheDir != nil && executableKey != nil) || memo != nil {
+            // メモは同じプロセスが読むだけなので実行ファイルの鍵を照合しない(RunRecordMemo.swift)
+            let contents = RunRecordPack.Contents(
+                executableKey: executableKey ?? "", runRecordSchemaVersion: RunRecordSchema.current,
+                runStatKey: snapshot.key, meta: meta, metaSkipReason: metaSkip,
+                entries: packEntries, decodeFailureCount: recordSkipped.decodeFailure,
+                schemaTooNewCount: recordSkipped.schemaTooNew)
+            if let packCacheDir, executableKey != nil {
+                RunRecordPack.write(contents, cacheDir: packCacheDir, runDir: runDir)
+            }
+            memo?.remember(contents, resultsDir: resultsDir, runDir: runDir)
         }
         return RunOutcome(meta: meta, metaSkip: metaSkip, entries: entries, recordSkipped: recordSkipped)
+    }
+
+    /// trend(--scenario)専用: `entries` の record を使わず、対象シナリオぶんだけ `entries.url`
+    /// (元の scenarios/*.json)を読み直す。**パック・メモ経由の record は timeline を縮小済み**
+    /// (RunRecordPack.trimmedForStorage)なので、trend が返す timeline 付きの記録には使えない。
+    /// `api results` と MCP の ft_results が共有する。`api results` の出力キャッシュの経路
+    /// (`ApiResultsCommand.records(index:...)`)も同じ「url から読み直す」方式 = ヒット/ミスで trend の中身が変わらない
+    public static func fullRecords(entries: [ScannedRecord], scenarioID: String) -> [ScenarioRunRecord] {
+        let decoder = JSONDecoder()
+        return entries.filter { $0.record.scenarioID == scenarioID }.compactMap { entry -> ScenarioRunRecord? in
+            guard let data = try? Data(contentsOf: entry.url),
+                  let record = try? decoder.decode(ScenarioRunRecord.self, from: data) else { return nil }
+            return record
+        }
     }
 
     // MARK: - 指紋(ResultsOutputCache の鍵)

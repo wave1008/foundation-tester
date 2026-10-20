@@ -20,7 +20,7 @@
 //
 // **entries.record は縮小済み**(`trimmedForStorage` 参照)。**この縮小記録を使ってよいのは
 // api results の集計だけ** —— trend(--scenario)のような元記録全体を返す経路は、
-// entries の url から元ファイルを読み直す(ApiResultsCommand.trendRecords)。
+// entries の url から元ファイルを読み直す(RunResultsStore.fullRecords)。
 
 import Foundation
 

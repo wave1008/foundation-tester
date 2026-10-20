@@ -37,6 +37,8 @@ final class MCPServer {
     /// いま処理中のツール呼び出しの番号(0 = 呼び出しの外)。TaskLocal なので、並行する呼び出しが互いの番号を見ない
     @TaskLocal static var currentCallID = 0
     var nextCallID = 1
+    /// ft_results の完了 run の解読結果(サーバの寿命のあいだ持つ。RunRecordMemo.swift)
+    let resultsMemo = RunRecordMemo()
     var lastTapTargets: SessionMap<ElementInfo> { SessionMap(server: self, path: \.lastTapTarget) }
     var focusedBeforeLastTaps: SessionMap<ElementInfo> { SessionMap(server: self, path: \.focusedBeforeLastTap) }
     var knownScreens: SessionMap<FTRect> { SessionMap(server: self, path: \.knownScreen) }

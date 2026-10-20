@@ -709,7 +709,7 @@ scanRecords(キャップ無し)を1回の走査に畳む。`fleetest api results
   `notes` だけ(`unsettledStepsInsight`)なので、`notes` を持たないステップは丸ごと落とし、
   残すステップも `index`/`description`/`status`/`notes` の4欄だけに縮める。
   **この縮小記録を使ってよいのは api results の集計だけ** —— `--scenario`(trend)は元記録全体
-  (timeline の計時欄も含む)を返す契約なので、`ApiResultsCommand.trendRecords` が
+  (timeline の計時欄も含む)を返す契約なので、`RunResultsStore.fullRecords` が
   対象シナリオぶんだけ元ファイル(`entries.url`)を読み直す(キャッシュ経路の trend 索引と同じ
   「url から読み直す」方式)。**`RunResultsQuery` が timeline から読む欄が増えたら縮小規則も
   直すこと** —— `TimelineNotesOnlyScanTests` がソース走査で検出する
@@ -732,6 +732,12 @@ scanRecords(キャップ無し)を1回の走査に畳む。`fleetest api results
 - 適用範囲は `fleetest api results` の非キャッシュ経路(`scanRunsAndRecords`)だけ。
   素の `scanRuns`/`scanRecords`(LPT 等の他の呼び手)は変えていない
   (パック無し・従来どおりの全件直接デコード)
+- **MCP の `ft_results` はディスクのパックを使わず、同じ縮小記録をメモリに持つ**(`RunRecordMemo`。
+  `scanRunsAndRecords(memo:)`)。パックは実行ファイルの素性が鍵なので、MCP が書くと CLI と互いに無効にし合う。
+  メモは同じプロセスの同じ型が書いて読むので素性の鍵が要らず、鍵は run の stat だけ。持つのは最後の走査で見た run だけ
+  (プロジェクトごと)。E2E-CMP で起動後の1回目は約 13 秒のまま、2回目以降は 1 秒前後(新しい run だけを読む)。
+  プロセスの常駐メモリ(RSS)は変更前と同じ水準(どちらも約 2.4GB。1回目の全件デコードの山で決まる)。
+  trend だけは CLI と同じく元ファイルを読み直す(`RunResultsStore.fullRecords`)
 - 確認方法は出力キャッシュと同じ: `--no-cache` の出力(パックを作る回・パックから読む回のどちらも)
   と一致すること(`generatedAt` 以外。`--scenario` の trend は timeline を含めて一致すること)
 
