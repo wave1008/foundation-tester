@@ -41,6 +41,9 @@
   - そのたび 2〜3 分後に E2EY-CMP / E2EX-CMP の iOS(in-app)で「アプリ領域が単色」か「形だけで文字が無い」の notRendered(09:32:44〜09:33:11 に
     4 台 7 本・10:11:04〜06 に 2 台 2 本)。数分後の同じ Simulator は正常に描く。配信 10 本 + 録画 8 本 + Emulator 8 台 + ビルドの負荷下
   - 要る材料: 次に起きたときの GPU 側の記録(Metal/IOGPU のログ)。AVE の失敗と CMP の白紙が同じ GPU の逼迫の 2 つの症状かを分ける
+  - 規模(2026-10-20 に数えた): 10 月の E2E-CMP iOS の可視性検証の赤(notRendered)は失敗レポートで 736 件。シナリオに偏りは無い
+    (最多の WebView S0010 で 33 件)。「S0040 の type(replace:) の後に echo が更新されない」と見えていた赤 14 件も、木は `single=xyz` で
+    写真は形だけで文字が無い = この崩壊だった(もう一つの形 `password=xyz` は別の原因で直した = maintainer-notes §92.4)
   - 2026-10-19 の負荷テスト(M2 Ultra)で採れた材料: CMP の iOS アプリ(プロセス名 `iosApp`)の Simulator 内ログに
     `(Metal) Execution of the command buffer was aborted due to an error during execution (MTLCommandBufferErrorDomain error 1)` が
     **全 Simulator で**出ていた(10 分で 25〜1,559 件。起動して 33 分の Simulator でも 773 件)= Simulator 個別の状態ではなくホスト側。
@@ -98,13 +101,6 @@
 - **同時2本の `services up` で、負けた所有者が同じログ(`.fleetest/services/<prefix>.log`)を O_TRUNC で開く**(2026-10-15)
   - 勝った所有者のログの先頭が消え、負けた理由(already up)は残らない。負けた側の CLI は、勝った側がその後止められた回に勝った側のログを
     自分の失敗理由として表示した。起動の調停そのものは正しい(片方が上げ、もう片方は already up)
-
-- **E2E-CMP の iOS で「テキスト入力が正しくechoされること」S0040 の `type(replace:)` の後、欄は `xyz` なのに echo が `single=` のまま**
-  (結果 JSON では 10 月に 442 回中 27 回赤。失敗レポートが残っていた 17 件のうち 13 件がこの形 = in-app 7・xcuitest 6。2026-10-20 に分類)
-  - 症状: 失敗時の木で `#field_single` の a11y の値は `xyz`・パスワード欄は空、`textIs "#txt_echo_single" == "single=xyz"` が
-    約 5.6 秒待っても `single=` のまま = 欄の値と Compose の状態が食い違う
-  - もう一つの形(`password=xyz` = 打鍵が別の欄へ入った 4 件)は原因が別で、2026-10-20 に直した(maintainer-notes §92.4)
-  - 次に見るもの: 赤の回の消去と打鍵の時刻列 —— 消去(Backspace の連打)の直後の打鍵が Compose の状態の更新と競っているのか
 
 - **E2E-iOS の XCUITest で「WebViewの中身を操作できること」が赤になる(状態に依存)**(2026-10-08)
   - 症状: `type "#wv_input||#WebView 入力"` の後の `tap "送信"` が、キーボードで WebView が中身を 141pt 上へ送る前の座標を撃ち、
@@ -170,9 +166,13 @@
   - 残っている判断: pack は run ごとに1つで実行ファイルの指紋が鍵 = MCP がそのまま使うと CLI と書き潰し合う。MCP 用に置き場を分けると
     1 プロジェクトあたり約 120MB 増える(保持容量の方針に関わる)
 
-- **ブリッジ側の ref の二重の備え**(iOS)
-  - 場所: ランナー・in-app の `/type` `/clear` 等は ref の番号だけを受け、`refFrames[ref]` を引く(identifier の照合なし)。Android は
-    `refIds` で identifier も渡している
+- **ブリッジ側の ref の二重の備え**(iOS・Android とも)
+  - 場所: ランナー・in-app・Android の注入層は ref の番号だけを受け、自分の表(`refFrames[ref]` / `refIds.get(ref)`)を引く。ホストが
+    「どの要素のつもりか」は届かないので、古い番号は新しい表の別の要素として撃たれる(Android の `refIds` はブリッジ自身の表から
+    引いた identifier で、ホストの期待との照合ではない)
+  - 案: ref を撃つ操作にホストが期待する identifier と型を添え、ブリッジが自分の表と照らし合わせて、両方にある identifier か型が
+    食い違えば撃たずに 422。ラベル・位置は比べない(値の表示やスクロールで変わる = 誤って断る)。目印を送らない呼び手は従来どおり。
+    iOS のランナーは `refIdentity` を既に持つ。次に別の理由でブリッジの版を上げるときに一緒に入れる
   - 手がかり: 古い ref で別の要素へ打つ型はホスト側で塞いだ(maintainer-notes §92.4)。ref と一緒に期待する identifier を送り、食い違えば
     422 で断る形にすれば、ホストの新しい経路が同じ誤りをしても黙って成功しない。ブリッジの版上げを伴う
 

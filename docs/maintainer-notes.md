@@ -5117,8 +5117,12 @@ worktree の run がそれらの端末を「別のワークスペースのブリ
 - 直し(ホストだけ・版上げなし): 消去は最後に actingDriver が撮った木を返し(`ClearOutcome.cleared(actingDriverSnapshot:)`)、type はその木で
   引き直してから撃つ。引けなければ撃たずに失敗。同型の掃討: Android の消去(`valueBeforeClear` で撮り直した後に古い ref で消していた)と、
   in-app の読み返しの追送・打ち直し(`awaitTypeCommit` で撮った後に古い ref で撃っていた)も、撮った木の ref で撃つ
+- S0040 の残り 14 件(欄は `xyz`・echo が `single=` に見えた形)は、木は `single=xyz` で写真は形だけで文字が無い = CMP の iOS の描画崩壊を
+  可視性検証が止めた赤だった(このシナリオに偏りは無い。docs/open-issues.md の白紙の項目)。木の値を見ずに「echo が更新されない」と読んだのが誤り
 - **規律**: ブリッジの ref はそのドライバが最後に撮った木の中でだけ有効。撮ったら、その後に撃つ ref はその木から引く(`liftCoveredTarget` と同じ)
-- 残り: ブリッジ側の二重の備え(ref と一緒に identifier を送り、食い違えば断る。Android は既に送っている)は版上げを伴うので未着手
+- 残り: ブリッジ側の二重の備え(ref と一緒に期待する identifier と型を送り、食い違えば断る)は版上げを伴うので未着手。
+  **Android も備えは無い** —— 注入層が使う `refIds.get(ref)` はブリッジ自身の表から引いた identifier で、ホストの期待との照合ではない
+  (古い番号なら新しい表の別の要素の identifier を引いてそのまま撃つ)。中身は docs/open-issues.md
 
 ### 92.5 CLI の宛先省略
 - `api list-apps` と、`run` / `api run` のプロファイル無し経路が serial 省略時に `AndroidDriver(serial: nil)` を作り、端末が複数だと adb の
