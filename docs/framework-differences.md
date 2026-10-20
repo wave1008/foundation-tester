@@ -76,6 +76,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | Android(全般) | 自動でフォーカスを取る欄(ダイアログの autofocus)は、キーボードが上がる間に動く | 対象の欄が既にフォーカスを持っていれば、入力の前のタップを撃たない(id で引けた欄だけ) | `BridgeRouter.tapUnlessAlreadyFocused` |
 | iOS(in-app) | 同上(Flutter の iOS でも同じ形で閉じた) | 入力の前のタップは、欄が形を変えずに動いていたら動いたぶんだけ追う(大きさが変わっていたら snapshot の座標のまま) | `InAppBridge.pointFollowingMove` |
 | Android(全般) | アプリが切り替わった直後、スクショが前のアプリの最後の絵を返し続けることがある(配信中・負荷時) | 起動の直前の絵と木を控え、最初の可視性検証でも「木は変わったのに絵は同じ」を拾う(注記 `stale-screenshot`・赤にしない) | `StepExecutor.recordPreLaunchFrame` |
+| Compose(iOS) | アクセシビリティの枠は「後から描かれる兄弟のタッチ範囲に覆われていない部分」で、一覧の上端で半分隠れた行のタッチ範囲は上端を越えて申告される。一覧の上に置いたテキストの枠が、画面では何も覆っていないのに下側を削られ(24pt → 8pt)、可視性検証が文字の上半分だけを切り抜いて誤反転した | テキストの下端が、一覧の上端より上へはみ出した行の上端と接していたら、切り抜きの枠だけを一覧の上端まで戻す(注記 `a11y-frame-restored`。木の枠は変えない) | `TouchOverhangFrameRestore` |
 | SwiftUI | Toggle が同じ枠の `switch` を2つ出す。UIAlertController のボタンが同じ id で2つ | 何も足さない方を畳む | `SnapshotDedupe` |
 | React Native(iOS) | `FlatList` の testID が非スクロールのラッパーに付き、実際にスクロールするノードが別に出る | 同じ枠の「id 付きラッパー + 匿名 scroll ノード」を1つに統合 | `SnapshotDedupe` |
 | React Native(iOS in-app) | id 付き Text が「id 付き + 同じラベルの id 無し」の対で出る | uikit 系のときだけ畳む | `SnapshotDedupe`(`InAppDriver`) |

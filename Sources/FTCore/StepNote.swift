@@ -58,6 +58,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// (`BlankFrameDetector.isBlackApartFromSystemBars`)。絵が撮れていない・表示が凍結した回で、FM も OCR も
     /// 「何も描かれていない」「一致しない」と読むので、判定不能として素通りする(赤にしない)
     case blankScreenshot = "blank-screenshot"
+    /// テキストの可視性検証の対象の枠が、下の一覧の半分隠れた行のタッチ範囲(一覧の上端を越えて申告される)で削られていたので、
+    /// 切り抜きに使う枠をその一覧の上端まで戻した(`TouchOverhangFrameRestore`。Compose の枠の性質)。木の枠は変えていない
+    case a11yFrameRestored = "a11y-frame-restored"
     /// テキストの可視性検証の対象が WebView の内側にあり、木の上では覆われていないのに、その文字の領域が絵では一色だった
     /// (`BlankFrameDetector.webViewCaptureMissed`)。WebView の層を取り逃した絵なので判定せずに素通りした(赤にしない)。
     /// 木に載らない覆い(ページ内の描画だけで隠す等)は見逃す —— 率を見る注記
@@ -413,6 +416,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
             return "the screenshot looked stale (the tree changed but the image did not), but the expected text was already drawn in it, so it was treated as current"
         case .blankScreenshot:
             return "the screenshot was black apart from the system bars, so the visual check was skipped"
+        case .a11yFrameRestored:
+            return "the element's accessibility frame was cut short where a half-hidden row of the list below reports"
+                + " touch bounds above the list's top edge, so the visual check cropped up to that edge instead"
         case .webViewCaptureBlank:
             return "the text sits in a WebView and nothing covers it in the tree, but its area of the screenshot was a single colour (the capture missed the WebView layer), so the visual check was skipped"
         case .blankScreenshotRetaken:

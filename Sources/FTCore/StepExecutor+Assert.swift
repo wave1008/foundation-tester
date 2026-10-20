@@ -126,6 +126,12 @@ extension StepExecutor {
         guard fmConfigured || occlusionOCRMode != .off else { return nil }
         // 退化 frame(サイズ 0・クランプで潰れた等)は視覚照合の意味がないのでスキップ(素通り)
         guard element.frame.width >= 1, element.frame.height >= 1, !expectedText.isEmpty else { return nil }
+        // Compose が兄弟のタッチ範囲で削った枠は、切り抜きに使う前に戻す(全段 = インク・OCR・FM が同じ枠を見る)
+        var element = element
+        if let restored = TouchOverhangFrameRestore.restoredFrame(for: element, in: elements) {
+            element.frame = restored
+            noteCodesThisStep.insert(.a11yFrameRestored)
+        }
         // 足切り: label が verbatim 描画されない要素(アイコン/画像/絵文字/結合セマンティクス)は
         // FM で約50%誤反転する(実機確認)ため対象外=素通り(pass)。textEquals の期待値は結合規則を外す。
         guard OcclusionEligibility.eligible(type: element.type, label: expectedText,
