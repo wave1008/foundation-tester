@@ -228,10 +228,10 @@ extension StepExecutor {
         let settled = try await settleAfterScroll(step: step, found: element, phase: &phase)
         // **空打ちの後も探索の向きへ流れ続けた回だけ、止まった位置へもう1回空打ちしてから返す**。空打ちのタッチが容器に
         // 吸われて慣性が止まらず、一覧が末尾を越えて引っ張られたまま止まると、次のタッチで引っ張りが解けて戻り、そのタッチは
-        // クリックにならない(E2EX-CMP の無限スクロール・XCUITest: 48 回中 6 回が 250〜290pt 流れて 346..414 に止まり、
-        // 1回のままの 4 回は全部赤。撃った瞬間に +247pt 戻った)。2回目の空打ちがその戻りを吸う(2 回中 2 回 +247pt 戻った。
-        // 後のタップは 1 回が緑)。**空打ち自身の送り(22pt)や逆向きの戻り(+123..152pt)では撃たない** —— 前者で撃つと
-        // 2回目がさらに送ってタップが吸われ(24 回中 11 回が赤に悪化した)、後者は緑の回の形
+        // クリックにならない(E2EX-CMP の無限スクロール・XCUITest: 250〜290pt 流れて 346..414 に止まり、撃った瞬間に +247pt 戻った)。
+        // 2回目の空打ちがその戻りを吸う(この形は 1回のままだと 4 回中 4 回が赤・2回目ありで 6 回中 6 回が緑)。
+        // **空打ち自身の送り(22pt)や逆向きの戻り(+123..152pt)では撃たない** —— 前者で撃つと2回目がさらに送ってタップが
+        // 吸われ、後者は緑の回の形(maintainer-notes §74.11)
         guard let drag,
               Self.keptFlowingAfterEmptyDrag(before: element.frame, after: settled.lastFrame,
                                              dragFrom: drag.from, dragTo: drag.to,
