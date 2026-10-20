@@ -102,12 +102,12 @@ public struct InAppLauncher: Sendable {
         // (dylib はアプリのプロセスで動くので、そこへ伝えないと効かない)
         var env = [
             "DYLD_INSERT_LIBRARIES": dylib.path,
-            "FT_PORT": "\(port)",
+            ProcessEnvironmentKey.port: "\(port)",
             // 起動元の自己申告(/status の ownerRepo。doctor の刈り取り判定が依存)
-            "FT_OWNER_REPO": repoRoot.path,
+            ProcessEnvironmentKey.ownerRepo: repoRoot.path,
         ]
-        if let webViewDOM = ProcessInfo.processInfo.environment["FT_WEBVIEW_DOM"] {
-            env["FT_WEBVIEW_DOM"] = webViewDOM
+        if let webViewDOM = ProcessInfo.processInfo.environment[ProcessEnvironmentKey.webViewDOM] {
+            env[ProcessEnvironmentKey.webViewDOM] = webViewDOM
         }
         let clock = ContinuousClock()
         let actionStart = clock.now

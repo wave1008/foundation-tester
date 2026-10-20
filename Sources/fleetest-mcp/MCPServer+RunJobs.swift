@@ -179,8 +179,8 @@ enum MCPRunJobs {
     static func childEnvironment(packageRoot: URL, toolRoot: URL?,
                                  base: [String: String]? = nil) -> [String: String] {
         var env = ParentDeathWatch.childEnvironment(base: base)
-        env["FT_PACKAGE_ROOT"] = packageRoot.path
-        if let toolRoot { env["FT_TOOL_ROOT"] = toolRoot.path }
+        env[ProcessEnvironmentKey.packageRoot] = packageRoot.path
+        if let toolRoot { env[ProcessEnvironmentKey.toolRoot] = toolRoot.path }
         return env
     }
 

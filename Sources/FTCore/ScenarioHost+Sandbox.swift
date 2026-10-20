@@ -39,7 +39,7 @@ extension ScenarioHost {
         // 子は環境変数で受けた補助プロセスへ繋ぐ(`childEnvironment` と同じ値を読む)
         scope.helperSockets = [VisionHelperHost.activeSocketPath, FMServeHost.activeSocketPath].compactMap { $0 }
         // CoreSimulator の直叩き(FTCoreSimShim)を止めて simctl = broker 経由へ倒す
-        var environment = ["FT_SIMULATOR_CONTROL": "simctl"]
+        var environment = [ProcessEnvironmentKey.simulatorControl: "simctl"]
         if let temp = ScenarioSandbox.childTemporaryDirectory(runnerName: runner.lastPathComponent) {
             environment["TMPDIR"] = temp
         }

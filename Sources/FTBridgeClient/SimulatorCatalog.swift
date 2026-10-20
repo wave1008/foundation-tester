@@ -72,7 +72,7 @@ public enum SimulatorCatalog {
     /// CoreSimulator 直叩き(FTCoreSimShim。列挙 6ms vs simctl 567ms・実測)優先、
     /// 利用不能なら simctl フォールバック。殺しスイッチ: FT_SIMULATOR_CONTROL=simctl
     public static func devices() throws -> [SimDeviceInfo] {
-        if ProcessInfo.processInfo.environment["FT_SIMULATOR_CONTROL"] != "simctl",
+        if ProcessInfo.processInfo.environment[ProcessEnvironmentKey.simulatorControl] != "simctl",
            let viaShim = devicesViaCoreSimulator() {
             return viaShim
         }

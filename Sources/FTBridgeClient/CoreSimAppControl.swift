@@ -3,12 +3,13 @@
 // 呼び出し側が simctl へフォールバックする。殺しスイッチ: FT_SIMULATOR_CONTROL=simctl。
 
 import Foundation
+import FTCore
 import FTCoreSimShim
 
 enum CoreSimAppControl {
 
     static var enabled: Bool {
-        ProcessInfo.processInfo.environment["FT_SIMULATOR_CONTROL"] != "simctl"
+        ProcessInfo.processInfo.environment[ProcessEnvironmentKey.simulatorControl] != "simctl"
     }
 
     struct LaunchResult {

@@ -284,7 +284,7 @@ public enum SafariWebInspector {
     /// in-app(`InAppWebViewDOM`)は `.lowercased()` で見ているので、ここだけ素の比較だと
     /// `FT_BROWSER_DOM=OFF` で**片肺**になる(片方だけ止まると A/B の陽性対照が壊れる)
     public static func isEnabled(env: [String: String]) -> Bool {
-        (env["FT_BROWSER_DOM"] ?? "").lowercased() != "off"
+        (env[ProcessEnvironmentKey.browserDOM] ?? "").lowercased() != "off"
     }
 }
 

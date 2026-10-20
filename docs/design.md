@@ -4572,7 +4572,8 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
 - **環境変数から枠を緩めさせない**: ホームは `getpwuid`(`HOME` を見ない。偽のホームに `~/.ssh` の拒否を組ませない)・
   設定は `XDG_CONFIG_HOME` を見ずに実ホームの固定パスから読む・子の `TMPDIR` は親の値を継がせず明示する・
   書く場所を差し替える `FT_*_DIR`(`redirectedDirectoryKeys`)は**書ける場所の中を指すときだけ**通し、外なら
-  起動前に止める(足す形にすると `~/Library/LaunchAgents` 等を書けるようにできる)・`FT_TOOL_ROOT` は
+  起動前に止める(足す形にすると `~/Library/LaunchAgents` 等を書けるようにできる。新しい `FT_*_DIR` は、この一覧か
+  「子が書かない」表のどちらかへ載せるまで `EnvironmentKeyLiteralTests` が落とす)・`FT_TOOL_ROOT` は
   ツール本体の目印(`Runner/project.yml`)があるときだけ採る
 - **子の環境は許可リストで作る**(`SandboxedLaunch.childEnvironment(base:)` = `ScenarioSandbox.inheritedEnvironment`
   で親の環境を絞ってから入口の分を足す。3経路とも。一覧取得は `/usr/bin/env -i`)。親の環境を継がせると

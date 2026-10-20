@@ -376,12 +376,12 @@ public struct BridgeLauncher: Sendable {
 
         func inject(into target: inout [String: Any]) {
             var env = target["EnvironmentVariables"] as? [String: Any] ?? [:]
-            env["FT_PORT"] = String(port)
+            env[ProcessEnvironmentKey.port] = String(port)
             // 無通信 TTL。ホストで解決してから数値文字列で渡す(ランナー側は再解釈するだけ)
-            env["FT_BRIDGE_TTL"] = String(BridgeAPI.resolvedBridgeTTLSeconds(
-                ProcessInfo.processInfo.environment["FT_BRIDGE_TTL"]))
+            env[ProcessEnvironmentKey.bridgeTTL] = String(BridgeAPI.resolvedBridgeTTLSeconds(
+                ProcessInfo.processInfo.environment[ProcessEnvironmentKey.bridgeTTL]))
             // 起動元の自己申告(/status の ownerRepo。doctor の刈り取り判定が依存)
-            env["FT_OWNER_REPO"] = repoRoot.path
+            env[ProcessEnvironmentKey.ownerRepo] = repoRoot.path
             // 実機はデバイス内ループバックがホストから見えないので全インターフェースに開く。
             // 同期相手: Runner/FleetestRunnerUITests/BridgeHTTPServer.swift の start()
             if physical { env["FT_BIND_ALL"] = "1" }
@@ -389,8 +389,8 @@ public struct BridgeLauncher: Sendable {
             if let bridgeToken { env[BridgeAPI.bridgeTokenEnvKey] = bridgeToken }
             // ブリッジ内の所要内訳ログ(既定 off)。ホスト側の FT_HTTP_TIMING と対で使い、
             // 「ホストの actionMs とブリッジのハンドラ計時の差」を突き合わせるためだけのもの
-            if ProcessInfo.processInfo.environment["FT_BRIDGE_TIMING"] == "1" {
-                env["FT_BRIDGE_TIMING"] = "1"
+            if ProcessInfo.processInfo.environment[ProcessEnvironmentKey.bridgeTiming] == "1" {
+                env[ProcessEnvironmentKey.bridgeTiming] = "1"
             }
             target["EnvironmentVariables"] = env
             for (key, value) in Self.captureSettings { target[key] = value }
@@ -1382,7 +1382,7 @@ public enum RepoRoot {
         //    (MCP クライアントが任意の cwd でサーバを起こす等)のための逃げ道。
         //    設定されているのに Runner/ が無ければ探索へフォールバックせず失敗する
         //    (誤設定を黙って別ルートで動かすと診断不能になる。FT_PACKAGE_ROOT と同じ規律)
-        if let override = ProcessInfo.processInfo.environment["FT_TOOL_ROOT"], !override.isEmpty {
+        if let override = ProcessInfo.processInfo.environment[ProcessEnvironmentKey.toolRoot], !override.isEmpty {
             let dir = URL(fileURLWithPath: (override as NSString).expandingTildeInPath)
             guard hasRunner(dir) else {
                 throw LauncherError.commandFailed(

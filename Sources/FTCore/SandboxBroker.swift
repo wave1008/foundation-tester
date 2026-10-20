@@ -55,7 +55,7 @@ public enum SimctlPolicy {
 
     /// アプリへ渡してよい環境変数(`InAppLauncher.relaunch` が渡す集合)
     static let launchEnvironmentKeys: Set<String> = [
-        "DYLD_INSERT_LIBRARIES", "FT_PORT", "FT_OWNER_REPO", "FT_WEBVIEW_DOM",
+        "DYLD_INSERT_LIBRARIES", ProcessEnvironmentKey.port, ProcessEnvironmentKey.ownerRepo, ProcessEnvironmentKey.webViewDOM,
     ]
 
     /// `Shell.run` の引数列(先頭に `NAME=VALUE` が並びうる)から simctl の呼び出しを切り出す。

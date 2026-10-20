@@ -185,7 +185,7 @@ public struct OcclusionVerifier {
     /// 保存した PNG は Scripts/occlusion-repro.swift にそのまま食わせて再判定できる。
     /// 真の陽性(実際に覆われている過渡状態)でも保存されるため、7日より古いものは書き込み時に掃除する。
     static func dump(crop: CGImage, expectedText: String) -> String? {
-        let env = ProcessInfo.processInfo.environment["FT_OCCLUSION_DUMP_DIR"]
+        let env = ProcessInfo.processInfo.environment[ProcessEnvironmentKey.occlusionDumpDir]
         if env == "off" { return nil }
         let dir = env.flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
             ?? FileManager.default.homeDirectoryForCurrentUser

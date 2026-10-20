@@ -250,7 +250,7 @@ extension AndroidDriver {
         // 計時ログは instrumentation 引数なので**起動時にしか切り替わらない**。稼働中ブリッジを
         // そのまま使うと、on 側は「1行も出ない = 待ちが無かった」と誤読し、off 側は計測が
         // 終わった後もログを出し続ける。**希望と食い違うときは必ず起動し直す**(両方向)
-        let timingRequested = ProcessInfo.processInfo.environment["FT_BRIDGE_TIMING"] == "1"
+        let timingRequested = ProcessInfo.processInfo.environment[ProcessEnvironmentKey.bridgeTiming] == "1"
         // 既に稼働中で版一致ならそのまま使う(CLI の別プロセスが起動済みのケース)。
         // 版不一致(旧ブリッジプロセスが常駐したまま)は素通しせず、下の再インストール+
         // force-stop+再起動で更新する(APK 差し替えだけでは稼働中プロセスは旧版のまま)
@@ -302,7 +302,7 @@ extension AndroidDriver {
         _ = try? adb(["shell", "am", "force-stop", Self.bridgePackage])
         // -w 必須(UiAutomationConnection は am プロセス側に生成される)。
         // デバイス内でバックグラウンド化するので adb 切断後も常駐する
-        let ttl = BridgeAPI.resolvedBridgeTTLSeconds(ProcessInfo.processInfo.environment["FT_BRIDGE_TTL"])
+        let ttl = BridgeAPI.resolvedBridgeTTLSeconds(ProcessInfo.processInfo.environment[ProcessEnvironmentKey.bridgeTTL])
         let repoRoot = try? RepoRoot.find()
         _ = try adb(["shell", Self.instrumentCommand(ttl: ttl, ownerPath: repoRoot?.path, timing: timingRequested)])
 

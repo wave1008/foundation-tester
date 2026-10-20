@@ -353,7 +353,7 @@ public enum FMHistory {
 
     static func aneLogEvidence() -> [String]? {
         // 台帳の置き場を差し替えている(テスト)間は撃たない。証拠のテストは evidenceProvider を差し替える
-        if let override = ProcessInfo.processInfo.environment["FT_FM_LIVENESS_DIR"], !override.isEmpty { return nil }
+        if let override = ProcessInfo.processInfo.environment[FMLiveness.directoryOverrideKey], !override.isEmpty { return nil }
         // **印の行だけを OS 側で絞る**: 絞らないと 5 分ぶんで 16.7MB・8.1 万行を全部メモリに読んでいた(実測。所要は同じ 2.9 秒)
         let predicate = "(process == \"aned\" OR process == \"aneuserd\" OR process == \"TGOnDeviceInferenceProviderService\")"
             + " AND (" + evidenceMarks.map { "eventMessage CONTAINS \"\($0)\"" }.joined(separator: " OR ") + ")"

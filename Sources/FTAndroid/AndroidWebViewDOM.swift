@@ -335,14 +335,14 @@ public extension AndroidWebViewDOM {
 
     /// **既定はオン**。ブラウザ本体の殺しスイッチ `FT_BROWSER_DOM=off`(iOS Safari 側と同じ変数)
     static var isBrowserDOMEnabled: Bool {
-        (ProcessInfo.processInfo.environment["FT_BROWSER_DOM"] ?? "").lowercased() != "off"
+        (ProcessInfo.processInfo.environment[ProcessEnvironmentKey.browserDOM] ?? "").lowercased() != "off"
     }
 
     /// **既定はオン**。自作アプリの WebView の殺しスイッチ `FT_WEBVIEW_DOM=off`。
     /// **iOS in-app 側と同じ変数・同じ意味**(= テスト対象アプリの WebView を DOM で読むか)で、
     /// ブラウザの `FT_BROWSER_DOM` とは口を分ける(冒頭参照)
     static var isAppWebViewDOMEnabled: Bool {
-        (ProcessInfo.processInfo.environment["FT_WEBVIEW_DOM"] ?? "").lowercased() != "off"
+        (ProcessInfo.processInfo.environment[ProcessEnvironmentKey.webViewDOM] ?? "").lowercased() != "off"
     }
 
     /// CDP で能動タブ/ページの DOM を1往復読む。**失敗は握って nil**(未対応ブラウザ・非公開ソケット・

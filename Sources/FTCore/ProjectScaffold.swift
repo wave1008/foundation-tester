@@ -430,7 +430,7 @@ public enum ProjectScaffold {
             "fleetest": {
               "command": "bash",
               "args": ["-c", "exec \\"<CLONE_ABS>/Scripts/mcp-server.sh\\""],
-              "env": { "FT_TOOL_ROOT": "<CLONE_ABS>" }
+              "env": { "\(ProcessEnvironmentKey.toolRoot)": "<CLONE_ABS>" }
             }
           }
         }

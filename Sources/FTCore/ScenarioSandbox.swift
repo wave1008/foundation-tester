@@ -273,8 +273,9 @@ public enum ScenarioSandbox {
 
     /// 子は親の環境を継ぐので、これらが立っていると既定の置き場ではなくここへ書く
     static let redirectedDirectoryKeys = [
-        "FT_OCCLUSION_DUMP_DIR", "FT_OCCLUSION_CORPUS_DIR", "FT_FM_LIVENESS_DIR",
-        "FT_FM_USAGE_DIR", "FT_VISION_USAGE_DIR", "FT_APP_FRAMEWORK_DIR", "FT_OCR_COMPILE_DIR",
+        ProcessEnvironmentKey.occlusionDumpDir, OcclusionCorpusDump.directoryOverrideKey, FMLiveness.directoryOverrideKey,
+        FMUsageLedger.directoryOverrideKey, VisionUsageLedger.directoryOverrideKey, AppFrameworkLedger.directoryOverrideKey,
+        OCRModelCompileLedger.directoryOverrideKey,
     ]
 
     /// 差し替えた置き場は**書ける場所の中にあるときだけ**通す。書ける場所へ足す形にしない ——
@@ -376,7 +377,7 @@ public enum ScenarioSandbox {
                 if hasBridgeAssets(candidate) { roots.append(candidate.path) }
             }
         }
-        if let override = environment["FT_TOOL_ROOT"], !override.isEmpty {
+        if let override = environment[ProcessEnvironmentKey.toolRoot], !override.isEmpty {
             let dir = URL(fileURLWithPath: (override as NSString).expandingTildeInPath)
             if hasBridgeAssets(dir) { roots.append(dir.path) }
         }

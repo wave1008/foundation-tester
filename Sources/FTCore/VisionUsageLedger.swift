@@ -21,7 +21,8 @@ public enum VisionUsageLedger {
     public typealias Counters = UsageLedger.Counters
     public typealias Delta = UsageLedger.Delta
 
-    private static let ledger = UsageLedger(subdirectory: "vision-usage", directoryOverrideKey: "FT_VISION_USAGE_DIR")
+    static let directoryOverrideKey = "FT_VISION_USAGE_DIR"
+    private static let ledger = UsageLedger(subdirectory: "vision-usage", directoryOverrideKey: directoryOverrideKey)
 
     /// 書き込み先。nil = 書かない(UsageLedger.writeDirectory 参照)。
     /// **`private` を外してあるのはテストのため**

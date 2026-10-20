@@ -182,8 +182,11 @@ public enum FMLiveness {
 
     // MARK: - 置き場
 
+    /// 置き場の差し替え(テストの隔離。FMHistory・FMHostMemory も同じ鍵で既定の置き場をやめる)
+    static let directoryOverrideKey = "FT_FM_LIVENESS_DIR"
+
     public static var directory: URL {
-        if let override = ProcessInfo.processInfo.environment["FT_FM_LIVENESS_DIR"], !override.isEmpty {
+        if let override = ProcessInfo.processInfo.environment[directoryOverrideKey], !override.isEmpty {
             return URL(fileURLWithPath: override)
         }
         return FileManager.default.homeDirectoryForCurrentUser
@@ -202,7 +205,7 @@ public enum FMLiveness {
     /// これ単独では守れない。台帳自体を検証するテストは FT_FM_LIVENESS_DIR を明示するので影響を受けない。
     /// **`private` を外してあるのはテストのため**(@testable でこの門自体を直接検証する)
     static var writeURL: URL? {
-        if let override = ProcessInfo.processInfo.environment["FT_FM_LIVENESS_DIR"], !override.isEmpty {
+        if let override = ProcessInfo.processInfo.environment[directoryOverrideKey], !override.isEmpty {
             return URL(fileURLWithPath: override).appendingPathComponent("fm-liveness.json")
         }
         guard LedgerWriteRole.permitsProductionWrite else { return nil }

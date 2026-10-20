@@ -359,7 +359,7 @@ public enum FMHostMemory {
     /// 直近 `jetsamWindowSeconds` の JetsamEvent(新しい順に最大 `jetsamMaxFiles` 件)の行。
     /// 台帳の置き場を差し替えている(テスト)間は撃たない(`FMHistory.aneLogEvidence` と同じ門)
     static func jetsamEvidence(now: Date = Date(), directories: [URL] = jetsamDirectories) -> [String]? {
-        if let override = ProcessInfo.processInfo.environment["FT_FM_LIVENESS_DIR"], !override.isEmpty { return nil }
+        if let override = ProcessInfo.processInfo.environment[FMLiveness.directoryOverrideKey], !override.isEmpty { return nil }
         var found: [(url: URL, modified: Date)] = []
         for directory in directories {
             let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []

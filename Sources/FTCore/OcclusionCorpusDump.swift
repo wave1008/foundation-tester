@@ -69,8 +69,10 @@ public enum OcclusionCorpusDump {
     /// (置き場を環境変数で差し替えられるので、他人のファイルを消さないため)
     static let filePrefix = "crop-"
 
+    static let directoryOverrideKey = "FT_OCCLUSION_CORPUS_DIR"
+
     private static func directory(environment: [String: String]) -> URL? {
-        if let dir = environment["FT_OCCLUSION_CORPUS_DIR"], !dir.isEmpty {
+        if let dir = environment[directoryOverrideKey], !dir.isEmpty {
             return URL(fileURLWithPath: dir)
         }
         return FileManager.default.homeDirectoryForCurrentUser

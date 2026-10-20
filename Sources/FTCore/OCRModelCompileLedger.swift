@@ -13,8 +13,10 @@ public enum OCRModelCompileLedger {
 
     private static let depth = Mutex(0)
 
+    static let directoryOverrideKey = "FT_OCR_COMPILE_DIR"
+
     static var directory: URL {
-        if let override = ProcessInfo.processInfo.environment["FT_OCR_COMPILE_DIR"], !override.isEmpty {
+        if let override = ProcessInfo.processInfo.environment[directoryOverrideKey], !override.isEmpty {
             return URL(fileURLWithPath: override, isDirectory: true)
         }
         return FileManager.default.homeDirectoryForCurrentUser
