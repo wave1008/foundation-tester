@@ -8,6 +8,7 @@
 // 配線はソース走査で固定する(供給そのものは実デバイスを要求するのでテストから通せない)。
 
 import XCTest
+@testable import FTBridgeClient
 
 final class BridgeProvisionerFailureLogTests: XCTestCase {
 
@@ -34,6 +35,17 @@ final class BridgeProvisionerFailureLogTests: XCTestCase {
         XCTAssertTrue(logIndex.upperBound <= resolveIndex.lowerBound,
                       "1台ずつの理由が resolveOutcomes より後に出ている ——"
                       + " 全滅の回は throw が先に走るので、その記録が丸ごと消える")
+    }
+
+    /// 名前で始まるエラーの文に名前を重ねない(`-02: -02: …` と出ていた)。名前で始まらない文には付ける
+    func testFailureLineNamesTheDeviceOnce() throws {
+        let name = "iPhone 17 Pro(iOS 27.0)-02"
+        let named = BridgeProvisionerError.runnerNotAnswering(name: name, port: 8124, waited: 21)
+        XCTAssertEqual(BridgeProvisioner.deviceFailureLine(name: name, description: named.localizedDescription),
+                       "❌ " + named.localizedDescription)
+        let unnamed = BridgeProvisionerError.noFreePort(scanned: 8123...8154)
+        XCTAssertEqual(BridgeProvisioner.deviceFailureLine(name: name, description: unnamed.localizedDescription),
+                       "❌ \(name): " + unnamed.localizedDescription)
     }
 
     /// 集めた結果を**そのまま** resolve へ渡していること(ログ用に別の配列を作って

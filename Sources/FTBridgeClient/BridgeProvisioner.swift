@@ -693,7 +693,7 @@ public struct BridgeProvisioner: Sendable {
         // 「全機が同じ理由で死んだのか、別々の理由なのか」を後から言えなかった
         for outcome in collected {
             if case .failure(let error) = outcome.result {
-                safeLog("❌ \(outcome.name): \(error.localizedDescription)")
+                safeLog(Self.deviceFailureLine(name: outcome.name, description: error.localizedDescription))
             }
         }
         let resolved = try Self.resolveOutcomes(collected)
@@ -704,6 +704,12 @@ public struct BridgeProvisioner: Sendable {
                 + " — continuing with \(resolved.devices.count) device(s)")
         }
         return resolved.devices
+    }
+
+    /// 1台の失敗の 1 行。**文がデバイス名で始まるなら前に名前を足さない** —— `BridgeProvisionerError` の多くは名前で始まる
+    /// (全滅のときは文だけが単独で投げられるので、文から名前は消せない)
+    static func deviceFailureLine(name: String, description: String) -> String {
+        description.hasPrefix(name) ? "❌ \(description)" : "❌ \(name): \(description)"
     }
 
     /// 供給結果の集約規則。**定義元は `FTCore.FleetOutcome.resolve`**(Android ワーカー構築と
