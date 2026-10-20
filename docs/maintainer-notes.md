@@ -5215,6 +5215,8 @@ worktree の run がそれらの端末を「別のワークスペースのブリ
   しかもプロセスの終わりまで戻らない。ユーザー決定で**搭載メモリ 16GiB 以上の機械ではやめない**(`FMServeServer.keepWarmGiveUpBelowPhysicalMemoryBytes`)
 - **未確定**: 暖機を続けていれば死ななかったかは確かめていない(暖機が止まったことと死は時刻が並んでいるだけ)。5 台同時の起動を
   誰が撃ったかも未特定 —— 供給の並列幅(`BridgeProvisioner.launchWidth`)は計画の時点で Shutdown の Simulator を起こすときだけ 2 台に絞り、
-  起動済みの Simulator を供給の途中で再起動する経路(`restartSimulatorAndRunner`)には絞りが掛からない。17:54 には XCUITest ランナーの起動が
+  起動済みの Simulator を供給の途中で再起動する経路(`restartSimulatorAndRunner`)と、xcodebuild の自動起動には絞りが掛かっていなかった(凍結回復は元から 2 台ずつ)。17:54 には XCUITest ランナーの起動が
   `FBSOpenApplicationServiceErrorDomain Code=1`(xctrunner を起動できない)で失敗していた。記録の写しは reports/fm-m2ultra-20261020-1759/
-
+- **直したもの(2)**: Simulator の起動を `SimulatorBoot.ensureBooted` の1箇所に寄せ、機械全体で同時2台の枠(`SimulatorBootSlots`・flock)を取る。
+  供給の並列幅・凍結回復の TaskGroup・表示凍結の回復・デバイスの単体起動・XCUITest ランナーの起動(xcodebuild は Shutdown の Simulator を自分で起動するので、`BridgeLauncher.startDetached` が先に入口を撃つ)のどれから撃っても、別プロセス同士でも2台まで。
+  起動済み・起動中の Simulator は枠を待たない。直に `simctl boot` / `bootstatus` を撃つ経路は `SimulatorBootSingleEntryTests` が落とす

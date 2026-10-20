@@ -5178,9 +5178,11 @@ iOS 26 で溜まらないとは言えない)・iOS 18 のデバイスにはこ�
   `SimulatorPosterCache.purge` と §12.4.3 のログの整理と §12.4.4 のニュースのウィジェット)。simctl で boot / bootstatus -b
   (Shutdown なら boot する)を撃つ関数は、必ず同じ関数の中でこれを呼ぶ
   (`Tests/FTCoreTests/SimulatorPosterCachePurgeWiringTests.swift` が Sources 全体を走査して固定する。
-  2026-09-27 時点の呼び出し口は `SimulatorBoot.ensureBooted` / `DeviceBooter.bootOne` /
-  `ProfileWorkerFactory.recoverFrozenIOSWorkers`(凍結回復の shutdown→boot) /
-  `BridgeProvisioner.rebootSimulator`(遅いランナーのデバイスごと再起動)の4箇所)
+  現在の呼び出し口は `SimulatorBoot.ensureBooted(udid:log:)` の1箇所で、供給・`DeviceBooter.bootOne`・凍結回復・
+  表示凍結の回復・遅いランナーのデバイスごと再起動のどれもここを通る(`SimulatorBootSingleEntryTests`))
+- **起動の同時数は機械全体で2台**(`SimulatorBootSlots`。`~/Library/Caches/fleetest/sim-boot.lock.<slot>` への flock・
+  クローンもプロセスもまたぐ)。5台の一斉起動で空きメモリが尽きて FM が死んだため(maintainer-notes §97)。
+  枠が埋まっていても起動済み・起動中のデバイスは枠を待たずに `bootstatus -b` を撃つ
 - **Booted のデバイスには撃たない** —— PosterBoard が動いている最中に消すと書き込み中のファイルを
   壊しうる。呼び出し側の保証をあてにせず、`purge` 自身が `SimulatorCatalog.shutdownObservation`
   で実状態を確かめる(一覧が読めない `.unreadable` も安全側で撃たない)

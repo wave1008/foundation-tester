@@ -306,6 +306,11 @@ public struct BridgeLauncher: Sendable {
     /// 起動する(ビルド1回で任意ポート数のブリッジを起動できる)
     public func startDetached() throws {
         killOrphanRunners()
+        // xcodebuild は Shutdown の Simulator を自分で起動する = 同時2台の枠を素通りする。先に入口で起こす
+        // (起動済みなら約 200ms。`SimulatorBootSingleEntryTests`)。`device` の既定値は端末名なので UDID のときだけ
+        if !physical, UUID(uuidString: device) != nil {
+            try SimulatorBoot.ensureBooted(udid: device, log: { ConsoleOut.err("→ \($0)") })
+        }
         guard let original = try findXCTestRun() else {
             throw LauncherError.xctestrunNotFound(derivedDataPath.path)
         }

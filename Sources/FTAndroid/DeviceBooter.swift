@@ -603,12 +603,10 @@ public enum DeviceBooter {
                 return
             }
             log("→ \(spec.name): starting the simulator (\(sim.name) \(sim.os))...")
-            // Shutdown 確定済みの上で撃つ(PosterBoard のスナップショットキャッシュ掃除)
-            SimulatorBootCleanup.beforeBoot(udid: sim.udid)
-            // bootstatus -b は起動してブート完了までブロックする
-            let result = try Shell.run(["xcrun", "simctl", "bootstatus", sim.udid, "-b"])
-            guard result.status == 0 else {
-                throw DeviceBooterError.commandFailed("simctl bootstatus: \(result.tail)")
+            do {
+                try SimulatorBoot.ensureBooted(udid: sim.udid, log: log)
+            } catch SimulatorBoot.Error.failed(_, let detail) {
+                throw DeviceBooterError.commandFailed("simctl bootstatus: \(detail)")
             }
             log("✅ \(spec.name): started (\(sim.name))")
         } else {

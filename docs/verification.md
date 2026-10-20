@@ -2418,8 +2418,8 @@ Android エミュレータの表示凍結([[emulator-display-freeze-wedge]])と*
 弾くだけだと、凍結が多発した run はレーンが半分になって走る。
 `excludeBlankScreenWorkers` に `recover:` を渡し、**全機が戻るまで開始しない**:
 
-- 回復の実体は `ProfileWorkerFactory.recoverFrozenIOSWorkers` = **`simctl shutdown` → `boot` →
-  `bootstatus -b`**。**2台ずつ**戻す(一斉 boot は凍結の相関要因そのもので、start-device の
+- 回復の実体は `ProfileWorkerFactory.recoverFrozenIOSWorkers` = **`simctl shutdown` →
+  `SimulatorBoot.ensureBooted`(`bootstatus -b` = Shutdown なら起動。機械全体の同時2台の枠もここで掛かる)**。**2台ずつ**戻す(一斉 boot は凍結の相関要因そのもので、start-device の
   「同時2台」と同じ理屈)
 - **シミュレータを落とすとブリッジも死ぬ**ので、回復と `buildIOSWorkers` での張り直しは1セット。
   生きているブリッジは再利用されるため、実際に起動し直されるのは落とした機だけ

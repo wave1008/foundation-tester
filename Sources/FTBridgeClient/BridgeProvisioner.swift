@@ -1140,7 +1140,7 @@ public struct BridgeProvisioner: Sendable {
                                            claimed: @escaping @Sendable () async -> Void,
                                            log: @escaping @Sendable (String) -> Void) async throws
         -> (port: UInt16, helped: Bool, afterSeconds: TimeInterval?) {
-        try await rebootSimulator(udid: sim.udid, name: name)
+        try await rebootSimulator(udid: sim.udid, name: name, log: log)
         let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
                                       physical: sim.physical)
         try? await launcher.stopAndWait()
@@ -1159,7 +1159,7 @@ public struct BridgeProvisioner: Sendable {
     /// shutdown...」(405)を返しつつ実際には Booted のまま残ることがある —— DeviceBooter.shutdownOne
     /// と同じ理由・同じ手当て)ので、実状態(SimulatorCatalog.shutdownObservation)で成否判定して
     /// 最大 3 回試す
-    private func rebootSimulator(udid: String, name: String) async throws {
+    private func rebootSimulator(udid: String, name: String, log: (String) -> Void) async throws {
         if SimulatorCatalog.shutdownObservation(udid: udid) != .stopped {
             // 手順と定数は SimulatorShutdownRetry(DeviceBooter.shutdownOne と共有)
             let outcome = await SimulatorShutdownRetry.shutdown(udid: udid)
@@ -1170,11 +1170,10 @@ public struct BridgeProvisioner: Sendable {
                         + " \(SimulatorShutdownRetry.attempts) attempts")
             }
         }
-        // 直前まで確かめた Shutdown の上で撃つ(PosterBoard のスナップショットキャッシュ掃除)
-        SimulatorBootCleanup.beforeBoot(udid: udid)
-        let result = try Shell.run(["xcrun", "simctl", "bootstatus", udid, "-b"])
-        guard result.status == 0 else {
-            throw BridgeProvisionerError.simulatorRebootFailed(name: name, detail: result.tail)
+        do {
+            try SimulatorBoot.ensureBooted(udid: udid, log: log)
+        } catch SimulatorBoot.Error.failed(_, let detail) {
+            throw BridgeProvisionerError.simulatorRebootFailed(name: name, detail: detail)
         }
     }
 
@@ -1576,7 +1575,7 @@ public struct BridgeProvisioner: Sendable {
                     if !sim.booted, bootHandled.withLock({ $0.insert(sim.udid).inserted }) {
                         supplyStage?(name, "ios", .booting)
                     }
-                    try launcher.ensureBooted()  // simctl launch はブート済み前提(install も同様)
+                    try launcher.ensureBooted(log: log)  // simctl launch はブート済み前提(install も同様)
                     if preinstallAppPath != nil, needsInstall { supplyStage?(name, "ios", .installing) }
                     try self.ensureAppInstalled(deviceName: name, sim: sim, bundleID: bundleID,
                                                 preinstallAppPath: preinstallAppPath,
@@ -1631,7 +1630,7 @@ public struct BridgeProvisioner: Sendable {
                             + " (the boot is not counted against the runner's start-up budget)")
                     }
                     try await Task.detached(priority: .userInitiated) {
-                        try SimulatorBoot.ensureBooted(udid: sim.udid)
+                        try SimulatorBoot.ensureBooted(udid: sim.udid, log: log)
                     }.value
                     supplyStage?(name, "ios", .bridge)
                 }

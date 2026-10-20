@@ -110,6 +110,10 @@ public enum Shell {
     public struct Result: Sendable {
         public let status: Int32
         public let output: String
+        public init(status: Int32, output: String) {
+            self.status = status
+            self.output = output
+        }
         /// エラー表示用にログ末尾だけ返す
         public var tail: String {
             let lines = output.split(separator: "\n")

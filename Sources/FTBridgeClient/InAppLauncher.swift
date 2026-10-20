@@ -79,8 +79,8 @@ public struct InAppLauncher: Sendable {
     /// シミュレータが Shutdown なら boot して待つ(ブート済みなら即返るが ~200ms かかるため
     /// プロビジョニング時のみ呼ぶ。relaunch には入れない=シナリオ毎の launch を遅くしない)。
     /// XCUITest 経路は xcodebuild が自動ブートするが、simctl launch はブート済みが前提。
-    public func ensureBooted() throws {
-        do { try SimulatorBoot.ensureBooted(udid: udid) } catch SimulatorBoot.Error.failed(_, let detail) {
+    public func ensureBooted(log: (String) -> Void) throws {
+        do { try SimulatorBoot.ensureBooted(udid: udid, log: log) } catch SimulatorBoot.Error.failed(_, let detail) {
             throw InAppLauncherError.bootFailed(detail)
         }
     }

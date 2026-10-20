@@ -39,10 +39,9 @@ final class SimulatorPosterCachePurgeWiringTests: XCTestCase {
                 }
             }
         }
-        // 既知4箇所(SimulatorBoot.ensureBooted / DeviceBooter.bootOne /
-        // ProfileWorkerFactory.recoverFrozenIOSWorkers(2行) / BridgeProvisioner.rebootSimulator)。
+        // 呼び出しは SimulatorBoot.ensureBooted の1箇所(SimulatorBootSingleEntryTests が固定)。
         // 走査が Sources に届いていることの確認(0 件だと「常に緑」と区別できない)
-        XCTAssertGreaterThanOrEqual(bootCalls, 4,
+        XCTAssertGreaterThanOrEqual(bootCalls, 1,
                                     "simctl boot / bootstatus -b の呼び出しが見つからない —— 走査の前提が崩れた")
         XCTAssertEqual(offenders, [],
                        "起動直前に SimulatorBootCleanup.beforeBoot を呼んでいない simctl boot 経路: "

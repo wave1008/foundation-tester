@@ -254,9 +254,7 @@ public actor DisplayFreezeWatch {
         // 先にこの機のブリッジを止める(掴んだまま落とすと shutdown がランナーの teardown を待つ。recoverFrozenIOSWorkers と同じ)
         _ = BridgeLauncher.stopMatching(udid: udid, repoRoot: repoRoot)
         _ = try? Shell.run(["xcrun", "simctl", "shutdown", udid])
-        SimulatorBootCleanup.beforeBoot(udid: udid)
-        _ = try? Shell.run(["xcrun", "simctl", "boot", udid])
-        _ = try? Shell.run(["xcrun", "simctl", "bootstatus", udid, "-b"])
+        try? SimulatorBoot.ensureBooted(udid: udid, log: log)
         log("✅ \(worker.label): simulator is back")
         return .deviceRestart
     }

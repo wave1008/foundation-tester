@@ -150,7 +150,7 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
 - 「キーボードが出ているか」を読む → `KeyboardWait.isShown` / `shownState`(`keyboardFrame != nil` と書かない = 隠れたキーボードは
   画面の外の矩形で来る。`KeyboardShownJudgmentTests`)/ シミュレータのアプリを「止めた」と言う・止めてから壊す →
   `BridgeClient.stopOnSimulator`(ランナーの terminate はセッションが起動したアプリにしか効かない。`ClearAppDataContractTests`)
-- iOS Simulator を起動する経路を足す → 起動の**前に** `SimulatorBootCleanup.beforeBoot(udid:)`
+- iOS Simulator を起動する経路を足す → **`SimulatorBoot.ensureBooted(udid:log:)` を通す**(起動前の掃除 `SimulatorBootCleanup.beforeBoot(udid:)` と、機械全体で同時2台の枠 `SimulatorBootSlots`。直接 simctl boot / bootstatus を撃たない = `SimulatorBootSingleEntryTests`)
   (`SimulatorPosterCachePurgeWiringTests`。docs/design.md §12.4.2・§12.4.3)
 - モニターの周期に計測を足す → 周期の中で待たない(裏で回して控えを読むだけ。`DeviceStorageSampler`)
 - 待ち受けのソケットを足す → `FTCore.AcceptLoop` を通す(**fd を閉じるのは、その fd で待っているスレッドだけ** = 別のスレッドが閉じると
