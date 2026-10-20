@@ -289,7 +289,10 @@ Android は `no running emulator for AVD ...` で失敗する)。`fleetest devic
   何もしない(従来どおり ambient = `xcode-select -p` の結果)⑤一致0個・複数なら**候補一覧を出して
   ディスパッチを拒否**する(手近な Xcode へ黙って倒さない)。**適合チェック(probe)と実行(run)は
   必ず同じ `DEVELOPER_DIR` の解決を通る** —— 食い違うと「照合した Xcode と違う Xcode で走る」
-  沈黙した退行になる。**モニター(デバイスの状態・ライブ映像)には効かせない** —— 観測は
+  沈黙した退行になる。**`remote align`(`Scripts/align.sh`)のビルドも同じ解決を通す**
+  (`alignRevisionCommand(developerDir:)`。一致しない・列挙できないときは ambient で、一致しないときは1行警告する)
+  —— 通さないとランナーの `xcode-select -p` の結果でビルドし、それがコマンドラインツールだと FoundationModels の
+  マクロが無くてビルドが落ちる(M1mini で実測)。**モニター(デバイスの状態・ライブ映像)には効かせない** —— 観測は
   dispatch.lock の外で常時走るので、版の違う simctl を同じ CoreSimulatorService に当てる危険を
   増やさない。効果として、**Xcode の製品版が違うランナーも、その製品版の Xcode さえ入っていれば
   フリートに混ぜられる**(この選択が無ければ製品版違い = 常にディスパッチが止まる)。

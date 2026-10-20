@@ -70,7 +70,25 @@ private func runRemoteAlignment(hostSpec: RemoteHostSpec, layout: RemoteLayout, 
         throw RemoteDispatchError.remoteSetupFailed("could not copy the alignment executable (scp exited \(transfer))")
     }
     return try runInheritedSSH(setupSSHBase + [hostSpec.sshTarget,
-        RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: revision, helperPath: helper)])
+        RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: revision, helperPath: helper,
+                                             developerDir: alignmentDeveloperDir(hostSpec: hostSpec))])
+}
+
+/// アラインのビルドに使う Xcode。**ディスパッチと同じ解決**(登録簿の pin > build 一致 > 製品版一致。
+/// `RemoteRunDispatcher.resolveXcodeSelection` と同じ入力)を通す —— 別に決めると、照合した Xcode と
+/// ビルドした Xcode が食い違う。列挙できない・一致しない(refused)ときは ambient(従来どおり)で、refused は1行言う
+private func alignmentDeveloperDir(hostSpec: RemoteHostSpec) -> String? {
+    let pin = LocalConfig.load().remoteHosts?.first { $0.host == hostSpec.sshTarget }?.developerDir
+    guard let listing = try? Shell.run(setupSSHBase + [hostSpec.sshTarget, XcodeSelection.listCommand]),
+          listing.status == 0 else {
+        return XcodeSelection.resolve(localFingerprint: nil, installed: [], pin: pin).developerDir
+    }
+    let outcome = XcodeSelection.resolve(localFingerprint: ToolchainFingerprint.current(),
+                                         installed: XcodeSelection.parse(listing.output), pin: pin)
+    if case .refused(let reason) = outcome {
+        ConsoleOut.err("⚠️ \(hostSpec.sshTarget): building with the runner's default Xcode — \(reason)")
+    }
+    return outcome.developerDir
 }
 
 /// `echo $HOME; <RemoteProbe.consoleUserCommand>; id -un` の到達確認(RemoteRunDispatcher.resolveLayout

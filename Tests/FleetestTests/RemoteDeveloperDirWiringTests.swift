@@ -31,6 +31,19 @@ final class RemoteDeveloperDirWiringTests: XCTestCase {
                       "選択の拒否が HostRow に載っていない(TOOLCHAIN が ✅ のまま通る)")
     }
 
+    /// アラインのビルドも同じ解決(`XcodeSelection.resolve`)で選んだ Xcode を渡すこと。nil(ambient)を直に渡すと
+    /// ランナーの `xcode-select` の既定でビルドし、コマンドラインツールだとビルドが落ちる(M1mini で実測)
+    func testAlignBuildsThroughTheSameSelection() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/fleetest/RemoteSetupCommand.swift")
+        let code = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(code.contains("developerDir: alignmentDeveloperDir(hostSpec: hostSpec)"),
+                      "runRemoteAlignment が選んだ Xcode をアラインのコマンドへ渡していない")
+        XCTAssertTrue(code.contains("XcodeSelection.resolve(localFingerprint: ToolchainFingerprint.current()"),
+                      "アラインの Xcode をディスパッチと同じ解決で選んでいない")
+    }
+
     private static var source: String {
         get throws {
             let url = URL(fileURLWithPath: #filePath)

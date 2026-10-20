@@ -166,11 +166,26 @@ final class RemoteSetupTests: XCTestCase {
     /// 期待値は**リテラルで書き切る**(`StreamHelpers.all` から組むと、ヘルパーを取り落とす
     /// 変異が production と期待値の両方に同時に効いて素通しする)。ヘルパーを増やしたら
     /// ここも手で足す —— それがこのテストの仕事
+    /// **アラインのビルドもディスパッチと同じ Xcode で行う**(選んだ Xcode を `DEVELOPER_DIR` で先頭に export する)。
+    /// 渡さないとランナーの `xcode-select` の既定でビルドし、コマンドラインツールだと FoundationModels のマクロが無くて落ちた
+    func testAlignBuildsWithTheSelectedXcode() {
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
+        let command = RemoteSetupPlan.alignRevisionCommand(
+            layout: layout, revision: "9655a21", helperPath: "/tmp/fleetest-remote-align.12345678/fleetest",
+            developerDir: "/Applications/Xcode_27.2_Release_Candidate.app/Contents/Developer")
+        XCTAssertTrue(command.hasPrefix("export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; "
+            + "export DEVELOPER_DIR='/Applications/Xcode_27.2_Release_Candidate.app/Contents/Developer'; "), command)
+        XCTAssertFalse(RemoteSetupPlan.alignRevisionCommand(
+            layout: layout, revision: "9655a21", helperPath: "/tmp/fleetest-remote-align.12345678/fleetest",
+            developerDir: nil).contains("DEVELOPER_DIR"), "ambient のときは何も足さない")
+    }
+
     func testAlignRevisionCommand() {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         XCTAssertEqual(
             RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: "9655a21",
-                                                  helperPath: "/tmp/fleetest-remote-align.12345678/fleetest"),
+                                                  helperPath: "/tmp/fleetest-remote-align.12345678/fleetest",
+                                                  developerDir: nil),
             "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; "
                 + "ft_align_helper='/tmp/fleetest-remote-align.12345678/fleetest'; "
                 + "ft_align_helper_dir='/tmp/fleetest-remote-align.12345678'; "
@@ -194,7 +209,8 @@ final class RemoteSetupTests: XCTestCase {
         try FileManager.default.createDirectory(at: helperDirectory, withIntermediateDirectories: true)
         let helper = helperDirectory.appendingPathComponent("fleetest")
         try Data("not invoked".utf8).write(to: helper)
-        let command = RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: "9655a21", helperPath: helper.path)
+        let command = RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: "9655a21", helperPath: helper.path,
+                                                           developerDir: nil)
 
         // toolRoot は Git リポジトリではない。fetch の失敗を保ち、helper へ進まず後片付けする。
         let result = try Shell.run(["/bin/sh", "-c", command])
@@ -235,7 +251,7 @@ final class RemoteSetupTests: XCTestCase {
         let helper = helperDirectory.appendingPathComponent("fleetest")
         try Data("#!/bin/sh\nexit 73\n".utf8).write(to: helper)
         let command = RemoteSetupPlan.alignRevisionCommand(
-            layout: layout, revision: newRevision, helperPath: helper.path)
+            layout: layout, revision: newRevision, helperPath: helper.path, developerDir: nil)
 
         let result = try Shell.run(["/bin/sh", "-c", command])
 

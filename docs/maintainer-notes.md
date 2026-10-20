@@ -5134,3 +5134,30 @@ worktree の run がそれらの端末を「別のワークスペースのブリ
 - 5 SUT の `25_runで共有するメモ` の afterAll が S0020 だけが書く `scratch` を確かめていた → 3 本とも書く `scenarioRan` を見る
 - afterAll の専用の子はアプリを起動しないのに、失敗時に Android の「アプリのプロセスが動いていない(クラッシュしたかも)」を添えていた
   → このプロセスでアプリを起動していなければ問い合わせない(`appProcessEvidenceRequiresLaunch`)
+
+## 93. run ボードの「準備中」に供給の段階を出す(2026-10-20)
+
+- 再起動直後の run で「準備中(デバイスを用意しています)」が数分続き、何をしているか分からないと指摘された。台帳に端末ごとの
+  供給の段階 `supply` を足した(設計は docs/design.md §18.1)。**表示は1語だけ・台数は出さない**(ユーザー決定)—— 最初は
+  「起動中 2・ブリッジを起動中 1(準備完了 0/3 台)」の形を作ったが、端末の行は最初の段階が届いたときに立つので分母が
+  「0/1」→「0/3」と増えて見え、誤解を招く
+- **壊した・直した記録**: ①通知の後片付けは「自分が登録したときだけ外す」(`RunSupplyProgress.releaseOnChange(owner:)`)——
+  委譲の最初の版は `close()` で無条件に nil にしていて、入口の書き手の defer が引き継いだ `RunProgressState` の通知を消す
+  (混在 run で後から合流する iOS の段階が止まる。レビューで見つけた・未出荷)②同じ Simulator の2つ目のブリッジ(hybrid の
+  in-app)で計画時点の `sim.booted` を見て、起動済みの端末に「起動中」を立て直した(デバイスで実測)→ 起動を扱った udid を
+  `bootHandled` で控える ③「ブリッジを起動中」を起動の前(executeBridge の冒頭)に立てていた → 起動済み・実機のときだけ
+- **残る窓(既知・自己修復)**: `RunProgressState` の最初の書き込みと通知の引き継ぎの間に準備中の書き手の通知が走ると、
+  `"preparing"`/total 0 が一度 `"running"` を上書きする。次の flush(最初のシナリオの開始)で直る。引き継ぎを先にすると
+  レーンが1つも無いうちに `"running"` を書く(本数 0/0 に見える)ので、順序はこのまま
+
+## 94. `remote align` のビルドだけが選んだ Xcode を使っていなかった(2026-10-20)
+
+- `Scripts/align.sh` が M1mini だけ `FM alignment failed`。中身はビルドの失敗で、`FoundationModelsMacros` のプラグインが
+  見つからない = **コマンドラインツールでビルドしていた**。M1mini の `xcode-select -p` が `/Library/Developer/CommandLineTools`
+  を指していた(Xcode を beta 3 から RC へ入れ替えた後。入れ替えの前は beta 3 を指していたので表に出なかったと推測)
+- ディスパッチと `remote status` は登録簿の pin / 発行側の Xcode から `XcodeSelection.resolve` で選んで `DEVELOPER_DIR` を渡すのに、
+  `alignRevisionCommand` だけが何も渡さず ambient でビルドしていた(docs/remote-runner.md §7 の「照合と実行は同じ解決」の取りこぼし)
+  → align も同じ解決を通す(`alignmentDeveloperDir`。`RemoteDeveloperDirWiringTests` が走査で固定)
+- **失敗した機械の状態**: checkout は済み・バイナリは古いまま = `remote status` の REV は ✅ なのに中身は前の版(BINARY 欄は有無しか
+  見ない)。プロトコルの版が変わったコミットなら、ディスパッチの適合チェックが版の食い違いで止める
+
