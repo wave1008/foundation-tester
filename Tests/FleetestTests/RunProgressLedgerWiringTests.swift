@@ -197,7 +197,7 @@ final class RunProgressLedgerWiringTests: XCTestCase {
                        "run の供給(Android のレーン・iOS の eager・遅延参加)が箱を渡していない")
         let factory = try String(contentsOf: root.appendingPathComponent("Sources/FTAndroid/ProfileWorkerFactory.swift"),
                                  encoding: .utf8)
-        XCTAssertTrue(factory.contains("BridgeProvisioner(repoRoot: repoRoot, supplyStage: supplyStage)"),
+        XCTAssertTrue(factory.contains("BridgeProvisioner(repoRoot: repoRoot, supplyStage: supplyStage,"),
                       "buildIOSWorkers が BridgeProvisioner へ通知を渡していない")
     }
 }

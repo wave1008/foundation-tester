@@ -264,8 +264,8 @@ function mostAdvancedPhase(runs: readonly RunBoardRun[]): "building" | "preparin
 }
 
 /** 端末の段階の進む順(ready・runnerBuild・pending は含めない。pending だけなら undefined = 「デバイスの準備を開始します」)。 */
-export const SUPPLY_PROGRESS_STEPS = ["booting", "bridge", "installing"] as const;
-/** "allReady" = 端末の行が全部 ready(準備中なら「テストを開始します」。実行中は何も添えない)。 */
+export const SUPPLY_PROGRESS_STEPS = ["booting", "bridge", "configuring", "installing"] as const;
+/** "allReady" = 端末の行が全部 ready(準備中なら「テストを開始しています」。実行中は何も添えない)。 */
 export type SupplyStep = "runnerBuild" | (typeof SUPPLY_PROGRESS_STEPS)[number] | "allReady";
 
 /** 準備中に出す段階を1つ選ぶ(台数は出さない = ユーザー決定)。①共有のランナーのビルドが最優先 ②端末は**いちばん進んでいる

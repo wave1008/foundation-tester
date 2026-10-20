@@ -158,7 +158,7 @@ export interface MonitorRunLane {
 
 /** 準備中の端末ごとの供給の段階(FTCore.RunProgressSupply と対。docs/design.md §18.1)。
  * 端末に属さない共有の段階(ランナーのビルド)は name が空文字。step の語彙は
- * "pending"(予定に入ったがまだ始まっていない)/ "runnerBuild" / "booting" / "bridge" / "installing" / "ready"
+ * "pending"(予定に入ったがまだ始まっていない)/ "runnerBuild" / "booting" / "bridge" / "configuring" / "installing" / "ready"
  * (未知の値は読み手が無視する)。 */
 export interface MonitorRunSupply {
   readonly name: string;

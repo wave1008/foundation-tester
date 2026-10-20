@@ -16,6 +16,10 @@ public struct RunProgressSupply: Codable, Equatable, Sendable {
         case booting
         case bridge
         case installing
+        /// ブリッジがそろった後、シミュレータの設定(モーションを減らす・ソフトキーボード)を書き込んでいる間
+        /// (`ProfileWorkerFactory.buildIOSWorkers`。1台に `simctl spawn` 2回 = 実測 0.7〜1.4 秒 × 2)。
+        /// 無いと全台 ready の「テストを開始しています」が、まだ準備中のこの間も出る
+        case configuring
         case ready
     }
 

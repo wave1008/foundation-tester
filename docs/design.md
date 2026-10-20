@@ -6031,9 +6031,13 @@ CLI 実行・他人の run・ランナー機で直に打たれた run は `inRun
   0 から始まり、残りもその時点で計算し直される
 - **準備中の間は端末ごとの供給の段階を `supply` に載せる**(`FTCore.RunProgressSupply`:
   `name`(`devices[].name`。ランナーの build-for-testing は端末に属さないので空文字)・`platform`・
-  `step` = `pending` / `runnerBuild` / `booting` / `bridge` / `installing` / `ready`)。iOS は計画の時点で予定の端末を全台 `pending` で
-  立てる(同時に起動できる台数の枠を待つ端末に行が無いと、先に済んだ端末だけで「全台 ready」=「テストを開始します」に見える)。**必須の欄**(古い形は読まない・
-  段階の情報が無い run は空配列)。端末の行は `ready` になっても残す(読み手は全部 ready なら「テストを開始します」)。
+  `step` = `pending` / `runnerBuild` / `booting` / `bridge` / `configuring` / `installing` / `ready`)。iOS は計画の時点で予定の端末を全台 `pending` で
+  立てる(同時に起動できる台数の枠を待つ端末に行が無いと、先に済んだ端末だけで「全台 ready」=「テストを開始しています」に見える)。**必須の欄**(古い形は読まない・
+  段階の情報が無い run は空配列)。端末の行は `ready` になっても残す(読み手は全部 ready なら「テストを開始しています」)。
+  **`configuring`** は iOS のブリッジがそろった後、シミュレータの設定(モーションを減らす・ソフトキーボード)を書き込む間
+  (`ProfileWorkerFactory.buildIOSWorkers`。書き込む前に全台を立て、その台の書き込みが済んだら `ready`。
+  無いとこの間も「テストを開始しています」が出る)。値を足すのは後方互換(読み手は未知の値を落とさず運び、
+  古い拡張は「デバイスの準備を開始します」を出す)なのでプロトコルの版は据え置き。
   `runnerBuild` の行はビルドが終わったら消し、供給に失敗した端末の行も消す。
   **供給側(`BridgeProvisioner` / `ProfileWorkerFactory.installIfNeeded` / `AndroidLaneRecovery`)は
   `SupplyStageReporter` で `RunSupplyProgress`(run プロセス内の箱)へ知らせ、台帳の書き手3つ
@@ -6041,14 +6045,15 @@ CLI 実行・他人の run・ランナー機で直に打たれた run は `inRun
   `PreparingProgressWriter`、`RunProgressState`)が書くときに必ず箱の snapshot(名前順)を載せる**。
   箱が変わったら直前の phase のまま書き直す(同じ内容なら通知しない)。`RunProgressState` は
   最初の書き込みの後に通知を引き継ぐ(それまでは準備中の書き手が続ける)。
-  `ready` の置き場: iOS は `BridgeProvisioner.executeDevice` の終わり(ブリッジが ready)と
+  `ready` の置き場: iOS は `BridgeProvisioner.executeDevice` の終わり(ブリッジが ready)・
+  `ProfileWorkerFactory.buildIOSWorkers` の設定の書き込みの後(その台の書き込みが済んだら)・
   `installIfNeeded` の終わり(戻るワーカー全部)、Android は `installIfNeeded` の終わり。
   Android のブリッジ待ちは `bootMissingDevices` が起こせた直後に `bridge` を立てる
   (定着待ち `awaitDurableAndroidBridges` の間)。
   **拡張**: 段階を**1つだけ**出す(台数は出さない = ユーザー決定)。選び方は `runBoardModel.currentSupplyStep` の1か所 ——
   ランナーのビルド(「ランナーをビルド中」)が最優先、端末は**いちばん進んでいる未完了の段階**(「デバイスを起動中」→
-  「ブリッジを起動中」→「アプリをインストール中」の順で後ろのもの)。`preparing` ではそれを出し、端末の行が全部 `ready` なら
-  「テストを開始します」(実行が始まる直前)、段階の情報が無ければ「デバイスの準備を開始します」。
+  「ブリッジを起動中」→「デバイスを設定しています」→「アプリをインストール中」の順で後ろのもの)。`preparing` ではそれを出し、端末の行が全部 `ready` なら
+  「テストを開始しています」(実行が始まる直前)、段階の情報が無ければ「デバイスの準備を開始します」。
   `building`(「シナリオをビルド中」)・`compiling`(「Vision コンパイル中」)は供給の段階を添えない。`running`(混在 run で
   iOS の供給が続いている間)は進捗の横に同じ1語を添える。run / api run の2経路が箱を作って渡すことは
   `RunProgressLedgerWiringTests` が固定する
@@ -6157,7 +6162,7 @@ CLI 実行・他人の run・ランナー機で直に打たれた run は `inRun
   (字を差し替える形は細くて伝わらなかった)。個々の run の行の chevron も同じ規律
 - **準備中の run は本数でなく「いま何をしているか」を1語で出し、進捗バーは隠す**(本数も割合もまだ意味を持たない。
   語は §18.1 の `supply` から = 「シナリオをビルド中」「ランナーをビルド中」「デバイスを起動中」「ブリッジを起動中」
-  「アプリをインストール中」「テストを開始します」「Vision コンパイル中」、分からなければ「デバイスの準備を開始します」)。
+  「デバイスを設定しています」「アプリをインストール中」「テストを開始しています」「Vision コンパイル中」、分からなければ「デバイスの準備を開始します」)。
   経過時間は出す —— どれくらい待っているかが分かる。**件数(「実行中 N」)には数える**
 - **並びは常に機械の順**(local → 登録簿の順。ユーザー決定 2026-09-20)—— run が始まっても
   **その機械の位置は動かさない**(行の種類が「空き」から run に変わるだけ)。動くと目が追えない。**行の高さは固定する**

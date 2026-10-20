@@ -64,7 +64,7 @@ is unavailable.
   runner machine. A run going on right now appears on its machine's row with "N of M done" and an
   estimated time left — not just runs you started, but CLI runs and other people's runs too. Before the
   run starts, the row says what it is doing instead of the counts ("Building scenarios…", "Starting device
-  preparation…", "Building the runner…", "Booting devices…", "Starting the bridge…", "Installing the app…",
+  preparation…", "Building the runner…", "Booting devices…", "Starting the bridge…", "Configuring devices…", "Installing the app…",
   "Starting tests…").
   Expanding a row lists that machine's devices; clicking a row selects them in the Line View.
 - The Device Monitor tab is split into three views, top to bottom: the **Line View** (the row of

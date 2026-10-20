@@ -41,11 +41,22 @@ public enum ProfileWorkerFactory {
             bundleID: iosApp?.bundleID,
             preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil,
             log: log)
-        // 供給後に同期する(シミュレータのブートは provision 側。未ブートでは simctl spawn が失敗する)
-        for device in provisioned where !device.physical {
-            IOSReduceMotion.apply(udid: device.udid,
-                                  animationsEnabled: resolved.enableAnimations, warn: log)
-            IOSSoftwareKeyboard.apply(udid: device.udid, warn: log)
+        // 供給後に同期する(シミュレータのブートは provision 側。未ブートでは simctl spawn が失敗する)。
+        // 書き込む間は行を configuring にする(先に全台立てる = 書き終えた台だけで「全台 ready」に見せない)
+        let simulators = provisioned.filter { !$0.physical }
+        for device in simulators { supplyStage?(device.name, "ios", .configuring) }
+        // **台ごとに並行に撃つ**(1台に simctl spawn 2回 = 実測 0.7〜1.4 秒 × 2。順に撃つと 8 台で約 16 秒、全台そろった後の
+        // 待ちになっていた)。別のシミュレータへの書き込みなので互いに干渉しない。log は並行に呼ばれうるので直列化する
+        let warn = SerializedSink(log)
+        let animationsEnabled = resolved.enableAnimations
+        await withTaskGroup(of: Void.self) { group in
+            for device in simulators {
+                group.addTask {
+                    IOSReduceMotion.apply(udid: device.udid, animationsEnabled: animationsEnabled, warn: { warn($0) })
+                    IOSSoftwareKeyboard.apply(udid: device.udid, warn: { warn($0) })
+                    supplyStage?(device.name, "ios", .ready)
+                }
+            }
         }
         return provisioned.map { makeIOSWorker(device: $0, iosApp: iosApp) }
     }

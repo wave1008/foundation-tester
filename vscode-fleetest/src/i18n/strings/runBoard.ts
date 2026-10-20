@@ -25,8 +25,9 @@ export const runBoardStrings = {
   "runBoard.supplyBooting": { ja: "デバイスを起動中", en: "Booting devices…" },
   "runBoard.supplyBridge": { ja: "ブリッジを起動中", en: "Starting the bridge…" },
   "runBoard.supplyInstalling": { ja: "アプリをインストール中", en: "Installing the app…" },
+  "runBoard.supplyConfiguring": { ja: "デバイスを設定しています", en: "Configuring devices…" },
   // 全台の準備が終わり、実行が始まる直前(準備中のときだけ。実行中には添えない)
-  "runBoard.supplyStarting": { ja: "テストを開始します", en: "Starting tests…" },
+  "runBoard.supplyStarting": { ja: "テストを開始しています", en: "Starting tests…" },
   "runBoard.compiling": { ja: "Vision コンパイル中", en: "Compiling Vision…" },
   "runBoard.laneIdle": { ja: "⏹ 待機", en: "⏹ Waiting" },
   "runBoard.remainingUnknown": { ja: "—", en: "—" },

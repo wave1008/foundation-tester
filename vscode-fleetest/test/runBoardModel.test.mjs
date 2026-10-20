@@ -234,6 +234,19 @@ test("currentSupplyStep: ランナーのビルドが最優先・端末はいち�
     { name: "b", platform: "android", step: "ready" },
   ]), "installing");
   assert.equal(currentSupplyStep([{ name: "a", platform: "android", step: "booting" }]), "booting");
+  // 設定の書き込み(configuring)はブリッジより後・アプリのインストールより前
+  assert.equal(currentSupplyStep([
+    { name: "a", platform: "ios", step: "bridge" },
+    { name: "b", platform: "ios", step: "configuring" },
+  ]), "configuring");
+  assert.equal(currentSupplyStep([
+    { name: "a", platform: "ios", step: "configuring" },
+    { name: "b", platform: "ios", step: "installing" },
+  ]), "installing");
+  assert.equal(currentSupplyStep([
+    { name: "a", platform: "ios", step: "configuring" },
+    { name: "b", platform: "ios", step: "ready" },
+  ]), "configuring", "設定を書き込んでいる端末が残る間は全台 ready と言わない");
 });
 
 test("束ねた run の supply は machine 昇順の run の順に連結する", () => {

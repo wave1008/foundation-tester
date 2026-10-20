@@ -616,11 +616,12 @@ function appendDeviceLane(row, machine, name, lane, receivedAtMs, platform) {
 
 // 供給の段階(台帳の supply)→「準備中 — 起動中 2・ブリッジを起動中 1(準備完了 0/3 台)」。
 // ready 以外の行が無ければ undefined(従来の表示のまま)。
-// `whilePreparing` = 準備中の行か(全台 ready の「テストを開始します」は準備中にだけ出す。実行中は添えない)
+// `whilePreparing` = 準備中の行か(全台 ready の「テストを開始しています」は準備中にだけ出す。実行中は添えない)
 function supplyLabel(supply, whilePreparing) {
   const keys = {
     runnerBuild: 'runBoard.supplyRunnerBuild', booting: 'runBoard.supplyBooting',
-    bridge: 'runBoard.supplyBridge', installing: 'runBoard.supplyInstalling', allReady: 'runBoard.supplyStarting',
+    bridge: 'runBoard.supplyBridge', configuring: 'runBoard.supplyConfiguring', installing: 'runBoard.supplyInstalling',
+    allReady: 'runBoard.supplyStarting',
   };
   const step = currentSupplyStep(supply);
   if (step === undefined || (step === 'allReady' && !whilePreparing)) {

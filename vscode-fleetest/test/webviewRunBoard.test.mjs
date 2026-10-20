@@ -215,7 +215,7 @@ test("ビルド中・コンパイル中は供給の段階を添えない", (t) =
 });
 
 // 供給の行が全部 ready で、まだ準備中 = 実行が始まる直前
-test("供給の段階がすべて ready の準備中は「テストを開始します」", (t) => {
+test("供給の段階がすべて ready の準備中は「テストを開始しています」", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   post(window, { type: "monitorRuns", machine: "M1Max", observed: true, runs: [{
@@ -225,7 +225,22 @@ test("供給の段階がすべて ready の準備中は「テストを開始し�
     elapsedSeconds: 12, total: 0, done: 0, failed: 0, lanes: [],
   }] });
   assert.equal(runRows(document)[0].querySelector(".run-board-counts").textContent,
-    "テストを開始します");
+    "テストを開始しています");
+});
+
+// ブリッジがそろった後、シミュレータの設定を書き込んでいる間(まだ準備中)
+test("設定を書き込んでいる端末が残る準備中は「デバイスを設定しています」", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  post(window, { type: "monitorRuns", machine: "M1Max", observed: true, runs: [{
+    pid: 41233, runID: "run-1", mine: true, phase: "preparing", requeued: 0, laneDropouts: 0,
+    supply: [{ name: "iPhone 17-01", platform: "ios", step: "ready" },
+             { name: "iPhone 17-02", platform: "ios", step: "configuring" }],
+    project: "E2E-iOS", profile: "ios-inapp",
+    elapsedSeconds: 12, total: 0, done: 0, failed: 0, lanes: [],
+  }] });
+  assert.equal(runRows(document)[0].querySelector(".run-board-counts").textContent,
+    "デバイスを設定しています");
 });
 
 // 混在 run: 最初の Android レーンが合流して phase は running だが iOS の供給が続いている
