@@ -44,7 +44,13 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 197
+    public static let bridgeProtocolVersion = 198
+
+    /// `ErrorResponse.reason` の値: ref が指していた要素が、撃つ時点でもう同じ場所に居ない(古い ref)。
+    /// **何も撃たずに断った**ことを保証する(422)。ホストは新しい木から引き直して撃ち直してよい。
+    /// 同期相手: Runner/.../BridgeRouter+TextInput.swift・BridgeRouter.swift(`refuseStaleRef`)・
+    /// `DriverError.staleRef`(BridgeClient.check が写す)
+    public static let staleRefReason = "stale-ref"
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1081,10 +1087,13 @@ public struct TapRequest: Codable {
     public var ref: Int?
     public var x: Double?
     public var y: Double?
-    public init(ref: Int? = nil, x: Double? = nil, y: Double? = nil) {
+    /// ホストが `ref` に期待する要素(`RefExpectation`)。ref と一緒に送り、食い違えば撃たずに断られる
+    public var expect: RefExpectation?
+    public init(ref: Int? = nil, x: Double? = nil, y: Double? = nil, expect: RefExpectation? = nil) {
         self.ref = ref
         self.x = x
         self.y = y
+        self.expect = expect
     }
 }
 
@@ -1115,9 +1124,12 @@ public struct DragRequest: Codable {
 public struct TypeRequest: Codable {
     public var ref: Int?
     public var text: String
-    public init(ref: Int? = nil, text: String) {
+    /// `TapRequest.expect` と同じ
+    public var expect: RefExpectation?
+    public init(ref: Int? = nil, text: String, expect: RefExpectation? = nil) {
         self.ref = ref
         self.text = text
+        self.expect = expect
     }
 }
 
@@ -1128,8 +1140,11 @@ public struct TypeRequest: Codable {
 /// Android は ScenarioRunnerMain が typeDriver を渡さないので、409 はそのまま失敗になる
 public struct ClearRequest: Codable {
     public var ref: Int?
-    public init(ref: Int? = nil) {
+    /// `TapRequest.expect` と同じ
+    public var expect: RefExpectation?
+    public init(ref: Int? = nil, expect: RefExpectation? = nil) {
         self.ref = ref
+        self.expect = expect
     }
 }
 
@@ -1498,11 +1513,15 @@ public struct PressRequest: Codable {
     public var x: Double?
     public var y: Double?
     public var duration: Double
-    public init(ref: Int? = nil, x: Double? = nil, y: Double? = nil, duration: Double) {
+    /// `TapRequest.expect` と同じ
+    public var expect: RefExpectation?
+    public init(ref: Int? = nil, x: Double? = nil, y: Double? = nil, duration: Double,
+                expect: RefExpectation? = nil) {
         self.ref = ref
         self.x = x
         self.y = y
         self.duration = duration
+        self.expect = expect
     }
 }
 
@@ -1635,7 +1654,60 @@ public struct AppStateResponse: Codable {
 
 public struct ErrorResponse: Codable {
     public var error: String
-    public init(error: String) { self.error = error }
+    /// 機械可読な断りの理由(文言ではなくこれで分岐する)。今は `BridgeAPI.staleRefReason` だけ。
+    /// 無いエラーは省略(nil)= 従来どおり status と本文だけ
+    public var reason: String?
+    public init(error: String, reason: String? = nil) {
+        self.error = error
+        self.reason = reason
+    }
+}
+
+/// ホストが ref に対して期待する要素の目印。**位置・ラベルは入れない**(値の表示やスクロールで変わる =
+/// 誤って断る)。identifier が両方にあって違う、または型が違うときだけ矛盾とみなす(`StaleRefGuard`)
+public struct RefExpectation: Codable, Sendable, Equatable {
+    public var identifier: String?
+    /// 正規化後の型名(`ElementInfo.type`)
+    public var type: String
+    public init(identifier: String?, type: String) {
+        self.identifier = identifier
+        self.type = type
+    }
+    public init(_ element: ElementInfo) {
+        self.init(identifier: element.identifier, type: element.type)
+    }
+}
+
+/// ref を撃つ前の「その要素はまだそこにあるか」の判定(純粋関数。XCUITest ランナーがコンパイルして使い、
+/// ホストのテストも同じ実装を通す)。ブリッジの ref の表は直近の /snapshot のもの —— 画面が切り替わった後に
+/// 古い ref を撃つと、同じ座標にある別の物(送信・購入ボタン等)を押す
+public enum StaleRefGuard {
+    /// frame の一致の許容[pt]。`/hittable` の一致判定(1pt の丸め)と同じ
+    public static let frameTolerance: Double = 1
+
+    /// B: ホストの期待と、ブリッジが ref に控えている要素が矛盾するか。期待が無ければ矛盾しない
+    public static func contradicts(_ expect: RefExpectation?, stored: ElementInfo) -> Bool {
+        guard let expect else { return false }
+        if ElementInfo.normalizedType(expect.type) != ElementInfo.normalizedType(stored.type) { return true }
+        if let a = expect.identifier, !a.isEmpty, let b = stored.identifier, !b.isEmpty, a != b { return true }
+        return false
+    }
+
+    /// A: 控えた要素が、撮り直した木の中にまだ同じ枠で居るか。identifier があればそれ、無ければ型+ラベルで同じ要素と
+    /// みなし、枠は `frameTolerance` 以内で一致を要する
+    public static func isStillPresent(_ stored: ElementInfo, in fresh: [ElementInfo]) -> Bool {
+        let storedHasID = !(stored.identifier ?? "").isEmpty
+        return fresh.contains { candidate in
+            guard sameFrame(candidate.frame, stored.frame) else { return false }
+            if storedHasID { return candidate.identifier == stored.identifier }
+            return candidate.type == stored.type && (candidate.label ?? "") == (stored.label ?? "")
+        }
+    }
+
+    private static func sameFrame(_ a: FTRect, _ b: FTRect) -> Bool {
+        abs(a.x - b.x) <= frameTolerance && abs(a.y - b.y) <= frameTolerance
+            && abs(a.width - b.width) <= frameTolerance && abs(a.height - b.height) <= frameTolerance
+    }
 }
 
 /// **ラベルだけを持つライブリージョン**を文字として扱うかの判定(in-app と XCUITest ランナーが共有)。

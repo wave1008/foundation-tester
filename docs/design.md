@@ -412,8 +412,8 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 | `GET  /status` | ランナー生存確認・シミュレータ情報。inapp は `applicationState`(active/inactive/background)も返す(背面 suspend 診断用・追加 optional・旧ブリッジは返さず nil) |
 | `POST /session` | `{bundleID}` → `XCUIApplication(bundleIdentifier:).launch()` |
 | `GET  /snapshot` | アクセシビリティツリーを圧縮 JSON で返す(4.4) |
-| `POST /tap` | `{ref}` または `{x,y}` |
-| `POST /type` | `{ref, text}`(tap → typeText) |
+| `POST /tap` | `{ref}` または `{x,y}`。ref を撃つ要求(`/tap` `/press` `/type` `/clear`)は任意で `expect: {identifier?, type}` を添えられる(下の `stale-ref`) |
+| `POST /type` | `{ref, text}`(tap → typeText)。ref 経路は打つ前のタップの直前に木を1回撮り直し(`app.snapshot()`・ライブクエリなし)、ref の要素が同じ枠に居なければ撃たずに断る |
 | `POST /swipe` | `{direction}` or `{fromRef, direction}`。用途つきの任意項目あり(下記「スクロールの語彙」) |
 | `POST /press` | `{ref, duration}` または `{x, y, duration}` 長押し |
 | `POST /hold` | `{x, y, duration}` 指を置いたら応答を返し、`duration` 秒後にブリッジが自分で離す(DSL の `hold { }`)。`/press` は離すまで応答せず、その間は木もスクショも返せない。XCUITest は `CoordinatePinch` と同じ非公開 API(無い Xcode では 422)、Android は離す側を別スレッドで注入(前の指が下りたままなら 409)。**in-app は持たない**(hybrid は XCUITest へ回す) |
@@ -520,6 +520,7 @@ Android の整定判定は**スナップショットの画面サイズ**で行�
 | `501` / `404`(本文 `not found:`) | このエンジンでは**原理的に不可** | XCUITest へフォールバック(§10 の「in-app で不可・XCUITest で可」) |
 | `404`(ref 不明) | スナップショット取り直しが要る本物の失敗 | 失敗(フォールバックしない。本文前置で 501 系と区別) |
 | `409` | 一時的競合(キーウィンドウ不在・セッション消失) | セッション消失だけ `SessionRecoveryDriver` が張り直す。**フォールバック判定に使わない** |
+| `422` + `reason: "stale-ref"`(XCUITest ランナー。`ErrorResponse.reason`) | ref が指していた要素が、撃つ時点でもう同じ場所に居ない(`/type` `/clear` は撃つ直前の撮り直しで、全 ref 操作はホストの `expect` との identifier・型の矛盾で)。**何も撃っていない**ことの保証 | `DriverError.staleRef` に写し、`StepExecutor.executeActionRetryingStaleRef` が木を撮り直して引き直し、`waitSeconds` の予算内で撃ち直す。**この断りだけが撃ち直してよい**(他の 422 は届いたかもしれない)。in-app・Android は未対応 |
 | `422` | セッションはあるが**今のこの画面では実行できない**(フォーカス欄が無い・**入力欄でない ref を叩いても焦点が前の欄に残った**(XCUITest の type / clear)・クリアしきれない・type の読み返しが期待値に届かない・**中身のあるマスク欄への追記**・in-app の**座標タップの点が画面外**(ソフトキーボードの上は 501 = hybrid では XCUITest が撃つ。ブリッジ v197)・**セッションのアプリが背面のままの type / clear / pressEnter**(焦点のライブクエリがランナーを落とすので撃つ前に断る)・**同じく背面のままの tap / swipe / drag / doubleTap / pinch / press**(座標は Find the Application、ref は要素のライブクエリが刺さる。v101)・**home を 3 回送っても前面が外れない**) | 失敗。`clearInput` だけ 409 と同様に typeDriver へ回す(`isClearInputFallback`) |
 | `422`(Android。本文 `no-active-window-root:`) | `/snapshot` の再試行(WAKEUP 注入込み)後もアクティブウィンドウの a11y 根が読めない一時ストール(実測 Pixel 3a/Android 12: 13〜37 秒。app switcher・画面消灯・ウィンドウ遷移の最中に起きる) | 失敗(自然回復を待つ)。`DriverError.isNoReadableWindow` が判定・MCP は撃ち直しても同じ答えになることと前面復帰の手を案内する |
 | `503` | iOS: セッションはあるが**対象アプリが起動していない**(XCUITest の `requireLiveApp`)。**Android: UiAutomation の接続が死んだ = ブリッジが自分で exit する** | iOS は `AppAttachDriver` が activate して1回再試行(包まれていない xcuitest 経路では素の失敗)。Android は status で分岐しない(ブリッジの起動し直しは供給と監視が拾う) |

@@ -61,6 +61,11 @@ extension BridgeRouter {
     private func typeAndReadBack(_ body: Data) throws -> String? {
         let req = try decode(TypeRequest.self, body)
         let app = try requireForegroundAppForInput()
+        // 打つ前のタップは ref の枠を撃つ。画面が切り替わった後に古い枠を撃つと、そこに居る別の物を押す
+        if let ref = req.ref {
+            try requireExpectedRef(ref, expect: req.expect)
+            try requireRefStillOnScreen(app, ref: ref)
+        }
         let focusBefore = focusBeforeTappingNonInput(app, ref: req.ref)
         var tapped: CGPoint?
         if let ref = req.ref {
@@ -385,6 +390,8 @@ extension BridgeRouter {
         let app = try requireForegroundAppForInput()
         let focused: XCUIElement
         if let ref = req.ref {
+            try requireExpectedRef(ref, expect: req.expect)
+            try requireRefStillOnScreen(app, ref: ref)
             let point = try resolvePoint(ref: ref, x: nil, y: nil)
             let focusBefore = Self.focusMark(app)
             Self.tapBeforeTyping(coordinate(app, point))

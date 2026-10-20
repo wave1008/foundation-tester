@@ -284,7 +284,7 @@ extension DriverError: StepFailureKindProviding {
     public var stepFailureKind: StepFailureKind? {
         switch self {
         case .bridgeUnreachable, .bridgeConnectionRefused, .bridgeIdentityMismatch: return .driverUnreachable
-        case .badResponse: return .driverError
+        case .badResponse, .staleRef: return .driverError
         }
     }
 }
@@ -380,6 +380,10 @@ public enum DriverError: Error, LocalizedError {
     /// (ポートが別デバイスのブリッジに奪われた)。detail は BridgeIdentityCheck.verdict が
     /// 組み立てる、事実だけの完成文(呼び出し元で追加の前置きをしない)
     case bridgeIdentityMismatch(String)
+    /// ブリッジが「ref が指していた要素はもう同じ場所に居ない」と**何も撃たずに**断った
+    /// (`ErrorResponse.reason == BridgeAPI.staleRefReason`)。撃っていないので、木を撮り直して引き直し、
+    /// 撃ち直してよい唯一の拒否。detail はブリッジの文言
+    case staleRef(detail: String)
 
     public var errorDescription: String? {
         switch self {
@@ -394,6 +398,9 @@ public enum DriverError: Error, LocalizedError {
                 : "The driver returned an error (\(status)): \(body)"
         case .bridgeIdentityMismatch(let detail):
             return detail
+        case .staleRef(let detail):
+            return "The driver refused to act on a stale reference; nothing was sent. Take a new snapshot and"
+                + " resolve the target again. \(detail)"
         }
     }
 

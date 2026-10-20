@@ -10,10 +10,13 @@ import XCTest
 struct BridgeError: Error {
     let status: Int
     let message: String
+    /// 機械可読な断りの理由(`ErrorResponse.reason`)。ホストはこれで分岐する
+    let reason: String?
 
-    init(_ status: Int, _ message: String) {
+    init(_ status: Int, _ message: String, reason: String? = nil) {
         self.status = status
         self.message = message
+        self.reason = reason
     }
 }
 
@@ -156,7 +159,7 @@ final class BridgeRouter {
             if let blocked = InterruptionGuard.shared.take() {
                 return .error(InterruptionGuard.message(blocked), status: 422)
             }
-            return .error(error.message, status: error.status)
+            return .error(error.message, status: error.status, reason: error.reason)
         } catch {
             if let blocked = InterruptionGuard.shared.take() {
                 return .error(InterruptionGuard.message(blocked), status: 422)
@@ -767,7 +770,7 @@ final class BridgeRouter {
                                                              isLandscape: XCUIDevice.shared.orientation.isLandscape) {
             throw refuseLandscapeSpringBoardTap()
         }
-        let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
+        let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y, expect: req.expect)
         // アプリが主画面以外の画面(Duo の内側)に出ているときは XCUICoordinate が届かない(DisplayRouting)
         if let display = DisplayRouting.target(for: app) {
             try CoordinatePinch.tap(at: point, display: display, touchSeconds: Self.doubleTapTouchDuration)
@@ -1040,7 +1043,7 @@ final class BridgeRouter {
     private func handleDoubleTap(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(TapRequest.self, body)
         let app = try requireForegroundAppForGesture()
-        let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
+        let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y, expect: req.expect)
         // 主画面以外の画面(DisplayRouting)は API が無ければ縮退先も無い(XCUICoordinate は届かない)ので、
         // synthesize の 422 をそのまま返す
         let display = DisplayRouting.target(for: app)
@@ -1261,7 +1264,7 @@ final class BridgeRouter {
             throw BridgeError(400, violation)
         }
         let app = try requireForegroundAppForGesture()
-        let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
+        let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y, expect: req.expect)
         if let display = DisplayRouting.target(for: app) {
             try CoordinatePinch.synthesize(fingers: [[(point: point, offset: 0), (point: point, offset: req.duration)]],
                                            name: "fleetest press", orientation: .portrait, display: display)
@@ -1747,11 +1750,37 @@ final class BridgeRouter {
         return app
     }
 
-    func resolvePoint(ref: Int?, x: Double?, y: Double?) throws -> CGPoint {
+    /// 古い ref を撃たずに断る(422 + `BridgeAPI.staleRefReason`)。**何も撃っていない**ことを保証する断りなので、
+    /// ホストは木を撮り直して引き直してよい。409 は `requireApp()` 専用なので使わない
+    func refuseStaleRef(_ ref: Int, _ why: String) -> BridgeError {
+        BridgeError(422, "reference [\(ref)] no longer points at the element the last snapshot saw (\(why));"
+            + " nothing was sent — take a new snapshot and resolve the target again",
+            reason: BridgeAPI.staleRefReason)
+    }
+
+    /// B: ホストが添えた期待(identifier・型)が、ブリッジの控えと矛盾するなら撃たずに断る。期待が無ければ何もしない
+    func requireExpectedRef(_ ref: Int, expect: RefExpectation?) throws {
+        guard let stored = refElements[ref], StaleRefGuard.contradicts(expect, stored: stored) else { return }
+        throw refuseStaleRef(ref, "the host expected \(expect?.identifier ?? "-") (\(expect?.type ?? "-")) but the bridge"
+            + " holds \(stored.identifier ?? "-") (\(stored.type))")
+    }
+
+    /// A: 撃つ直前に木を1回撮り直し、控えた要素がまだ同じ枠に居なければ撃たずに断る。**ライブクエリは撃たない**
+    /// (`app.snapshot()` 1回 = 30〜120ms)。撮り直した木で ref の表を置き換えない(番号がずれる)
+    /// **撮り直しが失敗したら断らずに通す**(確かめられないことを理由に、従来は打てていた操作を失敗させない)
+    func requireRefStillOnScreen(_ app: XCUIApplication, ref: Int) throws {
+        guard let stored = refElements[ref], let fresh = try? captureOnce(app) else { return }
+        if !StaleRefGuard.isStillPresent(stored, in: fresh.elements) {
+            throw refuseStaleRef(ref, "it is no longer on the screen at the same place")
+        }
+    }
+
+    func resolvePoint(ref: Int?, x: Double?, y: Double?, expect: RefExpectation? = nil) throws -> CGPoint {
         if let ref {
             guard let frame = refFrames[ref] else {
                 throw BridgeError(404, "unknown reference number [\(ref)] — run GET /snapshot first")
             }
+            try requireExpectedRef(ref, expect: expect)
             return CGPoint(x: frame.midX, y: frame.midY)
         }
         if let x, let y {

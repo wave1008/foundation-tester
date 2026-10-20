@@ -784,8 +784,8 @@ public final class StepExecutor {
                 }
                 let outcome: StepOutcome
                 do {
-                    outcome = try await executeAction(action, step: step,
-                                                      fingerprint: fingerprint, phase: &phase)
+                    outcome = try await executeActionRetryingStaleRef(
+                        action, step: step, fingerprint: fingerprint, phase: &phase)
                 } catch {
                     // 投げた経路でも collect してブリッジの記録(armed)を残さず、集めた事実は失敗の outcome に載せる。
                     // 前の計測ステップ j はここでは判定しない(i が解決した対象が無い)。注入していれば i の観測を保留にする

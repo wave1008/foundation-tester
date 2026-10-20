@@ -46,8 +46,8 @@ final class BridgeHTTPServer {
             return Response(status: status, contentType: "application/json", body: data)
         }
 
-        static func error(_ message: String, status: Int = 500) -> Response {
-            .json(ErrorResponse(error: message), status: status)
+        static func error(_ message: String, status: Int = 500, reason: String? = nil) -> Response {
+            .json(ErrorResponse(error: message, reason: reason), status: status)
         }
 
         static func png(_ data: Data) -> Response {

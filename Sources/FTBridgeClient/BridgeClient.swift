@@ -14,6 +14,8 @@ public final class BridgeClient: AppDriver, Sendable {
         var pendingElementLimit: Int?
         var resolvedBrowserDOMTarget: BrowserDOMTarget??
         var browserDOMCenters: [Int: (x: Double, y: Double)] = [:]
+        /// このクライアントが最後に受けた /snapshot の ref → 期待(identifier・型)。ref を撃つ要求に添える
+        var refExpectations: [Int: RefExpectation] = [:]
         var atEdgeOnLastSwipe: Bool?
         var lastTapHitAreaMiss: TapHitAreaMiss?
         var originalOrientation: FTOrientation?
@@ -651,6 +653,7 @@ public final class BridgeClient: AppDriver, Sendable {
     /// いた —— **両方の名前空間が 1 から採番される**ので、番号はアプリ側の `refFrames` で
     /// 引き当たり、SpringBoard を叩いたつもりで**無関係なアプリの要素を黙ってタップ**していた
     public func systemUITap(ref: Int) async throws {
+        // **期待は添えない**: システム UI の ref はアプリの ref と別の番号の振り方(上の doc)。アプリの木から控えた期待は当てにならない
         let _: OKResponse = try await post("/systemui/tap", body: TapRequest(ref: ref),
                                            timeout: interactionTimeout)
     }
@@ -772,6 +775,10 @@ public final class BridgeClient: AppDriver, Sendable {
         var response: SnapshotResponse = try await get("/snapshot",
                                                        query: merged.isEmpty ? nil : merged,
                                                        timeout: sessionTimeout)
+        // ブリッジの ref の表と同じ木(DOM の差し込み前)から控える。ref を撃つ要求がこれを添え、
+        // 別のクライアントが木を撮り直して表が入れ替わっていれば、ブリッジが撃たずに断る
+        refExpectations = Dictionary(response.elements.map { ($0.ref, RefExpectation($0)) },
+                                     uniquingKeysWith: { first, _ in first })
         // 取りこぼしの申告(クロスオリジン iframe 等)は記録に載せる。
         // **無申告なら触らない**: 直前アクションの note を消してしまわないため
         if let note = response.note { lastActionNote = note }
@@ -848,6 +855,10 @@ public final class BridgeClient: AppDriver, Sendable {
         get { mutable.withLock { $0.browserDOMCenters } }
         set { mutable.withLock { $0.browserDOMCenters = newValue } }
     }
+    private var refExpectations: [Int: RefExpectation] {
+        get { mutable.withLock { $0.refExpectations } }
+        set { mutable.withLock { $0.refExpectations = newValue } }
+    }
 
     private func browserDOMTarget() async -> BrowserDOMTarget? {
         if let resolvedBrowserDOMTarget { return resolvedBrowserDOMTarget }
@@ -890,7 +901,7 @@ public final class BridgeClient: AppDriver, Sendable {
             try await tap(x: center.x, y: center.y)
             return
         }
-        let res: OKResponse = try await post("/tap", body: TapRequest(ref: ref),
+        let res: OKResponse = try await post("/tap", body: TapRequest(ref: ref, expect: refExpectations[ref]),
                                              timeout: interactionTimeout)
         lastActionNote = res.note
         lastTapHitAreaMiss = res.hitAreaMiss
@@ -915,7 +926,7 @@ public final class BridgeClient: AppDriver, Sendable {
             try await tap(x: center.x, y: center.y)
             ref = nil
         }
-        let res: OKResponse = try await post("/type", body: TypeRequest(ref: ref, text: text),
+        let res: OKResponse = try await post("/type", body: TypeRequest(ref: ref, text: text, expect: ref.flatMap { refExpectations[$0] }),
                                              timeout: interactionTimeout)
         // ランナーの打ち直し(TypeReadback.Plan.retype)の申告。tap と同じく driverFallback へ運ぶ
         lastActionNote = res.note
@@ -931,7 +942,7 @@ public final class BridgeClient: AppDriver, Sendable {
             try await tap(x: center.x, y: center.y)
             ref = nil
         }
-        let _: OKResponse = try await post("/clear", body: ClearRequest(ref: ref),
+        let _: OKResponse = try await post("/clear", body: ClearRequest(ref: ref, expect: ref.flatMap { refExpectations[$0] }),
                                            timeout: interactionTimeout)
     }
 
@@ -1140,7 +1151,7 @@ public final class BridgeClient: AppDriver, Sendable {
             try await press(x: center.x, y: center.y, duration: duration)
             return
         }
-        let _: OKResponse = try await post("/press", body: PressRequest(ref: ref, duration: duration),
+        let _: OKResponse = try await post("/press", body: PressRequest(ref: ref, duration: duration, expect: refExpectations[ref]),
                                            timeout: timeout(forDuration: duration))
     }
 
@@ -1412,6 +1423,8 @@ public final class BridgeClient: AppDriver, Sendable {
         guard (200..<300).contains(http.statusCode) else {
             let message: String
             if let err = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
+                // 断りの理由は構造化された欄で見る(本文の文言一致で分岐しない)
+                if err.reason == BridgeAPI.staleRefReason { throw DriverError.staleRef(detail: err.error) }
                 message = err.error
             } else {
                 message = String(data: data, encoding: .utf8) ?? "<binary>"
