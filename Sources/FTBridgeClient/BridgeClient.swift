@@ -1380,12 +1380,19 @@ public final class BridgeClient: AppDriver, Sendable {
         let label = "\(req.httpMethod ?? "GET") \(req.url?.path ?? "?") → \(req.url?.host ?? "?"):\(req.url?.port.map(String.init) ?? "?")"
         Self.inFlight.withLock { $0[requestID] = (label, Date()) }
         defer { _ = Self.inFlight.withLock { $0.removeValue(forKey: requestID) } }
+        let started = Date()
         do {
+            let result: (Data, URLResponse)
             if let collector = HTTPTimingCollector.shared {
-                return try await session.data(for: req, delegate: collector)
+                result = try await session.data(for: req, delegate: collector)
+            } else {
+                result = try await session.data(for: req)
             }
-            return try await session.data(for: req)
+            BridgeRequestTrace.emit(req, status: (result.1 as? HTTPURLResponse)?.statusCode, started: started,
+                                    response: result.0)
+            return result
         } catch {
+            BridgeRequestTrace.emit(req, status: nil, started: started, response: nil)
             let detail = error.localizedDescription + Self.lanTransportAdvice(baseURL: baseURL)
                 + Self.usbTunnelAdvice(baseURL: baseURL, physicalUDID: physicalUDID)
             // BridgeClient は元々 XCUITest ランナー向けのクライアント(このクラスの doc 冒頭
