@@ -25,6 +25,8 @@ public struct DSLCommandInfo: Sendable, Encodable {
     public let summary: String
     /// 掴んだ要素(`exist` / `select` / セレクタを取る操作の戻り値)へ `.name(...)` で繋げられるか
     public let chainable: Bool
+    /// このコマンドが原理的に動かない実行先(表は `DSLCommandIndex.unsupportedTargets`)
+    public var unsupportedOn: Set<CommandUnsupportedTarget> { DSLCommandIndex.unsupportedTargets[name] ?? [] }
 
     init(_ name: String, _ category: String, _ signature: String, _ summary: String,
          chainable: Bool = false) {
@@ -36,7 +38,41 @@ public struct DSLCommandInfo: Sendable, Encodable {
     }
 }
 
+/// コマンドが原理的に動かない実行先。dry-run がプロファイルのデバイスと照合する(`CommandTargetCheck`)。
+/// **コマンド名だけで決まるものしか載せない** —— 引数で決まるもの(`tap(holdSeconds:)`・`appIs` / `launchApp` の
+/// 他のアプリ)とアプリの UI フレームワークで決まるもの(`doubleTap` / `pinch*` の UIKit・`clearInput` の Flutter 等)は
+/// dry-run から見えないので載せない(docs/commands.md §`engine: inapp` 単独で失敗するコマンド)
+public enum CommandUnsupportedTarget: String, Sendable, Encodable, CaseIterable, Comparable {
+    /// iOS の `engine: inapp` 単独(XCUITest へ回せない。`InAppDriver` の 501)
+    case iosInAppEngine = "ios-inapp"
+    /// iOS の実機
+    case iosPhysical = "ios-physical"
+
+    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+}
+
 public enum DSLCommandIndex {
+
+    /// コマンド名 → 動かない実行先。**`CommandTargetCheckTests` が表の全行を索引の名前と突き合わせる**。
+    /// iOS in-app: アプリの外(SpringBoard・ハードウェア)・座標のドラッグ/押し続け・複数指の再生・XCUITest での撮影は
+    /// in-app の経路に無い(`InAppDriver.inappOnly` / `waitForSettle` の 501)。iOS 実機: 開閉は Simulator の
+    /// ヒンジイベントだけ(`CommandsFold`)・写真ライブラリへ送る口が無い(`BridgeClient` の addMedia)
+    public static let unsupportedTargets: [String: Set<CommandUnsupportedTarget>] = [
+        "home": [.iosInAppEngine],
+        "back": [.iosInAppEngine],
+        "appSwitcher": [.iosInAppEngine],
+        "tapAppIcon": [.iosInAppEngine],
+        "fold": [.iosInAppEngine, .iosPhysical],
+        "unfold": [.iosInAppEngine, .iosPhysical],
+        "hinge": [.iosInAppEngine, .iosPhysical],
+        "swipePointToPoint": [.iosInAppEngine],
+        "swipeBy": [.iosInAppEngine],
+        "swipeElementToElement": [.iosInAppEngine],
+        "hold": [.iosInAppEngine],
+        "gesture": [.iosInAppEngine],
+        "waitForSettle": [.iosInAppEngine],
+        "addMedia": [.iosPhysical],
+    ]
 
     /// 索引に載せない `public func`(マクロが生成する呼び出し口で、利用者は書かない)
     public static let internalNames: Set<String> = ["ftRunBeforeAll", "ftRunAfterAll", "ftRunBeforeEach", "ftRunSetUpDevice", "ftRunAfterEach", "ftRunTearDownDevice"]

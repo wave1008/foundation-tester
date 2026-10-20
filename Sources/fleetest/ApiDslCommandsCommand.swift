@@ -10,7 +10,7 @@ struct ApiDslCommandsCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dsl-commands",
         abstract: "Print the Swift DSL command index as JSON on stdout"
-            + " (name, category, signature, summary, chainable, origin). Touches no device")
+            + " (name, category, signature, summary, chainable, unsupportedOn, origin). Touches no device")
 
     @Option(help: ArgumentHelp("Only the commands of one category ("
         + DSLCommandIndex.categories.joined(separator: "/") + "/project)"))
@@ -90,6 +90,8 @@ private struct DSLCommandJSONEntry: Encodable {
     let signature: String
     let summary: String
     let chainable: Bool
+    /// 原理的に動かない実行先(`CommandUnsupportedTarget` の rawValue。project origin は常に空)
+    let unsupportedOn: [String]
     let origin: String
     let file: String?
     let line: Int?
@@ -101,6 +103,7 @@ private struct DSLCommandJSONEntry: Encodable {
         signature = builtin.signature
         summary = builtin.summary
         chainable = builtin.chainable
+        unsupportedOn = builtin.unsupportedOn.sorted().map(\.rawValue)
         origin = "builtin"
         file = nil
         line = nil
@@ -115,6 +118,7 @@ private struct DSLCommandJSONEntry: Encodable {
         // builtin の chainable は「FTElement のメソッド」と同義(CommandIndex の先頭コメント)。
         // MCP の ft_dsl_commands も receiver を見て select(...). を付けるので同じ判定に揃える
         chainable = entry.receiver == "FTElement"
+        unsupportedOn = []
         origin = "project"
         file = entry.file
         line = entry.line

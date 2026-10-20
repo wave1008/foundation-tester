@@ -1356,7 +1356,8 @@ public final class FTDriveCore {
         }
         if scenarioAborted {
             let status = StepResult.Status.skipped(skipReason)
-            recordStep(description: description, status: status, file: filePath, line: Int(line))
+            recordStep(description: description, status: status, file: filePath, line: Int(line),
+                       command: command)
             return status
         }
         if dryRun {
@@ -1365,7 +1366,8 @@ public final class FTDriveCore {
             let start = clock.now
             recordStep(description: description, status: .passed,
                        file: filePath, line: Int(line),
-                       durationMs: continuousClockMilliseconds(clock.now - start))
+                       durationMs: continuousClockMilliseconds(clock.now - start),
+                       command: command)
             return .passed
         }
 
@@ -1459,11 +1461,13 @@ public final class FTDriveCore {
         debugCheckpoint(description: description, file: filePath, line: Int(line))
         if scenarioAborted {
             let status = StepResult.Status.skipped(skipReason)
-            recordStep(description: description, status: status, file: filePath, line: Int(line))
+            recordStep(description: description, status: status, file: filePath, line: Int(line),
+                       command: "screenshot")
             return status
         }
         if dryRun {
-            recordStep(description: description, status: .passed, file: filePath, line: Int(line))
+            recordStep(description: description, status: .passed, file: filePath, line: Int(line),
+                       command: "screenshot")
             return .passed
         }
 
@@ -1484,19 +1488,19 @@ public final class FTDriveCore {
         switch result {
         case .success(let data):
             recordStep(description: description, status: .passed, file: filePath, line: Int(line),
-                      durationMs: elapsedMs, screenshotData: data, screenshotLabel: label)
+                      durationMs: elapsedMs, command: "screenshot", screenshotData: data, screenshotLabel: label)
             return .passed
         case .failure(let error):
             let status = StepResult.Status.failed(error.localizedDescription)
             recordStep(description: description, status: status, file: filePath, line: Int(line),
-                      durationMs: elapsedMs)
+                      durationMs: elapsedMs, command: "screenshot")
             handleFailure(stepDescription: description, reason: error.localizedDescription)
             return status
         case nil:
             let reason = "the operation timed out (\(Int(FTSync.commandTimeout))s)"
             let status = StepResult.Status.failed(reason)
             recordStep(description: description, status: status, file: filePath, line: Int(line),
-                      durationMs: elapsedMs)
+                      durationMs: elapsedMs, command: "screenshot")
             handleFailure(stepDescription: description, reason: reason)
             return status
         }

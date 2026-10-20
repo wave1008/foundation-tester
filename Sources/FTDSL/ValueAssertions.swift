@@ -17,17 +17,17 @@ extension Optional where Wrapped == Any {
         core.noteAssertion()
         if core.scenarioAborted {
             core.recordStep(description: description, status: .skipped(core.skipReason),
-                            file: "\(file)", line: Int(line))
+                            file: "\(file)", line: Int(line), command: verb)
             return
         }
         if core.dryRun {
             core.recordStep(description: description, status: .passed,
-                            file: "\(file)", line: Int(line))
+                            file: "\(file)", line: Int(line), command: verb)
             return
         }
         core.recordStep(description: description,
                         status: passed ? .passed : .failed("\(description) did not hold"),
-                        file: "\(file)", line: Int(line))
+                        file: "\(file)", line: Int(line), command: verb)
         if !passed { core.handleFailure(stepDescription: description, reason: "\(description) did not hold") }
     }
 

@@ -47,6 +47,40 @@ final class CommandNamePlumbingTests: XCTestCase {
         XCTAssertEqual(missing, [], "command: を渡していない呼び出し(結果 JSON の command が nil になる)")
     }
 
+    /// `perform` / `performCustom` を通らない記録(`screenshot` / `this*` / `verify` 等)と、その2つの内側の分岐
+    /// (中断後・dry-run)も `command:` を渡すこと。呼び出し側の走査だけでは、受け取った名前を分岐で落とす形を
+    /// 拾えない(performCustom の dry-run 分岐が落としていて、dry-run の照合が `home` / `appSwitcher` を見逃した)。
+    /// ソース位置を持たない記録(`file: ""` = 場面の省略・中断の告知)はコマンドではないので対象外
+    func testEveryRecordedStepCarriesItsCommandName() throws {
+        let dir = repoRoot.appendingPathComponent("Sources/FTDSL")
+        let files = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasSuffix(".swift") }
+        var missing: [String] = []
+        var scanned = 0
+        for name in files.sorted() {
+            let text = try String(contentsOf: dir.appendingPathComponent(name), encoding: .utf8)
+            var searchFrom = text.startIndex
+            while let range = text.range(of: "recordStep(", range: searchFrom..<text.endIndex) {
+                searchFrom = range.upperBound
+                let prefixStart = text.index(range.lowerBound, offsetBy: -5, limitedBy: text.startIndex)
+                    ?? text.startIndex
+                if text[prefixStart..<range.lowerBound].hasSuffix("func ") { continue }
+                var depth = 1
+                var cursor = range.upperBound
+                while depth > 0, cursor < text.endIndex {
+                    if text[cursor] == "(" { depth += 1 } else if text[cursor] == ")" { depth -= 1 }
+                    cursor = text.index(after: cursor)
+                }
+                let call = text[range.lowerBound..<cursor]
+                scanned += 1
+                if call.contains(#"file: """#) || call.contains("command:") { continue }
+                let lineNumber = text[..<range.lowerBound].filter { $0 == "\n" }.count + 1
+                missing.append("\(name):\(lineNumber)")
+            }
+        }
+        XCTAssertGreaterThan(scanned, 10, "走査が呼び出しに届いていない")
+        XCTAssertEqual(missing, [], "command: を渡していない記録(結果 JSON と dry-run の照合で command が nil になる)")
+    }
+
     /// リテラルで渡している名前が索引に実在すること(`terminate` と `terminateApp` のような取り違え)
     func testLiteralNamesExistInTheCommandIndex() throws {
         let known = Set(DSLCommandIndex.all.map(\.name))

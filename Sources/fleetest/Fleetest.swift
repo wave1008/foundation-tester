@@ -809,6 +809,7 @@ struct RunScenarios: AsyncParsableCommand {
         // 混ぜないため。ScenarioHost も dryRun では LastResultsStore へ書かない)
         if dryRun {
             var dryRunPlatform = resolvedPlatform
+            var dryRunDevices: [CommandTargetCheck.Device] = []
             if let profile {
                 // **使わなくても実在は確かめる** —— `api run` は同じ打鍵を「run profile not found」で
                 // 断る(2実装で検査規則を揃える)。確かめないと打ち間違えたプロファイル名が dry-run を
@@ -827,8 +828,10 @@ struct RunScenarios: AsyncParsableCommand {
                     workspaceOverride: workspace, overrides: try RunProfileSetOverride.parse(setOverrides))
                     .filteringDevices(names: devices, deviceMachine: deviceMachine)
                 dryRunPlatform = resolved.dryRunDefaultPlatform
-                ConsoleOut.out("ℹ️ --dry-run touches no device; --profile only decides that scenarios declaring no"
-                      + " platform run their \(dryRunPlatform) { } blocks")
+                dryRunDevices = resolved.devices.map(CommandTargetCheck.Device.init)
+                ConsoleOut.out("ℹ️ --dry-run touches no device; --profile decides that scenarios declaring no"
+                      + " platform run their \(dryRunPlatform) { } blocks, and the commands they reach are checked"
+                      + " against its devices' engine and kind")
             }
             if runner != nil {
                 ConsoleOut.out("ℹ️ --dry-run touches no device, so --runner is not used"
@@ -844,7 +847,8 @@ struct RunScenarios: AsyncParsableCommand {
                 ConsoleOut.out("ℹ️ --dry-run touches no device, so --set is not used"
                       + " (dry-run always runs with FM disabled)")
             }
-            let failedCount = await runDryRun(items, project: testProject, platform: dryRunPlatform)
+            let failedCount = await runDryRun(items, project: testProject, platform: dryRunPlatform,
+                                              devices: dryRunDevices)
             ConsoleOut.out(failedCount == 0
                   ? "✅ All \(items.count) scenario(s) passed the dry-run"
                   : "❌ \(failedCount) of \(items.count) scenario(s) failed the dry-run")
@@ -1326,7 +1330,9 @@ struct RunScenarios: AsyncParsableCommand {
         return ["ios": app, "android": app]
     }
 
-    private func runDryRun(_ items: [ScenarioRunItem], project: TestProject, platform defaultPlatform: String) async -> Int {
+    /// - devices: `--profile` のデバイス(空 = プロファイル無し。コマンドとデバイスの照合をしない)
+    private func runDryRun(_ items: [ScenarioRunItem], project: TestProject, platform defaultPlatform: String,
+                           devices: [CommandTargetCheck.Device]) async -> Int {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("fleetest-dryrun-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -1337,6 +1343,7 @@ struct RunScenarios: AsyncParsableCommand {
             let platform = item.info.platform ?? defaultPlatform
             // quiet: runSequential と同じ扱い(成功なら結果1行・失敗ならバッファ全体)
             var buffer: [String] = []
+            var steps: [CommandTargetCheck.Step] = []
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: item.info.id,
                 connection: DriverConnection(platform: platform),
@@ -1348,6 +1355,7 @@ struct RunScenarios: AsyncParsableCommand {
                 settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
                 reportDir: tempDir.path,
                 dryRun: true, appBundleID: appID) { event in
+                if let step = DryRunTargetWarnings.step(from: event) { steps.append(step) }
                 let lines = ScenarioLogFormatter.lines(for: event)
                     .filter { !$0.contains("→ report:") }
                 if quiet {
@@ -1359,6 +1367,11 @@ struct RunScenarios: AsyncParsableCommand {
             if quiet {
                 ConsoleOut.out(passed ? "✅ \(item.info.id)" : "❌ \(item.info.id)")
                 if !passed { ConsoleOut.out(buffer.joined(separator: "\n")) }
+            }
+            for line in DryRunTargetWarnings.lines(
+                scenarioID: item.info.id,
+                findings: CommandTargetCheck.findings(steps: steps, platform: platform, devices: devices)) {
+                ConsoleOut.out(line)
             }
             if !passed { failedCount += 1 }
         }

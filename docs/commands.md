@@ -65,7 +65,10 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
 既定の **hybrid** は、in-app エンジンにできない操作を XCUITest へ自動で回す。**`engine: inapp` を単独で指定したデバイス**には回し先が無いので、
 次のコマンドはそのステップで失敗する(この文書の「XCUITest へ自動フォールバック」は、どれも hybrid での話)。
-事前の検査は無い(dry-run はプロファイルを読まない)ので、デバイス実行の途中で初めて分かる。
+`--profile` を付けた dry-run は、**コマンドの名前だけで決まるもの**(下の表のアプリの外・座標のドラッグ/押し続け・`gesture`・`waitForSettle` の行。`tap(holdSeconds:)` / `tap(x:y:holdSeconds:)` を除く)を
+警告する(⚠️ の行・合否は変えない。表は `DSLCommandIndex.unsupportedTargets`・照合は `FTCore.CommandTargetCheck`。iOS 実機の
+`fold` 系・`addMedia` も同じ表)。引数やアプリの UI フレームワークで決まる行は dry-run から見えないので、デバイス実行の途中で初めて分かる
+(docs/user-docs/reference/running/dry_run_ja.md)。
 
 | 失敗するもの | 理由 |
 |---|---|

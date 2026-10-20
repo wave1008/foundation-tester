@@ -22,7 +22,7 @@ final class DryRunPlatformParityTests: XCTestCase {
                       "fleetest run --dry-run --profile がプロファイルから OS を決めていない")
         XCTAssertTrue(api.contains("? resolved.dryRunDefaultPlatform"),
                       "api run --dry-run が共有の規則を使っていない")
-        XCTAssertTrue(cli.contains("runDryRun(items, project: testProject, platform: dryRunPlatform)"),
+        XCTAssertTrue(cli.contains("runDryRun(items, project: testProject, platform: dryRunPlatform,"),
                       "dry-run の列挙へ決めた OS を渡していない")
     }
 }

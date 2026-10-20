@@ -519,7 +519,7 @@ private func ifCanSelectImpl(_ selector: FTSelector, waitSeconds: Double,
     if let error = validationError(selector) {
         let reason = "invalid selector syntax: \(error)"
         core.recordStep(description: "ifCanSelect \"\(selector.text)\"", status: .failed(reason),
-                        file: "\(file)", line: Int(line))
+                        file: "\(file)", line: Int(line), command: "ifCanSelect")
         core.handleFailure(stepDescription: "ifCanSelect \"\(selector.text)\"", reason: reason)
         return FTBranch(taken: false)
     }
@@ -675,7 +675,8 @@ private func repeatWhileCanSelectImpl(_ selector: FTSelector, maxLoopCount: Int,
     if let error = validationError(selector) {
         let reason = "invalid selector syntax: \(error)"
         core.recordStep(description: "repeatWhileCanSelect \"\(selector.text)\"",
-                        status: .failed(reason), file: "\(file)", line: Int(line))
+                        status: .failed(reason), file: "\(file)", line: Int(line),
+                        command: "repeatWhileCanSelect")
         core.handleFailure(stepDescription: "repeatWhileCanSelect \"\(selector.text)\"",
                            reason: reason)
         return
@@ -729,13 +730,13 @@ public func verify(_ message: String, file: StaticString = #filePath, line: UInt
     let description = "verify \"\(message)\""
     if core.scenarioAborted {
         core.recordStep(description: description, status: .skipped(core.skipReason),
-                        file: "\(file)", line: Int(line))
+                        file: "\(file)", line: Int(line), command: "verify")
         return
     }
     let outcome = core.runVerify(body)
     if outcome.failed {
         core.recordStep(description: description, status: .failed(message),
-                        file: "\(file)", line: Int(line))
+                        file: "\(file)", line: Int(line), command: "verify")
         return
     }
     if outcome.assertionCount == 0 {
@@ -743,10 +744,11 @@ public func verify(_ message: String, file: StaticString = #filePath, line: UInt
         core.recordStep(description: description,
                         status: .inconclusive("verify block contains no assertions "
                                               + "(add exist / textIs / thisIs etc.)"),
-                        file: "\(file)", line: Int(line))
+                        file: "\(file)", line: Int(line), command: "verify")
         return
     }
-    core.recordStep(description: description, status: .passed, file: "\(file)", line: Int(line))
+    core.recordStep(description: description, status: .passed, file: "\(file)", line: Int(line),
+                    command: "verify")
 }
 
 /// @TestClass マクロが beforeEach() の呼び出しを包むために生成する(利用者が直接書くものではない)。

@@ -564,7 +564,10 @@ extension MCPServer {
         }
         let detailed = name != nil || category != nil
         var lines = commands.map { command in
-            detailed ? "\(command.signature) — \(command.summary)" : command.signature
+            guard detailed else { return command.signature }
+            let unsupported = command.unsupportedOn.sorted().map(\.rawValue)
+            return "\(command.signature) — \(command.summary)"
+                + (unsupported.isEmpty ? "" : " [cannot run on: \(unsupported.joined(separator: ", "))]")
         }
         lines += projectCommands.map { entry in
             // receiver == "FTElement" は select(...).name(...) の形で呼べる —— シグネチャ自体には

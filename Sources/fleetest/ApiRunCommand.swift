@@ -472,6 +472,9 @@ struct ApiRunCommand: AsyncParsableCommand {
         // ロックより前に済んでいる。ここから下は runStarted 送出前の**書き込み**
         // (ワークスペースの雛形・供給の絞り込み)だけを行う
         var resolvedProfile: ResolvedProfile?
+        // dry-run の照合に使うデバイス。**本数で絞る前**(`full`)から取る —— 絞った後だと、明示 ID の指定で
+        // 本数 + 予備1台に削られた外のデバイスが照合されず、同じ打鍵で `fleetest run --dry-run` だけが警告した
+        var commandCheckDevices: [CommandTargetCheck.Device] = []
         if let (resolvedAll, full) = preResolvedProfile {
             // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17)
             // なので毎回雛形作成(ProfileRunner.run と同じ規律。既に揃っていれば
@@ -509,6 +512,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             for warning in resolved.warnings + mcpWarnings { logStderr("⚠️ \(warning)") }
             RunEnvironment.apply(resolved)
             resolvedProfile = resolved
+            commandCheckDevices = full.devices.map(CommandTargetCheck.Device.init)
         }
 
         // 開始/終了スクリプト(docs/remote-runner.md §17。ProfileRunner.run と同じ規律 ——
@@ -878,6 +882,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 if dryRun || debugOptions != nil {
                     outcome = try await runWithProfile(
                         resolved: resolvedProfile, project: testProject, selected: selected,
+                        commandCheckDevices: commandCheckDevices,
                         debugOptions: debugOptions, recorder: recorder, interruptState: interruptState)
                 } else {
                     let androidWorkers = try await androidWorkersTask!.value
@@ -1218,9 +1223,11 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// resolved のワーカーを構築し、各シナリオを platform に合う最初のワーカーで逐次実行する
     /// (ProfileRunner と違い並列化しない)。--dry-run はワーカー構築自体を省略し、
     /// defaultTimeout/heal の反映だけ行って NullDriver で流す
+    /// - commandCheckDevices: dry-run でコマンドと照合するデバイス(本数で絞る前のプロファイルの全台)
     private func runWithProfile(
         resolved: ResolvedProfile, project: TestProject,
-        selected: [ScenarioInfo], debugOptions: ScenarioDebugOptions?,
+        selected: [ScenarioInfo], commandCheckDevices: [CommandTargetCheck.Device],
+        debugOptions: ScenarioDebugOptions?,
         recorder: RunRecorder?, interruptState: RunInterruptState
     ) async throws -> RunOutcome {
         let profileName = resolved.runName
@@ -1375,6 +1382,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             // 触らず installApp() 自体を通過しない、debug は人間介入前提の単発実行のため。appPath だけ
             // フォールバックとして渡し、installApp() 引数省略時に子が直接インストールできるようにする
             var declaredNotApplicable = false
+            var dryRunSteps: [CommandTargetCheck.Step] = []
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
                 deviceSession: deviceSessions.session(for: sessionKey),
@@ -1394,7 +1402,18 @@ struct ApiRunCommand: AsyncParsableCommand {
                 if event.kind == "scenarioFinished", event.notApplicableReason != nil {
                     declaredNotApplicable = true
                 }
+                if dryRun, let step = DryRunTargetWarnings.step(from: event) { dryRunSteps.append(step) }
                 writeLine(event.encodedLine())
+            }
+            if dryRun {
+                // `fleetest run --dry-run --profile` と同じ照合・同じ文(NDJSON の契約には足さない)
+                for line in DryRunTargetWarnings.lines(
+                    scenarioID: info.id,
+                    findings: CommandTargetCheck.findings(
+                        steps: dryRunSteps, platform: scenarioPlatform,
+                        devices: commandCheckDevices)) {
+                    logStderr(line)
+                }
             }
             let scenarioEnd = Date()
             timing.recordSequential(start: scenarioStart, finish: scenarioEnd)
