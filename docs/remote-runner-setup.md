@@ -756,6 +756,7 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | `remote setup` が preflight で warn 終了(exit 2) | ランナー機に人手の項目が残っている | 出力に列挙された操作を行い、同じコマンドを再実行(冪等) |
 | `Failed to connect to <名前> port 8080`(clone が75秒待って失敗) | ランナー機の git に古いプロキシ設定が残っている | `git config --global --unset-all http.proxy` / 同 `https.proxy`（必要な環境ならプロキシ側を直す） |
 | `neither xcodegen nor Homebrew is available` | ランナー機に Homebrew が入っていない | ステップ0の5で Homebrew を入れてから `remote setup` を再実行 |
+| `xcodegen was not found on PATH (…) or in /opt/homebrew/bin, /usr/local/bin, ~/.local/bin`(ブリッジの版が上がった直後の run・`fleetest doctor`) | ランナー機の xcodegen が、非対話の ssh の PATH にも Homebrew の場所にも `~/.local/bin` にも無い(手で別の場所に置いた・入れていない) | Homebrew で入れる(`brew install xcodegen`)か、Homebrew を使えない機械では実行ファイルを `~/.local/bin` に置く |
 | `unknown or unsupported macOS version` / `brew install xcodegen failed` | Homebrew がその macOS を知らない古い版（brew が1つも動かない） | `git -C /opt/homebrew fetch origin && git -C /opt/homebrew reset --hard origin/master` |
 | `cannot resolve the local project` | 手元にプロジェクトが複数 | `--project <名前>` を付ける |
 | `is sitting at the login window` | ランナー機がログイン画面 | 解錠してログイン(画面共有) |

@@ -82,8 +82,12 @@ public struct BridgeLauncher: Sendable {
         if FileManager.default.fileExists(atPath: projectPath.path), !isStale(manifest: manifest) {
             return
         }
+        // 場所は XcodegenLocator(素の "xcodegen" を PATH 任せで撃つと、非対話の ssh・launchd の PATH で見つからない)
+        guard let xcodegen = XcodegenLocator.find() else {
+            throw LauncherError.commandFailed("xcodegen generate", XcodegenLocator.notFoundMessage())
+        }
         let result = try Shell.run(
-            ["xcodegen", "generate"],
+            [xcodegen, "generate"],
             cwd: repoRoot.appendingPathComponent("Runner")
         )
         guard result.status == 0 else {

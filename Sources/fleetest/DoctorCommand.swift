@@ -266,11 +266,13 @@ struct Doctor: AsyncParsableCommand {
             }
         }
 
-        let xcodegen = try Shell.run(["which", "xcodegen"])
-        ConsoleOut.out(xcodegen.status == 0
-              ? "✅ xcodegen: \(xcodegen.output.trimmingCharacters(in: .whitespacesAndNewlines))"
-              : "❌ xcodegen is required: brew install xcodegen")
-        if xcodegen.status != 0 { problems += 1 }
+        // ランナーの生成と同じ探し方(XcodegenLocator)。`which` だと PATH の外に置いた xcodegen を「無い」と言い、ビルドと答えが割れる
+        if let xcodegen = XcodegenLocator.find() {
+            ConsoleOut.out("✅ xcodegen: \(xcodegen)")
+        } else {
+            ConsoleOut.out("❌ \(XcodegenLocator.notFoundMessage())")
+            problems += 1
+        }
 
         if let android = try? AndroidDriver() {
             // adb devices の失敗を「no devices connected」と言わない
