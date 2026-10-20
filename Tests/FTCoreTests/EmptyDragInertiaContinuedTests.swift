@@ -123,13 +123,24 @@ final class EmptyDragInertiaContinuedTests: XCTestCase {
     /// 境目は空打ちの探索軸上の移動距離ちょうど(超えたら流れ続け)。向きは指の向き
     func testBoundaryIsTheEmptyDragTravelAlongTheSearchAxis() {
         let before = FTRect(x: 0, y: 600, width: 402, height: 56)
-        func flowed(toY: Double, finger: FTSwipeDirection) -> Bool {
+        func flowed(toY: Double, finger: FTSwipeDirection, movingPolls: Int = 2) -> Bool {
             StepExecutor.keptFlowingAfterEmptyDrag(before: before, after: FTRect(x: 0, y: toY, width: 402, height: 56),
+                                                   movingPolls: movingPolls,
                                                    dragFrom: (201, 628), dragTo: (201, 596), finger: finger)
         }
         XCTAssertFalse(flowed(toY: 568, finger: .up), "32pt ちょうどは空打ち自身で起こせる")
         XCTAssertTrue(flowed(toY: 567, finger: .up))
         XCTAssertFalse(flowed(toY: 900, finger: .up), "逆向き")
         XCTAssertTrue(flowed(toY: 633, finger: .down))
+        XCTAssertFalse(flowed(toY: 400, finger: .up, movingPolls: 1), "1周で跳んで止まった段差は流れ続けではない")
+    }
+
+    /// 対照: バーが隠れる段差(525 → 358 と1周で跳んで止まる実測の形)は1回のまま。2回目を撃つと指が下へ動いて
+    /// バーが戻り、次の払いで行が画面の外へ出た(E2EY-CMP の隠れるバー 24 回中 23 回)
+    func testOnePollLayoutJumpGetsOnlyOneEmptyDrag() async {
+        let driver = InertiaAfterEmptyDragDriver(found: 525, afterFirst: [358, 358], afterSecond: 380)
+        let outcome = await run(driver)
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(driver.drags.count, 1, "\(driver.drags)")
     }
 }

@@ -14,9 +14,11 @@ extension StepExecutor {
     /// (探索自体は成功しているので、ここで失敗にはしない = 判定を1箇所に保つ)。
     /// 上限はフリングの減速が収まる実測レンジに合わせた固定値で、調整ノブにはしない
     /// 戻り値: `rested` = **静止を確認できたか**(false = 周回上限で打ち切った = まだ動いているかもしれない。
-    /// 呼び手は注記にする。黙ると「動いている画面の座標をタップ」が誤った成功として通る)/ `lastFrame` = 最後に見た対象の枠
+    /// 呼び手は注記にする。黙ると「動いている画面の座標をタップ」が誤った成功として通る)/ `lastFrame` = 最後に見た対象の枠 /
+    /// `movingPolls` = 対象が動いていた周回の数(1 = 最初の1周で動いてすぐ止まった段差・2 以上 = 動き続けた)
     func settleAfterScroll(step: FlowStep, found: ElementInfo,
-                                   phase: inout PhaseAccumulator) async throws -> (rested: Bool, lastFrame: FTRect) {
+                                   phase: inout PhaseAccumulator) async throws
+        -> (rested: Bool, lastFrame: FTRect, movingPolls: Int) {
         let clock = ContinuousClock()
         var previous = found.frame
         var lastSnapshotMs = 0
@@ -38,15 +40,15 @@ extension StepExecutor {
             phase.snapshotMs += lastSnapshotMs
             // 解決できなくなった = このスナップショットでは判定材料が無い。静止は名乗らない
             guard let (element, _) = LocatorResolver.resolve(step: step, in: snapshot,
-                                                  strictForAssert: true) else { return (false, previous) }
-            if element.frame == previous { return (true, previous) }
+                                                  strictForAssert: true) else { return (false, previous, motion.count) }
+            if element.frame == previous { return (true, previous, motion.count) }
             let moved = max(abs(element.frame.x - previous.x), abs(element.frame.y - previous.y))
-            if restsWithinThreshold(moved) { return (true, element.frame) }
+            if restsWithinThreshold(moved) { return (true, element.frame, motion.count) }
             motion.append(moved)
             previous = element.frame
             if poll + 1 >= Self.scrollSettleMaxPolls, !SettleMotion.isDecelerating(motion) { break }
         }
-        return (false, previous)
+        return (false, previous, motion.count)
     }
 
     /// `launchApp(url:)` が URL を配送する前に、最初の画面が描かれる(利用者が触れる要素が木に載る)
@@ -231,9 +233,11 @@ extension StepExecutor {
         // クリックにならない(E2EX-CMP の無限スクロール・XCUITest: 250〜290pt 流れて 346..414 に止まり、撃った瞬間に +247pt 戻った)。
         // 2回目の空打ちがその戻りを吸う(この形は 1回のままだと 4 回中 4 回が赤・2回目ありで 6 回中 6 回が緑)。
         // **空打ち自身の送り(22pt)や逆向きの戻り(+123..152pt)では撃たない** —— 前者で撃つと2回目がさらに送ってタップが
-        // 吸われ、後者は緑の回の形(maintainer-notes §74.11)
+        // 吸われ、後者は緑の回の形(maintainer-notes §74.11)。**1周で動いてすぐ止まった段差でも撃たない**(隠れるバー・折りたたみ
+        // ヘッダが縮んだ分。E2EY-CMP の隠れるバーで 2回目が指を下へ動かしてバーを戻し、24 回中 23 回が赤になった)
         guard let drag,
               Self.keptFlowingAfterEmptyDrag(before: element.frame, after: settled.lastFrame,
+                                             movingPolls: settled.movingPolls,
                                              dragFrom: drag.from, dragTo: drag.to,
                                              finger: FTSwipeDirection(rawValue: step.direction ?? "") ?? .up)
         else { return !settled.rested }
@@ -255,8 +259,10 @@ extension StepExecutor {
     /// (中身は指に最大 1:1 でしか付いてこない。実測の自身の送りは 32pt の空打ちで 22pt = タッチの遊びで目減りする)。
     /// 逆向きの移動(引っ張りが解けて戻った)は数えない。`finger` は探索の払いの指の向き(中身は指と同じ向きへ動く)。
     /// **探索軸と直交して抜いた空打ちでは常に false** —— 移動距離が 0 になり、触れるまでの慣性の残りまで拾う(その形の赤は
-    /// 観測していない。観測したのは横へ抜けない全幅の行だけ)
-    static func keptFlowingAfterEmptyDrag(before: FTRect, after: FTRect,
+    /// 観測していない。観測したのは横へ抜けない全幅の行だけ)。
+    /// **整定の2周以上で動き続けていたことも要る**(`movingPolls`)—— 慣性の流れ続けは減速しながら何周も動く
+    /// (442→427→420→415→414)が、バーが隠れる・ヘッダが縮む段差は最初の1周で跳んで止まる(525→358→358)
+    static func keptFlowingAfterEmptyDrag(before: FTRect, after: FTRect, movingPolls: Int,
                                           dragFrom: (x: Double, y: Double), dragTo: (x: Double, y: Double),
                                           finger: FTSwipeDirection) -> Bool {
         let flowed: Double
@@ -267,7 +273,7 @@ extension StepExecutor {
         case .left: flowed = before.x - after.x; travel = abs(dragTo.x - dragFrom.x)
         case .right: flowed = after.x - before.x; travel = abs(dragTo.x - dragFrom.x)
         }
-        return travel > 0 && flowed > travel
+        return movingPolls >= 2 && travel > 0 && flowed > travel
     }
 
     /// 掴んだ要素を可視域へ入れ直すために**次に送る向き**。
