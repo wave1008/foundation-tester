@@ -655,8 +655,33 @@ fi
 # 変数名の直後に日本語を置くときは必ず ${} で囲む(マルチバイト先頭バイトが変数名に食われる)
 echo "==> swift build (${TOOL_ROOT}; the first build takes minutes)"
 step_started=$SECONDS
-( cd "$TOOL_ROOT" && swift build ) >>"$RAW_SINK" 2>&1 \
-  || { show_log_tail; die "build" "swift build failed" 2; }
+# 動いている FM の常駐プロセス(`$FT api fm-serve`)の実行ファイルを、推論の途中でビルドが差し替えない
+# (maintainer-notes §4.1)。既にビルドがあれば、その**複製**の `api fm-align` にビルドを包ませる
+# (FM が居れば推論の終わりを待って退かせ → ビルド → 新しい実行ファイルで起こし直す。居なければ枠を押さえてビルドするだけ)。
+# 複製するのはビルドが $FT を差し替えるため(`remote align` の helper と同じ理由)。包むのはビルドだけ ——
+# この後の doctor は FM を呼ぶので、保護の中に入れると枠を待ち合う。**`--no-restart` で起こし直させない** —— 保守の親は
+# ビルド前の版なので、ビルドが FM の通信の版を上げると起こし直した新版を照合で弾いて失敗する(FM は doctor --fm-only 等の
+# 次の呼び手が新しい $FT から起こす)。`--no-restart` を持たない古いビルドは素でビルドする(保護が効くのは次の更新から)
+# (help を変数で受けて照合する = `| grep -q` は pipefail 下で SIGPIPE を失敗と誤判定する)
+fm_helper_dir=""
+fm_align_help=""
+if [ -x "$FT" ] && fm_helper_dir="$(mktemp -d "${TMPDIR:-/tmp}/fleetest-install-fm.XXXXXXXX")" \
+   && cp -L "$FT" "$fm_helper_dir/fleetest" \
+   && fm_align_help="$("$fm_helper_dir/fleetest" api fm-align --help 2>&1)" \
+   && case "$fm_align_help" in *--no-restart*) true ;; *) false ;; esac; then
+  # ビルドの子は fm-align の標準出力・標準エラーを継ぐ = RAW_SINK へ落ちる。パスは環境で渡す(引用の組み立てを持たない)
+  # set -e 下なので終了コードは || で受ける(素の文で失敗させると後始末と失敗の表示の前に止まる)
+  build_status=0
+  FT_INSTALL_TOOL_ROOT="$TOOL_ROOT" "$fm_helper_dir/fleetest" api fm-align --target-executable "$FT" \
+    --build-command 'cd "$FT_INSTALL_TOOL_ROOT" && swift build' --no-restart >>"$RAW_SINK" 2>&1 || build_status=$?
+  build_failure="swift build failed, or the running FM process could not be stopped safely first (see the log)"
+else
+  build_status=0
+  ( cd "$TOOL_ROOT" && swift build ) >>"$RAW_SINK" 2>&1 || build_status=$?
+  build_failure="swift build failed"
+fi
+if [ -n "$fm_helper_dir" ]; then rm -rf -- "$fm_helper_dir"; fi
+[ "$build_status" -eq 0 ] || { show_log_tail; die "build" "$build_failure" 2; }
 [ -x "$FT" ] || die "build" "the CLI was not produced: $FT" 2
 # MCP サーバは .mcp.json が起動のたびにビルドし直すが、初回だけ先に通しておく(初回起動の失敗回避)
 ( cd "$TOOL_ROOT" && swift build --product fleetest-mcp ) >/dev/null 2>&1 || true

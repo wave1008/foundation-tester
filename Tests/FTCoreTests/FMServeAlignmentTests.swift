@@ -187,6 +187,37 @@ final class FMServeAlignmentTests: XCTestCase {
         XCTAssertTrue(FramedUnixSocket.isReleased(path: socket))
     }
 
+    /// install.sh の形: 保守の親はビルド前の版なので、起こし直さずに返す(新版の照合で誤って失敗しない)
+    func testBuildWithoutRestartRetiresThenBuildsAndDoesNotStartFM() async throws {
+        let peer = identity()
+        let stopOld = LockedValue(false)
+        let requests = LockedValue<[String]>([])
+        let socket = path()
+        let cleanupOld = serve(path: socket, stop: stopOld) { data in
+            if (try? JSONDecoder().decode(FMServeWire.RetirementRequest.self, from: data)) != nil {
+                requests.withLock { $0.append("retire") }
+                stopOld.withLock { $0 = true }
+                return try! JSONEncoder().encode(FMServeWire.RetirementResponse(identity: peer, outcome: .retiring))
+            }
+            requests.withLock { $0.append("status") }
+            return try! JSONEncoder().encode(peer)
+        }
+        defer { cleanupOld() }
+        let built = LockedValue(false)
+        let result = try await FMServeAlignment.align(
+            socketPath: socket, executable: executable, stamp: "before", holdMaintenance: { 0 },
+            spawn: { _, _ in XCTFail("FM was started again after the build"); return false },
+            build: {
+                XCTAssertEqual(requests.value, ["status", "retire"], "the build started before FM retirement")
+                built.withLock { $0 = true }
+                return FMServeAlignment.Artifact(executable: self.executable, stamp: "new")
+            },
+            restartAfterBuild: false)
+        XCTAssertEqual(result, .retiredForBuild)
+        XCTAssertTrue(built.value)
+        XCTAssertTrue(FramedUnixSocket.isReleased(path: socket))
+    }
+
     func testBusyIsRetriedOnlyUntilTheServerReportsIdle() async throws {
         try await handover(replacementPath: executable.path, replacementStamp: "new", expectSuccess: true, busyFirst: true)
     }

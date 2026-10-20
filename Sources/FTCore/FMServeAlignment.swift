@@ -4,6 +4,8 @@ import Foundation
 public enum FMServeAlignment {
     public enum Outcome: String, Sendable {
         case notRunning, reused, replaced
+        /// `restartAfterBuild: false`: 退かせてビルドしただけ(次の呼び手が新しい実行ファイルから起こす)
+        case retiredForBuild
     }
 
     public struct Failure: Error, CustomStringConvertible {
@@ -11,8 +13,10 @@ public enum FMServeAlignment {
         init(_ description: String) { self.description = description }
     }
 
+    /// `restartAfterBuild: false` は install.sh 用 —— 保守の親がビルド**前**の実行ファイルの複製なので、ビルドが FM の
+    /// 通信の版を上げていると、起こし直した新版を自分の版と照合して「別の FM」と誤って失敗する。起こさずに返す
     public static func align(socketPath: String? = nil, executable: URL? = nil,
-                             build: (() async throws -> Void)? = nil,
+                             build: (() async throws -> Void)? = nil, restartAfterBuild: Bool = true,
                              log: (String) -> Void) async throws -> Outcome {
         guard let path = socketPath ?? FMServeWire.socketPath(), FramedUnixSocket.fitsSunPath(path),
               let target = executable ?? FMServeHost.serverExecutable() else {
@@ -30,7 +34,8 @@ public enum FMServeAlignment {
             }
         }
         return try await align(socketPath: path, executable: resolved,
-                               stamp: FMServeWire.buildStamp(executable: resolved.path), build: buildOperation, log: log)
+                               stamp: FMServeWire.buildStamp(executable: resolved.path), build: buildOperation,
+                               restartAfterBuild: restartAfterBuild, log: log)
     }
 
     /// 全枠を押さえる。**1 枠でも呼び手(FM の呼び出し・モニターの死活の確かめ)が握っていれば待って取り直す**
@@ -64,6 +69,7 @@ public enum FMServeAlignment {
         holdMaintenance: () throws -> any Sendable = { try FMCallSlots.acquireForMaintenance() },
         spawn: (URL, String) -> Bool = FMServeHost.spawn,
         build: (() async throws -> Artifact)? = nil,
+        restartAfterBuild: Bool = true,
         log: (String) -> Void = { _ in }
     ) async throws -> Outcome {
         let client = FMServeClient(socketPath: socketPath, deadlineSeconds: 3)
@@ -128,6 +134,10 @@ public enum FMServeAlignment {
             artifact = Artifact(executable: executable, stamp: stamp)
         }
         guard !artifact.stamp.isEmpty else { throw Failure("the built FM executable's build stamp could not be read") }
+        if build != nil, !restartAfterBuild {
+            log("FM process retired for the build; the next FM caller starts \(artifact.executable.path)")
+            return .retiredForBuild
+        }
         try Task.checkCancellation()
         guard spawn(artifact.executable, socketPath) else { throw Failure("the replacement FM process could not be started") }
         let startupDeadline = ContinuousClock.now.advanced(by: .seconds(FMServeHost.startupWaitSeconds))

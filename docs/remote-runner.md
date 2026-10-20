@@ -1272,6 +1272,9 @@ upstream の既定ブランチなので、検証中のブランチでは必ず�
 `api fm-align --target-executable <runner binary> --build-command <checkout と全製品のビルド列>` で
 FM の保守とビルドを行う。同じ dispatch.lock の内側で実行し、転送物は成功・失敗とも回収する。
 ビルド中も保守の親自身が差し替わらず、古いランナーの CLI が保守機能を持たない場合も停止可否を判定できる。
+先行する install 段(install.sh)のビルドも同じ保護を通る —— install.sh は既にビルドがあれば、その複製の
+`api fm-align --build-command … --no-restart` でビルドだけを包む(後続の doctor は FM を呼ぶので保護の外。受け手の更新も同じ経路)。
+起こし直さないのは保守の親がビルド前の版で、新版を照合で弾くため(FM は次の呼び手が起こす。直後の align が改めて揃える)。
 発行側の現在の実行ファイル(約94MB)を各ランナーへSCPし、ランナー上で実行できることが前提。
 
 **ビルドするのは `fleetest` だけではない** —— **配信ヘルパー3本(`fleetest-simstream` /

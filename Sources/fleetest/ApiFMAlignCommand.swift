@@ -16,9 +16,15 @@ struct ApiFMAlignCommand: AsyncParsableCommand {
     @Option(help: "Shell command to build the target after the old FM process has safely retired")
     var buildCommand: String?
 
+    @Flag(help: "With --build-command: do not start FM again after the build (the next FM caller starts the new executable)")
+    var noRestart = false
+
     func validate() throws {
         if buildCommand != nil, targetExecutable == nil {
             throw ValidationError("--build-command requires --target-executable")
+        }
+        if noRestart, buildCommand == nil {
+            throw ValidationError("--no-restart requires --build-command")
         }
     }
 
@@ -26,7 +32,8 @@ struct ApiFMAlignCommand: AsyncParsableCommand {
         do {
             let target = targetExecutable.map { URL(fileURLWithPath: $0) }
             _ = try await FMServeAlignment.align(socketPath: socket, executable: target,
-                                                build: Self.buildOperation(command: buildCommand)) { ConsoleOut.err($0) }
+                                                build: Self.buildOperation(command: buildCommand),
+                                                restartAfterBuild: !noRestart) { ConsoleOut.err($0) }
         } catch {
             ConsoleOut.err("FM alignment failed: \(ErrorText.user(error))")
             throw ExitCode.failure
