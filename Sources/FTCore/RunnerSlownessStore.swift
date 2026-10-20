@@ -5,17 +5,20 @@
 // 紐付かない「そのデバイスで実測した事実」なので、書いたプロセスが死んでも意味を失わない(時間の定数も
 // 置かない。次に読むプロセスが 1 問プローブし直して答えを更新する)。
 //
-// 書き手・読み手: FTBridgeClient.BridgeProvisioner(供給の入口)。段階は2つ:
+// 書き手・読み手: FTBridgeClient.BridgeProvisioner(供給の入口)。段階は3つ:
 //   .runnerRestartDidNotHelp    ランナーだけ起動し直しても直らなかった(FTBridgeClient の
 //                               RunnerRestartFutility と同じ事象をプロセスを跨いで持ち越す)。
-//                               次の供給ではシミュレータごとの再起動を試す
-//   .simulatorRestartDidNotHelp シミュレータを再起動しても直らなかった。以後は何も自動で撃たない
+//                               次の供給ではシミュレータの再起動を試し、直らなければ同じ供給の中で初期化(erase)する
+//   .simulatorRestartDidNotHelp シミュレータを再起動しても直らず、初期化はできなかった(リース・アプリを入れ直さない
+//                               プロファイル等)。初期化ができる状態になった次の供給で初期化する
+//   .wipeDidNotHelp             初期化しても直らなかった。以後は何も自動で撃たない
 
 import Foundation
 
 public enum RunnerSlowness: String, Codable, Sendable {
     case runnerRestartDidNotHelp
     case simulatorRestartDidNotHelp
+    case wipeDidNotHelp
 }
 
 public enum RunnerSlownessStore {

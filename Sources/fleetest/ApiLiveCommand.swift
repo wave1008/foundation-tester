@@ -676,9 +676,9 @@ struct ApiLiveServe: AsyncParsableCommand {
         let injected = RunnerAccessibilityHealth.injectedSlowPorts().contains(port)
         guard RunnerAccessibilityHealth.shouldRecheck(maxStepSnapshotMs: Int(elapsed * 1000),
                                                       injected: injected) else { return }
-        let seconds = injected ? nil : await RunnerAccessibilityHealth.probe(port: port, repoRoot: repoRoot)
-        guard injected || RunnerAccessibilityHealth.isDegraded(probeSeconds: seconds) else { return }
-        let note = RunnerAccessibilityHealth.liveDegradedNote(port: port, probeSeconds: seconds,
+        let probe = injected ? nil : await RunnerAccessibilityHealth.probe(port: port, repoRoot: repoRoot)
+        guard injected || RunnerAccessibilityHealth.isDegraded(probe) else { return }
+        let note = RunnerAccessibilityHealth.liveDegradedNote(port: port, probe: probe,
                                                              injected: injected, autoStarts: autoStarts)
         if await memo.noteDegraded(note) { logStderr(note) }
     }

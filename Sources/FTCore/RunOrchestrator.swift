@@ -900,16 +900,23 @@ public final class RunOrchestrator: Sendable {
     /// isDeviceFrozen と同じ理由で注入。**未注入は合法なので配線漏れはコンパイルで止まらない**
     /// (`RunnerMidRunRecheckTests` が 2 経路を固定)。
     /// 供給時の再利用でしか測っていなかった頃は、run の途中で劣化したレーンが最後まで 1 問 3.7 秒を払った。
-    /// **戻り値 true = 実際に起動し直した**(WorkerAnomalyRecord kind:"recovered" recovery:.runnerRestart の
-    /// 生成に使う。健全・未測定・起動し直し失敗はいずれも false)
+    /// **戻り値 `.restarted` = 実際に起動し直した**(WorkerAnomalyRecord kind:"recovered" recovery:.runnerRestart の
+    /// 生成に使う。健全・未測定・起動し直し失敗は `.unchanged`)。**`.unusable` = 起動し直した直後でも 1 問にも答えない**:
+    /// レーンを離脱させる(復帰の可否は reviveWorker 側の門が決める)
     private let recheckRunner: RunnerRecheck?
     /// シナリオの境目の表示の確認。log はそのレーンの実行ログへ
     /// 第 2 引数はそのプラットフォームの SUT の bundle ID / パッケージ名(確認の home の後に前面へ戻す。分からなければ nil)
     public typealias LaneDisplayCheck = @Sendable (RunWorker, String?, _ log: @escaping @Sendable (String) -> Void) async
         -> LaneDisplayCheckOutcome
 
+    public enum RunnerRecheckVerdict: Sendable, Equatable {
+        case unchanged
+        case restarted
+        case unusable(reason: String)
+    }
+
     public typealias RunnerRecheck =
-        @Sendable (RunWorker, Int?, @escaping @Sendable (String) -> Void) async -> Bool
+        @Sendable (RunWorker, Int?, @escaping @Sendable (String) -> Void) async -> RunnerRecheckVerdict
     /// 遅延参加ワーカー(iOS ブリッジ供給待ち)。platforms は「後から必ず来る platform」の宣言で、
     /// これが無いと初期ワーカーに iOS が居ない時点で iOS シナリオが「担当ワーカーなし」で即失敗する。
     /// provider は供給完了時にワーカー群を返す(失敗時は空配列。キューに残った分は run 末尾の
@@ -1774,14 +1781,23 @@ public final class RunOrchestrator: Sendable {
                 // 失敗の経路は除く —— 離脱すれば revive が供給を通り、そこで同じ 1 問が測る。
                 // 中断中・残りが無いときは撃たない(起動し直しは数十秒かかり、次の run の再利用が測る)
                 if let recheckRunner, await !interruptRequested.isRequested(), await queue.hasItems() {
-                    let restarted = await recheckRunner(worker, slowestStep.value) { [continuation] message in
+                    let verdict = await recheckRunner(worker, slowestStep.value) { [continuation] message in
                         continuation.yield(.workerLog(worker: worker.label, message: message))
                     }
-                    if restarted {
+                    switch verdict {
+                    case .restarted:
                         await anomalies.add(WorkerAnomalyRecord(
                             kind: "recovered", worker: Self.workerID(worker), label: worker.label,
                             reason: "restarted the xcuitest bridge after a mid-run degradation",
                             recovery: .runnerRestart))
+                    case .unchanged:
+                        break
+                    case .unusable(let reason):
+                        // 直前のシナリオは緑で記録済み(振り直さない)。このレーンだけ離脱する
+                        await reportWorkerFailed(worker, "dropped out because of \(reason)", cause: .noResponse)
+                        await progressState?.laneLeft(key: progressLaneKey)
+                        await stopRecording(worker, leaseKey: leaseKey)
+                        return .retired(failed: failed, worker: worker)
                     }
                 }
                 continue

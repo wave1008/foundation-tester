@@ -136,6 +136,10 @@ final class SharedResourceOwnershipParityTests: XCTestCase {
         "BridgeProvisioner.restartSimulatorAndRunner",
         "BridgeProvisioner.executeBridge",
         "BridgeProvisioner.stopAndRelaunch",
+        // ②回復の最後の手としての初期化の実体(関数分割の内側)。呼び手は BridgeProvisioner.escalateStuckRunner だけで、
+        // supplySlownessAction(リースがあれば .reuseWithoutRestarting)と wipeBlock(.foreignLease)の両方を通った後にしか来ない
+        // (RunnerAccessibilityHealthTests / RunnerRecoveryLadderWiringTests)
+        "SimulatorEraseForRecovery.erase",
         // ①この run 自身が今使っている凍結ワーカーの自己回復(BlankWorkerTriage.recover)。
         // 他プロセスのデバイスは触らない
         "ProfileWorkerFactory.recoverFrozenIOSWorkers",

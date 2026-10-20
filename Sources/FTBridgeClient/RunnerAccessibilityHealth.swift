@@ -21,8 +21,23 @@ public final class RunnerRestartFutility: @unchecked Sendable {
     public static let shared = RunnerRestartFutility()
     private let lock = NSLock()
     private var udids: Set<String> = []
+    /// 起動し直した直後のランナーが 1 問にも答えなかったデバイス(`.noAnswer`)。**遅いだけのデバイス(udids)とは別**:
+    /// 遅いだけなら使い続けられるが、答えないデバイスは復帰させても同じ供給で同じ事象を踏む(ワーカー復帰の門)
+    private var unanswering: Set<String> = []
 
     public init() {}
+
+    public func markUnanswering(udid: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        unanswering.insert(udid)
+    }
+
+    public func containsUnanswering(udid: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return unanswering.contains(udid)
+    }
 
     public func mark(udid: String) {
         lock.lock()
@@ -34,6 +49,7 @@ public final class RunnerRestartFutility: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         udids.remove(udid)
+        unanswering.remove(udid)
     }
 
     public func contains(udid: String) -> Bool {
@@ -49,19 +65,62 @@ public enum RunnerAccessibilityHealth {
     /// 2 秒はその間で、機械が遅いだけの正常値(0.3 秒の数倍)には当たらない
     public static let slowProbeSeconds: TimeInterval = 2
 
-    /// 劣化 = 所要が閾値以上。測れなかった(nil)は劣化と言わない(不明を起動し直しの根拠にしない)
-    public static func isDegraded(probeSeconds: TimeInterval?) -> Bool {
-        guard let probeSeconds else { return false }
-        return probeSeconds >= slowProbeSeconds
+    /// 1 問の結果。**答えなかった(`.noAnswer`)は測れなかった(`.unknown`)と別**: 要求を出して時限まで待っても
+    /// 返事が無かったのは測った事実(最悪の劣化)で、404(旧ランナー)・接続拒否・即切れのような「測れなかった」ではない
+    public enum ProbeOutcome: Equatable, Sendable {
+        case answered(TimeInterval)
+        /// 返事の無いまま `waited` 秒待った(= 少なくとも `slowProbeSeconds` 以上)
+        case noAnswer(waited: TimeInterval)
+        case unknown
     }
 
-    /// 1 問の所要。答えなかった・旧ランナー(404)は nil(不明 = 劣化と言わない)。
-    /// 供給時の再利用と run 中の測り直しが同じ関数を通る(測り方が割れると同じデバイスで判断が食い違う)
-    public static func probe(port: UInt16, repoRoot: URL) async -> TimeInterval? {
+    /// 劣化 = 答えたが閾値以上 / 答えなかった。測れなかった(`.unknown`・nil)は劣化と言わない(不明を起動し直しの根拠にしない)
+    public static func isDegraded(_ outcome: ProbeOutcome?) -> Bool {
+        switch outcome {
+        case .answered(let seconds): return seconds >= slowProbeSeconds
+        case .noAnswer: return true
+        case .unknown, nil: return false
+        }
+    }
+
+    /// 失敗した 1 問を分類する(純粋関数)。**「届かなかった」型(`bridgeUnreachable` = 接続は張れたが返事が無い・時限切れ)を、
+    /// 閾値以上待ったときだけ**答えなかったと言う。それより短く切れたもの(即 reset 等)は待った事実が無いので不明
+    static func classifyFailure(unreachable: Bool, waited: TimeInterval) -> ProbeOutcome {
+        unreachable && waited >= slowProbeSeconds ? .noAnswer(waited: waited) : .unknown
+    }
+
+    /// **起動し直し(ランナー・シミュレータ・初期化)の直後の 1 問で、直ったと言えるか**(純粋関数)。
+    /// 答えて閾値未満のときだけ true。自分で起動した直後のランナーは旧ランナー(404)にも接続拒否にもなり得ないので、
+    /// 答えなかった・測れなかったを「直った」に数えない(測れなかった回復を成功にすると、印が書かれず次の run が同じ空振りを繰り返す)
+    public static func restartHelped(after: ProbeOutcome) -> Bool {
+        if case .answered(let seconds) = after { return seconds < slowProbeSeconds }
+        return false
+    }
+
+    /// 1 問の所要。供給時の再利用と run 中の測り直しが同じ関数を通る(測り方が割れると同じデバイスで判断が食い違う)
+    public static func probe(port: UInt16, repoRoot: URL) async -> ProbeOutcome {
         let client = BridgeClient(endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot))
         let started = Date()
-        guard (try? await client.systemAlert()) != nil else { return nil }
-        return Date().timeIntervalSince(started)
+        do {
+            guard try await client.systemAlert() != nil else { return .unknown }  // 404 = 旧ランナー
+            return .answered(Date().timeIntervalSince(started))
+        } catch DriverError.bridgeUnreachable {
+            return classifyFailure(unreachable: true, waited: Date().timeIntervalSince(started))
+        } catch {
+            return .unknown
+        }
+    }
+
+    /// 結果を 1 句にする(ログ・注記が共有する。答えなかったは「N 秒以内に答えなかった」と言い、0.0s と書かない)
+    public static func measuredPhrase(_ outcome: ProbeOutcome?) -> String {
+        switch outcome {
+        case .answered(let seconds):
+            return "answered a one-element accessibility query in \(String(format: "%.1f", seconds))s"
+        case .noAnswer(let waited):
+            return "did not answer a one-element accessibility query within \(Int(waited.rounded()))s"
+        case .unknown, nil:
+            return "did not answer a one-element accessibility query (not measured)"
+        }
     }
 
     /// **run の最中に測り直すかの門**(緑で終わったシナリオの直後に呼ぶ)。材料はそのシナリオの
@@ -80,10 +139,19 @@ public enum RunnerAccessibilityHealth {
     /// ランナーのプロセスには無い**(測った事実から言えるのはここまで)。以降このプロセスでは起動し直さない。
     /// 次の手としてシミュレータの再起動を挙げる根拠: -01 は起動し直しでは 2.7〜3.0 秒のまま、
     /// 再起動で 0.03 秒に戻った(同じ 3 シナリオの合計 42.3s → 22.1s)
-    public static func restartDidNotHelpMessage(name: String, port: UInt16, afterSeconds: TimeInterval) -> String {
-        "⚠️ \(name): after restarting SpringBoard (on a simulator) and the xcuitest bridge on port \(port), it still took"
-            + " \(String(format: "%.1f", afterSeconds))s for a one-element accessibility query"
-            + " (normal is under 0.3s) — it is not restarted again in this run; rebooting the simulator is the next thing to try"
+    public static func restartDidNotHelpMessage(name: String, port: UInt16, after: ProbeOutcome) -> String {
+        let tail = " — it is not restarted again in this run; rebooting the simulator is the next thing to try"
+        let prefix = "⚠️ \(name): after restarting SpringBoard (on a simulator) and the xcuitest bridge on port \(port), it"
+        switch after {
+        case .answered(let seconds):
+            return prefix + " still took \(String(format: "%.1f", seconds))s for a one-element accessibility query"
+                + " (normal is under 0.3s)" + tail
+        case .noAnswer(let waited):
+            return prefix + " still did not answer a one-element accessibility query within \(Int(waited.rounded()))s"
+                + " (normal is under 0.3s)" + tail
+        case .unknown:
+            return prefix + " could not be measured for a one-element accessibility query" + tail
+        }
     }
 
     /// 以前に起動し直しても直らなかったデバイスを、測り直さずにそのまま使うときの 1 行
@@ -95,11 +163,9 @@ public enum RunnerAccessibilityHealth {
     /// run 中に測り直して起動し直さなかったときの 1 行。**ステップが遅かった事実と測った結果だけを並べる**
     /// (遅さがどこから来たかはこれ以上言わない。SlowWorkerFinding.consoleWarning と同じ規律)
     public static func leftRunningMessage(name: String, port: UInt16, maxStepSnapshotMs: Int?,
-                                          probeSeconds: TimeInterval?) -> String {
+                                          probe: ProbeOutcome?) -> String {
         let step = maxStepSnapshotMs.map { "a step spent \($0)ms taking snapshots; " } ?? ""
-        let measured = probeSeconds.map {
-            "answered a one-element accessibility query in \(String(format: "%.1f", $0))s"
-        } ?? "did not answer a one-element accessibility query (not measured)"
+        let measured = measuredPhrase(probe)
         return "→ \(name): \(step)the xcuitest bridge on port \(port) \(measured) — left running"
     }
 
@@ -115,10 +181,9 @@ public enum RunnerAccessibilityHealth {
     /// (観測イベントの notes と stderr へ同じ文)。**ライブ操作は起動し直さず知らせるだけ**
     /// —— 人が操作している最中に数十秒の起動し直しを割り込ませない(新しい検知は警告から)。
     /// `autoStarts` = この serve が udid を持ち、止めたブリッジを次の操作で自動起動できる
-    public static func liveDegradedNote(port: UInt16, probeSeconds: TimeInterval?, injected: Bool,
+    public static func liveDegradedNote(port: UInt16, probe: ProbeOutcome?, injected: Bool,
                                         autoStarts: Bool) -> String {
-        let measured = injected ? "is injected as slow (FT_FAKE_SLOW_RUNNER_PORTS)"
-            : "answered a one-element accessibility query in \(String(format: "%.1f", probeSeconds ?? 0))s"
+        let measured = injected ? "is injected as slow (FT_FAKE_SLOW_RUNNER_PORTS)" : measuredPhrase(probe)
         let restart = autoStarts
             ? "`fleetest bridge down --port \(port)` (live control starts it again on the next action)"
             : "`fleetest bridge down --port \(port)`, then start it again"
@@ -129,9 +194,8 @@ public enum RunnerAccessibilityHealth {
     }
 
     /// 起動し直すときの 1 行(呼び手はそのまま log へ)
-    public static func restartMessage(name: String, port: UInt16, probeSeconds: TimeInterval?, injected: Bool) -> String {
-        let measured = injected ? "injected as slow (FT_FAKE_SLOW_RUNNER_PORTS)"
-            : "answered a one-element accessibility query in \(String(format: "%.1f", probeSeconds ?? 0))s"
+    public static func restartMessage(name: String, port: UInt16, probe: ProbeOutcome?, injected: Bool) -> String {
+        let measured = injected ? "injected as slow (FT_FAKE_SLOW_RUNNER_PORTS)" : measuredPhrase(probe)
         return "⚠️ \(name): the xcuitest bridge on port \(port) \(measured); normal is under 0.3s"
             + " (a stale remote element after a system daemon restart makes every query wait"
             + " ~\(Int(slowProbeSeconds * 2))s) — restarting it (SpringBoard first on a simulator)"
@@ -140,23 +204,59 @@ public enum RunnerAccessibilityHealth {
     // MARK: - 印を run をまたいで持ち越す(RunnerSlownessStore)
 
     /// 供給の入口で、run をまたいだ印(`RunnerSlownessStore`)から次に何を試すかを決める(純粋関数)。
-    /// **リースのあるデバイスには絶対に触らない**(ユーザー決定)—— 印があっても再起動を試みず、
-    /// 「起動し直さずそのまま使う」に落とす
+    /// **リースのあるデバイスには絶対に触らない**(ユーザー決定)—— 印があっても再起動・初期化を試みず、
+    /// 「起動し直さずそのまま使う」に落とす。`canWipe` = `wipeBlock` が nil(初期化してよい状態)
     public enum SupplySlownessAction: Equatable, Sendable {
         /// 印なし。1 問プローブしてから必要なら起動し直す
         case proceedNormally
-        /// 印 = runnerRestartDidNotHelp かつリース無し。ブリッジを起動する前にシミュレータごと再起動する
+        /// 印 = runnerRestartDidNotHelp かつリース無し。シミュレータを再起動し、直らなければ(`canWipe` なら)同じ供給の中で初期化する
         case restartSimulator
-        /// 印 = simulatorRestartDidNotHelp、またはリースがあるデバイス。何も撃たずそのまま使う
+        /// 印 = simulatorRestartDidNotHelp で、初期化してよい状態。再起動を省いて初期化する(再起動は試し済み)
+        case wipeSimulator
+        /// 印 = wipeDidNotHelp、リースがあるデバイス、または初期化できない状態の simulatorRestartDidNotHelp。何も撃たずそのまま使う
         case reuseWithoutRestarting
     }
 
-    public static func supplySlownessAction(persisted: RunnerSlowness?, hasForeignLease: Bool) -> SupplySlownessAction {
+    public static func supplySlownessAction(persisted: RunnerSlowness?, hasForeignLease: Bool,
+                                            canWipe: Bool) -> SupplySlownessAction {
         switch persisted {
         case nil: return .proceedNormally
-        case .simulatorRestartDidNotHelp: return .reuseWithoutRestarting
+        case .wipeDidNotHelp: return .reuseWithoutRestarting
+        case .simulatorRestartDidNotHelp:
+            return !hasForeignLease && canWipe ? .wipeSimulator : .reuseWithoutRestarting
         case .runnerRestartDidNotHelp: return hasForeignLease ? .reuseWithoutRestarting : .restartSimulator
         }
+    }
+
+    /// 初期化(erase)してはいけない理由(純粋関数)。nil = してよい。**全部満たしたときだけ初期化する**:
+    /// シミュレータであること(実機は消せない)・他のセッションが使っていないこと(消すと相手の run が落ちる)・
+    /// この供給の後でアプリが入れ直されること(消えたアプリを戻す経路が無いと、run がアプリ無しで始まる)
+    public enum WipeBlock: Equatable, Sendable {
+        case physicalDevice
+        case foreignLease
+        case appNotReinstalled
+    }
+
+    public static func wipeBlock(isSimulator: Bool, hasForeignLease: Bool, runReinstallsApp: Bool) -> WipeBlock? {
+        if !isSimulator { return .physicalDevice }
+        if hasForeignLease { return .foreignLease }
+        if !runReinstallsApp { return .appNotReinstalled }
+        return nil
+    }
+
+    /// **ワーカーを復帰させてよいか**(純粋関数)。起動し直した直後のランナーが 1 問にも答えなかったデバイス
+    /// (`RunnerRestartFutility.containsUnanswering`)は、復帰させても同じ供給で同じ事象を踏み、復帰のたびに数分を失う。
+    /// 遅いだけのデバイス・udid の無いワーカー(Android 等)は対象外
+    public static func shouldReviveWorker(udid: String?, futility: RunnerRestartFutility) -> Bool {
+        guard let udid else { return true }
+        return !futility.containsUnanswering(udid: udid)
+    }
+
+    /// 復帰させないときの 1 行(測った事実と、次の run で起きること)
+    public static func reviveRefusedMessage(name: String) -> String {
+        "⛔ not reviving \(name): restarting SpringBoard and the xcuitest bridge did not make it answer an"
+            + " accessibility query earlier in this run. The next run reboots the simulator and, if that does"
+            + " not help, erases it (only when no other session holds the device and the profile installs the app)"
     }
 
     /// run-lease / MCP の印のどちらかを**他プロセス**が持っているか(純粋関数)。自分自身が持つ
@@ -214,21 +314,68 @@ public enum RunnerAccessibilityHealth {
             + " in an earlier run — rebooting the simulator before reusing it"
     }
 
-    /// シミュレータの再起動でも直らなかったときの 1 行。**測った事実だけ**を言う(帰属は書かない)。
-    /// 以後このデバイスには何も自動で撃たない(呼び手が印を simulatorRestartDidNotHelp に更新する)
-    public static func simulatorRestartDidNotHelpMessage(name: String, port: UInt16,
-                                                          afterSeconds: TimeInterval?) -> String {
-        let measured = afterSeconds.map { "\(String(format: "%.1f", $0))s" } ?? "an unmeasured amount of time"
-        return "⚠️ \(name): the xcuitest bridge on port \(port) still took \(measured) for a"
-            + " one-element accessibility query after rebooting the simulator (normal is under 0.3s)"
+    /// 測り直した結果を「…の 1 問に〜」の形にする(`measuredPhrase` と違い、文中の主語はブリッジ)
+    private static func stillPhrase(_ after: ProbeOutcome?) -> String {
+        switch after {
+        case .answered(let seconds):
+            return "still took \(String(format: "%.1f", seconds))s for a one-element accessibility query"
+                + " (normal is under 0.3s)"
+        case .noAnswer(let waited):
+            return "still did not answer a one-element accessibility query within \(Int(waited.rounded()))s"
+        case .unknown, nil:
+            return "still could not be measured for a one-element accessibility query"
+        }
+    }
+
+    /// シミュレータの再起動でも直らず、**初期化しない**ときの 1 行。**測った事実だけ**(帰属は書かない)。
+    /// 呼び手が印を simulatorRestartDidNotHelp に更新する(初期化できる状態になった次の供給で初期化する)
+    public static func simulatorRestartDidNotHelpMessage(name: String, port: UInt16, after: ProbeOutcome?) -> String {
+        "⚠️ \(name): the xcuitest bridge on port \(port) \(stillPhrase(after)) after rebooting the simulator"
+            + " — the simulator is not erased now; it is erased in the next supply that is allowed to"
+    }
+
+    /// 初期化する前の 1 行。`afterReboot` = 同じ供給の中で再起動した直後(false = 前の run の再起動で直らなかった印から来た)
+    public static func erasingSimulatorMessage(name: String, port: UInt16, after: ProbeOutcome?,
+                                               afterReboot: Bool) -> String {
+        let cause = afterReboot
+            ? "the xcuitest bridge on port \(port) \(stillPhrase(after)) after rebooting the simulator"
+            : "rebooting the simulator did not make the xcuitest bridge on port \(port) healthy in an earlier run"
+        return "⚠️ \(name): \(cause) — erasing the simulator (its apps and data are deleted;"
+            + " the app under test is reinstalled by this run)"
+    }
+
+    /// 初期化しても直らなかったときの 1 行。以後は何も自動で撃たない(呼び手が印を wipeDidNotHelp に更新する)
+    public static func wipeDidNotHelpMessage(name: String, port: UInt16, after: ProbeOutcome?) -> String {
+        "⚠️ \(name): the xcuitest bridge on port \(port) \(stillPhrase(after)) after erasing the simulator"
             + " — nothing further is tried automatically for this device"
     }
 
-    /// 印 = simulatorRestartDidNotHelp のデバイスを、触らずそのまま使うときの 1 行
+    /// 初期化したいが条件を満たさないときの 1 行(してよい状態にするための手も添える)
+    public static func wipeSkippedMessage(name: String, udid: String, block: WipeBlock) -> String {
+        let reason: String
+        switch block {
+        case .physicalDevice:
+            reason = "it is a physical device"
+        case .foreignLease:
+            reason = "another session is using this device"
+        case .appNotReinstalled:
+            reason = "this run does not reinstall the app under test (set autoInstall and appPath in the apps profile)"
+        }
+        return "→ \(name): not erasing the simulator because \(reason). To erase it by hand:"
+            + " `fleetest api wipe-device --platform ios --udid \(udid)`"
+    }
+
+    /// 印 = wipeDidNotHelp のデバイスを、触らずそのまま使うときの 1 行
+    public static func keptAfterWipeFailedMessage(name: String, port: UInt16) -> String {
+        "→ \(name): reusing the xcuitest bridge on port \(port) as it is"
+            + " (rebooting and erasing the simulator did not help, so nothing further is tried"
+            + " automatically for this device)"
+    }
+
+    /// 印 = simulatorRestartDidNotHelp で、初期化してよい状態でないデバイスを、触らずそのまま使うときの 1 行
     public static func keptAfterSimulatorRestartFailedMessage(name: String, port: UInt16) -> String {
         "→ \(name): reusing the xcuitest bridge on port \(port) as it is"
-            + " (rebooting the simulator did not help either, so nothing further is tried"
-            + " automatically for this device)"
+            + " (rebooting the simulator did not help, and it is not erased in this supply)"
     }
 
     /// 今遅かったが、このデバイスを他のセッション(run または MCP)が使用中なので起動し直さないときの 1 行

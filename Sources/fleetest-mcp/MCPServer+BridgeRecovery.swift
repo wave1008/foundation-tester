@@ -209,7 +209,8 @@ extension MCPServer {
         case .healthy, .unmeasured, .skipped:
             return ""
         case .restarted(let afterSeconds):
-            let before = result.probeSeconds.map { String(format: "%.1fs", $0) } ?? "slow"
+            let before: String
+            if case .answered(let seconds) = result.probe { before = String(format: "%.1fs", seconds) } else { before = "slow" }
             let now = afterSeconds.map { String(format: "%.2fs", $0) } ?? "not measured"
             return "note: this simulator's SpringBoard was slow (a system-alert query took \(before); normal is under"
                 + " 0.3s, and every tap pays it), so SpringBoard and the XCUITest bridge were restarted before"
@@ -217,6 +218,10 @@ extension MCPServer {
         case .restartDidNotHelp:
             return "note: this simulator's SpringBoard is slow (a system-alert query takes over 2s; every tap pays it)"
                 + " and restarting SpringBoard did not help — rebooting the simulator is the next thing to try.\n"
+        case .unusable(let waited):
+            return "note: this simulator's SpringBoard did not answer a system-alert query within \(Int(waited.rounded()))s"
+                + " even after SpringBoard and the XCUITest bridge were restarted — reboot the simulator"
+                + " (`fleetest api wipe-device --platform ios --udid \(udid)` erases it).\n"
         case .restartFailed(let reason):
             Self.logStderr("⚠️ \(udid): could not restart SpringBoard / the xcuitest bridge on port \(port) (\(reason))")
             return ""

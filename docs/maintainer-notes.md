@@ -4059,6 +4059,18 @@ Simulator(iPhone 17 Pro・iOS 27.0・Xcode 27)での実測。
   離す点も同じ行の中」。CMP+Flutter の E2EX の XCUITest を 2 回回して 0 件(直す前は 3 回の run で 2 件)・取り消した直しが
   壊した画面(CMP の collapse・Flutter の sticky)は MCP で 8/8 緑のまま
 
+### 74.11 取り消した直し: 空打ちの後に対象が動いたら、もう1回空打ちする
+- E2EX-CMP の無限スクロール(XCUITest)で、空打ちの後も一覧が 250〜290pt 流れ続けて止まった位置へのタップが、撃った瞬間の
+  +247pt の戻りに吸われていた(FT_BRIDGE_TRACE で確定)。「空打ちの後に対象が動いたら」もう1回空打ちする形(9f1c2296)は
+  **24 回中 4 回 → 11 回に悪化**して取り消した(a9f4ecab)
+- **空打ちは自分でも一覧を送る**(32pt の縦の抜きで 22pt。616 → 594)。「動いた」だけを条件にすると、この自身の送りの回にも
+  2回目を撃ち、2回目がさらに 22pt 送って(594 → 572)、その後のタップが吸われた。1回のままならこの回は緑
+- **直し(1646ec7b)**: 条件を「探索の向きへ、空打ちの探索軸上の移動距離を超えて流れた」に絞った(`keptFlowingAfterEmptyDrag`)。
+  逆向きの戻り(+123〜152pt・空打ちで引っ張りが解けた緑の形)と、横へ抜けた空打ち(移動距離 0 で測れない)は数えない。
+  8 台 × 3 周で赤は 21 回中 1 回(流れ続けた形は 6 回とも緑)
+- **教訓**: 操作の後の「動いた」を観測して次の操作を足すときは、その操作**自身**が起こす動きの大きさを先に測り、それを超えた分だけを
+  外因として扱う
+
 ## 75. 10/8 のフル回帰(E2E / E2EX / E2EY × in-app・XCUITest)と負荷テストで直したもの
 
 回帰は E2E と E2EY をこの Mac、E2EX を M1Ultra で回した(結果は E2E が全部緑、E2EX は XCUITest で赤 4 本 = 既知 2・残件 2、
@@ -5220,3 +5232,37 @@ worktree の run がそれらの端末を「別のワークスペースのブリ
 - **直したもの(2)**: Simulator の起動を `SimulatorBoot.ensureBooted` の1箇所に寄せ、機械全体で同時2台の枠(`SimulatorBootSlots`・flock)を取る。
   供給の並列幅・凍結回復の TaskGroup・表示凍結の回復・デバイスの単体起動・XCUITest ランナーの起動(xcodebuild は Shutdown の Simulator を自分で起動するので、`BridgeLauncher.startDetached` が先に入口を撃つ)のどれから撃っても、別プロセス同士でも2台まで。
   起動済み・起動中の Simulator は枠を待たない。直に `simctl boot` / `bootstatus` を撃つ経路は `SimulatorBootSingleEntryTests` が落とす
+
+
+## 98. SpringBoard の AX 照会が返らない Simulator で、回復の階段が一度も動かなかった(2026-10-20)
+
+- 事象: iOS Simulator「-02」の `GET /systemalert`(SpringBoard への 1 問)が 60 秒以内に返らない(健全な端末は 0.04 秒)。
+  シナリオはすべて固まり、ホストはブリッジを不達と見て、`RunOrchestrator.superviseWorker` がワーカーを run ごとに 2 回(上限)復帰させ、
+  毎回数分を失った。SpringBoard の CPU は約 80%、そのデバイスの cfprefsd は累計 7 分 22 秒(他の 7 台は 7〜8 秒)。
+  Mac の再起動と SpringBoard の起こし直しでは直らなかった
+- 階段(`RunnerAccessibilityHealth` / `RunnerSlownessStore` / `BridgeProvisioner.restartRunner` ほか)が動かなかった穴は 3 つ:
+  1. `probe` は答えなかった(時限切れ)を nil = 不明と返し、不明は劣化と数えない。**最悪の劣化が「不明」に落ちていた**
+  2. `restartRunner` / `restartSimulatorAndRunner` は起動し直した直後の測りが nil だと `helped: true`。**効果を測れなかった回復が成功扱い**で、
+     `RunnerSlownessStore` の印も書かれない
+  3. ワーカー復帰(`reviveWorker`)が `RunnerRestartFutility` を見ない。階段が諦めたデバイスを復帰させ続けた
+- 直し:
+  - 1 問の結果を `ProbeOutcome`(`.answered(秒)` / `.noAnswer(waited:)` / `.unknown`)にした。`.noAnswer` = 届かなかった型の失敗で閾値(2s)以上待った
+    (測った事実)。404・接続拒否・即切れは `.unknown` のまま(起動し直しの根拠にしない)。ログは「did not answer … within Ns」
+  - 起動し直した直後の「直った」は `restartHelped(after:)` だけが決める(答えて 2s 未満のときだけ true)。自分で起動した直後のランナーは旧ランナー(404)に
+    なり得ず、接続拒否は新ランナーが立っていないことなので、答えなかった・測れなかったは直ったに数えない
+  - この run では、起動し直しても答えないデバイスは供給の部分失敗で離脱させる(`runnerNotAnswering`)。遅いだけ(答えて 2s 以上)は使い続ける。
+    run 中の測り直しで答えなくなったレーンは `RunnerRecheckVerdict.unusable` で離脱。`RunnerRestartFutility.markUnanswering` を付け、`reviveWorker` は
+    `shouldReviveWorker` で復帰させない(遅いだけのデバイスは復帰させる = 別の集合)
+  - 次の run の階段: `runnerRestartDidNotHelp` → シミュレータ再起動 → 測る → 直らなければ**同じ供給の中で**初期化(`SimulatorEraseForRecovery`)→ 測る。
+    直れば印を消す。直らなければ `wipeDidNotHelp`(終端: 何も自動で撃たない)。古い版が書いた `simulatorRestartDidNotHelp` は次の供給で初期化へ進む。
+    印の段階は `.reuse` だけでなく `.launch`(ブリッジが死んだ印つきデバイス)でも見る
+  - 初期化の前提は全部満たしたときだけ(`wipeBlock`): シミュレータ・他のセッションのリースが無い・この供給の後でアプリが入れ直される
+    (`BridgeProvisioner(mayEraseSimulatorForRecovery:)` を true にするのは `ProfileSupplyLanes.ios`・ワーカー復帰・凍結回復の張り直し = 直後に `installIfNeeded` を通す呼び手だけ、かつ
+    `preinstallAppPath` = autoInstall が有効)。満たさないときは理由と `fleetest api wipe-device --platform ios --udid <udid>` を 1 行出す。
+    hybrid の in-app は計画時に「アプリは最新」と読んでいるので、初期化した udid は入れ直す(`erasedSimulators`)
+  - ロケール(`SimulatorLocalePreservation` / 読み書き)は FTBridgeClient へ移し、手動の Wipe Data(`DeviceWiper`)と供給の初期化が同じ実装を通る
+- 以前「iOS の自動 Wipe は見送り」(ディスク肥大の対策)と決めたが、これは別の契機(階段を登り切っても直らなかったデバイスだけ・次の run の供給で 1 回)で、ユーザーの指示で入れた
+- **教訓: 効果を測れなかった回復を成功に数えない**。「測れなかった」は「直った」でも「直らなかった」でもなく、回復の判定は積極的に直ったと測れた回だけを成功とする。
+  同じ型の `guard let after, isDegraded(after) else { return helped }` は nil を成功へ倒す
+- 未確認: 実デバイスで階段を最後まで通していない(純粋関数と配線の走査・変異だけ)。`FT_FAKE_*` のような注入口は無い。物理端末でも `runnerRestartDidNotHelp` の印が付くと
+  既存の `restartSimulator` が実機の UDID に simctl を撃つ形が残っている(今回は触っていない)

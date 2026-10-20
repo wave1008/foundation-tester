@@ -169,6 +169,12 @@ enum ProfileRunOrchestrator {
             },
             reviveWorker: { retired in
                 guard let name = retired.logicalName else { return nil }
+                // 起動し直した直後でも 1 問にも答えなかったデバイスは復帰させない(復帰のたびに数分を失い、同じ事象を踏む)
+                guard RunnerAccessibilityHealth.shouldReviveWorker(
+                    udid: retired.connection.udid, futility: .shared) else {
+                    log(RunnerAccessibilityHealth.reviveRefusedMessage(name: retired.connection.deviceName ?? name))
+                    return nil
+                }
                 let deadline = Date().addingTimeInterval(reviveTimeout)
                 while Date() < deadline {
                     if let w = await ProfileWorkerFactory.buildWorker(forLogicalName: name, resolved: resolved,

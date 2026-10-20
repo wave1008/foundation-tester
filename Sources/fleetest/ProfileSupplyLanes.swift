@@ -109,7 +109,8 @@ enum ProfileSupplyLanes {
                 resolved: resolved, platforms: ["ios"], leaseStateDir: stateDir, supplyLease: supplyLease
             ) {
                 let built = try await ProfileWorkerFactory.buildIOSWorkers(
-                    resolved: resolved, repoRoot: repoRoot, supplyStage: supplyStage, log: log)
+                    resolved: resolved, repoRoot: repoRoot, supplyStage: supplyStage,
+                    mayEraseSimulatorForRecovery: true, log: log)
                 PhaseLog.mark("ios-workers-built")
                 return built
             }

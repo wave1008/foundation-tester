@@ -56,4 +56,23 @@ final class RunnerSlownessStoreTests: XCTestCase {
         RunnerSlownessStore.mark(stateDir: stateDir, key: "udid-a", state: .runnerRestartDidNotHelp)
         XCTAssertNil(RunnerSlownessStore.current(stateDir: stateDir, key: "udid-b"))
     }
+
+    /// 段階の生値はディスク上の形(古い版が書いた印も読む)。リテラルで固定する
+    func testRawValuesArePinned() {
+        XCTAssertEqual(RunnerSlowness.runnerRestartDidNotHelp.rawValue, "runnerRestartDidNotHelp")
+        XCTAssertEqual(RunnerSlowness.simulatorRestartDidNotHelp.rawValue, "simulatorRestartDidNotHelp")
+        XCTAssertEqual(RunnerSlowness.wipeDidNotHelp.rawValue, "wipeDidNotHelp")
+    }
+
+    func testWipeDidNotHelpRoundTrips() {
+        RunnerSlownessStore.mark(stateDir: stateDir, key: "udid-a", state: .wipeDidNotHelp)
+        XCTAssertEqual(RunnerSlownessStore.current(stateDir: stateDir, key: "udid-a"), .wipeDidNotHelp)
+    }
+
+    /// 知らない段階(将来の版・壊れたファイル)は落とさず「印なし」
+    func testUnknownStateDecodesAsNoMark() throws {
+        try Data(#"{"state":"somethingElse"}"#.utf8)
+            .write(to: RunnerSlownessStore.entryURL(stateDir: stateDir, key: "udid-a"))
+        XCTAssertNil(RunnerSlownessStore.current(stateDir: stateDir, key: "udid-a"))
+    }
 }

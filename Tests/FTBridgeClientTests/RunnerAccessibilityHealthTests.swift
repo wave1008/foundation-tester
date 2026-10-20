@@ -1,6 +1,7 @@
 // 再利用する XCUITest ランナーの AX 劣化判定(RunnerAccessibilityHealth)。期待値はリテラル。
 
 import XCTest
+import FTCore
 @testable import FTBridgeClient
 
 final class RunnerAccessibilityHealthTests: XCTestCase {
@@ -11,20 +12,73 @@ final class RunnerAccessibilityHealthTests: XCTestCase {
     }
 
     func testNormalProbeIsNotDegraded() {
-        XCTAssertFalse(RunnerAccessibilityHealth.isDegraded(probeSeconds: 0.05))
-        XCTAssertFalse(RunnerAccessibilityHealth.isDegraded(probeSeconds: 0.27))
-        XCTAssertFalse(RunnerAccessibilityHealth.isDegraded(probeSeconds: 1.99))
+        for seconds in [0.05, 0.1, 0.27, 1.99] {
+            XCTAssertFalse(RunnerAccessibilityHealth.isDegraded(.answered(seconds)), "\(seconds)")
+        }
     }
 
     func testStaleRemoteElementLatencyIsDegraded() {
-        XCTAssertTrue(RunnerAccessibilityHealth.isDegraded(probeSeconds: 2))
-        XCTAssertTrue(RunnerAccessibilityHealth.isDegraded(probeSeconds: 3.7))
-        XCTAssertTrue(RunnerAccessibilityHealth.isDegraded(probeSeconds: 4.1))
+        for seconds in [2, 2.0, 3.7, 4.1] {
+            XCTAssertTrue(RunnerAccessibilityHealth.isDegraded(.answered(seconds)), "\(seconds)")
+        }
     }
 
-    /// 測れなかった回は劣化と言わない(不明を起動し直しの根拠にしない)
+    /// **答えなかったは最悪の劣化**(測れなかったではない)。実測: SpringBoard の AX 照会が 60 秒返らない端末
+    /// (健全は 0.04 秒)を「不明」と読んで、供給の回復の階段が一度も動かなかった
+    func testNoAnswerIsDegraded() {
+        XCTAssertTrue(RunnerAccessibilityHealth.isDegraded(.noAnswer(waited: 20)))
+        XCTAssertTrue(RunnerAccessibilityHealth.isDegraded(.noAnswer(waited: 2)))
+    }
+
+    /// 測れなかった回(404・接続拒否・即切れ)は劣化と言わない(不明を起動し直しの根拠にしない)
     func testUnknownProbeIsNotDegraded() {
-        XCTAssertFalse(RunnerAccessibilityHealth.isDegraded(probeSeconds: nil))
+        XCTAssertFalse(RunnerAccessibilityHealth.isDegraded(.unknown))
+        XCTAssertFalse(RunnerAccessibilityHealth.isDegraded(nil))
+    }
+
+    /// 失敗した 1 問の分類: 届かなかった型で閾値以上待ったときだけ「答えなかった」。
+    /// 即切れ(待った事実が無い)・届かなかった型でない失敗は不明
+    func testFailureClassification() {
+        XCTAssertEqual(RunnerAccessibilityHealth.classifyFailure(unreachable: true, waited: 20.1),
+                       .noAnswer(waited: 20.1))
+        XCTAssertEqual(RunnerAccessibilityHealth.classifyFailure(unreachable: true, waited: 2),
+                       .noAnswer(waited: 2))
+        XCTAssertEqual(RunnerAccessibilityHealth.classifyFailure(unreachable: true, waited: 1.99), .unknown)
+        XCTAssertEqual(RunnerAccessibilityHealth.classifyFailure(unreachable: false, waited: 20), .unknown)
+    }
+
+    // MARK: - 起動し直しが効いたか(restartHelped)
+
+    /// 直ったと言えるのは「答えて閾値未満」だけ。**答えなかった・測れなかったを成功に数えない**
+    /// (測れなかった回復を成功にすると印が書かれず、次の run が同じ空振りを繰り返す)
+    func testRestartHelpedOnlyWhenItAnsweredFast() {
+        XCTAssertTrue(RunnerAccessibilityHealth.restartHelped(after: .answered(0.1)))
+        XCTAssertTrue(RunnerAccessibilityHealth.restartHelped(after: .answered(1.99)))
+        XCTAssertFalse(RunnerAccessibilityHealth.restartHelped(after: .answered(2)))
+        XCTAssertFalse(RunnerAccessibilityHealth.restartHelped(after: .noAnswer(waited: 20)))
+        XCTAssertFalse(RunnerAccessibilityHealth.restartHelped(after: .unknown))
+    }
+
+    // MARK: - ワーカー復帰の門(shouldReviveWorker)
+
+    func testReviveGateRefusesOnlyUnansweringDevices() {
+        let futility = RunnerRestartFutility()
+        XCTAssertTrue(RunnerAccessibilityHealth.shouldReviveWorker(udid: "SIM-1", futility: futility))
+        futility.mark(udid: "SIM-1")  // 遅いだけ(起動し直しても直らなかった)は復帰させてよい
+        XCTAssertTrue(RunnerAccessibilityHealth.shouldReviveWorker(udid: "SIM-1", futility: futility))
+        futility.markUnanswering(udid: "SIM-1")
+        XCTAssertFalse(RunnerAccessibilityHealth.shouldReviveWorker(udid: "SIM-1", futility: futility))
+        XCTAssertTrue(RunnerAccessibilityHealth.shouldReviveWorker(udid: "SIM-2", futility: futility), "別の台には及ばない")
+        XCTAssertTrue(RunnerAccessibilityHealth.shouldReviveWorker(udid: nil, futility: futility), "udid の無いワーカー(Android)")
+        futility.clear(udid: "SIM-1")
+        XCTAssertTrue(RunnerAccessibilityHealth.shouldReviveWorker(udid: "SIM-1", futility: futility), "測って健全なら忘れる")
+    }
+
+    func testMeasuredPhraseNeverPrintsZeroSecondsForNoAnswer() {
+        let text = RunnerAccessibilityHealth.measuredPhrase(.noAnswer(waited: 20.2))
+        XCTAssertEqual(text, "did not answer a one-element accessibility query within 20s")
+        XCTAssertEqual(RunnerAccessibilityHealth.measuredPhrase(.answered(3.7)),
+                       "answered a one-element accessibility query in 3.7s")
     }
 
     func testInjectedPortsParse() {
@@ -35,11 +89,14 @@ final class RunnerAccessibilityHealthTests: XCTestCase {
     }
 
     func testRestartMessageNamesTheMeasurementOrTheInjection() {
-        let measured = RunnerAccessibilityHealth.restartMessage(name: "d", port: 8123, probeSeconds: 3.7, injected: false)
+        let measured = RunnerAccessibilityHealth.restartMessage(name: "d", port: 8123, probe: .answered(3.7), injected: false)
         XCTAssertTrue(measured.contains("3.7s"), measured)
         XCTAssertTrue(measured.contains("restarting it"), measured)
-        let injected = RunnerAccessibilityHealth.restartMessage(name: "d", port: 8123, probeSeconds: nil, injected: true)
+        let injected = RunnerAccessibilityHealth.restartMessage(name: "d", port: 8123, probe: nil, injected: true)
         XCTAssertTrue(injected.contains("FT_FAKE_SLOW_RUNNER_PORTS"), injected)
+        let silent = RunnerAccessibilityHealth.restartMessage(name: "d", port: 8123, probe: .noAnswer(waited: 20), injected: false)
+        XCTAssertTrue(silent.contains("did not answer a one-element accessibility query within 20s"), silent)
+        XCTAssertFalse(silent.contains("0.0s"), silent)
     }
 
     // MARK: - run 中の測り直しの門(shouldRecheck)
@@ -70,11 +127,11 @@ final class RunnerAccessibilityHealthTests: XCTestCase {
     /// 起動し直さなかった 1 行は、ステップの遅さと測った所要を並べるだけで帰属を言わない
     func testLeftRunningMessageStatesMeasurementsOnly() {
         let measured = RunnerAccessibilityHealth.leftRunningMessage(
-            name: "iPhone 17 Pro-01", port: 8124, maxStepSnapshotMs: 2835, probeSeconds: 0.12)
+            name: "iPhone 17 Pro-01", port: 8124, maxStepSnapshotMs: 2835, probe: .answered(0.12))
         XCTAssertEqual(measured, "→ iPhone 17 Pro-01: a step spent 2835ms taking snapshots; the xcuitest"
             + " bridge on port 8124 answered a one-element accessibility query in 0.1s — left running")
         let unmeasured = RunnerAccessibilityHealth.leftRunningMessage(
-            name: "iPhone 17 Pro-01", port: 8124, maxStepSnapshotMs: 2835, probeSeconds: nil)
+            name: "iPhone 17 Pro-01", port: 8124, maxStepSnapshotMs: 2835, probe: .unknown)
         XCTAssertEqual(unmeasured, "→ iPhone 17 Pro-01: a step spent 2835ms taking snapshots; the xcuitest"
             + " bridge on port 8124 did not answer a one-element accessibility query (not measured) — left running")
     }
@@ -95,7 +152,7 @@ final class RunnerAccessibilityHealthTests: XCTestCase {
     func testRestartDidNotHelpMessage() {
         XCTAssertEqual(
             RunnerAccessibilityHealth.restartDidNotHelpMessage(
-                name: "iPhone 17 Pro-01", port: 8124, afterSeconds: 2.7),
+                name: "iPhone 17 Pro-01", port: 8124, after: .answered(2.7)),
             "⚠️ iPhone 17 Pro-01: after restarting SpringBoard (on a simulator) and the xcuitest bridge on"
                 + " port 8124, it still took 2.7s for a one-element accessibility query (normal is under 0.3s)"
                 + " — it is not restarted again in this run; rebooting the simulator is the next thing to try")
@@ -123,44 +180,81 @@ final class RunnerAccessibilityHealthTests: XCTestCase {
 
     // MARK: - 印を run をまたいで持ち越す(supplySlownessAction)
 
-    /// 印なしは従来どおり
+    private func action(_ persisted: RunnerSlowness?, lease: Bool, canWipe: Bool)
+        -> RunnerAccessibilityHealth.SupplySlownessAction {
+        RunnerAccessibilityHealth.supplySlownessAction(persisted: persisted, hasForeignLease: lease, canWipe: canWipe)
+    }
+
+    /// 印なしは従来どおり(リースにも初期化の可否にも依らない)
     func testNoMarkProceedsNormally() {
-        XCTAssertEqual(
-            RunnerAccessibilityHealth.supplySlownessAction(persisted: nil, hasForeignLease: false),
-            .proceedNormally)
-        XCTAssertEqual(
-            RunnerAccessibilityHealth.supplySlownessAction(persisted: nil, hasForeignLease: true),
-            .proceedNormally)
+        for lease in [false, true] {
+            for canWipe in [false, true] {
+                XCTAssertEqual(action(nil, lease: lease, canWipe: canWipe), .proceedNormally)
+            }
+        }
     }
 
-    /// 印 = runnerRestartDidNotHelp かつリース無しは、シミュレータごと再起動する
+    /// 印 = runnerRestartDidNotHelp かつリース無しは、初期化の可否に依らずシミュレータの再起動から始める
+    /// (初期化してよいかは、再起動で直らなかった後に escalateStuckRunner が見る)
     func testRunnerRestartFailedMarkWithoutLeaseRestartsTheSimulator() {
-        XCTAssertEqual(
-            RunnerAccessibilityHealth.supplySlownessAction(
-                persisted: .runnerRestartDidNotHelp, hasForeignLease: false),
-            .restartSimulator)
+        XCTAssertEqual(action(.runnerRestartDidNotHelp, lease: false, canWipe: true), .restartSimulator)
+        XCTAssertEqual(action(.runnerRestartDidNotHelp, lease: false, canWipe: false), .restartSimulator)
     }
 
-    /// **変異②「lease があるデバイスを除外しない」の陽性対照**: リースがあれば、印があっても
-    /// 絶対にシミュレータへ触らない(reuseWithoutRestarting に倒れる)
-    func testRunnerRestartFailedMarkWithLeaseNeverTouchesTheDevice() {
-        XCTAssertEqual(
-            RunnerAccessibilityHealth.supplySlownessAction(
-                persisted: .runnerRestartDidNotHelp, hasForeignLease: true),
-            .reuseWithoutRestarting)
+    /// **リースがあれば、どの印でも絶対にシミュレータへ触らない**(再起動も初期化も)
+    func testLeaseNeverTouchesTheDevice() {
+        for persisted in [RunnerSlowness.runnerRestartDidNotHelp, .simulatorRestartDidNotHelp, .wipeDidNotHelp] {
+            for canWipe in [false, true] {
+                XCTAssertEqual(action(persisted, lease: true, canWipe: canWipe), .reuseWithoutRestarting,
+                               "\(persisted) canWipe=\(canWipe)")
+            }
+        }
     }
 
-    /// 印 = simulatorRestartDidNotHelp は、リースの有無を問わず二度と触らない
-    /// (シミュレータ再起動はもう試していないだけの話ではなく「試して効かなかった」ので)
-    func testSimulatorRestartFailedMarkNeverRestartsAgain() {
-        XCTAssertEqual(
-            RunnerAccessibilityHealth.supplySlownessAction(
-                persisted: .simulatorRestartDidNotHelp, hasForeignLease: false),
-            .reuseWithoutRestarting)
-        XCTAssertEqual(
-            RunnerAccessibilityHealth.supplySlownessAction(
-                persisted: .simulatorRestartDidNotHelp, hasForeignLease: true),
-            .reuseWithoutRestarting)
+    /// 再起動でも直らなかった印(古い版が書いた印もここへ来る)は、初期化してよい状態なら初期化へ進む
+    func testSimulatorRestartFailedMarkGoesToTheWipe() {
+        XCTAssertEqual(action(.simulatorRestartDidNotHelp, lease: false, canWipe: true), .wipeSimulator)
+    }
+
+    /// 初期化してよい状態でなければ(実機・アプリを入れ直さない供給)触らずそのまま使う
+    func testSimulatorRestartFailedMarkWithoutWipePermissionReusesAsIs() {
+        XCTAssertEqual(action(.simulatorRestartDidNotHelp, lease: false, canWipe: false), .reuseWithoutRestarting)
+    }
+
+    /// 初期化しても直らなかった印は終端: 何も自動で撃たない
+    func testWipeFailedMarkIsTerminal() {
+        XCTAssertEqual(action(.wipeDidNotHelp, lease: false, canWipe: true), .reuseWithoutRestarting)
+        XCTAssertEqual(action(.wipeDidNotHelp, lease: false, canWipe: false), .reuseWithoutRestarting)
+    }
+
+    // MARK: - 初期化してよいか(wipeBlock)
+
+    func testWipeBlockNamesTheFirstUnmetPrecondition() {
+        XCTAssertNil(RunnerAccessibilityHealth.wipeBlock(isSimulator: true, hasForeignLease: false, runReinstallsApp: true))
+        XCTAssertEqual(RunnerAccessibilityHealth.wipeBlock(isSimulator: false, hasForeignLease: false, runReinstallsApp: true),
+                       .physicalDevice)
+        XCTAssertEqual(RunnerAccessibilityHealth.wipeBlock(isSimulator: true, hasForeignLease: true, runReinstallsApp: true),
+                       .foreignLease)
+        XCTAssertEqual(RunnerAccessibilityHealth.wipeBlock(isSimulator: true, hasForeignLease: false, runReinstallsApp: false),
+                       .appNotReinstalled)
+        // 実機は他の条件に依らず断る
+        XCTAssertEqual(RunnerAccessibilityHealth.wipeBlock(isSimulator: false, hasForeignLease: true, runReinstallsApp: false),
+                       .physicalDevice)
+    }
+
+    func testWipeSkippedMessageOffersTheManualCommand() {
+        for block in [RunnerAccessibilityHealth.WipeBlock.physicalDevice, .foreignLease, .appNotReinstalled] {
+            let text = RunnerAccessibilityHealth.wipeSkippedMessage(name: "d", udid: "UDID-1", block: block)
+            XCTAssertTrue(text.contains("`fleetest api wipe-device --platform ios --udid UDID-1`"), text)
+        }
+    }
+
+    func testErasingMessageStatesTheMeasurementAndWhatIsDeleted() {
+        let text = RunnerAccessibilityHealth.erasingSimulatorMessage(
+            name: "d", port: 8123, after: .noAnswer(waited: 20), afterReboot: true)
+        XCTAssertEqual(text, "⚠️ d: the xcuitest bridge on port 8123 still did not answer a one-element accessibility"
+            + " query within 20s after rebooting the simulator — erasing the simulator (its apps and data are"
+            + " deleted; the app under test is reinstalled by this run)")
     }
 
     // MARK: - リースの判定(hasForeignLease)
@@ -198,17 +292,17 @@ final class RunnerAccessibilityHealthTests: XCTestCase {
 
     func testSimulatorRestartDidNotHelpMessageStatesTheMeasurementOnly() {
         let measured = RunnerAccessibilityHealth.simulatorRestartDidNotHelpMessage(
-            name: "d", port: 8123, afterSeconds: 3.1)
+            name: "d", port: 8123, after: .answered(3.1))
         XCTAssertTrue(measured.contains("3.1s"), measured)
-        XCTAssertTrue(measured.contains("nothing further is tried automatically"), measured)
+        XCTAssertTrue(measured.contains("not erased now"), measured)
         let unmeasured = RunnerAccessibilityHealth.simulatorRestartDidNotHelpMessage(
-            name: "d", port: 8123, afterSeconds: nil)
-        XCTAssertTrue(unmeasured.contains("an unmeasured amount of time"), unmeasured)
+            name: "d", port: 8123, after: nil)
+        XCTAssertTrue(unmeasured.contains("could not be measured"), unmeasured)
     }
 
     func testKeptAfterSimulatorRestartFailedMessage() {
         let text = RunnerAccessibilityHealth.keptAfterSimulatorRestartFailedMessage(name: "d", port: 8123)
-        XCTAssertTrue(text.contains("rebooting the simulator did not help either"), text)
+        XCTAssertTrue(text.contains("rebooting the simulator did not help"), text)
     }
 
     func testKeptBecauseLeasedMessage() {

@@ -20,15 +20,15 @@ enum RunnerMidRunRecheck {
         return (udid, port)
     }
 
-    /// 戻り値: 実際にブリッジを起動し直したか(RunOrchestrator が WorkerAnomalyRecord
-    /// kind:"recovered" recovery:.runnerRestart を記録する材料。健全・未測定・対象外・
-    /// 起動し直し失敗はいずれも false)
+    /// 戻り値: `.restarted` = 実際にブリッジを起動し直した(RunOrchestrator が WorkerAnomalyRecord
+    /// kind:"recovered" recovery:.runnerRestart を記録する材料)/ `.unusable` = 起動し直しても 1 問にも答えない
+    /// (レーンを離脱させる)/ 健全・未測定・対象外・起動し直し失敗は `.unchanged`
     static func recheck(worker: RunWorker, maxStepSnapshotMs: Int?, repoRoot: URL,
-                        log: @escaping @Sendable (String) -> Void) async -> Bool {
-        guard let target = target(of: worker.connection) else { return false }
+                        log: @escaping @Sendable (String) -> Void) async -> RunOrchestrator.RunnerRecheckVerdict {
+        guard let target = target(of: worker.connection) else { return .unchanged }
         let injected = RunnerAccessibilityHealth.injectedSlowPorts().contains(target.port)
         guard RunnerAccessibilityHealth.shouldRecheck(maxStepSnapshotMs: maxStepSnapshotMs,
-                                                      injected: injected) else { return false }
+                                                      injected: injected) else { return .unchanged }
         let name = worker.connection.deviceName ?? worker.label
         let result = await BridgeProvisioner(repoRoot: repoRoot).recheckRunner(
             name: name, udid: target.udid, port: target.port, injected: injected, log: log)
@@ -36,21 +36,24 @@ enum RunnerMidRunRecheck {
         case .healthy, .unmeasured:
             log(RunnerAccessibilityHealth.leftRunningMessage(
                 name: name, port: target.port, maxStepSnapshotMs: maxStepSnapshotMs,
-                probeSeconds: result.probeSeconds))
-            return false
+                probe: result.probe))
+            return .unchanged
         case .restarted(let afterSeconds):
             let now = afterSeconds.map { "; a one-element query now takes \(String(format: "%.2f", $0))s" } ?? ""
             log("✅ \(name): restarted the xcuitest bridge on port \(target.port)\(now) — the lane continues")
-            return true
+            return .restarted
         case .restartDidNotHelp, .skipped:
             // 前者は restartRunner が 1 行出し済み・後者はその 1 行が既に出ている
-            return false
+            return .unchanged
+        case .unusable(let waited):
+            return .unusable(reason: "the xcuitest bridge on port \(target.port) not answering a one-element"
+                + " accessibility query within \(Int(waited.rounded()))s after it was restarted")
         case .restartFailed(let reason):
             // レーンは離脱させない: ランナーが本当に使えなければ次のシナリオが落ち、
             // 既存の事後プローブ(bridgeUnreachable → 離脱 → revive)が拾う
             log("⚠️ \(name): could not restart the xcuitest bridge on port \(target.port) (\(reason))"
                 + " — the lane continues as it is")
-            return false
+            return .unchanged
         }
     }
 }

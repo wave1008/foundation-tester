@@ -28,7 +28,7 @@ final class LiveRunnerHealthTests: XCTestCase {
 
     /// 測った値と、そのポートで撃てる対処を言う。自動起動できない serve では「起動し直せ」まで言う
     func testLiveDegradedNoteNamesTheMeasurementAndTheRemedy() {
-        let auto = RunnerAccessibilityHealth.liveDegradedNote(port: 8170, probeSeconds: 17.31,
+        let auto = RunnerAccessibilityHealth.liveDegradedNote(port: 8170, probe: .answered(17.31),
                                                               injected: false, autoStarts: true)
         XCTAssertEqual(auto,
             "the xcuitest bridge on port 8170 answered a one-element accessibility query in 17.3s;"
@@ -36,7 +36,7 @@ final class LiveRunnerHealthTests: XCTestCase {
             + " query (a stale remote element after a system daemon restart). Restart the bridge first:"
             + " `fleetest bridge down --port 8170` (live control starts it again on the next action);"
             + " if it is still this slow afterwards, reboot the simulator")
-        let manual = RunnerAccessibilityHealth.liveDegradedNote(port: 8123, probeSeconds: nil,
+        let manual = RunnerAccessibilityHealth.liveDegradedNote(port: 8123, probe: nil,
                                                                 injected: true, autoStarts: false)
         XCTAssertTrue(manual.contains("is injected as slow (FT_FAKE_SLOW_RUNNER_PORTS)"))
         XCTAssertTrue(manual.contains("`fleetest bridge down --port 8123`, then start it again"))

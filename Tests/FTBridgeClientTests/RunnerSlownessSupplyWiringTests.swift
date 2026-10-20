@@ -115,18 +115,35 @@ final class RunnerSlownessProvisioningWiringTests: XCTestCase {
     /// 門は restartRunner の呼び出しより前・同じ分岐の中にあること
     func testProceedNormallyRestartChecksForeignLeasesFirst() throws {
         let text = compact(try source())
-        guard let branch = text.range(of: "case.proceedNormally:") else {
-            return XCTFail(".proceedNormally 分岐が見当たらない — テストを見直すこと")
+        guard let fn = text.range(of: "privatefuncprobeAndRestartIfDegraded(") else {
+            return XCTFail("probeAndRestartIfDegraded が見当たらない — テストを見直すこと")
         }
-        let rest = text[branch.upperBound...]
-        guard let restart = rest.range(of: "returntryawaitrestartRunner(") else {
-            return XCTFail(".proceedNormally の restartRunner が見当たらない — テストを見直すこと")
+        let rest = text[fn.upperBound...]
+        guard let restart = rest.range(of: "tryawaitrestartRunner(") else {
+            return XCTFail("共有の手順の restartRunner が見当たらない — テストを見直すこと")
         }
         let beforeRestart = String(rest[rest.startIndex..<restart.lowerBound])
         XCTAssertTrue(beforeRestart.contains("RunnerAccessibilityHealth.hasForeignLease(udid:sim.udid,stateDir:fleetestStateDir)"),
-                      ".proceedNormally の起動し直しが他のセッションの印を見ていない")
+                      "共有の手順が他のセッションの印を見ていない")
         XCTAssertTrue(beforeRestart.contains("keptBecauseLeasedNowMessage("),
                       "印があって起動し直さなかったことを1行言っていない")
+        // .proceedNormally はこの共有の手順を呼ぶだけ(判断を二重に持たない)
+        guard let branch = text.range(of: "case.proceedNormally:") else {
+            return XCTFail(".proceedNormally 分岐が見当たらない — テストを見直すこと")
+        }
+        XCTAssertTrue(text[branch.upperBound...].prefix(120).contains("tryawaitprobeAndRestartIfDegraded("))
+    }
+
+    /// **新しく起動した XCUITest ランナーも測る**(再起動直後で印も稼働中のブリッジも無いデバイスは .launch だけを通る)。
+    /// 測りは .reuse と同じ共有の手順を通り、回復の途中の起動(escalating)では測らない
+    func testFreshLaunchIsProbedThroughTheSharedHelper() throws {
+        let text = compact(try source())
+        XCTAssertTrue(text.contains(compact(
+            "if engine == \"xcuitest\", !escalating, case .launch = plan {")))
+        XCTAssertTrue(text.contains(compact(
+            "return try await probeAndRestartIfDegraded( name: name, sim: sim, port: launched, claimed: claimed, log: log) ?? launched")))
+        XCTAssertEqual(text.components(separatedBy: compact("tryawaitprobeAndRestartIfDegraded(")).count - 1, 2,
+                       ".reuse と新規起動の 2 呼び出しだけが共有の手順を通る")
     }
 
     /// **供給の入口(.reuse の xcuitest 分岐)が、通常のプローブより先に run をまたいだ印を読むこと**。
@@ -135,11 +152,9 @@ final class RunnerSlownessProvisioningWiringTests: XCTestCase {
         let text = compact(try source())
         let markReadIndex = try XCTUnwrap(text.range(of: compact(
             "let persisted = RunnerSlownessStore.current(stateDir: fleetestStateDir, key: sim.udid)")))
-        // **markReadIndex より後だけを探す**(「let probeSeconds = injected」は recheckRunner にも
-        // 同じ文言があり、ファイル中の最初の一致が正しいとは限らないため)。見つからなければ
-        // XCTUnwrap が落ちる = 順序が入れ替わった(または消えた)ことを検出する
+        // **markReadIndex より後だけを探す**。見つからなければ XCTUnwrap が落ちる = 順序が入れ替わった(または消えた)ことを検出する
         let probeIndex = try XCTUnwrap(text.range(
-            of: compact("let probeSeconds = injected"), range: markReadIndex.upperBound..<text.endIndex))
+            of: compact("case .proceedNormally:"), range: markReadIndex.upperBound..<text.endIndex))
         XCTAssertTrue(markReadIndex.upperBound <= probeIndex.lowerBound,
                       "印は通常の 1 問プローブより先に読まれていなければならない")
     }
@@ -149,18 +164,34 @@ final class RunnerSlownessProvisioningWiringTests: XCTestCase {
     func testSupplyActionIsBuiltFromTheRealForeignLeaseCheck() throws {
         let text = compact(try source())
         XCTAssertTrue(text.contains(compact(
-            "RunnerAccessibilityHealth.supplySlownessAction(persisted: persisted,"
-            + " hasForeignLease: RunnerAccessibilityHealth.hasForeignLease("
-            + "udid: sim.udid, stateDir: fleetestStateDir))")))
+            "let lease = RunnerAccessibilityHealth.hasForeignLease("
+            + "udid: sim.udid, stateDir: fleetestStateDir)")))
+        XCTAssertTrue(text.contains(compact(
+            "RunnerAccessibilityHealth.supplySlownessAction("
+            + "persisted: persisted, hasForeignLease: lease, canWipe: block == nil)")))
+        // 初期化してよいかも同じ実ファイル由来の lease から決める(定数にすり替えない)
+        XCTAssertTrue(text.contains(compact(
+            "let block = wipeBlock(sim: sim, hasForeignLease: lease, preinstallAppPath: preinstallAppPath)")))
+    }
+
+    /// **印の段階は .launch の枝でも見る**(.reuse の入口だけだと、ブリッジが死んで .launch になった印つきデバイスは
+    /// はしごを登れず、初期化が一生起きない)。回復の途中の起動は escalating で再帰を断つ
+    func testLaunchBranchAlsoReadsThePersistedMark() throws {
+        let text = compact(try source())
+        XCTAssertTrue(text.contains(compact(
+            "if engine == \"xcuitest\", !escalating, case .launch(let launchPort, _, _, _) = plan,"
+            + " let persisted = RunnerSlownessStore.current(stateDir: fleetestStateDir, key: sim.udid)")))
+        XCTAssertEqual(text.components(separatedBy: compact("escalating: true)")).count - 1, 3,
+                       "回復の途中の起動(restartRunner / restartSimulatorAndRunner)と新規起動の包みが escalating を渡していない")
     }
 
     /// リースのあるデバイスには触らない(.restartSimulator のときだけシミュレータを再起動する)。
     /// reuseWithoutRestarting はシミュレータへ何もしない経路であることをケース名で確かめる
     func testOnlyRestartSimulatorCaseTouchesTheSimulator() throws {
         let text = compact(try source())
-        XCTAssertTrue(text.contains(compact("case .restartSimulator:")))
+        XCTAssertTrue(text.contains(compact("case .restartSimulator, .wipeSimulator:")))
         XCTAssertTrue(text.contains(compact(
-            "let result = try await restartSimulatorAndRunner(name: name, sim: sim, port: port,")))
+            "return try await escalateStuckRunner(action: action, block: block, name: name, sim: sim,")))
         XCTAssertTrue(text.contains(compact("case .reuseWithoutRestarting:")))
     }
 
@@ -170,9 +201,11 @@ final class RunnerSlownessProvisioningWiringTests: XCTestCase {
     func testRestartRunnerPersistsTheFutilityMarkAlongsideTheInProcessOne() throws {
         let text = compact(try source())
         XCTAssertTrue(text.contains(compact(
-            "RunnerRestartFutility.shared.mark(udid: sim.udid)"
-            + "RunnerSlownessStore.mark(stateDir: fleetestStateDir, key: sim.udid,"
-            + " state: .runnerRestartDidNotHelp)")))
+            "recordRecoveryFailure(udid: sim.udid, after: after, state: .runnerRestartDidNotHelp)")))
+        XCTAssertTrue(text.contains(compact(
+            "RunnerRestartFutility.shared.mark(udid: udid)")))
+        XCTAssertTrue(text.contains(compact(
+            "RunnerSlownessStore.mark(stateDir: fleetestStateDir, key: udid, state: state)")))
     }
 
     /// **効いたかを直後に測る**(CLAUDE.md の規律): シミュレータ再起動の結果で印を消す/更新する分岐が
@@ -182,7 +215,8 @@ final class RunnerSlownessProvisioningWiringTests: XCTestCase {
         XCTAssertTrue(text.contains(compact(
             "RunnerSlownessStore.clear(stateDir: fleetestStateDir, key: sim.udid)")))
         XCTAssertTrue(text.contains(compact(
-            "RunnerSlownessStore.mark(stateDir: fleetestStateDir, key: sim.udid,"
-            + " state: .simulatorRestartDidNotHelp)")))
+            "recordRecoveryFailure(udid: sim.udid, after: result.after, state: .simulatorRestartDidNotHelp)")))
+        XCTAssertTrue(text.contains(compact(
+            "recordRecoveryFailure(udid: sim.udid, after: wiped.after, state: .wipeDidNotHelp)")))
     }
 }

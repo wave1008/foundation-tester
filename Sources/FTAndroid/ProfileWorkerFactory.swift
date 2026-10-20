@@ -26,11 +26,15 @@ public enum ProfileWorkerFactory {
     /// iOS ワーカーのみ構築(ブリッジ供給込み=数十秒かかりうる)。Android と分離して呼べるのは
     /// 「Android を iOS 供給の完了待ちにしない」ため(RunOrchestrator の lateWorkers 参照)。
     /// `supplyStage` は台帳の準備中表示への通知(BridgeProvisioner へそのまま渡す。台帳を書かない経路は nil)
+    /// `mayEraseSimulatorForRecovery`: 呼び手が**この後で `installIfNeeded` を通す**ときだけ true
+    /// (回復の最後の手としてシミュレータを初期化してよい。消えたアプリはそこで入れ直される)
     public static func buildIOSWorkers(resolved: ResolvedProfile, repoRoot: URL,
                                        supplyStage: SupplyStageReporter?,
+                                       mayEraseSimulatorForRecovery: Bool = false,
                                        log: @escaping (String) -> Void) async throws -> [RunWorker] {
         guard !resolved.iosDevices.isEmpty else { return [] }
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, supplyStage: supplyStage)
+        let provisioner = BridgeProvisioner(repoRoot: repoRoot, supplyStage: supplyStage,
+                                            mayEraseSimulatorForRecovery: mayEraseSimulatorForRecovery)
         let iosApp = resolved.apps["ios"]
         let provisioned = try await provisioner.provision(
             devices: resolved.iosDevices.map { ($0.name, $0.spec) },
@@ -998,7 +1002,8 @@ public enum ProfileWorkerFactory {
     public static func buildWorker(forLogicalName name: String, resolved: ResolvedProfile,
                                    repoRoot: URL, log: @escaping (String) -> Void) async -> RunWorker? {
         if let device = resolved.iosDevices.first(where: { $0.name == name }) {
-            let provisioner = BridgeProvisioner(repoRoot: repoRoot)
+            // 復帰の呼び手(reviveWorker)はこの後で installIfNeeded を通す
+            let provisioner = BridgeProvisioner(repoRoot: repoRoot, mayEraseSimulatorForRecovery: true)
             let iosApp = resolved.apps["ios"]
             // provision に 60s の期限を切る: ウェッジしたブリッジは接続を受けたまま応答せず、
             // BridgeClient の既定 120s/リクエストに任せると復帰ポーリング1回が数分止まる
@@ -1285,7 +1290,8 @@ public enum ProfileWorkerFactory {
             }
         }
         guard var rebuilt = try? await buildIOSWorkers(resolved: resolved, repoRoot: repoRoot,
-                                                       supplyStage: nil, log: log) else { return nil }
+                                                       supplyStage: nil, mayEraseSimulatorForRecovery: true,
+                                                       log: log) else { return nil }
         do {
             rebuilt = try await installIfNeeded(apps: apps, workers: rebuilt,
                                                 forceAndroidInstall: false,

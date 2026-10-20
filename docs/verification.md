@@ -165,6 +165,10 @@ remote element を諦める時間だけ待つ。隣のデバイスでは同じ�
   **シミュレータの再起動で 0.03 秒に戻った**(同じ 3 シナリオの合計 42.3s → 22.1s)。この形では上の
   「シミュレータの再起動は要らない」は成り立たない。確かめ方は `curl -w '%{time_total}' 127.0.0.1:<port>/systemalert`
   をデバイスごとに数回(アイドルでも 3 秒ならデバイスの側)
+- **起動し直しても 1 問にも答えないデバイス**(`/systemalert` が時限まで返らない。`ProbeOutcome.noAnswer`)は、その run では供給から離脱させ
+  (run 中の測り直しならレーンを離脱させ、ワーカー復帰も止める)、次の run の供給で階段を登る: シミュレータ再起動 → 直らなければ同じ供給の中で
+  初期化(erase)→ 直らなければ `wipeDidNotHelp` で終端。初期化はリースが無い・アプリが入れ直される供給のときだけ(満たさないときは
+  `fleetest api wipe-device` の案内を 1 行出す)。印は `.fleetest/slow-runner-<udid>.json`。経緯は maintainer-notes §98
 - 陽性対照(3 通り。どれも `--device <1 台> --scenario` ×3 の素の xcuitest 実行): 劣化したデバイス・注入なし →
   起動し直し 1 回 + 上の 1 行 + 以降は無言 / 健全なデバイス・注入なし → 測り直しの行 0 件 / 健全なデバイス・注入あり →
   緑のたびに「restarted …; a one-element query now takes 0.0Xs — the lane continues」
