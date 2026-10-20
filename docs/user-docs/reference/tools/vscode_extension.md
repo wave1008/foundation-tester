@@ -63,8 +63,9 @@ is unavailable.
 - The **run board** under the toolbar shows one row per machine — this Mac and every registered
   runner machine. A run going on right now appears on its machine's row with "N of M done" and an
   estimated time left — not just runs you started, but CLI runs and other people's runs too. Before the
-  run starts, the row says what it is doing instead of the counts ("Building scenarios…", "Building the
-  runner…", "Booting devices…", "Starting the bridge…", "Installing the app…").
+  run starts, the row says what it is doing instead of the counts ("Building scenarios…", "Starting device
+  preparation…", "Building the runner…", "Booting devices…", "Starting the bridge…", "Installing the app…",
+  "Starting tests…").
   Expanding a row lists that machine's devices; clicking a row selects them in the Line View.
 - The Device Monitor tab is split into three views, top to bottom: the **Line View** (the row of
   device tiles), the **Grid View** (enlarged screens of the selected devices), and the **Run Log View**

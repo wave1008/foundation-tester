@@ -616,13 +616,17 @@ function appendDeviceLane(row, machine, name, lane, receivedAtMs, platform) {
 
 // 供給の段階(台帳の supply)→「準備中 — 起動中 2・ブリッジを起動中 1(準備完了 0/3 台)」。
 // ready 以外の行が無ければ undefined(従来の表示のまま)。
-function supplyLabel(supply) {
+// `whilePreparing` = 準備中の行か(全台 ready の「テストを開始します」は準備中にだけ出す。実行中は添えない)
+function supplyLabel(supply, whilePreparing) {
   const keys = {
     runnerBuild: 'runBoard.supplyRunnerBuild', booting: 'runBoard.supplyBooting',
-    bridge: 'runBoard.supplyBridge', installing: 'runBoard.supplyInstalling',
+    bridge: 'runBoard.supplyBridge', installing: 'runBoard.supplyInstalling', allReady: 'runBoard.supplyStarting',
   };
   const step = currentSupplyStep(supply);
-  return step === undefined ? undefined : t(keys[step]);
+  if (step === undefined || (step === 'allReady' && !whilePreparing)) {
+    return undefined;
+  }
+  return t(keys[step]);
 }
 
 // run のある機械の行。**1行に「(マシン名) プロジェクト / 実行プロファイル  進捗  経過 / 残り」**
@@ -645,7 +649,7 @@ function updateRow(row, run) {
   const beforeRunning = run.phase !== 'running';
   row.progressEl.style.display = beforeRunning ? 'none' : '';
   // 供給の段階があれば準備中の文言を詳しくする(無ければ従来のまま。推測で埋めない)
-  const supplyText = supplyLabel(run.supply);
+  const supplyText = supplyLabel(run.supply, beforeRunning);
   if (beforeRunning) {
     // シナリオのビルド中・Vision のコンパイル中はその文言だけ(供給の段階は添えない)。準備中は段階があればそれを1つ
     row.countsEl.textContent = run.phase === 'building' ? t('runBoard.building')

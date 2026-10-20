@@ -263,19 +263,26 @@ function mostAdvancedPhase(runs: readonly RunBoardRun[]): "building" | "preparin
   return "building";
 }
 
-/** 端末の段階の進む順(ready・runnerBuild は含めない)。 */
+/** 端末の段階の進む順(ready・runnerBuild・pending は含めない。pending だけなら undefined = 「デバイスの準備を開始します」)。 */
 export const SUPPLY_PROGRESS_STEPS = ["booting", "bridge", "installing"] as const;
-export type SupplyStep = "runnerBuild" | (typeof SUPPLY_PROGRESS_STEPS)[number];
+/** "allReady" = 端末の行が全部 ready(準備中なら「テストを開始します」。実行中は何も添えない)。 */
+export type SupplyStep = "runnerBuild" | (typeof SUPPLY_PROGRESS_STEPS)[number] | "allReady";
 
 /** 準備中に出す段階を1つ選ぶ(台数は出さない = ユーザー決定)。①共有のランナーのビルドが最優先 ②端末は**いちばん進んでいる
- * 未完了の段階**(起動中とブリッジが混ざればブリッジ)。ready・未知の段階だけ・空なら undefined(呼び手は従来の文言)。
+ * 未完了の段階**(起動中とブリッジが混ざればブリッジ)③端末の行が全部 ready なら "allReady"。未知の段階だけ・空なら undefined
+ * (呼び手は従来の文言)。
  * 表示文字列は置かない(webview が組む = このファイルは i18n を import できない) */
 export function currentSupplyStep(supply: readonly RunBoardSupply[]): SupplyStep | undefined {
   if (supply.some((row) => row.name === "" && row.step === "runnerBuild")) {
     return "runnerBuild";
   }
-  const present = new Set(supply.filter((row) => row.name !== "").map((row) => row.step));
-  return [...SUPPLY_PROGRESS_STEPS].reverse().find((step) => present.has(step));
+  const devices = supply.filter((row) => row.name !== "");
+  const present = new Set(devices.map((row) => row.step));
+  const step = [...SUPPLY_PROGRESS_STEPS].reverse().find((s) => present.has(s));
+  if (step !== undefined) {
+    return step;
+  }
+  return devices.length > 0 && devices.every((row) => row.step === "ready") ? "allReady" : undefined;
 }
 
 function sum(values: readonly number[]): number {

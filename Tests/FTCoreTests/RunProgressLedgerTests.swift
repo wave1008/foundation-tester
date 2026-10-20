@@ -81,6 +81,7 @@ final class RunProgressLedgerTests: XCTestCase {
 
     /// step の語彙(台帳・拡張が読む値)はリテラルで固定する
     func testStepVocabularyIsPinned() {
+        XCTAssertEqual(RunProgressSupply.Step.pending.rawValue, "pending")
         XCTAssertEqual(RunProgressSupply.Step.runnerBuild.rawValue, "runnerBuild")
         XCTAssertEqual(RunProgressSupply.Step.booting.rawValue, "booting")
         XCTAssertEqual(RunProgressSupply.Step.bridge.rawValue, "bridge")

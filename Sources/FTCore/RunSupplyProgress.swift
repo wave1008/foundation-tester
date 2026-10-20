@@ -9,6 +9,9 @@ import Foundation
 /// 端末に属さない共有の段階(ランナーの build-for-testing)は name が空文字
 public struct RunProgressSupply: Codable, Equatable, Sendable {
     public enum Step: String, Sendable {
+        /// 予定に入ったがまだ始まっていない(同時に起動できる台数の枠を待つ間)。**全台 ready の判定を誤らせないため**に
+        /// 計画の時点で全台ぶん立てる(行の無い端末があると、先に済んだ端末だけで「全部 ready」に見える)
+        case pending
         case runnerBuild
         case booting
         case bridge

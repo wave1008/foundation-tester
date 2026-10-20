@@ -85,7 +85,7 @@ public struct RunProgressRecord: Codable, Equatable, Sendable {
     /// compile-ocr を待っている間だけ。RunProgressState.ocrCompileWaitBegan)/ "running"
     public let phase: String
     /// 準備中の端末ごとの供給の段階(`RunSupplyProgress.snapshot()`)。端末の行は ready になっても残す
-    /// (全台 ready = 段階の表示が消える、を「段階の情報が無い」と区別しない = どちらも「デバイスを準備中」)。供給の段階が1つも無い run は空
+    /// (読み手は全部 ready なら「実行が始まる直前」と読む = 予定の端末は計画の時点で pending として立てる)。供給の段階が1つも無い run は空
     public let supply: [RunProgressSupply]
 
     public init(pid: Int32, runID: String?, runGroup: String?, issuer: String?, project: String,

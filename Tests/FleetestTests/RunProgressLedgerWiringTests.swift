@@ -153,6 +153,19 @@ final class RunProgressLedgerWiringTests: XCTestCase {
         }
     }
 
+    /// iOS は計画の時点で予定の端末を全台 pending で立てること(起動の枠を待つ端末に行が無いと、先に済んだ端末だけで
+    /// 「全台 ready」=「テストを開始します」に見える。実測: -01 の ready の 0.3 秒後に -02・-03 の起動の行が立った)
+    func testIOSSupplyRegistersEveryPlannedDeviceAsPending() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let code = try String(contentsOf: root.appendingPathComponent("Sources/FTBridgeClient/BridgeProvisioner.swift"),
+                              encoding: .utf8)
+        let pending = try XCTUnwrap(code.range(of: "for plan in plans { supplyStage?(plan.name, \"ios\", .pending) }"),
+                                    "予定の端末を pending で立てていない")
+        let launch = try XCTUnwrap(code.range(of: "let launchWidth = Self.launchWidth("))
+        XCTAssertTrue(pending.lowerBound < launch.lowerBound, "pending は起動の枠を決める前(全台ぶん)に立てる")
+    }
+
     /// 供給側の通知(supplyStage)を渡し忘れていないこと。既定値を置かない引数なのでコンパイルが止めるが、
     /// `nil` を渡してよい場所は限る(台帳を書かない経路・run 中の復帰・回復)
     func testSupplyCallSitesPassSupplyStage() throws {

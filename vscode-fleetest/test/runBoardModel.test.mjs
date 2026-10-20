@@ -207,9 +207,14 @@ test("liveRemaining: 見積もり無しは undefined、残っている間は rem
 
 // ---- 供給の段階(supply)-----------------------------------------------------------------------
 
-test("currentSupplyStep: 空・全台 ready・未知の段階だけは undefined(従来の文言のまま)", () => {
+test("currentSupplyStep: 空・未知の段階だけは undefined(従来の文言のまま)・全台 ready は allReady", () => {
   assert.equal(currentSupplyStep([]), undefined);
-  assert.equal(currentSupplyStep([{ name: "a", step: "ready" }, { name: "b", step: "ready" }]), undefined);
+  assert.equal(currentSupplyStep([{ name: "a", step: "ready" }, { name: "b", step: "ready" }]), "allReady");
+  assert.equal(currentSupplyStep([{ name: "a", step: "ready" }, { name: "b", step: "someFutureStep" }]), undefined,
+    "未知の段階が残っていれば全台 ready とは言わない");
+  assert.equal(currentSupplyStep([{ name: "a", step: "ready" }, { name: "b", step: "pending" }]), undefined,
+    "まだ始まっていない端末(pending)が残っていれば全台 ready とは言わない");
+  assert.equal(currentSupplyStep([{ name: "a", step: "pending" }, { name: "b", step: "booting" }]), "booting");
   assert.equal(currentSupplyStep([{ name: "a", step: "someFutureStep" }]), undefined);
 });
 

@@ -585,6 +585,10 @@ public struct BridgeProvisioner: Sendable {
                                     engine: engine, bridges: bridges))
         }
 
+        // 予定の端末を全台ぶん「待機」で立てる(起動の枠を待つ端末に行が無いと、先に済んだ端末だけで全台 ready に見える)。
+        // 起動に失敗した端末の行は executeDevice が消す
+        for plan in plans { supplyStage?(plan.name, "ios", .pending) }
+
         // 5. 共有ビルド(直列)。並列起動フェーズより前に必ず済ませる
         try await prepareSharedBuilds(plans: plans, log: safeLog)
 

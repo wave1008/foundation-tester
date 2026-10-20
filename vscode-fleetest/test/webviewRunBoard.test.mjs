@@ -157,7 +157,7 @@ test("準備中の run は本数でなく「準備中」を出し、進捗バー
   // **run の行に限って見る** —— run の無い機械の行も同じ作り(.run-board-row)なので、素の
   // querySelector では local の行を掴む
   const [runRow] = runRows(document);
-  assert.equal(runRow.querySelector(".run-board-counts").textContent, "デバイスを準備中");
+  assert.equal(runRow.querySelector(".run-board-counts").textContent, "デバイスの準備を開始します");
   assert.equal(runRow.querySelector(".run-board-progress").style.display, "none");
   assert.equal(document.getElementById("run-board-title").textContent, "実行中 1",
     "準備中も「実行中」の件数に数える(走っているので)");
@@ -214,8 +214,8 @@ test("ビルド中・コンパイル中は供給の段階を添えない", (t) =
   }
 });
 
-// 供給の行が全部 ready なら従来の文言のまま(段階を推測で言わない)
-test("供給の段階がすべて ready なら従来の「準備中」の文言のまま", (t) => {
+// 供給の行が全部 ready で、まだ準備中 = 実行が始まる直前
+test("供給の段階がすべて ready の準備中は「テストを開始します」", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   post(window, { type: "monitorRuns", machine: "M1Max", observed: true, runs: [{
@@ -225,7 +225,7 @@ test("供給の段階がすべて ready なら従来の「準備中」の文言�
     elapsedSeconds: 12, total: 0, done: 0, failed: 0, lanes: [],
   }] });
   assert.equal(runRows(document)[0].querySelector(".run-board-counts").textContent,
-    "デバイスを準備中");
+    "テストを開始します");
 });
 
 // 混在 run: 最初の Android レーンが合流して phase は running だが iOS の供給が続いている

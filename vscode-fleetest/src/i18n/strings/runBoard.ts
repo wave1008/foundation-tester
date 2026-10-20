@@ -19,12 +19,14 @@ export const runBoardStrings = {
   "runBoard.building": { ja: "シナリオをビルド中", en: "Building scenarios…" },
   "runBoard.requeued": { ja: "⟳{count}", en: "⟳{count}" },
   "runBoard.laneDropouts": { ja: "レーン離脱 {count}", en: "{count} lane(s) dropped" },
-  "runBoard.preparing": { ja: "デバイスを準備中", en: "Preparing devices…" },
+  "runBoard.preparing": { ja: "デバイスの準備を開始します", en: "Starting device preparation…" },
   // 準備中の端末ごとの供給の段階(台帳の supply)。1つだけ出す(選び方は runBoardModel.currentSupplyStep・台数は出さない)
   "runBoard.supplyRunnerBuild": { ja: "ランナーをビルド中", en: "Building the runner…" },
   "runBoard.supplyBooting": { ja: "デバイスを起動中", en: "Booting devices…" },
   "runBoard.supplyBridge": { ja: "ブリッジを起動中", en: "Starting the bridge…" },
   "runBoard.supplyInstalling": { ja: "アプリをインストール中", en: "Installing the app…" },
+  // 全台の準備が終わり、実行が始まる直前(準備中のときだけ。実行中には添えない)
+  "runBoard.supplyStarting": { ja: "テストを開始します", en: "Starting tests…" },
   "runBoard.compiling": { ja: "Vision コンパイル中", en: "Compiling Vision…" },
   "runBoard.laneIdle": { ja: "⏹ 待機", en: "⏹ Waiting" },
   "runBoard.remainingUnknown": { ja: "—", en: "—" },
