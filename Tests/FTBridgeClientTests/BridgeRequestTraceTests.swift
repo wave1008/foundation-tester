@@ -43,4 +43,16 @@ final class BridgeRequestTraceTests: XCTestCase {
         XCTAssertEqual(recorded.count, BridgeRequestTrace.bodyPrefixLength)
         XCTAssertNil(trace["frames"], "木以外の要求には枠を載せない")
     }
+
+    /// 打鍵の文字列は文字数だけ(パスワードを含みうる本文を結果に残さない)
+    func testTypedTextIsReplacedByItsLength() throws {
+        let body = Data(#"{"ref":7,"text":"hunter2"}"#.utf8)
+        let started = Date()
+        let text = BridgeRequestTrace.line(method: "POST", path: "/type", query: nil, body: body, status: 200,
+                                           started: started, finished: started, response: nil, watched: ["x"])
+        XCTAssertFalse(text.contains("hunter2"), text)
+        let trace = try XCTUnwrap((try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])?["bridgeTrace"]
+                                    as? [String: Any])
+        XCTAssertEqual(trace["body"] as? String, #"{"ref":7,"text":"<7 chars>"}"#)
+    }
 }

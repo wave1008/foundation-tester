@@ -19,7 +19,7 @@ enum BridgeRequestTrace {
         return ids.isEmpty ? nil : ids
     }
 
-    /// 本文は先頭だけ(座標・ref が読めれば足りる。打鍵の本文を丸ごと残さない)
+    /// 本文は先頭だけ(座標・ref が読めれば足りる)
     static let bodyPrefixLength = 160
 
     /// 1行の JSON。`/snapshot` の応答からは指定した id の要素の枠だけを `[x, y, width, height]` で抜く
@@ -31,7 +31,9 @@ enum BridgeRequestTrace {
             "req": method + " " + path + (query.map { "?" + $0 } ?? ""),
         ]
         if let status { trace["status"] = status }
-        if let body, let text = String(data: body, encoding: .utf8) { trace["body"] = String(text.prefix(bodyPrefixLength)) }
+        if let body, let text = String(data: redactingTypedText(body), encoding: .utf8) {
+            trace["body"] = String(text.prefix(bodyPrefixLength))
+        }
         if path == "/snapshot", let response,
            let root = try? JSONSerialization.jsonObject(with: response) as? [String: Any],
            let elements = root["elements"] as? [[String: Any]] {
@@ -46,6 +48,15 @@ enum BridgeRequestTrace {
         guard let data = try? JSONSerialization.data(withJSONObject: ["bridgeTrace": trace], options: [.sortedKeys]),
               let text = String(data: data, encoding: .utf8) else { return "" }
         return text
+    }
+
+    /// **打鍵の文字列(`text` の欄 = `TypeRequest`)は文字数だけに置き換える**。パスワードを含みうる本文が結果
+    /// (results/ は git で扱われうる)に平文で残らないように
+    static func redactingTypedText(_ body: Data) -> Data {
+        guard var object = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any],
+              let typed = object["text"] as? String else { return body }
+        object["text"] = "<\(typed.count) chars>"
+        return (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data()
     }
 
     static func emit(_ request: URLRequest, status: Int?, started: Date, response: Data?) {
