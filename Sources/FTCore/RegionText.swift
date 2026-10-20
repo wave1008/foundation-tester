@@ -61,6 +61,7 @@ public enum RegionText {
         var recognize: (@Sendable (CGImage) async throws -> [String])?
         var modelCompileFinish: (@Sendable () async -> Void)?
         var modelReady: Bool?
+        var lateFinishObserver: (@Sendable () -> Void)?
     }
     private static let testingHooks = Mutex(TestingHooks())
 
@@ -596,7 +597,10 @@ public enum RegionText {
     /// 諦めた読みが戻り、`abandonedInFlight` を引いた**直後**に呼ぶ(テスト用。本番では nil)。
     /// 「戻ったら減る」を壁時計の上限なしに確かめるため —— 読みの所要は負荷で数秒に伸びる
     /// (全件並列の swift test で 5 秒の待ちを越えて落ちた)(`modelReadyOverrideForTesting` と同じ規律)
-    nonisolated(unsafe) public static var lateFinishObserverForTesting: (@Sendable () -> Void)?
+    public static var lateFinishObserverForTesting: (@Sendable () -> Void)? {
+        get { testingHooks.withLock { $0.lateFinishObserver } }
+        set { testingHooks.withLock { $0.lateFinishObserver = newValue } }
+    }
 
     public static func resolveWithinBudget(expected: String, pngData: Data,
                                            frame: FTRect, screen: FTRect,

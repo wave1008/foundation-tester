@@ -297,7 +297,7 @@ public enum FindImage {
     /// 画像の特徴量(Shirates の ImageFeaturePrintMatcher.getFeaturePrintObservation と同じ要求)。
     /// 1回ごとに VisionUsageLedger へ1件書く
     public static func featurePrint(_ image: CGImage) async throws -> FeaturePrintObservation {
-        templateLock.withLock { featurePrintCount += 1 }
+        templateLock.withLock { featurePrints += 1 }
         let start = Date()
         do {
             let observation = try await GenerateImageFeaturePrintRequest().perform(on: image)
@@ -311,7 +311,8 @@ public enum FindImage {
 
     private static let templateLock = NSLock()
     /// 特徴量を作った回数(テスト用。回数だけが費用なので、門や控えの効き目を回数で縛る)
-    nonisolated(unsafe) static var featurePrintCount = 0
+    static var featurePrintCount: Int { templateLock.withLock { featurePrints } }
+    nonisolated(unsafe) private static var featurePrints = 0
     nonisolated(unsafe) private static var templatePrints: [String: FeaturePrintObservation] = [:]
     /// プロセス内の控えのうち、永続控え(TemplatePrintStore)に載っているもの(= 書き直さない)
     nonisolated(unsafe) private static var persistedTemplateKeys: Set<String> = []
