@@ -382,8 +382,16 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 - **失敗時の証跡の絵は画面全体を撮る(2026-09-20)**: in-app の `/screenshot` はアプリ自身の window を
   描き直すだけで、SpringBoard のアラートは写らない。hybrid は `fallbackDriver`(XCUITest =
   `XCUIScreen`)で撮り、撮れなければ主ドライバへ落ちる(`FTRuntime.handleFailure`。白フレームの
-  撮り直しも同じ撮り方)。**変えたのは失敗の証跡だけ** —— DSL の `screenshot`・遮蔽の crop・
-  findImage はアプリ座標の絵が要り、in-app の絵の追いつき待ち(`InAppRenderCatchUp`)もそちらに効く
+  撮り直しも同じ撮り方)。DSL の `screenshot` も同じ撮り方(2026-10-20)。
+- **画像判定の絵は覆いがあると分かっているときだけ画面全体を撮る(2026-10-20)**: テキストの可視性検証・
+  findImage / existImage / imageIs・分類器(checkIsON / checkIsOFF)は、hybrid では in-app の絵を使い、**判定に使った木がキーボードを
+  申告しているとき**と**そのフェーズの照会(`GET /systemalert`。フェーズごとに1回・触る操作の照会の答えも使う)で
+  アラートが前面にあったとき**だけ `fallbackDriver` で撮る(`FTCore.JudgmentCapture` /
+  `StepExecutor.judgmentScreenshot`)。screenLooksLike / screenIs の FM は1回で数秒かかるので常に画面全体。
+  毎回 XCUITest で撮らないのは、可視性検証が既定で有効で、検証のたびに数百 ms(in-app 約 45〜125ms)増えるため。
+  画面全体の絵には in-app の絵の追いつき待ち(`InAppRenderCatchUp`)が効かないが、xcuitest 単独と同じ条件で、
+  可視性検証は見えないと判定した回に撮り直して待つ。見逃すもの: 通知バナー等の他の覆い・フェーズの途中で出たアラート・
+  inapp 単独(撮り直す先が無い)
 - **起動元の自己申告と doctor の刈り取り(2026-07-30)**: 3ブリッジとも `/status` で起動元
   (`ownerRepo`。iOS xcuitest はホスト上で停止できる `ownerPid` も)と直前の無通信秒数
   (`idleSeconds`)を申告する(注入経路: xctestrun 環境変数 / `-e owner` / SIMCTL_CHILD)。

@@ -515,6 +515,8 @@ public final class FTDriveCore {
                 fingerprintCacheURL: URL? = nil,
                 selectorInventoryURL: URL? = nil,
                 fallbackDriver: AppDriver? = nil,
+                // 主ドライバの絵にキーボード・システムアラートが写らない(hybrid)。StepExecutor の doc
+                primaryCaptureOmitsSystemUI: Bool = false,
                 typeDriver: AppDriver? = nil,
                 preferTypeDriver: Bool = false,
                 typeDriverGestures: Set<String> = [],
@@ -540,6 +542,7 @@ public final class FTDriveCore {
             ? RegionText.mode(environment: ProcessInfo.processInfo.environment)
             : .off
         self.executor = StepExecutor(driver: driver, fallbackDriver: fallbackDriver,
+                                     primaryCaptureOmitsSystemUI: primaryCaptureOmitsSystemUI,
                                      typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
                                      typeDriverGestures: typeDriverGestures,
                                      delegate: delegate, healingEnabled: healingEnabled,
@@ -1476,7 +1479,7 @@ public final class FTDriveCore {
         // **画面全体を撮れる XCUITest を先に使う**(失敗時の証跡 `handleFailure` と同じ順)。hybrid の主ドライバ(in-app)の
         // 絵はアプリ自身の window だけで、キーボードもシステムアラートも写らない = レポートの絵が実際の画面と違った。
         // 撮れなければ主ドライバへ落ちる。fallbackDriver が無い(Android・in-app 単独)なら主ドライバのまま。
-        // findImage などの画像判定が読む絵は変えない(撮るたびに XCUITest を往復すると判定のたびに遅くなる)
+        // 画像判定の絵は別の口で、覆いがあると分かっているときだけ画面全体を撮る(StepExecutor.judgmentScreenshot)
         let wholeScreen = executor.fallbackDriver
         let clock = ContinuousClock()
         let start = clock.now

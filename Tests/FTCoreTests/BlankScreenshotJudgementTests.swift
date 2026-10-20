@@ -34,8 +34,10 @@ final class BlankScreenshotJudgementTests: XCTestCase {
                                   placeholder: nil, enabled: true,
                                   frame: FTRect(x: 100, y: 800, width: 200, height: 200), depth: 1)
 
+        var phase = StepExecutor.PhaseAccumulator()
         let classification = await executor.classifyElementImage(
-            element, screen: FTRect(x: 0, y: 0, width: 1080, height: 2424), with: model)
+            element, screen: FTRect(x: 0, y: 0, width: 1080, height: 2424), keyboardShown: false, with: model,
+            phase: &phase)
 
         XCTAssertNil(classification, "真っ黒の絵は分類しない")
         XCTAssertTrue(executor.classifierFailureThisStep?.contains("a single colour") == true,
@@ -45,7 +47,8 @@ final class BlankScreenshotJudgementTests: XCTestCase {
         driver.screenshots = [Self.whitePNG()]
         executor.classifierFailureThisStep = nil
         let white = await executor.classifyElementImage(
-            element, screen: FTRect(x: 0, y: 0, width: 1080, height: 2424), with: model)
+            element, screen: FTRect(x: 0, y: 0, width: 1080, height: 2424), keyboardShown: false, with: model,
+            phase: &phase)
         XCTAssertNil(white, "全面が一色の絵は分類しない")
         XCTAssertNotNil(executor.classifierFailureThisStep)
     }

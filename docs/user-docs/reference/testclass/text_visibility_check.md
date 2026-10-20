@@ -111,6 +111,13 @@ left. FM judges those. Where FM is unavailable, they pass unverified.
 - A short truncation that shows only the first few characters can fail: OCR may read `…` as a single
   dot, which does not count as an ellipsis.
 - A translucent overlay counts as visible as long as the text under it can be read.
+- With iOS's default engine (hybrid), the check normally uses the picture the app draws itself (it is faster). That picture
+  shows neither the keyboard nor system alerts (permission requests and the like), so the whole screen is captured
+  (through XCUITest) only when the element tree reports the keyboard, or when a system alert was in front the first time
+  it was checked in that phase (`condition` / `action` / `expectation`; checked once per phase). Covers that are neither the keyboard nor
+  an alert (a notification banner, for example), and an alert that appears in the middle of a phase, are missed (it shows
+  from the next phase on). A device with `engine: inapp` alone cannot capture the whole screen, so the keyboard and
+  alerts are missed there too.
 - When the screenshot is black everywhere except the bottom edge (the home indicator or navigation bar),
   the picture was not captured or the display is frozen, so the check is skipped (the result JSON note
   `blank-screenshot`).

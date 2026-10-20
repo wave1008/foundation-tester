@@ -555,6 +555,7 @@ extension StepExecutor {
             if try await occlusionFlip(
                 element: element, expectedText: element.label ?? step.locator?.label ?? "",
                 elements: snapshot.elements, screen: snapshot.screen,
+                keyboardShown: KeyboardWait.isShown(snapshot),
                 looseMatch: false, perStepGuard: step.occlusionGuard,
                 expectedIsUserText: step.locator?.label != nil, phase: &phase) != nil {
                 // **見えないときは失敗させず空要素を返す**(呼び出し側が `.text == nil` で分岐できる)。

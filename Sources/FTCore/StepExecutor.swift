@@ -273,6 +273,13 @@ public final class StepExecutor {
     /// 解決を試す(アプリ上に載ったシステム UI=別プロセスのダイアログ等を XCUITest で拾う)。
     /// 解決に使った driver でそのまま act するので ref 名前空間の混同はない。
     public let fallbackDriver: AppDriver?
+    /// 主ドライバの絵にキーボード・システムアラートが写らない(hybrid の in-app)。画像判定の絵の撮り分け
+    /// (`JudgmentCapture` / `judgmentScreenshot`)に使う。立てるのは ScenarioRunnerMain の hybrid だけ
+    /// (xcuitest 単独の fallbackDriver は主と同じランナー = 同じ絵なので立てない)
+    public let primaryCaptureOmitsSystemUI: Bool
+    /// このフェーズで SpringBoard に聞いた「アラートが前面にあるか」。nil = まだ聞いていない
+    /// (`armUnregisteredSystemAlertProbe` が戻す)。画像判定の絵を XCUITest で撮るかを決める
+    var judgmentAlertCovering: Bool?
     /// システム許可アラートの登録台帳(DSL の `iosAlertHandler` が登録する)。
     /// 空 = 監視しない。**fallbackDriver がある(hybrid)ときだけ効く**。
     /// 登録の形・発火で外れる規則は `SystemAlertRule` / `SystemAlertWatchlist` の doc
@@ -305,7 +312,10 @@ public final class StepExecutor {
     /// expectation)の先頭**。OS のアラートは起動直後だけでなくオンボーディングの途中
     /// (アプリ内の事前説明を閉じた直後の通知許可・ATT)でも出るので、フェーズ単位で
     /// 1回だけ見る(シーンあたり高々3往復 ≈ 0.2s。毎ステップの往復は登録がある間だけ)
-    public func armUnregisteredSystemAlertProbe() { systemAlertProbePending = true }
+    public func armUnregisteredSystemAlertProbe() {
+        systemAlertProbePending = true
+        judgmentAlertCovering = nil
+    }
     /// launch 系の直後に呼ぶ。システムアラートの確認に加え、**firstFrameGatePending もここで arm する**
     /// (CAE フェーズ先頭の armUnregisteredSystemAlertProbe には乗せない ——
     /// launch storyboard の猶予は launch 系コマンド直後だけに絞る)
@@ -339,6 +349,8 @@ public final class StepExecutor {
     func unregisteredSystemAlert(phase: inout PhaseAccumulator) async -> SystemAlertProbeResponse? {
         guard !systemAlertWatchlist.isWatching, let fb = fallbackDriver else { return nil }
         let probe = await probeSystemAlert(fb, phase: &phase)
+        // 同じフェーズの画像判定は聞き直さずにこの答えを使う(照会が落ちたら nil のまま = 判定の側で聞く)
+        if let probe { judgmentAlertCovering = SystemUIGate.isCovered(probe) }
         guard SystemUIGate.isCovered(probe) else { return nil }
         noteCodesThisStep.insert(.systemAlertPresent)
         return probe
@@ -455,6 +467,8 @@ public final class StepExecutor {
     /// (private のままだと拡張ファイルからの `cachedScreenshot = nil` がコンパイルできない)。
     var cachedScreenshot: Data?
     private var cachedShotAt: ContinuousClock.Instant?
+    /// cachedScreenshot が画面全体の絵(fallbackDriver)か。撮り分けが変わったら使い回さない
+    private var cachedShotWholeScreen = false
     /// [occlusion-guard] StaleFrameDetector の前回観測(凍結フレーム検知用)。cachedScreenshot と
     /// 同じくエンジン1本につき1系列(StepExecutor はエンジンごとに1インスタンス)。
     /// **cache 供給(同一 Data 使い回し)のときは更新しない** —— guardScreenshot 参照
@@ -637,20 +651,27 @@ public final class StepExecutor {
     /// **freshlyCaptured** = キャッシュ供給ではなく今回 driver.screenshot() を呼んだか。
     /// キャッシュ供給は同一 Data オブジェクトを返すため、StaleFrameDetector の判定に使うと
     /// 「画像同一・木は微変化」で必ず偽 stale になる —— 呼び出し側はこれが false のとき判定しない
-    func guardScreenshot(phase: inout PhaseAccumulator) async throws -> (data: Data, freshlyCaptured: Bool) {
+    /// keyboardShown: 判定に使う木がキーボードを申告しているか(`KeyboardWait.isShown`。撮り分けの材料)
+    func guardScreenshot(keyboardShown: Bool,
+                         phase: inout PhaseAccumulator) async throws -> (data: Data, freshlyCaptured: Bool) {
         let clock = ContinuousClock()
-        if let shot = cachedScreenshot, let at = cachedShotAt, clock.now - at < .milliseconds(200) {
+        let wholeScreen = await judgmentUsesWholeScreen(keyboardShown: keyboardShown, alwaysWholeScreen: false,
+                                                        phase: &phase)
+        if let shot = cachedScreenshot, let at = cachedShotAt, clock.now - at < .milliseconds(200),
+           cachedShotWholeScreen == wholeScreen {
             return (shot, false)
         }
         let start = clock.now
-        let shot = try await driver.screenshot()
+        let captured = try await judgmentCapture(wholeScreen: wholeScreen)
         phase.actionMs += Self.ms(clock.now - start)
-        cachedScreenshot = shot
+        cachedScreenshot = captured.data
         cachedShotAt = clock.now
-        return (shot, true)
+        cachedShotWholeScreen = captured.wholeScreen
+        return (captured.data, true)
     }
 
     public init(driver: AppDriver, fallbackDriver: AppDriver? = nil,
+                primaryCaptureOmitsSystemUI: Bool = false,
                 typeDriver: AppDriver? = nil, preferTypeDriver: Bool = false,
                 typeDriverGestures: Set<String> = [],
                 delegate: ReplayDelegate? = nil, healingEnabled: Bool = false,
@@ -677,6 +698,7 @@ public final class StepExecutor {
         self.commandTimeoutMs = commandTimeoutSeconds.map { Int($0 * 1000) }
         self.driver = driver
         self.fallbackDriver = fallbackDriver
+        self.primaryCaptureOmitsSystemUI = primaryCaptureOmitsSystemUI
         self.typeDriver = typeDriver
         self.preferTypeDriver = preferTypeDriver
         self.typeDriverGestures = typeDriverGestures

@@ -171,8 +171,11 @@ extension StepExecutor {
                                judgeStale: Bool, printSource: FindImage.PrintSource,
                                phase: inout PhaseAccumulator) async throws -> ImageScan {
         let clock = ContinuousClock()
+        // 撮り分けの照会(フェーズに1回)は probeSystemAlert が自分で計時するので、撮影の計時の外で決める
+        let wholeScreen = await judgmentUsesWholeScreen(keyboardShown: KeyboardWait.isShown(snapshot),
+                                                        alwaysWholeScreen: false, phase: &phase)
         let shotStart = clock.now
-        let png = try await driver.screenshot()
+        let png = try await judgmentCapture(wholeScreen: wholeScreen).data
         phase.snapshotMs += Self.ms(clock.now - shotStart)
         guard let source = CGImageSourceCreateWithData(png as CFData, nil),
               let screenshot = CGImageSourceCreateImageAtIndex(source, 0, nil) else {

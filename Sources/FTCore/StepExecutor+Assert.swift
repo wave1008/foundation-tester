@@ -103,8 +103,9 @@ extension StepExecutor {
     /// コンパイル済みなら数百 ms で返る。尽きたら判定は FM のまま(赤)
     static let emptyTranscriptOCRBudget: Duration = .seconds(60)
 
+    /// keyboardShown: 判定に使った木の `KeyboardWait.isShown`(絵を XCUITest で撮るかの材料。`JudgmentCapture`)
     func occlusionFlip(element: ElementInfo, expectedText: String, elements: [ElementInfo],
-                              screen: FTRect, looseMatch: Bool, perStepGuard: Bool?,
+                              screen: FTRect, keyboardShown: Bool, looseMatch: Bool, perStepGuard: Bool?,
                               expectedIsUserText: Bool = false,
                               phase: inout PhaseAccumulator) async throws -> StepResult.Status? {
         guardFrameStaleThisEval = false
@@ -137,7 +138,7 @@ extension StepExecutor {
         // (下の `guard fmAvailable` 参照)。
         let fmAvailable = fmConfigured && FMVisionSupport.isSupported && !FMNoVerdictInjection.isActive(environment: ProcessInfo.processInfo.environment)
         // 操作を挟まない連続ガードでは直近スクショを再利用(~125ms 削減)。
-        let captured = try await guardScreenshot(phase: &phase)
+        let captured = try await guardScreenshot(keyboardShown: keyboardShown, phase: &phase)
         var screenshot = captured.data
         // [StaleFrameDetector] キャッシュ供給(同一 Data 使い回し)は判定しない —— 供給元が
         // guardScreenshot 自身なので比較すると木のわずかな揺れで必ず偽 stale になる(guardScreenshot 参照)。
@@ -153,7 +154,7 @@ extension StepExecutor {
             lastGuardFrameRecord = record
             if isStale {
                 invalidateScreenshotCache()
-                let retaken = try await guardScreenshot(phase: &phase)
+                let retaken = try await guardScreenshot(keyboardShown: keyboardShown, phase: &phase)
                 let (record2, stillStale) = StaleFrameDetector.judge(
                     png: retaken.data, elements: elements, previous: baseline)
                 lastGuardFrameRecord = record2
@@ -175,7 +176,7 @@ extension StepExecutor {
         // 見ると select → textIs の形で古い絵を判定してしまう
         if StaleFrameDetector.isKnownStale(png: screenshot, knownStaleImageHash: knownStaleGuardImageHash) {
             invalidateScreenshotCache()
-            let retaken = try await guardScreenshot(phase: &phase)
+            let retaken = try await guardScreenshot(keyboardShown: keyboardShown, phase: &phase)
             if StaleFrameDetector.isKnownStale(png: retaken.data, knownStaleImageHash: knownStaleGuardImageHash) {
                 if await staleFrameShowsExpectedText(retaken.data, expectedText: expectedText,
                                                      element: element, screen: screen, phase: &phase) {
@@ -878,6 +879,7 @@ extension StepExecutor {
                 if let flip = try await occlusionFlip(
                     element: d.element, expectedText: d.element.label ?? step.locator?.label ?? "",
                     elements: snapshot.elements, screen: snapshot.screen,
+                    keyboardShown: KeyboardWait.isShown(snapshot),
                     looseMatch: d.quality == .substring, perStepGuard: step.occlusionGuard,
                     // #4: label セレクタ一致はユーザー期待値。結合ラベル `, ` 規則を当てず
                     // exist("Hello, World") でガードがスキップされる欠陥を防ぐ(textEquals と同契約)。
@@ -1091,6 +1093,7 @@ extension StepExecutor {
                     if let flip = try await occlusionFlip(
                         element: element, expectedText: expectedForGuard,
                         elements: snapshot.elements, screen: snapshot.screen,
+                        keyboardShown: KeyboardWait.isShown(snapshot),
                         looseMatch: loose, perStepGuard: step.occlusionGuard,
                         expectedIsUserText: true, phase: &phase) {
                         lastOcclusion = flip   // 覆われている: 可視化を待つ
@@ -1644,7 +1647,9 @@ extension StepExecutor {
                 var state = checkState(of: element, step: step)
                 lastClassification = nil
                 if let classifier, prefersClassifier || state == .unknown {
-                    if let result = await classifyCheckState(element, screen: snapshot.screen, with: classifier) {
+                    if let result = await classifyCheckState(element, screen: snapshot.screen,
+                                                                keyboardShown: KeyboardWait.isShown(snapshot),
+                                                                with: classifier, phase: &phase) {
                         state = result.state
                         lastClassification = result.classification
                         noteCodesThisStep.insert(.checkStateClassified)
@@ -1718,7 +1723,9 @@ extension StepExecutor {
             lastSnapshot = snapshot
             if let (element, fallback) = LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true) {
                 found = true
-                lastClassification = await classifyElementImage(element, screen: snapshot.screen, with: classifier)
+                lastClassification = await classifyElementImage(element, screen: snapshot.screen,
+                                                                keyboardShown: KeyboardWait.isShown(snapshot),
+                                                                with: classifier, phase: &phase)
                 if let label = lastClassification?.label, DefaultClassifier.matches(label: label, expected: expected) {
                     resolvedElementThisStep = element
                     if let fallback { return .passedViaFallback(fallback) }
@@ -1782,9 +1789,10 @@ extension StepExecutor {
     }
 
     /// 要素の枠でスクリーンショットを切り、分類器の1位を返す(撮れない・切れないときは nil)
-    func classifyElementImage(_ element: ElementInfo, screen: FTRect,
-                              with classifier: VisionClassifier.Model) async -> VisionClassifier.Classification? {
-        guard let png = try? await driver.screenshot(),
+    func classifyElementImage(_ element: ElementInfo, screen: FTRect, keyboardShown: Bool,
+                              with classifier: VisionClassifier.Model,
+                              phase: inout PhaseAccumulator) async -> VisionClassifier.Classification? {
+        guard let png = try? await judgmentScreenshot(keyboardShown: keyboardShown, phase: &phase),
               let image = VisionClassifier.crop(png: png, frame: element.frame, screen: screen) else { return nil }
         classifierScreenshotThisStep = png
         // アプリの領域が一色の絵(撮れていない・何も描かれていない)は分類しない。一色の切り出しは [OFF] に似ていて、ON の要素を
@@ -1805,9 +1813,11 @@ extension StepExecutor {
 
     /// 要素の枠でスクリーンショットを切り、分類器の1位のラベルを状態へ写す。ラベルが [ON]/[OFF] を
     /// 含まない・撮れない・切れないときは nil(a11y の判定のまま)
-    func classifyCheckState(_ element: ElementInfo, screen: FTRect, with classifier: VisionClassifier.Model)
+    func classifyCheckState(_ element: ElementInfo, screen: FTRect, keyboardShown: Bool,
+                            with classifier: VisionClassifier.Model, phase: inout PhaseAccumulator)
         async -> (state: CheckState, classification: VisionClassifier.Classification)? {
-        guard let classification = await classifyElementImage(element, screen: screen, with: classifier),
+        guard let classification = await classifyElementImage(element, screen: screen, keyboardShown: keyboardShown,
+                                                               with: classifier, phase: &phase),
               let state = CheckStateClassifier.state(forLabel: classification.label) else { return nil }
         return (state, classification)
     }
@@ -2003,7 +2013,8 @@ extension StepExecutor {
     private func unfrozenScreenshot(phase: inout PhaseAccumulator) async throws -> Data? {
         let clock = ContinuousClock()
         var start = clock.now
-        var screenshot = try await driver.screenshot()
+        // 画面全体の FM 判定は1回で数秒かかるので、hybrid では常に画面全体の絵(JudgmentCapture)
+        var screenshot = try await judgmentScreenshot(keyboardShown: false, alwaysWholeScreen: true, phase: &phase)
         phase.actionMs += Self.ms(clock.now - start)
         guard BlankFrameDetector.isUniformBlank(pngData: screenshot) else { return screenshot }
         for _ in 0..<2 {
@@ -2011,7 +2022,7 @@ extension StepExecutor {
             try await Task.sleep(nanoseconds: 2_000_000_000)
             phase.waitMs += Self.ms(clock.now - start)
             start = clock.now
-            screenshot = try await driver.screenshot()
+            screenshot = try await judgmentScreenshot(keyboardShown: false, alwaysWholeScreen: true, phase: &phase)
             phase.actionMs += Self.ms(clock.now - start)
             if !BlankFrameDetector.isUniformBlank(pngData: screenshot) { return screenshot }
         }

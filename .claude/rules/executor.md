@@ -88,7 +88,11 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   プロファイルを持たないので `FlowStep` の定数のまま**
 - **システムアラートの判定は2段**: 登録がある間は `SystemUIGate` が毎ステップ止める / 登録が
   無いときは **launch 直後の最初の触る操作と失敗時だけ1回聞いて** `system-alert-present` の注記と
-  題名を残す(止めない・閉じない)。常時監視へ広げない。
+  題名を残す(止めない・閉じない)。画像判定の撮り分けもこの答えを使い、まだ聞いていなければフェーズの最初の画像判定で
+  1回だけ聞く(ユーザー決定)。常時監視へ広げない。
+  **画像判定の絵(可視性検証・findImage 系・分類器・screenLooksLike)は `StepExecutor.judgmentScreenshot` /
+  `judgmentCapture` だけで撮る**(主ドライバの `screenshot()` を直に呼ばない = `JudgmentCaptureTests` の走査。
+  撮り分けは `FTCore.JudgmentCapture`: hybrid でキーボード表示中かフェーズの照会でアラートが前面のときだけ XCUITest)。
   **失敗時の証跡の絵は hybrid なら XCUITest(`XCUIScreen`)で撮る**(`FTRuntime.handleFailure`。in-app の絵は
   アプリの window しか描かず OS のアラートが写らない)。**iOS の「飲まれたタップ」注記はアラートの可能性を
   併記する**(iOS の木はアプリのプロセスだけ = アラートを出したタップも無変化に見える)

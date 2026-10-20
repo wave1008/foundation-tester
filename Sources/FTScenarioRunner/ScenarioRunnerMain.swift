@@ -343,6 +343,8 @@ struct RunScenario: AsyncParsableCommand {
         // hybrid: primary=in-app、fallback=XCUITest ブリッジ(springboard 参照)を StepExecutor へ。
         let driver: AppDriver
         var fallbackDriver: AppDriver?
+        // hybrid だけ true(主ドライバ = in-app の絵にキーボード・システムアラートが写らない)
+        var primaryCaptureOmitsSystemUI = false
         // tapAppIcon 用(FTDriveCore.homeScreenDriver の①)。xcuitest 単独でだけ明示注入する
         // (hybrid は fallbackDriver が同役を担う。Android は主ドライバで足りる)
         var homeScreenDriver: AppDriver?
@@ -419,6 +421,7 @@ struct RunScenario: AsyncParsableCommand {
                             let xcuiHost = bridgeHost ?? BridgeEndpoint.loopbackHost
                             fallbackDriver = SystemUIDriver(port: xcuiPort, host: xcuiHost,
                                                             physicalUDID: physical ? udid : nil)
+                            primaryCaptureOmitsSystemUI = true
                             let attach = AppAttachDriver(port: xcuiPort, host: xcuiHost,
                                                          bundleID: appBundleID,
                                                          physicalUDID: physical ? udid : nil)
@@ -589,6 +592,7 @@ struct RunScenario: AsyncParsableCommand {
                                fingerprintCacheURL: fingerprintCacheURL,
                                selectorInventoryURL: selectorInventoryURL,
                                fallbackDriver: fallbackDriver,
+                               primaryCaptureOmitsSystemUI: primaryCaptureOmitsSystemUI,
                                typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
                                typeDriverGestures: typeDriverGestures,
                                homeScreenDriver: homeScreenDriver,

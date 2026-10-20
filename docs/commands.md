@@ -469,6 +469,13 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 > **macOS 27+ が必要**。macOS 26 では自動でスキップ/素通りになる(現在の可否は `fleetest doctor`)。
 > テキストの可視性検証の**幾何の段(中心が画面外の一致を可視と呼ばない)は FM 無しでも効く**。
 
+> **画像判定の絵の撮り方(iOS の hybrid)**: テキストの可視性検証・`findImage` / `existImage` / `imageIs`・`checkIsON` / `checkIsOFF` の
+> 分類器は、ふだん in-app の絵(キーボードとシステムアラートが写らない)で判定し、**判定に使う木がキーボードを申告しているとき**と
+> **そのフェーズで最初に SpringBoard に聞いた時点でアラートが前面にあったとき**(フェーズごとに1回・約 73ms。触る操作の照会の答えも使う)
+> だけ XCUITest で画面全体を撮る。`screenLooksLike` / `screenIs` は常に画面全体。xcuitest 単独・Android は今までどおりそのエンジンの絵、
+> `engine: inapp` 単独は撮り直す先が無いので in-app の絵のまま。判定は `FTCore.JudgmentCapture`・撮るのは `StepExecutor.judgmentScreenshot`。
+> 見逃すもの(通知バナー等の他の覆い・フェーズの途中で出たアラート)は docs/user-docs/reference/testclass/text_visibility_check_ja.md の「制限」
+
 FMの画像推論の一部の中断は、元の20秒の期限に十分な残り時間があれば同じ入力で1回だけ再試行する。
 拒否・読み込み失敗・期限切れ・死活確認は対象外。追加試行数と回答を得た数は結果JSONの
 `fm.retries` / `fm.retrySuccesses`と用途別の同名欄へ記録する([結果JSON](results-json.md))。
