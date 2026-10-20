@@ -54,22 +54,37 @@ final class FMServeServerTests: XCTestCase {
     }
 
     /// 暖機が載せたままにできない機械(呼び出しの中で載せ直す = 遅い回が多い)では暖機をやめる。判断は直近 20 回の割合で、
-    /// 窓が埋まるまでは決めない・遅い回が速い回に挟まっていても数える(M1mini は「続いた回数」では一度も満たさなかった)
+    /// 窓が埋まるまでは決めない・遅い回が速い回に挟まっていても数える(M1mini は「続いた回数」では一度も満たさなかった)。
+    /// 搭載メモリが 16GiB 以上の機械では遅い回が何回あってもやめない(一時的な逼迫でやめると、逼迫の最中に載せ直して死んだ)
     func testKeepWarmGivesUpOnTheShareOfSlowCalls() {
         XCTAssertEqual(FMServeServer.keepWarmWindow, 20)
         XCTAssertEqual(FMServeServer.keepWarmGiveUpSlowCalls, 6)
+        XCTAssertEqual(FMServeServer.keepWarmGiveUpBelowPhysicalMemoryBytes, 17_179_869_184)
+        let small: UInt64 = 8 * 1024 * 1024 * 1024
+        let justBelow: UInt64 = 17_179_869_183
+        let sixteen: UInt64 = 17_179_869_184
         func history(slowAt: Set<Int>, count: Int = 20) -> [Bool] { (0..<count).map { slowAt.contains($0) } }
-        XCTAssertTrue(FMServeServer.keepWarmStillUseful(recent: history(slowAt: [0, 1, 2, 3, 4, 5, 6], count: 19)),
+        XCTAssertTrue(FMServeServer.keepWarmStillUseful(recent: history(slowAt: [0, 1, 2, 3, 4, 5, 6], count: 19),
+                                                        physicalMemoryBytes: small),
                       "窓が埋まる前に決めた")
-        XCTAssertTrue(FMServeServer.keepWarmStillUseful(recent: history(slowAt: [3, 4, 10, 15, 19])), "20 回中 5 回でやめた")
-        XCTAssertFalse(FMServeServer.keepWarmStillUseful(recent: history(slowAt: [1, 4, 7, 10, 13, 16])),
+        XCTAssertTrue(FMServeServer.keepWarmStillUseful(recent: history(slowAt: [3, 4, 10, 15, 19]), physicalMemoryBytes: small),
+                      "20 回中 5 回でやめた")
+        XCTAssertFalse(FMServeServer.keepWarmStillUseful(recent: history(slowAt: [1, 4, 7, 10, 13, 16]),
+                                                         physicalMemoryBytes: small),
                        "遅い回が速い回に挟まった 20 回中 6 回でやめていない")
+        XCTAssertFalse(FMServeServer.keepWarmStillUseful(recent: history(slowAt: Set(0..<20)), physicalMemoryBytes: justBelow),
+                       "16GiB 未満の機械でやめていない")
+        XCTAssertTrue(FMServeServer.keepWarmStillUseful(recent: history(slowAt: Set(0..<20)), physicalMemoryBytes: sixteen),
+                      "16GiB の機械で暖機をやめた")
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let server = (try? String(contentsOf: root.appendingPathComponent("Sources/FTFoundationModels/FMServeServer.swift"),
                                   encoding: .utf8)) ?? ""
         let tick = PreloadSlotTests.functionBody(named: "tick", in: server) ?? ""
         XCTAssertTrue(tick.contains("let generate = keepWarmStillUseful(recent:"), "合間の判断が暖機をやめる判断を通っていない")
+        XCTAssertTrue(tick.contains("physicalMemoryBytes: machinePhysicalMemory)"), "暖機をやめる判断に本番の搭載メモリを渡していない")
+        XCTAssertTrue(server.contains("private static let machinePhysicalMemory = ProcessInfo.processInfo.physicalMemory"),
+                      "本番の搭載メモリを読んでいない")
         XCTAssertTrue(tick.contains("history.append(took > slowKeepAliveSeconds)"), "暖機の所要を記録していない")
     }
 

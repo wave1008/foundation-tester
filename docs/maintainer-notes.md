@@ -4336,7 +4336,8 @@ M2Ultra・M1Ultra の両方で起きた。
   できず積み下ろしを撃ち続けるだけだった。直近 20 回のうち遅い回が 6 回以上なら、そのプロセスの間は頼まれたときだけ呼ぶ(= 常駐プロセスを
   入れる前と同じ)。**最初は「5 回続いたら」にして外した** —— M1mini は速い回(それでも部品は載せ直している)が間に挟まり、60 秒で降ろし
   129 回なのに続く条件を一度も満たさなかった。
-  M1Max は数分に1回の単発(10.8 秒)・M2Ultra は 0 回
+  M1Max は数分に1回の単発(10.8 秒)・M2Ultra は 0 回。**搭載メモリ 16GiB 以上の機械ではやめない**(ユーザー決定。M2Ultra でも
+  負荷の山で成立して暖機が止まったまま FM が死んだ → §97)
 - 長時間テスト(M2Ultra・フル E2E `e2e.sh --local`): 直す前は既定の構成で 7〜20 分・OCR を切った構成で 6 分で死んだ。
   生成の暖機に替えた後は **既定の構成 40 分(FM 21 回)+ OCR を切った構成 38 分(FM 294 回)で読み込みの失敗 0**
 
@@ -5199,3 +5200,21 @@ worktree の run がそれらの端末を「別のワークスペースのブリ
 - **手放しても閉じる**: `AcceptLoop` の `deinit` が受付を起こす(持ち主の `stop()` 頼みにしない。起こさないと wake の書き口・
   待ち受け・受付のスレッドがプロセスの終わりまで残る)。メモリリークの調査で見つけた予防で、再現はしていない。
   `AcceptLoopTests.testDroppingWithoutStopClosesTheListener`
+
+
+## 97. M2Ultra で暖機が一時的な負荷で止まり、6 分後に FM が死んだ(2026-10-20)
+
+- 17:52:50〜17:53:54 に暖機の遅い回(4 秒超え・最大 9.3 秒)が 6 回出て、17:53:54 に `keep-warm stopped`(直近 20 回中 6 回)。
+  以後このプロセスでは暖機を撃たず、安全判定のモデルは要求のたびに載せ直しになった(`fm-host-memory` の keepWarm が毎分 16→4→0)
+- 17:55:01 に Simulator 1 台、17:56:23〜24 に 5 台が同じ秒に起動(`launchd_sim` の起動時刻)。17:55:31 に E2E-iOS の `--broadcast` run
+  (6 台・ios-xcuitest)が始まっていた。起動直後の各 Simulator で Spotlight・MobileCal・PosterBoard・News のウィジェットが 1 つ約 400MB ずつ起動し、
+  空きメモリが 17:55 の 59.5GB → 17:58 に 1.0GB → 17:59 に 0.7GB(スワップ 0)。Emulator 6 台(qemu 約 28GB)は 11 時から起動したまま
+- 17:59:50 に safety の載せ直しが `Code=53 Program load failed — no memory` で失敗し、18:00:57 以降は text / vision とも失敗だけ。
+  modelmanagerd は 8.0〜8.2MB で横ばい・当日の JetsamEvent は 10:16 の 1 件だけ = jetsam で起こし直された型(§84.5)ではない
+- **直したもの**: 暖機をやめる判断は 8GB の M1mini を分けるためのものだった(§81)。割合の門は M2Ultra の負荷の山でも成立し、
+  しかもプロセスの終わりまで戻らない。ユーザー決定で**搭載メモリ 16GiB 以上の機械ではやめない**(`FMServeServer.keepWarmGiveUpBelowPhysicalMemoryBytes`)
+- **未確定**: 暖機を続けていれば死ななかったかは確かめていない(暖機が止まったことと死は時刻が並んでいるだけ)。5 台同時の起動を
+  誰が撃ったかも未特定 —— 供給の並列幅(`BridgeProvisioner.launchWidth`)は計画の時点で Shutdown の Simulator を起こすときだけ 2 台に絞り、
+  起動済みの Simulator を供給の途中で再起動する経路(`restartSimulatorAndRunner`)には絞りが掛からない。17:54 には XCUITest ランナーの起動が
+  `FBSOpenApplicationServiceErrorDomain Code=1`(xctrunner を起動できない)で失敗していた。記録の写しは reports/fm-m2ultra-20261020-1759/
+

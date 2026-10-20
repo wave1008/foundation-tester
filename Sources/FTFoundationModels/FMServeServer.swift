@@ -35,17 +35,27 @@ public enum FMServeServer {
     static let slowKeepAliveSeconds: Double = 4
 
     /// 直近 `keepWarmWindow` 回の暖機のうち、遅い回(`slowKeepAliveSeconds` 超え)が `keepWarmGiveUpSlowCalls` 回以上なら、
-    /// このプロセスの間は暖機をやめる。**理由**: この機械の ANE には全部品が収まらず、暖機は載せたままにできないまま積み下ろしを
+    /// このプロセスの間は暖機をやめる(**搭載メモリが `keepWarmGiveUpBelowPhysicalMemoryBytes` 未満の機械だけ**)。**理由**: この機械の ANE には全部品が収まらず、暖機は載せたままにできないまま積み下ろしを
     /// 撃ち続けるだけになっている(M1mini・メモリ 8GB: 60 秒で降ろし 129 回・載せ直し 82 回・遅い回はおよそ半分)。**「続いた回数」で
     /// 見ない** —— M1mini は速い回が間に挟まり、5 回続く条件は一度も満たさなかった。**根拠**: 遅い回は M2Ultra で 0・M1Max で数分に
     /// 1 回・M1Ultra は E2EX 一式の負荷の下で約 30 分に 6 回(続いても 2 回)= 20 回中 6 回(30%)なら M1mini だけを分けられる。
+    /// **ただし割合だけでは分けきれない**: M2Ultra でも Simulator の一斉起動の間は約 1 分で 20 回中 6 回に届いた(→ メモリの門)
     /// **尽きたとき**: 暖機をやめるだけ(FM の呼び出しは頼まれたときだけ = 常駐プロセスを入れる前と同じ。1 行ログへ出す)
     static let keepWarmWindow = 20
     static let keepWarmGiveUpSlowCalls = 6
 
+    /// 搭載メモリがこれ以上[バイト]の機械では暖機をやめない(ユーザー決定)。**理由**: やめる判断が要ったのは 8GB の M1mini だけで、
+    /// 192GB の M2Ultra では Simulator の一斉起動の間の一時的な遅さで成立し、プロセスの終わりまで暖機が止まった。その 6 分後、
+    /// 空きメモリ 1GB を切った最中に safety の載せ直しが Code=53 で失敗し FM が死んだ(暖機の停止が死の原因とは確定していない。
+    /// 死は載せ直しの瞬間に起きる = maintainer-notes §81・§97)。
+    /// 16GiB = macOS が「16GB」の Mac で `physicalMemory` に返す値ちょうど
+    static let keepWarmGiveUpBelowPhysicalMemoryBytes: UInt64 = 16 << 30
+
     /// 暖機を続けるか(純粋関数)。`recent` は直近の暖機が遅かったか(古い順・最大 `keepWarmWindow` 件)。
-    /// 窓が埋まるまでは判断しない(起動直後の載せ込みの遅さで決めない)
-    static func keepWarmStillUseful(recent: [Bool]) -> Bool {
+    /// 窓が埋まるまでは判断しない(起動直後の載せ込みの遅さで決めない)。`physicalMemoryBytes` は本番の配線
+    /// (`machinePhysicalMemory`)だけが渡す
+    static func keepWarmStillUseful(recent: [Bool], physicalMemoryBytes: UInt64) -> Bool {
+        guard physicalMemoryBytes < keepWarmGiveUpBelowPhysicalMemoryBytes else { return true }
         guard recent.count >= keepWarmWindow else { return true }
         return recent.suffix(keepWarmWindow).filter { $0 }.count < keepWarmGiveUpSlowCalls
     }
@@ -102,7 +112,8 @@ public enum FMServeServer {
         // 取得は専用キューで即戻る(この周期の中で `top` を待たない)
         FMHostMemory.sampleIfDue(now: now)
         let knownDead = FMLiveness.isKnownDead(.vision)
-        let generate = keepWarmStillUseful(recent: recentKeepAlives.withLock { $0 })
+        let generate = keepWarmStillUseful(recent: recentKeepAlives.withLock { $0 },
+                                           physicalMemoryBytes: machinePhysicalMemory)
             && shouldWarm(lastFMUse: state.lastFMUse, now: now, knownDead: knownDead)
         guard !knownDead, generate || spareNeedsWarm.withLock({ $0 }) else { return }
         let gap = state.lastFMUse == .distantPast ? 0 : now.timeIntervalSince(state.lastFMUse)
@@ -120,7 +131,7 @@ public enum FMServeServer {
                     return history
                 }
                 // やめた後は暖機を撃たない = この行は1度しか出ない
-                if !keepWarmStillUseful(recent: recent) {
+                if !keepWarmStillUseful(recent: recent, physicalMemoryBytes: machinePhysicalMemory) {
                     log("keep-warm stopped: \(recent.filter { $0 }.count) of the last \(recent.count) calls took over"
                         + " \(Int(slowKeepAliveSeconds))s, so this machine cannot keep the model loaded;"
                         + " FM is now loaded only when a request comes")
@@ -143,6 +154,7 @@ public enum FMServeServer {
     }
 
     private static let recentKeepAlives = Mutex<[Bool]>([])
+    private static let machinePhysicalMemory = ProcessInfo.processInfo.physicalMemory
 
     /// 小さな画像の転写を1回(答えは見ない・記録しない = 規律③)。本番の転写と同じ instructions・prompt で撃ち、同じ部品
     /// (画像トークナイザ・mm_guard・安全判定)を載せたままにする。**毎回新しいセッション**(1 つのセッションで生成を繰り返すと
