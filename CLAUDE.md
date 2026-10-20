@@ -153,6 +153,9 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
 - iOS Simulator を起動する経路を足す → 起動の**前に** `SimulatorBootCleanup.beforeBoot(udid:)`
   (`SimulatorPosterCachePurgeWiringTests`。docs/design.md §12.4.2・§12.4.3)
 - モニターの周期に計測を足す → 周期の中で待たない(裏で回して控えを読むだけ。`DeviceStorageSampler`)
+- 待ち受けのソケットを足す → `FTCore.AcceptLoop` を通す(**fd を閉じるのは、その fd で待っているスレッドだけ** = 別のスレッドが閉じると
+  番号が再利用され、受付が無関係の待ち受けの接続を奪う。中継中の接続も一覧から外してから待っていた側が閉じる。`AcceptLoopTests`)
+  → maintainer-notes §96
 - 並行なクロージャ(Task・concurrentPerform・完了ハンドラ・Thread)へ値を渡す → 捕捉した `var` は `FTCore.LockedValue`、
   スレッド安全の契約が無い呼び手の log / emit は `SerializedSink`、子タスクへ渡す非 Sendable(主に `AppDriver`)は
   `UncheckedTransfer`(`Sources/FTCore/LockedValue.swift`)。`@unchecked Sendable` には守っている不変条件を1行書く。

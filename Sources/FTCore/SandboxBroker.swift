@@ -360,10 +360,12 @@ public enum BrokerPolicy {
 /// シナリオ1本(子1つ)ごとに立てる。レーンのデバイスに固定した方針で答えるので、子が他のレーンの
 /// ソケットへ繋いでも自分のデバイス以外は触れない(プロファイルは自分のソケットしか開けない)
 // @unchecked: 格納プロパティはすべて不変(`execute` は @Sendable)。接続ごとのスレッドは引数の fd だけを触る
+// @unchecked: 格納プロパティは不変(`acceptor` は init の中で1回だけ書く)
 public final class SandboxBroker: @unchecked Sendable {
     public let socketPath: String
     private let context: SimctlPolicy.Context
-    private let descriptor: Int32
+    /// 待ち受けと受付のスレッド(待ち受けの fd を閉じるのは受付のスレッドだけ = AcceptLoop の宣言)
+    private var acceptor: AcceptLoop?
     private let execute: @Sendable ([String], Double?, Data?) -> (status: Int32, output: Data)
 
     /// 子へ「コマンドが完了しなかった」(時間切れ・起動の失敗)を返すときの終了コード。子の呼び手が「撃ったか分からない」を
@@ -389,23 +391,23 @@ public final class SandboxBroker: @unchecked Sendable {
         self.context = context
         self.execute = execute ?? Self.runForChild
         socketPath = (directory as NSString).appendingPathComponent("ftb-\(UUID().uuidString.prefix(8)).sock")
-        descriptor = try UnixSocket.listen(path: socketPath)
-        let thread = Thread { [descriptor, weak self] in
-            while true {
-                let client = accept(descriptor, nil, nil)
-                guard client >= 0 else { return }
-                guard let self else { close(client); return }
+        let listener = try UnixSocket.listen(path: socketPath)
+        do {
+            acceptor = try AcceptLoop(listener: listener, name: "fleetest-sandbox-broker") { [weak self] client in
+                guard let self else { close(client); return false }
                 Thread.detachNewThread { self.serve(client) }
+                return true
             }
+        } catch {
+            close(listener)
+            unlink(socketPath)
+            throw error
         }
-        thread.name = "fleetest-sandbox-broker"
-        thread.start()
     }
 
+    /// 待ち受けを止め、閉じ終わってからソケットのファイルを消す(何度呼んでもよい)
     public func stop() {
-        // shutdown で accept を起こしてから閉じる(close だけでは待っているスレッドが戻らない)
-        shutdown(descriptor, SHUT_RDWR)
-        close(descriptor)
+        acceptor?.stop()
         unlink(socketPath)
     }
 

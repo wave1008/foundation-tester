@@ -30,6 +30,10 @@ final class BridgeRelayTests: XCTestCase {
         XCTAssertEqual(try Self.roundTrip(port: port, payload: "a"), "a")
         weak let released = relay
         relay = nil
+        // 中継のスレッドが呼び出しの間だけ一時的に強く持つので「直後に nil」ではなく「いずれ nil」を見る(並列の負荷で
+        // 直後の判定は 1600 回中 331 回落ちた)。握りっぱなし(受付が強く持つ不具合)は上限まで nil にならない
+        let deadline = Date().addingTimeInterval(10)
+        while released != nil, Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
         XCTAssertNil(released, "手放した中継が解放されない")
         XCTAssertThrowsError(try Self.roundTrip(port: port, payload: "b"), "手放した後も受け付けた")
     }
@@ -79,6 +83,10 @@ final class BridgeRelayTests: XCTestCase {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { throw POSIXError(.EIO) }
         defer { close(fd) }
+        // 中継が手放された直後(deinit は待ち受けを閉じ終えるのを待たない)の接続はつながってから切られうる。
+        // 切られた接続への write の SIGPIPE でテストのプロセスごと落とさない
+        var one: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
         var timeout = timeval(tv_sec: 2, tv_usec: 0)
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         var address = sockaddr_in()
@@ -91,13 +99,21 @@ final class BridgeRelayTests: XCTestCase {
                 connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
-        guard connected == 0 else { throw POSIXError(.ECONNREFUSED) }
+        guard connected == 0 else { throw RoundTripFailure(phase: "connect", errno: errno) }
         let bytes = Array(payload.utf8)
         _ = bytes.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
         var buffer = [UInt8](repeating: 0, count: 256)
         let count = buffer.withUnsafeMutableBytes { read(fd, $0.baseAddress, $0.count) }
-        guard count > 0 else { throw POSIXError(.ECONNRESET) }
+        // 読めなかった形を分けて言う(期限切れ = EAGAIN / 中継が閉じた = 0 / リセット = ECONNRESET)。
+        // 1つに畳むと、負荷で落ちたときに原因を名指しできない
+        guard count > 0 else { throw RoundTripFailure(phase: count == 0 ? "read (closed by the relay)" : "read", errno: count == 0 ? 0 : errno) }
         return String(decoding: buffer[0..<count], as: UTF8.self)
+    }
+
+    struct RoundTripFailure: Error, CustomStringConvertible {
+        let phase: String
+        let errno: Int32
+        var description: String { "\(phase) failed: errno \(errno) (\(String(cString: strerror(errno))))" }
     }
 
     static func freePort() throws -> UInt16 {
@@ -137,6 +153,8 @@ private final class EchoServer: @unchecked Sendable {
             while true {
                 let client = accept(listener, nil, nil)
                 guard client >= 0 else { return }
+                var one: Int32 = 1
+                setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
                 Thread {
                     var buffer = [UInt8](repeating: 0, count: 256)
                     let count = buffer.withUnsafeMutableBytes { read(client, $0.baseAddress, $0.count) }

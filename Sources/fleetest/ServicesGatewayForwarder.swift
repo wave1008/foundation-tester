@@ -8,12 +8,13 @@ import Darwin
 import FTCore
 import Foundation
 
-// @unchecked: 格納プロパティは不変。可変は `stopped` の LockedValue だけ
+// @unchecked: 格納プロパティは不変(`acceptor` は init の中で1回だけ書く)。可変は LockedValue の中だけ
 final class ServicesGatewayForwarder: @unchecked Sendable {
     let listenAddress: String
     let listenPort: UInt16
     private let targetPort: UInt16
-    private let descriptor: Int32
+    /// 待ち受けと受付のスレッド(待ち受けの fd を閉じるのは受付のスレッドだけ = AcceptLoop の宣言)
+    private var acceptor: AcceptLoop?
     private let stopped = LockedValue(false)
     /// 中継中の接続(client の fd)。`stop()` が全部 shutdown する(待ち受けだけ閉じても中継中の pump は残る)
     private let active = LockedValue<Set<Int32>>([])
@@ -49,46 +50,45 @@ final class ServicesGatewayForwarder: @unchecked Sendable {
             close(fd)
             throw POSIXError(.init(rawValue: code) ?? .EIO)
         }
-        descriptor = fd
         let stoppedBox = stopped
         let activeBox = active
         let target = targetPort
-        Thread.detachNewThread {
-            while true {
-                let client = accept(fd, nil, nil)
-                guard client >= 0 else { return }
+        do {
+            acceptor = try AcceptLoop(listener: fd, name: "fleetest-services-gateway-forwarder") { client in
                 let accepted = stoppedBox.withLock { isStopped -> Bool in
                     if isStopped { return false }
                     activeBox.withLock { _ = $0.insert(client) }
                     return true
                 }
-                guard accepted else { close(client); return }
+                guard accepted else { close(client); return false }
                 Thread.detachNewThread {
                     Self.serve(client, targetPort: target)
+                    // 一覧から外してから閉じる(外した後は stop() が触らない = 閉じた番号が再利用されても shutdown しない)
                     activeBox.withLock { _ = $0.remove(client) }
+                    close(client)
                 }
+                return true
             }
+        } catch {
+            close(fd)
+            throw error
         }
     }
 
     func stop() {
-        let clients = stopped.withLock { isStopped -> Set<Int32> in
-            isStopped = true
-            return active.value
-        }
-        // shutdown で accept を起こしてから閉じる(close だけでは待っているスレッドが戻らない)。中継中の接続も起こす
-        shutdown(descriptor, SHUT_RDWR)
-        close(descriptor)
-        for client in clients { shutdown(client, SHUT_RDWR) }
+        stopped.withLock { $0 = true }
+        // 中継中の接続も起こす。lock の内側で shutdown する = serve が閉じた(一覧から外した)番号には触らない
+        active.withLock { for client in $0 { shutdown(client, SHUT_RDWR) } }
+        acceptor?.stop()
     }
 
     /// 両方向の pump が終わるまで閉じない(片方の EOF は相手へ half-close で伝える = リクエストの後に書き側を閉じる
-    /// クライアントでも応答が届く)。閉じるのは最後に1回
+    /// クライアントでも応答が届く)。閉じるのは最後に1回。**client は閉じない**(呼び手が一覧から外してから閉じる)
     private static func serve(_ client: Int32, targetPort: UInt16) {
         var noSigpipe: Int32 = 1
         setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &noSigpipe, socklen_t(MemoryLayout<Int32>.size))
         let upstream = socket(AF_INET, SOCK_STREAM, 0)
-        guard upstream >= 0 else { close(client); return }
+        guard upstream >= 0 else { return }
         setsockopt(upstream, SOL_SOCKET, SO_NOSIGPIPE, &noSigpipe, socklen_t(MemoryLayout<Int32>.size))
         var address = sockaddr_in()
         address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
@@ -98,13 +98,13 @@ final class ServicesGatewayForwarder: @unchecked Sendable {
         let connected = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(upstream, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
         }
-        guard connected == 0 else { close(upstream); close(client); return }
+        guard connected == 0 else { close(upstream); return }
         let done = DispatchSemaphore(value: 0)
         Thread.detachNewThread { pump(from: client, to: upstream); done.signal() }
         Thread.detachNewThread { pump(from: upstream, to: client); done.signal() }
         done.wait()
         done.wait()
-        close(client); close(upstream)
+        close(upstream)
     }
 
     private static func pump(from source: Int32, to sink: Int32) {

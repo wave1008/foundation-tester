@@ -127,12 +127,13 @@ final class GatewayChannel: @unchecked Sendable {
 
 // MARK: - 親側
 
-// @unchecked: 格納プロパティは不変(`policy` / `log` は Sendable)。可変状態は `state` の LockedValue の中だけ
+// @unchecked: 格納プロパティは不変(`policy` / `log` は Sendable・`acceptor` は init の中で1回だけ書く)。可変状態は `state` の LockedValue の中だけ
 public final class ServiceGatewayServer: @unchecked Sendable {
     public let socketPath: String
     private let policy: any ServiceGatewayPolicy
     private let log: @Sendable (String) -> Void
-    private let descriptor: Int32
+    /// 待ち受けと受付のスレッド(待ち受けの fd を閉じるのは受付のスレッドだけ = AcceptLoop の宣言)
+    private var acceptor: AcceptLoop?
 
     private struct State {
         var children: Set<pid_t> = []
@@ -147,23 +148,24 @@ public final class ServiceGatewayServer: @unchecked Sendable {
         self.policy = policy
         self.log = log
         socketPath = (directory as NSString).appendingPathComponent("ftg-\(UUID().uuidString.prefix(8)).sock")
-        descriptor = try UnixSocket.listen(path: socketPath)
-        let thread = Thread { [descriptor, weak self] in
-            while true {
-                let client = accept(descriptor, nil, nil)
-                guard client >= 0 else { return }
-                guard let self else { close(client); return }
+        let listener = try UnixSocket.listen(path: socketPath)
+        do {
+            acceptor = try AcceptLoop(listener: listener, name: "fleetest-services-gateway") { [weak self] client in
+                guard let self else { close(client); return false }
                 let accepted = self.state.withLock { state -> Bool in
                     if state.stopped { return false }
                     state.clients.insert(client)
                     return true
                 }
-                guard accepted else { close(client); continue }
+                guard accepted else { close(client); return false }
                 Thread.detachNewThread { self.serve(client) }
+                return true
             }
+        } catch {
+            close(listener)
+            unlink(socketPath)
+            throw error
         }
-        thread.name = "fleetest-services-gateway"
-        thread.start()
     }
 
     /// テスト用: いま動いている子の数
@@ -179,9 +181,8 @@ public final class ServiceGatewayServer: @unchecked Sendable {
             return true
         }
         guard first else { return }
-        // shutdown で accept を起こしてから閉じる(close だけでは待っているスレッドが戻らない)
-        shutdown(descriptor, SHUT_RDWR)
-        close(descriptor)
+        // 待ち受けを閉じ終わってからソケットのファイルを消す(閉じるのは受付のスレッド = AcceptLoop の宣言)
+        acceptor?.stop()
         unlink(socketPath)
         signalChildren(SIGTERM)
         let deadline = Date().addingTimeInterval(ServiceGatewayWire.killGraceSeconds)

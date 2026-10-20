@@ -10,11 +10,15 @@
 import Foundation
 
 public final class BridgeRelay: @unchecked Sendable {
-    // 不変条件: `listener` と `sockets` は lock の内側でだけ読み書きする。stop() の後は新しい接続を受けない
+    // 不変条件: `sockets` と `stopped` は lock の内側でだけ読み書きする。stop() の後は新しい接続を受けない。
+    // `acceptor` は init の中で1回だけ書き、以後は読むだけ。
+    // **fd を閉じるのは、その fd で待っているスレッドだけ**(待ち受け = AcceptLoop の受付のスレッド・中継中の接続 =
+    // 2本のポンプの後に終わった方)。別のスレッドが閉じると番号がすぐ再利用され、待っていた側が次の read / write で
+    // 無関係のソケットを掴む。中継中の接続について stop() は shutdown で起こすだけ(待ち受けは AcceptLoop.stop が閉じ終わるまで待つ)
     private let lock = NSLock()
-    private var listener: Int32
     private var sockets: Set<Int32> = []
     private var stopped = false
+    private var acceptor: AcceptLoop?
     private let target: sockaddr_storage
     private let targetLength: socklen_t
     /// 待ち受けているポート(listenPort に 0 を渡したときは割り当てられた番号)
@@ -52,70 +56,74 @@ public final class BridgeRelay: @unchecked Sendable {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &length) }
         }
         port = UInt16(bigEndian: actual.sin_port)
-        listener = fd
-        // 受付のスレッドは中継を弱く持つ(強く持つと stop() を呼ばない限り解放されず、deinit の後始末が走らない)
-        let owner = WeakRelay()
-        owner.relay = self
-        let thread = Thread { Self.acceptLoop(fd, owner: owner) }
-        thread.name = "fleetest.bridge-relay.\(port)"
-        thread.start()
-    }
-
-    deinit { stop() }
-
-    /// 待ち受けと中継中の接続を閉じる(何度呼んでもよい)
-    public func stop() {
-        lock.lock()
-        guard !stopped else { lock.unlock(); return }
-        stopped = true
-        let open = sockets
-        sockets.removeAll()
-        let fd = listener
-        lock.unlock()
-        // accept で止まっているスレッドを起こす(close だけでは macOS で accept が返らないことがある)
-        shutdown(fd, SHUT_RDWR)
-        close(fd)
-        for socket in open {
-            shutdown(socket, SHUT_RDWR)
-            close(socket)
-        }
-    }
-
-    private final class WeakRelay: @unchecked Sendable {
-        // 不変条件: init の中で1回だけ書き、以後は読むだけ
-        weak var relay: BridgeRelay?
-    }
-
-    private static func acceptLoop(_ fd: Int32, owner: WeakRelay) {
-        while true {
-            let client = accept(fd, nil, nil)
-            guard client >= 0 else {
-                // 受け付ける前に相手が切った接続(ECONNABORTED)で受付をやめない = 中継が黙って止まる
-                if errno == EINTR || errno == ECONNABORTED { continue }
-                return
+        // 受付は中継を弱く持つ(強く持つと stop() を呼ばない限り解放されず、deinit の後始末が走らない)。
+        // 中継が居ない回(手放した後)は接続を閉じて受付を続ける = 起こすのは deinit の requestStop
+        do {
+            acceptor = try AcceptLoop(listener: fd, name: "fleetest.bridge-relay.\(port)") { [weak self] client in
+                var one: Int32 = 1
+                setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
+                guard let self else { close(client); return true }
+                guard self.track(client) else { close(client); return false }
+                // 宛先への接続は受付の外で(届かない実機への connect は待ちが長く、その間ほかの接続を受けられなくなる)
+                Thread { [weak self] in
+                    if let self { self.relay(client) } else { close(client) }
+                }.start()
+                return true
             }
-            var one: Int32 = 1
-            setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
-            guard let relay = owner.relay, relay.track(client) else { close(client); return }
-            // 宛先への接続は受付のループの外で(届かない実機への connect は待ちが長く、その間ほかの接続を受けられなくなる)
-            let connector = Thread { owner.relay?.relay(client) }
-            connector.start()
+        } catch {
+            close(fd)
+            throw error
         }
+    }
+
+    /// **待たない** —— 最後の参照が受付・中継のスレッドの一時的な参照なら deinit はそのスレッドの上で走り、待つと自分を待って詰まる
+    deinit {
+        stopRelaying()
+        acceptor?.requestStop()
+    }
+
+    /// 待ち受けと中継中の接続を止め、待ち受けが閉じ終わるまで待つ(何度呼んでもよい。戻った時点で同じ番号へ立て直せる)
+    public func stop() {
+        stopRelaying()
+        acceptor?.stop()
+    }
+
+    private func stopRelaying() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !stopped else { return }
+        stopped = true
+        // lock の内側で shutdown する = ポンプが閉じた(sockets から外した)番号には触らない
+        for socket in sockets { shutdown(socket, SHUT_RDWR) }
+    }
+
+    /// 中継中の1本の接続の、2本のポンプが両方終わったか(後に終わった方が閉じる)
+    private final class PumpPair: Sendable {
+        private let finished = LockedValue(0)
+        /// true = 自分が後に終わった
+        func finishOne() -> Bool { finished.withLock { $0 += 1; return $0 == 2 } }
     }
 
     private func relay(_ client: Int32) {
         let upstream = connectUpstream()
         guard upstream >= 0, track(upstream) else {
             if upstream >= 0 { close(upstream) }
-            release(client)
+            forget(client)
+            close(client)
             return
         }
-        // 片方向ずつ1本のスレッド。片方が終われば両方を閉じる(相手の読みを起こす)
+        // 片方向ずつ1本のスレッド。片方が終われば両方を shutdown して相手の読みを起こし、両方終わってから閉じる
+        let pair = PumpPair()
         for (from, to) in [(client, upstream), (upstream, client)] {
             let pump = Thread { [weak self] in
                 Self.pump(from: from, to: to)
-                self?.release(client)
-                self?.release(upstream)
+                shutdown(client, SHUT_RDWR)
+                shutdown(upstream, SHUT_RDWR)
+                guard pair.finishOne() else { return }
+                self?.forget(client)
+                self?.forget(upstream)
+                close(client)
+                close(upstream)
             }
             pump.start()
         }
@@ -143,13 +151,11 @@ public final class BridgeRelay: @unchecked Sendable {
         return true
     }
 
-    private func release(_ fd: Int32) {
+    /// 閉じる直前に一覧から外す(外した後は stop() が触らない = 閉じた番号が再利用されても shutdown しない)
+    private func forget(_ fd: Int32) {
         lock.lock()
-        let owned = sockets.remove(fd) != nil
+        sockets.remove(fd)
         lock.unlock()
-        guard owned else { return }
-        shutdown(fd, SHUT_RDWR)
-        close(fd)
     }
 
     private static func pump(from: Int32, to: Int32) {
