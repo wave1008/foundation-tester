@@ -100,7 +100,7 @@ final class ToolOutputStatusScanTests: XCTestCase {
         // WebView 更新(AndroidWebViewUpdate)へ渡す adb クロージャ。install の失敗文言
         // (exit 1・"Failure [...]")がそのまま利用者への理由になるので出力を捨てられない。
         // pull の失敗は次の install の失敗として表に出る(黙った成功にはならない)
-        "ProfileRunner.run",
+        "ProfileSupplyLanes.updateWebViews",
         // `adb shell "<cmd1>; echo <marker>; <cmd2> | grep …"` の終了コードは最後の grep に従うため、
         // 正当な「一致なし」でも非ゼロで返る —— status では adb 自体の失敗と区別できない。
         // マーカー文字列の有無・正規表現一致だけで値を作り、無ければ unavailable/nil(不明)に倒す

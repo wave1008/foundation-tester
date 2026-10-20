@@ -2433,10 +2433,10 @@ Android エミュレータの表示凍結([[emulator-display-freeze-wedge]])と*
   `buildIOSWorkers` は iOS しか作らないので **Android のレーンが消える**
 - `recoveryAttempts` = 2 まで試し、**戻らない個体だけレーンから外す**(「レーン上に凍結機を
   残さない」が要件)。全機戻れば除外0で開始する
-- **iOS ワーカーの供給口は3つある**(`ProfileRunner` の遅延合流 / `ApiRunCommand` の遅延合流 /
-  `ApiRunCommand` の直接供給)。**片方だけに入れない** —— 2026-08-09 に1箇所だけ入れて、
-  `api run` 経由(拡張のモニターから走る経路)に穴を空けた。`BlankWorkerRecoveryWiringTests` が
-  「呼び出し数と `recover:` の数が一致するか」を数えて検出する
+- **iOS ワーカーの供給口は `ProfileSupplyLanes.ios` の1つ**(run / api run の全経路がそこを通る)。
+  呼び手ごとに持っていた頃(3つ)は、2026-08-09 に1箇所だけ入れて `api run` 経由(拡張のモニターから走る経路)に
+  穴を空けた。`BlankWorkerRecoveryWiringTests` が「呼び出し数と `recover:` の数が一致するか」と、呼び手に
+  直呼びが戻っていないかを数えて検出する
 - **コストは大きい**: 2026-08-09 の実測で、5台凍結した E2E-CMP/ios-inapp は供給に約 620 秒
   (凍結ゼロの同プロファイルは約 41 秒)。**弾くより遅いが、レーンは減らない**
 
@@ -3100,6 +3100,9 @@ FM は死んだら**再起動まで回復しない**ので、死んだ後も呼�
   再起動後は `fleetest devices up --project <名> --profile <名>` を先に回す
 
 ## iOS が `never joined the run` / 「the in-app bridge did not respond in time」で供給に失敗したら
+
+(iOS が**1台も**合流しなかった run は、残りを配らずに「no iOS device joined the run」で止まる = run.json の `abortReason`。
+原因の切り分けはこの節と同じ)
 
 **まず残骸の in-app ブリッジを疑う**(受け手報告 2026-08-22・こちらでも 2026-08-23 に再現)。
 全シミュレータはホストの loopback を共有するのでブリッジのポートは**デバイスを跨いで一意**だが、

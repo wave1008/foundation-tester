@@ -595,14 +595,17 @@ final class BlankWorkerRecoveryTests: XCTestCase {
 /// 実際に素通しした。`ProfileRunner` / `ApiRunCommand` は実プロファイル・実デバイスを
 /// 要求するため単体で組めない。
 ///
-/// **iOS ワーカーの供給口は3つある**。片方だけに回復を入れると、その経路の run だけ
-/// 凍結機がレーンに残る(2026-08-09 に実際に1箇所しか入れず、既存コメントの警告どおり穴が空いた)
+/// **iOS ワーカーの供給口は `ProfileSupplyLanes.ios` の1つ**。呼び手ごとに持っていた頃(3つ)は、1箇所だけに回復を
+/// 入れてその経路の run だけ凍結機がレーンに残った(2026-08-09)。呼び手への直呼びが戻ったら件数で落とす
 final class BlankWorkerRecoveryWiringTests: XCTestCase {
 
     /// (ファイル, その中に `excludeBlankScreenWorkers` が現れる回数)
+    /// iOS の供給口は ProfileSupplyLanes.ios の1つ(run / api run の全経路がそこを通る = ProfileSupplyLanesWiringTests)。
+    /// 呼び手に直呼びが戻ったら件数が食い違って落ちる
     private static let supplySites = [
-        ("Sources/fleetest/ProfileRunner.swift", 1),
-        ("Sources/fleetest/ApiRunCommand.swift", 2),
+        ("Sources/fleetest/ProfileSupplyLanes.swift", 1),
+        ("Sources/fleetest/ProfileRunner.swift", 0),
+        ("Sources/fleetest/ApiRunCommand.swift", 0),
     ]
 
     private func source(_ relative: String) throws -> String {
@@ -633,7 +636,7 @@ final class BlankWorkerRecoveryWiringTests: XCTestCase {
     /// 素の contains で見ると**関数の定義**にも当たり、呼び出しを消す変異を素通しする
     /// (2026-08-09 の変異テストで実際に素通しした)。`await` + `(` まで含めて呼び出し形で縛る
     func testEverySupplySiteCallsTheRecoveryImplementation() throws {
-        for (path, _) in Self.supplySites {
+        for (path, calls) in Self.supplySites where calls > 0 {
             let text = try source(path)
             XCTAssertTrue(text.contains("await ProfileWorkerFactory.recoverFrozenIOSWorkers("),
                           "\(path): 回復の実体を呼んでいない(フックが何もしないまま除外へ落ちる)")

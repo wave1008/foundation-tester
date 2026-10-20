@@ -607,60 +607,12 @@ struct ApiRunCommand: AsyncParsableCommand {
                     .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
                 logSupply("🧩 Profile \(resolved.runName): \(resolved.appName)")
                 logSupply("   Devices: \(deviceList)")
-                var wipedAndroid: [String] = []
-                if resolved.wipeDataOnBloat {
-                    wipedAndroid = await AndroidDataWiper.wipeBloatedAVDs(
-                        devices: resolved.androidDevices,
-                        thresholdGB: resolved.wipeDataThresholdGB,
-                        locale: resolved.locale,
-                        status: { self.emitLine(ApiWipeStatusEvent(device: $0, phase: $1)) },
-                        log: { logSupply($0) })
-                }
-                // CPU 描画フォールバック機の GPU 復帰は buildAndroidWorkers より前(emulator
-                // プロセスを入れ替えるため serial が変わりうる。Wipe Data と同じ理由・同じ位置)
-                if resolved.recoverCpuFallbackToGpu {
-                    _ = await AndroidGpuRecovery.recoverCpuFallbackDevices(
-                        devices: resolved.androidDevices, locale: resolved.locale) { logSupply($0) }
-                }
-                // 死んだレーンの復活(両モード共通)。buildAndroidWorkers の直前(GPU 復帰の後)で
-                // 起動していない仮想デバイスを先に起こす。復活できなかった場合の扱いは
-                // performanceMode の有無で分岐する(このあとの LaneGate 判定。runWithProfileParallel 側)
-                if let running = try? AndroidDeviceCatalog.runningAVDs() {
-                    let laneTargets = AndroidLaneRecovery.plan(
-                        devices: resolved.androidDevices, runningAVDIDs: Set(running.values))
-                    if !laneTargets.isEmpty {
-                        let outcome = await AndroidLaneRecovery.bootMissingDevices(
-                            devices: laneTargets.map(\.device), locale: resolved.locale,
-                            supplyStage: supplyProgress.reporter) { logSupply($0) }
-                        // 起こせた分は、ブリッジが定着するまで待ってから先へ進む(理由は
-                        // awaitDurableAndroidBridges の宣言)
-                        await ProfileWorkerFactory.awaitDurableAndroidBridges(
-                            devices: laneTargets.map(\.device)
-                                .filter { outcome.booted.contains($0.name) }) { logSupply($0) }
-                    }
-                }
-                await ProfileWorkerFactory.preparePhysicalAndroidDevices(
-                    resolved: resolved) { logSupply($0) }
-                // 供給(buildAndroidWorkers)より前に lease を前倒しして持つ
-                // (ProfileRunner.buildWorkersWithFrontLoadedLease と共用。CLAUDE.md「run と
-                // api run は別配線の2実装」対策 —— 片方だけ前倒しすると、もう片方に同じ穴が残る)
-                let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
-                var workers = try await ProfileRunner.buildWorkersWithFrontLoadedLease(
-                    resolved: resolved, platforms: ["android"], leaseStateDir: leaseStateDir,
-                    supplyLease: supplyLease
-                ) { try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved) { logSupply($0) } }
-                // 凍結機は修復→不発なら guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
-                // (CLI の ProfileRunner と同じ。全滅しても throw せず
-                // 空で返す=iOS の合流を殺さない。android シナリオはワーカー不在ドレインで失敗確定)
-                let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
-                workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { logSupply($0) }
-                triageBox.add(repaired: triage.repaired, excluded: triage.excluded,
-                              anomalies: triage.anomalies)
-                workers = triage.workers
-                workers = try await ProfileWorkerFactory.installIfNeeded(
-                    apps: resolved.apps, workers: workers,
-                    forceAndroidInstall: !wipedAndroid.isEmpty, wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale,
-                    supplyStage: supplyProgress.reporter) { logSupply($0) }
+                // 手順は ProfileSupplyLanes.android の1箇所(fleetest run と同じ関数)。凍結 triage で全台が
+                // 除外されたら投げる = run を止める(ユーザー決定: 全滅は異常)
+                let workers = try await ProfileSupplyLanes.android(
+                    resolved: resolved, supplyLease: supplyLease, supplyStage: supplyProgress.reporter,
+                    triage: triageBox,
+                    wipeStatus: { self.emitLine(ApiWipeStatusEvent(device: $0, phase: $1)) }) { logSupply($0) }
                 // "🚀 Starting with…" は iOS の合流有無が分かってから1回だけ出す(下の
                 // RunStartLine.text 呼び出し。ここで固定文言を出すと iOS 0 台のプロファイルでも
                 // 「iOS joins…」と言ってしまう。RunStartLine の宣言参照)
@@ -668,64 +620,11 @@ struct ApiRunCommand: AsyncParsableCommand {
             }
             if !resolved.iosDevices.isEmpty {
                 iosWorkersTask = Task {
-                    do {
-                        // 供給(buildIOSWorkers)より前に lease を前倒しして持つ(Android 側の
-                        // コメント参照)。ここで throw すると下の catch が「❌ Failed to build iOS
-                        // workers: …」として拒否理由(デバイス+保持者 pid)を出す(iOS 供給失敗は run
-                        // 全体を落とさない既存の規律のまま=このレーンだけ空になる)
-                        let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
-                        var workers = try await ProfileRunner.buildWorkersWithFrontLoadedLease(
-                            resolved: resolved, platforms: ["ios"], leaseStateDir: leaseStateDir,
-                            supplyLease: supplyLease
-                        ) {
-                            try await ProfileWorkerFactory.buildIOSWorkers(
-                                resolved: resolved, repoRoot: try RepoRoot.find(),
-                                supplyStage: supplyProgress.reporter) { logSupply($0) }
-                        }
-                        // install 全滅の throw は握りつぶさない(F5) —— `try?` で受けると失敗前
-                        // (=古いアプリのまま)の workers へ静かに戻る。投げれば下の catch が
-                        // 「このレーンは空」の既定の扱いに落とす
-                        workers = try await ProfileWorkerFactory.installIfNeeded(
-                            apps: resolved.apps, workers: workers,
-                            forceAndroidInstall: false, wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale,
-                            supplyStage: supplyProgress.reporter) { logSupply($0) }
-                        // 画面だけ死んだシミュレータを**投入前に**弾く(BlankWorkerTriage 参照)。
-                        // Android は buildAndroidWorkers 直後に同等の処理(修復つき)を通している
-                        let repoRoot = try RepoRoot.find()
-                        let iosTriage = await BlankWorkerTriage.excludeBlankScreenWorkers(
-                            workers,
-                            recover: { @Sendable frozen, currentWorkers in
-                                await ProfileWorkerFactory.recoverFrozenIOSWorkers(
-                                    labels: frozen, workers: currentWorkers, resolved: resolved,
-                                    repoRoot: repoRoot, apps: resolved.apps) { logSupply($0) }
-                            },
-                            // 判定をモニターへ配る(DeviceFrozenStore)。run が知っている凍結を
-                            // モニターが知らない状態を作らないための唯一の口
-                            stateDir: repoRoot.appendingPathComponent(".fleetest"),
-                            nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
-                                await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
-                            log: { logSupply($0) })
-                        // F10: iOS の回復も android task と合流させる(add は上書きしない)
-                        triageBox.add(repaired: iosTriage.repaired, excluded: iosTriage.excluded,
-                                      anomalies: WorkerAnomalyRecord.preRunTriage(
-                                        excluded: iosTriage.excludedWorkers,
-                                        repaired: iosTriage.repairedWorkers))
-                        workers = iosTriage.workers
-                        // 録画ありの run では、端末側に録画セッションが残ったデバイスを再起動して解く
-                        // (HostRecordingProbe。ProfileRunner と同じ)
-                        workers = await ProfileWorkerFactory.recoverStaleRecordingIOSWorkers(
-                            workers: workers, resolved: resolved, repoRoot: repoRoot,
-                            apps: resolved.apps) { logSupply($0) }
-                        await ProfileWorkerFactory.prepareDevicesOnStart(
-                            workers, homeOnStart: resolved.homeOnStart) { logSupply($0) }
-                        logSupply("🚀 \(workers.count) iOS worker(s) joined")
-                        return workers
-                    } catch {
-                        // iOS 供給失敗は run 全体を落とさない(iOS シナリオはワーカー不在として
-                        // ドレインで失敗確定し、Android の結果は生きる)
-                        logSupply("❌ Failed to build iOS workers: \(error.localizedDescription)")
-                        return []
-                    }
+                    // 手順は ProfileSupplyLanes.ios の1箇所。失敗は空で返り、全滅の扱いは RunOrchestrator の
+                    // 遅延参加(1台も合流しなければ配布を止める)か、performanceMode の LaneGate が決める
+                    await ProfileSupplyLanes.ios(
+                        resolved: resolved, supplyLease: supplyLease, supplyStage: supplyProgress.reporter,
+                        triage: triageBox) { logSupply($0) }
                 }
             }
         } else {
@@ -983,7 +882,9 @@ struct ApiRunCommand: AsyncParsableCommand {
                          setOverrides: profileOverrides.mapValues(\.token),
                          servicesWarnings: servicesSession?.warnings ?? [],
                          responseMeasurement: resolvedProfile.flatMap(ResponseMeasurementPolicy.runInfo(resolved:)),
-                         interrupted: outcome.interrupted) ?? []
+                         interrupted: outcome.interrupted,
+                         abortReason: outcome.abortReason) ?? []
+        if let abortReason = outcome.abortReason { logStderr("❌ Run stopped: \(abortReason)") }
         if !outcome.degradedWorkers.isEmpty {
             logStderr("⚠️ Degraded or dropped workers (\(outcome.degradedWorkers.count)):")
             for entry in outcome.degradedWorkers { logStderr("   - \(entry)") }
@@ -1239,8 +1140,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         await ProfileRunner.warnIfFMDegraded(fm: fmForWarning) { logStderr($0) }
         let reportDirPath = (reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir).path
 
-        var blankTriage: (repaired: [String], excluded: [String]) = ([], [])
-        var preRunAnomalies: [WorkerAnomalyRecord] = []
+        let triageBox = BlankTriageBox()
         var workers: [RunWorker] = []
         // 供給フェーズ(install・凍結triage)の間も run-lease を保つ(理由は並列経路の同処理を参照)
         let supplyLease = (try? RepoRoot.find())
@@ -1251,73 +1151,23 @@ struct ApiRunCommand: AsyncParsableCommand {
                 .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
             logSupply("🧩 Profile \(profileName): \(resolved.appName)")
             logSupply("   Devices: \(deviceList)")
-            var wipedAndroid: [String] = []
-            if resolved.wipeDataOnBloat {
-                wipedAndroid = await AndroidDataWiper.wipeBloatedAVDs(
-                    devices: resolved.androidDevices,
-                    thresholdGB: resolved.wipeDataThresholdGB,
-                    locale: resolved.locale,
-                    status: { self.emitLine(ApiWipeStatusEvent(device: $0, phase: $1)) },
-                    log: { logSupply($0) })
+            // 手順は並列経路と同じ ProfileSupplyLanes を順に呼ぶ(この経路は --debug の単発実行で、
+            // 遅延参加が無いので iOS も開始前に待つ)。台帳へは記帳しないので supplyStage は渡さない
+            workers = try await ProfileSupplyLanes.android(
+                resolved: resolved, supplyLease: supplyLease, supplyStage: nil, triage: triageBox,
+                wipeStatus: { self.emitLine(ApiWipeStatusEvent(device: $0, phase: $1)) }) { logSupply($0) }
+            if !resolved.iosDevices.isEmpty {
+                let ios = await ProfileSupplyLanes.ios(
+                    resolved: resolved, supplyLease: supplyLease, supplyStage: nil, triage: triageBox) { logSupply($0) }
+                // 全滅は異常として止める(並列経路の遅延参加と同じ文)
+                if ios.isEmpty {
+                    throw ProfileWorkerFactory.InstallError(message: RunOrchestrator.lateJoinAbortReason(platforms: ["ios"]))
+                }
+                workers += ios
             }
-            // GPU 復帰は buildWorkers より前(理由は並列経路の同処理を参照)
-            if resolved.recoverCpuFallbackToGpu {
-                _ = await AndroidGpuRecovery.recoverCpuFallbackDevices(
-                    devices: resolved.androidDevices, locale: resolved.locale) { logSupply($0) }
-            }
-            // 供給(buildWorkers)より前に lease を前倒しして持つ(並列経路と共通の関数。
-            // ここは --debug --profile の逐次経路)
-            let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
-            workers = try await ProfileRunner.buildWorkersWithFrontLoadedLease(
-                resolved: resolved, platforms: Set(resolved.devices.map(\.platform)),
-                leaseStateDir: leaseStateDir, supplyLease: supplyLease
-            ) {
-                try await ProfileWorkerFactory.buildWorkers(
-                    resolved: resolved, repoRoot: try RepoRoot.find()) { logSupply($0) }
-            }
-            // android は修復→guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
-            let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
-                workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { logSupply($0) }
-            preRunAnomalies += triage.anomalies
-            workers = triage.workers
-            // **実機はあちらの対象外**(閾値がエミュレータ較正で、誤判定すると健全な実機へ
-            // `adb reboot` を撃つ)。観測と無害な修復(画面の sleep/wake)だけをここで通す。
-            // 材料と修復は `PhysicalScreenProbes` に括ってあり、**run 経路と同じものを渡す**
-            // (`PhysicalDarkScreenWiringTests` が両経路の配線を固定する)
-            await BlankWorkerTriage.observePhysicalScreens(
-                workers, awake: PhysicalScreenProbes.awake, repair: PhysicalScreenProbes.cycleScreen
-            ) { logSupply($0) }
-            // iOS も **shutdown → boot → ブリッジ張り直し**で回復を試み、駄目な個体だけ除外する
-            // (BlankWorkerTriage 参照)。**この経路にも通すこと** ——
-            // iOS ワーカーの供給口は「遅延合流(lateWorkers)」とここの2つで、片方だけだと穴が空く
-            let iosRepoRoot = try RepoRoot.find()
-            let iosTriage = await BlankWorkerTriage.excludeBlankScreenWorkers(
-                workers,
-                recover: { @Sendable frozen, currentWorkers in
-                    await ProfileWorkerFactory.recoverFrozenIOSWorkers(
-                        labels: frozen, workers: currentWorkers, resolved: resolved,
-                        repoRoot: iosRepoRoot, apps: resolved.apps) { logSupply($0) }
-                },
-                stateDir: iosRepoRoot.appendingPathComponent(".fleetest"),
-                            nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
-                                await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
-                log: { logSupply($0) })
-            preRunAnomalies += WorkerAnomalyRecord.preRunTriage(
-                excluded: iosTriage.excludedWorkers, repaired: iosTriage.repairedWorkers)
-            workers = iosTriage.workers
-            // 録画ありの run では、端末側に録画セッションが残ったデバイスを再起動して解く
-            // (HostRecordingProbe。ProfileRunner と同じ)
-            workers = await ProfileWorkerFactory.recoverStaleRecordingIOSWorkers(
-                workers: workers, resolved: resolved, repoRoot: iosRepoRoot,
-                apps: resolved.apps) { logSupply($0) }
-            await ProfileWorkerFactory.prepareDevicesOnStart(
-                workers, homeOnStart: resolved.homeOnStart) { logSupply($0) }
-            blankTriage = (triage.repaired + iosTriage.repaired, triage.excluded + iosTriage.excluded)
-            workers = try await ProfileWorkerFactory.installIfNeeded(
-                apps: resolved.apps, workers: workers,
-                forceAndroidInstall: !wipedAndroid.isEmpty, wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale,
-                supplyStage: nil) { logSupply($0) }
         }
+        let blankTriage = triageBox.get()
+        let preRunAnomalies = triageBox.getAnomalies()
 
         // シナリオが platform 未指定のときの既定 platform(iOS ワーカーがあれば ios 優先。
         // dry-run はワーカーを構築しないため resolved のデバイス構成から同じ方針で決める)
@@ -1583,7 +1433,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                           degradedWorkers: result.degradedWorkers,
                           freezeRetries: result.freezeRetries,
                           workerAnomalies: result.workerAnomalies,
-                          interrupted: result.interrupted)
+                          interrupted: result.interrupted,
+                          abortReason: result.abortReason)
     }
 
     /// workersReady の devices 配列を組み立てる(id 形式は ApiWorkersReadyEvent 参照)

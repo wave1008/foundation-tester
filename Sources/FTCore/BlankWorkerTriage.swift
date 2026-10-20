@@ -228,8 +228,8 @@ public enum BlankWorkerTriage {
     /// 非確定にしかならないので、`excludeBlankScreenWorkers` を呼ぶと「除外しない除外処理」に
     /// なって読み手を惑わせ、**iOS 供給口の本数を数えている既存の配線テスト
     /// (`BlankWorkerRecoveryWiringTests` / `HostRecordingProbeTests`)にも数えられてしまう**。
-    /// 呼ぶのは「あちらのトリアージが実機を対象外にしている」Android ワーカーの経路だけでよい
-    /// (`api run` はワーカーが混在リストなので既存の1本で両 OS を拾う)。
+    /// 呼ぶのは「あちらのトリアージが実機を対象外にしている」Android のレーン(`ProfileSupplyLanes.android`)だけでよい
+    /// (iOS のレーンは `excludeBlankScreenWorkers` が実機も拾う)。
     ///
     /// **公表(DeviceFrozenStore)はしない** —— `syncStore` は clearAll してから自分が見たデバイスだけを
     /// publish するので、後続の iOS レーンの公表と潰し合う。モニターは自分の受動観測から

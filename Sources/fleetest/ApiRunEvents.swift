@@ -191,26 +191,8 @@ struct RunOutcome {
     var workerAnomalies: [WorkerAnomalyRecord] = []
     /// この run が SIGINT/SIGTERM で中断されたか(RunInterruptState 参照)
     var interrupted = false
-}
-
-/// 並列ワーカー構築 Task から blank triage を run() へ運ぶ入れ物
-/// (--debug の DebugControlBox と同じ受け渡しパターン)。**android task と iOS task の両方が
-/// `add` で書く**(android / iOS の 2 つの Task が別々に書くので、上書き(set)だと後から
-/// 書いた側だけが run.json の blankRepairs に残る)
-final class BlankTriageBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var repaired: [String] = []
-    private var excluded: [String] = []
-    private var anomalies: [WorkerAnomalyRecord] = []
-    func add(repaired: [String], excluded: [String], anomalies new: [WorkerAnomalyRecord] = []) {
-        lock.lock(); defer { lock.unlock() }
-        self.repaired += repaired; self.excluded += excluded; self.anomalies += new
-    }
-    func get() -> (repaired: [String], excluded: [String]) {
-        lock.lock(); defer { lock.unlock() }
-        return (repaired, excluded)
-    }
-    func getAnomalies() -> [WorkerAnomalyRecord] { lock.lock(); defer { lock.unlock() }; return anomalies }
+    /// ツールが異常として run を止めた理由(RunSummary.abortReason。中断とは別の事実)
+    var abortReason: String?
 }
 
 /// flowStarted〜flowFinished から testSeconds(最初の開始〜最後の完了)と

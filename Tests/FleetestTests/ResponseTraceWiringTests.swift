@@ -51,10 +51,9 @@ final class ResponseTraceWiringTests: XCTestCase {
             let restore = try XCTUnwrap(lines.firstIndex { $0.contains("restoreAnimations(") }, path)
             XCTAssertEqual(lines.filter { $0.contains("captureAnimationRestore(") }.count, 1, path)
             XCTAssertEqual(lines.filter { $0.contains("restoreAnimations(") }.count, 1, path)
-            // 取得は buildAndroidWorkers(開始時の同期)を呼ぶ行より前
-            if let build = lines.firstIndex(where: { $0.contains("ProfileWorkerFactory.buildAndroidWorkers(") }) {
-                XCTAssertLessThan(capture, build, "\(path): 同期の後に元の値を読んでいる")
-            }
+            // 取得は Android のレーン(開始時の同期 = buildAndroidWorkers を含む)を呼ぶ行より前
+            let build = try XCTUnwrap(lines.firstIndex { $0.contains("ProfileSupplyLanes.android(") }, path)
+            XCTAssertLessThan(capture, build, "\(path): 同期の後に元の値を読んでいる")
             _ = restore
         }
     }

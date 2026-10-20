@@ -13,11 +13,11 @@ final class PreRunTriageRecordWiringTests: XCTestCase {
     }
 
     func testAndroidTriageCallersUseTheRecordsThatCarryTheReasons() throws {
-        for name in ["ApiRunCommand.swift", "ProfileRunner.swift"] {
-            let code = try Self.source(name)
-            XCTAssertFalse(code.contains("excluded: triage.excludedWorkers"),
-                           "\(name): Android の点検の記録は triage.anomalies から作る(除外の理由が落ちる)")
-            XCTAssertTrue(code.contains("triage.anomalies"), "\(name): 走査が呼び手に届いていない")
-        }
+        // 呼び手は供給のレーン1箇所(run / api run は ProfileSupplyLanes を通る = ProfileSupplyLanesWiringTests)
+        let name = "ProfileSupplyLanes.swift"
+        let code = try Self.source(name)
+        XCTAssertFalse(code.contains("excluded: blank.excludedWorkers"),
+                       "\(name): Android の点検の記録は blank.anomalies から作る(除外の理由が落ちる)")
+        XCTAssertTrue(code.contains("anomalies: blank.anomalies"), "\(name): 走査が呼び手に届いていない")
     }
 }

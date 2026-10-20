@@ -4862,8 +4862,14 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     供給完了後に task group へ合流する(group スコープ内の await は既存子タスクを止めない)。
     workersReady はレーン構成の**全置換**(runLaneModel.applyWorkers)のため1回だけ・全ワーカー分を
     宣言する(iOS は供給前でも id="ios:論理名" が確定。detail「ブリッジ供給中...」のプレースホルダ)。
-    label→id 変換は WorkerIDMap(NSLock)で iOS 合流時に merge。iOS 供給失敗は run を落とさず
-    iOS シナリオのみワーカー不在ドレインで失敗確定(Android の結果は生きる)。CLI(ProfileRunner)も同構成
+    label→id 変換は WorkerIDMap(NSLock)で iOS 合流時に merge。CLI(ProfileRunner)も同構成。
+    **供給の手順(両レーンの中身)は `ProfileSupplyLanes` の1箇所**で、run・api run の並列経路・--debug の逐次経路が
+    同じ関数を呼ぶ(2経路に別々に持っていた間に、api run だけ WebView の更新・実機の画面の観測・Android のホームが抜けていた。
+    `ProfileSupplyLanesWiringTests`)。**全滅は異常として run を止める**(ユーザー決定 2026-10-20): Android のレーンは
+    実行前のチェックで全台が除外されたら投げる(run の開始前)/ iOS は**1台も合流しなかった時点で** RunOrchestrator が
+    配布を止める —— 走っているシナリオは最後まで走らせ、残りは理由つきの未実行(`noWorker`)、run.json は `abortReason`
+    (中断ではないので `interrupted` は立てない)。iOS のシナリオが待っていなければ止めない。一部の台だけが落ちたときは
+    従来どおり残りの台で続ける
   - **供給フェーズの進行は NDJSON の `log` にも流す**(2026-09-09): 供給(デバイス起動・インストール・
     凍結 triage)の行は stderr だけに出ていたため、拡張の OUTPUT には出るが「デバイスモニター」タブは無音だった。
     **デバイスが起動していない状態からの run は供給が長い**(実測 2026-09-09: 手元 Android 8台で

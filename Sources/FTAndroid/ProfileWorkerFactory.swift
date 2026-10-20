@@ -111,8 +111,8 @@ public enum ProfileWorkerFactory {
         return (targets, skipped)
     }
 
-    /// run 開始時のデバイス準備を**1箇所に束ねる**。iOS ワーカーの供給口は3つあり、
-    /// 個別に足すと必ずどれかを落とすので、開始時にやることはここへ集める
+    /// run 開始時のデバイス準備を**1箇所に束ねる**。呼び手は供給のレーン(fleetest の `ProfileSupplyLanes`)と
+    /// `--port` 直指定の経路で、個別に足すとどれかを落とすので、開始時にやることはここへ集める
     public static func prepareDevicesOnStart(_ workers: [RunWorker], homeOnStart: Bool,
                                              log: @escaping @Sendable (String) -> Void) async {
         await pressHomeOnStart(workers, enabled: homeOnStart, log: log)
@@ -1253,8 +1253,8 @@ public enum ProfileWorkerFactory {
     /// **2台ずつ**戻す: 一斉 boot は凍結の相関要因そのもので、start-device の「同時2台」と同じ理屈。
     /// udid はワーカーの connection から採る(label は表示用で simctl には渡せない)。
     ///
-    /// **iOS ワーカーの供給口は3つある**(ProfileRunner の遅延合流 / ApiRunCommand の遅延合流 /
-    /// ApiRunCommand の直接供給)。**片方だけに入れない** —— 過去に同じ型の穴を空けている
+    /// 呼び手は iOS の供給のレーン(fleetest の `ProfileSupplyLanes.ios`)の1箇所 —— run / api run の全経路がそこを通る。
+    /// 呼び手ごとに持っていた頃に1経路だけ入れて穴を空けている(`BlankWorkerRecoveryWiringTests`)
     public static func recoverFrozenIOSWorkers(
         labels: [String], workers: [RunWorker], resolved: ResolvedProfile, repoRoot: URL,
         apps: [String: ResolvedAppTarget], log: @escaping @Sendable (String) -> Void

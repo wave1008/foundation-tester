@@ -171,7 +171,8 @@ final class RunProgressLedgerWiringTests: XCTestCase {
     func testSupplyCallSitesPassSupplyStage() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        for path in ["Sources/fleetest/ProfileRunner.swift", "Sources/fleetest/ApiRunCommand.swift"] {
+        for path in ["Sources/fleetest/ProfileSupplyLanes.swift", "Sources/fleetest/ProfileRunner.swift",
+                     "Sources/fleetest/ApiRunCommand.swift"] {
             let text = try Self.code(path)
             for call in ["bootMissingDevices(", "buildIOSWorkers(", "installIfNeeded("] {
                 var from = text.startIndex
@@ -182,12 +183,18 @@ final class RunProgressLedgerWiringTests: XCTestCase {
                 }
             }
         }
+        // レーンは受け取った通知を供給の4箇所(Android 起こし直し・Android install・iOS 供給・iOS install)へ渡す
+        let lanes = try Self.code("Sources/fleetest/ProfileSupplyLanes.swift")
+        XCTAssertEqual(lanes.components(separatedBy: "supplyStage: supplyStage").count - 1, 4,
+                       "レーンが供給の4箇所へ通知を渡していない")
+        // 呼び手は箱を渡す。api run は並列経路の2本(--debug の逐次経路は台帳を書かないので nil)
         let api = try Self.code("Sources/fleetest/ApiRunCommand.swift")
-        XCTAssertEqual(api.components(separatedBy: "supplyStage: supplyProgress.reporter").count - 1, 4,
-                       "api run の供給(Android 起こし直し・Android install・iOS 供給・iOS install)が箱へ通知する")
+        XCTAssertEqual(api.components(separatedBy: "supplyStage: supplyProgress.reporter").count - 1, 2,
+                       "api run の並列経路(Android / iOS のレーン)が箱を渡していない")
+        // run は Android のレーン・iOS の eager・iOS の遅延参加の3本
         let runner = try Self.code("Sources/fleetest/ProfileRunner.swift")
-        XCTAssertEqual(runner.components(separatedBy: "supplyStage: supplyProgress.reporter").count - 1, 4,
-                       "run の供給(Android 起こし直し・Android install・iOS 供給・iOS install)が箱へ通知する")
+        XCTAssertEqual(runner.components(separatedBy: "supplyStage: supplyProgress.reporter").count - 1, 3,
+                       "run の供給(Android のレーン・iOS の eager・遅延参加)が箱を渡していない")
         let factory = try String(contentsOf: root.appendingPathComponent("Sources/FTAndroid/ProfileWorkerFactory.swift"),
                                  encoding: .utf8)
         XCTAssertTrue(factory.contains("BridgeProvisioner(repoRoot: repoRoot, supplyStage: supplyStage)"),

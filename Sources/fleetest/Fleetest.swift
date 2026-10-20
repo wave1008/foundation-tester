@@ -962,7 +962,8 @@ struct RunScenarios: AsyncParsableCommand {
                             setOverrides: profileOverrides.mapValues(\.token),
                             servicesWarnings: runSummary.servicesWarnings,
                             responseMeasurement: runSummary.responseMeasurement,
-                            interrupted: runSummary.interrupted)
+                            interrupted: runSummary.interrupted,
+                            abortReason: runSummary.abortReason)
             PhaseLog.mark("recorder-finish")
             try writeJUnitIfRequested(project: testProject, recorder: recorder)
             // 保持容量の掃除は**結果を書き終えた後に背景の別プロセスで**(テストの実行時間に含めない)

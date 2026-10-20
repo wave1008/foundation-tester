@@ -14,7 +14,9 @@ import XCTest
 
 final class DeviceLeaseFrontLoadWiringTests: XCTestCase {
 
-    private static let sources = ["Sources/fleetest/ProfileRunner.swift", "Sources/fleetest/ApiRunCommand.swift"]
+    /// 供給を呼ぶファイル。手順は ProfileSupplyLanes に集まっているが、呼び手に直呼びが戻ったときも落とすため3つとも見る
+    private static let sources = ["Sources/fleetest/ProfileSupplyLanes.swift", "Sources/fleetest/ProfileRunner.swift",
+                                  "Sources/fleetest/ApiRunCommand.swift"]
 
     private static func codeLines(_ path: String) throws -> [String] {
         let url = URL(fileURLWithPath: #filePath)
@@ -33,6 +35,11 @@ final class DeviceLeaseFrontLoadWiringTests: XCTestCase {
     /// 行と同じか、それより前になる)。本数が食い違えば、どこかの供給呼び出しがヘルパを
     /// 経由していない(= lease の前倒しが無い)
     func testEverySupplyBuildCallGoesThroughTheFrontLoadedLeaseHelper() throws {
+        var buildCallsSeen = 0
+        defer {
+            // 0 本どうしの一致で緑にしない(供給の置き場が移ったら sources を追う)
+            XCTAssertGreaterThan(buildCallsSeen, 0, "走査が供給の呼び出しに届いていない")
+        }
         for path in Self.sources {
             let lines = try Self.codeLines(path)
             let helperCallIndices = lines.indices.filter { idx in
@@ -46,6 +53,7 @@ final class DeviceLeaseFrontLoadWiringTests: XCTestCase {
                     || line.contains("ProfileWorkerFactory.buildIOSWorkers(")
                     || line.contains("ProfileWorkerFactory.buildWorkers(")
             }
+            buildCallsSeen += buildCallIndices.count
             XCTAssertEqual(helperCallIndices.count, buildCallIndices.count,
                            "\(path): 供給呼び出しと前倒しヘルパの呼び出し本数が一致しない" +
                            " (helper=\(helperCallIndices.count) build=\(buildCallIndices.count))")
@@ -65,14 +73,16 @@ final class DeviceLeaseFrontLoadWiringTests: XCTestCase {
         XCTAssertEqual(count, 1, "buildWorkersWithFrontLoadedLease の定義が ProfileRunner に1箇所ではない")
     }
 
-    /// `ApiRunCommand` は定義を持たず、`ProfileRunner` のものを呼ぶ
-    func testApiRunCommandHasNoSecondImplementationAndCallsTheSharedOne() throws {
-        let text = try Self.codeLines("Sources/fleetest/ApiRunCommand.swift").joined(separator: "\n")
-        XCTAssertFalse(text.contains("static func buildWorkersWithFrontLoadedLease"),
+    /// 供給のレーン(ProfileSupplyLanes)は定義を持たず、`ProfileRunner` のものを Android・iOS で1本ずつ呼ぶ。
+    /// `ApiRunCommand` は定義を持たない(供給はレーン経由 = ProfileSupplyLanesWiringTests)
+    func testSupplyLanesHaveNoSecondImplementationAndCallTheSharedOne() throws {
+        let lanes = try Self.codeLines("Sources/fleetest/ProfileSupplyLanes.swift").joined(separator: "\n")
+        XCTAssertFalse(lanes.contains("static func buildWorkersWithFrontLoadedLease"),
+                       "ProfileSupplyLanes.swift に2つ目の実装がある")
+        let callCount = lanes.components(separatedBy: "ProfileRunner.buildWorkersWithFrontLoadedLease(").count - 1
+        XCTAssertEqual(callCount, 2, "レーンの共有ヘルパ呼び出し本数が想定と違う(Android / iOS の2箇所のはず。いま \(callCount) 箇所)")
+        let api = try Self.codeLines("Sources/fleetest/ApiRunCommand.swift").joined(separator: "\n")
+        XCTAssertFalse(api.contains("static func buildWorkersWithFrontLoadedLease"),
                        "ApiRunCommand.swift に2つ目の実装がある")
-        let callCount = text.components(separatedBy: "ProfileRunner.buildWorkersWithFrontLoadedLease(").count - 1
-        XCTAssertEqual(callCount, 3,
-                       "ApiRunCommand.swift の共有ヘルパ呼び出し本数が想定と違う" +
-                       "(android task / iOS task / --debug 逐次経路の3箇所のはず。いま \(callCount) 箇所)")
     }
 }

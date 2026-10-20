@@ -1,11 +1,11 @@
-// 実機の「画面が暗い」観測が **run / api run の両経路**に配線されていることをソース走査で固定する。
+// 実機の「画面が暗い」観測が Android の供給に配線されていることをソース走査で固定する。
 //
-// この砦が要る理由: iOS ワーカーの供給は `ProfileRunner.buildIOSLane` という別関数で、
-// Android ワーカーはその手前で作られる。`api run` はワーカーが**混在リスト**なので
-// `BlankWorkerTriage.excludeBlankScreenWorkers` 1本で両 OS を見ているが、`fleetest run` は
-// iOS レーンの中でしか呼んでおらず、**Android 実機だけが無観測**だった(2026-09-25)。
-// 同じ型の穴は `RunCommandFlagParityTests` が扱う「run と api run は別実装」の一族で、
-// どちらの経路も緑のまま通るので実行では捕まらない。
+// この砦が要る理由: Android の凍結 triage(`excludeOrRepairBlankScreenWorkers`)は実機を対象外にしている
+// (閾値がエミュレータ較正で、誤判定すると健全な実機へ `adb reboot` を撃つ)ので、実機は観測専用の口を
+// 別に通さないと無観測のまま。iOS は `excludeBlankScreenWorkers` が実機も拾う。
+// 供給の手順は `ProfileSupplyLanes` の1箇所で、run / api run の全経路がそこを通る(ProfileSupplyLanesWiringTests)。
+// 2経路に別々に持っていた間は api run の並列経路だけ Android 実機が無観測だった(このテストは呼び出しの
+// 有無をファイル単位で見ていたため、同じファイルの --debug 経路の1本で緑になって見逃した)
 
 import XCTest
 
@@ -19,53 +19,35 @@ final class PhysicalDarkScreenWiringTests: XCTestCase {
     }
 
     private func occurrences(of needle: String, in text: String) -> Int {
-        var count = 0
-        var cursor = text.startIndex
-        while let next = text.range(of: needle, range: cursor..<text.endIndex) {
-            count += 1
-            cursor = next.upperBound
-        }
-        return count
+        text.components(separatedBy: needle).count - 1
     }
 
-    /// **本数を等号で固定する**。`contains` では駄目 —— どちらのファイルにも iOS 供給口の
-    /// 呼び出しが別にあるので、**Android 実機ぶんを消しても文字列は残って通ってしまう**
-    /// (この形で実際に変異が生き延びた)。
-    ///   - ProfileRunner: Android ワーカーの観測が1本。iOS レーンは `excludeBlankScreenWorkers`
-    ///     の側で見ているので、**観測専用の口はここだけ**
-    ///   - ApiRunCommand: **ワーカーが混在リスト**なので既存の `excludeBlankScreenWorkers`
-    ///     (iOS の供給口2つ)が実機も拾う = 観測専用の口は要らない
-    func testBothRunPathsObservePhysicalScreens() throws {
-        for file in ["ProfileRunner.swift", "ApiRunCommand.swift"] {
-            XCTAssertEqual(occurrences(of: "BlankWorkerTriage.observePhysicalScreens",
-                                       in: try source(file)), 1,
-                           "\(file): 実機の観測を失っている")
-        }
+    /// **本数を等号で固定する**(観測専用の口は Android のレーンに1本だけ)。`contains` では駄目 ——
+    /// iOS 側にも triage の呼び出しがあるので、Android 実機ぶんを消しても文字列が残って通る
+    func testTheAndroidLaneObservesPhysicalScreensOnce() throws {
+        XCTAssertEqual(occurrences(of: "BlankWorkerTriage.observePhysicalScreens(",
+                                   in: try source("ProfileSupplyLanes.swift")), 1,
+                       "Android のレーンが実機の観測を失っている")
     }
 
-    /// **材料と修復は両経路で同じものを渡す**。片方だけが渡すと、同じ端末について
-    /// `fleetest run` と `fleetest api run` で別の判定が出る(どちらも緑のまま通る)
-    func testBothRunPathsPassTheSameProbes() throws {
-        for file in ["ProfileRunner.swift", "ApiRunCommand.swift"] {
-            let text = try source(file)
-            XCTAssertTrue(text.contains("PhysicalScreenProbes.awake"), "\(file): awake の材料")
-            XCTAssertTrue(text.contains("PhysicalScreenProbes.cycleScreen"), "\(file): 修復")
-        }
+    /// 材料と修復は同じものを渡す(`PhysicalScreenProbes` に括ってある)
+    func testTheObservationGetsTheSharedProbes() throws {
+        let text = try source("ProfileSupplyLanes.swift")
+        XCTAssertTrue(text.contains("awake: PhysicalScreenProbes.awake"), "awake の材料")
+        XCTAssertTrue(text.contains("repair: PhysicalScreenProbes.cycleScreen"), "修復")
     }
 
-    /// Android ワーカーを作る `ProfileRunner` 側は、**Android 側のトリアージの直後**に通すこと。
-    /// あちらは実機を対象外にしているので、順序が逆だと実機が素通りする
-    func testProfileRunnerObservesRightAfterTheAndroidTriage() throws {
-        let text = try source("ProfileRunner.swift")
-        guard let androidTriage = text.range(of: "excludeOrRepairBlankScreenWorkers"),
-              let observation = text.range(of: "BlankWorkerTriage.observePhysicalScreens") else {
-            return XCTFail("ProfileRunner に両方の呼び出しが要る")
+    /// **Android 側のトリアージの直後**に通すこと(あちらは実機を対象外にしているので、順序が逆だと実機が素通りする)。
+    /// iOS のレーンの中へ紛れていないこと
+    func testTheObservationFollowsTheAndroidTriage() throws {
+        let text = try source("ProfileSupplyLanes.swift")
+        guard let androidTriage = text.range(of: "excludeOrRepairBlankScreenWorkers("),
+              let observation = text.range(of: "BlankWorkerTriage.observePhysicalScreens("),
+              let iosLane = text.range(of: "static func ios(") else {
+            return XCTFail("ProfileSupplyLanes に Android の triage・観測・iOS のレーンが要る")
         }
         XCTAssertTrue(androidTriage.upperBound < observation.lowerBound,
                       "観測は Android 側のトリアージ(実機は対象外)の後に置く")
-        if let iosLane = text.range(of: "private static func buildIOSLane") {
-            XCTAssertTrue(observation.lowerBound < iosLane.lowerBound,
-                          "Android 側の観測が buildIOSLane の中へ紛れている")
-        }
+        XCTAssertTrue(observation.lowerBound < iosLane.lowerBound, "Android 側の観測が iOS のレーンの中へ紛れている")
     }
 }

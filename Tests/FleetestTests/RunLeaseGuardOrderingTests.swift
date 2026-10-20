@@ -30,12 +30,17 @@ final class RunLeaseGuardOrderingTests: XCTestCase {
         guard let guardCall = firstCall("rejectIfDevicesLeasedBeforePreparation", in: text) else {
             return XCTFail("\(path) must call rejectIfDevicesLeasedBeforePreparation", file: file, line: line)
         }
-        for later in ["RunHookRunner.begin", "wipeBloatedAVDs", "recoverCpuFallbackDevices",
+        // 破壊的な準備の手順は ProfileSupplyLanes にあるので、呼び手ではレーンの呼び出しが「後」の代表
+        var seen = 0
+        for later in ["RunHookRunner.begin", "ProfileSupplyLanes.android", "ProfileSupplyLanes.ios",
+                      "wipeBloatedAVDs", "recoverCpuFallbackDevices",
                       "bootMissingDevices", "buildAndroidWorkers", "buildIOSWorkers", "buildWorkers"] {
             guard let call = firstCall(later, in: text) else { continue }
+            seen += 1
             XCTAssertLessThan(guardCall, call,
                               "\(path): the lease guard must come before \(later)", file: file, line: line)
         }
+        XCTAssertGreaterThanOrEqual(seen, 2, "\(path): neither the run hook nor a supply lane was found", file: file, line: line)
     }
 
     func testRunChecksTheLeaseBeforeHooksAndPreparation() throws {

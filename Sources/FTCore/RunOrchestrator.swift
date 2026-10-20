@@ -271,6 +271,9 @@ public struct RunSummary: Sendable {
     /// 「デバイス/ワーカーの問題で赤くなった」と「利用者が止めた」を results insights が
     /// 混同しないため
     public let interrupted: Bool
+    /// run を途中で止めた理由(遅延参加の OS の供給が全滅した等。RunMetaRecord.abortReason へ焼き込む)。
+    /// nil = 止めていない。**中断(interrupted)とは別の事実** —— 利用者が止めたのではなく、ツールが異常として止めた
+    public let abortReason: String?
     /// サービス(scripts/compose.yaml)の起動時の警告(`adb reverse` が張れない 等。英語の文言そのまま)。
     /// orchestrator 自身は知らないので常に空 —— 呼び手(ProfileRunner / ApiRunCommand)が `ServicesSession.warnings` で埋め、
     /// RunMetaRecord.servicesWarnings へ焼き込む
@@ -288,6 +291,7 @@ public struct RunSummary: Sendable {
                 performanceMode: Bool = false,
                 fmSettings: FMSettingsRecord? = nil,
                 interrupted: Bool = false,
+                abortReason: String? = nil,
                 servicesWarnings: [String] = [],
                 responseMeasurement: ResponseMeasurementRunInfo? = nil) {
         self.total = total
@@ -304,6 +308,7 @@ public struct RunSummary: Sendable {
         self.performanceMode = performanceMode
         self.fmSettings = fmSettings
         self.interrupted = interrupted
+        self.abortReason = abortReason
         self.servicesWarnings = servicesWarnings
         self.responseMeasurement = responseMeasurement
     }
@@ -945,6 +950,9 @@ public final class RunOrchestrator: Sendable {
     /// 二重に持たない)。立った後は通常の完了経路(録画の停止・index.json・lease 解放・
     /// drain)をそのまま通る —— 新規に何かを分岐させない
     private let interruptRequested = RunInterruptFlag()
+    /// 遅延参加が1台も来なかったときの中止理由(nil = 中止していない)。**中止も interruptRequested を立てて
+    /// 配布を止める**が、利用者の中断ではないので、中断のときだけ省く後始末は `stoppedByUser` で見分ける
+    private let lateJoinAbort = LockedValue<String?>(nil)
     /// ScenarioHost.run(registerChildProcess:) への素通し(呼び出し側が実行中の子を SIGTERM
     /// できるようにする登録口。FTCore は fleetest ターゲットの型を知らないので closure で受ける)
     private let registerChildProcess: (@Sendable (Process) -> @Sendable () -> Void)?
@@ -974,9 +982,17 @@ public final class RunOrchestrator: Sendable {
     /// 受け取らない不調機(ロック画面のままだったエミュレータ)は次の run で 0 から数え直し、2 run に 1 回しか外れない。
     /// 復活したレーンは最初の失敗で再び離脱し、直っていれば最初の通過で台帳が消える
     private func persistStreak(_ breaker: WorkerCircuitBreaker, key: String?) async {
-        guard let s = laneStreakKey(key), await !interruptRequested.isRequested() else { return }
+        guard let s = laneStreakKey(key), await !stoppedByUser() else { return }
         LaneFailureStreakStore.save(stateDir: s.dir, key: s.key,
                                     consecutiveFailures: breaker.consecutiveFailures)
+    }
+
+    /// 遅延参加の OS の供給が全滅したときの中止理由(**唯一の定義**。--debug の逐次経路も同じ文で止める)
+    public static func lateJoinAbortReason(platforms: Set<String>) -> String {
+        let names = platforms.sorted().map { $0 == "ios" ? "iOS" : $0 == "android" ? "Android" : $0 }
+            .joined(separator: "/")
+        return "no \(names) device joined the run (every \(names) device dropped out during supply"
+            + " — the reason for each is in the lines above)"
     }
 
     /// `revived`: 同じ run の中で復帰したレーン。台帳はこの run の失敗も含むので「前の run」とは言えない
@@ -1064,6 +1080,12 @@ public final class RunOrchestrator: Sendable {
     /// (実行中の子プロセスの SIGTERM は呼び出し側が registerChildProcess の登録簿で行う ——
     /// ここでは二重に持たない)。立てた後は run() の通常の完了経路(録画停止・lease 解放・
     /// drain・summary)がそのまま走る
+    /// 利用者の中断(SIGINT/SIGTERM)か。遅延参加の中止は配布を止めるだけで、中断のときに省く後始末(片付け・
+    /// afterAll・表示の停止の確認・連続失敗の記録)は省かない
+    private func stoppedByUser() async -> Bool {
+        await interruptRequested.isRequested() && lateJoinAbort.withLock { $0 } == nil
+    }
+
     public func requestInterrupt() {
         Task { await interruptRequested.request() }
     }
@@ -1317,6 +1339,20 @@ public final class RunOrchestrator: Sendable {
             if let late = lateWorkers {
                 let joiners = await awaitUnlessInterrupted(
                     late.provider, interrupted: interruptRequested, fallback: [])
+                // **1台も合流しなかった = その OS の供給が全滅 → 異常として配布を止める**(ユーザー決定)。
+                // 走っているシナリオは最後まで走らせ(殺すとその結果まで失う)、残りは中止理由つきで記録する。
+                // 止めるのはその OS のシナリオが待っているときだけ(待っていなければ全滅しても run の結果に関係しない)。
+                // 中断で待つのをやめた場合(fallback の [])は中断として扱う
+                if joiners.isEmpty, await !interruptRequested.isRequested() {
+                    var pending = false
+                    for (key, queue) in queues where late.platforms.contains(drainInfo(key, false).platform) {
+                        if await queue.hasItems() { pending = true; break }
+                    }
+                    if pending {
+                        lateJoinAbort.withLock { $0 = Self.lateJoinAbortReason(platforms: late.platforms) }
+                        await interruptRequested.request()
+                    }
+                }
                 for worker in joiners {
                     guard let queue = queues[queueKey(worker)] else { continue }
                     await joinedKeys.insert(queueKey(worker))
@@ -1332,7 +1368,9 @@ public final class RunOrchestrator: Sendable {
         // **全デバイスの仕事が終わってから** afterAll を run × クラスで1回(RunSharedSession の申告順)。
         // 走らせる先はそのクラスのシナリオが走った OS で、仕事を最後まで終えたデバイスのうち最初のもの。
         // そのデバイスの lease は runWorker が外し済みなので、走らせる間だけ取り直す(モニターを割り込ませない)
-        if await !interruptRequested.isRequested() {
+        // 遅延参加の中止は利用者の中断ではない(走り終えたレーンの afterAll は撃つ)
+        let abortReason = lateJoinAbort.withLock { $0 }
+        if await !stoppedByUser() {
             let lanes = finishedLanes.withLock { $0 }
             // 選んだデバイスの名前(runAfterAlls はクラスごとに target を1回ずつ申告順に呼び、結果も同じ順で返す)
             let chosenLabels = LockedValue<[String]>([])
@@ -1379,10 +1417,12 @@ public final class RunOrchestrator: Sendable {
         // 中断による drain は「ワーカーが使えない」ではなく事実が違うので理由を差し替える
         // (results insights が誤って「デバイス側の問題」と読まないように)
         let joined = await joinedKeys.snapshot()
-        let interrupted = await interruptRequested.isRequested()
+        let interrupted = await stoppedByUser()
         for (key, queue) in queues {
             var drain = drainInfo(key, joined.contains(key))
-            if interrupted {
+            if let abortReason {
+                drain.reason = abortReason
+            } else if interrupted {
                 drain.reason = RunRecorder.interruptedBeforeStartReason
             }
             while let item = await queue.next() {
@@ -1402,7 +1442,8 @@ public final class RunOrchestrator: Sendable {
                                  freezeRetries: await retries.snapshot(),
                                  fmUnavailableScenarios: await fmUnavailable.snapshot(),
                                  workerAnomalies: await anomalies.snapshot(),
-                                 interrupted: interrupted)
+                                 interrupted: interrupted,
+                                 abortReason: abortReason)
         continuation.yield(.runFinished(passed: summary.passed, failed: summary.failed,
                                         skipped: summary.skipped))
         continuation.finish()
@@ -1694,7 +1735,7 @@ public final class RunOrchestrator: Sendable {
             // 確かめない** —— 画面を見ていないので捨てる結果が無く、上限で書き換える成功の記録も無い(次の境目が確かめる)
             var displayFreeze: (detail: String, recovery: WorkerRecoveryKind?)?
             if outcome != .frozen, outcome != .notApplicable, let checkLaneDisplay,
-               await !interruptRequested.isRequested(),
+               await !stoppedByUser(),
                case .frozen(let detail, let recovery) = await checkLaneDisplay(
                    worker, Self.restoreAppID(fromProfile: appBundleIDs[worker.platform],
                                              scenarioID: item.info.id), { [continuation] message in
@@ -1876,8 +1917,9 @@ public final class RunOrchestrator: Sendable {
             await progressState?.scenarioFinished(laneKey: progressLaneKey, passed: false)
             failed += 1
         }
-        // キューを掃き切ったデバイスだけが片付ける(離脱は上で return 済み・中断中は新しい子を起こさない)
-        if await !interruptRequested.isRequested() {
+        // キューを掃き切ったデバイスだけが片付ける(離脱は上で return 済み・中断中は新しい子を起こさない。
+        // 遅延参加の中止では片付ける = 利用者が止めたのではない)
+        if await !stoppedByUser() {
             let outcomes = await ScenarioHost.runDeviceTearDowns(
                 project: project, connection: worker.connection,
                 deviceSession: deviceSessions.session(for: BroadcastPlan.laneKey(of: worker)),

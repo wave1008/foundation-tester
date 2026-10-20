@@ -63,11 +63,13 @@ final class HostRecordingProbeTests: XCTestCase {
         XCTAssertFalse(code.contains("line.contains(\"Recording started\")"))
     }
 
-    /// iOS ワーカーの供給口は3つ(ProfileRunner の遅延合流 / ApiRunCommand の遅延合流・直接供給)。
-    /// **全部で**凍結のトリアージの後に検査を通す(片方だけだと、その経路の録画だけ欠ける)
+    /// iOS ワーカーの供給口は `ProfileSupplyLanes.ios` の1つ。凍結のトリアージの後に検査を通す
+    /// (呼び手に直呼びが戻ると、その経路の録画だけ欠ける = 件数で落とす)
     func testEverySupplyPathRecoversStaleRecordingAfterTheBlankTriage() throws {
-        for (file, expected) in [("Sources/fleetest/ProfileRunner.swift", 1),
-                                 ("Sources/fleetest/ApiRunCommand.swift", 2)] {
+        // 供給口は ProfileSupplyLanes.ios の1つ(呼び手に直呼びが戻ったら件数が食い違って落ちる)
+        for (file, expected) in [("Sources/fleetest/ProfileSupplyLanes.swift", 1),
+                                 ("Sources/fleetest/ProfileRunner.swift", 0),
+                                 ("Sources/fleetest/ApiRunCommand.swift", 0)] {
             let code = try source(file)
             let call = "ProfileWorkerFactory.recoverStaleRecordingIOSWorkers("
             let triage = "BlankWorkerTriage.excludeBlankScreenWorkers("

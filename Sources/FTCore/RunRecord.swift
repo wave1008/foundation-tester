@@ -307,7 +307,8 @@ public struct RunMetaRecord: Codable, Sendable {
     /// **results insights がここを見て「クラッシュ」ではなく「利用者が止めた」と読み分ける**
     /// 
     public var interrupted: Bool?
-    /// 供給段(ワーカー構築等)で run が例外により終了したときの理由(英語、人間可読)。
+    /// ツールが異常として run を止めた理由(英語、人間可読)。供給段の例外で始まる前に終わった run と、
+    /// 遅延参加の OS が1台も合流せず途中で止めた run(RunSummary.abortReason)の2つ。
     /// 正常終了・中断(interrupted)のときは nil。**finishedAt はこの場合も必ず書く**
     /// (この欄が唯一の追加情報 —— 無いと理由がログにしか残らない)
     public var abortReason: String?
