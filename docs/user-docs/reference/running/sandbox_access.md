@@ -60,12 +60,12 @@ them for secrets. Put secrets a scenario needs in this Mac's file for
 
 ## Destinations
 
-<img src="../../images/security/en/network.png" width="720" alt="A scenario connects directly to services on localhost and to the bridge of a physical iOS device on Wi-Fi. The adb server and Emulator ports are closed. Outbound traffic goes through fleetest's proxy, which relays only to allowedDomains and returns 403 for others. Direct connections that bypass the proxy cannot leave the Mac">
+<img src="../../images/security/en/network.png" width="720" alt="A scenario connects directly to services on localhost, and to the bridge of a physical iOS device on Wi-Fi through fleetest's relay. The adb server and Emulator ports are closed. Outbound traffic goes through fleetest's proxy, which relays only to allowedDomains and returns 403 for others. Direct connections that bypass the proxy cannot leave the Mac">
 
 | Destination | Reachable? |
 |---|---|
 | This Mac's localhost (bridges and so on) | Yes. Only the adb server (5037 by default), the Emulator ports (5554–5585) and Docker's API published on TCP (2375 / 2376) are closed |
-| The bridge of a physical iOS device connected over Wi-Fi | Yes, on that bridge's port number. The sandbox can narrow this only by port number, so **any host, not just the device, is reachable on that number** (without the proxy or `allowedDomains`) |
+| The bridge of a physical iOS device connected over Wi-Fi | Yes, through fleetest's relay on this Mac's `localhost` (the same shape as a USB tunnel). The relay exists only while that scenario runs and connects only to that device's bridge. No other host is reachable |
 | Destinations listed in `sandbox.allowedDomains` | Yes, through fleetest's proxy |
 | Anything else (the internet, the company LAN) | No |
 

@@ -56,9 +56,6 @@ public enum ScenarioSandbox {
         /// シナリオ実行バイナリの名前。Vision / Core ML のコンパイルキャッシュが
         /// `~/Library/Caches/<名前>/` に置かれる
         public var runnerName: String
-        /// localhost 以外のブリッジへ繋ぐときのポート(実機を LAN 越しに駆動するとき)。
-        /// Seatbelt のアドレス条件はホストに `*` か `localhost` しか書けないので、ポートで絞る
-        public var remoteBridgePorts: [UInt16]
         /// 親の `SandboxBroker` のソケット(Simulator の操作を頼む口)。一覧取得のように
         /// デバイスを駆動しない起動では nil
         public var brokerSocket: String?
@@ -77,7 +74,7 @@ public enum ScenarioSandbox {
 
         public init(purpose: Purpose, reportDir: String?, denyRead: [String], projectRoot: String,
                     stateRoots: [String], home: String,
-                    userTempRoots: [String], runnerName: String, remoteBridgePorts: [UInt16]) {
+                    userTempRoots: [String], runnerName: String) {
             self.purpose = purpose
             self.reportDir = reportDir
             self.denyRead = denyRead
@@ -86,7 +83,6 @@ public enum ScenarioSandbox {
             self.home = home
             self.userTempRoots = userTempRoots
             self.runnerName = runnerName
-            self.remoteBridgePorts = remoteBridgePorts
         }
     }
 
@@ -239,8 +235,7 @@ public enum ScenarioSandbox {
             home: home,
             userTempRoots: [childTemporaryDirectory(runnerName: runner.lastPathComponent),
                             childCacheDirectory(runnerName: runner.lastPathComponent)].compactMap { $0 },
-            runnerName: runner.lastPathComponent,
-            remoteBridgePorts: connection.map(remoteBridgePorts) ?? [])
+            runnerName: runner.lastPathComponent)
         scope.extraWritable = extraWritable
         scope.allowDirectAdb = plan.allowDirectAdb
         scope.simulatorUDID = simulatorUDID(connection)
@@ -402,12 +397,6 @@ public enum ScenarioSandbox {
     /// `RepoRoot.hasRunner` と同じ目印(ツール本体のルートかどうか)
     private static func hasBridgeAssets(_ dir: URL) -> Bool {
         FileManager.default.fileExists(atPath: dir.appendingPathComponent("Runner/project.yml").path)
-    }
-
-    /// ブリッジが localhost に居ないときに開けるポート。host が nil / ループバックなら空
-    static func remoteBridgePorts(_ connection: DriverConnection) -> [UInt16] {
-        guard let host = connection.host, !isLoopback(host) else { return [] }
-        return [connection.port, connection.xcuiPort].compactMap { $0 }
     }
 
     static func isLoopback(_ host: String) -> Bool {
@@ -680,9 +669,8 @@ public enum ScenarioSandbox {
         // **待ち受け(network-bind / network-inbound)は開けない**。子は何も待ち受けず、外向きの接続は bind の許可が無くても
         // 通る(実測: curl・urllib・UDP の送信)。`localhost` は自機の全アドレスを含み Seatbelt ではループバック
         // だけに絞れないので、開けると 0.0.0.0 で待ち受けて LAN から繋いだ相手へ応答できた(同日実測)
-        for port in scope.remoteBridgePorts {
-            lines.append("(allow network-outbound (remote ip \"*:\(port)\"))")
-        }
+        // **自機の外へ出る許可は置かない**。Wi-Fi で繋いだ iOS 実機のブリッジは、親が 127.0.0.1 に立てる中継
+        // (`BridgeRelay`)越しに渡す —— `*:<port>` を開けると、そのポートなら任意のホストへ出られた
         // adb サーバと Emulator のコンソール / adbd は閉じる(後に書いた規則が勝つので上の localhost:* より後)。
         // 開いていると `adb shell` で Emulator の中 = 枠の外から外部へ出られ、繋がった全端末を操作できる。
         // 子の adb は親が代行する(`AdbPolicy`)。Docker の TCP の管理口は `allowDirectAdb` でも閉じる

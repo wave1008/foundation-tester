@@ -80,6 +80,34 @@ public struct DriverConnection: Sendable, Hashable {
         self.physical = physical
         self.host = host
     }
+
+    /// 宛先ホストだけを差し替えた写し(他の欄はそのまま)
+    func with(host: String?) -> DriverConnection {
+        DriverConnection(platform: platform, port: port, serial: serial, engine: engine, udid: udid,
+                         xcuiPort: xcuiPort, inappBundleID: inappBundleID, deviceName: deviceName,
+                         physical: physical, host: host)
+    }
+}
+
+/// LAN の先のブリッジ(Wi-Fi で繋いだ iOS 実機)を、シナリオの子へは親の中継(`BridgeRelay`)越しに渡す計画。
+/// 子は Seatbelt の中で `localhost` にしか出られない(実機の IP へ出す許可は置かない)
+enum BridgeRelayPlan {
+    /// 中継の待ち受け = 子の宛先
+    static let childHost = "127.0.0.1"
+
+    /// relays = 中継する (ポート, 宛先ホスト)。待ち受けは実機と同じポート番号(BridgeRelay の冒頭)。
+    /// 宛先がループバック(Simulator・USB トンネル)か、デバイスに触らない(dry-run)なら中継しない
+    static func plan(_ connection: DriverConnection, dryRun: Bool)
+        -> (child: DriverConnection, relays: [(port: UInt16, host: String)]) {
+        guard !dryRun, let host = connection.host, !ScenarioSandbox.isLoopback(host) else {
+            return (connection, [])
+        }
+        var ports: [UInt16] = []
+        for port in [connection.port, connection.xcuiPort].compactMap({ $0 }) where !ports.contains(port) {
+            ports.append(port)
+        }
+        return (connection.with(host: childHost), ports.map { ($0, host) })
+    }
 }
 
 public enum ScenarioHostError: Error, LocalizedError {
@@ -641,6 +669,20 @@ public enum ScenarioHost {
         if !fm.fmTextVisibilityCheck { args.append("--no-fm-text-visibility-check") }
         if !fm.screenLooksLike { args.append("--no-screen-looks-like") }
         if dryRun { args.append("--dry-run") }
+        // Wi-Fi の実機のブリッジは子へ中継越しに渡す(子は実機の IP へ出られない)。子が終わるまで中継を保つ
+        let relayPlan = BridgeRelayPlan.plan(connection, dryRun: dryRun)
+        let childConnection = relayPlan.child
+        var relays: [BridgeRelay] = []
+        defer { for relay in relays { relay.stop() } }
+        for (port, host) in relayPlan.relays {
+            do {
+                relays.append(try BridgeRelay(listenPort: port, targetHost: host, targetPort: port))
+            } catch {
+                return abortBeforeLaunch("Cannot relay the bridge at \(host):\(port) to the scenario"
+                    + " (127.0.0.1:\(port) could not be opened: \(error.localizedDescription))."
+                    + " The scenario runs in a sandbox that can only reach this Mac, so it was not started")
+            }
+        }
         if let port = connection.port { args += ["--port", String(port)] }
         if let serial = connection.serial { args += ["--serial", serial] }
         if let engine = connection.engine { args += ["--engine", engine] }
@@ -649,7 +691,7 @@ public enum ScenarioHost {
         if let inappBundleID = connection.inappBundleID { args += ["--inapp-app", inappBundleID] }
         if let deviceName = connection.deviceName { args += ["--device-name", deviceName] }
         if connection.physical { args.append("--physical") }
-        if let host = connection.host { args += ["--bridge-host", host] }
+        if let host = childConnection.host { args += ["--bridge-host", host] }
         do {
             args += ["--tunables", try tunablesArgument(tunables)]
         } catch {
@@ -692,7 +734,7 @@ public enum ScenarioHost {
             if let launch = try sandboxedLaunch(
                 project: project, runner: runner, arguments: args, reportDir: reportDir,
                 extraWritable: (dryRun ? nil : stillFramesDir).map { [$0.path] } ?? [],
-                connection: connection, drivesDevice: !dryRun) {
+                connection: childConnection, drivesDevice: !dryRun) {
                 sandboxBroker = launch.broker
                 process.executableURL = launch.executable
                 process.arguments = launch.arguments

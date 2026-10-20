@@ -70,7 +70,7 @@ IP アドレスもドメイン名も書けない。書けるのは `"localhost:8
 
 - **`localhost` は自機の全アドレスを含む**。この Mac の LAN 側のアドレス(`10.0.0.104`)への接続も
   `(remote ip "localhost:*")` で通った。
-- LAN 越しのブリッジ(実機)を開けるには、ポートで絞るしかない(`"*:<port>"`)。
+- サンドボックスは Mac の外のホストを一切開けない。LAN 越しのブリッジ(実機)は、親が `127.0.0.1:<実機のブリッジと同じポート番号>` に張る中継(`BridgeRelay`)を通す。子の `BridgeClient` が実機のトークンを `.fleetest/bridge-<port>.endpoint` からポート番号で引くため、番号は揃える。
 - **localhost もポート単位の許可制にできる**(2026-10-07 実測)。`(deny network-outbound (remote ip "localhost:*"))`
   の後に `(allow network-outbound (remote ip "localhost:18081"))` と書くと、18081 は通り、待ち受けのある
   18082 は繋げない(curl の終了コード 7)。1つの規則に `(remote ip "localhost:18081") (remote ip "localhost:18082")`

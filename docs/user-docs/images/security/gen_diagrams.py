@@ -60,7 +60,7 @@ T={
      lh="localhost のサービス", lhsub="ブリッジ など", adb="✕ adb サーバ・Emulator のポート", adbsub="5037・5554〜5585(adb は本体が代行)",
      proxy="fleetest 本体のプロキシ", proxysub="127.0.0.1・allowedDomains と照合", env="HTTP(S)_PROXY",
      warn="⚠ localhost のローカルプロキシや\nデバッグポートは迂回路になる",
-     ios="Wi-Fi で繋いだ iOS 実機", iossub="そのブリッジのポートだけ", ok="allowedDomains の宛先", oksub="例: api.example.com:443",
+     ios="Wi-Fi で繋いだ iOS 実機", iossub="fleetest の中継を通して", ok="allowedDomains の宛先", oksub="例: api.example.com:443",
      ng="✕ それ以外の宛先", ngsub="インターネット・社内 LAN", relay="中継", deny="403", direct="直接は ✕(UDP・自作の URLSession など)",
      note="httpRequest と fleetestURLSession はプロキシを設定済み。自分で作った URLSession は環境変数のプロキシを読みません"),
  ),
@@ -90,7 +90,7 @@ T={
      lh="Services on localhost", lhsub="bridges, ...", adb="✕ adb server, Emulator ports", adbsub="5037, 5554–5585 (fleetest runs adb)",
      proxy="fleetest's proxy", proxysub="127.0.0.1, checks allowedDomains", env="HTTP(S)_PROXY",
      warn="⚠ Local proxies and debug ports\non localhost are bypasses",
-     ios="Physical iOS device on Wi-Fi", iossub="its bridge port only", ok="allowedDomains", oksub="e.g. api.example.com:443",
+     ios="Physical iOS device on Wi-Fi", iossub="through fleetest's relay", ok="allowedDomains", oksub="e.g. api.example.com:443",
      ng="✕ Other destinations", ngsub="internet, company LAN", relay="relay", deny="403", direct="Direct ✕ (UDP, your own URLSession, ...)",
      note="httpRequest and fleetestURLSession already use the proxy. A URLSession you create does not read the proxy from env vars"),
  )}

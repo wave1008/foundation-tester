@@ -38,12 +38,11 @@ final class ScenarioSandboxTests: XCTestCase {
     private func path(_ sub: String) -> String { root.appendingPathComponent(sub).path }
 
     /// 一時領域そのものは書ける場所に入れない(`root` がその下にあり、入れると全部が通る)
-    private func scope(remoteBridgePorts: [UInt16] = []) -> ScenarioSandbox.Scope {
+    private func scope() -> ScenarioSandbox.Scope {
         var scope = ScenarioSandbox.Scope(
             purpose: .scenario, reportDir: path("reports"), denyRead: [path("home/.ssh"), path("home/.config")],
             projectRoot: path("project"), stateRoots: [path("repo"), path("tool")],
-            home: path("home"), userTempRoots: [], runnerName: "fleetest-scenarios-X",
-            remoteBridgePorts: remoteBridgePorts)
+            home: path("home"), userTempRoots: [], runnerName: "fleetest-scenarios-X")
         scope.extraWritable = [path("stills")]
         return scope
     }
@@ -590,14 +589,14 @@ final class ScenarioSandboxTests: XCTestCase {
         XCTAssertTrue(inside.output.contains(Self.denied), inside.output)
     }
 
-    /// localhost に居ないブリッジ(実機を LAN 越しに駆動)は、そのポートだけ開く
-    func testRemoteBridgePortIsReachableOnlyWhenDeclared() throws {
-        let declared = try runSandboxedOutput(
-            nc(host: Self.unroutable, port: 9), scope: scope(remoteBridgePorts: [9]))
-        XCTAssertFalse(declared.output.contains(Self.denied), declared.output)
-        let other = try runSandboxedOutput(
-            nc(host: Self.unroutable, port: 9), scope: scope(remoteBridgePorts: [10]))
-        XCTAssertTrue(other.output.contains(Self.denied), other.output)
+    /// **自機の外へはどのポートでも出られない**。Wi-Fi の実機のブリッジは親の中継(`BridgeRelay`)越しに渡すので、
+    /// `*:<port>` の許可は置かない(置くと、そのポートなら任意のホストへ出られた)
+    func testNoHostOutsideThisMacIsReachableOnAnyPort() throws {
+        for port: UInt16 in [9, 8123, 443] {
+            let attempt = try runSandboxedOutput(nc(host: Self.unroutable, port: port))
+            XCTAssertTrue(attempt.output.contains(Self.denied), "port \(port): \(attempt.output)")
+        }
+        XCTAssertFalse(try ScenarioSandbox.profile(scope()).contains("remote ip \"*:"))
     }
 
     private static let unroutable = "192.0.2.1"
@@ -605,15 +604,6 @@ final class ScenarioSandboxTests: XCTestCase {
 
     private func nc(host: String, port: UInt16) -> [String] {
         ["/usr/bin/nc", "-v", "-z", "-G", "1", host, String(port)]
-    }
-
-    func testRemoteBridgePortsComeOnlyFromNonLoopbackHosts() {
-        let local = DriverConnection(platform: "ios", port: 8123, xcuiPort: 8124)
-        XCTAssertEqual(ScenarioSandbox.remoteBridgePorts(local), [])
-        let loopback = DriverConnection(platform: "ios", port: 8123, xcuiPort: 8124, host: "127.0.0.1")
-        XCTAssertEqual(ScenarioSandbox.remoteBridgePorts(loopback), [])
-        let lan = DriverConnection(platform: "ios", port: 8123, xcuiPort: 8124, host: "192.168.1.20")
-        XCTAssertEqual(ScenarioSandbox.remoteBridgePorts(lan), [8123, 8124])
     }
 
     func testCanonicalPathResolvesSymlinksForPathsThatDoNotExistYet() throws {

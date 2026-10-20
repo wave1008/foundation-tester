@@ -33,8 +33,7 @@ final class ScriptSandboxTests: XCTestCase {
             purpose: .script, reportDir: path("reports"),
             denyRead: [path("home/.ssh"), path("home/.config")],
             projectRoot: path("workspace"), stateRoots: [path("repo")],
-            home: path("home"), userTempRoots: [path("temp")], runnerName: "fleetest-script",
-            remoteBridgePorts: [])
+            home: path("home"), userTempRoots: [path("temp")], runnerName: "fleetest-script")
         scope.dataDir = path("workspace/data")
         scope.allowedLoopbackPorts = ports
         return scope

@@ -4636,7 +4636,11 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
   user client と `MTLCompilerService` を閉じた状態では、1 プロファイルが 120 秒 → 1,478 秒になり、
   画像照合は `Failed to create CVPixelBufferPool` / `espresso error: -1` で落ちた
 - **通信**: 外向きは localhost と親の broker のソケットだけ。Seatbelt のアドレス条件はホストに `*` か
-  `localhost` しか書けないので、ドメイン単位の許可は親のプロキシで行う(`allowedDomains`)
+  `localhost` しか書けないので、ドメイン単位の許可は親のプロキシで行う(`allowedDomains`)。
+  Wi-Fi 越しの iOS 実機のブリッジも外向きの穴は開けず、親が `127.0.0.1:<実機のブリッジと同じポート番号>` に
+  シナリオごとの中継(`FTCore.BridgeRelay`。`ScenarioHost.run` で配線。実機の LAN の IP・ポートにだけ転送する)を張る。
+  子の `BridgeClient` は `.fleetest/bridge-<port>.endpoint` をポート番号で引いてトークンを得るので番号は揃える。
+  張れなければシナリオは起動せず理由を記録する
 - **書式の罠(実測)**: ①パスは symlink 解決後で照合される(`/var` → `/private/var`)。
   `URL.resolvingSymlinksInPath` は `/private` を剥がすので `realpath` を使う ②`network*` に
   `(local ip "localhost:*")` を書くと外向きの接続が全部通る(向きごとに分けて宛先で絞る)

@@ -201,8 +201,9 @@ fleetest doctor
 What you should see:
 
 - The first command prints a line for each running bridge, and nothing if no bridge is running. An address (the `NAME`
-  column) such as `127.0.0.1:8123` or `localhost:8123` means loopback only. `*:8123` is the LAN path of a physical iOS
-  device connected over Wi-Fi (token required). A physical device used over USB, a Simulator and an Emulator do not show it.
+  column) such as `127.0.0.1:8123` or `localhost:8123` means loopback only. The bridge of a physical iOS device connected
+  over Wi-Fi listens on the device, so it does not appear in this list (only while a scenario runs, fleetest's relay
+  appears as `127.0.0.1:<port>`).
 - The second prints fleetest's own listeners. Normally nothing. Only while a scenario runs with `allowedDomains` set, a line
   for the proxy on `127.0.0.1` appears (the port changes each time).
 - `fleetest doctor` warns about leftover old bridges and about Docker's API being published on TCP. If nothing is printed,
@@ -231,8 +232,8 @@ cat ~/.config/fleetest/config.json
 What you should see:
 
 - Only the destinations listed in `allowedDomains` are reachable from a scenario. If the file does not exist, or
-  `allowedDomains` is missing or empty, a scenario cannot reach the outside at all. **The exception is a run that uses a
-  physical iOS device over Wi-Fi**: on that bridge's port numbers, any host is reachable ([Notes and limitations](limitations.md)).
+  `allowedDomains` is missing or empty, a scenario cannot reach the outside at all. The bridge of a physical iOS device over Wi-Fi is reached through a
+  relay that fleetest opens on this Mac's `localhost` (only while that scenario runs, and connected only to that device's bridge).
 - Even a listed destination is not reachable by a connection the scenario makes directly with a `URLSession` it created (only
   `httpRequest` and `fleetestURLSession`, which go through the proxy, reach it). Connecting to a destination that is not listed
   returns `403 Forbidden` from the proxy. How to confirm it by actually connecting, and how to read failures, are in

@@ -109,7 +109,7 @@ public enum ScriptSandbox {
         var scope = ScenarioSandbox.Scope(
             purpose: .script, reportDir: nil, denyRead: plan.denyRead, projectRoot: inputs.projectRoot.path,
             stateRoots: stateRoots, home: home, userTempRoots: [inputs.temporaryDirectory],
-            runnerName: "fleetest-hooks", remoteBridgePorts: [])
+            runnerName: "fleetest-hooks")
         scope.dataDir = inputs.workspace.appendingPathComponent("data").path
         scope.hookWritablePaths = inputs.hookWritablePaths
         scope.allowedLoopbackPorts = inputs.loopbackPorts
