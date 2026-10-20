@@ -49,6 +49,7 @@ hinge(130)              // half-open book posture
   the same in two consecutive screen reads (a moving drawer or page swallows the tap). When the
   icon is your app's, the step then waits for the app to come to the foreground and fails (without
   tapping again) if it does not.
+- **`tapAppIcon` never taps when the home-screen tree does not match the shown display.** Seen on the iPhone Duo simulator with Xcode 27.2 RC, where the inner display's layout leaks into the tree. On a simulator with two built-in displays it compares the tree's screen size with the shown display and fails with `the home screen tree reports a … screen but the shown display is …`; an icon whose centre is reported outside the screen is re-read for the screen wait timeout and then fails with `the home screen reports the icon outside the screen …` instead of tapping a point that cannot land.
 - **`rotateTo` contracts on the app's UI orientation**, not on how the physical device is
   tilted — the frames a scenario reads are in app-space and behave the same across iOS,
   Android, and every supported UI framework. Only `.portrait` and `.landscape` exist (no

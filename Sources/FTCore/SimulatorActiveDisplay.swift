@@ -13,11 +13,20 @@ public enum SimulatorActiveDisplay {
         public let displayID: Int
         public let pixelWidth: Int
         public let pixelHeight: Int
+        /// devicectl の `pointScale`(Duo は 3)。無ければ nil = pt の大きさは分からない(1 と決めない)
+        public let pointScale: Double?
 
-        public init(displayID: Int, pixelWidth: Int, pixelHeight: Int) {
+        public init(displayID: Int, pixelWidth: Int, pixelHeight: Int, pointScale: Double? = nil) {
             self.displayID = displayID
             self.pixelWidth = pixelWidth
             self.pixelHeight = pixelHeight
+            self.pointScale = pointScale
+        }
+
+        /// 表示中の画面の大きさ(pt)。SpringBoard の木の画面と比べる(`AppIconLocator.treeMatchesShownDisplay`)
+        public var pointSize: (width: Double, height: Double)? {
+            guard let pointScale, pointScale > 0 else { return nil }
+            return (Double(pixelWidth) / pointScale, Double(pixelHeight) / pointScale)
         }
     }
 
@@ -34,7 +43,8 @@ public enum SimulatorActiveDisplay {
         guard active.count == 1, let chosen = active.first,
               let id = chosen["displayId"] as? Int,
               let size = chosen["nativeSize"] as? [Int], size.count == 2 else { return nil }
-        return Display(displayID: id, pixelWidth: size[0], pixelHeight: size[1])
+        let scale = (chosen["pointScale"] as? NSNumber)?.doubleValue
+        return Display(displayID: id, pixelWidth: size[0], pixelHeight: size[1], pointScale: scale)
     }
 
     /// 1回の問い合わせ(実測 0.14 秒・M2 Ultra)。失敗・単画面は nil

@@ -1354,6 +1354,36 @@ final class CommandDispatchTests: XCTestCase {
         XCTAssertEqual(driver.homeCount, 2)
     }
 
+    /// SpringBoard の木がアイコンの枠を画面の外に載せているときは撃たない(iPhone Duo・Xcode 27.2 RC の実測:
+    /// 外側 466x678 の木に内側の場面の枠 [52, -75, 87x83] = 中心 (95, -33))。読み直しても直らなければ明示して失敗
+    func testTapAppIconRefusesIconReportedOutsideTheScreen() {
+        let driver = HomeScreenDriver()
+        let offScreen = ElementInfo(ref: 5, type: "Icon", identifier: "FT E2E iOS", label: "FT E2E iOS", value: nil,
+                                    placeholder: nil, enabled: true,
+                                    frame: FTRect(x: 52, y: -75, width: 87, height: 83), depth: 0)
+        driver.scriptedSnapshots = [SnapshotResponse(sessionBundleID: "com.apple.springboard",
+                                                     screen: FTRect(x: 0, y: 0, width: 466, height: 678),
+                                                     elements: [offScreen], truncatedCount: 0)]
+        // 読み直しの上限は screenWaitTimeout(既定のまま待つとテストが長い)
+        let core = FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
+                               scenarioID: "T.S0010", scenarioTitle: "t", delegate: nil, healingEnabled: false,
+                               tunables: RunTunables(screenWaitTimeout: 0.2), dryRun: false,
+                               fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                                   .appendingPathComponent("ft-dispatch-test.json"),
+                               emit: { _ in })
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario { scene(1, "s") { action { tapAppIcon("FT E2E iOS") } } }
+
+        XCTAssertFalse(core.finalRecord.passed)
+        XCTAssertTrue(driver.tappedRefs.isEmpty, "画面の外の枠を撃ってはいけない")
+        guard case .failed(let reason) = core.finalRecord.scenes.flatMap(\.steps)[0].status else {
+            return XCTFail("failed になっていない")
+        }
+        XCTAssertTrue(reason.contains("outside the screen (centre (95,-33) of 466x678)"), reason)
+    }
+
     /// 現在画面に無いアイコンは、Android ならドロワーを開く flick(drag)を撃ってから再探索すること
     func testTapAppIconFindsIconAfterFlickOnAndroid() {
         let driver = HomeScreenDriver()

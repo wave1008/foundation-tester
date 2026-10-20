@@ -70,7 +70,37 @@
   - **ヒンジの送り方とも無関係**: DeviceHub の開閉ボタンで手で開閉しても同じように落ちた(Duo-02・SpringBoard 6・testmanagerd 3。
     ただしその間も拡張が起こした XCUITest ランナーが付いていた = XCTest の付いていない対照は未確認)。Simulator(27.2 beta)側の問題として扱う。
     Xcode の更新で直るかを、開閉だけの4往復(撮影・木の読み無し)で数えて確かめる
-  - 影響: DSL の `fold()` / `unfold()`・MCP の `ft_fold`・ライブ操作の開閉ボタンの全部
+  - **Xcode 27.2 RC(27B48・ランタイム 24B91014)でも直っていない。計測では悪化**(2026-10-21・Duo-01・ランナーの /hinge だけ・10 秒間隔):
+    1回目の「開く」の直後に testmanagerd が落ちてランナーが死に(以後の7回の送信は届かず)、その後は**何も送らなくても SpringBoard が
+    約 8〜15 秒ごとに落ち続けた**(04:20〜04:24 の4分で SpringBoard 15・chronod 15・InputUI 15・PosterBoard 14・CalendarPosterExtension 3・
+    testmanagerd 1・splashboardd 1・ウィジェットの拡張 1 = 計 65 件・全部 `FBSDisplayMode` の検査)。`simctl shutdown` するまで止まらなかった。
+    10/17 のベータ 3 は4往復で 17 件(SpringBoard 4・testmanagerd 2)
+  - **ツールの開閉が無くても落ちる**(同日・Duo-02): 03:56:51 に backboardd が落ちて起動し直し(原因は未特定。直前にシナリオの失敗時の
+    SpringBoard の撮影が 45 秒返らなかった)→ 03:57:07 に SpringBoard が起動し直し → `-[SBSceneRegionsUpdater _updateHingeStatusWithPose:]`
+    → `FBSDisplayMode` の検査で落ちた。引き金は「SpringBoard が2画面の表示設定を作るときにヒンジの姿勢が渡ること」で、ヒンジの送信は
+    その一例。一方で同日の DSL の `31_折りたたみ`(02:4x〜02:5x)は緑で、その間の同種の落ちは InputUI 1 件だけ = 嵐になるかは
+    状態で大きく変わる(何が分けるかは未特定)
+  - 影響: DSL の `fold()` / `unfold()`・MCP の `ft_fold`・ライブ操作の開閉ボタンの全部。RC でも Duo の開閉は使えない前提で扱う
+
+- **iPhone Duo の Simulator(Xcode 27.2 RC・ランタイム 24B91014)で SpringBoard の木が表示中の画面と一致せず、`tapAppIcon` が落ちる**(2026-10-21)
+  - 症状: `30_アプリの外の操作` の `home` / `appSwitcher` → `tapAppIcon "FT E2E iOS"` が Duo 2 台で赤(10/16 のベータ 3 では緑・iPhone 17 Pro では緑)。
+    ブリッジのトレース(`FT_BRIDGE_TRACE='FT E2E iOS'`)で、SpringBoard の木が 466x678 の画面にアイコンの枠 **[52, -75, 87x83]**(幅と高さが
+    入れ替わり・中心 (95, -33) = 画面の上の外)を2回続けて返し、そこを撃ってアプリが前面に来なかった。最初の run の「App icon not found」も同じ木の崩れ
+  - 木の形: 外側と内側の両方の画面の SpringBoard の場面が1つの木に載る(状態バー2組・片方は縦書き・Dock 2組)。寸法と枠は履歴で変わる —
+    起動直後の Duo-01 = 466x678 で内側の場面の枠(11 秒以上そのまま)/ 開閉を1往復した後 = 画面 951x669(内側の横向きの寸法)で数分戻らず /
+    Duo-02 = 正しい 466x678・(103, 52)。時間の経過・座標タップでは戻らず、正しい状態になった契機は未特定
+  - 確かめた範囲: ランナーへ直接 `/home` を3回送ってから `/session springboard` → `/snapshot` を 0.5 秒ごとに読む形で、Duo-01 だけ再現(Duo-02 は正しい)。
+    `press(.home)` が効かない事象(17 Pro 0.8 秒 / Duo 8.4 秒 = 仮想 HID の救済経路)と、2 画面で `simctl io` が画面指定を要する事象は RC でも変わらず
+    (救済と画面の選択は引き続き有効)。開閉(`fold` / `unfold` / `hinge`)は新ランタイムでも緑。失敗時の SpringBoard の撮影が 45 秒返らなかった回あり
+  - 起動し直した直後(トレース付き・2 台とも)は第3の形: 木の画面が 951x669 で**アイコンが1つも載らない**(`frames={}`・ページ送りの始点
+    760.8 = 951×0.8)。2 回送っても変わらず「App icon not found」。失敗時の SpringBoard の撮影はここでも 45 秒返らなかった
+  - ツール側の防御(2 段): ①内蔵画面が2枚の Simulator では、最初に読んだ木の画面の大きさを `devicectl` の表示中の画面(pt)と照合し、
+    違えば探さずに明示して失敗(`AppIconLocator.treeMatchesShownDisplay`)②中心が画面の外の枠は撃たず、`screenWaitTimeout` まで
+    読み直して直らなければ明示して失敗(`AppIconLocator.isCentreOnScreen`)。どちらも崩れを直すものではない。防御を入れた後の run(10/21)で
+    Duo-01 は正しい木で緑・Duo-02 は1回目に②(中心 (95,-33))・振り直しの2回目(ブリッジの起動し直し後)に①(951x669)が出て、2段が実データで
+    それぞれ発火した。iPhone 17 Pro は2本とも緑のまま
+  - 影響: Duo で SpringBoard を読む機能全般(`tapAppIcon`・システムアラートの検出と操作・`appSwitcher` 後の復帰)。次に見るもの: Apple の次の版・
+    DeviceHub を付けて起動した Duo で同じか(起動時のヒンジの初期化が違う可能性)
 
 - **FM が ANE の仮想メモリの枯渇(`VM exhausted` → `Code=53 no memory`)で死に、Mac を再起動するまで戻らない**(2026-10-16・M1Ultra)
   - 症状: E2EX の開始直後に text / vision とも死に、2 時間半戻らなかった。fm-serve の入れ替えでは戻らない

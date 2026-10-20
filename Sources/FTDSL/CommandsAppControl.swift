@@ -411,20 +411,68 @@ public func tapAppIcon(_ appIconName: String? = nil,
             }
         }
 
+        // 中心が画面の外にある枠は撃たない(AppIconLocator.isCentreOnScreen の doc)。木が直るまで読み直し
+        // (上限 waitSeconds)、直らなければ失敗(消えたら nil = 呼び手は探索を続ける)
+        func onScreenIcon(_ first: ElementInfo, in tree: SnapshotResponse) async throws
+            -> (icon: ElementInfo?, snapshot: SnapshotResponse) {
+            var icon = first
+            var latest = tree
+            let deadline = Date().addingTimeInterval(waitSeconds)
+            while !AppIconLocator.isCentreOnScreen(icon, in: latest) {
+                guard Date() < deadline else {
+                    let centre = AppIconLocator.centre(of: icon)
+                    let where_ = "(centre (\(Int(centre.x)),\(Int(centre.y))) of "
+                        + "\(Int(latest.screen.width))x\(Int(latest.screen.height)))"
+                    let waited = "\(FTSeconds.format(waitSeconds))s"
+                    throw FTCommandError.message(
+                        "tapAppIcon \"\(appIconName)\": the home screen reports the icon outside the screen "
+                        + where_ + " and it stayed there for " + waited
+                        + ", so it was not tapped — the system UI tree does not match the shown display on this device")
+                }
+                try Task.checkCancellation()
+                latest = try await driver.snapshot()
+                guard let found = AppIconLocator.findIcon(appIconName, in: latest) else { return (nil, latest) }
+                icon = found
+            }
+            return (icon, latest)
+        }
+
         // 安定した枠のアイコンを1回だけ撃ち、後始末をする。撃てたら true
-        // (安定待ちの間にアイコンが消えたら撃たず false)
+        // (安定待ちの間にアイコンが消えた・画面の外のままなら撃たず false)
         func tapSettled(_ first: ElementInfo) async throws -> (tapped: Bool, snapshot: SnapshotResponse?) {
             let (settled, snapshot) = try await settledIcon(from: first)
-            guard let icon = settled else { return (false, snapshot) }
+            guard var icon = settled else { return (false, snapshot) }
+            if let tree = snapshot {
+                let (onScreen, latest) = try await onScreenIcon(icon, in: tree)
+                guard let onScreen else { return (false, latest) }
+                icon = onScreen
+            }
             try await driver.tap(ref: icon.ref)
             try await afterTap(icon)
             return (true, snapshot)
+        }
+
+        // 内蔵画面が2枚の Simulator だけ: 木の画面が表示中の画面の大きさと違えば、探しても撃っても当たらないので失敗
+        // (AppIconLocator.treeMatchesShownDisplay の doc)。実機・udid 不明は何もしない。単画面の Simulator も devicectl を1回
+        // 呼んで nil を受け(0.14 秒・M2 Ultra)何もしない —— 木の画面の寸法だけでは「内側の画面の寸法か」を決められない
+        func checkHomeScreenTreeMatchesDisplay(_ tree: SnapshotResponse) throws {
+            guard platform == "ios", !core.physical, let udid = core.deviceIdentifier,
+                  let shown = SimulatorActiveDisplay.resolve(udid: udid)?.pointSize,
+                  !AppIconLocator.treeMatchesShownDisplay(screen: tree.screen,
+                                                          shownWidth: shown.width, shownHeight: shown.height)
+            else { return }
+            throw FTCommandError.message(
+                "tapAppIcon \"\(appIconName)\": the home screen tree reports a "
+                + "\(Int(tree.screen.width))x\(Int(tree.screen.height)) screen but the shown display is "
+                + "\(Int(shown.width))x\(Int(shown.height)) — the system UI tree does not match the shown display "
+                + "on this device, so nothing was tapped")
         }
 
         try await driver.home()
         if platform == "ios" { try await driver.home() }
 
         var last = try await driver.snapshot()
+        try checkHomeScreenTreeMatchesDisplay(last)
         if let icon = AppIconLocator.findIcon(appIconName, in: last) {
             let (tapped, snapshot) = try await tapSettled(icon)
             if tapped { return }

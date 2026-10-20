@@ -56,6 +56,59 @@ final class AppIconLocatorTests: XCTestCase {
         XCTAssertNotEqual(AppIconLocator.signature(of: a), AppIconLocator.signature(of: b))
     }
 
+    // MARK: - isCentreOnScreen
+
+    private func icon(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> ElementInfo {
+        ElementInfo(ref: 1, type: "Icon", identifier: nil, label: "FT E2E iOS", value: nil,
+                    placeholder: nil, enabled: true, frame: FTRect(x: x, y: y, width: w, height: h), depth: 0)
+    }
+
+    private func duoScreen(_ elements: [ElementInfo], width: Double = 466, height: Double = 678) -> SnapshotResponse {
+        SnapshotResponse(sessionBundleID: "com.apple.springboard",
+                         screen: FTRect(x: 0, y: 0, width: width, height: height),
+                         elements: elements, truncatedCount: 0)
+    }
+
+    /// iPhone Duo(Xcode 27.2 RC)の実測: 外側の画面 466x678 の木に、内側の場面の枠 [52, -75, 87x83] で載った
+    /// (中心 (95, -33) = 画面の上の外)。正しい状態は (103, 52, 83x87)
+    func testDuoIconReportedAboveTheScreenIsOffScreen() {
+        XCTAssertFalse(AppIconLocator.isCentreOnScreen(icon(52, -75, 87, 83), in: duoScreen([])))
+        XCTAssertTrue(AppIconLocator.isCentreOnScreen(icon(103, 52, 83, 87), in: duoScreen([])))
+    }
+
+    /// 枠が縁にかかっていても中心が中なら撃ってよい(縁は exact に外 = isPointOnScreen の規律)
+    func testCentreDecidesNotTheWholeFrame() {
+        XCTAssertTrue(AppIconLocator.isCentreOnScreen(icon(-20, 600, 60, 60), in: duoScreen([])))
+        XCTAssertFalse(AppIconLocator.isCentreOnScreen(icon(436, 0, 60, 60), in: duoScreen([])))
+        XCTAssertFalse(AppIconLocator.isCentreOnScreen(icon(0, 648, 60, 60), in: duoScreen([])))
+    }
+
+    /// 画面が分からない木(0x0)は「外れている」と読まない
+    func testUnknownScreenCountsAsOnScreen() {
+        XCTAssertTrue(AppIconLocator.isCentreOnScreen(icon(52, -75, 87, 83), in: duoScreen([], width: 0, height: 0)))
+    }
+
+    // MARK: - treeMatchesShownDisplay
+
+    /// iPhone Duo(Xcode 27.2 RC)の実測: 外側 466x678 を表示中に、木の画面が 951x669(内側の横向き)で来る
+    func testDuoTreeWithInnerDisplaySizeDoesNotMatchTheOuterDisplay() {
+        let inner = FTRect(x: 0, y: 0, width: 951, height: 669)
+        XCTAssertFalse(AppIconLocator.treeMatchesShownDisplay(screen: inner, shownWidth: 466, shownHeight: 678))
+        let outer = FTRect(x: 0, y: 0, width: 466, height: 678)
+        XCTAssertTrue(AppIconLocator.treeMatchesShownDisplay(screen: outer, shownWidth: 466, shownHeight: 678))
+    }
+
+    /// 横向きでも SpringBoard の木は縦のままなので、幅と高さの入れ替わりは一致。寸法が分からなければ一致
+    func testRotatedAndUnknownSizesCountAsMatching() {
+        let portrait = FTRect(x: 0, y: 0, width: 402, height: 874)
+        XCTAssertTrue(AppIconLocator.treeMatchesShownDisplay(screen: portrait, shownWidth: 874, shownHeight: 402))
+        XCTAssertTrue(AppIconLocator.treeMatchesShownDisplay(screen: portrait, shownWidth: 0, shownHeight: 0))
+        XCTAssertTrue(AppIconLocator.treeMatchesShownDisplay(screen: FTRect(x: 0, y: 0, width: 0, height: 0),
+                                                              shownWidth: 466, shownHeight: 678))
+        // 画素→pt の割り算の端数(1398/3 = 466.0・2034/3 = 678.0 だが一般には端数が出る)は 1pt 未満なら同じ
+        XCTAssertTrue(AppIconLocator.treeMatchesShownDisplay(screen: portrait, shownWidth: 402.4, shownHeight: 873.7))
+    }
+
     // MARK: - shouldStopSearch
 
     func testStopsAfterTwoConsecutiveUnchangedScreens() {
