@@ -718,7 +718,8 @@ scanRecords(キャップ無し)を1回の走査に畳む。`fleetest api results
   を呼ばない(`RunResultsStore.windowMatch`/`isCanonicalISO8601Z`。E2E-CMP の run.json 5,700 件で
   実測した所要の主要因だった)。正準形でないときだけ実際に Date へパースする。scanRuns と
   パック経由の run.json 判定はこの1つの実装を共有する(`WindowMatchFastPathTests` が近道と
-  実パースの一致を固定)
+  実パースの一致を固定)。集計(`RunResultsQuery`)の並べ替えも、正準形の startedAt / finishedAt は ICU を通さずに読む
+  (`RunResultsStore.canonicalISO8601ZDate`。表で覚えた後に使う。E2E-CMP の非キャッシュ集計が 9.4 → 6.5 秒)
 - **書き込みは atomic**(temp 作成 + rename)。**読み込み失敗(壊れている・無効)は黙って
   直接読みへ倒す**(誤った結果を返すより遅い方がよい)
 - **掃除**: 対応する run ディレクトリが無くなったパックは `scanRunsAndRecords` のついでに掃く

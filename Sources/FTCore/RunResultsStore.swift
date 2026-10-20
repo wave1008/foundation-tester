@@ -321,6 +321,32 @@ public enum RunResultsStore {
         return true
     }
 
+    /// 正準形(`isCanonicalISO8601Z`)の UTC 時刻を数字から直接 Date にする(ICU を通さない)。
+    /// 集計の並べ替えは記録ごとに違う startedAt を解析するので、ISO8601DateFormatter だと E2E-CMP の
+    /// 90 日窓で 2〜3 秒かかっていた。正準形でない・暦にない日時(2/30・秒 60 等)は nil = 呼び手が formatter へ倒す
+    static func canonicalISO8601ZDate(_ value: String) -> Date? {
+        guard isCanonicalISO8601Z(value) else { return nil }
+        let b = Array(value.utf8)
+        func num(_ from: Int, _ count: Int) -> Int {
+            (from..<from + count).reduce(0) { $0 * 10 + Int(b[$1] - UInt8(ascii: "0")) }
+        }
+        let year = num(0, 4), month = num(5, 2), day = num(8, 2)
+        let hour = num(11, 2), minute = num(14, 2), second = num(17, 2)
+        // 1582 以前は Foundation がユリウス暦で数える(グレゴリオ暦への切り替え)ので formatter へ倒す
+        guard year >= 1583, (1...12).contains(month), hour < 24, minute < 60, second < 60 else { return nil }
+        let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+        let monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+        guard (1...monthDays).contains(day) else { return nil }
+        // 1970-01-01 からの日数(H. Hinnant の days_from_civil の先発グレゴリオ暦)
+        let y = month <= 2 ? year - 1 : year
+        let era = (y >= 0 ? y : y - 399) / 400
+        let yoe = y - era * 400
+        let doy = (153 * (month > 2 ? month - 3 : month + 9) + 2) / 5 + day - 1
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+        let days = era * 146_097 + doe - 719_468
+        return Date(timeIntervalSince1970: TimeInterval(days * 86_400 + hour * 3_600 + minute * 60 + second))
+    }
+
     /// scanRuns と RunRecordPack 経由の run.json 判定が共有する唯一の窓判定(別実装にすると
     /// 「パック無し」と「パック有り」で通る・落ちるが食い違う)。`sinceKey`/`untilKey` は
     /// `windowKey` 済みの境界(呼び手が1回だけ計算して渡す。record ごとに作り直さない)。

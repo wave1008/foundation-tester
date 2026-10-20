@@ -116,4 +116,38 @@ final class WindowMatchFastPathTests: XCTestCase {
         XCTAssertEqual(Set(runs.map(\.runID)),
                        ["20260601-000000Z-mach-0001", "20260601-000000Z-mach-0002"])
     }
+
+    // MARK: - canonicalISO8601ZDate(集計の並べ替えが使う ICU を通さない解析)
+
+    /// ISO8601DateFormatter と同じ Date になる(閏年・世紀の境・月末・1970 より前を含む)
+    func testCanonicalDateMatchesTheFormatter() {
+        let samples = [
+            "1970-01-01T00:00:00Z", "1969-12-31T23:59:59Z", "2000-02-29T12:34:56Z", "1900-03-01T00:00:00Z",
+            "2024-02-29T23:59:59Z", "2026-10-20T05:18:15Z", "2026-12-31T23:59:59Z", "2100-03-01T00:00:01Z",
+            "1583-01-01T00:00:00Z", "9999-12-31T23:59:59Z",
+        ]
+        for sample in samples {
+            XCTAssertEqual(RunResultsStore.canonicalISO8601ZDate(sample), formatter.date(from: sample), sample)
+        }
+        // 2015〜2035 の毎日を 1 本ずつ(時刻もずらす)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        var day = calendar.date(from: DateComponents(year: 2015, month: 1, day: 1, hour: 7, minute: 13, second: 29))!
+        let end = calendar.date(from: DateComponents(year: 2035, month: 12, day: 31))!
+        while day < end {
+            let text = formatter.string(from: day)
+            XCTAssertEqual(RunResultsStore.canonicalISO8601ZDate(text), day, text)
+            day = day.addingTimeInterval(86_400 + 3_607)
+        }
+    }
+
+    /// 正準形でない・暦にない日時は nil(呼び手が formatter へ倒す)
+    func testCanonicalDateRejectsWhatItCannotReadExactly() {
+        for value in ["2026-10-20T05:18:15.123Z", "2026-10-20T05:18:15+09:00", "2026-02-30T00:00:00Z",
+                      "2026-13-01T00:00:00Z", "2026-00-10T00:00:00Z", "2026-01-00T00:00:00Z", "2025-02-29T00:00:00Z", "2100-02-29T00:00:00Z", "1900-02-29T00:00:00Z",
+                      "2026-01-01T24:00:00Z", "2026-01-01T00:60:00Z", "2026-01-01T00:00:60Z", "garbage",
+                      "1582-12-31T00:00:00Z" /* 1582 以前は Foundation がユリウス暦で数える */] {
+            XCTAssertNil(RunResultsStore.canonicalISO8601ZDate(value), value)
+        }
+    }
 }

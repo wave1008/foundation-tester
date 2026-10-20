@@ -57,16 +57,16 @@ public enum RunResultsQuery {
     // ISO8601DateFormatter は Apple が thread-safe と明記(生成後に設定を変えないこと)
     nonisolated(unsafe) private static let isoFormatter = ISO8601DateFormatter()
 
-    /// ISO8601 パース(ICU)は1回あたり数µs〜十µs掛かり、この関数は**ソートの比較器の中**から
-    /// 呼ばれる(= 同じ文字列を n log n 回パースする)。メモ化しないと 90 日窓の集計が
-    /// パースだけで数十秒になる(実測: E2E-CMP 84s → メモ化で解消)。
+    /// この関数は**ソートの比較器の中**から呼ばれる(= 同じ文字列を n log n 回解析する)ので、表を先に引く
+    /// (表が無いと E2E-CMP の 90 日窓の集計が 84s。**正準形の解析を表より前に置かない** —— 1回ごとに配列を作るので
+    /// 比較のたびに解くと api results が約 2s 遅い)。表に無いときは正準形を ICU を通さずに読み、それ以外だけ ICU。
     /// キャッシュは (プロセス内の distinct startedAt 数) でしか育たないので上限は設けない
     private static let dateCache = Mutex<[String: Date]>([:])
 
     private static func date(from startedAt: String) -> Date {
         dateCache.withLock { cache in
             if let cached = cache[startedAt] { return cached }
-            let parsed = isoFormatter.date(from: startedAt) ?? .distantPast
+            let parsed = RunResultsStore.canonicalISO8601ZDate(startedAt) ?? isoFormatter.date(from: startedAt) ?? .distantPast
             cache[startedAt] = parsed
             return parsed
         }
@@ -803,7 +803,7 @@ public enum RunResultsQuery {
         var finishes: [Date] = []
         for member in members {
             guard let finishedAt = member.finishedAt,
-                  let finish = isoFormatter.date(from: finishedAt) else { return nil }
+                  let finish = RunResultsStore.canonicalISO8601ZDate(finishedAt) ?? isoFormatter.date(from: finishedAt) else { return nil }
             finishes.append(finish)
         }
         guard let start = starts.min(), start != .distantPast, let finish = finishes.max() else { return nil }
