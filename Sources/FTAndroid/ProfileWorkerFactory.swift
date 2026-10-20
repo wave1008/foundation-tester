@@ -15,7 +15,7 @@ public enum ProfileWorkerFactory {
 
     public static func buildWorkers(resolved: ResolvedProfile, repoRoot: URL,
                                     log: @escaping (String) -> Void) async throws -> [RunWorker] {
-        let workers = try await buildIOSWorkers(resolved: resolved, repoRoot: repoRoot, log: log)
+        let workers = try await buildIOSWorkers(resolved: resolved, repoRoot: repoRoot, supplyStage: nil, log: log)
             + (try buildAndroidWorkers(resolved: resolved, log: log))
         guard !workers.isEmpty else {
             throw InstallError(message: "no usable workers (every device dropped out)")
@@ -25,10 +25,12 @@ public enum ProfileWorkerFactory {
 
     /// iOS ワーカーのみ構築(ブリッジ供給込み=数十秒かかりうる)。Android と分離して呼べるのは
     /// 「Android を iOS 供給の完了待ちにしない」ため(RunOrchestrator の lateWorkers 参照)。
+    /// `supplyStage` は台帳の準備中表示への通知(BridgeProvisioner へそのまま渡す。台帳を書かない経路は nil)
     public static func buildIOSWorkers(resolved: ResolvedProfile, repoRoot: URL,
+                                       supplyStage: SupplyStageReporter?,
                                        log: @escaping (String) -> Void) async throws -> [RunWorker] {
         guard !resolved.iosDevices.isEmpty else { return [] }
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot)
+        let provisioner = BridgeProvisioner(repoRoot: repoRoot, supplyStage: supplyStage)
         let iosApp = resolved.apps["ios"]
         let provisioned = try await provisioner.provision(
             devices: resolved.iosDevices.map { ($0.name, $0.spec) },
@@ -1086,12 +1088,15 @@ public enum ProfileWorkerFactory {
     /// `wipeOnInsufficientStorage` = 実行プロファイルの `wipeDataOnBloat`。**Wipe は破壊的なので、利用者が
     /// 自動 Wipe を許しているときだけ**容量不足の失敗を Wipe で救う(OFF なら従来どおり離脱)。
     /// `locale` は Wipe した AVD を起こし直すときに要る(AndroidDataWiper.wipeOne)。
+    /// `supplyStage` = 供給の段階の通知(インストールするときだけ installing・戻る全ワーカーを ready にする。
+    /// 台帳を書かない経路・run 中の復帰は nil。**既定値を置かない** —— 渡し忘れで run の準備中表示が欠ける)。
     /// `storageRecovery` は production 以外をテストだけが渡す(AndroidStorageRecovery の doc)
     public static func installIfNeeded(apps: [String: ResolvedAppTarget],
                                        workers: [RunWorker],
                                        forceAndroidInstall: Bool = false,
                                        wipeOnInsufficientStorage: Bool,
                                        locale: String,
+                                       supplyStage: SupplyStageReporter?,
                                        storageRecovery: AndroidStorageRecovery = .production,
                                        log: @escaping (String) -> Void) async throws -> [RunWorker] {
         // 呼び出し元の log はスレッド安全という契約が無い(CLI 側 print 等)ため、並列区間からは
@@ -1128,7 +1133,10 @@ public enum ProfileWorkerFactory {
                 passthrough.append((index, worker))
             }
         }
-        guard !candidates.isEmpty else { return workers }
+        guard !candidates.isEmpty else {
+            reportReady(workers, supplyStage)
+            return workers
+        }
 
         // N は差分判定前の候補数(判定した結果スキップになるものも含む数)
         log("→ Checking and installing the app (\(candidates.count) device(s))...")
@@ -1142,6 +1150,7 @@ public enum ProfileWorkerFactory {
                         safeLog("→ \(worker.label): installed app is already up to date — skipping (autoInstall)")
                         return (index, worker)
                     }
+                    supplyStage?(worker.logicalName ?? worker.label, worker.platform, .installing)
                     do {
                         try await installOne(worker: worker, bundleID: app.bundleID, appPath: appPath)
                         safeLog("✅ \(worker.label): install complete")
@@ -1158,6 +1167,7 @@ public enum ProfileWorkerFactory {
                         }
                         safeLog("❌ \(worker.label): dropped out after an install failure — "
                             + error.localizedDescription)
+                        supplyStage?(worker.logicalName ?? worker.label, worker.platform, nil)
                         return (index, nil)
                     }
                 }
@@ -1175,7 +1185,14 @@ public enum ProfileWorkerFactory {
         guard !result.isEmpty else {
             throw InstallError(message: "every worker failed to install the app")
         }
+        reportReady(result, supplyStage)
         return result
+    }
+
+    private static func reportReady(_ workers: [RunWorker], _ supplyStage: SupplyStageReporter?) {
+        for worker in workers {
+            supplyStage?(worker.logicalName ?? worker.label, worker.platform, .ready)
+        }
     }
 
     /// 容量不足のインストール失敗を Wipe Data で救う。救えたら(同じ serial で戻ってきて入れ直せたら)
@@ -1272,12 +1289,12 @@ public enum ProfileWorkerFactory {
             }
         }
         guard var rebuilt = try? await buildIOSWorkers(resolved: resolved, repoRoot: repoRoot,
-                                                       log: log) else { return nil }
+                                                       supplyStage: nil, log: log) else { return nil }
         do {
             rebuilt = try await installIfNeeded(apps: apps, workers: rebuilt,
                                                 forceAndroidInstall: false,
                                                 wipeOnInsufficientStorage: resolved.wipeDataOnBloat,
-                                                locale: resolved.locale, log: log)
+                                                locale: resolved.locale, supplyStage: nil, log: log)
         } catch {
             // install 全滅なら回復そのものを不成立にする(F5)。ここで古いアプリのまま
             // rebuilt を使い続けると、シミュレータは戻ったのに中身は古いままレーンへ復帰する。

@@ -687,25 +687,28 @@ struct RunScenarios: AsyncParsableCommand {
         let recordsProgress = profile != nil && !dryRun
         // 書き直しても**入口の時刻のまま**(経過が巻き戻らない)
         let progressStartedAt = ISO8601DateFormatter().string(from: Date())
+        // 供給の段階の箱(ProfileRunner.run が供給と台帳の書き手へ渡す)。dry-run では誰も書かない
+        let supplyProgress = RunSupplyProgress()
+        let entryProgress = PreparingProgressWriter(
+            pid: progressPid, runID: nil, runGroup: nil, issuer: LocalConfig.resolveIssuerId(),
+            project: testProject.name, profile: profile, startedAt: progressStartedAt,
+            supply: supplyProgress)
         /// **段階は実際にやっていることだけを言う**(ユーザー決定)—— 入口ではまだ
         /// ビルドしていない(`--skip-build` = 機械分担のローカル子なら最後までしない)ので
         /// "preparing" で始め、"building" は swift build を実際に呼ぶ間だけ立てて直後に戻す
         /// (変更が無くて省くときは立てない = `ScenarioHost.build` の willBuild)。
         func writeProgress(phase: String) {
             guard recordsProgress else { return }
-            RunProgressLedger.write(RunProgressRecord(
-                pid: progressPid, runID: nil, runGroup: nil, issuer: LocalConfig.resolveIssuerId(),
-                project: testProject.name, profile: profile,
-                startedAt: progressStartedAt, total: 0, done: 0, failed: 0,
-                requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [], phase: phase),
-                directory: RunProgressLedger.directory())
+            entryProgress.write(phase: phase)
         }
         if recordsProgress {
             RunProgressLedger.sweep(directory: RunProgressLedger.directory(), startTime: ProcessLiveness.startTime)
+            entryProgress.attach()
             writeProgress(phase: "preparing")
         }
         defer {
             if profile != nil, !dryRun, !progressHandedToProfileRunner {
+                entryProgress.close()
                 RunProgressLedger.remove(pid: progressPid, directory: RunProgressLedger.directory())
             }
         }
@@ -903,6 +906,7 @@ struct RunScenarios: AsyncParsableCommand {
                     workspaceOverride: workspace,
                     recorder: recorder,
                     broadcast: broadcast,
+                    supplyProgress: supplyProgress,
                     interruptState: interruptState)
             } catch {
                 // 供給段(ワーカー構築等)の例外は run.json を完了させずに投げていた

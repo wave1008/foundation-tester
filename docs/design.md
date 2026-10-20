@@ -6005,6 +6005,27 @@ CLI 実行・他人の run・ランナー機で直に打たれた run は `inRun
   計っているので、画面の数え方と食い違う)。全レーンが同じ1本を待つので run 全体の段階として持ち、
   待ちの間は進捗・残りを出さない(延長の秒数を見積もる定数を置かない)。待ち終えたらレーンの経過は
   0 から始まり、残りもその時点で計算し直される
+- **準備中の間は端末ごとの供給の段階を `supply` に載せる**(`FTCore.RunProgressSupply`:
+  `name`(`devices[].name`。ランナーの build-for-testing は端末に属さないので空文字)・`platform`・
+  `step` = `runnerBuild` / `booting` / `bridge` / `installing` / `ready`)。**必須の欄**(古い形は読まない・
+  段階の情報が無い run は空配列)。端末の行は `ready` になっても残す(分母 = 端末の行の数)。
+  `runnerBuild` の行はビルドが終わったら消し、供給に失敗した端末の行も消す。
+  **供給側(`BridgeProvisioner` / `ProfileWorkerFactory.installIfNeeded` / `AndroidLaneRecovery`)は
+  `SupplyStageReporter` で `RunSupplyProgress`(run プロセス内の箱)へ知らせ、台帳の書き手3つ
+  (入口の `writeProgress`・`ProfileRunOrchestrator.writePreparingProgress`=どちらも
+  `PreparingProgressWriter`、`RunProgressState`)が書くときに必ず箱の snapshot(名前順)を載せる**。
+  箱が変わったら直前の phase のまま書き直す(同じ内容なら通知しない)。`RunProgressState` は
+  最初の書き込みの後に通知を引き継ぐ(それまでは準備中の書き手が続ける)。
+  `ready` の置き場: iOS は `BridgeProvisioner.executeDevice` の終わり(ブリッジが ready)と
+  `installIfNeeded` の終わり(戻るワーカー全部)、Android は `installIfNeeded` の終わり。
+  Android のブリッジ待ちは `bootMissingDevices` が起こせた直後に `bridge` を立てる
+  (定着待ち `awaitDurableAndroidBridges` の間)。
+  **拡張**: 段階を**1つだけ**出す(台数は出さない = ユーザー決定)。選び方は `runBoardModel.currentSupplyStep` の1か所 ——
+  ランナーのビルド(「ランナーをビルド中」)が最優先、端末は**いちばん進んでいる未完了の段階**(「デバイスを起動中」→
+  「ブリッジを起動中」→「アプリをインストール中」の順で後ろのもの)。`preparing` ではそれを出し、無ければ「デバイスを準備中」。
+  `building`(「シナリオをビルド中」)・`compiling`(「Vision コンパイル中」)は供給の段階を添えない。`running`(混在 run で
+  iOS の供給が続いている間)は進捗の横に同じ1語を添える。run / api run の2経路が箱を作って渡すことは
+  `RunProgressLedgerWiringTests` が固定する
 - **書くのはデバイスを実際に回しているプロセスだけ**。機械分担の run(親が手元・子が各機械)で
   親も書くと二重計上になる。束ねるのは読み手で、鍵は `runGroup`(単機 run は runID 自身)
 - **レーンの `name` はモニターのタイルと同じ名前**(`RunWorker.logicalName` = 実行プロファイルの
@@ -6041,6 +6062,7 @@ CLI 実行・他人の run・ランナー機で直に打たれた run は `inRun
   {"pid":41233,"runGroup":"…","issuer":"alice@air","mine":false,
    "project":"ec-mobile","profile":"ios-smoke",
    "elapsedSeconds":261,"total":12,"done":7,"failed":2,"etaSeconds":190,
+   "phase":"running","supply":[{"name":"iPhone 17-01","platform":"ios","step":"ready"}],
    "lanes":[{"key":"…","name":"iPhone 17-01","scenario":"05_検索",
              "scenarioElapsedSeconds":72}]}]}
 ```

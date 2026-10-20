@@ -25,6 +25,14 @@ export interface RunBoardLane {
   readonly scenarioElapsedSeconds?: number;
 }
 
+/** 準備中の端末ごとの供給の段階(MonitorRunSupply と同じ形。FTCore.RunProgressSupply)。
+ * name が空文字 = 端末に属さない共有の段階(ランナーのビルド)。 */
+export interface RunBoardSupply {
+  readonly name: string;
+  readonly platform?: "ios" | "android";
+  readonly step: string;
+}
+
 /** 1 run(1機械ぶん)。ネットワークから届く生の形(machine/receivedAtMs は畳み込みの側が足す)。 */
 export interface RunBoardRawRun {
   readonly pid: number;
@@ -34,6 +42,8 @@ export interface RunBoardRawRun {
   readonly requeued: number;
   /** レーンが離脱した累計。 */
   readonly laneDropouts: number;
+  /** 準備中の端末ごとの供給の段階。空 = 段階の情報なし(推測で埋めない)。 */
+  readonly supply: readonly RunBoardSupply[];
   /** `RunRecorder` が無い経路(--dry-run/--debug 等)では省略されうる。省略時は pid が代わりの鍵。 */
   readonly runID?: string;
   readonly runGroup?: string;
@@ -129,6 +139,8 @@ export interface RunBoardGroup {
   /** 束ねた run の合計。**事実だけ**(判定・警告はしない。docs/design.md §18.5)。 */
   readonly requeued: number;
   readonly laneDropouts: number;
+  /** 束ねた run の供給の段階の連結(machine 昇順の runs の順)。 */
+  readonly supply: readonly RunBoardSupply[];
   readonly total: number;
   readonly done: number;
   readonly failed: number;
@@ -181,6 +193,7 @@ export function buildRunGroups(state: ReadonlyMap<string, MachineRunsEntry>): re
       phase: mostAdvancedPhase(runs),
       requeued: sum(runs.map((run) => run.requeued)),
       laneDropouts: sum(runs.map((run) => run.laneDropouts)),
+      supply: runs.flatMap((run) => run.supply),
       project: first.project,
       profile: first.profile,
       total: sum(runs.map((r) => r.total)),
@@ -248,6 +261,21 @@ function mostAdvancedPhase(runs: readonly RunBoardRun[]): "building" | "preparin
     }
   }
   return "building";
+}
+
+/** 端末の段階の進む順(ready・runnerBuild は含めない)。 */
+export const SUPPLY_PROGRESS_STEPS = ["booting", "bridge", "installing"] as const;
+export type SupplyStep = "runnerBuild" | (typeof SUPPLY_PROGRESS_STEPS)[number];
+
+/** 準備中に出す段階を1つ選ぶ(台数は出さない = ユーザー決定)。①共有のランナーのビルドが最優先 ②端末は**いちばん進んでいる
+ * 未完了の段階**(起動中とブリッジが混ざればブリッジ)。ready・未知の段階だけ・空なら undefined(呼び手は従来の文言)。
+ * 表示文字列は置かない(webview が組む = このファイルは i18n を import できない) */
+export function currentSupplyStep(supply: readonly RunBoardSupply[]): SupplyStep | undefined {
+  if (supply.some((row) => row.name === "" && row.step === "runnerBuild")) {
+    return "runnerBuild";
+  }
+  const present = new Set(supply.filter((row) => row.name !== "").map((row) => row.step));
+  return [...SUPPLY_PROGRESS_STEPS].reverse().find((step) => present.has(step));
 }
 
 function sum(values: readonly number[]): number {

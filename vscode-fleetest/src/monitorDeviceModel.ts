@@ -156,6 +156,15 @@ export interface MonitorRunLane {
   readonly scenarioElapsedSeconds?: number;
 }
 
+/** 準備中の端末ごとの供給の段階(FTCore.RunProgressSupply と対。docs/design.md §18.1)。
+ * 端末に属さない共有の段階(ランナーのビルド)は name が空文字。step の語彙は
+ * "runnerBuild" / "booting" / "bridge" / "installing" / "ready"(未知の値は読み手が無視する)。 */
+export interface MonitorRunSupply {
+  readonly name: string;
+  readonly platform?: MonitorPlatform;
+  readonly step: string;
+}
+
 /** run ボードの1 run(1機械ぶん。docs/design.md §18.1)。機械分担の run は `runGroup` を共有する
  * 複数の MonitorRunEntry に分かれて届く(束ねるのは読み手 = runBoardModel.ts)。 */
 export interface MonitorRunEntry {
@@ -163,6 +172,9 @@ export interface MonitorRunEntry {
   /** "building"(シナリオのビルド中)/ "preparing"(デバイスの供給中)/ "compiling"(Vision のコンパイル待ち)/ "running"。
    * **版は揃える前提**(ProtocolVersion 16。FTCore.RunProgressRecord.phase と対)。 */
   readonly phase: string;
+  /** 準備中の端末ごとの供給の段階。供給の情報が無い run は空配列(**版は揃える前提**。
+   * ProtocolVersion 53。FTCore.RunProgressRecord.supply と対)。 */
+  readonly supply: readonly MonitorRunSupply[];
   /** 結果を捨てて振り直した累計。**事実だけ**(「遅い」等の判定はしない。docs/design.md §18.5)。 */
   readonly requeued: number;
   /** レーンが離脱した累計。 */
@@ -367,6 +379,20 @@ function isMonitorRunLane(value: unknown): value is MonitorRunLane {
   );
 }
 
+function isMonitorRunSupply(value: unknown): value is MonitorRunSupply {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (value.platform === null) {
+    value.platform = undefined;
+  }
+  return (
+    typeof value.name === "string" &&
+    (value.platform === undefined || (typeof value.platform === "string" && PLATFORMS.has(value.platform))) &&
+    typeof value.step === "string"
+  );
+}
+
 function isMonitorBridgeLogRotationCandidate(value: unknown): value is MonitorBridgeLogRotationCandidate {
   return (
     isRecord(value) &&
@@ -414,6 +440,8 @@ function isMonitorRunEntry(value: unknown): value is MonitorRunEntry {
     typeof value.failed === "number" &&
     (value.etaSeconds === undefined || typeof value.etaSeconds === "number") &&
     typeof value.phase === "string" &&
+    Array.isArray(value.supply) &&
+    value.supply.every(isMonitorRunSupply) &&
     typeof value.requeued === "number" &&
     typeof value.laneDropouts === "number" &&
     Array.isArray(value.lanes) &&

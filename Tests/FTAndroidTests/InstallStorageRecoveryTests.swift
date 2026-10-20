@@ -134,7 +134,7 @@ final class InstallStorageRecoveryTests: XCTestCase {
 
         let kept = try await ProfileWorkerFactory.installIfNeeded(
             apps: apps(), workers: [worker(driver)], wipeOnInsufficientStorage: true, locale: "ja_JP",
-            storageRecovery: recording.recovery) { logs.append($0) }
+            supplyStage: nil, storageRecovery: recording.recovery) { logs.append($0) }
 
         XCTAssertEqual(kept.count, 1, "救えたワーカーは残る: \(logs)")
         XCTAssertEqual(recording.wipes.count, 1)
@@ -156,7 +156,7 @@ final class InstallStorageRecoveryTests: XCTestCase {
         let kept = try await ProfileWorkerFactory.installIfNeeded(
             apps: apps(), workers: [worker(driver), healthy],
             wipeOnInsufficientStorage: false, locale: "ja_JP",
-            storageRecovery: recording.recovery) { logs.append($0) }
+            supplyStage: nil, storageRecovery: recording.recovery) { logs.append($0) }
 
         XCTAssertEqual(kept.map(\.connection.serial), ["emulator-5554"])
         XCTAssertTrue(recording.wipes.isEmpty, "OFF のときは Wipe を撃たない")
@@ -173,7 +173,7 @@ final class InstallStorageRecoveryTests: XCTestCase {
 
         let kept = try await ProfileWorkerFactory.installIfNeeded(
             apps: apps(), workers: [worker(driver), healthy], wipeOnInsufficientStorage: true, locale: "ja_JP",
-            storageRecovery: recording.recovery) { _ in }
+            supplyStage: nil, storageRecovery: recording.recovery) { _ in }
 
         XCTAssertEqual(kept.map(\.connection.serial), ["emulator-5554"])
         XCTAssertTrue(recording.wipes.isEmpty)
@@ -189,7 +189,7 @@ final class InstallStorageRecoveryTests: XCTestCase {
 
         let kept = try await ProfileWorkerFactory.installIfNeeded(
             apps: apps(), workers: [worker(driver), healthy], wipeOnInsufficientStorage: true, locale: "ja_JP",
-            storageRecovery: recording.recovery) { _ in }
+            supplyStage: nil, storageRecovery: recording.recovery) { _ in }
 
         XCTAssertEqual(kept.map(\.connection.serial), ["emulator-5554"])
         XCTAssertEqual(recording.wipes.count, 1)

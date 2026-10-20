@@ -62,7 +62,7 @@ final class AndroidLaneRecoveryTests: XCTestCase {
         let d1 = device("d1")
         let d2 = device("d2")
         let result = await AndroidLaneRecovery.bootMissingDevices(
-            devices: [d1, d2], locale: "ja_JP", log: { _ in },
+            devices: [d1, d2], locale: "ja_JP", supplyStage: nil, log: { _ in },
             boot: { _, name in
                 if name == "d1" {
                     try await Task.sleep(nanoseconds: 150_000_000)
@@ -83,7 +83,7 @@ final class AndroidLaneRecoveryTests: XCTestCase {
         let d1 = device("d1")
         let d2 = device("d2")
         let result = await AndroidLaneRecovery.bootMissingDevices(
-            devices: [d1, d2], locale: "ja_JP", log: { _ in },
+            devices: [d1, d2], locale: "ja_JP", supplyStage: nil, log: { _ in },
             boot: { _, name in
                 if name == "d1" { throw BootError() }
             })
@@ -103,7 +103,7 @@ final class AndroidLaneRecoveryTests: XCTestCase {
         let counter = Counter()
         let d1 = device("d1")
         let result = await AndroidLaneRecovery.bootMissingDevices(
-            devices: [d1], locale: "ja_JP", log: { _ in },
+            devices: [d1], locale: "ja_JP", supplyStage: nil, log: { _ in },
             boot: { _, _ in
                 await counter.increment()
                 throw BootError()
@@ -122,7 +122,7 @@ final class AndroidLaneRecoveryTests: XCTestCase {
         let lines = LockedBox([String]())
         let devices = [device("d1"), device("d2"), device("d3")]
         _ = await AndroidLaneRecovery.bootMissingDevices(
-            devices: devices, locale: "ja_JP",
+            devices: devices, locale: "ja_JP", supplyStage: nil,
             log: { line in lines.mutate { $0.append(line) } },
             boot: { _, _ in })
         // 冒頭の "Reviving N dead lane(s)" も starting を含むので、デバイスごとの2行だけを取る
@@ -146,7 +146,7 @@ final class AndroidLaneRecoveryTests: XCTestCase {
     func testEmptyDevicesDoesNothing() async {
         let logged = LockedBox(false)
         let result = await AndroidLaneRecovery.bootMissingDevices(
-            devices: [], locale: "ja_JP", log: { _ in logged.mutate { $0 = true } },
+            devices: [], locale: "ja_JP", supplyStage: nil, log: { _ in logged.mutate { $0 = true } },
             boot: { _, _ in XCTFail("boot should not be called") })
         XCTAssertTrue(result.booted.isEmpty)
         XCTAssertTrue(result.failed.isEmpty)
@@ -176,7 +176,7 @@ final class AndroidLaneRecoveryTests: XCTestCase {
         let counter = Counter()
         let d1 = device("decisive-d1")
         let result = await AndroidLaneRecovery.bootMissingDevices(
-            devices: [d1], locale: "ja_JP", log: { _ in },
+            devices: [d1], locale: "ja_JP", supplyStage: nil, log: { _ in },
             boot: { _, _ in
                 await counter.increment()
                 throw MessageError(message: "FATAL | Broken AVD system path")
@@ -195,7 +195,7 @@ final class AndroidLaneRecoveryTests: XCTestCase {
         let counter = Counter()
         let d1 = device("nondecisive-d1")
         _ = await AndroidLaneRecovery.bootMissingDevices(
-            devices: [d1], locale: "ja_JP", log: { _ in },
+            devices: [d1], locale: "ja_JP", supplyStage: nil, log: { _ in },
             boot: { _, _ in
                 await counter.increment()
                 throw MessageError(message: "transient adb hiccup")
@@ -212,7 +212,7 @@ final class AndroidLaneRecoveryTests: XCTestCase {
         let avdID = "ftlanerecoverytest-ledger-fail"
         let d1 = device("ledger-fail", avd: avdID)
         _ = await AndroidLaneRecovery.bootMissingDevices(
-            devices: [d1], locale: "ja_JP", log: { _ in },
+            devices: [d1], locale: "ja_JP", supplyStage: nil, log: { _ in },
             boot: { _, _ in throw MessageError(message: "boom: Broken AVD system path") })
         XCTAssertEqual(RevivalOutcomeLedger.shared.failureReason(avdID: avdID),
                        "boom: Broken AVD system path")
@@ -224,7 +224,7 @@ final class AndroidLaneRecoveryTests: XCTestCase {
         RevivalOutcomeLedger.shared.recordFailure(avdID: avdID, reason: "stale reason")
         let d1 = device("ledger-success", avd: avdID)
         _ = await AndroidLaneRecovery.bootMissingDevices(
-            devices: [d1], locale: "ja_JP", log: { _ in },
+            devices: [d1], locale: "ja_JP", supplyStage: nil, log: { _ in },
             boot: { _, _ in })
         XCTAssertNil(RevivalOutcomeLedger.shared.failureReason(avdID: avdID))
     }

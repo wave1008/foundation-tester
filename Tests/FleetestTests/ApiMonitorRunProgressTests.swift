@@ -13,12 +13,13 @@ final class ApiMonitorRunProgressTests: XCTestCase {
 
     private func record(issuer: String? = "alice@air", lanes: [RunProgressLane] = [],
                         phase: String = "running", requeued: Int = 0,
-                        laneDropouts: Int = 0) -> RunProgressRecord {
+                        laneDropouts: Int = 0,
+                        supply: [RunProgressSupply] = []) -> RunProgressRecord {
         RunProgressRecord(
             pid: 41233, runID: "r1", runGroup: nil, issuer: issuer, project: "ec-mobile",
             profile: "ios-smoke", startedAt: "2026-09-20T10:03:12Z", total: 12, done: 7, failed: 2,
             requeued: requeued, laneDropouts: laneDropouts,
-            etaSeconds: 999, lanes: lanes, phase: phase)
+            etaSeconds: 999, lanes: lanes, phase: phase, supply: supply)
     }
 
     private let now = ISO8601DateFormatter().date(from: "2026-09-20T10:07:33Z")!
@@ -88,12 +89,33 @@ final class ApiMonitorRunProgressTests: XCTestCase {
         XCTAssertEqual(out.first?.phase, "preparing")
     }
 
+    /// 供給の段階は台帳の値がそのまま(順序・欄とも)届く
+    func testSupplyIsPassedThroughFromTheLedger() {
+        let supply = [
+            RunProgressSupply(name: "", platform: "ios", step: "runnerBuild"),
+            RunProgressSupply(name: "Pixel 9-01", platform: "android", step: "booting"),
+            RunProgressSupply(name: "iPhone 17-01", platform: "ios", step: "ready"),
+        ]
+        let out = ApiMonitorCommand.monitorRuns(
+            records: [record(phase: "preparing", supply: supply)], now: now, myIssuer: "bob@office")
+        XCTAssertEqual(out.first?.supply, supply)
+        let json = String(data: try! JSONEncoder().encode(out[0]), encoding: .utf8)!
+        XCTAssertTrue(json.contains("\"supply\":[{"), json)
+        XCTAssertTrue(json.contains("\"step\":\"runnerBuild\""), json)
+    }
+
+    /// 供給の段階が空の run は空配列のまま届く(欄を省かない)
+    func testSupplyStaysEmptyWhenTheLedgerHasNone() {
+        let out = ApiMonitorCommand.monitorRuns(records: [record()], now: now, myIssuer: "bob@office")
+        XCTAssertEqual(out.first?.supply, [])
+    }
+
     /// 実績ゼロの run は台帳側が既に nil を書いているので、そのまま nil が届く
     func testEtaSecondsStaysNilWhenTheLedgerHasNoEstimate() {
         let noEstimate = RunProgressRecord(
             pid: 41233, runID: "r1", runGroup: nil, issuer: "alice@air", project: "ec-mobile",
             profile: "ios-smoke", startedAt: "2026-09-20T10:03:12Z", total: 12, done: 7, failed: 2,
-            requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [], phase: "running")
+            requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [], phase: "running", supply: [])
         let out = ApiMonitorCommand.monitorRuns(records: [noEstimate], now: now, myIssuer: "bob@office")
         XCTAssertNil(out.first?.etaSeconds)
     }
@@ -102,11 +124,11 @@ final class ApiMonitorRunProgressTests: XCTestCase {
         let a = RunProgressRecord(pid: 300, runID: nil, runGroup: nil, issuer: nil, project: "p",
                                   profile: nil, startedAt: "2026-09-20T10:00:00Z", total: 1, done: 0,
                                   failed: 0, requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [],
-                                  phase: "running")
+                                  phase: "running", supply: [])
         let b = RunProgressRecord(pid: 100, runID: nil, runGroup: nil, issuer: nil, project: "p",
                                   profile: nil, startedAt: "2026-09-20T10:00:00Z", total: 1, done: 0,
                                   failed: 0, requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [],
-                                  phase: "running")
+                                  phase: "running", supply: [])
         let out = ApiMonitorCommand.monitorRuns(records: [a, b], now: now, myIssuer: "bob@office")
         XCTAssertEqual(out.map(\.pid), [100, 300])
     }

@@ -227,7 +227,8 @@ extension MCPServer {
                 if !laneTargets.isEmpty {
                     let bootLog = LockedLines()
                     let outcome = await AndroidLaneRecovery.bootMissingDevices(
-                        devices: laneTargets.map(\.device), locale: resolved.locale) { bootLog.append($0) }
+                        devices: laneTargets.map(\.device), locale: resolved.locale,
+                        supplyStage: nil) { bootLog.append($0) }
                     await ProfileWorkerFactory.awaitDurableAndroidBridges(
                         devices: laneTargets.map(\.device)
                             .filter { outcome.booted.contains($0.name) }) { bootLog.append($0) }

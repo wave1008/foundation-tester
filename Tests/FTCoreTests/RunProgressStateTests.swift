@@ -25,11 +25,12 @@ final class RunProgressStateTests: XCTestCase {
     private func makeState(
         _ journal: Journal, total: Int = 3,
         estimates: [RunProgressEstimate.ScenarioKey: Double] = [:],
-        pendingScenarios: [RunProgressEstimate.ScenarioKey] = []
+        pendingScenarios: [RunProgressEstimate.ScenarioKey] = [],
+        supply: RunSupplyProgress? = nil
     ) -> RunProgressState {
         RunProgressState(pid: 4242, runID: "r1", runGroup: nil, issuer: "alice@air",
                          project: "ec-mobile", profile: "ios-smoke", startedAt: Date(), total: total,
-                         estimates: estimates, pendingScenarios: pendingScenarios,
+                         estimates: estimates, pendingScenarios: pendingScenarios, supply: supply,
                          write: { journal.recordWrite($0) }, remove: { journal.recordRemove() })
     }
 
@@ -121,6 +122,72 @@ final class RunProgressStateTests: XCTestCase {
         let state = makeState(journal)
         await state.laneJoined(key: "UDID-A", name: "iPhone 17-01", platform: "ios")
         XCTAssertEqual(journal.writes.last?.phase, "running")
+    }
+
+    /// 箱の snapshot が record の supply に載る(箱が無ければ空)
+    func testFlushCarriesTheSupplySnapshot() async {
+        let journal = Journal()
+        let box = RunSupplyProgress()
+        box.set(name: "iPhone 17-02", platform: "ios", step: .bridge)
+        box.set(name: "Pixel 9-01", platform: "android", step: .ready)
+        let state = makeState(journal, supply: box)
+        await state.laneJoined(key: "UDID-A", name: "iPhone 17-01", platform: "ios")
+        // 名前順(コードポイント順 = 大文字の "P" が小文字の "i" より先)
+        XCTAssertEqual(journal.writes.last?.supply, [
+            RunProgressSupply(name: "Pixel 9-01", platform: "android", step: "ready"),
+            RunProgressSupply(name: "iPhone 17-02", platform: "ios", step: "bridge"),
+        ])
+        let withoutBox = Journal()
+        let plain = makeState(withoutBox)
+        await plain.laneJoined(key: "UDID-A", name: "iPhone 17-01", platform: "ios")
+        XCTAssertEqual(withoutBox.writes.last?.supply, [])
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async -> Bool {
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if condition() { return true }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return condition()
+    }
+
+    /// 最初の書き込みの後は、箱の変更で書き直す(混在 run で iOS が後から合流中の段階)。
+    /// 最初の書き込みの前は通知を奪わない(準備中の書き手が続ける)
+    func testSupplyChangeRewritesOnlyAfterTheFirstWrite() async {
+        let journal = Journal()
+        let box = RunSupplyProgress()
+        let preparingCalls = LockedValue(0)
+        box.setOnChange(owner: ObjectIdentifier(box)) { preparingCalls.withLock { $0 += 1 } }
+        let state = makeState(journal, supply: box)
+        box.set(name: "iPhone 17-01", platform: "ios", step: .booting)
+        XCTAssertEqual(preparingCalls.value, 1, "最初の書き込み前は準備中の書き手の通知が生きている")
+        XCTAssertEqual(journal.writes.count, 0)
+
+        await state.laneJoined(key: "UDID-A", name: "iPhone 17-01", platform: "ios")
+        XCTAssertEqual(journal.writes.count, 1)
+        box.set(name: "iPhone 17-01", platform: "ios", step: .ready)
+        let rewritten = await waitUntil { journal.writes.count == 2 }
+        XCTAssertTrue(rewritten, "箱の変更で台帳を書き直す")
+        XCTAssertEqual(journal.writes.last?.supply.map(\.step), ["ready"])
+        XCTAssertEqual(preparingCalls.value, 1, "引き継いだ後は準備中の書き手へ通知しない")
+        // 同じ内容は箱が通知しない = 書き直さない
+        box.set(name: "iPhone 17-01", platform: "ios", step: .ready)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(journal.writes.count, 2)
+    }
+
+    /// finish() の後に箱が変わっても台帳を作り直さない
+    func testSupplyChangeAfterFinishDoesNotRewrite() async {
+        let journal = Journal()
+        let box = RunSupplyProgress()
+        let state = makeState(journal, supply: box)
+        await state.laneJoined(key: "UDID-A", name: "iPhone 17-01", platform: "ios")
+        await state.finish()
+        box.set(name: "iPhone 17-01", platform: "ios", step: .installing)
+        await state.supplyChanged()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(journal.writes.count, 1)
     }
 
     func testFinishCallsRemove() async {

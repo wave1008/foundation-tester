@@ -30,15 +30,19 @@ enum ProfileRunOrchestrator {
     /// RunOrchestrator が最初の laneJoined で "running" の record へ上書きするまでの穴埋め。
     /// **後始末は呼び手**: RunOrchestrator.run() へ到達できずに throw すると finish() が一度も
     /// 呼ばれないので、呼び手は handoff が立たないまま抜けるとき返した pid の控えを defer で消す
-    static func writePreparingProgress(recorder: RunRecorder?, project: TestProject, profile: String) -> Int32 {
-        let pid = ProcessInfo.processInfo.processIdentifier
-        RunProgressLedger.write(RunProgressRecord(
-            pid: pid, runID: recorder?.runID, runGroup: recorder?.runGroup,
+    /// 戻り値の writer は入口の writer(Fleetest/ApiRunCommand の writeProgress)から供給の変更通知を引き継ぐ。
+    /// 呼び手は handoff が立たないまま抜けるとき `close()` してから控えを消す
+    static func writePreparingProgress(
+        recorder: RunRecorder?, project: TestProject, profile: String, supply: RunSupplyProgress
+    ) -> PreparingProgressWriter {
+        let writer = PreparingProgressWriter(
+            pid: ProcessInfo.processInfo.processIdentifier,
+            runID: recorder?.runID, runGroup: recorder?.runGroup,
             issuer: LocalConfig.resolveIssuerId(), project: project.name, profile: profile,
-            startedAt: ISO8601DateFormatter().string(from: Date()), total: 0, done: 0, failed: 0,
-            requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [], phase: "preparing"),
-            directory: RunProgressLedger.directory())
-        return pid
+            startedAt: ISO8601DateFormatter().string(from: Date()), supply: supply)
+        writer.attach()
+        writer.write(phase: "preparing")
+        return writer
     }
 
     static func make(
@@ -46,6 +50,7 @@ enum ProfileRunOrchestrator {
         recorder: RunRecorder?, repoRoot: URL, leaseStateDir: URL?, supplyLease: SupplyLeaseHolder?,
         profile: String, progressHistoryRuns: Int, interruptState: RunInterruptState,
         lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])?,
+        supply: RunSupplyProgress,
         onRevived: @escaping @Sendable (RunWorker) -> Void,
         log: @escaping @Sendable (String) -> Void
     ) -> RunOrchestrator {
@@ -145,6 +150,7 @@ enum ProfileRunOrchestrator {
                 RunProgressLedger.remove(pid: ProcessInfo.processInfo.processIdentifier,
                                          directory: RunProgressLedger.directory())
             },
+            supplyProgress: supply,
             progressHistoryRuns: progressHistoryRuns,
             clearResidualSystemAlert: { worker in
                 await ProfileWorkerFactory.keepSoftwareKeyboardShown(worker: worker)
@@ -170,7 +176,8 @@ enum ProfileRunOrchestrator {
                         do {
                             let installed = try await ProfileWorkerFactory.installIfNeeded(
                                 apps: resolved.apps, workers: [w], forceAndroidInstall: false,
-                                wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale) { log($0) }
+                                wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale,
+                                supplyStage: nil) { log($0) }
                             guard let revived = installed.first else { return nil }
                             onRevived(revived)
                             return revived

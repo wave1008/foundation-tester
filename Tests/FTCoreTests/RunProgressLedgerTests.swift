@@ -23,7 +23,8 @@ final class RunProgressLedgerTests: XCTestCase {
     }
 
     private func makeRecord(pid: Int32, done: Int = 1, failed: Int = 0,
-                            phase: String = "running") -> RunProgressRecord {
+                            phase: String = "running",
+                            supply: [RunProgressSupply] = []) -> RunProgressRecord {
         RunProgressRecord(
             pid: pid, runID: "run-\(pid)", runGroup: nil, issuer: "alice@air",
             project: "ec-mobile", profile: "ios-smoke", startedAt: "2026-09-20T10:03:12Z",
@@ -31,7 +32,7 @@ final class RunProgressLedgerTests: XCTestCase {
             lanes: [RunProgressLane(key: "UDID-A", name: "iPhone 17-01", platform: "ios",
                                     scenario: "05_検索", scenarioStartedAt: "2026-09-20T10:04:00Z",
                                     expectedSeconds: nil)],
-            phase: phase)
+            phase: phase, supply: supply)
     }
 
     func testDefaultDirectoryIsHomeDotFleetestRuns() {
@@ -46,6 +47,46 @@ final class RunProgressLedgerTests: XCTestCase {
         RunProgressLedger.write(record, directory: dir)
         let read = RunProgressLedger.readAll(directory: dir, isAlive: { _ in true }, startTime: Self.unknownStart)
         XCTAssertEqual(read, [record])
+    }
+
+    /// 供給の段階は欄ごと往復する(名前・platform・段階の文字列)。リテラルで固定する
+    func testSupplyRoundTripsThroughTheLedger() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let supply = [
+            RunProgressSupply(name: "", platform: "ios", step: "runnerBuild"),
+            RunProgressSupply(name: "Pixel 9-01", platform: "android", step: "booting"),
+            RunProgressSupply(name: "iPhone 17-01", platform: nil, step: "ready"),
+        ]
+        RunProgressLedger.write(makeRecord(pid: 41233, phase: "preparing", supply: supply), directory: dir)
+        let read = RunProgressLedger.readAll(directory: dir, isAlive: { _ in true }, startTime: Self.unknownStart)
+        XCTAssertEqual(read.first?.supply, supply)
+        let text = try String(contentsOf: dir.appendingPathComponent("41233.json"), encoding: .utf8)
+        XCTAssertTrue(text.contains("\"step\":\"runnerBuild\""), text)
+        XCTAssertTrue(text.contains("\"step\":\"booting\""), text)
+    }
+
+    /// supply を持たない古い形は読まない(後方互換の読み替えを置かない)
+    func testRecordWithoutSupplyIsNotDecoded() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        RunProgressLedger.write(makeRecord(pid: 41233), directory: dir)
+        let url = dir.appendingPathComponent("41233.json")
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        object.removeValue(forKey: "supply")
+        try JSONSerialization.data(withJSONObject: object).write(to: url)
+        XCTAssertEqual(
+            RunProgressLedger.readAll(directory: dir, isAlive: { _ in true }, startTime: Self.unknownStart), [])
+    }
+
+    /// step の語彙(台帳・拡張が読む値)はリテラルで固定する
+    func testStepVocabularyIsPinned() {
+        XCTAssertEqual(RunProgressSupply.Step.runnerBuild.rawValue, "runnerBuild")
+        XCTAssertEqual(RunProgressSupply.Step.booting.rawValue, "booting")
+        XCTAssertEqual(RunProgressSupply.Step.bridge.rawValue, "bridge")
+        XCTAssertEqual(RunProgressSupply.Step.installing.rawValue, "installing")
+        XCTAssertEqual(RunProgressSupply.Step.ready.rawValue, "ready")
+        XCTAssertEqual(RunSupplyProgress.sharedName, "")
     }
 
     func testWriteOverwritesThePreviousSnapshotForTheSamePID() {

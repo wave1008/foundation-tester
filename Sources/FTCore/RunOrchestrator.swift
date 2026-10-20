@@ -549,6 +549,10 @@ actor RunProgressState {
     private var lastWritten: RunProgressRecord?
     private let write: (@Sendable (RunProgressRecord) -> Void)?
     private let remove: (@Sendable () -> Void)?
+    /// 供給の段階の箱。変更通知は `supplyChanged()` へ繋ぐ(RunOrchestrator.run)
+    private let supply: RunSupplyProgress?
+    /// finish() の後に箱の通知で台帳を作り直さない
+    private var finished = false
     /// 残り見積もり(docs/design.md §18.4)の実績表(ms)。空 = 実績ゼロ → etaSeconds は常に nil
     private let estimates: [RunProgressEstimate.ScenarioKey: Double]
     /// 未着手ジョブの多重集合(件数)。同じ (scenarioID, platform) が複数残ることがある
@@ -560,7 +564,9 @@ actor RunProgressState {
         profile: String?, startedAt: Date, total: Int,
         estimates: [RunProgressEstimate.ScenarioKey: Double] = [:],
         pendingScenarios: [RunProgressEstimate.ScenarioKey] = [],
+        supply: RunSupplyProgress? = nil,
         write: (@Sendable (RunProgressRecord) -> Void)?, remove: (@Sendable () -> Void)?) {
+        self.supply = supply
         self.pid = pid
         self.runID = runID
         self.runGroup = runGroup
@@ -576,6 +582,7 @@ actor RunProgressState {
     }
 
     private func flush() {
+        guard !finished else { return }
         let record = RunProgressRecord(
             pid: pid, runID: runID, runGroup: runGroup, issuer: issuer, project: project,
             profile: profile, startedAt: startedAt, total: total, done: done, failed: failed,
@@ -583,10 +590,17 @@ actor RunProgressState {
             // コンパイル待ちの間は残りを出さない(読み手は受信時点の値から秒読みするので、出すと待ちの間に減っていく)
             etaSeconds: ocrCompileWaiters > 0 ? nil : currentEtaSeconds(),
             lanes: lanesByKey.values.sorted { $0.key < $1.key },
-            phase: ocrCompileWaiters > 0 ? "compiling" : "running")
+            phase: ocrCompileWaiters > 0 ? "compiling" : "running",
+            supply: supply?.snapshot() ?? [])
         guard record != lastWritten else { return }
+        let firstWrite = lastWritten == nil
         lastWritten = record
         write?(record)
+        // 通知の引き継ぎは**最初の書き込みの後**(それまでは入口/準備中の書き手が段階を台帳へ載せ続ける。
+        // 先に奪うと、レーンが1つも合流していない iOS だけの run で供給の進行が止まって見える)
+        if firstWrite {
+            supply?.setOnChange(owner: ObjectIdentifier(self)) { [self] in Task { await supplyChanged() } }
+        }
     }
 
     /// §18.4 の式そのもの。**未着手はレーンから独立**(pendingCounts)・**実行中はレーンから直接**
@@ -693,7 +707,14 @@ actor RunProgressState {
 
     /// run 終了。台帳ファイルを消す(best-effort。呼び手が閉じ忘れても pid 死亡で readAll が無視する)
     func finish() {
+        finished = true
+        supply?.releaseOnChange(owner: ObjectIdentifier(self))
         remove?()
+    }
+
+    /// 供給の箱が変わった(混在 run で iOS が後から合流中の段階など)
+    func supplyChanged() {
+        flush()
     }
 }
 
@@ -1033,6 +1054,8 @@ public final class RunOrchestrator: Sendable {
     /// isDeviceFrozen 等と同じ理由(FTCore はプロセス起動側の知識を持たない)で fleetest ターゲットが注入
     private let writeRunProgress: (@Sendable (RunProgressRecord) -> Void)?
     private let removeRunProgress: (@Sendable () -> Void)?
+    /// 準備中の端末ごとの供給の段階(台帳の supply)。nil = 台帳を書かない経路
+    private let supplyProgress: RunSupplyProgress?
     /// 残り見積もり(docs/design.md §18.4)の実績を読む件数(シナリオ1本あたり)。
     /// **FTCore は fleetest ターゲットの `LPTOrdering` を参照できない**ため、呼び出し側が
     /// 同じ run の `LPTOrdering.apply` に渡したのと同じ値(`lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns`)
@@ -1182,6 +1205,7 @@ public final class RunOrchestrator: Sendable {
                 profile: String? = nil,
                 writeRunProgress: (@Sendable (RunProgressRecord) -> Void)? = nil,
                 removeRunProgress: (@Sendable () -> Void)? = nil,
+                supplyProgress: RunSupplyProgress? = nil,
                 progressHistoryRuns: Int,
                 clearResidualSystemAlert: (@Sendable (RunWorker) async -> String?)?,
                 cleanupRetiredWorker: (@Sendable (RunWorker) async -> Void)? = nil,
@@ -1218,6 +1242,7 @@ public final class RunOrchestrator: Sendable {
         self.profile = profile
         self.writeRunProgress = writeRunProgress
         self.removeRunProgress = removeRunProgress
+        self.supplyProgress = supplyProgress
         self.progressHistoryRuns = progressHistoryRuns
         self.cleanupRetiredWorker = cleanupRetiredWorker
         self.reviveWorker = reviveWorker
@@ -1428,7 +1453,7 @@ public final class RunOrchestrator: Sendable {
                 issuer: LocalConfig.resolveIssuerId(), project: project.name, profile: profile,
                 startedAt: Date(), total: total,
                 estimates: estimateTable, pendingScenarios: runnableScenarios,
-                write: writeRunProgress, remove: removeRunProgress)
+                supply: supplyProgress, write: writeRunProgress, remove: removeRunProgress)
         }
 
         continuation.yield(.runStarted(total: total, workerLabels: workers.map(\.label)))

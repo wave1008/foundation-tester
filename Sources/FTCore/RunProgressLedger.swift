@@ -84,11 +84,14 @@ public struct RunProgressRecord: Codable, Equatable, Sendable {
     /// 一度も立たない)/ "preparing"(入口・ビルド後・デバイスの供給中)/ "compiling"(最初のシナリオの前に
     /// compile-ocr を待っている間だけ。RunProgressState.ocrCompileWaitBegan)/ "running"
     public let phase: String
+    /// 準備中の端末ごとの供給の段階(`RunSupplyProgress.snapshot()`)。端末の行は ready になっても残す
+    /// (分母 = 端末の行の数)。供給の段階が1つも無い run は空
+    public let supply: [RunProgressSupply]
 
     public init(pid: Int32, runID: String?, runGroup: String?, issuer: String?, project: String,
                profile: String?, startedAt: String, total: Int, done: Int, failed: Int,
                requeued: Int, laneDropouts: Int, etaSeconds: Int?, lanes: [RunProgressLane],
-               phase: String) {
+               phase: String, supply: [RunProgressSupply]) {
         self.pid = pid
         self.runID = runID
         self.runGroup = runGroup
@@ -104,6 +107,7 @@ public struct RunProgressRecord: Codable, Equatable, Sendable {
         self.etaSeconds = etaSeconds
         self.lanes = lanes
         self.phase = phase
+        self.supply = supply
     }
 
 }

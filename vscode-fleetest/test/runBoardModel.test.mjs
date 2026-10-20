@@ -14,6 +14,7 @@ import {
   liveRemaining,
   LOCAL_MACHINE_KEY,
   machineRunStatus,
+  currentSupplyStep,
 } from "../src/runBoardModel";
 import { isMonitorEvent } from "../src/monitorDeviceModel";
 import { toWebviewMessage } from "../src/monitorModel";
@@ -30,7 +31,7 @@ function lane(overrides) {
 
 function run(overrides) {
   return {
-    pid: 41233, runID: "run-1", issuer: undefined, mine: true, phase: "running", requeued: 0, laneDropouts: 0,
+    pid: 41233, runID: "run-1", issuer: undefined, mine: true, phase: "running", requeued: 0, laneDropouts: 0, supply: [],
     project: "ec-mobile", profile: "ios-smoke",
     elapsedSeconds: 261, total: 12, done: 7, failed: 2,
     lanes: [lane()],
@@ -204,6 +205,41 @@ test("liveRemaining: 見積もり無しは undefined、残っている間は rem
   assert.equal(overdue.overageSeconds, 30);
 });
 
+// ---- 供給の段階(supply)-----------------------------------------------------------------------
+
+test("currentSupplyStep: 空・全台 ready・未知の段階だけは undefined(従来の文言のまま)", () => {
+  assert.equal(currentSupplyStep([]), undefined);
+  assert.equal(currentSupplyStep([{ name: "a", step: "ready" }, { name: "b", step: "ready" }]), undefined);
+  assert.equal(currentSupplyStep([{ name: "a", step: "someFutureStep" }]), undefined);
+});
+
+test("currentSupplyStep: ランナーのビルドが最優先・端末はいちばん進んでいる未完了の段階", () => {
+  assert.equal(currentSupplyStep([
+    { name: "", platform: "ios", step: "runnerBuild" },
+    { name: "a", platform: "ios", step: "booting" },
+    { name: "b", platform: "ios", step: "installing" },
+  ]), "runnerBuild");
+  assert.equal(currentSupplyStep([
+    { name: "a", platform: "ios", step: "booting" },
+    { name: "b", platform: "ios", step: "booting" },
+    { name: "c", platform: "ios", step: "bridge" },
+  ]), "bridge", "台数ではなく段階の進み具合で選ぶ");
+  assert.equal(currentSupplyStep([
+    { name: "a", platform: "ios", step: "installing" },
+    { name: "b", platform: "android", step: "ready" },
+  ]), "installing");
+  assert.equal(currentSupplyStep([{ name: "a", platform: "android", step: "booting" }]), "booting");
+});
+
+test("束ねた run の supply は machine 昇順の run の順に連結する", () => {
+  const supplyOf = (name) => [{ name, platform: "ios", step: "booting" }];
+  let state = applyMonitorRunsEvent(new Map(), { machine: "M1Ultra", observed: true,
+    runs: [run({ runID: "b", runGroup: "g", supply: supplyOf("on-ultra") })] });
+  state = applyMonitorRunsEvent(state, { machine: "M1Max", observed: true,
+    runs: [run({ runID: "a", runGroup: "g", supply: supplyOf("on-max") })] });
+  assert.deepEqual(buildRunGroups(state)[0].supply.map((s) => s.name), ["on-max", "on-ultra"]);
+});
+
 // ---- webview 境界(型検査の効かない postMessage 契約)-----------------------------------------
 
 const wireEvent = {
@@ -211,6 +247,7 @@ const wireEvent = {
   runs: [{
     pid: 41233, runID: "run-1", runGroup: "grp-1", issuer: "alice@air", mine: false,
     project: "ec-mobile", profile: "ios-smoke", phase: "running", requeued: 0, laneDropouts: 0,
+    supply: [{ name: "iPhone 17-01", platform: "ios", step: "booting" }],
     elapsedSeconds: 261, total: 12, done: 7, failed: 2, etaSeconds: null,
     lanes: [{ key: "UDID-1", name: "iPhone 17-01", platform: "ios", scenario: "05_検索",
               scenarioElapsedSeconds: 72 }],
@@ -221,6 +258,24 @@ test("isMonitorEvent: monitorRuns の生 NDJSON を受理し、etaSeconds:null �
   const value = structuredClone(wireEvent);
   assert.equal(isMonitorEvent(value), true);
   assert.equal(value.runs[0].etaSeconds, undefined);
+});
+
+test("isMonitorEvent: supply は必須。platform:null は undefined に正規化し、型崩れは拒否する", () => {
+  const value = structuredClone(wireEvent);
+  value.runs[0].supply = [{ name: "", platform: null, step: "runnerBuild" }];
+  assert.equal(isMonitorEvent(value), true);
+  assert.equal(value.runs[0].supply[0].platform, undefined);
+
+  const missing = structuredClone(wireEvent);
+  delete missing.runs[0].supply;
+  assert.equal(isMonitorEvent(missing), false, "古い形(supply 無し)は受理しない");
+
+  const broken = structuredClone(wireEvent);
+  broken.runs[0].supply = [{ name: "iPhone 17-01", platform: "ios", step: 3 }];
+  assert.equal(isMonitorEvent(broken), false);
+  const brokenPlatform = structuredClone(wireEvent);
+  brokenPlatform.runs[0].supply = [{ name: "x", platform: "windows", step: "ready" }];
+  assert.equal(isMonitorEvent(brokenPlatform), false);
 });
 
 test("isMonitorEvent: machine 省略(手元)・runID/profile 省略(dry-run 系)・待機中レーン(scenario 省略)も妥当", () => {

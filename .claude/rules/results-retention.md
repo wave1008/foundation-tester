@@ -47,6 +47,8 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   供給は機械グローバルの台帳 `~/.fleetest/runs/<pid>.json`(`FTCore.RunProgressLedger`。
   **プロジェクトの `.fleetest/` に置かない** = ランナー機では発行者ごとに work が分かれ他人の run が
   見えなくなる)→ `api monitor` が `monitorRuns` で配る → リモートは fan-out が machine を埋める。
+  **準備中の端末ごとの供給の段階(`supply`)は `RunSupplyProgress` の箱で運び、台帳の書き手3つ
+  (`PreparingProgressWriter` の2用途・`RunProgressState`)が必ず snapshot を載せる**(§18.1)。
   守る規律5つ: **①記帳は `RunOrchestrator` の1箇所・注入は run / api run の2経路**
   (`RunProgressLedgerWiringTests` が走査で固定。片方だけだとその経路の run が緑のまま映らない)/
   **②生存判定は pid と `startedAt` の開始時刻照合**(mtime を見ない。pid の再利用は `ProcessLiveness.isAliveAndNotStartedAfter` が弾く)/ **③死んだ控えは書き手が run 開始時に掃く**

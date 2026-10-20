@@ -586,6 +586,9 @@ struct ApiRunCommand: AsyncParsableCommand {
             throw RunInterruptedBeforeStartError(phase: "device supply")
         }
         let triageBox = BlankTriageBox()
+        // 供給の段階の箱。**供給のタスクを起こす前に作る**(段階は入口の writeProgress より前に起きうる。
+        // 台帳へ載せるのは writeProgress が書き手を繋いでから)。dry-run/debug では誰も書かない
+        let supplyProgress = RunSupplyProgress()
         // 供給フェーズ(install・凍結triage)の間も run-lease を保つ。RunOrchestrator の lease は
         // シナリオ実行中しか書かれず、その手前に start-device が割り込む穴が空くため
         let supplyLease = (try? RepoRoot.find())
@@ -623,7 +626,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                         devices: resolved.androidDevices, runningAVDIDs: Set(running.values))
                     if !laneTargets.isEmpty {
                         let outcome = await AndroidLaneRecovery.bootMissingDevices(
-                            devices: laneTargets.map(\.device), locale: resolved.locale) { logSupply($0) }
+                            devices: laneTargets.map(\.device), locale: resolved.locale,
+                            supplyStage: supplyProgress.reporter) { logSupply($0) }
                         // 起こせた分は、ブリッジが定着するまで待ってから先へ進む(理由は
                         // awaitDurableAndroidBridges の宣言)
                         await ProfileWorkerFactory.awaitDurableAndroidBridges(
@@ -651,7 +655,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                 workers = triage.workers
                 workers = try await ProfileWorkerFactory.installIfNeeded(
                     apps: resolved.apps, workers: workers,
-                    forceAndroidInstall: !wipedAndroid.isEmpty, wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale) { logSupply($0) }
+                    forceAndroidInstall: !wipedAndroid.isEmpty, wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale,
+                    supplyStage: supplyProgress.reporter) { logSupply($0) }
                 // "🚀 Starting with…" は iOS の合流有無が分かってから1回だけ出す(下の
                 // RunStartLine.text 呼び出し。ここで固定文言を出すと iOS 0 台のプロファイルでも
                 // 「iOS joins…」と言ってしまう。RunStartLine の宣言参照)
@@ -670,14 +675,16 @@ struct ApiRunCommand: AsyncParsableCommand {
                             supplyLease: supplyLease
                         ) {
                             try await ProfileWorkerFactory.buildIOSWorkers(
-                                resolved: resolved, repoRoot: try RepoRoot.find()) { logSupply($0) }
+                                resolved: resolved, repoRoot: try RepoRoot.find(),
+                                supplyStage: supplyProgress.reporter) { logSupply($0) }
                         }
                         // install 全滅の throw は握りつぶさない(F5) —— `try?` で受けると失敗前
                         // (=古いアプリのまま)の workers へ静かに戻る。投げれば下の catch が
                         // 「このレーンは空」の既定の扱いに落とす
                         workers = try await ProfileWorkerFactory.installIfNeeded(
                             apps: resolved.apps, workers: workers,
-                            forceAndroidInstall: false, wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale) { logSupply($0) }
+                            forceAndroidInstall: false, wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale,
+                            supplyStage: supplyProgress.reporter) { logSupply($0) }
                         // 画面だけ死んだシミュレータを**投入前に**弾く(BlankWorkerTriage 参照)。
                         // Android は buildAndroidWorkers 直後に同等の処理(修復つき)を通している
                         let repoRoot = try RepoRoot.find()
@@ -731,25 +738,26 @@ struct ApiRunCommand: AsyncParsableCommand {
         var progressHandedToRunWithProfileParallel = false
         // 書き直しても**入口の時刻のまま**(経過が巻き戻らない)
         let progressStartedAt = ISO8601DateFormatter().string(from: Date())
+        let entryProgress = PreparingProgressWriter(
+            pid: progressPid, runID: nil, runGroup: nil, issuer: LocalConfig.resolveIssuerId(),
+            project: testProject.name, profile: resolvedProfile?.runName, startedAt: progressStartedAt,
+            supply: supplyProgress)
         /// **段階は実際にやっていることだけを言う**(ユーザー決定)—— 入口ではまだ
         /// ビルドしていない(`--skip-build` = 機械分担のローカル子なら最後までしない)ので
         /// "preparing" で始め、"building" は `ScenarioHost.build` を挟む間だけ立てて直後に戻す。
         func writeProgress(phase: String) {
-            guard let resolvedProfile, !dryRun, debugOptions == nil else { return }
-            RunProgressLedger.write(RunProgressRecord(
-                pid: progressPid, runID: nil, runGroup: nil, issuer: LocalConfig.resolveIssuerId(),
-                project: testProject.name, profile: resolvedProfile.runName,
-                startedAt: progressStartedAt, total: 0, done: 0, failed: 0,
-                requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [], phase: phase),
-                directory: RunProgressLedger.directory())
+            guard resolvedProfile != nil, !dryRun, debugOptions == nil else { return }
+            entryProgress.write(phase: phase)
         }
         if resolvedProfile != nil, !dryRun, debugOptions == nil {
             RunProgressLedger.sweep(directory: RunProgressLedger.directory(), startTime: ProcessLiveness.startTime)
+            entryProgress.attach()
             writeProgress(phase: "preparing")
         }
         defer {
             if resolvedProfile != nil, !dryRun, debugOptions == nil,
                !progressHandedToRunWithProfileParallel {
+                entryProgress.close()
                 RunProgressLedger.remove(pid: progressPid, directory: RunProgressLedger.directory())
             }
         }
@@ -912,7 +920,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                     outcome = try await runWithProfileParallel(
                         resolved: resolvedProfile, project: testProject, selected: selected,
                         workers: androidWorkers + eagerIOSWorkers, iosWorkersTask: effectiveIosWorkersTask,
-                        recorder: recorder, supplyLease: supplyLease, interruptState: interruptState)
+                        recorder: recorder, supplyLease: supplyLease, supplyProgress: supplyProgress,
+                        interruptState: interruptState)
                 }
             } else {
                 outcome = try await runDirect(
@@ -1299,7 +1308,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             blankTriage = (triage.repaired + iosTriage.repaired, triage.excluded + iosTriage.excluded)
             workers = try await ProfileWorkerFactory.installIfNeeded(
                 apps: resolved.apps, workers: workers,
-                forceAndroidInstall: !wipedAndroid.isEmpty, wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale) { logSupply($0) }
+                forceAndroidInstall: !wipedAndroid.isEmpty, wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale,
+                supplyStage: nil) { logSupply($0) }
         }
 
         // シナリオが platform 未指定のときの既定 platform(iOS ワーカーがあれば ios 優先。
@@ -1444,7 +1454,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     private func runWithProfileParallel(
         resolved: ResolvedProfile, project: TestProject, selected: [ScenarioInfo],
         workers: [RunWorker], iosWorkersTask: Task<[RunWorker], Never>?, recorder: RunRecorder?,
-        supplyLease: SupplyLeaseHolder?, interruptState: RunInterruptState
+        supplyLease: SupplyLeaseHolder?, supplyProgress: RunSupplyProgress, interruptState: RunInterruptState
     ) async throws -> RunOutcome {
         let repoRoot = try RepoRoot.find()
         // `--set` の上書きは ProfileResolver.resolve が resolved.fm へ当て済み(二重適用しない)
@@ -1501,12 +1511,14 @@ struct ApiRunCommand: AsyncParsableCommand {
         // (1 run で2回走らせない。docs/design.md §18.1「run 開始時に1回」)
 
         // 段階「準備中」の控え。handoff が立たないまま抜けるときは defer で消す(writePreparingProgress の doc)
-        let progressPid = ProfileRunOrchestrator.writePreparingProgress(
-            recorder: recorder, project: project, profile: resolved.runName)
+        let progressWriter = ProfileRunOrchestrator.writePreparingProgress(
+            recorder: recorder, project: project, profile: resolved.runName, supply: supplyProgress)
         var progressHandedToOrchestrator = false
         defer {
             if !progressHandedToOrchestrator {
-                RunProgressLedger.remove(pid: progressPid, directory: RunProgressLedger.directory())
+                progressWriter.close()
+                RunProgressLedger.remove(pid: ProcessInfo.processInfo.processIdentifier,
+                                         directory: RunProgressLedger.directory())
             }
         }
 
@@ -1523,6 +1535,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                     return ws
                 })
             },
+            supply: supplyProgress,
             // revive でポートが変わると label も変わる。登録しないと以後の NDJSON の worker が
             // workersReady の id と食い違う(lateWorkers と同じ処理)
             onRevived: { workerID.merge([$0]) },

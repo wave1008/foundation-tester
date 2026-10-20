@@ -386,6 +386,12 @@ public struct BridgeProvisioner: Sendable {
     /// モニターのタイルと通知へ出す `api start-device` / `start-all-devices` だけが渡す
     /// (run はログがそのまま実行ログビューに出る)
     let userAction: (@Sendable (String, DeviceUserAction?) -> Void)?
+    /// run の準備中表示(台帳の supply)への通知(デバイス名, platform, 段階。nil = その行を消す)。
+    /// run / api run の供給だけが渡す。名前は `devices[].name`(ランナーのビルドは端末に属さないので空文字)
+    let supplyStage: SupplyStageReporter?
+    /// この供給の中で起動を扱った Simulator の udid。`sim.booted` は計画を立てた時点の値なので、同じ端末の2つ目のブリッジ
+    /// (hybrid の xcuitest → in-app)で古い「未起動」を見て、起動済みの端末に「起動中」を立て直さないため
+    private let bootHandled = LockedValue<Set<String>>([])
     /// assignPort が候補ポートを弾くための判定(lsof を伴うので production は
     /// `PortHolder.isHeldByAnotherDevice`。テストは注入して lsof を避ける)
     let portHeldByAnotherDevice: @Sendable (UInt16, String) -> Bool
@@ -397,12 +403,14 @@ public struct BridgeProvisioner: Sendable {
                 portRange: ClosedRange<UInt16> =
                     BridgeAPI.defaultPort...(BridgeAPI.defaultPort + 31),
                 userAction: (@Sendable (String, DeviceUserAction?) -> Void)? = nil,
+                supplyStage: SupplyStageReporter? = nil,
                 portHeldByAnotherDevice: @escaping @Sendable (UInt16, String) -> Bool = {
                     PortHolder.isHeldByAnotherDevice(port: $0, udid: $1)
                 }) {
         self.repoRoot = repoRoot
         self.portRange = portRange
         self.userAction = userAction
+        self.supplyStage = supplyStage
         self.portHeldByAnotherDevice = portHeldByAnotherDevice
     }
 
@@ -959,6 +967,7 @@ public struct BridgeProvisioner: Sendable {
             grouping: launches.filter { $0.engine != "inapp" }, by: { $0.sim.physical })
             .compactMap { $0.value.first }
         guard inapp != nil || !xcuiByKind.isEmpty else { return }
+        let runnerBuilding = self.runnerBuilding
         try await Task.detached(priority: .userInitiated) {
             if let inapp {
                 // dylib は全デバイス共有(udid/port は buildIfNeeded では未使用)
@@ -970,9 +979,15 @@ public struct BridgeProvisioner: Sendable {
                 let launcher = BridgeLauncher(repoRoot: repoRoot, device: xcui.sim.udid,
                                               port: xcui.port, physical: xcui.sim.physical)
                 try launcher.generateProjectIfNeeded()
-                try Self.ensureRunnerBuilt(launcher: launcher, repoRoot: repoRoot, sim: xcui.sim, log: log)
+                try Self.ensureRunnerBuilt(launcher: launcher, repoRoot: repoRoot, sim: xcui.sim, log: log, building: runnerBuilding)
             }
         }.value
+    }
+
+    /// build-for-testing の開始/終了(端末に属さない共有の段階。実際にビルドするときだけ呼ばれる)
+    private var runnerBuilding: @Sendable (Bool) -> Void {
+        let stage = supplyStage
+        return { stage?(RunSupplyProgress.sharedName, "ios", $0 ? .runnerBuild : nil) }
     }
 
     /// 並列の起動から ensureRunnerBuilt が同時に呼ばれても build-for-testing を二重に撃たない
@@ -985,7 +1000,7 @@ public struct BridgeProvisioner: Sendable {
     /// xctestrunNotFound になる(実害: 別クローンのランナーが居るデバイスで、新しいクローンの
     /// 最初の ft_* が失敗した)。ロックの中で有無を見直すので、準備段の後の呼び出しはビルドしない
     static func ensureRunnerBuilt(launcher: BridgeLauncher, repoRoot: URL, sim: SimDeviceInfo,
-                                  log: (String) -> Void) throws {
+                                  log: (String) -> Void, building: @Sendable (Bool) -> Void) throws {
         runnerBuildLock.lock()
         defer { runnerBuildLock.unlock() }
         let existing = try launcher.findXCTestRun()
@@ -994,6 +1009,10 @@ public struct BridgeProvisioner: Sendable {
                 repoRoot: repoRoot, xctestrun: $0,
                 signing: launcher.currentSigningFingerprint()) }
         let rebuild = rebuildReason != nil
+        // ビルドする間だけ共有の段階を立てる(ロックの中なので二重ビルドの並びと一致する)
+        let willBuild = existing == nil || rebuild
+        if willBuild { building(true) }
+        defer { if willBuild { building(false) } }
         // **ビルドを始める前に**ロックを知らせる(ビルド自体に解除は要らないので待たない
         // = 数分の間に解除してもらえれば、起動時に待たずに済む)
         if sim.physical, existing == nil || rebuild,
@@ -1037,9 +1056,11 @@ public struct BridgeProvisioner: Sendable {
                 await claim.fire()
             } catch {
                 await claim.fire()
+                supplyStage?(plan.name, "ios", nil)
                 throw error
             }
         }
+        supplyStage?(plan.name, "ios", .ready)
         // 主ブリッジは plan の先頭(hybrid = in-app / 単独 = そのエンジン)。実行順とは無関係
         let primary = portsByEngine[plan.bridges[0].engine]!
         return ProvisionedIOSDevice(
@@ -1528,6 +1549,7 @@ public struct BridgeProvisioner: Sendable {
                 try? FileManager.default.removeItem(
                     at: InAppBridgeState.url(stateDir: stateDir, port: port))
             }
+            supplyStage?(name, "ios", .bridge)
             log("→ \(name): starting the \(engine) bridge (port \(port), \(sim.name) \(sim.os))...")
             if engine == "inapp" {
                 // planBridge が bundleID 必須を検証済み(ここは保険)
@@ -1542,13 +1564,19 @@ public struct BridgeProvisioner: Sendable {
                 // status(timeout:) 化で別途緩和済み)。
                 reclaimInAppOrphans(udid: sim.udid, exceptPort: port, name: name, log: log)
                 let launcher = InAppLauncher(repoRoot: repoRoot, udid: sim.udid, port: port)
+                let supplyStage = self.supplyStage
                 // dylib ビルドは prepareSharedBuilds で完了済み(ここで buildIfNeeded すると並列で競合)
                 try await Task.detached(priority: .userInitiated) {
+                    if !sim.booted, bootHandled.withLock({ $0.insert(sim.udid).inserted }) {
+                        supplyStage?(name, "ios", .booting)
+                    }
                     try launcher.ensureBooted()  // simctl launch はブート済み前提(install も同様)
+                    if preinstallAppPath != nil, needsInstall { supplyStage?(name, "ios", .installing) }
                     try self.ensureAppInstalled(deviceName: name, sim: sim, bundleID: bundleID,
                                                 preinstallAppPath: preinstallAppPath,
                                                 needsInstall: needsInstall, log: log)
                 }.value
+                supplyStage?(name, "ios", .bridge)
                 do {
                     // **in-app は relaunch の中で記録の書き込みと ready 待ちが分かれていない**ので、
                     // 確保の合図は戻ってから(= この経路はロックの短縮が効かない)
@@ -1591,20 +1619,23 @@ public struct BridgeProvisioner: Sendable {
                 // **ブートはランナーの起動予算の外で待ち切る**(SimulatorBoot)。xcodebuild に任せると
                 // 再起動直後の 8 台同時ブートがランナーの 180 秒に混ざり、何も書かないまま全滅する
                 if !sim.physical {
-                    if !sim.booted {
+                    if !sim.booted, bootHandled.withLock({ $0.insert(sim.udid).inserted }) {
+                        supplyStage?(name, "ios", .booting)
                         log("→ \(name): booting the simulator before starting the xcuitest runner"
                             + " (the boot is not counted against the runner's start-up budget)")
                     }
                     try await Task.detached(priority: .userInitiated) {
                         try SimulatorBoot.ensureBooted(udid: sim.udid)
                     }.value
+                    supplyStage?(name, "ios", .bridge)
                 }
                 // **xctestrun を準備段の保証に頼らない**(ensureRunnerBuilt の doc)。計画どおりの
                 // .launch では準備段が済ませているので、ここは有無を見るだけでビルドしない
                 let repoRoot = repoRoot
+                let runnerBuilding = self.runnerBuilding
                 try await Task.detached(priority: .userInitiated) {
                     try launcher.generateProjectIfNeeded()
-                    try Self.ensureRunnerBuilt(launcher: launcher, repoRoot: repoRoot, sim: sim, log: log)
+                    try Self.ensureRunnerBuilt(launcher: launcher, repoRoot: repoRoot, sim: sim, log: log, building: runnerBuilding)
                     try launcher.startDetached()
                 }.value
                 // **ここでポートは確保済み**(startDetached が pid ファイルを書く)。以降の

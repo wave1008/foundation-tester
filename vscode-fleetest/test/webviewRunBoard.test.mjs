@@ -83,7 +83,7 @@ function monitorRunsMessage(overrides) {
     type: "monitorRuns",
     observed: true,
     runs: [{
-      pid: 41233, runID: "run-1", mine: true, phase: "running", requeued: 0, laneDropouts: 0,
+      pid: 41233, runID: "run-1", mine: true, phase: "running", requeued: 0, laneDropouts: 0, supply: [],
       project: "ec-mobile", profile: "ios-smoke",
       elapsedSeconds: 261, total: 12, done: 7, failed: 2,
       lanes: [{ key: "UDID-1", name: "iPhone 17-01", platform: "ios", scenario: "05_検索",
@@ -150,14 +150,14 @@ test("準備中の run は本数でなく「準備中」を出し、進捗バー
   const { window, document } = createWebview();
   t.after(() => window.close());
   post(window, { type: "monitorRuns", machine: "M1Max", observed: true, runs: [{
-    pid: 41233, runID: "run-1", mine: true, phase: "preparing", requeued: 0, laneDropouts: 0,
+    pid: 41233, runID: "run-1", mine: true, phase: "preparing", requeued: 0, laneDropouts: 0, supply: [],
     project: "E2E-iOS", profile: "ios-inapp",
     elapsedSeconds: 12, total: 0, done: 0, failed: 0, lanes: [],
   }] });
   // **run の行に限って見る** —— run の無い機械の行も同じ作り(.run-board-row)なので、素の
   // querySelector では local の行を掴む
   const [runRow] = runRows(document);
-  assert.equal(runRow.querySelector(".run-board-counts").textContent, "準備中(デバイスを用意しています)");
+  assert.equal(runRow.querySelector(".run-board-counts").textContent, "デバイスを準備中");
   assert.equal(runRow.querySelector(".run-board-progress").style.display, "none");
   assert.equal(document.getElementById("run-board-title").textContent, "実行中 1",
     "準備中も「実行中」の件数に数える(走っているので)");
@@ -167,12 +167,98 @@ test("準備中の run は本数でなく「準備中」を出し、進捗バー
   assert.deepEqual(idle, ["local—"], "準備中でも M1Max は使用中(空きに出さない)");
 });
 
+// 準備中の端末ごとの供給の段階(台帳の supply。docs/design.md §18.1)。1つだけ出す(台数は出さない)
+test("準備中の run は供給の段階を1つ出す(ランナーのビルドが最優先・端末はいちばん進んでいる段階)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  const supply = [
+    { name: "iPhone 17-01", platform: "ios", step: "booting" },
+    { name: "iPhone 17-02", platform: "ios", step: "booting" },
+    { name: "iPhone 17-03", platform: "ios", step: "bridge" },
+  ];
+  post(window, { type: "monitorRuns", machine: "M1Max", observed: true, runs: [{
+    pid: 41233, runID: "run-1", mine: true, phase: "preparing", requeued: 0, laneDropouts: 0, supply,
+    project: "E2E-iOS", profile: "ios-inapp",
+    elapsedSeconds: 12, total: 0, done: 0, failed: 0, lanes: [],
+  }] });
+  const [runRow] = runRows(document);
+  assert.equal(runRow.querySelector(".run-board-counts").textContent,
+    "ブリッジを起動中");
+  assert.equal(runRow.querySelector(".run-board-progress").style.display, "none");
+
+  // ランナーのビルド(端末に属さない行)→ 段階が進んで ready が増える
+  post(window, { type: "monitorRuns", machine: "M1Max", observed: true, runs: [{
+    pid: 41233, runID: "run-1", mine: true, phase: "preparing", requeued: 0, laneDropouts: 0,
+    supply: [{ name: "", platform: "ios", step: "runnerBuild" },
+             { name: "iPhone 17-01", platform: "ios", step: "ready" },
+             { name: "iPhone 17-02", platform: "ios", step: "installing" }],
+    project: "E2E-iOS", profile: "ios-inapp",
+    elapsedSeconds: 20, total: 0, done: 0, failed: 0, lanes: [],
+  }] });
+  assert.equal(runRows(document)[0].querySelector(".run-board-counts").textContent,
+    "ランナーをビルド中");
+});
+
+// シナリオのビルド中・Vision のコンパイル中は、供給の段階があってもその文言だけ
+test("ビルド中・コンパイル中は供給の段階を添えない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  for (const [phase, expected] of [["building", "シナリオをビルド中"], ["compiling", "Vision コンパイル中"]]) {
+    post(window, { type: "monitorRuns", machine: "M1Max", observed: true, runs: [{
+      pid: 41233, runID: "run-1", mine: true, phase, requeued: 0, laneDropouts: 0,
+      supply: [{ name: "iPhone 17-01", platform: "ios", step: "booting" }],
+      project: "E2E-iOS", profile: "ios-inapp",
+      elapsedSeconds: 12, total: 0, done: 0, failed: 0, lanes: [],
+    }] });
+    assert.equal(runRows(document)[0].querySelector(".run-board-counts").textContent, expected, phase);
+  }
+});
+
+// 供給の行が全部 ready なら従来の文言のまま(段階を推測で言わない)
+test("供給の段階がすべて ready なら従来の「準備中」の文言のまま", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  post(window, { type: "monitorRuns", machine: "M1Max", observed: true, runs: [{
+    pid: 41233, runID: "run-1", mine: true, phase: "preparing", requeued: 0, laneDropouts: 0,
+    supply: [{ name: "iPhone 17-01", platform: "ios", step: "ready" }],
+    project: "E2E-iOS", profile: "ios-inapp",
+    elapsedSeconds: 12, total: 0, done: 0, failed: 0, lanes: [],
+  }] });
+  assert.equal(runRows(document)[0].querySelector(".run-board-counts").textContent,
+    "デバイスを準備中");
+});
+
+// 混在 run: 最初の Android レーンが合流して phase は running だが iOS の供給が続いている
+test("running でも供給が続いていれば、進捗はそのままに準備中の文言を添える", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  post(window, monitorRunsMessage({ runs: [{
+    ...monitorRunsMessage().runs[0],
+    supply: [{ name: "Pixel 9-01", platform: "android", step: "ready" },
+             { name: "iPhone 17-01", platform: "ios", step: "bridge" }],
+  }] }));
+  const counts = runRows(document)[0].querySelector(".run-board-counts");
+  assert.equal(counts.firstChild.textContent, "7/12");
+  assert.equal(counts.querySelector(".run-board-counts-failed").textContent, "❌2");
+  assert.equal(counts.querySelector(".run-board-counts-supply").textContent,
+    "ブリッジを起動中");
+  assert.notEqual(runRows(document)[0].querySelector(".run-board-progress").style.display, "none",
+    "進捗バーは隠さない");
+  // 供給が終われば添えた文言は消える
+  post(window, monitorRunsMessage({ runs: [{
+    ...monitorRunsMessage().runs[0],
+    supply: [{ name: "Pixel 9-01", platform: "android", step: "ready" },
+             { name: "iPhone 17-01", platform: "ios", step: "ready" }],
+  }] }));
+  assert.equal(runRows(document)[0].querySelector(".run-board-counts-supply"), null);
+});
+
 // 最初のシナリオの前の compile-ocr の待ち(RunProgressState.ocrCompileWaitBegan)。進捗も残りもまだ意味を持たない
 test("Vision のコンパイル待ちの run は「Vision コンパイル中」を出し、進捗バーは隠す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   post(window, { type: "monitorRuns", machine: "M1Max", observed: true, runs: [{
-    pid: 41233, runID: "run-1", mine: true, phase: "compiling", requeued: 0, laneDropouts: 0,
+    pid: 41233, runID: "run-1", mine: true, phase: "compiling", requeued: 0, laneDropouts: 0, supply: [],
     project: "E2E-iOS", profile: "ios-inapp",
     elapsedSeconds: 30, total: 4, done: 0, failed: 0, lanes: [],
   }] });
@@ -184,7 +270,7 @@ test("Vision のコンパイル待ちの run は「Vision コンパイル中」�
 test("失敗があるときだけ ❌失敗数 を足し、無ければ本数だけ", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  const base = { pid: 41233, runID: "run-1", mine: true, phase: "running", requeued: 0, laneDropouts: 0,
+  const base = { pid: 41233, runID: "run-1", mine: true, phase: "running", requeued: 0, laneDropouts: 0, supply: [],
     project: "E2E-iOS", profile: "ios-inapp", elapsedSeconds: 30, lanes: [] };
   post(window, { type: "monitorRuns", observed: true, runs: [{ ...base, total: 54, done: 54, failed: 2 }] });
   assert.equal(runRows(document)[0].querySelector(".run-board-counts").textContent, "54/54❌2");
@@ -535,12 +621,12 @@ test("「起動中のデバイス」で絞っていてもツリーの台は消�
   });
   // ビルド中 = レーンがまだ1本も無い。デバイスの一覧だけがツリーの供給源になる
   post(window, { type: "monitorRuns", observed: true, runs: [{
-    pid: 41233, runID: "run-1", mine: true, phase: "building", requeued: 0, laneDropouts: 0,
+    pid: 41233, runID: "run-1", mine: true, phase: "building", requeued: 0, laneDropouts: 0, supply: [],
     project: "E2E-CMP", profile: "ios-inapp",
     elapsedSeconds: 8, total: 0, done: 0, failed: 0, lanes: [],
   }] });
   const row = runRows(document)[0];
-  assert.equal(row.querySelector(".run-board-counts").textContent, "ビルド中");
+  assert.equal(row.querySelector(".run-board-counts").textContent, "シナリオをビルド中");
   assert.deepEqual(laneNames(row), ["iPhone 17-01", "iPhone 17-02"],
     "停止中の台もツリーには出す(run の下から台を消さない)");
   assert.deepEqual([...document.querySelectorAll("#grid .tile .tile-name")].map((el) => el.textContent),
@@ -669,7 +755,7 @@ test("準備中に開いた run の行は、走り出して runID が付いて�
   t.after(() => window.close());
   sendDevices(window, [{ name: "iPhone 17 Pro-01", udid: "U-L1" }]);
   const run = (fields) => ({ type: "monitorRuns", observed: true, runs: [Object.assign({
-    pid: 41233, mine: true, requeued: 0, laneDropouts: 0, project: "E2E-iOS", profile: "ios-inapp",
+    pid: 41233, mine: true, requeued: 0, laneDropouts: 0, supply: [], project: "E2E-iOS", profile: "ios-inapp",
     elapsedSeconds: 3, total: 0, done: 0, failed: 0, lanes: [],
   }, fields)] });
   post(window, run({ phase: "preparing" }));

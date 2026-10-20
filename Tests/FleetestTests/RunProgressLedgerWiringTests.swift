@@ -108,4 +108,76 @@ final class RunProgressLedgerWiringTests: XCTestCase {
         XCTAssertFalse(profileRunner.contains("RunProgressLedger.sweep("),
                        "ProfileRunner はビルドの後に呼ばれる —— 入口(Fleetest.swift)で済んでいる")
     }
+
+    // MARK: - 供給の段階(台帳の supply)
+
+    /// 入口の2経路が箱を作り、供給と台帳の書き手へ渡していること。片方だけだと、その経路の
+    /// 準備中表示に段階が出ない(run は緑のまま通る)
+    func testBothEntriesCreateTheSupplyBoxAndHandItOn() throws {
+        let fleetest = try Self.code("Sources/fleetest/Fleetest.swift")
+        XCTAssertTrue(fleetest.contains("let supplyProgress = RunSupplyProgress()"), "Fleetest.swift が箱を作っていない")
+        XCTAssertTrue(fleetest.contains("supplyProgress: supplyProgress,"),
+                      "Fleetest.swift が ProfileRunner.run へ箱を渡していない")
+        XCTAssertTrue(fleetest.contains("entryProgress.attach()"), "入口の書き手が箱の変更通知を引き継いでいない")
+
+        let api = try Self.code("Sources/fleetest/ApiRunCommand.swift")
+        let box = try XCTUnwrap(api.range(of: "let supplyProgress = RunSupplyProgress()"),
+                                "ApiRunCommand.swift が箱を作っていない")
+        // 供給のタスクを起こす前に作る(段階は入口の書き込みより前に起きうる)
+        let task = try XCTUnwrap(api.range(of: "androidWorkersTask = Task {"))
+        XCTAssertTrue(box.lowerBound < task.lowerBound, "箱を供給のタスクより後で作っている")
+        XCTAssertTrue(api.contains("supplyProgress: supplyProgress,"), "runWithProfileParallel へ箱を渡していない")
+        XCTAssertTrue(api.contains("supply: supplyProgress,"), "ProfileRunOrchestrator.make へ箱を渡していない")
+        XCTAssertTrue(api.contains("entryProgress.attach()"), "入口の書き手が箱の変更通知を引き継いでいない")
+
+        let runner = try Self.code("Sources/fleetest/ProfileRunner.swift")
+        XCTAssertTrue(runner.contains("supply: supplyProgress,"), "ProfileRunOrchestrator.make へ箱を渡していない")
+        XCTAssertTrue(runner.contains("writePreparingProgress(")
+                      && runner.contains("supply: supplyProgress)"), "準備中の書き手へ箱を渡していない")
+        let orchestrator = try Self.code("Sources/fleetest/ProfileRunOrchestrator.swift")
+        XCTAssertTrue(orchestrator.contains("supplyProgress: supply,"),
+                      "RunOrchestrator へ箱を渡していない(混在 run の準備中表示が出ない)")
+    }
+
+    /// 台帳の書き手3つ(入口/準備中=PreparingProgressWriter・RunProgressState)が supply を record に載せること
+    func testAllThreeLedgerWritersCarryTheSupplySnapshot() throws {
+        let writer = try Self.code("Sources/fleetest/PreparingProgressWriter.swift")
+        XCTAssertTrue(writer.contains("supply: supply.snapshot()"), "PreparingProgressWriter が supply を載せていない")
+        let core = try Self.code("Sources/FTCore/RunOrchestrator.swift")
+        XCTAssertTrue(core.contains("supply: supply?.snapshot() ?? []"), "RunProgressState が supply を載せていない")
+        // RunProgressRecord を組む箇所はこの2つだけ(増えたら supply の載せ方を見直す)
+        for path in ["Sources/fleetest/Fleetest.swift", "Sources/fleetest/ApiRunCommand.swift",
+                     "Sources/fleetest/ProfileRunOrchestrator.swift"] {
+            XCTAssertFalse(try Self.code(path).contains("RunProgressRecord("),
+                           "\(path): record を直接組んでいる(PreparingProgressWriter を通す)")
+        }
+    }
+
+    /// 供給側の通知(supplyStage)を渡し忘れていないこと。既定値を置かない引数なのでコンパイルが止めるが、
+    /// `nil` を渡してよい場所は限る(台帳を書かない経路・run 中の復帰・回復)
+    func testSupplyCallSitesPassSupplyStage() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        for path in ["Sources/fleetest/ProfileRunner.swift", "Sources/fleetest/ApiRunCommand.swift"] {
+            let text = try Self.code(path)
+            for call in ["bootMissingDevices(", "buildIOSWorkers(", "installIfNeeded("] {
+                var from = text.startIndex
+                while let hit = text.range(of: call, range: from..<text.endIndex) {
+                    let window = String(text[hit.upperBound...].prefix(500))
+                    XCTAssertTrue(window.contains("supplyStage:"), "\(path): \(call) に supplyStage: が無い")
+                    from = hit.upperBound
+                }
+            }
+        }
+        let api = try Self.code("Sources/fleetest/ApiRunCommand.swift")
+        XCTAssertEqual(api.components(separatedBy: "supplyStage: supplyProgress.reporter").count - 1, 4,
+                       "api run の供給(Android 起こし直し・Android install・iOS 供給・iOS install)が箱へ通知する")
+        let runner = try Self.code("Sources/fleetest/ProfileRunner.swift")
+        XCTAssertEqual(runner.components(separatedBy: "supplyStage: supplyProgress.reporter").count - 1, 4,
+                       "run の供給(Android 起こし直し・Android install・iOS 供給・iOS install)が箱へ通知する")
+        let factory = try String(contentsOf: root.appendingPathComponent("Sources/FTAndroid/ProfileWorkerFactory.swift"),
+                                 encoding: .utf8)
+        XCTAssertTrue(factory.contains("BridgeProvisioner(repoRoot: repoRoot, supplyStage: supplyStage)"),
+                      "buildIOSWorkers が BridgeProvisioner へ通知を渡していない")
+    }
 }

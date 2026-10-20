@@ -287,6 +287,9 @@ enum ProfileRunner {
                     workspaceOverride: String? = nil,
                     recorder: RunRecorder? = nil,
                     broadcast: Bool = false,
+                    // 供給の段階の箱(入口の writeProgress の書き手が通知を持っている)。**既定値を置かない**
+                    // (渡し忘れで準備中の段階が台帳に載らない)
+                    supplyProgress: RunSupplyProgress,
                     // **既定値を置かない**(渡し忘れをコンパイルで止める)。呼び手はロック取得の直前に
                     // InterruptRelay を登録済みの interruptState を渡す(recorder は attachRecorder で後付け)
                     interruptState: RunInterruptState
@@ -461,7 +464,8 @@ enum ProfileRunner {
                 devices: resolved.androidDevices, runningAVDIDs: Set(running.values))
             if !laneTargets.isEmpty {
                 let outcome = await AndroidLaneRecovery.bootMissingDevices(
-                    devices: laneTargets.map(\.device), locale: resolved.locale) { ConsoleOut.out($0) }
+                    devices: laneTargets.map(\.device), locale: resolved.locale,
+                    supplyStage: supplyProgress.reporter) { ConsoleOut.out($0) }
                 // 起こせた分は、ブリッジが定着するまで待ってから先へ進む(理由は
                 // awaitDurableAndroidBridges の宣言)
                 await ProfileWorkerFactory.awaitDurableAndroidBridges(
@@ -516,7 +520,8 @@ enum ProfileRunner {
         }
         workers = try await ProfileWorkerFactory.installIfNeeded(
             apps: resolved.apps, workers: workers,
-            forceAndroidInstall: !wipedAndroid.isEmpty, wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale) { ConsoleOut.out($0) }
+            forceAndroidInstall: !wipedAndroid.isEmpty, wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale,
+            supplyStage: supplyProgress.reporter) { ConsoleOut.out($0) }
         // 一斉 launch 直後の黒画面を作らないための予防(ProfileWorkerFactory.pressHomeOnStart)
         await ProfileWorkerFactory.prepareDevicesOnStart(
             workers, homeOnStart: resolved.homeOnStart) { ConsoleOut.out($0) }
@@ -536,7 +541,7 @@ enum ProfileRunner {
         if performanceMode, iosDevicesExist {
             eagerIOSWorkers = await buildIOSLane(
                 resolved: resolved, repoRoot: repoRoot, supplyLease: supplyLease,
-                blankRepairBox: iosBlankRepairBox)
+                blankRepairBox: iosBlankRepairBox, supplyProgress: supplyProgress)
             ConsoleOut.out("🚀 \(eagerIOSWorkers.count) iOS worker(s) joined")
         }
         let hasLateIOS = iosDevicesExist && !performanceMode
@@ -587,12 +592,14 @@ enum ProfileRunner {
         // (1 run で2回走らせない。docs/design.md §18.1「run 開始時に1回」)
 
         // 段階「準備中」の控え。handoff が立たないまま抜けるときは defer で消す(writePreparingProgress の doc)
-        let progressPid = ProfileRunOrchestrator.writePreparingProgress(
-            recorder: recorder, project: project, profile: profileName)
+        let progressWriter = ProfileRunOrchestrator.writePreparingProgress(
+            recorder: recorder, project: project, profile: profileName, supply: supplyProgress)
         var progressHandedToOrchestrator = false
         defer {
             if !progressHandedToOrchestrator {
-                RunProgressLedger.remove(pid: progressPid, directory: RunProgressLedger.directory())
+                progressWriter.close()
+                RunProgressLedger.remove(pid: ProcessInfo.processInfo.processIdentifier,
+                                         directory: RunProgressLedger.directory())
             }
         }
 
@@ -602,10 +609,11 @@ enum ProfileRunner {
             profile: profileName, progressHistoryRuns: lptHistoryRuns, interruptState: interruptState,
             lateWorkers: hasLateIOS ? (platforms: Set(["ios"]), provider: { @Sendable in
                 let ws = await buildIOSLane(resolved: resolved, repoRoot: repoRoot, supplyLease: supplyLease,
-                                            blankRepairBox: iosBlankRepairBox)
+                                            blankRepairBox: iosBlankRepairBox, supplyProgress: supplyProgress)
                 ConsoleOut.out("🚀 \(ws.count) iOS worker(s) joined")
                 return ws
             }) : nil,
+            supply: supplyProgress,
             onRevived: { _ in },
             log: { ConsoleOut.out($0) })
         // **新しい InterruptRelay は登録しない**(1プロセス1組。呼び出し元が既に登録済み)。
@@ -795,7 +803,7 @@ enum ProfileRunner {
     /// performanceMode では空配列が返ることで後段の LaneGate が run 開始前エラーへ格上げする)
     private static func buildIOSLane(
         resolved: ResolvedProfile, repoRoot: URL, supplyLease: SupplyLeaseHolder?,
-        blankRepairBox: IOSBlankRepairBox
+        blankRepairBox: IOSBlankRepairBox, supplyProgress: RunSupplyProgress
     ) async -> [RunWorker] {
         do {
             PhaseLog.mark("ios-workers-start")
@@ -811,7 +819,8 @@ enum ProfileRunner {
                 supplyLease: supplyLease
             ) {
                 let built = try await ProfileWorkerFactory.buildIOSWorkers(
-                    resolved: resolved, repoRoot: repoRoot) { ConsoleOut.out($0) }
+                    resolved: resolved, repoRoot: repoRoot,
+                    supplyStage: supplyProgress.reporter) { ConsoleOut.out($0) }
                 PhaseLog.mark("ios-workers-built")
                 return built
             }
@@ -820,7 +829,8 @@ enum ProfileRunner {
             // 既定の扱いに落とす
             ws = try await ProfileWorkerFactory.installIfNeeded(
                 apps: resolved.apps, workers: ws, forceAndroidInstall: false,
-                wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale) { ConsoleOut.out($0) }
+                wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale,
+                supplyStage: supplyProgress.reporter) { ConsoleOut.out($0) }
             PhaseLog.mark("ios-workers-installed")
             // 画面だけ死んだシミュレータを**投入前に回復させる**(BlankWorkerTriage 参照)。
             // 回復は simctl shutdown→boot で、**ブリッジごと死ぬ**ので張り直しまでが1セット。

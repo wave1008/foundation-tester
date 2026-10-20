@@ -27,6 +27,7 @@ import {
   machinesWithoutRuns,
   liveElapsedSeconds,
   liveRemaining,
+  currentSupplyStep,
 } from '../../runBoardModel';
 
 let runsByMachine = new Map();
@@ -613,6 +614,17 @@ function appendDeviceLane(row, machine, name, lane, receivedAtMs, platform) {
   }
 }
 
+// 供給の段階(台帳の supply)→「準備中 — 起動中 2・ブリッジを起動中 1(準備完了 0/3 台)」。
+// ready 以外の行が無ければ undefined(従来の表示のまま)。
+function supplyLabel(supply) {
+  const keys = {
+    runnerBuild: 'runBoard.supplyRunnerBuild', booting: 'runBoard.supplyBooting',
+    bridge: 'runBoard.supplyBridge', installing: 'runBoard.supplyInstalling',
+  };
+  const step = currentSupplyStep(supply);
+  return step === undefined ? undefined : t(keys[step]);
+}
+
 // run のある機械の行。**1行に「(マシン名) プロジェクト / 実行プロファイル  進捗  経過 / 残り」**
 // (ユーザー決定)。値はこの機械の run のもの —— 機械分担の run は機械ごとに行が分かれ、
 // それぞれが自分の進捗を出す(束ねた合計は「実行中 N」の件数だけが使う)。
@@ -632,9 +644,13 @@ function updateRow(row, run) {
   // (docs/design.md §18.5)。経過だけは出す(どれくらい待っているかが分かる)
   const beforeRunning = run.phase !== 'running';
   row.progressEl.style.display = beforeRunning ? 'none' : '';
+  // 供給の段階があれば準備中の文言を詳しくする(無ければ従来のまま。推測で埋めない)
+  const supplyText = supplyLabel(run.supply);
   if (beforeRunning) {
-    row.countsEl.textContent = t(run.phase === 'building' ? 'runBoard.building'
-      : run.phase === 'compiling' ? 'runBoard.compiling' : 'runBoard.preparing');
+    // シナリオのビルド中・Vision のコンパイル中はその文言だけ(供給の段階は添えない)。準備中は段階があればそれを1つ
+    row.countsEl.textContent = run.phase === 'building' ? t('runBoard.building')
+      : run.phase === 'compiling' ? t('runBoard.compiling')
+      : (supplyText ?? t('runBoard.preparing'));
   } else {
     const pct = run.total > 0 ? Math.max(0, Math.min(1, run.done / run.total)) * 100 : 0;
     row.progressBarEl.style.width = pct + '%';
@@ -644,6 +660,13 @@ function updateRow(row, run) {
       failedEl.className = 'run-board-counts-failed';
       failedEl.textContent = `❌${run.failed}`;
       row.countsEl.append(failedEl);
+    }
+    // 混在 run で iOS の供給が続いている間(最初のレーンが合流して phase は running)
+    if (supplyText !== undefined) {
+      const supplyEl = document.createElement('span');
+      supplyEl.className = 'run-board-counts-supply';
+      supplyEl.textContent = supplyText;
+      row.countsEl.append(supplyEl);
     }
   }
 

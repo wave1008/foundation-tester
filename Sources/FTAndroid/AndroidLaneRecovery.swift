@@ -63,8 +63,11 @@ public enum AndroidLaneRecovery {
     /// `applyLocale(serial:locale:deviceName:log:)` の順(`AndroidGpuRecovery.recoverCpuFallbackDevices`
     /// と同じ並び)。**プロファイルの locale を使う**(`DeviceBooter.bootOne` は `defaultLocale` 固定
     /// なのでここでは使わない)。
+    /// `supplyStage` = 台帳の準備中表示への通知(起動中 → 成功したら bridge 待ち・失敗したら行を消す)。
+    /// 台帳を書かない経路は nil。既定値を置かない(渡し忘れで run の準備中表示が欠ける)
     public static func bootMissingDevices(
         devices: [ResolvedDevice], locale: String,
+        supplyStage: SupplyStageReporter?,
         log: @escaping @Sendable (String) -> Void,
         boot: ((_ avdID: String, _ deviceName: String) async throws -> Void)? = nil
     ) async -> (booted: [String], failed: [(name: String, error: Error)]) {
@@ -92,6 +95,7 @@ public enum AndroidLaneRecovery {
             guard let avd = device.spec.avd else { continue }
             let avdID = AndroidDeviceCatalog.canonicalAVDID(avd)
             log("▶️ \(progress) \(device.name): starting")
+            supplyStage?(device.name, "android", .booting)
             var lastError: Error?
             var succeeded = false
             var decisive = false
@@ -119,6 +123,8 @@ public enum AndroidLaneRecovery {
             }
             if succeeded {
                 booted.append(device.name)
+                // 次は awaitDurableAndroidBridges の定着待ち(ブリッジの段)。ready は installIfNeeded の後
+                supplyStage?(device.name, "android", .bridge)
                 // 前回のこの AVD の復活失敗の記録は用済み(消さないと、次に成功した後の
                 // 無関係な失敗が古い理由を引き継ぐ)
                 RevivalOutcomeLedger.shared.clearFailure(avdID: avdID)
@@ -127,6 +133,7 @@ public enum AndroidLaneRecovery {
                 let error = lastError ?? LaneRecoveryError(
                     message: "\(device.name): no boot attempt ran")
                 failed.append((device.name, error))
+                supplyStage?(device.name, "android", nil)
                 // この AVD の解決がこの後 avdNotRunning で失敗したとき、
                 // 「devices up で起動しろ」ではなく復活失敗の実際の理由を言えるようにする
                 // (呼び出し側 ProfileRunner/ApiRunCommand を経由させず FTAndroid 内で完結させる)

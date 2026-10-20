@@ -123,6 +123,8 @@ struct ApiMonitorRunProgress: Codable, Equatable {
     /// **版は揃える前提**(ProtocolVersion 16。欄を持たない版のランナーの行は decode できず
     /// 中継されない = align を促す既存の規律のまま)
     let phase: String
+    /// 準備中の端末ごとの供給の段階。台帳の値をそのまま運ぶ(作り替えない。空 = 段階の情報なし)
+    let supply: [RunProgressSupply]
 }
 
 /// monitorRuns イベント: フリート横断の run 進捗(docs/design.md §18.2)。**手元でも出す**
