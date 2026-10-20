@@ -105,6 +105,53 @@ final class UncoverScrollJumpTests: XCTestCase {
     }
 }
 
+/// **キーボードに潜った対象の送り**(`uncoverKeyboardScrollJump` / `keyboardUncoverDragArea`)。
+/// 帯用の判定(覆いが容器の半分以上・中心線のどちら側か)はキーボードに当てない
+final class UncoverKeyboardScrollJumpTests: XCTestCase {
+    private func field(_ rect: FTRect) -> ElementInfo {
+        ElementInfo(ref: 1, type: "textView", identifier: nil, label: nil, value: nil,
+                    placeholder: nil, enabled: true, frame: rect, depth: 2)
+    }
+
+    /// E2EX-CMP の入力画面・in-app の実測(容器 306..840・キーボード 541..874・欄 550..662)
+    func testKeyboardTallerThanHalfAShortContainerIsStillLifted() {
+        let container = FTRect(x: 0, y: 306, width: 402, height: 534)
+        let keyboard = FTRect(x: 0, y: 541, width: 402, height: 333)
+        let memo = field(FTRect(x: 16, y: 550, width: 370, height: 112))
+        XCTAssertNil(TapTargetGeometry.uncoverScrollJump(target: memo, coveredBy: keyboard, container: container),
+                     "前提: 帯用の判定ではこの形を送れない")
+        XCTAssertEqual(TapTargetGeometry.uncoverKeyboardScrollJump(target: memo, keyboard: keyboard, container: container),
+                       129)   // 662 − 541 + 8
+        XCTAssertNil(TapTargetGeometry.uncoverDragArea(container: container, cover: keyboard),
+                     "前提: 帯用の領域ではキーボードの下を選んで空になる")
+        XCTAssertEqual(TapTargetGeometry.keyboardUncoverDragArea(container: container, keyboard: keyboard),
+                       FTRect(x: 0, y: 306, width: 402, height: 235))
+    }
+
+    /// 背の高い容器(E2E-iOS の witness の形)では帯用と同じ量・同じ領域 = 既存の挙動を変えない
+    func testTallContainerMatchesTheBandRule() {
+        let container = FTRect(x: 0, y: 200, width: 402, height: 673)
+        let keyboard = FTRect(x: 0, y: 573, width: 402, height: 301)
+        let target = field(FTRect(x: 16, y: 600, width: 370, height: 44))
+        XCTAssertEqual(TapTargetGeometry.uncoverKeyboardScrollJump(target: target, keyboard: keyboard, container: container),
+                       TapTargetGeometry.uncoverScrollJump(target: target, coveredBy: keyboard, container: container))
+        XCTAssertEqual(TapTargetGeometry.keyboardUncoverDragArea(container: container, keyboard: keyboard),
+                       TapTargetGeometry.uncoverDragArea(container: container, cover: keyboard))
+    }
+
+    /// 送れない形: 対象がキーボードの上に出ている・送り量が容器の高さ以上・指を当てる領域が狭すぎる
+    func testShapesThatCannotBeLifted() {
+        let container = FTRect(x: 0, y: 306, width: 402, height: 534)
+        let keyboard = FTRect(x: 0, y: 541, width: 402, height: 333)
+        XCTAssertNil(TapTargetGeometry.uncoverKeyboardScrollJump(
+            target: field(FTRect(x: 16, y: 400, width: 370, height: 64)), keyboard: keyboard, container: container))
+        XCTAssertNil(TapTargetGeometry.uncoverKeyboardScrollJump(
+            target: field(FTRect(x: 16, y: 600, width: 370, height: 600)), keyboard: keyboard, container: container))
+        XCTAssertNil(TapTargetGeometry.keyboardUncoverDragArea(
+            container: FTRect(x: 0, y: 450, width: 402, height: 400), keyboard: keyboard))
+    }
+}
+
 /// **送るときに指を当てる領域**(覆いを避けた容器の残り)の固定。
 /// 容器をそのまま渡すと覆いの上をなぞることになり、何も動かない。
 final class UncoverDragAreaTests: XCTestCase {

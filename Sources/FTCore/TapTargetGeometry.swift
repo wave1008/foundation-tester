@@ -798,6 +798,28 @@ public enum TapTargetGeometry {
     /// 帯とみなす幅(容器の幅に対する比)。見出しは容器いっぱい(実測 996/996)。縁に置いた小さなラベルを外す
     static let pinnedBandMinimumWidthRatio = 0.8
 
+    /// **ソフトキーボードに潜った対象を上へ逃がす量**(`uncoverScrollJump` と同じ符号規約)。キーボードは常に下の帯なので、
+    /// `uncoverScrollJump` の「覆いが容器の半分以上なら送らない」「覆いが容器の中心線のどちら側か」(モーダル・帯の判定)を当てない ——
+    /// 背の低い容器では両方に当たり、送れば外れるのに送らなかった(E2EX-CMP の入力画面・in-app: 容器 306..840・キーボード 541..874・
+    /// 対象 550..662 で 24/24 が赤)。外れきらない回は呼び手が撮り直して再判定する
+    public static func uncoverKeyboardScrollJump(target: ElementInfo, keyboard: FTRect, container: FTRect,
+                                                 minimumJump: Double = 60, margin: Double = 8) -> Double? {
+        guard container.height > 0 else { return nil }
+        let needed = target.frame.y + target.frame.height - keyboard.y + margin
+        guard needed > 0 else { return nil }
+        let jump = max(needed, minimumJump)
+        return jump < container.height ? jump : nil
+    }
+
+    /// キーボードに潜った対象を送るときに指を当てる領域 = 容器のうちキーボードより上(`uncoverDragArea` の中心線の判定を当てない。
+    /// 理由は `uncoverKeyboardScrollJump`)
+    public static func keyboardUncoverDragArea(container: FTRect, keyboard: FTRect,
+                                               minimumHeight: Double = 120) -> FTRect? {
+        let bottom = min(container.y + container.height, keyboard.y)
+        let area = FTRect(x: container.x, y: container.y, width: container.width, height: bottom - container.y)
+        return area.height >= minimumHeight ? area : nil
+    }
+
     public static func uncoverScrollJump(target: ElementInfo, coveredBy over: FTRect,
                                          container: FTRect,
                                          minimumJump: Double = 60, margin: Double = 8) -> Double? {

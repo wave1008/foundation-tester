@@ -2680,7 +2680,9 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   載せる経路は tap(寄せない側)・長押し(`press(ref:)` は frame 中心)・doubleTap の3つで、
   **pinch / swipeBy は対象外**(掴んで動かす形なので無効でも意味がある)
 - **縁の帯に潜っているだけなら、撃つ前に容器を1回送って外す**(2026-08-27。
-  `TapTargetGeometry.uncoverScrollJump` が唯一の判定元。利用者向けの説明は
+  `TapTargetGeometry.uncoverScrollJump` が唯一の判定元。**ソフトキーボードだけは
+  `uncoverKeyboardScrollJump` / `keyboardUncoverDragArea`**(2026-10-20)—— キーボードは常に下の帯なので、下の
+  「容器の半分以上」「中心線を跨ぐ」を当てない(背の低い容器ではキーボードが両方に当たり、送れば外れるのに送らなかった)。利用者向けの説明は
   docs/commands.md §縁の帯に潜った対象)。実アプリで頻出する形で、受け手の SUT では
   4.7 インチ実機でログアウトがタブバーに潜り、タップがタブに当たって7本が巻き添えで
   落ちた(D-02)。**外せないと分かる3形では送らない**(操作可能でない覆い・容器の半分以上を

@@ -1285,6 +1285,7 @@ extension StepExecutor {
                                                      in: currentSnapshot.elements, screen: currentSnapshot.screen)
             var jump: Double?
             var coverRect: FTRect?
+            var coverIsKeyboard = false
             // 申告が無い木では chrome から推定する(意味は変えない。理由は keyboardBandFromChrome)。
             // **申告が画面の外(隠れた)なら推定しない** —— 申告がある以上「無い」ではない
             let keyboardBand = keyboard.frame
@@ -1293,10 +1294,11 @@ extension StepExecutor {
                                                                screen: currentSnapshot.screen) : nil)
             if let keyboardFrame = keyboardBand,
                TapTargetGeometry.keyboardCoveredAdvisory(current, keyboardFrame: keyboardFrame) != nil {
-                jump = TapTargetGeometry.uncoverScrollJump(target: current, coveredBy: keyboardFrame,
-                                                           container: container)
+                jump = TapTargetGeometry.uncoverKeyboardScrollJump(target: current, keyboard: keyboardFrame,
+                                                                   container: container)
                 coverName = coverName ?? "the keyboard"
                 coverRect = keyboardFrame
+                coverIsKeyboard = jump != nil
             }
             if jump == nil,
                let over = TapTargetGeometry.overlayCoveringForUncover(
@@ -1328,8 +1330,9 @@ extension StepExecutor {
             }
             // **指を当てるのは覆いを避けた領域**(理由は uncoverDragArea)
             guard let jump, let coverRect,
-                  let dragArea = TapTargetGeometry.uncoverDragArea(container: container,
-                                                                   cover: coverRect),
+                  let dragArea = coverIsKeyboard
+                      ? TapTargetGeometry.keyboardUncoverDragArea(container: container, keyboard: coverRect)
+                      : TapTargetGeometry.uncoverDragArea(container: container, cover: coverRect),
                   await slowDrag(jump: jump, container: dragArea,
                                  avoidingInputsIn: currentSnapshot.elements, phase: &phase) else {
                 return retook ? .stillCovered(element: current, snapshot: currentSnapshot) : nil
