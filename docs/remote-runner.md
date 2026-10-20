@@ -2540,7 +2540,9 @@ SUT のサーバーのソースは別のリポジトリ(sut-ec-mobile なら `..
   先頭の IPv6 に届かない機械で次の IPv4 へ倒れる。接続拒否は NWConnection では `.waiting` で来るので失敗として次へ)。
   これで docs/open-issues.md の「名前のまま接続する」穴は閉じた(シナリオ・スクリプトの loopback のプロキシにも同じ規則)
 - **⑤(人の入口・MCP・雛形・docs・小物)も実装済み**: `fleetest services up` は常駐の所有者 `fleetest api services-owner` を起こし
-  (fm-serve と同型: stdin は /dev/null・`FT_PARENT_PID` を消す・出力は `.fleetest/services/<接頭辞>.log`)、所有者が
+  (fm-serve と同型: stdin は /dev/null・`FT_PARENT_PID` を消す・出力は試みごとの `.fleetest/services/<接頭辞>.attempt-<UUID>.log`。
+  控えを書けた所有者だけが排他の中で `<接頭辞>.log` へ改名する = 同時の `up` で負けた所有者が勝った側のログを空にしない。
+  負けた試みのログは `up` が消し、失敗した試みのログは残す)、所有者が
   `ServicesSession.up(kind: .owner)` → 控え(`kind = owner`・schema 2・`stopGraceSeconds`)を持ったまま SIGTERM を待ち → `down`。
   CLI の `up` は**所有者が書く控えの `running`** か所有者の終了で決着し(待ちに期限は置かない)、公開ポートと reverse を印字する。
   `services down` は排他の中で「run の控えが生きていれば断る・所有者なら SIGTERM・孤児なら回収」を決めてから**排他の外で**所有者の

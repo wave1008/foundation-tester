@@ -125,11 +125,12 @@ struct ServicesCommand: AsyncParsableCommand {
             guard let executable = ExecutablePath.current else {
                 throw ServicesRefused("cannot locate the fleetest executable to start the services owner")
             }
-            let logURL = ServicesOwnerLaunch.logURL(stateDir: target.stateDir, prefix: target.prefix)
-            let (owner, ownerExited) = try ServicesOwnerLaunch.spawn(
+            let stableLog = ServicesOwnerLaunch.logURL(stateDir: target.stateDir, prefix: target.prefix)
+            let attemptLog = ServicesOwnerLaunch.attemptLogURL(stateDir: target.stateDir, prefix: target.prefix)
+            let (owner, ownerExited, logReader) = try ServicesOwnerLaunch.spawn(
                 executable: executable, project: target.project, profile: target.resolved.runName,
-                physical: physical, serials: serial, logURL: logURL)
-            ConsoleOut.out("→ services: starting (owner pid \(owner.processIdentifier), log \(logURL.path))")
+                physical: physical, serials: serial, attemptLog: attemptLog)
+            ConsoleOut.out("→ services: starting (owner pid \(owner.processIdentifier), log \(attemptLog.path))")
 
             let interrupted = LockedValue(false)
             let relay = InterruptRelay.observing { interrupted.value = true }
@@ -144,19 +145,23 @@ struct ServicesCommand: AsyncParsableCommand {
                 let entries = ServicesLeaseStore.entries(stateDir: target.stateDir, prefix: target.prefix)
                 switch ServicesOwnerLaunch.readiness(entries: entries, ownerPid: owner.processIdentifier, ownerRunning: owner.isRunning) {
                 case .running(let lease):
-                    ConsoleOut.out("→ services: up (\(lease.holderDescription)); stop with `fleetest services down`")
+                    ConsoleOut.out("→ services: up (\(lease.holderDescription), log \(stableLog.path)); stop with `fleetest services down`")
                     Self.printPublished(lease)
                     return
                 case .exited:
                     // 事前の確認と所有者の控えの書き込みの間に別の `up` が割り込むと、こちらの所有者は「already up」で負ける。
                     // そのときは相手の所有者が上がるのを待って「already up」として返す(失敗ではない)
                     if let other = try await Self.settleExistingOwner(target: target) {
+                        // 負けた試みのログ(勝っていれば改名済みでパスに無い = 消すのは負けた試みのものだけ)
+                        try? FileManager.default.removeItem(at: attemptLog)
                         ConsoleOut.out("→ services: already up (\(other.holderDescription)); stop with `fleetest services down`")
                         Self.printPublished(other)
                         return
                     }
-                    ConsoleOut.err("✗ services up failed (owner exit \(owner.terminationStatus)); last log lines (\(logURL.path)):")
-                    for line in ServicesOwnerLaunch.logTail(logURL, lines: 20) { ConsoleOut.err("  " + line) }
+                    // 控えを書いた後に落ちた所有者はログを改名済み(その場所は表示だけ。中身は開いている読み口から読む)
+                    let shownLog = FileManager.default.fileExists(atPath: attemptLog.path) ? attemptLog : stableLog
+                    ConsoleOut.err("✗ services up failed (owner exit \(owner.terminationStatus)); last log lines (\(shownLog.path)):")
+                    for line in ServicesOwnerLaunch.logTail(logReader, lines: 20) { ConsoleOut.err("  " + line) }
                     throw ExitCode.failure
                 case .waiting:
                     try await Task.sleep(nanoseconds: UInt64(ServicesSession.pollIntervalSeconds * 1_000_000_000))

@@ -218,7 +218,8 @@ final class ServicesSession {
     /// compose.yaml が無ければ nil(何もしない)。`stateDir` は `.fleetest`(控えとロックの置き場)。
     static func up(resolved: ResolvedProfile, stateDir: URL?, options: ServicesUpOptions,
                    interruptState: RunInterruptState? = nil,
-                   home: String = NSHomeDirectory(), log: (String) -> Void) throws -> ServicesSession? {
+                   home: String = NSHomeDirectory(), onClaimed: (() -> Void)? = nil,
+                   log: (String) -> Void) throws -> ServicesSession? {
         let workspace = ServicesFacts.workspace(for: resolved)
         guard try ServicesFacts.composeDeclaresSomething(workspace, log: log) else { return nil }
         guard let stateDir else {
@@ -249,6 +250,7 @@ final class ServicesSession {
                 try session.claimPrefix(log: log)
                 try session.persist()  // 控えは最初の資源を作る前に書く。書けなければ開始しない
                 leaseWritten = true
+                onClaimed?()   // 勝ちが決まった直後・排他の中(`services up` の所有者がログを自分の名前へ移す)
             }
             do {
                 try session.createAll(log: log)

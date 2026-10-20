@@ -1,6 +1,7 @@
 // `fleetest api services-owner`: `fleetest services up` が起こす常駐の所有者(docs/remote-runner.md §17「調停」)。
 // サービスを上げ、控え(kind = owner)・プロキシ・adb reverse を持ったまま SIGTERM/SIGINT/SIGHUP を待ち、受けたら片付けて終わる。
-// 起こすのは `ServicesOwnerLaunch.spawn`(stdin は /dev/null・出力は .fleetest/services/<prefix>.log・FT_PARENT_PID は消す = 親より長く生きる)。
+// 起こすのは `ServicesOwnerLaunch.spawn`(stdin は /dev/null・出力は試みごとのログ `--log-file`・FT_PARENT_PID は消す = 親より長く生きる)。
+// 控えを書けたら(= 同時の `up` に勝ったら)排他の中でそのログを .fleetest/services/<prefix>.log へ改名する。
 // 止めるのは `services down` と run の引き取り(`ServicesSession.takeOverOwners`)。dispatch.lock は取らない(MCP の印と同じ扱い)。
 // 起動の途中の 2 度目のシグナルは `RunInterruptState` の規律どおり即終了(資源は控えが残る = 次の run / reap が片付ける)。
 // 片付けに入った後のシグナルは無視する(途中で落とさない)。
@@ -27,6 +28,9 @@ struct ApiServicesOwnerCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Android physical device (adb serial) that receives `adb reverse` for each published TCP port; repeatable")
     var serial: [String] = []
 
+    @Option(name: .long, help: .hidden)
+    var logFile: String?
+
     func run() async throws {
         signal(SIGPIPE, SIG_IGN)   // 読み手の居ないログへの書き込みで落ちない
         let target = try ServicesCommand.resolveTarget(project: project, profile: profile)
@@ -45,8 +49,12 @@ struct ApiServicesOwnerCommand: AsyncParsableCommand {
 
         let session: ServicesSession
         do {
+            let stableLog = ServicesOwnerLaunch.logURL(stateDir: target.stateDir, prefix: target.prefix)
+            let onClaimed: (() -> Void)? = logFile.map { path in
+                { ServicesOwnerLaunch.claimLog(attempt: URL(fileURLWithPath: path), stable: stableLog, log: log) }
+            }
             guard let started = try ServicesSession.up(resolved: target.resolved, stateDir: target.stateDir, options: options,
-                                                       interruptState: interruptState, log: log) else {
+                                                       interruptState: interruptState, onClaimed: onClaimed, log: log) else {
                 ConsoleOut.err("✗ services: scripts/compose.yaml is absent or declares nothing in \(target.workspace.root.path)")
                 throw ExitCode.failure
             }

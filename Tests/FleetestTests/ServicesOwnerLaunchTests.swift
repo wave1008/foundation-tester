@@ -15,15 +15,65 @@ final class ServicesOwnerLaunchTests: XCTestCase {
     }
 
     func testOwnerArguments() {
-        XCTAssertEqual(ServicesOwnerLaunch.arguments(project: "P", profile: "ios-1", physical: false, serials: []),
-                       ["api", "services-owner", "--project", "P", "--profile", "ios-1"])
-        XCTAssertEqual(ServicesOwnerLaunch.arguments(project: "P", profile: "r", physical: true, serials: ["A1", "B2"]),
-                       ["api", "services-owner", "--project", "P", "--profile", "r", "--physical", "--serial", "A1", "--serial", "B2"])
+        let log = URL(fileURLWithPath: "/x/a.log")
+        XCTAssertEqual(ServicesOwnerLaunch.arguments(project: "P", profile: "ios-1", physical: false, serials: [], logFile: log),
+                       ["api", "services-owner", "--project", "P", "--profile", "ios-1", "--log-file", "/x/a.log"])
+        XCTAssertEqual(ServicesOwnerLaunch.arguments(project: "P", profile: "r", physical: true, serials: ["A1", "B2"], logFile: log),
+                       ["api", "services-owner", "--project", "P", "--profile", "r", "--physical", "--serial", "A1", "--serial", "B2",
+                        "--log-file", "/x/a.log"])
+        // 所有者が受け取れる形(引数の名前の食い違いは起動時の失敗でしか出ない)
+        let parsed = try? ApiServicesOwnerCommand.parse(Array(ServicesOwnerLaunch.arguments(
+            project: "P", profile: "r", physical: false, serials: [], logFile: log).dropFirst(2)))
+        XCTAssertEqual(parsed?.logFile, "/x/a.log")
     }
 
     func testLogPath() {
         XCTAssertEqual(ServicesOwnerLaunch.logURL(stateDir: URL(fileURLWithPath: "/x/.fleetest"), prefix: "fleetest-ab").path,
                        "/x/.fleetest/services/fleetest-ab.log")
+    }
+
+    /// 起こす側が開くのは試みごとのログだけ。同じ場所を開くと、同時の `up` で負けた側が勝った側のログを空にする
+    func testAttemptLogsAreDistinctFromTheOwnerLogAndFromEachOther() {
+        let stateDir = URL(fileURLWithPath: "/x/.fleetest")
+        let stable = ServicesOwnerLaunch.logURL(stateDir: stateDir, prefix: "fleetest-ab")
+        let first = ServicesOwnerLaunch.attemptLogURL(stateDir: stateDir, prefix: "fleetest-ab")
+        let second = ServicesOwnerLaunch.attemptLogURL(stateDir: stateDir, prefix: "fleetest-ab")
+        XCTAssertNotEqual(first, stable)
+        XCTAssertNotEqual(first, second)
+        // 改名は同じディレクトリの中(別のファイルシステムへの rename は失敗する)
+        XCTAssertEqual(first.deletingLastPathComponent(), stable.deletingLastPathComponent())
+    }
+
+    /// 勝った所有者の改名は前の所有者のログを置き換え、負けた試みのログには触れない。開いている読み口は改名の後も読める
+    func testClaimLogReplacesTheOwnerLogAndLeavesOtherAttemptsAlone() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("services-log-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let stable = dir.appendingPathComponent("p.log")
+        let winner = dir.appendingPathComponent("p.attempt-1.log")
+        let loser = dir.appendingPathComponent("p.attempt-2.log")
+        try "previous\n".write(to: stable, atomically: true, encoding: .utf8)
+        try "winner\n".write(to: winner, atomically: true, encoding: .utf8)
+        try "loser: already up\n".write(to: loser, atomically: true, encoding: .utf8)
+        let reader = try FileHandle(forReadingFrom: winner)
+        defer { try? reader.close() }
+        var warnings: [String] = []
+
+        ServicesOwnerLaunch.claimLog(attempt: winner, stable: stable, log: { warnings.append($0) })
+
+        XCTAssertEqual(warnings, [])
+        XCTAssertEqual(try String(contentsOf: stable, encoding: .utf8), "winner\n")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: winner.path))
+        XCTAssertEqual(try String(contentsOf: loser, encoding: .utf8), "loser: already up\n")
+        XCTAssertEqual(ServicesOwnerLaunch.logTail(reader, lines: 5), ["winner"])
+    }
+
+    func testClaimLogFailureOnlyWarns() {
+        var warnings: [String] = []
+        ServicesOwnerLaunch.claimLog(attempt: URL(fileURLWithPath: "/nonexistent/a.log"),
+                                     stable: URL(fileURLWithPath: "/nonexistent/b.log"), log: { warnings.append($0) })
+        XCTAssertEqual(warnings.count, 1)
+        XCTAssertTrue(warnings.first?.hasPrefix("⚠️ services: cannot move the log /nonexistent/a.log to /nonexistent/b.log") == true)
     }
 
     func testReadinessNeedsARunningOwnerLeaseOfThatPid() {
@@ -41,8 +91,10 @@ final class ServicesOwnerLaunchTests: XCTestCase {
         let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("owner-\(UUID().uuidString).log")
         try "a\nb\nc\n".write(to: url, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: url) }
-        XCTAssertEqual(ServicesOwnerLaunch.logTail(url, lines: 2), ["b", "c"])
-        XCTAssertEqual(ServicesOwnerLaunch.logTail(URL(fileURLWithPath: "/nonexistent/owner.log"), lines: 2), [])
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        _ = try handle.readToEnd()   // 読み終えた後でも先頭から読み直す
+        XCTAssertEqual(ServicesOwnerLaunch.logTail(handle, lines: 2), ["b", "c"])
     }
 }
 
