@@ -35,6 +35,7 @@ paths:
   - "Sources/fleetest/ApiMonitorCommand+DeviceState.swift"
   - "Sources/fleetest/ApiMonitorCommand.swift"
   - "Sources/fleetest/ApiRunCommand.swift"
+  - "Sources/fleetest/ApiRunEvents.swift"
   - "Sources/fleetest/ApiRunMachineFanout.swift"
   - "Sources/fleetest/BridgeDownRefusal.swift"
   - "Sources/fleetest/DeviceMachineRunner.swift"

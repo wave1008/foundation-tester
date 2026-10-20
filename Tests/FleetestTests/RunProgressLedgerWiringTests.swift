@@ -143,7 +143,7 @@ final class RunProgressLedgerWiringTests: XCTestCase {
     func testAllThreeLedgerWritersCarryTheSupplySnapshot() throws {
         let writer = try Self.code("Sources/fleetest/PreparingProgressWriter.swift")
         XCTAssertTrue(writer.contains("supply: supply.snapshot()"), "PreparingProgressWriter が supply を載せていない")
-        let core = try Self.code("Sources/FTCore/RunOrchestrator.swift")
+        let core = try Self.code("Sources/FTCore/RunProgressState.swift")
         XCTAssertTrue(core.contains("supply: supply?.snapshot() ?? []"), "RunProgressState が supply を載せていない")
         // RunProgressRecord を組む箇所はこの2つだけ(増えたら supply の載せ方を見直す)
         for path in ["Sources/fleetest/Fleetest.swift", "Sources/fleetest/ApiRunCommand.swift",

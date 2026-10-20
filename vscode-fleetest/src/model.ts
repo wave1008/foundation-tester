@@ -105,7 +105,7 @@ export interface WorkerInfo {
   /** このワーカーが居る機械(手元は省略)。実行プロファイルが複数の機械にまたがるとき、
    * 同名のデバイスが別の機械にも居るのでレーンの見出しに出す。名前・意味は
    * monitorDeviceModel.ts の MonitorDevice.machine と同じ(対向は
-   * Sources/fleetest/ApiRunCommand.swift の ApiWorkerInfo)。 */
+   * Sources/fleetest/ApiRunEvents.swift の ApiWorkerInfo)。 */
   machine?: string;
 }
 
@@ -133,7 +133,7 @@ export type StepStatus =
 /** ScenarioEvent.swift の section フィールド(CAE ブロック外は undefined)。 */
 export type RunStepSection = "condition" | "action" | "expectation";
 
-/** ApiRunCommand.swift の ApiRunStartedEvent。 */
+/** ApiRunEvents.swift の ApiRunStartedEvent。 */
 export interface RunStartedEvent {
   kind: "runStarted";
   total: number;
@@ -248,7 +248,7 @@ export interface LogEvent {
   worker?: string;
 }
 
-/** ApiRunCommand.swift の ApiRunFinishedEvent。testSeconds/scenarioTotalSeconds は計測不能時 undefined。 */
+/** ApiRunEvents.swift の ApiRunFinishedEvent。testSeconds/scenarioTotalSeconds は計測不能時 undefined。 */
 export interface RunFinishedEvent {
   kind: "runFinished";
   passed: number;
@@ -279,7 +279,7 @@ export interface WipeStatusEvent {
 /**
  * シナリオの結果を取り消して別デバイスへ振り直した(RunOrchestrator の discard+requeue)。
  * Test Explorer は該当項目を「待機中(enqueued)」へ戻し、再実行の scenarioStarted で実行中に遷移する。
- * 契約の同期相手: Sources/fleetest/ApiRunCommand.swift ApiScenarioRequeuedEvent
+ * 契約の同期相手: Sources/fleetest/ApiRunEvents.swift ApiScenarioRequeuedEvent
  */
 export interface ScenarioRequeuedEvent {
   kind: "scenarioRequeued";
@@ -299,7 +299,7 @@ export interface ScenarioRequeuedEvent {
  * i18n/strings/lane.ts の dispatchWaitingLine の1箇所。
  * holder は**読めたときだけ**入る —— 欠けているのは「不明」であって「空き」でも「占有」でもないので、
  * 欠けているときに「実行中」と断定してはいけない。
- * 契約の同期相手: Sources/fleetest/ApiRunCommand.swift ApiDispatchWaitingEvent
+ * 契約の同期相手: Sources/fleetest/ApiRunEvents.swift ApiDispatchWaitingEvent
  */
 export interface DispatchWaitingEvent {
   kind: "dispatchWaiting";

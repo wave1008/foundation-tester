@@ -5,7 +5,7 @@
 // RunReducerState は createRunReducerState() で生成し reduceRunEvent() のたびに使い回す
 // (内部で書き換える)。時刻は呼び出し側が nowMs として注入する(このモジュールは Date.now() を呼ばない)。
 //
-// アイコンは Sources/FTCore/RunOrchestrator.swift の RunLogFormatter と揃えている
+// アイコンは Sources/FTCore/RunLogFormatter.swift と揃えている
 // (✅ 成功 / ❌ 失敗 / ⚠️ スキップ / ❓ inconclusive / 🔧 自己修復 / 💡 修正提案 / ▶ 開始 / ⏸ 一時停止)。
 
 import { isRunEvent, type RunEvent, type WorkerInfo } from "./model";

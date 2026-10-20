@@ -1077,7 +1077,7 @@ struct ConfirmedDeviceState {
 }
 
 /// stdin 読み取りスレッド・シグナルハンドラ・メインループの間で共有する停止フラグ
-/// (ApiRunCommand.swift の DebugControlBox と同様 NSLock で保護する)
+/// (ApiRunEvents.swift の DebugControlBox と同様 NSLock で保護する)
 final class StopFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var flag = false

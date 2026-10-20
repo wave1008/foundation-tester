@@ -116,7 +116,7 @@ final class AuthoringGuardTests: XCTestCase {
     }
 
     /// **本題**: screenLooksLike は実行プロファイルで無効化されると `.skipped` を返す
-    /// (StepExecutor+Assert.swift の `screenLooksLikeEnabled` 門)。何も検証していないのに
+    /// (StepExecutor+AssertState.swift の `screenLooksLikeEnabled` 門)。何も検証していないのに
     /// perform() の入口で無条件にカウントすると、この expectation は「アサーション0」の
     /// 警告を免れてしまう(2026-09-07 修正前の状態)
     func testSkippedAssertionDoesNotCountTowardVerification() {

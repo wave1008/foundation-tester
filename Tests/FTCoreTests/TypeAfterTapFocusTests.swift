@@ -19,7 +19,7 @@ final class TypeAfterTapFocusTests: XCTestCase {
         private(set) var typedRefs: [Int?] = []
         private(set) var snapshotCount = 0
         /// **既定 true**(既存テストは読み返しを問題にしない救済経路だけを確かめる)。
-        /// false にすると救済した type も StepExecutor+Actions の読み返し検証を通る
+        /// false にすると救済した type も StepExecutor+TypeClear の読み返し検証を通る
         var verifiesTypedText = true
         /// true の間だけ type() が要素の value を書き換える(「反映される」を表現する)。
         /// false のまま(既定)なら value は変わらない = 読み返しが永久に一致しない形を作れる

@@ -778,7 +778,7 @@ enum ProfileRunner {
     }
 
     /// buildIOSLane が回復させたワーカーの label を run() へ運ぶ入れ物
-    /// (ApiRunCommand.BlankTriageBox と同じ受け渡しパターン)。eager 呼び出しと
+    /// (ApiRunEvents.swift の BlankTriageBox と同じ受け渡しパターン)。eager 呼び出しと
     /// lateWorkers.provider 呼び出しはどちらか一方しか起きないが、後者は RunOrchestrator が
     /// 別 Task から呼ぶため、素の var の直接キャプチャは @Sendable 境界で弾かれる
     private final class IOSBlankRepairBox: @unchecked Sendable {

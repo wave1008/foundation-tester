@@ -553,7 +553,7 @@ async function executeRun(
     run.appendOutput(`vscode-fleetest v${loadedVersion}\r\n`);
   }
   const runStartedAt = Date.now();
-  // runFinished(NDJSON)で埋まる。ApiRunCommand.swift の ApiRunFinishedEvent と同期(model.ts の RunFinishedEvent)。
+  // runFinished(NDJSON)で埋まる。ApiRunEvents.swift の ApiRunFinishedEvent と同期(model.ts の RunFinishedEvent)。
   let testSeconds: number | undefined;
   let scenarioTotalSeconds: number | undefined;
   let resultRunID: string | undefined;

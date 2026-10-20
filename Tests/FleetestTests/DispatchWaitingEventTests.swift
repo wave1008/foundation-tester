@@ -1,5 +1,5 @@
 // `fleetest api run --runner` が dispatch.lock の順番待ちを拡張へ見せる NDJSON イベント
-// (ApiRunCommand.swift の ApiDispatchWaitingEvent / RemoteRunDispatcher.emitDispatchWaiting)。
+// (ApiRunEvents.swift の ApiDispatchWaitingEvent / RemoteRunDispatcher.emitDispatchWaiting)。
 // 対向は vscode-fleetest/src/model.ts の DispatchWaitingEvent と runReducer の "dispatchWaiting"。
 // 落ちても run 自体は普通に走るので、E2E でも緑のまま「押した人には無言で止まって見える」に戻る。
 
