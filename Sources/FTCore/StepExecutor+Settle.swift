@@ -13,11 +13,10 @@ extension StepExecutor {
     /// 連続2回同じ frame なら静止とみなす。見失った場合・上限に達した場合はそのまま抜ける
     /// (探索自体は成功しているので、ここで失敗にはしない = 判定を1箇所に保つ)。
     /// 上限はフリングの減速が収まる実測レンジに合わせた固定値で、調整ノブにはしない
-    /// 戻り値: **静止を確認できたか**。false = 周回上限で打ち切った(= まだ動いているかもしれない)。
-    /// 呼び手は注記にする(黙ると「動いている画面の座標をタップ」が誤った成功として通る)
-    @discardableResult
+    /// 戻り値: `rested` = **静止を確認できたか**(false = 周回上限で打ち切った = まだ動いているかもしれない。
+    /// 呼び手は注記にする。黙ると「動いている画面の座標をタップ」が誤った成功として通る)/ `lastFrame` = 最後に見た対象の枠
     func settleAfterScroll(step: FlowStep, found: ElementInfo,
-                                   phase: inout PhaseAccumulator) async throws -> Bool {
+                                   phase: inout PhaseAccumulator) async throws -> (rested: Bool, lastFrame: FTRect) {
         let clock = ContinuousClock()
         var previous = found.frame
         var lastSnapshotMs = 0
@@ -39,15 +38,15 @@ extension StepExecutor {
             phase.snapshotMs += lastSnapshotMs
             // 解決できなくなった = このスナップショットでは判定材料が無い。静止は名乗らない
             guard let (element, _) = LocatorResolver.resolve(step: step, in: snapshot,
-                                                  strictForAssert: true) else { return false }
-            if element.frame == previous { return true }
+                                                  strictForAssert: true) else { return (false, previous) }
+            if element.frame == previous { return (true, previous) }
             let moved = max(abs(element.frame.x - previous.x), abs(element.frame.y - previous.y))
-            if restsWithinThreshold(moved) { return true }
+            if restsWithinThreshold(moved) { return (true, element.frame) }
             motion.append(moved)
             previous = element.frame
             if poll + 1 >= Self.scrollSettleMaxPolls, !SettleMotion.isDecelerating(motion) { break }
         }
-        return false
+        return (false, previous)
     }
 
     /// `launchApp(url:)` が URL を配送する前に、最初の画面が描かれる(利用者が触れる要素が木に載る)
@@ -215,16 +214,38 @@ extension StepExecutor {
         let y: Double = min(element.frame.y + element.frame.height / 2,
                             snapshot.screen.y + snapshot.screen.height
                                 - Self.bottomUncoveredBand - 1)
+        var dragged = false
         if shouldEmptyDrag(for: element),
            Self.emptyDragIsSafe(x: x, y: y, of: element,
                                 in: snapshot.elements, screen: snapshot.screen),
            let end = Self.emptyDragEnd(of: element, x: x, y: y, searching: step.direction,
                                        screen: snapshot.screen) {
             await emptyDrag(x: x, y: y, toX: end.x, toY: end.y)
+            dragged = true
         }
         // 空打ちは次のタッチのための操作なので残し、その後の静止待ちだけ飛ばす
         if skippingSettle(step) { return false }
-        return try await !settleAfterScroll(step: step, found: element, phase: &phase)
+        let settled = try await settleAfterScroll(step: step, found: element, phase: &phase)
+        // **空打ちの後も対象が流れ続けた回は、止まった位置へもう1回だけ空打ちしてから撃つ**。一覧の末尾を越えて
+        // 引っ張られた(iOS 風のオーバースクロール)まま止まった Compose の一覧は、次のタッチで引っ張りが解けて元へ戻り、
+        // そのタッチはクリックにならない(E2EX-CMP の無限スクロール・XCUITest: 24 回中 4 回、整定で 346..414 に止まった
+        // 行が撃った瞬間に +247pt 戻り `infinite=none`。緑の 20 回は空打ちの後に1pt も動かなかった)。
+        // 戻す役を空打ちに吸わせ、戻った後の木で呼び手が引き当て直す。判定は「動いたか」だけ(閾値を置かない)
+        guard dragged, settled.lastFrame != element.frame,
+              !restsWithinThreshold(max(abs(settled.lastFrame.x - element.frame.x),
+                                        abs(settled.lastFrame.y - element.frame.y))) else { return !settled.rested }
+        let fresh = try await freshSnapshot(.afterOwnMove)
+        guard let (moved, _) = LocatorResolver.resolve(step: step, in: fresh, strictForAssert: true) else {
+            return !settled.rested
+        }
+        let againX = moved.frame.x + moved.frame.width / 2
+        let againY = min(moved.frame.y + moved.frame.height / 2,
+                         fresh.screen.y + fresh.screen.height - Self.bottomUncoveredBand - 1)
+        guard Self.emptyDragIsSafe(x: againX, y: againY, of: moved, in: fresh.elements, screen: fresh.screen),
+              let againEnd = Self.emptyDragEnd(of: moved, x: againX, y: againY, searching: step.direction,
+                                               screen: fresh.screen) else { return !settled.rested }
+        await emptyDrag(x: againX, y: againY, toX: againEnd.x, toY: againEnd.y)
+        return try await !settleAfterScroll(step: step, found: moved, phase: &phase).rested
     }
 
     /// 掴んだ要素を可視域へ入れ直すために**次に送る向き**。
