@@ -19,7 +19,10 @@ final class IOSSoftwareKeyboardTests: XCTestCase {
             .deletingLastPathComponent()
         let factory = try String(contentsOf: root.appendingPathComponent("Sources/FTAndroid/ProfileWorkerFactory.swift"),
                                  encoding: .utf8)
-        let loop = try XCTUnwrap(factory.range(of: "for device in provisioned where !device.physical {"))
+        // 実機を除いた一覧(simulators)を台ごとに並行に撃つ(1行の supplyStage のループは別なので改行まで含めて引く)
+        let simulatorsOnly = try XCTUnwrap(factory.range(of: "let simulators = provisioned.filter { !$0.physical }"))
+        let loop = try XCTUnwrap(factory.range(of: "for device in simulators {\n",
+                                                range: simulatorsOnly.upperBound..<factory.endIndex))
         let loopEnd = try XCTUnwrap(factory.range(of: "\n        }", range: loop.upperBound..<factory.endIndex))
         XCTAssertTrue(factory[loop.upperBound..<loopEnd.lowerBound].contains("IOSSoftwareKeyboard.apply(udid: device.udid"),
                       "run の iOS 供給が設定を撃っていない")

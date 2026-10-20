@@ -28,6 +28,24 @@ final class MCPToolCallTests: XCTestCase {
                            })
     }
 
+    /// ref を撃つツールは、直前の木が無ければ**撮ってから引く**(verifiedRef・0c80863f)ので、撃つ番号は確かめる木に
+    /// 載っていなければならない。既定の木は #login_btn(ref 1)だけなので、入力欄 2・ボタン 3・入力欄 4 を足す
+    private func seedRefsTwoToFour() {
+        driver.snapshotResponse.elements += [
+            ElementInfo(ref: 2, type: "TextField", identifier: "name_field", label: nil, value: nil,
+                        placeholder: "name", enabled: true, frame: FTRect(x: 10, y: 80, width: 200, height: 40), depth: 1),
+            ElementInfo(ref: 3, type: "Button", identifier: "ok_btn", label: "OK", value: nil,
+                        placeholder: nil, enabled: true, frame: FTRect(x: 10, y: 140, width: 100, height: 40), depth: 1),
+            ElementInfo(ref: 4, type: "TextField", identifier: "memo_field", label: nil, value: nil,
+                        placeholder: "memo", enabled: true, frame: FTRect(x: 10, y: 200, width: 200, height: 40), depth: 1),
+        ]
+    }
+
+    /// ref を撃つ前の確かめ(直前の木が無いので撮る → アラートの門 → 覆い → 当たり判定)。この後に操作が続く
+    private func verified(_ ref: Int) -> [String] {
+        ["snapshot", "systemAlert", "systemUICovering", "hitTest(\(ref))"]
+    }
+
     // MARK: - ドライバ操作へ正しく橋渡しされるか
 
     // MARK: - マップ系ジェスチャ(ft_double_tap / ft_pinch / ft_drag)
@@ -343,22 +361,24 @@ final class MCPToolCallTests: XCTestCase {
     /// **消した後に必ず読み返す**: in-app iOS の UIKit 経路は clearInput の成否を
     /// 検証なしで YES と返すので、読み返さないと「cleared」が嘘になり、続く ft_type が黙って連結する
     func testClearInputPassesTheRefOrNilAndReadsBack() async throws {
+        seedRefsTwoToFour()
         _ = try await server.call(tool: "ft_clear_input", args: ["ref": 2])
         _ = try await server.call(tool: "ft_clear_input", args: [:])
         XCTAssertEqual(driver.calls,
-                       ["clearInput(ref:2)", "snapshot", "clearInput(ref:nil)", "snapshot"])
+                       verified(2) + ["clearInput(ref:2)", "snapshot", "clearInput(ref:nil)", "snapshot"])
     }
 
     /// **入力を伴わない Enter も撃てること**。iOS はソフトキーボードを閉じる手段が
     /// pressEnter しかない(hideKeyboard は Android 専用)ので、text 必須にすると
     /// 「閉じるためだけに何か打つ」しかなくなる
     func testPressEnterAloneIsAllowed() async throws {
+        seedRefsTwoToFour()
         _ = try await server.call(tool: "ft_type", args: ["pressEnter": true])
         XCTAssertEqual(driver.calls, ["pressEnter"], "打鍵せず Enter だけ撃つこと")
 
-        // ref を渡したときはフォーカスを立ててから撃つ
+        // ref を渡したときはフォーカスを立ててから撃つ(タップの後に焦点が立ったかを1枚読む)
         _ = try await server.call(tool: "ft_type", args: ["ref": 4, "pressEnter": true])
-        XCTAssertEqual(driver.calls, ["pressEnter", "tap(ref:4)", "pressEnter"])
+        XCTAssertEqual(driver.calls, ["pressEnter"] + verified(4) + ["tap(ref:4)", "snapshot", "pressEnter"])
     }
 
     /// text も pressEnter も無ければ弾く(打つものが無い)
@@ -507,8 +527,9 @@ final class MCPToolCallTests: XCTestCase {
     }
 
     func testTapByRef() async throws {
+        seedRefsTwoToFour()
         _ = try await server.call(tool: "ft_tap", args: ["ref": 3])
-        XCTAssertEqual(driver.calls, ["tap(ref:3)"])
+        XCTAssertEqual(driver.calls, verified(3) + ["tap(ref:3)"])
     }
 
     func testTapByCoordinates() async throws {
@@ -529,8 +550,9 @@ final class MCPToolCallTests: XCTestCase {
     }
 
     func testTypeWithRef() async throws {
+        seedRefsTwoToFour()
         _ = try await server.call(tool: "ft_type", args: ["text": "あいう", "ref": 2])
-        XCTAssertEqual(driver.calls, ["type(ref:2,text:あいう)"])
+        XCTAssertEqual(driver.calls, verified(2) + ["type(ref:2,text:あいう)"])
     }
 
     /// ref 省略時は「フォーカス中の要素」= ref nil をドライバへ渡す
@@ -542,14 +564,16 @@ final class MCPToolCallTests: XCTestCase {
     /// replace: true は type の前に clearInput(ft_clear_input と同じ呼び出し形)を挟み、
     /// 最後に読み返し用の snapshot を1回だけ払う(clear の嘘 200 を検出するため)
     func testTypeReplaceClearsBeforeTyping() async throws {
+        seedRefsTwoToFour()
         _ = try await server.call(tool: "ft_type", args: ["text": "あいう", "ref": 2, "replace": true])
-        XCTAssertEqual(driver.calls, ["clearInput(ref:2)", "type(ref:2,text:あいう)", "snapshot"])
+        XCTAssertEqual(driver.calls, verified(2) + ["clearInput(ref:2)", "type(ref:2,text:あいう)", "snapshot"])
     }
 
     /// replace: false(既定と同じ)は今までどおり追記のみで、clearInput は呼ばない
     func testTypeReplaceFalseStillAppends() async throws {
+        seedRefsTwoToFour()
         _ = try await server.call(tool: "ft_type", args: ["text": "あいう", "ref": 2, "replace": false])
-        XCTAssertEqual(driver.calls, ["type(ref:2,text:あいう)"])
+        XCTAssertEqual(driver.calls, verified(2) + ["type(ref:2,text:あいう)"])
     }
 
     /// replace: true のときは「追記」警告(the field already held ...)を出さず、
@@ -624,13 +648,15 @@ final class MCPToolCallTests: XCTestCase {
     }
 
     func testPressUsesDefaultDurationWhenOmitted() async throws {
+        seedRefsTwoToFour()
         _ = try await server.call(tool: "ft_long_press", args: ["ref": 4])
-        XCTAssertEqual(driver.calls, ["press(ref:4,duration:1.0)"])
+        XCTAssertEqual(driver.calls, verified(4) + ["press(ref:4,duration:1.0)"])
     }
 
     func testPressPassesExplicitHoldSeconds() async throws {
+        seedRefsTwoToFour()
         _ = try await server.call(tool: "ft_long_press", args: ["ref": 4, "holdSeconds": 2.5])
-        XCTAssertEqual(driver.calls, ["press(ref:4,duration:2.5)"])
+        XCTAssertEqual(driver.calls, verified(4) + ["press(ref:4,duration:2.5)"])
     }
 
     /// screenshot は text ではなく image コンテンツ(base64 + mimeType)で返す契約。

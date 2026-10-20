@@ -1132,6 +1132,8 @@ extension MCPServer {
     func verifiedRef(_ ref: Int, driver: AppDriver,
                              args: [String: Any]) async throws -> (ref: Int, note: String) {
         var sessionRef = resolveSessionRef(ref, args: args)
+        // 撮ってから引いた木。下の「撃つ直前の読み直し」はこれを使う(間に操作が無いので読み直しと同じ = 2枚払わない)
+        var justRead: SnapshotResponse?
         if sessionRef == nil, nextRefBase == 0 {
             // **1つも撮っていない = 撮ってから引く**(verifiedElement と同じ)。素通しすると、launch で空になった
             // ブリッジの番号表に当たって HTTP の 404(「Run GET /snapshot first」)がそのまま出た
@@ -1140,6 +1142,7 @@ extension MCPServer {
                 throw MCPError("unknown ref [\(ref)]. Take an ft_snapshot first")
             }
             sessionRef = resolveSessionRef(ref, args: args)
+            justRead = fresh
         }
         guard let resolved = sessionRef else {
             if let owner = otherKeyHolding(ref, args: args) {
@@ -1162,8 +1165,13 @@ extension MCPServer {
             : ""
         let takenFrom = generationSnapshot(containing: ref, args: args)
         let lastRendered = takenFrom?.elements ?? []
-        SlowCallWatchdog.mark("re-reading the tree to check ref [\(ref)]")
-        var fresh = try await freshSnapshot(driver, args: args)
+        var fresh: SnapshotResponse
+        if let justRead {
+            fresh = justRead
+        } else {
+            SlowCallWatchdog.mark("re-reading the tree to check ref [\(ref)]")
+            fresh = try await freshSnapshot(driver, args: args)
+        }
         fresh = try await consumePendingTypeKeyboardCheck(fresh, driver: driver, args: args)
         if let message = Self.refFromAnotherAppMessage(
             ref: ref, takenFrom: takenFrom, fresh: fresh) { throw MCPError(message) }

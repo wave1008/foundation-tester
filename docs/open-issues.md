@@ -57,6 +57,14 @@
     = 配信だけでは起きず、壊れかけの状態に配信の負荷が重なったときに出た
   - 要る材料: 次に起きたときの Simulator の実画面(`simctl io screenshot`)と `~/.fleetest/video-encoder-history.ndjson` の前後
 
+- **DSL の `waitSeconds:` / `holdSeconds:` に非有限の値(`.infinity` / `.nan`)を渡すと、シナリオ実行バイナリが `Duration` 化で trap する**(2026-10-21・未再現 = ソースを読んだだけ)
+  - `Duration.seconds(Double)` は非有限で fatal error になる(全体テストで `WaitForSettleExecutorTests` が実際に落ちた形。
+    そちらは StepExecutor+StaleRef の予算の変換を断りの後へ遅らせて直した)。同じ変換は `StepExecutor+Actions` の
+    `step.timeout ?? tunables.defaultTimeout`(3 箇所)・`StepExecutor+DirectActions`(2 箇所)・`StepExecutor+Hold` の
+    `holdSeconds` にもあり、DSL 側に有限性の検査が無い(`httpRequest` だけ `CommandsHTTP` で断る。MCP は `ArgumentBounds` が
+    範囲で止める)ので、`tap("x", waitSeconds: .infinity)` のような書き方は失敗にならず実行バイナリごと落ちる
+  - 直すなら入口で1箇所(`FlowStep` を組む側か `FTDriveCore`)で「有限で 0 以上」を断り、Duration 化の手前で守る
+
 - **iPhone Duo の Simulator の開閉で、SpringBoard・testmanagerd・PosterBoard 等が `FBSDisplayMode` の検査で落ちる**(2026-10-17・Duo-01/02・新規作成の Duo)
   - 症状: 開くたびに約半分の確率で PosterBoard・ウィジェットの拡張・InputUI・chronod が落ちる。ときどき SpringBoard と
     **testmanagerd も落ち、XCUITest ランナーが道連れになる**(以後の操作は接続拒否 → 起動し直し)。スタックは全部

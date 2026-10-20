@@ -23,7 +23,7 @@ extension StepExecutor {
     func executeActionRetryingStaleRef(_ action: String, step: FlowStep, fingerprint: LocatorFingerprint?,
                                        phase: inout PhaseAccumulator) async throws -> StepOutcome {
         let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(step.timeout ?? tunables.defaultTimeout))
+        let start = clock.now
         var backoff = PollBackoff()
         while true {
             let savedLast = lastInteraction
@@ -34,7 +34,11 @@ extension StepExecutor {
             do {
                 return try await executeAction(action, step: step, fingerprint: fingerprint, phase: &phase)
             } catch {
-                guard Self.isRetryableStaleRef(error), clock.now < deadline else { throw error }
+                guard Self.isRetryableStaleRef(error) else { throw error }
+                // 予算を Duration にするのは最初の断りのとき —— `.seconds(Double)` は非有限で trap するので、範囲外の
+                // waitSeconds を action の入口(waitForSettle 等)が断るより前に変換しない。非有限の予算は引き直さない
+                let budget = step.timeout ?? tunables.defaultTimeout
+                guard budget.isFinite, clock.now < start.advanced(by: .seconds(budget)) else { throw error }
                 lastInteraction = savedLast
                 tapAwaitingNextTree = savedAwaiting
                 previousTapTree = savedPrevious

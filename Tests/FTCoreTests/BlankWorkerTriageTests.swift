@@ -643,7 +643,8 @@ final class BlankWorkerRecoveryWiringTests: XCTestCase {
         }
     }
 
-    /// 回復の実体そのものが持つべき2工程 —— **simctl の再起動**と**ブリッジの張り直し**。
+    /// 回復の実体そのものが持つべき2工程 —— **simctl の再起動**(shutdown → `SimulatorBoot.ensureBooted` の単一の入口。
+    /// 直接 simctl boot を撃たない = SimulatorBootSingleEntryTests)と**ブリッジの張り直し**。
     /// シミュレータを落とすとブリッジも死ぬので、張り直しを省くと回復した機が使えない
     func testRecoveryRebootsTheSimulatorAndRebuildsTheBridge() throws {
         let text = try source("Sources/FTAndroid/ProfileWorkerFactory.swift")
@@ -651,8 +652,7 @@ final class BlankWorkerRecoveryWiringTests: XCTestCase {
             .map({ String(text[$0.lowerBound...]) }) else {
             return XCTFail("recoverFrozenIOSWorkers が無い")
         }
-        for fragment in ["\"simctl\", \"shutdown\"", "\"simctl\", \"boot\"",
-                         "\"bootstatus\"", "buildIOSWorkers("] {
+        for fragment in ["\"simctl\", \"shutdown\"", "SimulatorBoot.ensureBooted(", "buildIOSWorkers("] {
             XCTAssertTrue(body.contains(fragment), "回復から \(fragment) が消えている")
         }
     }

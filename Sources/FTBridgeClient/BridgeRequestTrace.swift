@@ -65,6 +65,6 @@ enum BridgeRequestTrace {
                         body: request.httpBody, status: status, started: started, finished: Date(),
                         response: response, watched: watched)
         guard !text.isEmpty else { return }
-        FileHandle.standardError.write(Data((text + "\n").utf8))
+        ConsoleOut.err(text)
     }
 }

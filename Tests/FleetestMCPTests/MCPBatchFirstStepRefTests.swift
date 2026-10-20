@@ -194,13 +194,14 @@ final class MCPBatchFirstStepRefTests: XCTestCase {
         XCTAssertEqual(driver.calls, [], "1手目もデバイスへ通さないこと")
     }
 
-    /// 直前に ft_snapshot を撮っていないと ref は解決できない —— それでも実行には入らない
-    /// (RefGuard を経由しないケースなので、拒否の理由がここだけ別だが、実行前に止まることは同じ)
+    /// 直前に ft_snapshot を撮っていなければ **撮ってから引く**(verifiedRef。素通しすると番号がそのままブリッジへ渡り
+    /// 別の要素に当たる)。撮った木に無い ref は実行前に断り、1手目もデバイスへ通らない
     func testFirstStepRefWithoutAPriorSnapshotIsRejectedBeforeExecuting() async {
         do {
-            _ = try await server.call(tool: "ft_batch", args: ["steps": "tap ref: 1"])
-            XCTFail("解決できない ref のバッチが通った")
+            _ = try await server.call(tool: "ft_batch", args: ["steps": "tap ref: 9"])
+            XCTFail("撮った木に無い ref のバッチが通った")
         } catch {
+            XCTAssertTrue(error.localizedDescription.contains("unknown ref [9]"), error.localizedDescription)
             XCTAssertFalse(driver.calls.contains { $0.hasPrefix("tap(") }, "\(driver.calls)")
         }
     }
