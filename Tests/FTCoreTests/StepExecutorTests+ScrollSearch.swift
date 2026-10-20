@@ -131,6 +131,12 @@ extension StepExecutorTests {
         let high = framed(ref: 2, id: "nav_pager", x: 0, y: 118, width: 402, height: 56)
         let down = try XCTUnwrap(StepExecutor.emptyDragEnd(of: high, x: 201, y: 146, searching: nil, screen: screen))
         XCTAssertEqual(down.y, 178, "上半分の行は下へ抜く")
+        // **押す点が下端の帯で頭打ちになった行**(run の赤: 行 822〜・押す点 825 → 矩形の 4pt 外の 818 = 7pt しか動かず、
+        // Compose のタッチの遊び(10pt)に収まって上の行のタップになった)は、軸に沿って 22pt 以上動かす
+        let clamped = framed(ref: 4, id: "nav_infinite", x: 0, y: 822, width: 402, height: 52)
+        let far = try XCTUnwrap(StepExecutor.emptyDragEnd(of: clamped, x: 201, y: 825, searching: "up", screen: screen))
+        XCTAssertEqual(far.y, 825 - StepExecutor.emptyDragMinAlongAxisTravelPt)
+        XCTAssertEqual(StepExecutor.emptyDragMinAlongAxisTravelPt, 22, "Flutter kTouchSlop 18 + 余白 4")
         // インセットの行は従来どおり横へ抜く(縦へは落ちない)
         let inset = framed(ref: 3, id: "row", x: 16, y: 782, width: 330, height: 56)
         let side = try XCTUnwrap(StepExecutor.emptyDragEnd(of: inset, x: 181, y: 810, searching: "up", screen: screen))

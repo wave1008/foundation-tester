@@ -525,8 +525,8 @@ extension StepExecutor {
     static let emptyDragSeconds: Double = 0.30
 
     /// 空打ちドラッグの終点。**対象の矩形の外へ横に抜ける**のが要件。
-    /// Compose iOS は「離した点が要素の中」ならクリックとして成立させるので、中に留まる限り
-    /// **距離では消せない**(実測: 2pt / 24pt / 120pt、0.05s / 0.30s のどれでも
+    /// Compose iOS は「離した点が要素の中」ならクリックとして成立させるので、**スクロールに取られない向き(横)では**
+    /// 中に留まる限り**距離では消せない**(実測: 2pt / 24pt / 120pt、0.05s / 0.30s のどれでも
     /// `scrollTo("#row_40")` だけで `selected=row_40` が入った = 読み取り専用のはずの
     /// コマンドがアプリの状態を書き換える)。矩形の外で離せばクリックは取り消される。
     /// **縦に抜いてはいけない**: 容器がスクロールとして消費して内容が動き、直後に
@@ -552,7 +552,29 @@ extension StepExecutor {
         // で、直後のタップが黙って空振りする(E2EX-CMP のホーム = 全幅の ListItem: tap が緑のまま遷移せず次で赤)。
         // 縦の抜きは容器がスクロールとして消費して中身が半行ぶん動くが、呼び手は撃った後に整定を待って解決し直す
         // ので座標は追いつき、中心へ寄る向きなら対象は画面から出ない
-        return emptyDragEndY(of: element, screen: screen).map { (x, $0) }
+        guard let endY = emptyDragEndY(of: element, screen: screen) else { return nil }
+        return alongAxisEmptyDragEndY(from: y, preferred: endY, screen: screen).map { (x, $0) }
+    }
+
+    /// 探索の軸に沿って抜く空打ちの最短の移動(pt)。**軸に沿う抜きでクリックを取り消しているのは「矩形の外で離すこと」ではなく
+    /// 「タッチの遊びを超えてスクロールに取られること」**(E2EX-CMP のホーム・XCUITest で実測: 行の中心から上へ 5pt はクリック・
+    /// 10〜60pt は行の中で離しても外で離してもスクロール)。押す点が下端の帯で頭打ちになると矩形の 4pt 外でも 5〜7pt しか動かず、
+    /// 上の行を押して遷移した。値は既知のタッチの遊びの大きい方(Flutter `kTouchSlop` 18 / Compose iOS `CUPERTINO_TOUCH_SLOP` 10。
+    /// どちらも iOS では pt)+ 他の抜き先と同じ余白 4pt
+    static let emptyDragMinAlongAxisTravelPt: Double = 22
+
+    /// 軸に沿う抜き先を、押す点から `emptyDragMinAlongAxisTravelPt` 以上離す(普段の抜き = 行の中心から矩形の外までは約 32pt で
+    /// そのまま)。延ばした先が画面の外か下端の帯なら逆向きに同じだけ動かし、それも無理なら nil(撃たない)
+    static func alongAxisEmptyDragEndY(from y: Double, preferred: Double, screen: FTRect) -> Double? {
+        let minTravel = emptyDragMinAlongAxisTravelPt
+        if abs(preferred - y) >= minTravel { return preferred }
+        let top = screen.y + 1
+        let bottom = screen.y + screen.height - Self.bottomUncoveredBand - 1
+        let direction: Double = preferred < y ? -1 : 1
+        for candidate in [y + direction * minTravel, y - direction * minTravel] where candidate >= top && candidate <= bottom {
+            return candidate
+        }
+        return nil
     }
 
     /// 横の探索で使う縦の抜き先(`emptyDragEndX` の縦版。矩形のすぐ外で離す = クリックとして成立させない)。
