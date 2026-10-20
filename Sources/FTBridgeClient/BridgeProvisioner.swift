@@ -623,56 +623,37 @@ public struct BridgeProvisioner: Sendable {
         }
         defer { earlyRelease.cancel() }
 
-        // 6. 起動(デバイス単位で並列。**in-app の新規起動を含むときだけ同時2台に絞る**)。
+        // 6. 起動(デバイス単位で並列。**in-app の新規起動か冷えたシミュレータのブートを含む台だけ同時2台に絞る**)。
         // フルスイート直後の in-app フェーズ開始(8台同時の terminate→launch+注入)で
         // シミュレータの画面凍結クラスタが同日2回発生した(a11y は応答・描画とタップが停止。
         // 凍結検出器がワーカー除外して完走はする)。Android で対照実験済みの「複数台同時描画」
         // 凍結と同族とみて、一括デバイス起動と同じ「同時2台」に絞る(ユーザー決定の
-        // start-device ポリシーと同じ理屈)。再利用/adopt だけの供給は launch を伴わないので
-        // 全並列のまま = xcuitest ランナー再利用時の供給時間は変わらない
-        let launchesInApp = plans.contains { plan in
-            plan.bridges.contains { bridge in
-                if case .launch = bridge.plan { return bridge.engine == "inapp" }
-                return false
+        // start-device ポリシーと同じ理屈)。8 台同時のブートも同じ条件だった(台帳 §19.25)。
+        // **枠は台ごとに決める** —— 再利用/adopt だけの台は launch を伴わないので枠の外で全並列
+        // (run 全体で1つの幅にすると、1台のブートで再利用だけの台まで2台ずつの列に並ぶ)
+        let slotted = plans.map { plan in
+            Self.needsLaunchSlot(
+                launchesInApp: plan.bridges.contains { bridge in
+                    if case .launch = bridge.plan { return bridge.engine == "inapp" }
+                    return false
+                },
+                launchesColdSimulator: !plan.sim.physical && !plan.sim.booted && plan.bridges.contains { bridge in
+                    if case .launch = bridge.plan { return true }
+                    return false
+                })
+        }
+        let results = await Self.runWithLaunchSlots(
+            zip(plans, slotted).map { (item: $0, slotted: $1) }, width: Self.launchSlotWidth) { plan in
+            do {
+                return Result<ProvisionedIOSDevice, Error>.success(try await self.executeDevice(
+                    plan: plan, bundleID: bundleID,
+                    preinstallAppPath: preinstallAppPath,
+                    claimBarrier: claimBarrier, log: safeLog))
+            } catch {
+                return .failure(error)
             }
         }
-        // **冷えたシミュレータ(Shutdown)を起こす起動も同時 2 台**: 8 台同時のブートは in-app の
-        // 8 台同時注入と同じ「複数台同時描画」で、再起動直後の全滅の条件だった(台帳 §19.25)
-        let launchesColdSimulator = plans.contains { plan in
-            !plan.sim.physical && !plan.sim.booted && plan.bridges.contains { bridge in
-                if case .launch = bridge.plan { return true }
-                return false
-            }
-        }
-        let launchWidth = Self.launchWidth(launchesInApp: launchesInApp,
-                                           launchesColdSimulator: launchesColdSimulator,
-                                           deviceCount: plans.count)
-        let outcomes = await withTaskGroup(
-            of: (Int, Result<ProvisionedIOSDevice, Error>).self,
-            returning: [Int: Result<ProvisionedIOSDevice, Error>].self) { group in
-            var pending = plans.makeIterator()
-            func addNext(_ group: inout TaskGroup<(Int, Result<ProvisionedIOSDevice, Error>)>) {
-                guard let plan = pending.next() else { return }
-                group.addTask {
-                    do {
-                        let device = try await self.executeDevice(
-                            plan: plan, bundleID: bundleID,
-                            preinstallAppPath: preinstallAppPath,
-                            claimBarrier: claimBarrier, log: safeLog)
-                        return (plan.index, .success(device))
-                    } catch {
-                        return (plan.index, .failure(error))
-                    }
-                }
-            }
-            for _ in 0..<max(1, launchWidth) { addNext(&group) }
-            var results: [Int: Result<ProvisionedIOSDevice, Error>] = [:]
-            for await (index, result) in group {
-                results[index] = result
-                addNext(&group)
-            }
-            return results
-        }
+        let outcomes = Dictionary(uniqueKeysWithValues: zip(plans.map(\.index), results))
 
         // 7. 元のデバイス順に集約。**供給できなかった機はその機だけ離脱させ、残りで走る**。
         //
@@ -1101,10 +1082,36 @@ public struct BridgeProvisioner: Sendable {
             host: BridgeEndpoint.load(port: primary, repoRoot: repoRoot).host)
     }
 
-    /// 同時に起動する台数。in-app の新規注入か冷えたシミュレータのブートを含むときだけ 2
-    /// (device-up-two-at-a-time と同じ理屈)。再利用・引き取りだけなら全並列
-    static func launchWidth(launchesInApp: Bool, launchesColdSimulator: Bool, deviceCount: Int) -> Int {
-        (launchesInApp || launchesColdSimulator) ? 2 : deviceCount
+    /// 同時起動の枠に並ぶ台か。in-app の新規注入か冷えたシミュレータのブートを含む台だけ
+    /// (device-up-two-at-a-time と同じ理屈)。再利用・引き取りだけの台は枠の外で全並列
+    static func needsLaunchSlot(launchesInApp: Bool, launchesColdSimulator: Bool) -> Bool {
+        launchesInApp || launchesColdSimulator
+    }
+
+    /// 枠に並ぶ台を同時に起動する数(ユーザー決定の「一括起動は同時2台」)
+    static let launchSlotWidth = 2
+
+    /// `slotted` の項目は同時 `width` 個まで(1つ終わるたびに次を起こす)、それ以外は最初から全部走らせる。結果は items の順
+    static func runWithLaunchSlots<Item: Sendable, Output: Sendable>(
+        _ items: [(item: Item, slotted: Bool)], width: Int,
+        _ body: @escaping @Sendable (Item) async -> Output) async -> [Output] {
+        await withTaskGroup(of: (Int, Bool, Output).self, returning: [Output].self) { group in
+            var waiting = items.indices.filter { items[$0].slotted }.makeIterator()
+            func add(_ index: Int, _ group: inout TaskGroup<(Int, Bool, Output)>) {
+                let entry = items[index]
+                group.addTask { (index, entry.slotted, await body(entry.item)) }
+            }
+            for index in items.indices where !items[index].slotted { add(index, &group) }
+            for _ in 0..<max(1, width) {
+                if let index = waiting.next() { add(index, &group) }
+            }
+            var outputs: [Int: Output] = [:]
+            for await (index, freedSlot, output) in group {
+                outputs[index] = output
+                if freedSlot, let next = waiting.next() { add(next, &group) }
+            }
+            return items.indices.map { outputs[$0]! }
+        }
     }
 
     /// 1 台のブリッジを実行する順(plan の添字)。xcuitest を in-app より先に(理由は executeDevice)。

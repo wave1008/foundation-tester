@@ -5226,7 +5226,7 @@ worktree の run がそれらの端末を「別のワークスペースのブリ
 - **直したもの**: 暖機をやめる判断は 8GB の M1mini を分けるためのものだった(§81)。割合の門は M2Ultra の負荷の山でも成立し、
   しかもプロセスの終わりまで戻らない。ユーザー決定で**搭載メモリ 16GiB 以上の機械ではやめない**(`FMServeServer.keepWarmGiveUpBelowPhysicalMemoryBytes`)
 - **未確定**: 暖機を続けていれば死ななかったかは確かめていない(暖機が止まったことと死は時刻が並んでいるだけ)。5 台同時の起動を
-  誰が撃ったかも未特定 —— 供給の並列幅(`BridgeProvisioner.launchWidth`)は計画の時点で Shutdown の Simulator を起こすときだけ 2 台に絞り、
+  誰が撃ったかも未特定 —— 供給の並列幅(当時の `BridgeProvisioner.launchWidth`、今は台ごとの `needsLaunchSlot`)は計画の時点で Shutdown の Simulator を起こすときだけ 2 台に絞り、
   起動済みの Simulator を供給の途中で再起動する経路(`restartSimulatorAndRunner`)と、xcodebuild の自動起動には絞りが掛かっていなかった(凍結回復は元から 2 台ずつ)。17:54 には XCUITest ランナーの起動が
   `FBSOpenApplicationServiceErrorDomain Code=1`(xctrunner を起動できない)で失敗していた。記録の写しは reports/fm-m2ultra-20261020-1759/
 - **直したもの(2)**: Simulator の起動を `SimulatorBoot.ensureBooted` の1箇所に寄せ、機械全体で同時2台の枠(`SimulatorBootSlots`・flock)を取る。

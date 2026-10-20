@@ -55,4 +55,15 @@ final class AndroidAnimationSettingsTests: XCTestCase {
         XCTAssertFalse(AndroidAnimationSettings.matches(rawValue: "error", animationsEnabled: true))
         XCTAssertFalse(AndroidAnimationSettings.matches(rawValue: "error", animationsEnabled: false))
     }
+
+    /// run 開始の同期は台ごとに並行に撃つ(順に撃つと台数ぶんの adb の往復が供給の後の待ちに積み上がる)
+    func testSyncAnimationSettingsRunsDevicesConcurrently() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FTAndroid/ProfileWorkerFactory.swift")
+        let text = try String(contentsOf: url, encoding: .utf8)
+        let entry = try XCTUnwrap(text.range(of: "public static func syncAnimationSettings("))
+        let body = text[entry.upperBound...].prefix(900)
+        XCTAssertTrue(body.contains("DispatchQueue.concurrentPerform(iterations: devices.count)"), "台ごとに並行に撃っていない")
+        XCTAssertFalse(body.contains("for device in resolved.androidDevices"), "台を順に回している")
+    }
 }

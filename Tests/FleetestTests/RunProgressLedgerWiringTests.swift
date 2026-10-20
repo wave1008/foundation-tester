@@ -162,7 +162,7 @@ final class RunProgressLedgerWiringTests: XCTestCase {
                               encoding: .utf8)
         let pending = try XCTUnwrap(code.range(of: "for plan in plans { supplyStage?(plan.name, \"ios\", .pending) }"),
                                     "予定の端末を pending で立てていない")
-        let launch = try XCTUnwrap(code.range(of: "let launchWidth = Self.launchWidth("))
+        let launch = try XCTUnwrap(code.range(of: "let slotted = plans.map { plan in"))
         XCTAssertTrue(pending.lowerBound < launch.lowerBound, "pending は起動の枠を決める前(全台ぶん)に立てる")
     }
 

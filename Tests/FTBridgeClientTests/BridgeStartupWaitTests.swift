@@ -3,6 +3,7 @@
 
 import XCTest
 @testable import FTBridgeClient
+import FTCore
 
 final class BridgeStartupWaitTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_000_000)
@@ -50,12 +51,39 @@ final class BridgeStartupWaitTests: XCTestCase {
             "対象アプリはランナーではない")
     }
 
-    // MARK: - 同時起動の台数(BridgeProvisioner.launchWidth)
+    // MARK: - 同時起動の枠(BridgeProvisioner.needsLaunchSlot / runWithLaunchSlots)
 
     func testColdSimulatorBootsTwoAtATime() {
-        XCTAssertEqual(BridgeProvisioner.launchWidth(launchesInApp: false, launchesColdSimulator: true, deviceCount: 8), 2)
-        XCTAssertEqual(BridgeProvisioner.launchWidth(launchesInApp: true, launchesColdSimulator: false, deviceCount: 8), 2)
-        XCTAssertEqual(BridgeProvisioner.launchWidth(launchesInApp: false, launchesColdSimulator: false, deviceCount: 8), 8)
+        XCTAssertTrue(BridgeProvisioner.needsLaunchSlot(launchesInApp: false, launchesColdSimulator: true))
+        XCTAssertTrue(BridgeProvisioner.needsLaunchSlot(launchesInApp: true, launchesColdSimulator: false))
+        XCTAssertFalse(BridgeProvisioner.needsLaunchSlot(launchesInApp: false, launchesColdSimulator: false))
+        XCTAssertEqual(BridgeProvisioner.launchSlotWidth, 2)
+    }
+
+    /// 枠に並ぶ台は同時2台まで・再利用だけの台は枠を待たずに全部走る(ブートの台が混ざっても2台ずつの列に並ばない)
+    func testReuseOnlyDevicesDoNotQueueBehindLaunchSlots() async {
+        let reuseCount = 3
+        let state = LockedValue((reuseStarted: 0, slottedInFlight: 0, slottedPeak: 0, reuseSawAll: 0))
+        let items = (0..<7).map { (item: $0, slotted: $0 >= reuseCount) }
+        let outputs = await BridgeProvisioner.runWithLaunchSlots(items, width: 2) { index in
+            if index < reuseCount {
+                state.withLock { $0.reuseStarted += 1 }
+                // 枠に並ばされていれば、再利用の3台がそろって走り出すことは無い(2秒で諦める)
+                for _ in 0..<200 where state.withLock({ $0.reuseStarted }) < reuseCount {
+                    try? await Task.sleep(nanoseconds: 10_000_000)
+                }
+                if state.withLock({ $0.reuseStarted }) == reuseCount { state.withLock { $0.reuseSawAll += 1 } }
+            } else {
+                state.withLock { $0.slottedInFlight += 1; $0.slottedPeak = max($0.slottedPeak, $0.slottedInFlight) }
+                try? await Task.sleep(nanoseconds: 30_000_000)
+                state.withLock { $0.slottedInFlight -= 1 }
+            }
+            return index * 10
+        }
+        XCTAssertEqual(outputs, [0, 10, 20, 30, 40, 50, 60], "結果は items の順")
+        let final = state.withLock { $0 }
+        XCTAssertEqual(final.reuseSawAll, reuseCount, "再利用だけの台が枠の列に並んだ")
+        XCTAssertEqual(final.slottedPeak, 2, "枠に並ぶ台の同時数が2でない")
     }
 
     // MARK: - 結果の束

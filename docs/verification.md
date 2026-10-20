@@ -119,7 +119,8 @@ Mac の再起動直後(シミュレータ 0 台)に `--ios-xcuitest` を回す�
 テスト本体が始まるまでログに何も書かず、しかも Shutdown のシミュレータを**自分でブートしてから**始めるので、
 8 台同時のブート(3 分超)がそのままランナーの予算に載る。ツール側は 3 つで受ける:
 ①ランナーを起動する前に `SimulatorBoot.ensureBooted`(`simctl bootstatus -b`)でブートを待ち切る(予算の外)
-②冷えたシミュレータを起こす起動は in-app の注入と同じく**同時 2 台**(`BridgeProvisioner.launchWidth`)
+②冷えたシミュレータを起こす起動は in-app の注入と同じく**同時 2 台**(`BridgeProvisioner.needsLaunchSlot`。
+枠は台ごと = 再利用・引き取りだけの台は枠を待たない)
 ③起動待ちはログの伸び・**ランナーアプリのプロセスがシミュレータに現れた**・`Test Suite started` の 3 つを進みとして
 数え直す(`BridgeStartupWait`)。陽性対照は**次の再起動直後の `--cmp --ios-xcuitest`**(ログに
 「booting the simulator before starting the xcuitest runner」が並び、落ちなければ効いている)。

@@ -409,34 +409,47 @@ public enum ProfileWorkerFactory {
     /// iOS 側は buildIOSWorkers 内で供給後に同期する。
     /// 実機はグローバル設定が永続的に書き換わるので、**現在値を読んで差分があるときだけ**書き、
     /// そのときに1行知らせる(エミュレータは使い捨てなので無条件・無言)。失敗は非致命。
+    /// **台ごとに並行に撃つ**(1台に serial の解決 + adb shell 3〜6回。順に撃つと台数ぶん積み上がり、供給の後の待ちになる)。
+    /// 別の端末への書き込みなので互いに干渉しない。知らせる行は台の順に後でまとめて出す
     public static func syncAnimationSettings(
         resolved: ResolvedProfile, log: (String) -> Void = { _ in }) {
         guard let adb = try? AndroidDriver.findADB(), !resolved.androidDevices.isEmpty else { return }
         let enabled = resolved.enableAnimations
-        for device in resolved.androidDevices {
-            guard let serial = try? AndroidDeviceCatalog.resolveSerial(spec: device.spec) else { continue }
-            func shell(_ args: [String]) -> Shell.Result? {
-                try? Shell.run([adb, "-s", serial] + args, timeout: 15)
-            }
-            if device.spec.isPhysical {
-                let stale = AnimationPolicy.androidScaleKeys.filter {
-                    !AndroidAnimationSettings.matches(
-                        rawValue: shell(["shell"] + AndroidAnimationSettings.getArguments(key: $0))?.output,
-                        animationsEnabled: enabled)
-                }
-                guard !stale.isEmpty else { continue }
-                log("ℹ️ \(serial): setting the device animations "
-                    + (enabled ? "back to the OS default (persists after the run)"
-                               : "off (persists after the run)"))
-            }
-            let failed = AndroidAnimationSettings.apply(animationsEnabled: enabled) {
-                shell(["shell"] + $0)?.status == 0
-            }
-            if !failed.isEmpty {
-                log("⚠️ \(serial): could not apply the animation settings "
-                    + "(\(failed.joined(separator: ", ")))")
-            }
+        let devices = resolved.androidDevices
+        let lines = LockedValue([[String]](repeating: [], count: devices.count))
+        DispatchQueue.concurrentPerform(iterations: devices.count) { index in
+            let message = syncAnimationSettings(device: devices[index], adb: adb, enabled: enabled)
+            lines.withLock { $0[index] = message }
         }
+        for line in lines.withLock({ $0 }).joined() { log(line) }
+    }
+
+    /// 1台ぶんの同期。返すのは知らせる行
+    private static func syncAnimationSettings(device: ResolvedDevice, adb: String, enabled: Bool) -> [String] {
+        guard let serial = try? AndroidDeviceCatalog.resolveSerial(spec: device.spec) else { return [] }
+        func shell(_ args: [String]) -> Shell.Result? {
+            try? Shell.run([adb, "-s", serial] + args, timeout: 15)
+        }
+        var lines: [String] = []
+        if device.spec.isPhysical {
+            let stale = AnimationPolicy.androidScaleKeys.filter {
+                !AndroidAnimationSettings.matches(
+                    rawValue: shell(["shell"] + AndroidAnimationSettings.getArguments(key: $0))?.output,
+                    animationsEnabled: enabled)
+            }
+            guard !stale.isEmpty else { return [] }
+            lines.append("ℹ️ \(serial): setting the device animations "
+                + (enabled ? "back to the OS default (persists after the run)"
+                           : "off (persists after the run)"))
+        }
+        let failed = AndroidAnimationSettings.apply(animationsEnabled: enabled) {
+            shell(["shell"] + $0)?.status == 0
+        }
+        if !failed.isEmpty {
+            lines.append("⚠️ \(serial): could not apply the animation settings "
+                + "(\(failed.joined(separator: ", ")))")
+        }
+        return lines
     }
 
     /// 計測 run の終わりに戻すための、開始前のアニメーション設定。実機だけ(エミュレータは使い捨て)。
