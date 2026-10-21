@@ -4091,7 +4091,11 @@ targeting = bundletool にしか決められない。feature module を足した
   起動だけにする(`clearAppData` = 実機では再インストール = データコンテナごと消えるため、起こし直しのたびに再コピーする)。
   hybrid の実機は in-app と XCUITest の2本のトンネルを同じデバイスに張る(`IOSDeviceTransport.establish` の `keepPeerPorts` で
   相方のトンネルを消さない)。実機の in-app ブリッジは `FT_BIND_ALL=1` で全インターフェースに bind しトークンを要求する
-  (XCUITest 実機と同じ fail-closed)
+  (XCUITest 実機と同じ fail-closed)。**ディスパッチした実機**では、運ばれるアプリが発行側の証明書で署名されていて
+  ランナー機に鍵が無いことがある。**発行側がステージングのときに同じ証明書で device 用 dylib に署名し、アプリの隣
+  (`<App>.app.fleetest-inapp/` = アプリの外なのでアプリの署名を壊さない)に控え(証明書の SHA-1・in-app ソースの digest)
+  と一緒に置く**(`PresignedInAppDylib.prepare` ← `RemoteRunDispatcher.prepareWorkspace`)。ランナー機は**自分で署名できない
+  ときだけ**、証明書と digest が一致する控えを使う(`InAppCodeSign.inspect(sourceDigest:)`。一致しなければ理由を足して縮退)
 - **一括起動(`devices up` / `api start-all-devices` / モニターの「全て起動」)は実機を含む**
   (ユーザー決定 2026-09-08。2026-08-30 の除外を撤回)—— 実機の「起動」= ブリッジの起動
   (iOS は `BridgeProvisioner` の供給、Android は `DeviceBooter.startPhysicalAndroidBridge`)。

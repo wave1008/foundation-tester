@@ -75,7 +75,8 @@ The effective iOS engine is `hybrid` (in-app primary, XCUITest fallback) by defa
 `iosInappEngine: false` switches a run to XCUITest only. A physical iOS device uses the same
 engines **when the app is development-signed** (get-task-allow; the tool signs the injected bridge
 with the app's own team). An app that is not development-signed (TestFlight / App Store) falls back
-to XCUITest automatically.
+to XCUITest automatically. When you dispatch to a runner Mac, the Mac you dispatch from signs the bridge
+with the app's certificate and sends it along, so the runner does not need the signing key.
 
 ### Link
 - [index](../../index.md)

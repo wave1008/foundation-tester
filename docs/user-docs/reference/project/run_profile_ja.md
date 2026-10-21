@@ -75,7 +75,8 @@ ON**、プロファイルを使わない素の `fleetest run` は既定 OFF で�
 既定の実効エンジンは `hybrid`(in-app 主 + XCUITest フォールバック)です。`iosInappEngine: false`
 にすると XCUITest のみの実行に切り替わります。iOS の実機も、アプリが**開発署名(get-task-allow)**
 なら同じエンジンを使えます(注入するブリッジはアプリと同じチームの証明書でツールが署名します)。
-開発署名でないアプリ(TestFlight / App Store)は自動で XCUITest に縮退します。
+開発署名でないアプリ(TestFlight / App Store)は自動で XCUITest に縮退します。ランナー機へディスパッチするときは、
+ディスパッチする側の Mac がアプリの証明書でブリッジに署名して一緒に送るので、ランナー機に署名の鍵は要りません。
 
 ### Link
 - [index](../../index_ja.md)
