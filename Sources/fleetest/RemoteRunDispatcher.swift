@@ -5,6 +5,7 @@
 // Sources/FTRemote/RemoteDispatchLock.swift 側。
 
 import FTAndroid
+import FTBridgeClient
 import FTCore
 import FTRemote
 import Foundation
@@ -932,6 +933,19 @@ struct RemoteRunDispatcher {
             if try WorkspaceAppStaging.stageApp(source: entry.source, dest: dest) {
                 log("==> staged \(key.platform)\(key.physical ? " physical-device" : "")"
                     + " app package into the workspace")
+            }
+            // 実機の in-app はアプリと同じ証明書で dylib に署名する。その鍵はこの Mac にしか無いことがあるので
+            // ここで署名して隣に置く(ランナー機は自分で署名できないときだけ使う)。失敗しても run は止めない
+            // = ランナー機では XCUITest へ縮退し、その理由を1行言う
+            if key.platform == "ios", key.physical {
+                do {
+                    if let line = try PresignedInAppDylib.prepare(appBundle: dest, repoRoot: localRepoRoot) {
+                        log("==> \(line)")
+                    }
+                } catch {
+                    log("==> warning: could not sign the in-app bridge for the physical-device app on this Mac"
+                        + " (\(error.localizedDescription)); the runner falls back to XCUITest unless it holds the key")
+                }
             }
         }
 

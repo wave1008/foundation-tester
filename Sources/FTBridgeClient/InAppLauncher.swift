@@ -188,23 +188,33 @@ public struct InAppLauncher: Sendable {
             return try await launchPhysical(bundleID: bundleID, containerPath: containerPath,
                                             token: token, endpoint: endpoint, setupMs: copyMs)
         }
-        // 初回(供給・親): 署名 → データコンテナへ配置 → iproxy トンネル → 起動 → 到達待ち
-        let deviceDylib = Self.dylibPath(repoRoot: repoRoot, physical: true)
-        guard FileManager.default.fileExists(atPath: deviceDylib.path) else {
-            throw InAppLauncherError.dylibMissing(deviceDylib.path)
-        }
+        // 初回(供給・親): 署名(か発行側の署名済みの写し)→ データコンテナへ配置 → iproxy トンネル → 起動 → 到達待ち
         guard let appBundle else { throw InAppLauncherError.launchFailed("no app bundle to sign the in-app dylib against") }
-        let info = InAppCodeSign.inspect(appBundle: appBundle)
-        guard let identity = info.identitySHA1 else {
+        let info = InAppCodeSign.inspect(appBundle: appBundle,
+                                         sourceDigest: try? BridgeSourceSet.inApp.digest(repoRoot: repoRoot))
+        let clock = ContinuousClock()
+        let setupStart = clock.now
+        let signedNew: URL
+        if let identity = info.identitySHA1 {
+            let deviceDylib = Self.dylibPath(repoRoot: repoRoot, physical: true)
+            guard FileManager.default.fileExists(atPath: deviceDylib.path) else {
+                throw InAppLauncherError.dylibMissing(deviceDylib.path)
+            }
+            signedNew = try InAppCodeSign.signedCopy(
+                deviceDylib: deviceDylib, identitySHA1: identity,
+                outputDir: Self.signedDylibPath(repoRoot: repoRoot, port: port).deletingLastPathComponent(),
+                basename: "libFTInAppBridge-\(port).dylib")
+        } else if let presigned = info.presignedDylib {
+            // シナリオの起こし直しは per-port の置き場から再コピーするので、同じ場所へ写す
+            signedNew = Self.signedDylibPath(repoRoot: repoRoot, port: port)
+            try FileManager.default.createDirectory(at: signedNew.deletingLastPathComponent(),
+                                                    withIntermediateDirectories: true)
+            try? FileManager.default.removeItem(at: signedNew)
+            try FileManager.default.copyItem(at: presigned, to: signedNew)
+        } else {
             // 供給が inspect で注入可を確かめてから in-app を選ぶので、ここへは来ない(保険)
             throw InAppLauncherError.launchFailed("the app is not injectable (\(info.reason ?? "unknown")); it should have fallen back to XCUITest")
         }
-        let clock = ContinuousClock()
-        let setupStart = clock.now
-        let signedNew = try InAppCodeSign.signedCopy(
-            deviceDylib: deviceDylib, identitySHA1: identity,
-            outputDir: Self.signedDylibPath(repoRoot: repoRoot, port: port).deletingLastPathComponent(),
-            basename: "libFTInAppBridge-\(port).dylib")
         let containerPath = try copyDylibToContainer(signed: signedNew, bundleID: bundleID)
         let setupMs = continuousClockMs(clock.now - setupStart)
         let token = BridgeAPI.makeBridgeToken()

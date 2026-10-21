@@ -12,17 +12,21 @@ import Foundation
 import FTCore
 
 public enum InAppCodeSign {
-    /// アプリへ dylib を注入できるか(= 開発署名 + 署名に使える証明書がキーチェーンにある)。
-    /// `identitySHA1` は署名に使う leaf 証明書の SHA-1(注入可のときだけ非 nil)
+    /// アプリへ dylib を注入できるか(= 開発署名 + 署名に使える証明書がキーチェーンにある、か
+    /// 発行側が署名して運んだ dylib がある = `PresignedInAppDylib`)。
+    /// `identitySHA1` は手元で署名に使う leaf 証明書の SHA-1、`presignedDylib` は発行側の署名済み dylib
+    /// (注入可のときどちらか一方だけ非 nil。手元で署名できるなら手元を優先する)
     public struct Injectability: Sendable, Equatable {
         public let injectable: Bool
         public let devSigned: Bool
         public let identitySHA1: String?
         public let reason: String?
+        public var presignedDylib: URL? = nil
     }
 
-    /// アプリバンドルの署名を調べ、注入できるかを返す。**デバイス不要**(ローカルの codesign/security だけ)
-    public static func inspect(appBundle: String) -> Injectability {
+    /// アプリバンドルの署名を調べ、注入できるかを返す。**デバイス不要**(ローカルの codesign/security だけ)。
+    /// `sourceDigest` = 使う側の in-app ブリッジのソースの digest(nil = 発行側の署名済み dylib を見ない)
+    public static func inspect(appBundle: String, sourceDigest: String?) -> Injectability {
         let ent = (try? Shell.run(["codesign", "-d", "--entitlements", ":-", appBundle]))?.outputIfSucceeded ?? ""
         let devSigned = parseGetTaskAllow(entitlementsPlist: ent)
         guard devSigned else {
@@ -35,8 +39,15 @@ public enum InAppCodeSign {
         }
         let identities = codesigningIdentities()
         guard identities.contains(sha1) else {
-            return Injectability(injectable: false, devSigned: true, identitySHA1: nil,
-                                 reason: "the app's signing certificate (\(sha1.prefix(8))…) is not in this machine's keychain")
+            let presigned = PresignedInAppDylib.lookup(appBundle: appBundle, appCertSHA1: sha1,
+                                                      sourceDigest: sourceDigest)
+            if sourceDigest != nil, presigned.verdict == .usable {
+                return Injectability(injectable: true, devSigned: true, identitySHA1: nil, reason: nil,
+                                     presignedDylib: presigned.dylib)
+            }
+            let reason = "the app's signing certificate (\(sha1.prefix(8))…) is not in this machine's keychain"
+                + (presigned.verdict.reason.map { ", and \($0)" } ?? "")
+            return Injectability(injectable: false, devSigned: true, identitySHA1: nil, reason: reason)
         }
         return Injectability(injectable: true, devSigned: true, identitySHA1: sha1, reason: nil)
     }

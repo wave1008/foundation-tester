@@ -572,10 +572,13 @@ public struct BridgeProvisioner: Sendable {
             // 実機の in-app/hybrid は、アプリが開発署名(get-task-allow)で、署名に使える証明書が手元にある
             // ときだけ注入できる。満たさなければ XCUITest へ黙って縮退する(ユーザー決定。理由は1行ログに残す)
             if target.sim.physical, engine == "inapp" || engine == "hybrid" {
-                let verdict = InAppCodeSign.inspect(appBundle: preinstallAppPath ?? "")
+                let verdict = InAppCodeSign.inspect(appBundle: preinstallAppPath ?? "", sourceDigest: inappSourceDigest)
                 if !verdict.injectable {
                     safeLog("→ \(target.name): in-app injection is not available (\(verdict.reason ?? "no app bundle to check")) — using XCUITest")
                     engine = "xcuitest"
+                } else if verdict.presignedDylib != nil {
+                    safeLog("→ \(target.name): injecting the in-app bridge signed on the dispatching Mac"
+                        + " (the app's signing certificate is not in this machine's keychain)")
                 }
             }
             var bridges: [(engine: String, plan: EnginePlan)] = []
