@@ -29,6 +29,8 @@ public enum PresignedInAppDylib {
         case absent
         case identityMismatch
         case sourceMismatch
+        /// 使う側が自分のブリッジのソースの digest を計算できなかった(版を照合できないので使わない)
+        case digestUnknown
 
         /// 使えなかったときに縮退の理由へ足す句(absent は何も言わない)
         var reason: String? {
@@ -39,6 +41,9 @@ public enum PresignedInAppDylib {
             case .sourceMismatch:
                 return "the in-app bridge signed on the dispatching Mac was built from different bridge sources"
                     + " (align the runner to the same commit)"
+            case .digestUnknown:
+                return "this machine could not compute its in-app bridge source digest, so the bridge signed on"
+                    + " the dispatching Mac cannot be checked against it"
             }
         }
     }
@@ -48,8 +53,23 @@ public enum PresignedInAppDylib {
                        sourceDigest: String?) -> Verdict {
         guard let manifest, dylibExists else { return .absent }
         guard manifest.identitySHA1 == appCertSHA1 else { return .identityMismatch }
-        guard let sourceDigest, manifest.sourceDigest == sourceDigest else { return .sourceMismatch }
+        guard let sourceDigest else { return .digestUnknown }
+        guard manifest.sourceDigest == sourceDigest else { return .sourceMismatch }
         return .usable
+    }
+
+    /// 実機用のビルドか(`Info.plist` の `CFBundleSupportedPlatforms` に iPhoneOS がある)。純粋関数。
+    /// Simulator 用のビルドが開発証明書で署名されていることもあるので、署名だけでは見分けない
+    static func isDeviceBuild(infoPlist: [String: Any]) -> Bool {
+        (infoPlist["CFBundleSupportedPlatforms"] as? [String])?.contains("iPhoneOS") == true
+    }
+
+    static func isDeviceBuild(appBundle: String) -> Bool {
+        let url = URL(fileURLWithPath: appBundle).appendingPathComponent("Info.plist")
+        guard let data = try? Data(contentsOf: url),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        else { return false }
+        return isDeviceBuild(infoPlist: plist)
     }
 
     static func lookup(appBundle: String, appCertSHA1: String, sourceDigest: String?)
@@ -67,6 +87,7 @@ public enum PresignedInAppDylib {
     /// 発行側: このアプリが手元の鍵で署名できるなら、device 用 dylib を署名してアプリの隣に置く。
     /// 戻り値 = 置いたときのログ1行(既に同じ控えがある・手元で署名できないときは nil = 何もしない)
     public static func prepare(appBundle: String, repoRoot: URL) throws -> String? {
+        guard isDeviceBuild(appBundle: appBundle) else { return nil }
         let info = InAppCodeSign.inspect(appBundle: appBundle, sourceDigest: nil)
         guard let identity = info.identitySHA1 else { return nil }
         let digest = try BridgeSourceSet.inApp.digest(repoRoot: repoRoot)
@@ -75,6 +96,8 @@ public enum PresignedInAppDylib {
         }
         try InAppLauncher(repoRoot: repoRoot, udid: "", port: 0, physical: true).buildIfNeeded()
         let dir = directory(appBundle: appBundle)
+        // 先に控えを消す(署名し直しに失敗したとき、古い控えが新しい dylib を「使える」と言わないように)
+        try? FileManager.default.removeItem(at: dir.appendingPathComponent(manifestName))
         _ = try InAppCodeSign.signedCopy(deviceDylib: InAppLauncher.dylibPath(repoRoot: repoRoot, physical: true),
                                          identitySHA1: identity, outputDir: dir, basename: dylibName)
         let manifest = try JSONEncoder().encode(Manifest(identitySHA1: identity, sourceDigest: digest))

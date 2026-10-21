@@ -1722,6 +1722,11 @@ appPath に書く)、並走する2つの run が同じ `apps/X.app` を交互に
 - **順序の罠**: ワークスペースの用意(ステージング)は `TestProjects/<project>/` の転送より
   **必ず先**(`RemoteRunDispatcher.prepareWorkspace` → `transfer`)。配下のときは転送がステージング
   結果をそのまま運ぶため、逆にすると直前にステージングしたファイルが漏れる
+- **実機用の iOS アプリの隣に、発行側で署名した in-app ブリッジを置いて一緒に運ぶ**(`<App>.app.fleetest-inapp/` =
+  dylib と控え `manifest.json`(証明書の SHA-1・in-app ソースの digest)。`PresignedInAppDylib.prepare`)。アプリは発行側の
+  証明書で署名されているので、ランナー機に鍵が無いと自分では注入できない。ランナー機は**自分で署名できないときだけ**、
+  証明書と digest が一致する控えを使う。実機用ビルドかは `Info.plist` の `CFBundleSupportedPlatforms`(iPhoneOS)で見る
+  (Simulator 用ビルドには置かない)。置き場はアプリの外なのでアプリの署名を壊さない
 
 - **スキーマ**: 実行プロファイルに任意で `"remoteControl": { "workspace": "<絶対パス or リポジトリ
   ルート相対パス>" }` を書く(`Sources/FTCore/RunProfile.swift` の `RemoteControlSection`)。

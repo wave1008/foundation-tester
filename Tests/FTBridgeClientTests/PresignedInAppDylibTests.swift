@@ -35,7 +35,14 @@ final class PresignedInAppDylibTests: XCTestCase {
         XCTAssertEqual(PresignedInAppDylib.decide(manifest: manifest(cert, digest), dylibExists: true,
                                                   appCertSHA1: cert, sourceDigest: "bbbb"), .sourceMismatch)
         XCTAssertEqual(PresignedInAppDylib.decide(manifest: manifest(cert, digest), dylibExists: true,
-                                                  appCertSHA1: cert, sourceDigest: nil), .sourceMismatch)
+                                                  appCertSHA1: cert, sourceDigest: nil), .digestUnknown)
+    }
+
+    /// Simulator 用のビルドには署名しない(開発証明書で署名された Simulator 用ビルドもある)
+    func testOnlyDeviceBuildsAreSignedOnTheDispatchingMac() {
+        XCTAssertTrue(PresignedInAppDylib.isDeviceBuild(infoPlist: ["CFBundleSupportedPlatforms": ["iPhoneOS"]]))
+        XCTAssertFalse(PresignedInAppDylib.isDeviceBuild(infoPlist: ["CFBundleSupportedPlatforms": ["iPhoneSimulator"]]))
+        XCTAssertFalse(PresignedInAppDylib.isDeviceBuild(infoPlist: [:]))
     }
 
     /// 置き場はアプリの外(アプリの署名を壊さない)で、書いた控えを lookup が読めること
