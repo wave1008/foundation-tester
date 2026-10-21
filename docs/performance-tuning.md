@@ -2395,8 +2395,9 @@ window/transition/animator の `*_scale` はチューニングノブではなく
      - Swift dylib: 単一 dylib に Swift `.o` + ObjC 構成子(`@_cdecl` を呼ぶ)を
        リンクすれば Swift でも注入可・UIKit アクセス可。→ リポジトリの `BridgeHTTPServer`/
        `BridgeDTO`(Foundation 依存のみ)を再利用できる。
-     見込みは Android 並み(シナリオ ~2s 級)。制約: 実機は注入不可
-     (自ビルドアプリへのリンク方式のみ)、タッチ合成に私有 API を使う。
+     見込みは Android 並み(シナリオ ~2s 級)。制約: タッチ合成に私有 API を使う。
+     **実機への注入は未対応だが不可能ではない**(下の「実機 iOS の起動時注入」を参照。
+     当初「実機は注入不可(自ビルドアプリへのリンク方式のみ)」としていたのは実測の無い前提だった)。
      **XCUITest ランナー(Runner/)は実機用として残す**(ユーザー決定 2026-07-12)=
      単一実装原則の明示的な例外として「シミュレータ=in-app / 実機=XCUITest」の 2 経路を許容。
   3. **in-app ブリッジの実装(`InAppBridge/`)**:
@@ -2521,6 +2522,43 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        ハイブリッドで走る**(従来 XCUITest だった `ios.json` 等も高速化。XCUITest に戻すには OFF)。
 - **シナリオ設計の見直し**: 上記 iPhone Air フレークのようなデバイス依存アサーションの排除は、
   どんなエンジン改善より成功率に効く
+
+## 実機 iOS の tap の内訳と起動時注入(2026-10-21 実測・iPhone SE3 / iOS 26.6.2)
+
+**XCUITest の1操作の往復**(ホストから USB 経由・各30回の中央値・ランナーを起動し直した直後):
+`/status` 5.8ms・`/snapshot` 54.6ms・**`/tap` 415.0ms**。所要のほとんどは tap。
+起動から1時間44分たったランナーでは tap 476.6ms・snapshot 64.2ms(長く生きたプロセスほど遅い)。
+
+**tap の直接合成**(`XCSynthesizedEventRecord` を `eventSynthesizer` で送る。`XCUICoordinate.tap()` を経由しない):
+接触 0.05s で 295.4ms(−29%)・**0.01s で 243.6ms(−41%)**。接触時間を 40ms 縮めると 52ms 縮むので、
+残りの約 230ms は合成の往復そのもの(デーモン側の固定費。ツールからは削れない)。0.01s の接触は
+SwiftUI・Compose Multiplatform・Flutter・React Native の4 SUT すべてでボタンの押下と画面遷移として拾われた。
+**直接合成は XCTest の割り込み監視を通らない** —— 写真の権限アラートの「許可しない」の座標へ撃つと、
+`coordinate.tap()` は 422 で触れないのに対し、直接合成(既存の `/doubletap` を含む)は 200 でボタンを押した
+(Simulator で実測)。直接合成の送る口ではシステムアラートを自分で確かめる(`SystemAlertProbe`)。
+**採用した形(ブリッジ v202)の正味は −11.5%**: 同じビルドを環境変数で切り替え、ランナーを毎回起動し直して
+他の SUT を止めた同じ状態で ABAB に測ると、`coordinate.tap()` 411.7 / 413.4ms → 直接合成 + アラートの確認 363.5 /
+366.5ms。ハンドラの中の内訳(SE3・12回): アラートの確認 100〜130ms(1回目。続けて撃つと 2回目は 60〜80ms =
+quiescence を飛ばしても変わらない)・`app.frame`(向きの判定)20〜45ms・`app.state` 0ms(取得済みの値)・
+`XCUIDevice.orientation` 1〜5ms・合成 約 190ms。**アラートの確認は `coordinate.tap()` の中の割り込みの確認と
+同じ仕事なので、直接合成で浮いた分の大半はここで払い直している**。向きを `XCUIDevice.orientation` にすれば
+約 35ms 縮むが、縦固定のアプリを横に倒した状態で座標の解釈を誤るので採らない。
+**直接合成の座標は主画面の本来の向き(portrait)**: `XCSynthesizedEventRecord` の `interfaceOrientation` を
+どの値にしても点は回らない(横向きの木の座標をそのまま送ると1〜4のどれでも外れた)。木の座標をアプリの
+インターフェースの向き(XCUIApplication の非公開 `interfaceOrientation`)で portrait へ回してから送る
+(`CoordinatePinch.nativePoint(_:interface:)`。landscapeRight = (幅 − y, x) を非対称な的で確かめた。
+landscapeLeft・upsideDown の式は対称性からで未実測 = /rotate はデバイスを landscapeLeft にしか回さない)。
+それまで横向きの doubleTap・長押し・ピンチ・`gesture` は点がずれていたことになる(main では再現していない)。
+**計測の罠**: 他の SUT を起動したまま背面に残すと tap が約 45ms 遅くなり(v200 が 409.9ms)、差が消えて見えた。
+A/B は端末の状態を揃えてから測る。
+
+**実機の起動時注入は成立する**: 開発署名(`get-task-allow`)の SUT に、**同じチームの証明書で署名した dylib** を
+`devicectl device copy to --domain-type appDataContainer` でアプリのデータコンテナ(`tmp/`)へ置き、
+`devicectl device process launch --environment-variables '{"DYLD_INSERT_LIBRARIES":"<コンテナの絶対パス>/tmp/<dylib>"}'`
+で起動すると、constructor が走ってマーカーを書いた(書いた pid = 動いているアプリの pid)。環境変数なしの起動では書かれない(陰性対照)。
+**アプリのビルドし直しも再署名も要らない**。コンテナの絶対パスは `device copy to --json-output` の `destination` から得られる。
+in-app ブリッジを実機で動かすのに残る仕事(未着手): dylib の iphoneos ビルドと署名(SUT と同じチーム)・
+ホストからアプリ内の待受への到達(iproxy)・プロセス内のタッチ合成が実機で効くかの確認・データコンテナへの配置の自動化。
 
 ## xcuitest のスクロール探索スループット(2026-08-08 実測・未着手の較正候補)
 

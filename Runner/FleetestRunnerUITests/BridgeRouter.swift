@@ -418,14 +418,10 @@ final class BridgeRouter {
             let title: String?
             let buttons: [String]
         }
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let alert = springboard.alerts.firstMatch
-        guard alert.exists else { return .json(Out(present: false, title: nil, buttons: [])) }
-        let buttons = alert.buttons.allElementsBoundByIndex
-            .map { $0.label }
-            .filter { !$0.isEmpty }
-        let title = alert.label.isEmpty ? nil : alert.label
-        return .json(Out(present: true, title: title, buttons: buttons))
+        guard let alert = SystemAlertProbe.front() else {
+            return .json(Out(present: false, title: nil, buttons: []))
+        }
+        return .json(Out(present: true, title: alert.title.isEmpty ? nil : alert.title, buttons: alert.buttons))
     }
 
     /// SpringBoard(別プロセス)の木を **セッションを触らずに** 撮る。
@@ -776,7 +772,14 @@ final class BridgeRouter {
             try CoordinatePinch.tap(at: point, display: display, touchSeconds: Self.doubleTapTouchDuration)
             return .json(OKResponse())
         }
-        // 計測: `tap()` は「イベント合成」と「暗黙の quiescence 待ち」の両方を含む1呼び出しで、
+        // 非公開 API が無い Xcode では下の XCUICoordinate へ縮退する
+        if CoordinatePinch.isAvailable {
+            try CoordinatePinch.tapOnMainScreen(
+                at: point, touchSeconds: Self.tapTouchDuration,
+                orientation: synthesisOrientation())
+            return .json(OKResponse())
+        }
+        // 縮退経路の計測: `tap()` は「イベント合成」と「暗黙の quiescence 待ち」の両方を含む1呼び出しで、
         // ホスト側の actionMs からは分解できない。quiescence 側だけ swizzle 経由で数え、
         // 残り(synth)を引き算で出す(QuiescenceWait.quiescenceMs の但し書きも読むこと)
         QuiescenceWait.resetTiming()
@@ -835,6 +838,21 @@ final class BridgeRouter {
     /// (その場合だけは縦専用アプリを見抜けないが、/rotate をセッション無しで撃つ経路は無い)
     /// **前面に居ないアプリの窓は読まない**(落ちた・背面のアプリの `frame` は XCTest を Tear Down させ、
     /// ランナーごとブリッジが消える。待ちの途中でアプリが消える形もここで止める)
+    /// 直接合成(CoordinatePinch)へ渡す**インターフェースの**向き。座標はアプリの木の座標なので、record の向きは
+    /// アプリの UI の向きと一致させる。**デバイスの向きとは左右が逆**(`UIDeviceOrientation.landscapeLeft` =
+    /// `UIInterfaceOrientation.landscapeRight`)—— /rotate はデバイスを `.landscapeLeft` に回すので、
+    /// 横向きで `.landscapeLeft` を渡すと全 SUT で tap が外れた(実測)。XCUIApplication の非公開
+    /// `interfaceOrientation`(WebDriverAgent と同じ)を読み、読めなければ窓の縦横とデバイスの向きから決める
+    private func synthesisOrientation() -> UIInterfaceOrientation {
+        if let app, (app as NSObject).responds(to: Selector(("interfaceOrientation"))),
+           let raw = (app as NSObject).value(forKey: "interfaceOrientation") as? Int,
+           let orientation = UIInterfaceOrientation(rawValue: raw), orientation != .unknown {
+            return orientation
+        }
+        guard appOrientation() == .landscape else { return .portrait }
+        return XCUIDevice.shared.orientation == .landscapeRight ? .landscapeLeft : .landscapeRight
+    }
+
     private func appOrientation() -> FTOrientation? {
         guard let app else { return XCUIDevice.shared.orientation.ftOrientation }
         guard app.state == .runningForeground else { return nil }
@@ -1055,7 +1073,7 @@ final class BridgeRouter {
                      (point: point, offset: Self.doubleTapSecondTouchDelay + Self.doubleTapTouchDuration)],
                 ],
                 name: "fleetest doubletap",
-                orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait, display: display)
+                orientation: synthesisOrientation(), display: display)
             return .json(OKResponse())
         }
         _ = QuiescenceWait.takeCapNote()
@@ -1068,6 +1086,11 @@ final class BridgeRouter {
 
     /// 各タッチの接触時間[秒]。実測 2026-09-24 でこの長さのときだけ RN の PanResponder が拾った
     private static let doubleTapTouchDuration: TimeInterval = 0.08
+
+    /// 単純タップの接触時間[秒]。iPhone SE3 の実測で、往復は 0.05s→295ms・0.01s→244ms(現行の
+    /// `XCUICoordinate.tap()` は 415ms)。残り約 230ms は合成そのもので接触時間では縮まない。
+    /// 0.01s で SwiftUI・Compose Multiplatform・Flutter・React Native の 4 SUT すべてがタップ(押下と遷移)を拾った
+    private static let tapTouchDuration: TimeInterval = 0.01
     /// 1本目が触れてから2本目が触れるまでの間隔[秒](= OS のダブルタップ判定窓の内側。
     /// 1本目は `doubleTapTouchDuration` で離れているので、2本目の直前には
     /// 0.25 - 0.08 = 0.17 秒の空きができる)
@@ -1135,7 +1158,7 @@ final class BridgeRouter {
                     finger.points.map { (point: CGPoint(x: $0.x, y: $0.y), offset: $0.t) }
                 },
                 name: "fleetest pinch",
-                orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait,
+                orientation: synthesisOrientation(),
                 display: DisplayRouting.target(for: app))
             return .json(OKResponse())
         }
@@ -1198,7 +1221,7 @@ final class BridgeRouter {
                 finger.points.map { (point: CGPoint(x: $0.x, y: $0.y), offset: $0.t) }
             },
             name: "fleetest gesture",
-            orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait,
+            orientation: synthesisOrientation(),
             display: DisplayRouting.target(for: app))
         return .json(OKResponse())
     }
@@ -1294,7 +1317,7 @@ final class BridgeRouter {
                 + " XCSynthesizedEventRecord are gone), so a finger cannot be left down")
         }
         try CoordinatePinch.holdWithoutWaiting(at: CGPoint(x: req.x, y: req.y), seconds: req.duration,
-                                               orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait,
+                                               orientation: synthesisOrientation(),
                                                display: DisplayRouting.target(for: app))
         return .json(OKResponse())
     }

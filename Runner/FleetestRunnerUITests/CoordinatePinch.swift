@@ -18,6 +18,10 @@
 // 無ければ `isAvailable == false` を返し、pinch の呼び手は公開 API の経路へ縮退する
 // (gesture には縮退先が無いので BridgeRouter.handleGesture が 422 で断る)。
 // 消えたことは `/status` の `coordinatePinch` で見える(ホストと doctor が読む)。
+//
+// **直接合成は XCTest の割り込み監視(InterruptionGuard)を通らない** —— SpringBoard のアラートが出ていると
+// そのボタンを押してしまう(実測)。送る口(send / holdWithoutWaiting)の synthesize の直前で
+// `refuseIfSystemAlertInFront` を必ず通す(`CoordinateSynthAlertGateTests` が走査する)。
 
 import Foundation
 import UIKit
@@ -120,6 +124,39 @@ enum CoordinatePinch {
                  name: "fleetest tap", orientation: .portrait, display: display)
     }
 
+    /// 主画面への単純なタップを直接合成する(BridgeRouter.handleTap。接触時間は `tapTouchDuration`)
+    static func tapOnMainScreen(at point: CGPoint, touchSeconds: TimeInterval,
+                                orientation: UIInterfaceOrientation) throws {
+        try send(fingers: [[(point: point, offset: 0), (point: point, offset: touchSeconds)]],
+                 name: "fleetest tap", orientation: orientation, display: nil)
+    }
+
+    /// 送る直前の門。システムアラートが前面にあれば撃たず 422(押さない・撃ち直さない)。
+    /// 422 にする理由は 409/501 を避ける契約(BridgeRouterStatusContractTests)。問い合わせは SE3 で約 60ms
+    private static func refuseIfSystemAlertInFront() throws {
+        if let blocked = SystemAlertProbe.front() {
+            throw BridgeError(422, InterruptionGuard.message(blocked))
+        }
+    }
+
+    /// **record の点は主画面の本来の向き(portrait)の座標で、`interfaceOrientation` を渡しても回らない**
+    /// (実測 2026-10-21・iPhone 17 Pro Simulator / Xcode 27.2: 横向きの木の座標をそのまま送ると 1〜4 のどの向きでも
+    /// 外れ、portrait の座標へ回すと当たった)。木の座標(アプリの UI の向き)を本来の向きへ回す。
+    /// landscapeRight = (幅 − y, x)・landscapeLeft = (y, 高さ − x)・upsideDown = (幅 − x, 高さ − y)。幅・高さは portrait の画面
+    static func nativePoint(_ point: CGPoint, interface orientation: UIInterfaceOrientation) -> CGPoint {
+        guard orientation != .portrait, orientation != .unknown, let sides = nativeSides else { return point }
+        let width = sides.short, height = sides.long
+        switch orientation {
+        case .landscapeRight: return CGPoint(x: width - point.y, y: point.x)
+        case .landscapeLeft: return CGPoint(x: point.y, y: height - point.x)
+        case .portraitUpsideDown: return CGPoint(x: width - point.x, y: height - point.y)
+        default: return point
+        }
+    }
+
+    /// 主画面の長辺・短辺(pt)。測り方は撮影なのでプロセスで1回だけ(`static let` の初期化はスレッド安全)
+    private static let nativeSides: (long: CGFloat, short: CGFloat)? = DisplayRouting.mainScreenSides()
+
     /// 送る record を組む。display があればその画面へ・**本来の向き**(portrait)で組む —— 点は呼び手ではなく
     /// ここで `nativePoint` に回す(送り口を1つにして変換の漏れを作らない)
     private static func makeRecord(name: String, orientation: UIInterfaceOrientation,
@@ -129,7 +166,8 @@ enum CoordinatePinch {
                 + " (XCPointerEventPath / XCSynthesizedEventRecord are gone)")
         }
         guard let display else {
-            return classes.record.init(name: name, interfaceOrientation: orientation.rawValue)
+            // 点は `nativePoint(_:interface:)` で本来の向きへ回してあるので、向きは portrait で組む
+            return classes.record.init(name: name, interfaceOrientation: UIInterfaceOrientation.portrait.rawValue)
         }
         let recordClass: AnyClass = classes.record
         guard recordClass.instancesRespond(to: Selector(("initWithName:displayID:interfaceOrientation:"))) else {
@@ -191,9 +229,11 @@ enum CoordinatePinch {
                 + " (XCPointerEventPath / XCSynthesizedEventRecord are gone)")
         }
         let record = try makeRecord(name: "hold", orientation: orientation, display: display)
-        let path = classes.path.init(touchAt: display?.nativePoint(point) ?? point, offset: 0)
+        let path = classes.path.init(touchAt: display?.nativePoint(point) ?? nativePoint(point, interface: orientation),
+                                     offset: 0)
         path.liftUp(atOffset: seconds)
         record.add(path)
+        try refuseIfSystemAlertInFront()
         ResponseMeasurement.noteInjection()
         synthesizer.synthesize(record) { }
     }
@@ -209,7 +249,7 @@ enum CoordinatePinch {
                 + " (XCPointerEventPath / XCSynthesizedEventRecord are gone)")
         }
         let record = try makeRecord(name: name, orientation: orientation, display: display)
-        let place = { (point: CGPoint) in display?.nativePoint(point) ?? point }
+        let place = { (point: CGPoint) in display?.nativePoint(point) ?? nativePoint(point, interface: orientation) }
         var totalDuration: TimeInterval = 0
         for keyframes in fingers {
             guard let first = keyframes.first else { continue }
@@ -227,6 +267,7 @@ enum CoordinatePinch {
         // 送信は非同期。**ここは HTTP のハンドラ(専用スレッド)なので待ってよい** ——
         // 待たずに返すと、ホストが直後に撮るスナップショットがジェスチャ前の木になる
         let done = DispatchSemaphore(value: 0)
+        try refuseIfSystemAlertInFront()
         ResponseMeasurement.noteInjection()
         synthesizer.synthesize(record) { done.signal() }
         if done.wait(timeout: .now() + totalDuration + 10) == .timedOut {

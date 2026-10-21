@@ -56,3 +56,14 @@ final class InterruptionGuard {
             + " iosAlertHandler closes it automatically"
     }
 }
+
+/// SpringBoard のシステムアラートが前面にあるかの読み。`/systemalert` と、直接合成のゲート
+/// (`CoordinatePinch.refuseIfSystemAlertInFront`)が共有する —— 読みを2か所に持たない
+enum SystemAlertProbe {
+    static func front() -> InterruptionGuard.Blocked? {
+        let alert = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.firstMatch
+        guard alert.exists else { return nil }
+        let buttons = alert.buttons.allElementsBoundByIndex.map { $0.label }.filter { !$0.isEmpty }
+        return InterruptionGuard.Blocked(title: alert.label, buttons: buttons)
+    }
+}

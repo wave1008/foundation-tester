@@ -274,7 +274,7 @@ action を持たない欄など)—— 黙って「全部入った」にはし�
   | `pinchOut` / `pinchIn` | ✅ XCUITest | ✅ | ✅ | ✅ |
   | `gesture` | ✅ XCUITest | ✅ XCUITest | ✅ XCUITest | ✅ XCUITest |
 
-  「in-app のみ」= **`xcuitest` 単独プロファイルと実機では効かない**(実機は注入不可のため
+  「in-app のみ」= **`xcuitest` 単独プロファイルと実機では効かない**(実機の in-app は未対応のため
   XCUITest しか経路が無い)。**MCP の iOS は常に XCUITest なので、MCP からは in-app / hybrid の挙動は試せない**。理由は注入側の性質で、どちらも実測(2026-09-24)で確定している:
   - **XCUITest ランナーの `/doubletap` は非公開 API で2回の独立したタッチ(0.08秒ずつ・
     2回目は0.25秒後)を送る**(XCTest の `doubleTap()` は1回のタッチに tapCount=2 が乗るだけで、
@@ -1106,6 +1106,8 @@ may have been swallowed by it (nothing was re-sent: repeating it could double-fi
 毎回同じ答えでよいなら、実行プロファイルに**押してよいラベルを並べる**と自動で押す(下記)。
 **XCUITest を通る操作がアラートに遮られたときも押さない** —— その操作は届かず、ランナーが 422 で
 「a system alert is in front of the app (title: …, buttons: …)」と名指しして失敗する(撃ち直さない)。
+タッチを直接合成する操作(tap・doubleTap・長押し・ピンチ・`gesture`・折りたたみの内側の画面への操作)は
+XCTest の割り込み監視を通らないので、ランナーが撃つ直前にシステムアラートの有無を確かめて同じ 422 で断る。
 **システムアラートの下で失敗した回のレポートはアプリの要素一覧を載せない**(どれも押せなかった画面なので、
 読むと原因を取り違える。伏せた理由はレポートに1行出る。アプリ内の alert ならその部分木だけ載せる。
 判定は MCP と共有の `FTCore.AlertTreeScope`)。

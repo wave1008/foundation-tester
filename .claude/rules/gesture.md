@@ -28,10 +28,13 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
 - **座標ピンチは非公開 API**(`XCPointerEventPath` / `XCSynthesizedEventRecord`。
   **`XCUI` 接頭辞は付かない**・公開ヘッダに宣言が無い。ユーザー決定 2026-09-22 ——
   公開 API に代替が無いことを実測で確かめてから採用した)。`Runner/.../CoordinatePinch.swift` の
-  1箇所に閉じ、守る規律3つ: **①実行時に存在を確かめてから使う**(無ければ要素ピンチへ縮退し、
+  1箇所に閉じ、守る規律4つ: **①実行時に存在を確かめてから使う**(無ければ要素ピンチへ縮退し、
   注記で必ず言う)/ **②起動時にも1行出す**(`coordinate pinch/gesture/doubletap: available` —— 消えたことが
   run を待たずに分かる)/ **③completion ブロックは引数を宣言しない**(実際は先頭に BOOL が来るので
-  `(Error?) -> Void` で受けると Swift の thunk が 1 を objc_retain して落ちる)。**`/gesture`
+  `(Error?) -> Void` で受けると Swift の thunk が 1 を objc_retain して落ちる)/ **④送る直前にシステムアラートを
+  確かめる**(直接合成は XCTest の割り込み監視を通らず、出ているアラートのボタンを押す = 実測。送る口
+  `send` / `holdWithoutWaiting` の `refuseIfSystemAlertInFront` で 422。送る口を増やさない =
+  `CoordinateSynthAlertGateTests`)。**主画面への単純な tap もこの経路**(`XCUICoordinate.tap()` は API が無いときの縮退先)。**record の点は主画面の portrait の座標**(`interfaceOrientation` を渡しても回らない = 実測)—— 木の座標は送る口で `nativePoint(_:interface:)` が回す。呼び手は向きを `BridgeRouter.synthesisOrientation()`(アプリのインターフェースの向き。デバイスの向きとは左右が逆)で渡す。**`/gesture`
   (DSL の `gesture` / MCP の `ft_gesture`)も同じファイル・同じ非公開 API を使う** ——
   こちらは要素ピンチのような縮退先が無いので、この API が無い Xcode では **422**(501 ではない。
   501 はホストに「このエンジンでは不可」= XCUITest へのフォールバック判定と読まれ、ランナー自身の
