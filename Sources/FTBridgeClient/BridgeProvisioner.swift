@@ -21,10 +21,18 @@ public struct ProvisionedIOSDevice: Sendable {
     public let physical: Bool
     /// ブリッジへの到達先ホスト。シミュレータは 127.0.0.1、実機は LAN IP か iproxy のループバック
     public let host: String
+    /// 実行プロファイルが頼んだエンジン(engine と違えば縮退した = 結果の記録 `workerEngines` へ残す)
+    public let requestedEngine: String
+    /// 縮退したときだけ、その理由(InAppCodeSign.inspect の一次情報)
+    public let engineFallbackReason: String?
 
+    /// requestedEngine / engineFallbackReason は**既定値を置かない**(渡し忘れで縮退の記録が黙って欠ける)
     public init(name: String, udid: String, simulatorName: String, port: UInt16,
                 engine: String, xcuiPort: UInt16? = nil,
-                physical: Bool = false, host: String = BridgeEndpoint.loopbackHost) {
+                physical: Bool = false, host: String = BridgeEndpoint.loopbackHost,
+                requestedEngine: String, engineFallbackReason: String?) {
+        self.requestedEngine = requestedEngine
+        self.engineFallbackReason = engineFallbackReason
         self.name = name
         self.udid = udid
         self.simulatorName = simulatorName
@@ -478,6 +486,9 @@ public struct BridgeProvisioner: Sendable {
         /// ProvisionedIOSDevice.engine に入る値("hybrid" 含む)
         let engine: String
         let bridges: [(engine: String, plan: EnginePlan)]
+        /// 実行プロファイルが頼んだエンジンと、縮退したときの理由(ProvisionedIOSDevice へ写す)
+        let requestedEngine: String
+        let engineFallbackReason: String?
     }
 
     /// 稼働中ブリッジ(シミュレータ UDID が一致)は再利用し、不足分は空きポートで起動する。
@@ -569,13 +580,17 @@ public struct BridgeProvisioner: Sendable {
         for (position, target) in targets.enumerated() {
             let index = targetIndices[position]
             var engine = target.spec.engine ?? "xcuitest"
+            let requestedEngine = engine
+            var engineFallbackReason: String?
             // 実機の in-app/hybrid は、アプリが開発署名(get-task-allow)で、署名に使える証明書が手元にある
             // ときだけ注入できる。満たさなければ XCUITest へ黙って縮退する(ユーザー決定。理由は1行ログに残す)
             if target.sim.physical, engine == "inapp" || engine == "hybrid" {
                 let verdict = InAppCodeSign.inspect(appBundle: preinstallAppPath ?? "", sourceDigest: inappSourceDigest)
                 if !verdict.injectable {
-                    safeLog("→ \(target.name): in-app injection is not available (\(verdict.reason ?? "no app bundle to check")) — using XCUITest")
+                    let reason = "in-app injection is not available (\(verdict.reason ?? "no app bundle to check"))"
+                    safeLog("→ \(target.name): \(reason) — using XCUITest")
                     engine = "xcuitest"
+                    engineFallbackReason = reason
                 } else if verdict.presignedDylib != nil {
                     safeLog("→ \(target.name): injecting the in-app bridge signed on the dispatching Mac"
                         + " (the app's signing certificate is not in this machine's keychain)")
@@ -613,7 +628,8 @@ public struct BridgeProvisioner: Sendable {
                 continue
             }
             plans.append(DevicePlan(index: index, name: target.name, sim: target.sim,
-                                    engine: engine, bridges: bridges))
+                                    engine: engine, bridges: bridges,
+                                    requestedEngine: requestedEngine, engineFallbackReason: engineFallbackReason))
         }
 
         // 予定の端末を全台ぶん「待機」で立てる(起動の枠を待つ端末に行が無いと、先に済んだ端末だけで全台 ready に見える)。
@@ -1092,7 +1108,8 @@ public struct BridgeProvisioner: Sendable {
             xcuiPort: plan.bridges.count > 1 ? portsByEngine["xcuitest"] : nil,
             physical: plan.sim.physical,
             // 再利用(.reuse)経路でも宛先を復元できるよう記録ファイルを唯一の正にする
-            host: BridgeEndpoint.load(port: primary, repoRoot: repoRoot).host)
+            host: BridgeEndpoint.load(port: primary, repoRoot: repoRoot).host,
+            requestedEngine: plan.requestedEngine, engineFallbackReason: plan.engineFallbackReason)
     }
 
     /// 同時起動の枠に並ぶ台か。in-app の新規注入か冷えたシミュレータのブートを含む台だけ

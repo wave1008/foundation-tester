@@ -61,6 +61,11 @@ public struct DriverConnection: Sendable, Hashable {
     /// 実機か(DeviceSpec.kind == physical)。simctl / エミュレータ前提の処理を止めるための判別軸。
     /// サブプロセスへは --physical で渡る(iOS の FastLaunchDriver 抑止に必要)
     public let physical: Bool
+    /// 結果の記録(`ScenarioRunRecord.engine`)に書く実効エンジン。iOS は engine が nil なら XCUITest
+    /// (`ProfileWorkerFactory.iosConnection` は inapp / hybrid のときだけ engine を入れる)。Android は nil(エンジンは1つ)
+    public var recordedEngine: String? {
+        platform == "ios" ? (engine ?? "xcuitest") : nil
+    }
     /// iOS ブリッジの宛先ホスト。nil = 127.0.0.1(シミュレータ)。実機は LAN IP か
     /// iproxy のループバック(BridgeEndpoint 参照)。サブプロセスへは --bridge-host で渡る
     public let host: String?
@@ -587,7 +592,8 @@ public enum ScenarioHost {
         // scenarioFinished 含む)を素通しで受け取り、2 箇所の記録確定点でのみ recorder へ渡す
         var builder: ScenarioRecordBuilder? = (recording != nil && !dryRun)
             ? ScenarioRecordBuilder(scenarioID: scenarioID, platform: connection.platform,
-                                    title: recording?.title, worker: recording?.worker)
+                                    title: recording?.title, worker: recording?.worker,
+                                    engine: connection.recordedEngine)
             : nil
         // シナリオ単位の実行ログ(events/<fileBase>.ndjson)。builder と同じゲート(recording != nil
         // かつ dry-run でない)で作る —— 両方が同時に nil/non-nil であることに、下の3箇所の

@@ -18,6 +18,9 @@ run(成否問わず)は何種類かの出力を残します。このページは
 `results/runs/<YYYY-MM>/<runID>/` に機械可読な記録が入ります。run 全体は `run.json`、
 シナリオ1本ごとは `scenarios/<シナリオID>.json` です。CI のゲート判定・ダッシュボード・
 スクリプトによるトリアージはここを情報源にします。欄の読み方は[結果の分析](../running/results_analysis_ja.md)にあります。
+iOS では、どのエンジン(`inapp` / `hybrid` / `xcuitest`)で走ったかもここに残ります(シナリオごとの `engine`・
+デバイスごとの `run.json` の `workerEngines`)。コンソールでは各シナリオの見出しの末尾と、run の終わりの
+`🔧 Engines:` の行に出ます。頼んだエンジンで走れなかったデバイスは `⚠️ … ran on xcuitest instead of hybrid — <理由>` と言います。
 
 run ディレクトリ(`results/runs/<YYYY-MM>/<runID>/`)の直下には、ほかに次が入ります。
 

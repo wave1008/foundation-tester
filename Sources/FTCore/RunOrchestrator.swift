@@ -141,13 +141,29 @@ public struct RunWorker: @unchecked Sendable {
         return String(label[..<open])
     }
 
+    /// 実行プロファイルが頼んだ iOS のエンジンと、供給が縮退したときの理由(プロファイル経路の iOS だけ。
+    /// 他は nil = 頼んだエンジン = 実効エンジン)
+    public let requestedEngine: String?
+    public let engineFallbackReason: String?
+
     public init(label: String, platform: String, driver: AppDriver, connection: DriverConnection,
-                logicalName: String? = nil) {
+                logicalName: String? = nil, requestedEngine: String? = nil, engineFallbackReason: String? = nil) {
         self.label = label
         self.platform = platform
         self.driver = driver
         self.connection = connection
         self.logicalName = logicalName
+        self.requestedEngine = requestedEngine
+        self.engineFallbackReason = engineFallbackReason
+    }
+
+    /// run.json の `workerEngines` の1件(iOS だけ)。worker はシナリオの記録の `worker` と同じ文字列(join できる)。
+    /// 理由は頼んだエンジンと実効エンジンが違うときだけ
+    public var engineRecord: WorkerEngineRecord? {
+        connection.recordedEngine.map {
+            WorkerEngineRecord.resolved(worker: ScenarioRunner.recordingWorker(self), requested: requestedEngine,
+                                        effective: $0, fallbackReason: engineFallbackReason)
+        }
     }
 }
 
@@ -1323,6 +1339,8 @@ public final class RunOrchestrator: Sendable {
                 sampleCPU: { cpuSampler.sample() },
                 sleep: { try? await Task.sleep(for: .seconds($0)) })
             func admit(_ worker: RunWorker, _ queue: ScenarioQueue) async {
+                // 実効エンジンを run.json へ(初期も遅延参加もここを通る = 参加したデバイスだけが載る)
+                if let engine = worker.engineRecord { recorder?.recordWorkerEngine(engine) }
                 await startGate.waitForTurn(log: { [continuation] message in
                     continuation.yield(.workerLog(worker: worker.label, message: message))
                 })
@@ -1559,6 +1577,8 @@ public final class RunOrchestrator: Sendable {
                     kind: "recovered", worker: Self.workerID(newWorker), label: newWorker.label,
                     reason: "worker revived after \(retired.label) dropped out",
                     recovery: .workerRevive))
+                // 起こし直したデバイスは admit を通らないので、ここで記録し直す(別のエンジンで戻ったら後の値が残る)
+                if let engine = newWorker.engineRecord { recorder?.recordWorkerEngine(engine) }
                 current = newWorker
             }
         }

@@ -43,7 +43,7 @@ final class FailureFactsTests: XCTestCase {
 
     func testFailedStepCarriesPhaseCommandKindAndNotes() {
         var builder = ScenarioRecordBuilder(scenarioID: "Foo.a", platform: "ios",
-                                            title: nil, worker: nil)
+                                            title: nil, worker: nil, engine: nil)
         builder.consume(stepEvent(index: 1, status: "passed", section: "condition",
                                   command: "launchApp"))
         var failure = stepEvent(index: 2, status: "failed", section: "condition",
@@ -70,7 +70,7 @@ final class FailureFactsTests: XCTestCase {
     /// 注記が無いステップに空配列を書かない(旧レコードと同じ形を保つ)
     func testFailedStepWithoutNotesOmitsTheKey() {
         var builder = ScenarioRecordBuilder(scenarioID: "Foo.a", platform: "ios",
-                                            title: nil, worker: nil)
+                                            title: nil, worker: nil, engine: nil)
         var failure = stepEvent(index: 1, status: "failed", section: "expectation",
                                 command: "textIs")
         failure.notes = []

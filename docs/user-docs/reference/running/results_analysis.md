@@ -100,6 +100,7 @@ The tool records only observable facts — it does not guess whether a failure w
 | What was happening at that step | `failedSteps[].notes` (e.g. `interruption-dismissed`) |
 | Whether the scenario never even reached a step | `failedSteps` is empty — check `errorLogs` / `skipKind` |
 | Whether devices dropped out during the run | `run.json`'s `workerAnomalies` |
+| Which iOS engine ran | Per scenario: `engine` (`inapp` / `hybrid` / `xcuitest`). Per device: `run.json`'s `workerEngines` — the engine asked for (`requested`), the one actually used (`effective`), and the reason when they differ (`reason`; e.g. the in-app bridge could not be injected into the app on a physical device, so it ran on XCUITest). How many steps hybrid sent to XCUITest: `steps.passedViaFallback` |
 | Whether one device was slow | `run.json`'s `slowWorkers` (that device's median screen read was at least 10× the other devices' and over 1 second — or, intermittently, at least 5 of its screen reads (20% or more) took over 2 seconds while the other devices rarely did. **A warning only — the device is not excluded**; never set for a single-device run) |
 
 `failureKind` values: `selector-syntax` (caught before touching a device), `not-found` (locator

@@ -128,6 +128,33 @@ public struct FMSettingsRecord: Codable, Sendable, Equatable {
 }
 
 /// results/runs/<YYYY-MM>/<runID>/run.json
+/// run.json の `workerEngines` の1件(iOS のデバイス1台)。`worker` は `scenarios/*.json` の `worker` と同じ規則 = join できる
+public struct WorkerEngineRecord: Codable, Sendable, Equatable {
+    /// `"<platform>:<デバイス論理名>"`
+    public var worker: String
+    /// 実行プロファイルが頼んだエンジン(`inapp` / `hybrid` / `xcuitest`)
+    public var requested: String
+    /// 実際に使ったエンジン
+    public var effective: String
+    /// requested と effective が違うときだけ、供給が縮退を決めた理由(一次情報の文言)
+    public var reason: String?
+
+    public init(worker: String, requested: String, effective: String, reason: String?) {
+        self.worker = worker
+        self.requested = requested
+        self.effective = effective
+        self.reason = reason
+    }
+
+    /// 頼んだエンジンが分からない(nil)ときは実効エンジンと同じとみなす。理由は両者が違うときだけ残す
+    public static func resolved(worker: String, requested: String?, effective: String,
+                                fallbackReason: String?) -> WorkerEngineRecord {
+        let requested = requested ?? effective
+        return WorkerEngineRecord(worker: worker, requested: requested, effective: effective,
+                                  reason: requested == effective ? nil : fallbackReason)
+    }
+}
+
 public struct RunMetaRecord: Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, runID, project, profile, host, toolchain, trigger, startedAt, finishedAt, pid
@@ -135,7 +162,7 @@ public struct RunMetaRecord: Codable, Sendable {
         case measurementInvalid, measurementInvalidReasons, workerAnomalies, issuer, runGroup
         case performanceMode, fmDead, fmDeadReason
         case guarded, guardSkipped, guardStaleFrame, fmSettings, setOverrides
-        case interrupted, abortReason, slowWorkers, servicesWarnings, responseMeasurement
+        case interrupted, abortReason, slowWorkers, servicesWarnings, responseMeasurement, workerEngines
     }
 
     public init(from decoder: Decoder) throws {
@@ -175,6 +202,7 @@ public struct RunMetaRecord: Codable, Sendable {
         slowWorkers = try c.decodeIfPresent([String].self, forKey: .slowWorkers)
         servicesWarnings = try c.decodeIfPresent([String].self, forKey: .servicesWarnings)
         responseMeasurement = try c.decodeIfPresent(ResponseMeasurementRunInfo.self, forKey: .responseMeasurement)
+        workerEngines = try c.decodeIfPresent([WorkerEngineRecord].self, forKey: .workerEngines)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -214,6 +242,7 @@ public struct RunMetaRecord: Codable, Sendable {
         try c.encodeIfPresent(slowWorkers, forKey: .slowWorkers)
         try c.encodeIfPresent(servicesWarnings, forKey: .servicesWarnings)
         try c.encodeIfPresent(responseMeasurement, forKey: .responseMeasurement)
+        try c.encodeIfPresent(workerEngines, forKey: .workerEngines)
     }
 
     public var schemaVersion: Int
@@ -324,6 +353,10 @@ public struct RunMetaRecord: Codable, Sendable {
     /// レスポンス計測モードの run だけ書く(通常の run は nil で省略)。**欄が無い = 計測モードの run ではない**
     /// (測っていない)で、旧い記録も同じ意味になる。前回比は同じデバイス・同じ `host` の run どうしだけを比べる
     public var responseMeasurement: ResponseMeasurementRunInfo?
+    /// iOS のデバイスごとの実効エンジン(参加した順)。**頼んだエンジンから縮退したときは理由も残す**
+    /// (実機の in-app が注入できず黙って XCUITest で走った、を後から確かめられるように)。
+    /// 参加したデバイスが無い・Android だけ・古い記録は nil
+    public var workerEngines: [WorkerEngineRecord]?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
                 profile: String?, host: String, toolchain: String? = nil, trigger: String, startedAt: String,
@@ -342,7 +375,8 @@ public struct RunMetaRecord: Codable, Sendable {
                 interrupted: Bool? = nil, abortReason: String? = nil,
                 slowWorkers: [String]? = nil,
                 servicesWarnings: [String]? = nil,
-                responseMeasurement: ResponseMeasurementRunInfo? = nil) {
+                responseMeasurement: ResponseMeasurementRunInfo? = nil,
+                workerEngines: [WorkerEngineRecord]? = nil) {
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.project = project
@@ -378,6 +412,7 @@ public struct RunMetaRecord: Codable, Sendable {
         self.slowWorkers = slowWorkers
         self.servicesWarnings = servicesWarnings
         self.responseMeasurement = responseMeasurement
+        self.workerEngines = workerEngines
     }
 }
 
@@ -624,7 +659,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, runID, scenarioID, title, platform, worker, host, profile
         case passed, timedOut, startedAt, durationMs, scenes, steps, reportPath, failedSteps
-        case fixSuggestions, errorLogs, fm, timeline, skipKind, skipReason, interrupted, appCrash
+        case fixSuggestions, errorLogs, fm, timeline, skipKind, skipReason, interrupted, appCrash, engine
     }
 
     public init(from decoder: Decoder) throws {
@@ -653,6 +688,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
         skipReason = try c.decodeIfPresent(String.self, forKey: .skipReason)
         interrupted = try c.decodeIfPresent(Bool.self, forKey: .interrupted)
         appCrash = try c.decodeIfPresent(AppCrashRecord.self, forKey: .appCrash)
+        engine = try c.decodeIfPresent(String.self, forKey: .engine)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -681,6 +717,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
         try c.encodeIfPresent(skipReason, forKey: .skipReason)
         try c.encodeIfPresent(interrupted, forKey: .interrupted)
         try c.encodeIfPresent(appCrash, forKey: .appCrash)
+        try c.encodeIfPresent(engine, forKey: .engine)
     }
 
     public var schemaVersion: Int
@@ -732,6 +769,9 @@ public struct ScenarioRunRecord: Codable, Sendable {
     /// iOS(in-app エンジン)= SimulatorCrashReport が見つけた直近の .ips /
     /// Android = crash バッファの FATAL EXCEPTION。旧レコードも nil
     public var appCrash: AppCrashRecord?
+    /// iOS でそのシナリオを走らせたデバイスの実効エンジン(`inapp` / `hybrid` / `xcuitest`)。Android・合成レコード・
+    /// 古い記録は nil(= 不明。xcuitest と読まない)。頼んだエンジンからの縮退とその理由は run.json の `workerEngines`
+    public var engine: String?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String = "",
                 scenarioID: String, title: String? = nil, platform: String, worker: String? = nil,
@@ -745,7 +785,9 @@ public struct ScenarioRunRecord: Codable, Sendable {
                 timeline: [TimelineStepRecord]? = nil,
                 skipKind: ScenarioSkipKind? = nil,
                 skipReason: String? = nil,
-                appCrash: AppCrashRecord? = nil) {
+                appCrash: AppCrashRecord? = nil,
+                engine: String? = nil) {
+        self.engine = engine
         self.fm = fm
         self.skipKind = skipKind
         self.skipReason = skipReason
@@ -780,6 +822,7 @@ public struct ScenarioRecordBuilder {
     private let platform: String
     private let title: String?
     private let worker: String?
+    private let engine: String?
 
     private var scenes: [SceneResultRecord] = []
     private var stepCounts = StepCountsRecord()
@@ -798,11 +841,13 @@ public struct ScenarioRecordBuilder {
     /// ❌/⚠️/⏱ で始まる log イベントの末尾 5 件(失敗時の errorLogs 用)
     private var errorLogs: [String] = []
 
-    public init(scenarioID: String, platform: String, title: String?, worker: String?) {
+    /// `engine` = iOS の実効エンジン(Android は nil)。**既定値を置かない**(呼び手の渡し忘れで記録が黙って欠ける)
+    public init(scenarioID: String, platform: String, title: String?, worker: String?, engine: String?) {
         self.scenarioID = scenarioID
         self.platform = platform
         self.title = title
         self.worker = worker
+        self.engine = engine
     }
 
     public mutating func consume(_ event: ScenarioEvent) {
@@ -944,7 +989,8 @@ public struct ScenarioRecordBuilder {
             skipReason: notApplicableReason,
             // アプリのクラッシュも成否によらず残す(検出は失敗経路でしか起きないが、fm/timeline と
             // 同じ規律で条件分岐を増やさない)
-            appCrash: appCrash)
+            appCrash: appCrash,
+            engine: engine)
     }
 
     private static func relativize(_ path: String?, packageRoot: URL?) -> String? {

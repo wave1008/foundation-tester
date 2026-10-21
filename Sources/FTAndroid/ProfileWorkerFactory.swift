@@ -1059,7 +1059,8 @@ public enum ProfileWorkerFactory {
                                  physicalUDID: device.physical ? device.udid : nil,
                                  simulatorUDID: device.physical ? nil : device.udid),
             connection: iosConnection(device: device, iosApp: iosApp),
-            logicalName: device.name)
+            logicalName: device.name,
+            requestedEngine: device.requestedEngine, engineFallbackReason: device.engineFallbackReason)
     }
 
     /// logicalName の1台だけを再供給する。到達不能・供給失敗は nil(throw しない)。

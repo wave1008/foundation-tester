@@ -885,6 +885,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                          interrupted: outcome.interrupted,
                          abortReason: outcome.abortReason) ?? []
         if let abortReason = outcome.abortReason { logStderr("❌ Run stopped: \(abortReason)") }
+        // どのデバイスがどのエンジンで走ったか(run と同じ文言 = WorkerEngineSummary)
+        for line in WorkerEngineSummary.lines(recorder?.recordedWorkerEngines ?? []) { logStderr(line) }
         if !outcome.degradedWorkers.isEmpty {
             logStderr("⚠️ Degraded or dropped workers (\(outcome.degradedWorkers.count)):")
             for entry in outcome.degradedWorkers { logStderr("   - \(entry)") }

@@ -82,7 +82,7 @@ final class HealSuggestionRecordingTests: XCTestCase {
 
         // ② シナリオは**通っている**。そのうえで記録に残ること
         var builder = ScenarioRecordBuilder(scenarioID: "Heal.S0010", platform: "ios",
-                                            title: nil, worker: nil)
+                                            title: nil, worker: nil, engine: nil)
         for event in events { builder.consume(event) }
         let record = builder.build(passed: true, timedOut: false, startedAt: Date(),
                                    durationMs: 1, packageRoot: nil)

@@ -153,7 +153,7 @@ final class HostLoadPacingTests: XCTestCase {
             event.pacingMs = pacingMs
             return event
         }
-        var builder = ScenarioRecordBuilder(scenarioID: "Foo.a", platform: "ios", title: nil, worker: nil)
+        var builder = ScenarioRecordBuilder(scenarioID: "Foo.a", platform: "ios", title: nil, worker: nil, engine: nil)
         builder.consume(step(1, pacingMs: 201))
         builder.consume(step(2, pacingMs: nil))
         builder.consume(step(3, pacingMs: 502))
@@ -162,7 +162,7 @@ final class HostLoadPacingTests: XCTestCase {
         XCTAssertEqual(record.steps.paced, 2)
         XCTAssertEqual(record.steps.pacedMs, 703)
 
-        var quiet = ScenarioRecordBuilder(scenarioID: "Foo.b", platform: "ios", title: nil, worker: nil)
+        var quiet = ScenarioRecordBuilder(scenarioID: "Foo.b", platform: "ios", title: nil, worker: nil, engine: nil)
         quiet.consume(step(1, pacingMs: nil))
         let none = quiet.build(passed: true, timedOut: false, startedAt: Date(), durationMs: 1, packageRoot: nil)
         XCTAssertNil(none.steps.paced, "1度も待たなかったシナリオは欄ごと無い")

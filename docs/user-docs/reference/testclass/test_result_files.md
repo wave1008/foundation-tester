@@ -21,6 +21,10 @@ it is not in the app's element list.
 whole run and `scenarios/<scenarioID>.json` per scenario. This is the source used for CI
 gating, dashboards, and scripted triage. How to read the fields is in
 [Results analysis](../running/results_analysis.md).
+On iOS it also records which engine ran (`inapp` / `hybrid` / `xcuitest`): `engine` per scenario and
+`workerEngines` in `run.json` per device. On the console the engine follows each scenario's header, and the
+`🔧 Engines:` line at the end of the run lists it per device. A device that could not run on the engine asked
+for is called out as `⚠️ … ran on xcuitest instead of hybrid — <reason>`.
 
 The run directory (`results/runs/<YYYY-MM>/<runID>/`) also holds, directly under it:
 

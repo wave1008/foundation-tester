@@ -75,7 +75,7 @@ final class StepBudgetInstrumentTests: XCTestCase {
         event.guardMs = 118_000
         event.ocrMs = 1_300
         var builder = ScenarioRecordBuilder(scenarioID: "Foo.a", platform: "ios",
-                                            title: nil, worker: nil)
+                                            title: nil, worker: nil, engine: nil)
         builder.consume(event)
         let record = builder.build(passed: false, timedOut: false, startedAt: Date(),
                                    durationMs: 120_000, packageRoot: nil)
