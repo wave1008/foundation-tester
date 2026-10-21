@@ -30,6 +30,20 @@ final class CoordinateSynthAlertGateTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(found, 2, "走査が synthesize の呼び出しに届いていない(送る口は send と holdWithoutWaiting)")
     }
 
+    /// SpringBoard を相手にした `/tap`(hybrid がアラートのボタンを押す経路)は直接合成へ入れない。
+    /// 入れると送る口の門がアラートのボタンそのものを断り、iosAlertHandler が押せずに期限まで空回りする
+    func testMainScreenTapSkipsDirectSynthesisForSpringBoardSession() throws {
+        let source = try String(contentsOf: runnerDir.appendingPathComponent("BridgeRouter.swift"), encoding: .utf8)
+        let lines = source.components(separatedBy: "\n")
+        let callers = lines.indices.filter { lines[$0].contains("CoordinatePinch.tapOnMainScreen(") }
+        XCTAssertEqual(callers.count, 1, "走査が主画面の tap の直接合成に届いていない")
+        for index in callers {
+            let guardLine = lines[index - 1]
+            XCTAssertTrue(guardLine.contains("sessionBundleID != \"com.apple.springboard\""),
+                          "BridgeRouter.swift:\(index) の直接合成の分岐が SpringBoard のセッションを除いていない: \(guardLine)")
+        }
+    }
+
     func testOnlyCoordinatePinchCallsSynthesizeInBridgeRouter() throws {
         let names = try FileManager.default.contentsOfDirectory(atPath: runnerDir.path)
             .filter { $0.hasPrefix("BridgeRouter") && $0.hasSuffix(".swift") }

@@ -775,8 +775,11 @@ final class BridgeRouter {
             try CoordinatePinch.tap(at: point, display: display, touchSeconds: Self.doubleTapTouchDuration)
             return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
         }
-        // 非公開 API が無い Xcode では下の XCUICoordinate へ縮退する
-        if CoordinatePinch.isAvailable {
+        // 非公開 API が無い Xcode では下の XCUICoordinate へ縮退する。
+        // **セッションが SpringBoard のタップは直接合成に乗せない** —— 相手がシステム UI そのもの(hybrid の
+        // SystemUIDriver が `/session springboard` で撃つアラートのボタン = iosAlertHandler・tap("許可しない"))なので、
+        // 送る口の門(アラートが前面なら一律 422)に断られて押せない。下の `coordinate.tap()` は押せる
+        if CoordinatePinch.isAvailable, sessionBundleID != "com.apple.springboard" {
             try CoordinatePinch.tapOnMainScreen(
                 at: point, touchSeconds: Self.tapTouchDuration,
                 orientation: synthesisOrientation())
