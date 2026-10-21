@@ -767,6 +767,7 @@ final class BridgeRouter {
             throw refuseLandscapeSpringBoardTap()
         }
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y, expect: req.expect)
+        QuiescenceWait.waitBeforeTouch(app, skip: skipSettle)
         // アプリが主画面以外の画面(Duo の内側)に出ているときは XCUICoordinate が届かない(DisplayRouting)
         if let display = DisplayRouting.target(for: app) {
             try CoordinatePinch.tap(at: point, display: display, touchSeconds: Self.doubleTapTouchDuration)
@@ -777,7 +778,7 @@ final class BridgeRouter {
             try CoordinatePinch.tapOnMainScreen(
                 at: point, touchSeconds: Self.tapTouchDuration,
                 orientation: synthesisOrientation())
-            return .json(OKResponse())
+            return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
         }
         // 縮退経路の計測: `tap()` は「イベント合成」と「暗黙の quiescence 待ち」の両方を含む1呼び出しで、
         // ホスト側の actionMs からは分解できない。quiescence 側だけ swizzle 経由で数え、
@@ -1062,6 +1063,7 @@ final class BridgeRouter {
         let req = try decode(TapRequest.self, body)
         let app = try requireForegroundAppForGesture()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y, expect: req.expect)
+        QuiescenceWait.waitBeforeTouch(app, skip: skipSettle)
         // 主画面以外の画面(DisplayRouting)は API が無ければ縮退先も無い(XCUICoordinate は届かない)ので、
         // synthesize の 422 をそのまま返す
         let display = DisplayRouting.target(for: app)
@@ -1074,7 +1076,7 @@ final class BridgeRouter {
                 ],
                 name: "fleetest doubletap",
                 orientation: synthesisOrientation(), display: display)
-            return .json(OKResponse())
+            return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
         }
         _ = QuiescenceWait.takeCapNote()
         try QuiescenceWait.around(skip: skipSettle, skipByDefault: true) {
@@ -1288,6 +1290,7 @@ final class BridgeRouter {
         }
         let app = try requireForegroundAppForGesture()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y, expect: req.expect)
+        QuiescenceWait.waitBeforeTouch(app, skip: skipSettle)
         if let display = DisplayRouting.target(for: app) {
             try CoordinatePinch.synthesize(fingers: [[(point: point, offset: 0), (point: point, offset: req.duration)]],
                                            name: "fleetest press", orientation: .portrait, display: display)

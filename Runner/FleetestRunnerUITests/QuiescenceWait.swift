@@ -22,6 +22,7 @@
 
 import Foundation
 import ObjectiveC
+import XCTest
 
 enum QuiescenceWait {
     /// true の間、swizzle 済み quiescence 待ちが no-op になる(待ちを飛ばす)(リクエスト毎に立てて必ず戻す)
@@ -184,6 +185,29 @@ enum QuiescenceWait {
             if skipPostEvent { NSLog("[fleetest] quiescence: skipped %d post-event wait(s)", postEventSkips) }
         }
         return try body()
+    }
+
+    /// タップ・ダブルタップ・長押しの直前に、XCTest の**操作の前の**待ち(isPreEvent: true)だけを明示的に呼ぶ。
+    /// これらは操作の前後の待ちを飛ばしている(`around` の skipByDefault・直接合成は XCTest の操作を経由しない)ので、
+    /// **画面の出入りの遷移の途中に撃って吸われていた** —— ポップオーバーを開いた直後の OK のタップが、開く操作から
+    /// 約 0.5 秒の間は届かない(遷移中の UIKit はタッチを受け付けない)。木はその時点で最終位置を出しているので
+    /// 木の整定では見張れない(実測 2026-10-21・E2EX-iOS の 42_固有部品 S0010)。後の待ちは飛ばしたまま(木の観察が担う)。
+    /// 実費(Simulator): 静かな画面 2〜5ms・ポップオーバーの直後 147ms・アニメーション中 815ms・Apple マップ 2〜844ms。
+    /// 上限は `quiescenceCapSeconds`。`skip`(`settle: false`)なら待たない。非公開の口が無ければ何もしない
+    static func waitBeforeTouch(_ app: XCUIApplication, skip: Bool) {
+        guard available, !skip else { return }
+        let sel = NSSelectorFromString("waitForQuiescenceIncludingAnimationsIdle:isPreEvent:")
+        let appObject = app as NSObject
+        // value(forKey:) は無い鍵で例外を投げてランナーを落とすので、各段で responds を先に見る
+        guard appObject.responds(to: NSSelectorFromString("applicationImpl")),
+              let impl = appObject.value(forKey: "applicationImpl") as? NSObject,
+              impl.responds(to: NSSelectorFromString("currentProcess")),
+              let process = impl.value(forKey: "currentProcess") as? NSObject,
+              process.responds(to: sel) else { return }
+        typealias Fn = @convention(c) (AnyObject, Selector, Bool, Bool) -> Void
+        let wait = unsafeBitCast(process.method(for: sel), to: Fn.self)
+        // swizzle 済みの実装を通る = 上限は capping の間だけ縮む
+        capping(skipPostEvent: false) { wait(process, sel, true, true) }
     }
 
     static func around<T>(skip: Bool, skipByDefault: Bool = false, _ body: () throws -> T) rethrows -> T {
