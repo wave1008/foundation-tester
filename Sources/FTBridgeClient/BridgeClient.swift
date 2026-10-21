@@ -339,7 +339,8 @@ public final class BridgeClient: AppDriver, Sendable {
     /// 終了コード 0 = 止めた / 3(ESRCH)= 動いていなかった。それ以外は止められなかったとして投げる(文言を見ない)
     /// **完了したか分からない回(時間切れ)だけ 1 回撃ち直す**: 止める操作は何度撃っても結果が同じ(止まっていれば 3 が返る)。
     /// 負荷の下で simctl terminate が期限(15 秒)を超えた実測がある(負荷テストで 2 回 = clearAppData がそのまま赤)。
-    /// 時間切れはサンドボックスの中では代行の `SandboxBroker.didNotCompleteStatus`、外では `ShellError.timedOut` で来る
+    /// 時間切れはサンドボックスの中では代行の `SandboxBroker.didNotCompleteStatus`、外では `ShellError.timedOut` で来る。
+    /// 「Host is down」(64)は窓の間だけ撃ち直す(本体の doc)
     public static func stopOnSimulator(bundleID: String, target: String, purpose: String) throws {
         try stopOnSimulator(bundleID: bundleID, purpose: purpose) {
             let result = try Shell.run(["xcrun", "simctl", "terminate", target, bundleID],
@@ -352,8 +353,24 @@ public final class BridgeClient: AppDriver, Sendable {
     /// (撃ち直しで拾う)。尽きたら撃ち直し、2 回とも完了しなければ「止められなかった」で投げる
     static let stopOnSimulatorTimeoutSeconds: Double = 15
 
+    /// simctl terminate の「Host is down」(EHOSTDOWN = 64。CoreSimulator がシミュレータの SpringBoard に届かない)。
+    /// 文言でなく終了コードで分ける。64 は sysexits の EX_USAGE とも重なるが、使い方の誤りを撃ち直しても同じ失敗が返るだけ
+    static let hostDownStatus: Int32 = 64
+
+    /// 「Host is down」が続く間、撃ち直す窓(秒)。**根拠**: 実測(M1Max・10/21)で同じ詰まりの間に別のシミュレータの
+    /// clearAppData が 16.6 秒で終わり、同じ端末の約 29 秒後のシナリオは緑 = SpringBoard は十数秒で戻る。terminate 1 回の
+    /// 上限と同じ 15 秒にそろえる。**尽きたとき**: 撃ち直した旨を添えて「止められなかった」で投げる
+    static let hostDownRetryWindowSeconds: Double = 15
+    /// 撃ち直しの間隔(秒)。「Host is down」は 1 秒強で返った実測で、即座に返る場合に simctl を空回しさせないための間
+    static let hostDownRetryPauseSeconds: Double = 1
+
     /// 本体(`terminate` を差し替えてテストする)。戻り値は (終了コード, 出力の末尾)
+    /// **「Host is down」(64)は窓の間だけ撃ち直す**: SpringBoard が一時的に答えないだけで、冒頭の clearAppData が赤になっていた
+    /// (M1Max で 3 回・クラッシュレポートは無し)。止める操作は何度撃っても結果が同じなので二重実行の害は無い
     static func stopOnSimulator(bundleID: String, purpose: String,
+                                hostDownWindow: Duration = .seconds(hostDownRetryWindowSeconds),
+                                pause: (Double) -> Void = { Thread.sleep(forTimeInterval: $0) },
+                                log: (String) -> Void = { ConsoleOut.err($0) },
                                 terminate: () throws -> (status: Int32, tail: String)) throws {
         func attempt() throws -> (status: Int32, tail: String)? {
             do {
@@ -363,14 +380,33 @@ public final class BridgeClient: AppDriver, Sendable {
                 return nil
             }
         }
-        guard let stop = try attempt() ?? attempt() else {
+        guard var stop = try attempt() ?? attempt() else {
             throw DriverError.badResponse(status: Int(SandboxBroker.didNotCompleteStatus),
                 body: "could not stop \(bundleID) \(purpose): simctl terminate did not complete within"
                     + " \(Int(stopOnSimulatorTimeoutSeconds))s, twice (the Mac or the simulator is busy)")
         }
+        let clock = ContinuousClock()
+        let hostDownSince = clock.now
+        var hostDownRetries = 0
+        while stop.status == hostDownStatus, clock.now - hostDownSince < hostDownWindow {
+            pause(hostDownRetryPauseSeconds)
+            hostDownRetries += 1
+            // 撃ち直しの時間切れは「Host is down」のまま扱う(窓の中で次を撃つ)
+            stop = try attempt() ?? stop
+        }
         guard stop.status == 0 || stop.status == 3 else {
+            let windowSeconds = Double(hostDownWindow.components.seconds)
+                + Double(hostDownWindow.components.attoseconds) / 1e18
+            let retried = hostDownRetries > 0
+                ? " (still \"host is down\" after \(hostDownRetries) retr\(hostDownRetries == 1 ? "y" : "ies") over"
+                    + " \(FTSeconds.format(windowSeconds))s — the simulator's system shell did not come back)"
+                : ""
             throw DriverError.badResponse(status: Int(stop.status),
-                body: "could not stop \(bundleID) \(purpose): \(stop.tail)")
+                body: "could not stop \(bundleID) \(purpose): \(stop.tail)\(retried)")
+        }
+        if hostDownRetries > 0 {
+            log("stopped \(bundleID) \(purpose) after \(hostDownRetries) retr\(hostDownRetries == 1 ? "y" : "ies"):"
+                + " simctl terminate first answered \"host is down\" (the simulator's system shell was not answering)")
         }
     }
 

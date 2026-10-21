@@ -32,6 +32,38 @@ public enum BridgeDiscovery {
         public var label: String { "port \(port) (\(device), \(engine))" }
     }
 
+    /// `/status` に 2 秒答えなかったが、**待受は確定的に消えていない**ポート(`connectProbe != .refused`)。
+    /// 忙しい XCUITest ランナー(quiescence 待ち・操作中)はここに入る。**「居ない」ではない** ——
+    /// 走査の結果から黙って捨てると、判断(採用・起動・「何も無い」の断定)が居る相手を無視する
+    public struct Silent: Sendable, Equatable {
+        public let port: UInt16
+        /// 台帳(BridgeDeviceRecord・in-app の台帳)から分かるときだけ。答えていないので申告は無い
+        public let udid: String?
+        /// in-app の台帳に載っているポート(背面へ回ったアプリの in-app は TCP を受けたまま HTTP に答えない)
+        public let isInApp: Bool
+
+        public init(port: UInt16, udid: String? = nil, isInApp: Bool = false) {
+            self.port = port
+            self.udid = udid
+            self.isInApp = isInApp
+        }
+
+        public var label: String {
+            let engine = isInApp ? "in-app, " : ""
+            return udid.map { "port \(port) (\(engine)udid \($0))" } ?? "port \(port)"
+        }
+    }
+
+    public struct ScanResult: Sendable, Equatable {
+        public let found: [Found]
+        public let silent: [Silent]
+
+        public init(found: [Found], silent: [Silent]) {
+            self.found = found
+            self.silent = silent
+        }
+    }
+
     public enum Decision: Equatable {
         /// 指定/既定ポートが応答した(通常の経路)
         case usePreferred
@@ -42,6 +74,9 @@ public enum BridgeDiscovery {
         case ambiguous([Found])
         /// 待受はしているが応答しない = **死んでいない**。乗り換えてはいけない
         case preferredBusy
+        /// 答えたのが 0〜1 本で、他に**待受しているのに答えないポート**がある = 「唯一」と言えない
+        /// (答えない側が利用者の意図した端末かもしれない)。採用も「無い」の断定もしない
+        case unanswered(found: [Found], silent: [Silent])
     }
 
     /// 判断だけ(IO 無し)。材料は呼び出し側が集める。
@@ -50,10 +85,21 @@ public enum BridgeDiscovery {
     /// ブリッジのスレッドは数十秒ブロックする(ログで実測 33.7s)。この間は
     /// /status が返らないが待受は続いているので、応答なしを死と読むと**別デバイスのブリッジへ
     /// 黙って乗り換える** —— 自動採用が防ぐはずの取り違えを自分で作ることになる
-    public static func decide(preferredAlive: Bool, preferredBound: Bool, found: [Found]) -> Decision {
+    ///
+    /// **`silent` が空でないとき、答えた 0〜1 本を「唯一」「無い」と言わない**(`.unanswered`)。
+    /// 答えた2本以上は元から複数 = 選ばせる(`.ambiguous`)ので silent は結論を変えない
+    public static func decide(preferredAlive: Bool, preferredBound: Bool, found: [Found],
+                              silent: [Silent]) -> Decision {
         if preferredAlive { return .usePreferred }
         if preferredBound { return .preferredBusy }
         let sorted = found.sorted { $0.port < $1.port }
+        // **答えた1本と同じ端末の in-app(背面のアプリ)だけが黙っているなら、取り違えは起きない** —— 数えない
+        let competing = silent.filter { entry in
+            !(sorted.count == 1 && entry.isInApp && entry.udid != nil && entry.udid == sorted[0].udid)
+        }
+        if sorted.count <= 1, !competing.isEmpty {
+            return .unanswered(found: sorted, silent: competing.sorted { $0.port < $1.port })
+        }
         switch sorted.count {
         case 0: return .none
         case 1: return .adopt(sorted[0])
@@ -253,24 +299,49 @@ public enum BridgeDiscovery {
         }
     }
 
-    /// 範囲を並列に走査して応答した全ポートを返す
+    /// 範囲を並列に走査して応答した全ポートを返す。**答えなかったポートは捨てる** ——
+    /// 判断(採用・起動・停止・「無い」の断定)に使う呼び手は `scanDetailed` を使うこと
+    /// (`BridgeScanCallerAuditTests` が呼び手の集合を固定する)
     public static func scan(excluding preferred: UInt16, repoRoot: URL?) async -> [Found] {
-        await withTaskGroup(of: Found?.self) { group in
+        await scanDetailed(excluding: preferred, repoRoot: repoRoot).found
+    }
+
+    /// `scan` に加えて、**待受はしているのに 2 秒答えなかったポート**(`Silent`)も返す。
+    /// 「居ない」の根拠は connect の `.refused` だけ(`mayBeListening`)—— 答えない = 居ないと畳まない。
+    /// `ready == false` で答えたものは従来どおり対象外(答えている = silent ではない)
+    public static func scanDetailed(excluding preferred: UInt16, repoRoot: URL?) async -> ScanResult {
+        enum Outcome: Sendable { case found(Found), silent(Silent), absent }
+        return await withTaskGroup(of: Outcome.self) { group in
             for port in portRange where port != preferred {
                 group.addTask {
                     let endpoint = repoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0) }
                         ?? BridgeEndpoint(port: port)
-                    guard let status = try? await BridgeClient(
-                        endpoint: endpoint, timeoutSeconds: 2).status(timeout: 2),
-                        status.ready else { return nil }
                     let recorded = repoRoot.flatMap { BridgeDeviceRecord.load(port: port, repoRoot: $0) }
-                    return Found(port: port, device: status.device, engine: status.engine ?? "xcuitest",
-                                 udid: resolveUDID(reported: status.udid, recorded: recorded))
+                    let status: StatusResponse
+                    do {
+                        status = try await BridgeClient(endpoint: endpoint, timeoutSeconds: 2).status(timeout: 2)
+                    } catch DriverError.bridgeUnreachable, DriverError.bridgeConnectionRefused {
+                        return mayBeListening(port: port, repoRoot: repoRoot)
+                            ? .silent(silentEntry(port: port, recorded: recorded, repoRoot: repoRoot)) : .absent
+                    } catch {
+                        // HTTP では答えた(401 のトークン不一致・読めない本文)= 「答えない」ではない。従来どおり一覧に載せない
+                        return .absent
+                    }
+                    guard status.ready else { return .absent }
+                    return .found(Found(port: port, device: status.device, engine: status.engine ?? "xcuitest",
+                                        udid: resolveUDID(reported: status.udid, recorded: recorded)))
                 }
             }
-            var result: [Found] = []
-            for await entry in group { if let entry { result.append(entry) } }
-            return result
+            var found: [Found] = []
+            var silent: [Silent] = []
+            for await outcome in group {
+                switch outcome {
+                case .found(let entry): found.append(entry)
+                case .silent(let entry): silent.append(entry)
+                case .absent: break
+                }
+            }
+            return ScanResult(found: found, silent: silent.sorted { $0.port < $1.port })
         }
     }
 
@@ -335,6 +406,37 @@ public enum BridgeDiscovery {
             + " which can take tens of seconds). Retry in a moment."
             + " Another bridge is not used automatically: it would be a different device."
             + " Pass \(names.either(names.port)) to target one deliberately."
+    }
+
+    /// 黙っているポートの持ち主。実機の台帳(BridgeDeviceRecord)が先、無ければ in-app の台帳
+    static func silentEntry(port: UInt16, recorded: String?, repoRoot: URL?) -> Silent {
+        if let recorded { return Silent(port: port, udid: recorded) }
+        if let stateDir = repoRoot?.appendingPathComponent(".fleetest"),
+           let inAppUDID = InAppBridgeState.recordedUDID(stateDir: stateDir, port: port) {
+            return Silent(port: port, udid: inAppUDID, isInApp: true)
+        }
+        return Silent(port: port)
+    }
+
+    /// 答えたのが 0〜1 本で、待受しているのに答えないポートがある。**どの端末かは言えない**ので採用せず、
+    /// 「無い」とも言わない
+    public static func unansweredMessage(preferred: UInt16, found: [Found], silent: [Silent],
+                                         names: TargetArgumentNames) -> String {
+        var text = "no bridge answered on the default port \(preferred), and"
+            + " \(silent.map(\.label).joined(separator: ", ")) \(silent.count == 1 ? "is" : "are")"
+            + " listening but did not answer /status within 2s (busy or stuck, not gone)."
+        if !found.isEmpty {
+            text += " The only one that answered is \(found.map(\.label).joined(separator: ", "))"
+                + " — it is not picked automatically, because the unanswered one may be the device you mean."
+        } else {
+            text += " Which device they belong to is unknown, so none is picked automatically."
+        }
+        // 背面のアプリの in-app は待っても答えない(「少し待て」だけでは袋小路)
+        if silent.contains(where: \.isInApp) {
+            text += " A port marked in-app is the bridge inside an app that is in the background: bring the app to"
+                + " the front, or start an XCUITest bridge with `fleetest bridge up`."
+        }
+        return text + " Retry in a moment, or pass \(names.either(names.port)) to target one deliberately."
     }
 
     public static func ambiguousMessage(preferred: UInt16, found: [Found], names: TargetArgumentNames) -> String {

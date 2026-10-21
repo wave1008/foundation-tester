@@ -441,6 +441,21 @@ public struct BridgeLauncher: Sendable {
         return reported
     }
 
+    /// 同じ端末の別ポートのランナーの仕分け(純粋関数)。**「居ない」と確定したもの(接続拒否 = 残骸)だけ**
+    /// `leftovers`、それ以外(待受している・不明)は `live` —— 起動してよいのは live が空のときだけ。
+    /// 忙しいランナーは /status に答えないが待受は続く。答えない = 居ないと読んで2本目を起動すると
+    /// 2本目が1本目を殺し、両方が落ちて端末からブリッジが消える
+    public static func partitionRunnersElsewhere(
+        _ others: [(pid: Int32, port: UInt16)], connect: (UInt16) -> BridgeDiscovery.ConnectProbe
+    ) -> (live: [(pid: Int32, port: UInt16)], leftovers: [(pid: Int32, port: UInt16)]) {
+        var live: [(pid: Int32, port: UInt16)] = []
+        var leftovers: [(pid: Int32, port: UInt16)] = []
+        for other in others {
+            if connect(other.port) == .refused { leftovers.append(other) } else { live.append(other) }
+        }
+        return (live, leftovers)
+    }
+
     public static func runnersOnDevice(psOutput: String, device: String,
                                 excludingPort: UInt16) -> [(pid: Int32, port: UInt16)] {
         psOutput.split(separator: "\n").compactMap { line in
@@ -1326,8 +1341,8 @@ public enum LauncherError: Error, LocalizedError {
     /// 運ぶ** —— CLI は英語で案内を出し、拡張は同じ判定から**自分の言語で**案内を組み立てる
     /// (CLAUDE.md「共有するのは判定であって文言ではない」)。生のビルドログはファイルへ
     case codeSigningIncomplete(problems: [XcodeSigningProblem], logPath: String?)
-    /// この実機には別ポートのランナーが既に居る(起動途中を含む)。2本目は立てない
-    case deviceRunnerElsewhere(device: String, port: UInt16, pid: Int32)
+    /// この端末(実機・Simulator)には別ポートのランナーが既に居る(起動途中・忙しいを含む)。2本目は立てない
+    case deviceRunnerElsewhere(device: String, port: UInt16, pid: Int32, physical: Bool)
 
     public var errorDescription: String? {
         switch self {
@@ -1370,8 +1385,16 @@ public enum LauncherError: Error, LocalizedError {
                 + " (the Team ID is the OU of the signing certificate — check with `security find-certificate -c "
                 + "\"Apple Development: <you>\" -p | openssl x509 -noout -subject`; "
                 + "the value in parentheses from `security find-identity` is a certificate ID, not a Team ID)"
-        case .deviceRunnerElsewhere(let device, let port, let pid):
-            return "physical device \(device) already has an xcuitest runner (still starting, or running) on"
+        // **実機・Simulator で文を分けて書く**: 拡張は英文を型として照合して訳す(cliMessages.ts の
+        // cliMsg.launcher.deviceRunnerElsewhere*)。主語を補間にすると訳文に英語の主語が残る
+        case .deviceRunnerElsewhere(let device, let port, let pid, let physical):
+            if physical {
+                return "physical device \(device) already has an xcuitest runner (still starting, busy, or running) on"
+                    + " port \(port) (xcodebuild pid \(pid)). A device runs one runner at a time — a second one"
+                    + " kills the first. Use port \(port) once it is ready, or stop it first with"
+                    + " `fleetest bridge down --port \(port)`"
+            }
+            return "simulator \(device) already has an xcuitest runner (still starting, busy, or running) on"
                 + " port \(port) (xcodebuild pid \(pid)). A device runs one runner at a time — a second one"
                 + " kills the first. Use port \(port) once it is ready, or stop it first with"
                 + " `fleetest bridge down --port \(port)`"

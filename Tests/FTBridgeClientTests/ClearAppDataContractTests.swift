@@ -58,7 +58,7 @@ final class ClearAppDataContractTests: XCTestCase {
             return XCTFail("stopOnSimulator が見つからない(改名したらこのテストも直す)")
         }
         // 公開の口は本体(terminate を差し替えられる overload)へ委ねるので、両方を含む範囲を見る
-        let body = String(bridgeClient[range.lowerBound...].prefix(2400))
+        let body = String(bridgeClient[range.lowerBound...].prefix(5000))
         XCTAssertTrue(body.contains("\"simctl\", \"terminate\""), body)
         XCTAssertTrue(body.contains("stop.status == 0 || stop.status == 3"), body)
     }

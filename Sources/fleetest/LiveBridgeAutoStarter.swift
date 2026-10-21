@@ -250,15 +250,23 @@ actor LiveBridgeAutoStarter {
                    psOutput: ps.output, device: udid, excludingPort: port).first {
                 releaseLockOnce()
                 return .failure(LauncherError.deviceRunnerElsewhere(
-                    device: udid, port: other.port, pid: other.pid))
+                    device: udid, port: other.port, pid: other.pid, physical: true))
             }
-            // **シミュレータでは、同じ台の別ポートに残ったランナーの残骸を先に止める**(実測: serve が watchdog で
-            // 落ちて起き直すたびに別の空きポートで起動し、2本目が1本目のランナーアプリを殺すので、待受の無い
-            // xcodebuild が台ごとに溜まった = sim-09/-10 で各3本・待受は1本)。止めるのは**そのポートを
-            // 誰も待ち受けていない(拒否が確定した)ものだけ** —— 生きて待ち受けている相手には触らない
+            // **シミュレータでも、同じ台の別ポートに待受しているランナーが居れば起動しない**(実測: 忙しいランナーは
+            // /status に答えず走査に載らないので、「居ない」と読んで2本目を起動すると、2本目が1本目を殺し
+            // 両方が落ちて端末からブリッジが消えた)。居ないと確定している(接続拒否)ものだけ残骸として止める。
+            // 待受の有無は `partitionRunnersElsewhere`(`.refused` 以外は live = 不明も居る側)
             if !physical, let ps = try? Shell.run(["ps", "-axo", "pid=,command="]), ps.status == 0 {
-                for other in BridgeLauncher.runnersOnDevice(psOutput: ps.output, device: udid, excludingPort: port)
-                where BridgeDiscovery.connectProbe(port: other.port, repoRoot: repoRoot) == .refused {
+                let split = BridgeLauncher.partitionRunnersElsewhere(
+                    BridgeLauncher.runnersOnDevice(psOutput: ps.output, device: udid, excludingPort: port),
+                    connect: { BridgeDiscovery.connectProbe(port: $0, repoRoot: repoRoot) })
+                if let other = split.live.first {
+                    releaseLockOnce()
+                    return .failure(LauncherError.deviceRunnerElsewhere(
+                        device: udid, port: other.port, pid: other.pid, physical: false))
+                }
+                // 止めるのは**そのポートを誰も待ち受けていない(拒否が確定した)ものだけ**
+                for other in split.leftovers {
                     if BridgeLauncher.reapRunnerProcess(pid: other.pid) {
                         // 残すとそのポートが使用中に見え続ける(`.pid` はその xcodebuild を指すときだけ消す)
                         let stateDir = repoRoot.appendingPathComponent(".fleetest")

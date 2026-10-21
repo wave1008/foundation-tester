@@ -69,8 +69,12 @@ export const cliMessagesStrings = {
     ja: "iOS の実機向けビルドには Apple Developer の Team ID が必要です。~/.config/fleetest/config.json の \"developmentTeam\" か環境変数 FT_DEVELOPMENT_TEAM を設定してください",
   },
   "cliMsg.launcher.deviceRunnerElsewhere": {
-    en: "physical device {device} already has an xcuitest runner (still starting, or running) on port {port} (xcodebuild pid {pid}). A device runs one runner at a time — a second one kills the first. Use port {port} once it is ready, or stop it first with `fleetest bridge down --port {port}`",
-    ja: "実機 {device} にはポート {port} の xcuitest ランナーが既にあります (起動中か実行中。xcodebuild pid {pid})。1台のデバイスで動くランナーは1つだけで、2つ目は1つ目を落とします。準備ができたらポート {port} を使うか、先に `fleetest bridge down --port {port}` で止めてください",
+    en: "physical device {device} already has an xcuitest runner (still starting, busy, or running) on port {port} (xcodebuild pid {pid}). A device runs one runner at a time — a second one kills the first. Use port {port} once it is ready, or stop it first with `fleetest bridge down --port {port}`",
+    ja: "実機 {device} にはポート {port} の xcuitest ランナーが既にあります (起動中・処理中・実行中のいずれか。xcodebuild pid {pid})。1台のデバイスで動くランナーは1つだけで、2つ目は1つ目を落とします。準備ができたらポート {port} を使うか、先に `fleetest bridge down --port {port}` で止めてください",
+  },
+  "cliMsg.launcher.deviceRunnerElsewhereSimulator": {
+    en: "simulator {device} already has an xcuitest runner (still starting, busy, or running) on port {port} (xcodebuild pid {pid}). A device runs one runner at a time — a second one kills the first. Use port {port} once it is ready, or stop it first with `fleetest bridge down --port {port}`",
+    ja: "シミュレータ {device} にはポート {port} の xcuitest ランナーが既にあります (起動中・処理中・実行中のいずれか。xcodebuild pid {pid})。1台のデバイスで動くランナーは1つだけで、2つ目は1つ目を落とします。準備ができたらポート {port} を使うか、先に `fleetest bridge down --port {port}` で止めてください",
   },
   // PortHolder の占有者の説明(Sources/FTBridgeClient/PortHolder.swift)
   "cliMsg.portHolder.foreignInApp": {

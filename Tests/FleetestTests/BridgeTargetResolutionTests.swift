@@ -25,6 +25,14 @@ final class BridgeTargetErrorTests: XCTestCase {
         XCTAssertEqual(error.message(.mcp), BridgeDiscovery.noBridgeMessage(preferred: 8123, names: .mcp))
     }
 
+    func testUnansweredMatchesBridgeDiscoveryMessage() {
+        let found = [BridgeDiscovery.Found(port: 8124, device: "iPhone 17", engine: "xcuitest")]
+        let silent = [BridgeDiscovery.Silent(port: 8128)]
+        let error = BridgeTargetError.unanswered(preferred: 8123, found: found, silent: silent)
+        XCTAssertEqual(error.message(.mcp),
+                       BridgeDiscovery.unansweredMessage(preferred: 8123, found: found, silent: silent, names: .mcp))
+    }
+
     func testAmbiguousMatchesBridgeDiscoveryMessage() {
         let found = [
             BridgeDiscovery.Found(port: 8124, device: "iPhone 17", engine: "xcuitest"),

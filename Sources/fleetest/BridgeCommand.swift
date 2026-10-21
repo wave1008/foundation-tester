@@ -354,8 +354,10 @@ struct Bridge: AsyncParsableCommand {
             // 落ちるだけの実装では、**8本動いている状態で**「nothing listening / アプリが
             // 落ちたのだろう」と報告していた(既定の 8123 が空いていただけ)。Android 側は
             // 元から接続中の全 serial を列挙しており、非対称でもあった。**動いているものを全部出す**
-            let found = await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
-            ConsoleOut.out(BridgeStatusReport.render(found, requested: driverOptions.resolvedPort))
+            // 答えなかったポートも出す: 忙しいブリッジが一覧から消え、全部忙しいと「無い」と言い切っていた
+            let scanned = await BridgeDiscovery.scanDetailed(excluding: 0, repoRoot: try? RepoRoot.find())
+            ConsoleOut.out(BridgeStatusReport.render(
+                scanned.found, silent: scanned.silent, requested: driverOptions.resolvedPort))
         }
     }
 }
@@ -363,17 +365,25 @@ struct Bridge: AsyncParsableCommand {
 /// `fleetest bridge status`(iOS)の表示。**純関数にしてあるのはテストのため** ——
 /// 走査そのものはブリッジが要るのでテストから通せない
 enum BridgeStatusReport {
-    static func render(_ found: [BridgeDiscovery.Found], requested: UInt16) -> String {
-        guard !found.isEmpty else {
+    static func render(_ found: [BridgeDiscovery.Found], silent: [BridgeDiscovery.Silent],
+                       requested: UInt16) -> String {
+        // **「無い」と言えるのは、答えたものも待受だけのものも無いときだけ**
+        guard !found.isEmpty || !silent.isEmpty else {
             return "no bridge is running on this machine"
                 + " (ports \(BridgeDiscovery.scannedPortsDescription) were scanned)."
                 + " Start one with: fleetest bridge up"
         }
         // **要求されたポートに印を付ける**(--port を渡した人が自分の1本を見失わないため)
-        return found.sorted { $0.port < $1.port }.map { entry in
-            let mark = entry.port == requested ? "→ " : "  "
+        let rows: [(port: UInt16, text: String)] = found.map { entry in
             let udid = entry.udid.map { " udid \($0)" } ?? ""
-            return "\(mark)port \(entry.port): \(entry.device) (\(entry.engine))\(udid)"
+            return (entry.port, "port \(entry.port): \(entry.device) (\(entry.engine))\(udid)")
+        } + silent.map { entry in
+            let udid = entry.udid.map { " udid \($0)" } ?? ""
+            return (entry.port, "port \(entry.port): listening, but did not answer /status within 2s"
+                + " (busy or stuck)\(udid)")
+        }
+        return rows.sorted { $0.port < $1.port }.map { row in
+            (row.port == requested ? "→ " : "  ") + row.text
         }.joined(separator: "\n")
     }
 }

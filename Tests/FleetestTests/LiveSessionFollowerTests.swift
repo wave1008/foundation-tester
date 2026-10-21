@@ -531,4 +531,33 @@ final class LiveAutoStarterDuplicateRunnerWiringTests: XCTestCase {
         XCTAssertLessThan(guardRange.lowerBound, startRange.lowerBound, "門は startDetached より前に置く")
         XCTAssertTrue(code.contains("LauncherError.deviceRunnerElsewhere("))
     }
+
+    /// シミュレータも、待受しているランナーが別ポートに居れば起動しない(`partitionRunnersElsewhere` の live が空のときだけ進む)
+    func testSimulatorBranchRefusesLiveRunnerBeforeStarting() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/fleetest/LiveBridgeAutoStarter.swift")
+        let code = try String(contentsOf: url, encoding: .utf8)
+        guard let gate = code.range(of: "BridgeLauncher.partitionRunnersElsewhere("),
+              let refuse = code.range(of: "physical: false))"),
+              let start = code.range(of: "try launcher.startDetached()") else {
+            return XCTFail("シミュレータの門が見当たらない — テストを見直すこと")
+        }
+        XCTAssertLessThan(gate.lowerBound, refuse.lowerBound)
+        XCTAssertLessThan(refuse.lowerBound, start.lowerBound, "断るのは startDetached より前")
+    }
+
+    /// in-app → XCUITest の振り替え(XCUIBridgeResolver.start)も、同じ台の待受しているランナーへ振り替えてから起動へ進む
+    func testXCUIResolverReusesBusyRunnerBeforeStarting() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/FTBridgeClient/XCUIBridgeResolver.swift")
+        let code = try String(contentsOf: url, encoding: .utf8)
+        guard let gate = code.range(of: "BridgeLauncher.partitionRunnersElsewhere("),
+              let start = code.range(of: "try launcher.startDetached()") else {
+            return XCTFail("XCUIBridgeResolver の門が見当たらない — テストを見直すこと")
+        }
+        XCTAssertLessThan(gate.lowerBound, start.lowerBound, "振り替えは startDetached より前")
+        XCTAssertTrue(code.contains(".live.map(\\.port).min()"), "待受している(live)側へ振り替える")
+    }
 }

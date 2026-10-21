@@ -25,8 +25,11 @@ public enum BridgeTargetResolution {
         if await BridgeDiscovery.isAlive(port: preferred, repoRoot: repoRoot) { return preferred }
         // **応答なしを死と読まない**: 待受が続いているなら乗り換え先は別デバイスになる
         let bound = BridgeDiscovery.mayBeListening(port: preferred, repoRoot: repoRoot)
-        let found = bound ? [] : await BridgeDiscovery.scan(excluding: preferred, repoRoot: repoRoot)
-        switch BridgeDiscovery.decide(preferredAlive: false, preferredBound: bound, found: found) {
+        // **答えないポートも判断の材料にする**: 忙しい1本を除いた残り1本を「唯一」と言って採ると別の端末を操作する
+        let scanned = bound ? BridgeDiscovery.ScanResult(found: [], silent: [])
+            : await BridgeDiscovery.scanDetailed(excluding: preferred, repoRoot: repoRoot)
+        switch BridgeDiscovery.decide(preferredAlive: false, preferredBound: bound,
+                                      found: scanned.found, silent: scanned.silent) {
         case .usePreferred:
             return preferred
         case .preferredBusy:
@@ -36,6 +39,8 @@ public enum BridgeTargetResolution {
             return bridge.port
         case .none:
             throw BridgeTargetError.noBridge(preferred: preferred)
+        case .unanswered(let found, let silent):
+            throw BridgeTargetError.unanswered(preferred: preferred, found: found, silent: silent)
         case .ambiguous(let bridges):
             throw BridgeTargetError.ambiguous(preferred: preferred, found: bridges)
         }
@@ -57,6 +62,7 @@ public enum BridgeTargetError: Error, Equatable {
     case busy(preferred: UInt16)
     case noBridge(preferred: UInt16)
     case ambiguous(preferred: UInt16, found: [BridgeDiscovery.Found])
+    case unanswered(preferred: UInt16, found: [BridgeDiscovery.Found], silent: [BridgeDiscovery.Silent])
 
     public func message(_ names: TargetArgumentNames) -> String {
         switch self {
@@ -66,6 +72,8 @@ public enum BridgeTargetError: Error, Equatable {
             return BridgeDiscovery.noBridgeMessage(preferred: preferred, names: names)
         case .ambiguous(let preferred, let found):
             return BridgeDiscovery.ambiguousMessage(preferred: preferred, found: found, names: names)
+        case .unanswered(let preferred, let found, let silent):
+            return BridgeDiscovery.unansweredMessage(preferred: preferred, found: found, silent: silent, names: names)
         }
     }
 }

@@ -87,6 +87,10 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **実機に2本目のランナーを立てない**(ライブ操作の自動起動 `LiveBridgeAutoStarter.launchBridge` が、同じ実機を
   宛先に持つ別ポートの xcodebuild を見たら断る。起動途中のランナーは走査に載らない。bridge up / 供給は起動途中のデバイスを
   待って引き取るので門は置かない)→ maintainer-notes §49.4。
+  **Simulator も、同じ台の別ポートに待ち受けているランナー(忙しくて /status に答えないものを含む)が居れば起動しない**
+  (`BridgeLauncher.partitionRunnersElsewhere` = 接続拒否だけが残骸。`XCUIBridgeResolver.start` と `ApiLiveServe.busyRunnerPort` も同じ判定で
+  そのポートへ振り替える)。**判断に使う走査は `BridgeDiscovery.scanDetailed`**(答えないが待ち受けている = silent を別に返す。
+  `scan` は答えたものだけ)→ maintainer-notes §99
   **`--udid` がこの Mac のシミュレータ一覧にも実機一覧にも無いなら、自動起動を一度も撃たずに起動時点で
   即エラー終了する**(`ApiLiveServe.udidStartupOutcome`。判定は MCP と同じ `SimulatorCatalog.lookupUDID`
   の1箇所——2つ目の判定を作らない)。**一覧そのものが読めない(unreadable)は「居ない」に畳まず進む**

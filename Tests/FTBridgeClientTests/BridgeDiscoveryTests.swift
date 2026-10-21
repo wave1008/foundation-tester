@@ -20,14 +20,14 @@ final class BridgeDiscoveryTests: XCTestCase {
     /// 既定ポートが生きていれば探索結果に関わらずそれを使う(従来挙動を変えない)
     func testAlivePreferredPortWins() {
         XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: true, preferredBound: true,
-                                              found: [found(8130)]),
+                                              found: [found(8130)], silent: []),
                        .usePreferred)
     }
 
     /// 1本だけなら自動採用(ユーザー決定)
     func testAdoptsTheOnlyRunningBridge() {
         XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: false,
-                                              found: [found(8124)]),
+                                              found: [found(8124)], silent: []),
                        .adopt(found(8124)))
     }
 
@@ -35,24 +35,24 @@ final class BridgeDiscoveryTests: XCTestCase {
     func testMultipleBridgesAreAmbiguous() {
         let decision = BridgeDiscovery.decide(
             preferredAlive: false, preferredBound: false,
-            found: [found(8130, "iPad Pro"), found(8124)])
+            found: [found(8130, "iPad Pro"), found(8124)], silent: [])
         XCTAssertEqual(decision, .ambiguous([found(8124), found(8130, "iPad Pro")]),
                        "ポート昇順で提示すること")
     }
 
     func testNoBridgeAtAll() {
         XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: false,
-                                              found: []), .none)
+                                              found: [], silent: []), .none)
     }
 
     /// **待受しているのに応答しないだけなら乗り換えない**(2026-08-06 のログ: quiescence 待ちで
     /// 33.7 秒ブロックした実績がある)。ここが緩むと別デバイスを黙って操作する
     func testBoundButSilentPreferredIsNeverAbandoned() {
         XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: true,
-                                              found: [found(8124)]),
+                                              found: [found(8124)], silent: []),
                        .preferredBusy, "1本しか無くても乗り換えてはいけない")
         XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: true,
-                                              found: []),
+                                              found: [], silent: []),
                        .preferredBusy, "他に居なくても「無い」ではなく「今は忙しい」")
     }
 
@@ -237,5 +237,76 @@ final class BridgeDiscoveryTests: XCTestCase {
         let none = BridgeDiscovery.noBridgeMessage(preferred: 8123, names: .mcp)
         XCTAssertTrue(none.contains("bridge up"), none)
         XCTAssertTrue(none.contains("\(BridgeDiscovery.portRange.upperBound)"), none)
+    }
+
+    /// **答えない待受があるのに、答えた1本を「唯一」と言って採らない**(忙しい側が利用者の端末かもしれない)
+    func testASilentListenerBlocksAdoptingTheOnlyAnsweringBridge() {
+        let silent = [BridgeDiscovery.Silent(port: 8128)]
+        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: false,
+                                              found: [found(8124)], silent: silent),
+                       .unanswered(found: [found(8124)], silent: silent))
+    }
+
+    /// 答えたもの 0 本・待受のみ有り = 「無い」ではない
+    func testOnlySilentListenersIsNotNone() {
+        let silent = [BridgeDiscovery.Silent(port: 8150), BridgeDiscovery.Silent(port: 8128)]
+        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: false,
+                                              found: [], silent: silent),
+                       .unanswered(found: [], silent: silent.sorted { $0.port < $1.port }))
+    }
+
+    /// 答えた複数は元から選ばせる(silent があっても採用へ倒れない)・既定ポートの生死が先
+    func testSilentDoesNotChangeAmbiguousOrPreferredOutcomes() {
+        let silent = [BridgeDiscovery.Silent(port: 8128)]
+        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: false,
+                                              found: [found(8124), found(8125)], silent: silent),
+                       .ambiguous([found(8124), found(8125)]))
+        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: true, preferredBound: false,
+                                              found: [], silent: silent), .usePreferred)
+        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: true,
+                                              found: [], silent: silent), .preferredBusy)
+    }
+
+    /// 答えた1本と**同じ端末の** in-app(背面のアプリ)だけが黙っているなら採る。別の端末・持ち主不明の in-app は数える
+    func testSilentInAppOfTheSameDeviceDoesNotBlockAdoption() {
+        let answered = BridgeDiscovery.Found(port: 8124, device: "iPhone 17 Pro", engine: "xcuitest", udid: "UD-1")
+        let ownInApp = BridgeDiscovery.Silent(port: 8132, udid: "UD-1", isInApp: true)
+        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: false,
+                                              found: [answered], silent: [ownInApp]), .adopt(answered))
+        let otherInApp = BridgeDiscovery.Silent(port: 8133, udid: "UD-2", isInApp: true)
+        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: false,
+                                              found: [answered], silent: [ownInApp, otherInApp]),
+                       .unanswered(found: [answered], silent: [otherInApp]))
+        let unknownInApp = BridgeDiscovery.Silent(port: 8134, udid: nil, isInApp: true)
+        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: false,
+                                              found: [answered], silent: [unknownInApp]),
+                       .unanswered(found: [answered], silent: [unknownInApp]))
+        // 同じ udid でも in-app でない(XCUITest の2本目)は数える
+        let sameDeviceRunner = BridgeDiscovery.Silent(port: 8135, udid: "UD-1", isInApp: false)
+        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: false,
+                                              found: [answered], silent: [sameDeviceRunner]),
+                       .unanswered(found: [answered], silent: [sameDeviceRunner]))
+    }
+
+    func testUnansweredMessageNamesPortsAndNeverCallsAnythingTheOnlyOne() {
+        let text = BridgeDiscovery.unansweredMessage(
+            preferred: 8123, found: [found(8124)],
+            silent: [BridgeDiscovery.Silent(port: 8128, udid: "UD-9")], names: .cliManual)
+        XCTAssertTrue(text.contains("port 8128 (udid UD-9)"), text)
+        XCTAssertTrue(text.contains("did not answer /status within 2s"), text)
+        XCTAssertTrue(text.contains("--port"), "呼び手の引数名で組む: \(text)")
+        XCTAssertFalse(text.contains("only running one"), text)
+        XCTAssertFalse(text.contains("no bridge is running"), text)
+        XCTAssertFalse(text.contains("bridge up"), "in-app でなければ前面・bridge up の案内は付けない: \(text)")
+    }
+
+    /// 黙っているのが背面の in-app なら、待っても直らないので前面へ戻すか bridge up を案内する
+    func testUnansweredMessageForABackgroundInAppSaysHowToGetOut() {
+        let text = BridgeDiscovery.unansweredMessage(
+            preferred: 8123, found: [],
+            silent: [BridgeDiscovery.Silent(port: 8132, udid: "UD-2", isInApp: true)], names: .cliManual)
+        XCTAssertTrue(text.contains("port 8132 (in-app, udid UD-2)"), text)
+        XCTAssertTrue(text.contains("bring the app to the front"), text)
+        XCTAssertTrue(text.contains("fleetest bridge up"), text)
     }
 }

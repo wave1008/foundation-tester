@@ -5266,3 +5266,43 @@ worktree の run がそれらの端末を「別のワークスペースのブリ
   同じ型の `guard let after, isDegraded(after) else { return helped }` は nil を成功へ倒す
 - 未確認: 実デバイスで階段を最後まで通していない(純粋関数と配線の走査・変異だけ)。`FT_FAKE_*` のような注入口は無い。物理端末でも `runnerRestartDidNotHelp` の印が付くと
   既存の `restartSimulator` が実機の UDID に simctl を撃つ形が残っている(今回は触っていない)
+
+## 99. 走査が「答えない」を「居ない」に畳み、忙しいランナーの端末に2本目を起動して両方を落とした(2026-10-21)
+
+- 事象(10/21 の負荷テスト): `BridgeDiscovery.scan` は全ポートへ 2 秒の窓で `/status` を撃ち、答えなかったポートを黙って捨てる。忙しい XCUITest
+  ランナー(quiescence 待ち・操作中)は待ち受けたまま 2 秒以上答えないので、次の 4 経路で「居ない」になっていた:
+  1. `bridge status`(iOS): ライブ操作中の 8128 と実機 SE3 の 8150 が 8 回中 1〜2 回一覧から消えた。全部忙しいと「no bridge is running」と言い切る
+  2. `BridgeTargetResolution.iosPort`(CLI の手動駆動の宛先省略): 既定ポートが空いて 2 本動いているとき、片方が忙しいと残りを「the only running one」と採る
+  3. ライブ操作(`--port` なし・Simulator): 自分の端末の忙しいランナーが走査に載らないと「no existing bridge」で空きポートへ自動起動 →
+     **2 本目が 1 本目を殺し、2 本目も「Test crashed with signal kill before establishing connection」で失敗して端末からブリッジが消えた**
+     (陽性対照: `bridge up` したランナーを SIGSTOP → `api live serve --udid`。実機には別ポートのランナーで断る門があったが、Simulator は
+     「接続拒否が確定した残骸を止める」だけで、待ち受けている相手が居ても起動へ進んでいた)
+  4. `XCUIBridgeResolver.start`(in-app → XCUITest の振り替えの自動起動): 3 と同じ形(コード読み)
+- 直し:
+  - `BridgeDiscovery.scanDetailed` = 答えたもの(`found`)と、待ち受けているのに答えなかったもの(`silent`。居ないの根拠は接続拒否だけ = `mayBeListening`)。
+    `scan` は found だけを返す薄い包み。呼び手の集合と「答えない」の扱いは `BridgeScanCallerAuditTests` が理由つきで固定する
+  - silent に入れるのは接続の失敗(不達・拒否 = `bridgeUnreachable` / `bridgeConnectionRefused`)だけ。HTTP で答えた失敗(実機のトークン不一致の
+    401・読めない本文)は「答えない」ではないので従来どおり載せない
+  - 1: 待受だけのポートも行に出す。「無い」は両方空のときだけ
+  - 2: `decide(... silent:)` が答えた 0〜1 本 + 沈黙ありを `.unanswered` にして採らない。**ただし答えた 1 本と同じ端末の in-app(in-app の台帳で udid が分かる)
+    だけが黙っているなら採る** —— 背面へ回ったアプリの in-app は TCP を受けたまま HTTP に答えないので、数えると普通の構成で断り続ける。
+    断る文言は、黙っているのが in-app ならアプリを前面へ戻すか `bridge up` を添える(「少し待て」だけだと待っても直らない)
+  - 3・4: `BridgeLauncher.partitionRunnersElsewhere`(ps の同じ udid のランナーを、接続拒否 = 残骸 / それ以外 = 居る に分ける純粋関数)を、ライブ操作の
+    自動起動の門(Simulator も起動を断る)・`ApiLiveServe` の乗り換え(`busyRunnerPort`)・`XCUIBridgeResolver.start` の振り替えで共有する。
+    断る文言(`LauncherError.deviceRunnerElsewhere`)は実機と Simulator で文を分けて書く —— 拡張は英文を型として照合して訳す
+    (`cliMessages.ts`・`cliMessageTranslation.test.mjs` が Swift との一致を検査)ので、主語を補間にすると訳文に英語が残る
+- 供給(`BridgeProvisioner.scanRunningBridges`)と MCP(`portForIOS` の診断・接続断の判定)は、答えないランナーを ps / `mayBeListening` で別に拾っていて同型の害は無い
+- **教訓**: 「応答の走査に載らない」は「居ない」ではない(§51.6 と同じ型)。判断(採用・起動・断定)に使う走査は「答えなかったが待ち受けている」を別の値で返し、
+  呼び手に扱いを選ばせる。生のランナーの有無は ps(xcodebuild の -destination)と接続拒否で確かめる
+
+## 100. 冒頭の clearAppData が、SpringBoard が一時的に答えない回の「Host is down」で赤になっていた(2026-10-21)
+
+- 事象: `stopOnSimulator`(clearAppData がデータを消す前・MCP の ft_terminate が「止まった」と言う前に通す simctl terminate)が終了コード 64
+  (EHOSTDOWN。CoreSimulator の文言は「The system shell (SpringBoard) probably crashed」)で失敗し、シナリオ冒頭で赤。M1Max で 10/19 から 3 回。
+  SpringBoard のクラッシュレポートは無く、同時刻に別のシミュレータの clearAppData も 16.6 秒かかった = CoreSimulator 全体の詰まりの形。
+  同じ端末の約 29 秒後のシナリオは緑(一時的)。撃ち直しは時間切れの 1 回だけで、終わったが失敗した 64 は撃ち直していなかった
+- 直し: 64 は窓(15 秒)の間、1 秒おきに撃ち直す(0 か 3 で進む)。文言でなく終了コードで分ける。通った回は標準エラーへ 1 行残す
+  (シナリオの子では run の実行ログ events の `stream: "stderr"`・MCP の ft_terminate では MCP サーバの標準エラー。結果 JSON の notes には載せない =
+  clearAppData を包むドライバ 6 種を通す口が無い)。窓が尽きたら撃ち直した回数と窓を添えて従来どおり投げる。止める操作は何度撃っても結果が同じなので二重実行の害は無い
+- **再現できていない**: SpringBoard を SIGKILL するとアプリも死んで 3、SIGSTOP すると terminate が返らず時間切れ(既存の撃ち直しの経路)で、64 は出せなかった。
+  確認は単体テスト(`StopOnSimulatorRetryTests`)と変異まで。次に M1Max で同じ文言が出たら、実行ログに「after N retries」が出たかを見る

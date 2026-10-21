@@ -13,12 +13,16 @@ final class ApiLiveLeftoverRunnerReapTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/fleetest/LiveBridgeAutoStarter.swift")
         let code = try String(contentsOf: url, encoding: .utf8)
-        guard let reap = code.range(of: "BridgeLauncher.runnersOnDevice(psOutput: ps.output, device: udid, excludingPort: port)\n"),
+        // 「拒否が確定したものだけ」の判定そのものは `partitionRunnersElsewhere`(SimulatorRunnerElsewhereGateTests)。
+        // ここは配線: 片付けは leftovers だけを回し、起動より前にある
+        guard let partition = code.range(of: "BridgeLauncher.partitionRunnersElsewhere("),
+              let reap = code.range(of: "for other in split.leftovers {"),
               let start = code.range(of: "try launcher.startDetached()") else {
             return XCTFail("残骸の片付けか起動が見当たらない")
         }
+        XCTAssertLessThan(partition.lowerBound, reap.lowerBound)
         XCTAssertLessThan(reap.lowerBound, start.lowerBound)
         let tail = String(code[reap.upperBound...].prefix(200))
-        XCTAssertTrue(tail.contains("where BridgeDiscovery.connectProbe(port: other.port, repoRoot: repoRoot) == .refused"), tail)
+        XCTAssertTrue(tail.contains("BridgeLauncher.reapRunnerProcess(pid: other.pid)"), tail)
     }
 }

@@ -43,6 +43,11 @@ public enum InAppBridgeState {
         return recorded.udid.caseInsensitiveCompare(udid) == .orderedSame
     }
 
+    /// このポートの台帳の udid(無い・読めないは nil)
+    public static func recordedUDID(stateDir: URL, port: UInt16) -> String? {
+        read(at: url(stateDir: stateDir, port: port))?.udid
+    }
+
     /// 3 語目(sourceDigest)は digest を計算できない構成では書かれず(2 語)nil になる。
     /// 読み手は nil を「出所不明」として扱うこと(= 再利用しない側に倒す)。
     /// **udid と bundleID は文法で検める**(英数・`.`・`-`・`_`、先頭が `-` でない。子 = サンドボックスの中の
