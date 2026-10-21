@@ -162,7 +162,8 @@ Command **"fleetest: Open Results Dashboard"** shows, in the device monitor's **
   Vision call and failure counts, whether the OCR model is compiling, and CPU / MEM load. The "Period" columns come from
   run history, in the order things happen: runs, slowdowns caused by load, OCR / Vision notes, FM slot waits, FM call
   failures, skipped visibility checks and runs with FM dead (hover for breakdowns and reasons). Cells with failures or stops turn to a warning color.
-  Values the monitor cannot observe, or that the records do not carry, show as "–" rather than 0
+  Values the monitor cannot observe, or that the records do not carry, show as "–" rather than 0.
+  The "Period" columns count the run history of every test project, whichever project is selected
 - **Device health**: one row per device, grouped by a Machine column. Shows the Device Monitor's current
   state (color-coded) and storage usage alongside counts from run history (excluded from run, requeued,
   pre-run exclude/repair, recovery operations, app crashes). Missing values show as "–". While

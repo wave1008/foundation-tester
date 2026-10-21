@@ -67,8 +67,17 @@ struct ApiResultsCommand: AsyncParsableCommand {
         let key = ResultsOutputCache.argumentsKey(
             arguments: [testProject.name, since, String(limit), String(minRuns), scenariosDigest],
             executable: Bundle.main.executableURL)
+        // machineHealth だけは全プロジェクトの結果から数える(機械の健全性はプロジェクトに属さない)。
+        // 他プロジェクトの run でも出力が変わるので、指紋にそれぞれの results/ の指紋を名前つきで混ぜる
+        let otherProjects = ScenarioHost.packageRoot().map { root in
+            ProjectStore.all(repoRoot: root).filter { $0.name != testProject.name }
+        } ?? []
         // 指紋は走査より先に取る(順序の理由は scanFingerprint の doc)
-        let scanDigest = RunResultsStore.scanFingerprint(resultsDir: resultsDir, since: sinceDate)
+        let scanDigest = ([RunResultsStore.scanFingerprint(resultsDir: resultsDir, since: sinceDate)]
+            + otherProjects.map { other in
+                other.name + "\u{1}" + RunResultsStore.scanFingerprint(
+                    resultsDir: RunResultsStore.resultsDir(projectRoot: other.rootURL), since: sinceDate)
+            }).joined(separator: "\u{2}")
 
         if !noCache,
            let output = cachedOutput(stateDir: stateDir, resultsDir: resultsDir, key: key,
@@ -87,6 +96,14 @@ struct ApiResultsCommand: AsyncParsableCommand {
         // trend(--scenario)だけは元ファイルを読み直す(RunResultsStore.fullRecords)
         let records = entries.map(\.record)
         let recentRuns = RunResultsQuery.recentRuns(runs, limit: limit)
+        let otherScans = otherProjects.map { other in
+            RunResultsStore.scanRunsAndRecords(
+                resultsDir: RunResultsStore.resultsDir(projectRoot: other.rootURL), since: sinceDate,
+                packCacheDir: RunRecordPack.cacheDir(stateDir: other.stateDir),
+                executableKey: ResultsOutputCache.executableFingerprint(executable: Bundle.main.executableURL))
+        }
+        let machineRuns = runs + otherScans.flatMap(\.runs)
+        let machineRecords = records + otherScans.flatMap { $0.entries.map(\.record) }
 
         let body = ApiResultsBody(
             schemaVersion: 1,
@@ -97,7 +114,7 @@ struct ApiResultsCommand: AsyncParsableCommand {
             flaky: RunResultsQuery.flakyScenarios(
                 records, minRuns: minRuns, recentRuns: RunResultsQuery.recentScenarioRunsWindow),
             deviceHealth: RunResultsQuery.deviceHealth(runs: runs, records: records),
-            machineHealth: RunResultsQuery.machineHealth(runs: runs, records: records),
+            machineHealth: RunResultsQuery.machineHealth(runs: machineRuns, records: machineRecords),
             slow: RunResultsQuery.slowTests(records, limit: 10),
             insights: RunResultsQuery.insights(records: records, runs: runs,
                                                definedClasses: definedScenarioClasses(of: testProject)),
@@ -113,8 +130,8 @@ struct ApiResultsCommand: AsyncParsableCommand {
             return String(decoding: try encoder.encode(RunResultsQuery.trend(fullRecords, scenarioID: id)), as: UTF8.self)
         }
 
-        // 窓に含めた最古の startedAt(run.json と記録の両方。どちらかが落ちれば出力が変わる)
-        let oldestIncluded = (runs.map(\.startedAt) + records.map(\.startedAt)).min()
+        // 窓に含めた最古の startedAt(run.json と記録の両方・machineHealth が読む他プロジェクトの分も。どれかが落ちれば出力が変わる)
+        let oldestIncluded = (machineRuns.map(\.startedAt) + machineRecords.map(\.startedAt)).min()
         let resultsPrefix = resultsDir.path + "/"
         let trendFiles = Dictionary(grouping: entries, by: \.record.scenarioID).mapValues { group in
             group.map { entry -> String in

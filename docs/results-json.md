@@ -616,7 +616,8 @@ LC_UUID が入るので再ビルドでコールドに戻る。docs/performance-t
 ## マシンの健全性(`fleetest api results` の `machineHealth`)
 
 `machineHealth: [MachineHealthRow]`(必須欄。プロトコル版 49→50)。**1行 = 1台の Mac(host)**で、FM・OCR・Vision の
-集計期間(`--since` の窓)の事実を並べる(判定・総合点は置かない)。**窓に run.json か scenarios 記録が1つでもある host は、
+集計期間(`--since` の窓)の事実を並べる(判定・総合点は置かない)。**`--project` では絞らない** —— TestProjects/ の全プロジェクトの
+`results/` を同じ窓で走査して数える(機械の健全性はプロジェクトに属さない。他の集計は `--project` のものだけ)。**窓に run.json か scenarios 記録が1つでもある host は、
 事象が全部 0 でも出す**(`deviceHealth` と逆)。host 昇順。**欠けている値は 0 で埋めず null**。
 
 | フィールド | 型 | 意味 |
@@ -656,7 +657,7 @@ LC_UUID が入るので再ビルドでコールドに戻る。docs/performance-t
   **シナリオソースの指紋**(`ScenarioFolders.directorySignature(scenariosDir:)`。TestProjects の
   `scenarios/` 配下の .swift のパス・mtime・size)+ 実行ファイルの
   mtime・size(ビルドし直せば必ず外れる = 集計や契約を変えたときにキャッシュの版を手で上げる規律に
-  頼らない)+ 入力の指紋(**`results/` 側**。走査する run ごとに `run.json` と `scenarios/` ディレクトリの
+  頼らない)+ 入力の指紋(**`results/` 側**。`machineHealth` が読む他プロジェクトの `results/` の指紋も名前つきで混ぜる。走査する run ごとに `run.json` と `scenarios/` ディレクトリの
   stat 2回。記録の追加・削除・finish の上書き・rsync 回収はどれもエントリの作成/rename/削除なので
   必ず動く)。**捕まえないのは rename 無しの in-place 書き換えだけ**(記録の規律の外)。
   **進行中の run は存在だけを鍵に入れる**(`scenarios/` の mtime が `run.json` より新しい run =
