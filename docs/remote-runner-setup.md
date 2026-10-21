@@ -49,7 +49,7 @@ fleetest run --runner mac2 …             ~/fleetest-runner/               ← 
 | 電源 | システムスリープ無効(ディスプレイスリープと画面ロックは可) | `pmset -g \| grep " sleep"` |
 | ネットワーク | リモートログイン ON・鍵で入れる。画面共有 ON を推奨。**開けるのは発行側 → ランナー機の SSH 1本だけ**(手元の Mac に着信は要らない。転送も成果物回収もライブ映像もこの接続の中を通る) | 下のステップ1 |
 | ファイアウォール | **ファイアウォールが OFF なら何もしなくてよい**。ON なら**「すべての着信接続をブロック」が OFF** であること(ON にすると sshd ごと落ちる。ファイアウォール自体は ON のままでよい) | `/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate` が `disabled` ならここまで。`enabled` なら同 `--getblockall` が `disabled` |
-| Homebrew | **入っていて**、**その macOS を知っている版であること**(無いと `xcodegen` を入れられない。古い brew は `unknown or unsupported macOS version` で**起動自体が失敗**し、`xcodegen` を入れられない) | `brew --version` が動くこと |
+| Homebrew | **入っていて**、**その macOS を知っている版であること**(無いと Node.js を入れられない。古い brew は `unknown or unsupported macOS version` で**起動自体が失敗**する) | `brew --version` が動くこと |
 | ネットワーク | git が GitHub へ出られること(使っていない社内プロキシの設定が残っていると clone で数十秒待たされて失敗する。プロキシを設定したことが無ければ対象外) | `git config --global --get-regexp proxy` が空(出たものが今のネットワークで使うプロキシなら可) |
 | Android | Android SDK と AVD(Android を回すときだけ)。SDK は `~/Library/Android/sdk` か `ANDROID_HOME` で見つける(**シェルの rc は読まれない** —— ディスパッチは非対話 ssh なので `~/.zshrc` の PATH/ANDROID_SDK_ROOT は効かない。ツールは adb・emulator・bundletool の `--adb` を自力で解決するので、標準の場所にある限り設定は要らない) | `fleetest doctor` |
 
@@ -76,13 +76,13 @@ sudo や GUI が要るものはインストーラでは行わない(無人機に
    それぞれの Xcode を `/Applications` 直下に別名(`Xcode_27.app` 等)で並べて入れる** ——
    ディスパッチが発行側に合う方を自動で選ぶので、既存の Xcode を消す必要はない。
    ダウンロードは <https://developer.apple.com/jp/download/>
-5. **Homebrew** — `xcodegen` を入れるのに要る。**一度も入れていなければ**
+5. **Homebrew** — Node.js を入れるのに要る。**一度も入れていなければ**
    `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`
    (<https://brew.sh/ja/>。途中でログインパスワードを聞かれる。終わったら表示される「Next steps」の
    コマンドを実行する)。入っていれば `brew --version` が通ること。**しばらく更新していない機械は要注意**:
    古い brew は新しい macOS を知らず、コマンドが1つも動かない。その場合は
    `git -C /opt/homebrew fetch origin && git -C /opt/homebrew reset --hard origin/master` で更新する
-   (`brew update` 自体が動かないため git で入れ替える)。`xcodegen` は install.sh が入れる
+   (`brew update` 自体が動かないため git で入れ替える)。Node.js は install.sh が入れる
 6. **git のプロキシ設定を確認**(git にプロキシを設定したことがある機械だけ。無ければ何もしなくてよい)
    — `git config --global --get-regexp proxy` が何か出し、それが**いまのネットワークで使われていない**
    なら clone が失敗するので `git config --global --unset-all http.proxy`(`https.proxy` も)で消す。
@@ -360,7 +360,7 @@ fleetest remote status --runner <ユーザー>@<ホスト>
 
 ```
 HOST          REACHABLE  LOGIN  REV          TOOLCHAIN     RUNTIME             FM  BINARY  FREE
-user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 24A434  -   yes     412 GB
+user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode27…   ✅ iOS 27.0: 24A434  -   yes     412 GB
 ```
 
 `TOOLCHAIN` は3値: **✅** = 発行側の製品版に一致する Xcode がランナーで選べている /
@@ -755,9 +755,8 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | `must not contain ':'` / 非標準ポートを指定できない | 宛先にポートを書いた(`host:2222`) | `~/.ssh/config` の Host エイリアスに畳んで、そのエイリアスを宛先にする(「別のネットワーク(ルーター越し)のランナー」) |
 | `remote setup` が preflight で warn 終了(exit 2) | ランナー機に人手の項目が残っている | 出力に列挙された操作を行い、同じコマンドを再実行(冪等) |
 | `Failed to connect to <名前> port 8080`(clone が75秒待って失敗) | ランナー機の git に古いプロキシ設定が残っている | `git config --global --unset-all http.proxy` / 同 `https.proxy`（必要な環境ならプロキシ側を直す） |
-| `neither xcodegen nor Homebrew is available` | ランナー機に Homebrew が入っていない | ステップ0の5で Homebrew を入れてから `remote setup` を再実行 |
-| `xcodegen was not found on PATH (…) or in /opt/homebrew/bin, /usr/local/bin, ~/.local/bin`(ブリッジの版が上がった直後の run・`fleetest doctor`) | ランナー機の xcodegen が、非対話の ssh の PATH にも Homebrew の場所にも `~/.local/bin` にも無い(手で別の場所に置いた・入れていない) | Homebrew で入れる(`brew install xcodegen`)か、Homebrew を使えない機械では実行ファイルを `~/.local/bin` に置く |
-| `unknown or unsupported macOS version` / `brew install xcodegen failed` | Homebrew がその macOS を知らない古い版（brew が1つも動かない） | `git -C /opt/homebrew fetch origin && git -C /opt/homebrew reset --hard origin/master` |
+| `Xcode 27.2 or later is required` | ランナー機の Xcode が 27.2 未満(ブリッジのプロジェクトは Xcode 27.2 の形式 `project.xcproj`) | ランナー機の Xcode を App Store で 27.2 以上へ上げてから `remote setup` を再実行 |
+| `unknown or unsupported macOS version` | Homebrew がその macOS を知らない古い版（brew が1つも動かない） | `git -C /opt/homebrew fetch origin && git -C /opt/homebrew reset --hard origin/master` |
 | `cannot resolve the local project` | 手元にプロジェクトが複数 | `--project <名前>` を付ける |
 | `is sitting at the login window` | ランナー機がログイン画面 | 解錠してログイン(画面共有) |
 | `setup script exited with status 1` で**シナリオが0本**。手でランナーの画面から同じスクリプトを流すと通る | **ssh 越しに起こしたプロセスはローカルネットワーク権限を取れない**(許可を与える相手がシステム設定の一覧に現れない)。依存サービスが同じ機械の別アドレス(コンテナの 192.168.64.x 等)へ出ようとして `EHOSTUNREACH` | 依存サービスへの接続先を **`127.0.0.1` にする**(コンテナ実行基盤は loopback へ publish していることが多い)。LAN 越しが要るなら、そのサービスをランナーの GUI セッションで常駐させる |

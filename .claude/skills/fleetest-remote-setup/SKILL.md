@@ -75,7 +75,7 @@ ssh -o BatchMode=yes -o ConnectTimeout=10 <宛先> 'echo ok'
 fleetest remote setup <宛先> --project <プロジェクト>
 ```
 
-**初回は数分〜十数分かかる**(clone・xcodegen 導入・`swift build` のコールドビルド)。
+**初回は数分〜十数分かかる**(clone・`swift build` のコールドビルド)。
 逐次1行ずつ出るので、無音でなければ進んでいる。
 
 align は発行側の実行ファイルを一時転送し、**FM の安全な退役・起動予約 → checkout・ビルド → 新常駐の起動元・版確認**
@@ -107,7 +107,7 @@ FM が未起動ならビルドだけを行い、FM は起こさない。常駐�
 - Xcode を手元と同じ版にし、`sudo xcodebuild -license accept` / `xcodebuild -runFirstLaunch`。
   **すでに別の製品版が `/Applications` に入っている場合は消さず、別名(`Xcode_27.app` 等)で
   並べて入れる**(ディスパッチが発行側に合う方を自動で選ぶ)
-- Homebrew が**入っていて**、**その macOS を知っている版**であること(無いと xcodegen を入れられない。
+- Homebrew が**入っていて**、**その macOS を知っている版**であること(無いと VSCode 拡張のビルドに使う Node.js を入れられない。
   古いと brew が1つも動かない)。未導入なら
   `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"` を
   ランナー機で人が実行する(パスワード入力があるので代行しない)

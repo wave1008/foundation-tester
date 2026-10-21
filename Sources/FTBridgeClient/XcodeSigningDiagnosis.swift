@@ -32,7 +32,7 @@ import Foundation
 ///     (-allowProvisioningUpdates)は有効な証明書があればそれを使うが、失効した証明書が
 ///     残っているとそちらを掴んで落ちる(M1Ultra で実測: 両方あった)
 ///   - **プロジェクトの Signing & Capabilities では直せない** —— ランナーの .xcodeproj は
-///     xcodegen が生成し(generateProjectIfNeeded)、ビルドのたびに DEVELOPMENT_TEAM を
+///     コミットされた project.xcproj で、ビルドのたびに DEVELOPMENT_TEAM を
 ///     コマンドラインで上書きする(codeSigningArguments)。**Team の正は fleetest の設定**
 ///   - keychainLocked は **ssh 越しのビルド固有** —— GUI セッションでは出ない。
 ///     **鍵の ACL の問題ではない**(`security set-key-partition-list` は不要だった。M1Ultra で実測)。

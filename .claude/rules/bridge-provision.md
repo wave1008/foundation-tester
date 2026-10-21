@@ -5,7 +5,7 @@ paths:
   - "AndroidRunner/prebuilt/ftbridge.apk"
   - "InAppBridge/**"
   - "Runner/**"
-  - "Runner/project.yml"
+  - "Runner/FleetestRunner.xcodeproj/project.xcproj"
   - "Sources/FTAndroid/ProfileWorkerFactory.swift"
   - "Sources/FTBridgeClient/**"
   - "Sources/FTBridgeClient/BridgeDiscovery.swift"
@@ -55,6 +55,10 @@ paths:
 
 CLAUDE.md から移した規則(本文は移設前と同一)。この領域のファイルを Read したときに自動で読み込まれる。
 
+- **ランナーは `Runner/FleetestRunner.xcodeproj/project.xcproj` を直接編集する**(xcodegen は無い。手書きで作り直さない = 既定値が抜ける)。
+  ソースはフォルダ同期なのでフォルダへファイルを足すだけでターゲットに入る。**共有 FTCore ファイルを足すときは xcproj の FTCore グループと
+  `BridgeSourceSet.xcuitest` の両方に足す**(等号を `BridgeLauncherRebuildTests` が固定)。Xcode 27.2 未満の xcodebuild は xcproj を開けない
+  → maintainer-notes §102
 - **ブリッジの挙動・エンドポイントを変えたら版を上げる** → maintainer-notes §4.4。
   iOS = `Sources/FTCore/BridgeDTO.swift` の `bridgeProtocolVersion`(in-app dylib と XCUITest
   ランナーの共通定数)/ Android = `AndroidRunner/build.sh` の `VERSION_CODE` と
@@ -67,7 +71,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **試行的な変更ほどブリッジに入れない**。
   **ブリッジの入力ファイル一覧は `Sources/FTCore/BridgeSourceSet.swift` が唯一の定義元**
   (`InAppLauncher` の dylib 再ビルド判定と、XCUITest ランナーの作り直し判定 `BridgeLauncher.newestRunnerSourceTimestamp`
-  も同じ一覧を使う。片方だけ変えない。ランナーが取り込む共有 FTCore ファイルは `Runner/project.yml` と
+  も同じ一覧を使う。片方だけ変えない。ランナーが取り込む共有 FTCore ファイルは `Runner/FleetestRunner.xcodeproj/project.xcproj` と
   この一覧の等号を `BridgeLauncherRebuildTests` が固定する)
 - **「応答しない」を busy と死で分けるのは所要時間**(`BridgeDiscovery.probeStatus` の4値)。
   健全 = HTTP 応答が返る(**ステータスコードで判定しない** —— 実機はトークン不一致の 401 を返す)/

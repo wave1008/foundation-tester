@@ -270,8 +270,8 @@ foundation-tester/
 │   ├── FTBridgeClient/            # iOS ブリッジ HTTP クライアント + SimulatorCatalog / BridgeProvisioner
 │   ├── FTAndroid/                 # AndroidDriver + AndroidBridge / AndroidDeviceCatalog / ProfileWorkerFactory
 │   └── fleetest-mcp/               # MCP サーバ(stdio、自前実装)
-├── Runner/                        # xcodegen 定義 + iOS ブリッジ本体
-│   ├── project.yml                #   xcodegen 用プロジェクト定義
+├── Runner/                        # iOS ブリッジ本体
+│   ├── FleetestRunner.xcodeproj/   #   project.xcproj(Xcode 27.2 の JSON プロジェクト形式)がソース。ソースはフォルダ同期
 │   ├── FleetestRunnerApp/          #   空のホストアプリ(UIテストの器)
 │   └── FleetestRunnerUITests/      #   HTTP サーバ内蔵の常駐 UI テスト(§4.1〜4.2)
 ├── AndroidRunner/                 # Android ブリッジ本体(§4.5。詳細は AndroidRunner/README.md)
@@ -4577,7 +4577,7 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
   書く場所を差し替える `FT_*_DIR`(`redirectedDirectoryKeys`)は**書ける場所の中を指すときだけ**通し、外なら
   起動前に止める(足す形にすると `~/Library/LaunchAgents` 等を書けるようにできる。新しい `FT_*_DIR` は、この一覧か
   「子が書かない」表のどちらかへ載せるまで `EnvironmentKeyLiteralTests` が落とす)・`FT_TOOL_ROOT` は
-  ツール本体の目印(`Runner/project.yml`)があるときだけ採る
+  ツール本体の目印(`Runner/FleetestRunner.xcodeproj/project.xcproj`)があるときだけ採る
 - **子の環境は許可リストで作る**(`SandboxedLaunch.childEnvironment(base:)` = `ScenarioSandbox.inheritedEnvironment`
   で親の環境を絞ってから入口の分を足す。3経路とも。一覧取得は `/usr/bin/env -i`)。親の環境を継がせると
   `.mcp.json` の `env` やシェルのトークンをシナリオが読める。**子が読む環境変数を足したら許可リストにも足す**

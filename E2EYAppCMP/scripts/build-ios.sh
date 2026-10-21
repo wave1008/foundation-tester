@@ -4,13 +4,6 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-if ! command -v xcodegen >/dev/null 2>&1; then
-  echo "xcodegen 未インストール。'brew install xcodegen' を実行してください。" >&2
-  exit 1
-fi
-
-(cd iosApp && xcodegen generate)
-
 # generic destination は ARCHS に x86_64 を混入させ、Compose(iosSimulatorArm64 のみ配信)の
 # syncComposeResourcesForIos が "Unknown iOS simulator arch: 'x86_64'" で落ちる。arm64 固定で回避。
 xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \

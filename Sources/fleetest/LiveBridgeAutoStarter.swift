@@ -6,7 +6,7 @@
 // 失敗で idle に戻り再トリガー可、ただし連続 maxConsecutiveFailures 回失敗したら failed(恒久、
 // 以後 noteConnectionRefused を呼んでも起動しない。xcodebuild の無限リトライ防止)。
 //
-// 罠: generateProjectIfNeeded/buildForTesting/startDetached は Shell.run の同期ブロッキングで
+// 罠: buildForTesting/startDetached は Shell.run の同期ブロッキングで
 // 数分かかりうる。actor メソッド内で直接実行すると、これを await する serve のコマンドループ
 // 全体が固まる。そのため起動処理は launchBridge(nonisolated static)を Task.detached で
 // actor の外で実行し、完了後だけ actor のメソッド(finishLaunch)で状態を更新する。
@@ -313,7 +313,6 @@ actor LiveBridgeAutoStarter {
                 releaseLockOnce()
                 return .failure(AutoStarterError.portHeldByForeignProcess(port: port, holder: holder))
             }
-            try launcher.generateProjectIfNeeded()
             try launcher.rebuildIfStale()
             do {
                 try launcher.startDetached()

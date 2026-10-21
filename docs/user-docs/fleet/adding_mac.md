@@ -95,7 +95,7 @@ do them for you.
    - You can create Emulators (AVDs) in Android Studio's Device Manager. You can also create them
      from fleetest in Step 4.
 7. **Install Homebrew**. In Step 3, fleetest uses Homebrew to install a tool it needs
-   (xcodegen) automatically, so Homebrew is required.
+   (Node.js) automatically, so Homebrew is required.
    - **If Homebrew has never been installed**: run the following command in the terminal (the
      instructions are also at <https://brew.sh/>). It asks for the runner's login password partway
      through.
@@ -329,7 +329,7 @@ fleetest remote status --runner M1Max
 
 ```
 HOST          REACHABLE  LOGIN  REV          TOOLCHAIN     RUNTIME             FM  BINARY  FREE    LOCK
-user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 24A434  -   yes     412 GB  -
+user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode27…   ✅ iOS 27.0: 24A434  -   yes     412 GB  -
 ```
 
 | What you see | Meaning | What to do |
@@ -439,7 +439,7 @@ Bring fleetest on the runner M1Max to the same version as my Mac.
 | `cannot reach … over ssh` | Key login does not work, or the destination is wrong | Redo Step 1 |
 | `must not contain ':'` | You wrote a port number in the destination (`host:2222`) | Define an alias in `~/.ssh/config` and use it as the destination |
 | `remote setup` ends with exit code `2` | Some items on the runner still need a person | Fix the listed items and run the same command again |
-| `neither xcodegen nor Homebrew is available` | Homebrew is not installed on the runner | Install Homebrew (item 7 of Step 0), then run `fleetest remote setup` again |
+| `Xcode 27.2 or later is required` | The runner's Xcode is older than 27.2 | Update Xcode on the runner from the App Store, then run `fleetest remote setup` again |
 | `is sitting at the login window` | The runner is at the login window | Log in, for example over Screen Sharing |
 | `git revision mismatch` | Your Mac and the runner are on different versions | Run `fleetest remote setup M1Max` again |
 | `toolchain mismatch` | No Xcode on the runner matches your Xcode product version (the macOS version is not compared; a beta build number difference alone does not trigger this message) | Install the matching Xcode product version on the runner, under `/Applications` (you don't need to remove the one already there) |

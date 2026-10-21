@@ -228,13 +228,13 @@ final class ScenarioSandboxTests: XCTestCase {
     }
 
     func testStateRootsCollectThePackageTheCheckoutTheOverrideAndTheExecutableAncestor() throws {
-        for sub in ["work/.build/checkouts/tool-a/Runner", "work/.build/checkouts/other",
-                    "override/Runner", "clone/Runner", "clone/.build/debug", "not-a-tool"] {
+        for sub in ["work/.build/checkouts/tool-a/Runner/FleetestRunner.xcodeproj", "work/.build/checkouts/other",
+                    "override/Runner/FleetestRunner.xcodeproj", "clone/Runner/FleetestRunner.xcodeproj", "clone/.build/debug", "not-a-tool"] {
             try FileManager.default.createDirectory(
                 at: root.appendingPathComponent(sub), withIntermediateDirectories: true)
         }
-        for sub in ["work/.build/checkouts/tool-a/Runner/project.yml", "clone/Runner/project.yml",
-                    "override/Runner/project.yml"] {
+        for sub in ["work/.build/checkouts/tool-a/Runner/FleetestRunner.xcodeproj/project.xcproj", "clone/Runner/FleetestRunner.xcodeproj/project.xcproj",
+                    "override/Runner/FleetestRunner.xcodeproj/project.xcproj"] {
             try Data().write(to: root.appendingPathComponent(sub))
         }
         let roots = ScenarioSandbox.stateRoots(

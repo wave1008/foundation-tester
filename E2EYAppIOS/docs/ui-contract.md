@@ -66,4 +66,4 @@ cd E2EYAppIOS
 ./scripts/build-ios.sh    # → dist/ios-simulator/FTE2EYIOS.app
 ```
 
-`xcodegen` が必要(`brew install xcodegen`)。
+プロジェクトは `project.xcproj`(Xcode 27.2+ の JSON プロジェクト形式)がソース。`Info.plist` もコミットするソース(URL スキーム等は直接編集する)。

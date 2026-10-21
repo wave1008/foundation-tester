@@ -21,7 +21,7 @@
 #                                   # align 済みのコミット + そこの clone の中身なので、ツールを直したら
 #                                   # commit → Scripts/align.sh → これ、の順。E2E をこの Mac(`e2e.sh --local`)で
 #                                   # 回しながら E2EX を M1Ultra で回すのが既定の分担(ユーザー指示 2026-09-28)。
-#                                   # 向こうに要る道具(xcodegen / Flutter / CocoaPods / node)は ~/.zshrc の
+#                                   # 向こうに要る道具(Flutter / CocoaPods / node)は ~/.zshrc の
 #                                   # fleetest-tools ブロックの PATH にある
 #
 # **プロファイルは -01〜-08 の8台を名前で指す(udid を持たない)**ので、同名のデバイスを持つどの機でも同じ
@@ -162,7 +162,7 @@ for sut in $SUTS; do
   case "$sut" in
     cmp)
       run_sut E2EXAppCMP E2EX-CMP dist/ios-simulator/FTE2EX.app dist/android/ft-e2ex-debug.apk \
-        "composeApp/src iosApp/iosApp iosApp/project.yml composeApp/build.gradle.kts gradle/libs.versions.toml gradle/wrapper/gradle-wrapper.properties settings.gradle.kts build.gradle.kts" \
+        "composeApp/src iosApp/iosApp iosApp/iosApp.xcodeproj/project.xcproj composeApp/build.gradle.kts gradle/libs.versions.toml gradle/wrapper/gradle-wrapper.properties settings.gradle.kts build.gradle.kts" \
         "composeApp/src composeApp/build.gradle.kts gradle/libs.versions.toml gradle/wrapper/gradle-wrapper.properties settings.gradle.kts build.gradle.kts" ;;
     flutter)
       run_sut E2EXAppFlutter E2EX-Flutter dist/ios-simulator/FTE2EXFlutter.app dist/android/ft-e2ex-flutter-debug.apk \
@@ -173,7 +173,7 @@ for sut in $SUTS; do
     android-native)
       run_sut E2EXAppAndroid E2EX-Android "" dist/android/ft-e2ex-android-debug.apk "" "app/src app/build.gradle.kts gradle/libs.versions.toml gradle/wrapper/gradle-wrapper.properties settings.gradle.kts build.gradle.kts" ;;
     ios-native)
-      run_sut E2EXAppIOS E2EX-iOS dist/ios-simulator/FTE2EXIOS.app "" "Sources project.yml" "" ;;
+      run_sut E2EXAppIOS E2EX-iOS dist/ios-simulator/FTE2EXIOS.app "" "Sources FTE2EXIOS.xcodeproj/project.xcproj" "" ;;
   esac
 done
 

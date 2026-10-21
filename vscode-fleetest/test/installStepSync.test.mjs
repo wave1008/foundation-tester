@@ -70,7 +70,7 @@ test("install.sh の主要ステップが SKILL.md 側にも残っている", ()
   // ただし install.sh が自動化している中核ステップが SKILL.md から消えるのは採番事故なので見る。
   const skill = readFileSync(path.join(ROOT, SKILL_MD), "utf8");
   const declared = skillSteps(skill);
-  for (const core of ["0", "1", "2", "4", "7"]) {
+  for (const core of ["0", "2", "4", "7"]) {
     assert.ok(
       declared.has(core),
       `${SKILL_MD} に中核ステップ ${core} の見出しがありません(install.sh が参照しています)`,

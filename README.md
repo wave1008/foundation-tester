@@ -34,7 +34,7 @@
 | 対象 | 要件 |
 |---|---|
 | 共通 | macOS 26+。Apple silicon の Mac(Intel Mac は対象外)。Apple Intelligence(Foundation Models)は**任意** — FM 視覚検証・シナリオ生成に使う(自己修復は使わない)。後から有効化すればそのまま使える |
-| iOS(テストするなら) | Xcode 26+、iOS シミュレータ、xcodegen |
+| iOS(テストするなら) | Xcode 27.2+、iOS シミュレータ |
 | Android(テストするなら) | Android SDK(adb)、エミュレータまたは実機 |
 
 > **iOS / Android は両方揃える必要はない**。テストする側だけ用意すればよく、少なくとも片方があればよい。
@@ -116,15 +116,11 @@ bash ../foundation-tester/Scripts/install.sh
 `doctor` が各ステップの導入状況を確認できるので、詰まったら随時 `swift run fleetest doctor` を実行する。
 
 ```bash
-# 1. iOS ブリッジ生成に必要な xcodegen を入れる(未導入だと bridge/start-device が
-#    「xcodegen: No such file or directory」で失敗する)
-brew install xcodegen
-
-# 2. 本体をビルド(全プロダクト。fleetest 本体＋映像ストリーミングヘルパー
+# 1. 本体をビルド(全プロダクト。fleetest 本体＋映像ストリーミングヘルパー
 #    fleetest-simstream / fleetest-androidstream ＋ MCP サーバをまとめて生成)
 swift build
 
-# 3. 事前診断(FM 可用性・Xcode・xcodegen・シミュレータ・adb をまとめて確認)
+# 2. 事前診断(FM 可用性・Xcode・シミュレータ・adb をまとめて確認)
 swift run fleetest doctor
 
 # 4. (プロファイル実行や VSCode 拡張を使う場合)デバイス定義を用意する
@@ -614,7 +610,7 @@ Sources/
   FTEmulatorGrpc/  Android エミュレータの gRPC(EmulatorController)直叩き。スクリーンショット等を adb より高速に取得し、失敗時は FTAndroid が adb へフォールバックする
   FTRemote/        リモートの純粋ロジック(SSH ディスパッチ・登録簿の解決・dispatch.lock・占有・setup 計画。利用側は fleetest CLI だけ)
   FTTestSupport/   テスト専用の共有資源ロック・実アプリ固定コーパスの読み込み(production からは import しない)
-Runner/            xcodegen 定義 + ブリッジ本体(HTTP サーバ内蔵 UI テスト)
+Runner/            ブリッジ本体(project.xcproj + HTTP サーバ内蔵 UI テスト)
 SampleApp/         検証用 SwiftUI デモアプリ(test@example.com / password123)
 vscode-fleetest/    VSCode 拡張(UI 入口。詳細は vscode-fleetest/README.md)
 docs/              設計書・実装知見

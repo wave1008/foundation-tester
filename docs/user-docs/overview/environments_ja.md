@@ -9,14 +9,13 @@
 | 対象 | 要件 |
 |---|---|
 | マシンと OS | Apple silicon の Mac、macOS 26+ |
-| Xcode | Xcode 26+(<https://apps.apple.com/jp/app/xcode/id497799835>) |
+| Xcode | Xcode 27.2+(<https://apps.apple.com/jp/app/xcode/id497799835>) |
 | Homebrew | Homebrew(<https://brew.sh/ja/>) |
 | VSCode | VSCode(<https://code.visualstudio.com/docs/setup/mac>) |
 | Android SDK | Android SDK(adb・Command-line Tools)(<https://developer.android.com/studio/install?hl=ja>) |
 
 ### 自動でインストールされるもの
 
-- xcodegen
 - Node.js
 - VSCode 拡張(fleetest mobile)
 - iOS Simulator のランタイムと Simulator

@@ -82,7 +82,7 @@ final class RemoteSetupTests: XCTestCase {
                 + "bash '/tmp/preflight.sh' '--runner' '--base' '/x'; ft_status=$?; rm -f '/tmp/preflight.sh'; exit $ft_status")
     }
 
-    /// 非対話 ssh の PATH には Homebrew が入らない。install.sh は brew から xcodegen を入れるので、
+    /// 非対話 ssh の PATH には Homebrew が入らない。install.sh は brew を使う(node の導入)ので、
     /// これが抜けると**入っているのに「Homebrew が無い」で落ちる**(remoteRunCommand と同じ規律)
     func testRunAndCleanupCommandPrependsHomebrewToPath() {
         let command = RemoteSetupPlan.runAndCleanupCommand(remotePath: "/tmp/x.sh", args: [])

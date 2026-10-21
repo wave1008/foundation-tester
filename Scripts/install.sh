@@ -357,6 +357,16 @@ fi
 xcode_version="$(xcodebuild -version 2>/dev/null)"
 # `xcodebuild -version | head -1` はダメ(pipefail 下で SIGPIPE を失敗と誤判定する。preflight.sh の
 # first_line のコメント参照)。パラメータ展開で1行目を取る
+# 最低版は Sources/FTCore/XcodeRequirement.swift と同じ(27.2。ブリッジのプロジェクトが Xcode 27.2 の形式)。
+# 1行目が `Xcode <数字>.<数字>...` と読めないときは止めない
+xcode_first="${xcode_version%%$'\n'*}"
+xcode_num="${xcode_first#Xcode }"
+if [[ "$xcode_num" =~ ^([0-9]+)\.([0-9]+) ]]; then
+  xcode_major="${BASH_REMATCH[1]}"; xcode_minor="${BASH_REMATCH[2]}"
+  if [ "$xcode_major" -lt 27 ] || { [ "$xcode_major" -eq 27 ] && [ "$xcode_minor" -lt 2 ]; }; then
+    die "prerequisites" "Xcode 27.2 or later is required (found ${xcode_first}). Update Xcode from the App Store, then re-run" 0
+  fi
+fi
 record "prerequisites" ok "macOS $(sw_vers -productVersion) / ${xcode_version%%$'\n'*}"
 fi
 
@@ -636,20 +646,6 @@ fi
 record "layout" ok "$LAYOUT (TOOL_ROOT=$TOOL_ROOT / WORK_DIR=$WORK_DIR)"
 
 FT="$TOOL_ROOT/.build/debug/fleetest"
-
-# ---- 1. xcodegen(SKILL ステップ1) --------------------------------------------
-if command -v xcodegen >/dev/null 2>&1; then
-  record "xcodegen" skip "already installed"
-elif command -v brew >/dev/null 2>&1; then
-  echo "==> brew install xcodegen"
-  if brew install xcodegen; then
-    record "xcodegen" ok "installed via brew"
-  else
-    die "xcodegen" "brew install xcodegen failed (required to generate the iOS bridge)" 1
-  fi
-else
-  die "xcodegen" "neither xcodegen nor Homebrew is available (brew install xcodegen is required)" 1
-fi
 
 # ---- 2. ビルド(SKILL ステップ2) ----------------------------------------------
 # 変数名の直後に日本語を置くときは必ず ${} で囲む(マルチバイト先頭バイトが変数名に食われる)

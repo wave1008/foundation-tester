@@ -92,7 +92,7 @@ fleetest は代わりに行いません。
      `~/.zshrc` などで設定した `ANDROID_HOME` は読まれません(fleetest は `ANDROID_HOME` → `ANDROID_SDK_ROOT` → 既定の場所の順に探します)。既定の場所なら何も設定しなくてよい。
    - Emulator(AVD)は Android Studio の Device Manager で作れます。ステップ4で fleetest から
      作ることもできます。
-7. **Homebrew をインストールする**。ステップ3で fleetest が必要なツール(xcodegen)を Homebrew で
+7. **Homebrew をインストールする**。ステップ3で fleetest が必要なツール(Node.js)を Homebrew で
    自動で入れるので、Homebrew が要ります。
    - **Homebrew を入れたことがない場合**: ターミナルで次のコマンドを実行します(手順は
      <https://brew.sh/> にもあります)。途中でランナー機のログインパスワードを聞かれます。
@@ -323,7 +323,7 @@ fleetest remote status --runner M1Max
 
 ```
 HOST          REACHABLE  LOGIN  REV          TOOLCHAIN     RUNTIME             FM  BINARY  FREE    LOCK
-user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 24A434  -   yes     412 GB  -
+user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode27…   ✅ iOS 27.0: 24A434  -   yes     412 GB  -
 ```
 
 | 表示 | 意味 | 対処 |
@@ -428,7 +428,7 @@ fleetest remote exec M1Max -- devices up --profile <実行プロファイル>
 | `cannot reach … over ssh` | 鍵でログインできない、または宛先が違う | ステップ1をやり直します |
 | `must not contain ':'` | 宛先にポート番号を書いた(`host:2222`) | `~/.ssh/config` に別名を作り、その別名を宛先にします |
 | `remote setup` が終了コード `2` で終わる | ランナー機に人の手が要る項目が残っている | 出力に並んだ項目を直し、同じコマンドをもう一度実行します |
-| `neither xcodegen nor Homebrew is available` | ランナー機に Homebrew が入っていない | ステップ0の7で Homebrew を入れてから、`fleetest remote setup` をもう一度実行します |
+| `Xcode 27.2 or later is required` | ランナー機の Xcode が 27.2 より古い | ランナー機の Xcode を App Store で更新してから、`fleetest remote setup` をもう一度実行します |
 | `is sitting at the login window` | ランナー機がログイン画面で止まっている | 画面共有などでログインします |
 | `git revision mismatch` | 手元とランナー機の版がずれている | `fleetest remote setup M1Max` をもう一度実行します |
 | `toolchain mismatch` | 手元の Mac の Xcode 製品版に一致する Xcode がランナー機に無い(macOS の版は関係ありません。ベータのビルド番号だけの違いではこのメッセージは出ません) | 一致する製品版の Xcode をランナー機の `/Applications` へ追加で入れます(既に入っている版を消す必要はありません) |

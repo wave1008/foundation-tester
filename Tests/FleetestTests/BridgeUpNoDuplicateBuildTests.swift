@@ -1,4 +1,4 @@
-// `fleetest bridge up` は稼働中ブリッジを再利用する場合でも xcodegen/build-for-testing を
+// `fleetest bridge up` は稼働中ブリッジを再利用する場合でも build-for-testing を
 // 無条件に撃っていた(実測 2026-09-18 N2: 稼働中ポートの再利用だけの呼び出しでも
 // build-for-testing が走った)。ビルドの要否判定は provision()
 // (BridgeProvisioner.prepareSharedBuilds。xctestrun 不在・ランナーソース変更の両方をカバーする)
@@ -45,20 +45,6 @@ final class BridgeUpNoDuplicateBuildTests: XCTestCase {
         XCTAssertFalse(source.contains("skipBuild"),
                        "bridge up の --skip-build が復活している"
                         + "(provision() 委譲後はビルドの要否を CLI 側で選べない)")
-    }
-
-    /// xcodegen(generateProjectIfNeeded)は SampleApp のビルド(installSampleApp が使う
-    /// Xcode project)専用に残す。provision() が xcuitest ランナー用のプロジェクト生成を担うため、
-    /// withSampleApp の外で無条件に撃つ形へ戻さない
-    func testGenerateProjectIfNeededOnlyRunsForSampleApp() throws {
-        let source = try Self.upStructSource()
-        let withSampleAppRange = try XCTUnwrap(source.range(of: "if withSampleApp {"),
-                                               "withSampleApp 分岐が見つからない(走査の前提が崩れた)")
-        let before = source[source.startIndex..<withSampleAppRange.lowerBound]
-        XCTAssertFalse(before.contains("generateProjectIfNeeded()"),
-                       "withSampleApp より前で xcodegen を無条件に撃っている")
-        XCTAssertTrue(source[withSampleAppRange.lowerBound...].contains("generateProjectIfNeeded()"),
-                      "installSampleApp 用の generateProjectIfNeeded が消えている")
     }
 
     /// 委譲先(provision())自体が消えていないこと(空振り防止 = 上のテストが常に真になる退化を防ぐ)

@@ -10,7 +10,8 @@ final class BridgeLauncherRebuildTests: XCTestCase {
     override func setUpWithError() throws {
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("ft-launcher-rebuild-\(UUID().uuidString)")
-        for dir in ["Runner/FleetestRunnerUITests", "Runner/FleetestRunnerApp", "Sources/FTCore"] {
+        for dir in ["Runner/FleetestRunnerUITests", "Runner/FleetestRunnerApp", "Runner/FleetestRunner.xcodeproj",
+                    "Sources/FTCore"] {
             try FileManager.default.createDirectory(
                 at: root.appendingPathComponent(dir), withIntermediateDirectories: true)
         }
@@ -24,7 +25,7 @@ final class BridgeLauncherRebuildTests: XCTestCase {
     }
 
     /// ランナーのビルド入力(BridgeSourceSet.xcuitest の共有 FTCore ファイルを含む)
-    private static let inputs = ["Runner/project.yml", "Runner/FleetestRunnerUITests/BridgeRouter.swift",
+    private static let inputs = ["Runner/FleetestRunner.xcodeproj/project.xcproj", "Runner/FleetestRunnerUITests/BridgeRouter.swift",
                                  "Runner/FleetestRunnerApp/App.swift", "Sources/FTCore/BridgeDTO.swift",
                                  "Sources/FTCore/SnapshotDedupe.swift", "Sources/FTCore/TypeReadback.swift",
                                  "Sources/FTCore/AXFrameRescale.swift",
@@ -91,20 +92,40 @@ final class BridgeLauncherRebuildTests: XCTestCase {
         }
     }
 
-    /// **ランナーが取り込む共有 FTCore ファイル(project.yml)== BridgeSourceSet.xcuitest のそれ**。
-    /// 作り直しの判定は BridgeSourceSet から入力を作るので、project.yml だけに足すと判定から漏れる
+    /// **ランナーが取り込む共有 FTCore ファイル(project.xcproj)== BridgeSourceSet.xcuitest のそれ**。
+    /// 作り直しの判定は BridgeSourceSet から入力を作るので、project.xcproj だけに足すと判定から漏れる
     func testRunnerProjectSharedSourcesMatchTheBridgeSourceSet() throws {
         let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent()
-        let yml = try String(contentsOf: repo.appendingPathComponent("Runner/project.yml"), encoding: .utf8)
-        let fromProject = Set(yml.split(separator: "\n").compactMap { line -> String? in
-            guard let range = line.range(of: "../Sources/FTCore/") else { return nil }
-            return "Sources/FTCore/" + line[range.upperBound...].trimmingCharacters(in: .whitespaces)
-        })
+        let runner = repo.appendingPathComponent("Runner")
+        let data = try Data(contentsOf: runner.appendingPathComponent("FleetestRunner.xcodeproj/project.xcproj"))
+        let json = try JSONSerialization.jsonObject(with: data, options: [.json5Allowed])
+        let files = try XCTUnwrap((json as? [String: Any])?["files"] as? [[String: Any]])
+        let membership = "FleetestRunnerUITests/compile-sources"
+        var found: Set<String> = []
+        // グループの path を連結しながら辿る(ルートはプロジェクトの置き場 = Runner/)
+        func walk(_ nodes: [[String: Any]], prefix: URL) {
+            for node in nodes {
+                var path = prefix
+                if let component = node["path"] as? String, !component.hasPrefix("<") {
+                    path = prefix.appendingPathComponent(component).standardized
+                }
+                if let children = node["children"] as? [[String: Any]] {
+                    walk(children, prefix: path)
+                    continue
+                }
+                guard (node["target-membership"] as? [String])?.contains(membership) == true else { continue }
+                let prefixPath = repo.standardized.path + "/"
+                if path.path.hasPrefix(prefixPath + "Sources/FTCore/") {
+                    found.insert(String(path.path.dropFirst(prefixPath.count)))
+                }
+            }
+        }
+        walk(files, prefix: runner)
         let fromSourceSet = Set(try BridgeSourceSet.xcuitest.files(repoRoot: repo)
             .filter { $0.hasPrefix("Sources/FTCore/") })
-        XCTAssertFalse(fromProject.isEmpty)
-        XCTAssertEqual(fromProject, fromSourceSet)
+        XCTAssertFalse(found.isEmpty)
+        XCTAssertEqual(found, fromSourceSet)
     }
 
     func testUnreadableInputsTriggerRebuild() throws {

@@ -5325,3 +5325,19 @@ worktree の run がそれらの端末を「別のワークスペースのブリ
   - 自動起動の門は起動先と同じポートも見る(外すのは古いビルドの止め直し = `stopFirst` のときだけ)
   - 門で断った回(`deviceRunnerElsewhere`)は連続失敗に数えない。数えると起動途中のランナーを待つ間に上限へ達して `failed` に固定され、準備できた後も戻らない
 - 確認: 修正版で同じ手順 → serve は「already has an xcuitest runner (still starting…) on port 8152」で起動を見送り、ランナー(pid 18350)は生き残って `bridge up` が ready
+
+## 102. iOS プロジェクトを xcodegen から project.xcproj へ移した(Flutter / RN は pbxproj のまま)(2026-10-21)
+
+- 状態: ランナー(`Runner/FleetestRunner.xcodeproj`)と iOS の SUT 6つ(E2E{,X,Y}AppIOS・E2E{,X,Y}AppCMP)は Xcode 27.2 の JSON プロジェクト形式
+  `project.xcproj`(JSON5)がコミットするソース。`project.yml` と xcodegen は無い。SUT の `Info.plist` もソース(URL スキーム等は直接編集する)。
+  利用者の動作要件は Xcode 27.2 以上(未満の xcodebuild は xcproj を開けない)
+- **Flutter / RN の SUT は pbxproj のまま**: CocoaPods 1.17 の `pod install` は `project.pbxproj` を直接開き「doesn't exist」で落ちる(Pods は
+  .gitignore なので新しいクローンでは必ず走る)。flutter ツール(`flutter build ios`・実機ビルドの `--config-only`)も
+  「Expected ios/Runner.xcodeproj/project.pbxproj」で落ちる。xcodebuild 自体は xcproj でも通る。上流が対応するまで移さない
+- **ゼロから手書きしない**: 土台は xcodegen の生成物を `xcodebuild -project X.xcodeproj -convert-project xcproj` で変換したもの。
+  手書きでは xcodegen が暗黙に足していた既定値(`CODE_SIGN_IDENTITY = iPhone Developer`・`TARGETED_DEVICE_FAMILY = 1,2` 等 約40項目)が抜け、実機の署名に効く。
+  変換後に9ターゲットの実効のビルド設定(`-showBuildSettings`)が変換前と完全一致することを確かめた。xcproj はターゲットの `id`(共有スキームの
+  `BlueprintIdentifier` と一致)・`localizations`・`Products` グループ・`product` が必須。`..` を指すグループの `name` にはクローンのディレクトリ名が入るので消した
+- **旧 pbxproj と xcproj が同じ .xcodeproj に並ぶと xcodebuild は「Unable to read project」で落ちる**。既存のクローン(保守者の機械・ランナー機)では、
+  無視されていた旧い生成物 `project.pbxproj` を7フォルダから一度だけ手で消す
+- ビルドでは xcproj は書き換わらない(確認済み)。Xcode の GUI で開いたときに書き換わるかは未確認

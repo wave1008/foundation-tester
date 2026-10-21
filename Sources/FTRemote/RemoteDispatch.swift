@@ -1217,7 +1217,7 @@ public enum RemoteShell {
         let args = fleetestArgs.map(quote).joined(separator: " ")
         let launch = "\(binary) \(args)"
         // 非対話 ssh の PATH は /usr/bin:/bin:/usr/sbin:/sbin だけで Homebrew が入らない。
-        // xcodegen(iOS ワーカーのビルドに必須)・adb などが見えず「No such file or directory」で
+        // adb などが見えず「No such file or directory」で
         // 落ちる(localhost E2E で実測)。ログインシェルに頼ると受け手の
         // シェル設定に依存するので、ここで明示的に足す
         let pathCmd = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\""

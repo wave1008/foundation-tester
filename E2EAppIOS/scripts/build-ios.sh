@@ -4,13 +4,6 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-if ! command -v xcodegen >/dev/null 2>&1; then
-  echo "xcodegen 未インストール。'brew install xcodegen' を実行してください。" >&2
-  exit 1
-fi
-
-xcodegen generate
-
 xcodebuild -project FTE2EIOS.xcodeproj -scheme FTE2EIOS -configuration Debug \
   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
   -derivedDataPath build \

@@ -10,6 +10,8 @@ paths:
   - "Scripts/negative-controls.json"
   - "Scripts/negative_controls_judge.py"
   - "TestProjects/E2E-*/**"
+  - "E2E*AppIOS/**/project.xcproj"
+  - "E2E*AppCMP/**/project.xcproj"
   - "E2EYApp*/**"
   - "TestProjects/E2EY-*/**"
   - "Tests/FleetestTests/DeepLinkSchemeSyncTests.swift"
@@ -19,6 +21,11 @@ paths:
 
 CLAUDE.md から移した規則(本文は移設前と同一)。この領域のファイルを Read したときに自動で読み込まれる。
 
+- **iOS のプロジェクトは `project.xcproj`(Xcode 27.2 の JSON 形式)を直接編集する**(Runner + `E2EAppIOS` / `E2EXAppIOS` / `E2EYAppIOS` +
+  `E2EAppCMP` / `E2EXAppCMP` / `E2EYAppCMP`)。**手書きで作り直さず既存を編集する**(xcodegen が暗黙に足していた既定値
+  `CODE_SIGN_IDENTITY` / `TARGETED_DEVICE_FAMILY` 等が抜け、実機の署名に効く)・ターゲットの `id` は共有スキームの `BlueprintIdentifier` と一致させる。
+  `Info.plist` もコミットするソース。**Flutter / RN の SUT は pbxproj のまま**(CocoaPods・flutter ツールが pbxproj を要る)。
+  旧い `project.pbxproj` が同じ `.xcodeproj` に残ると xcodebuild が「Unable to read project」で落ちる → maintainer-notes §102
 - **iOS だけが持つ witness**: `E2EAppIOS/Sources/UI/OverlayWindow.swift` = **キーウィンドウに
   しない別 UIWindow のモーダル**(全画面 / 上部バナーの2形)と、診断画面の `#btn_request_photos`
   = **OS(SpringBoard)の権限アラートがアプリを覆う形**(別プロセスなので in-app の木に載らない。

@@ -191,7 +191,13 @@ struct Doctor: AsyncParsableCommand {
         let xcode = try Shell.run(["xcodebuild", "-version"])
         let xcodeLine = xcode.output.split(separator: "\n").first.map(String.init) ?? "unknown"
         ConsoleOut.out(xcode.status == 0 ? "✅ \(xcodeLine)" : "❌ xcodebuild not found")
-        if xcode.status != 0 { problems += 1 }
+        if xcode.status != 0 {
+            problems += 1
+        } else if XcodeRequirement.isSupported(versionOutput: xcode.output) == false {
+            problems += 1
+            ConsoleOut.out("❌ \(XcodeRequirement.display) or later is required (found: \(xcodeLine))"
+                + " — the bridge project uses the JSON project format (project.xcproj)")
+        }
 
         // macOS/Xcode の版とビルド。**情報だけ・赤にも警告にもしない** —— ずれていても正常に
         // 動く組み合わせが実測である(macOS 27.2 ベータ + SDK 27.0)。実際の起動失敗(dyld の
@@ -264,14 +270,6 @@ struct Doctor: AsyncParsableCommand {
                           + "Runs are slower because of animation waits (it is enabled automatically on the next bridge start)")
                 }
             }
-        }
-
-        // ランナーの生成と同じ探し方(XcodegenLocator)。`which` だと PATH の外に置いた xcodegen を「無い」と言い、ビルドと答えが割れる
-        if let xcodegen = XcodegenLocator.find() {
-            ConsoleOut.out("✅ xcodegen: \(xcodegen)")
-        } else {
-            ConsoleOut.out("❌ \(XcodegenLocator.notFoundMessage())")
-            problems += 1
         }
 
         if let android = try? AndroidDriver() {

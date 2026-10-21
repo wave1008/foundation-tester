@@ -215,7 +215,6 @@ public enum XCUIBridgeResolver {
         let launcher = BridgeLauncher(repoRoot: repoRoot, device: device0.udid, port: port,
                                       physical: device0.physical)
         do {
-            try launcher.generateProjectIfNeeded()
             try launcher.rebuildIfStale()
             do {
                 try launcher.startDetached()

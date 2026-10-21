@@ -4,8 +4,6 @@
 .swiftpm/
 xcuserdata/
 DerivedData/
-# xcodegen が project.yml から生成する(コミットしない)
-Runner/FleetestRunner.xcodeproj
 reports/
 results/
 # fleetest run-file の一時ステージ先(実行の前後で消える。残骸はコミットしない)

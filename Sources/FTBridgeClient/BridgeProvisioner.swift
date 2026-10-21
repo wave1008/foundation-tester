@@ -988,7 +988,6 @@ public struct BridgeProvisioner: Sendable {
                 // xctestrun は同種別の全ポート共有(startDetached がポート注入コピーを作る)
                 let launcher = BridgeLauncher(repoRoot: repoRoot, device: xcui.sim.udid,
                                               port: xcui.port, physical: xcui.sim.physical)
-                try launcher.generateProjectIfNeeded()
                 try Self.ensureRunnerBuilt(launcher: launcher, repoRoot: repoRoot, sim: xcui.sim, log: log, building: runnerBuilding)
             }
         }.value
@@ -1782,7 +1781,6 @@ public struct BridgeProvisioner: Sendable {
                 let repoRoot = repoRoot
                 let runnerBuilding = self.runnerBuilding
                 try await Task.detached(priority: .userInitiated) {
-                    try launcher.generateProjectIfNeeded()
                     try Self.ensureRunnerBuilt(launcher: launcher, repoRoot: repoRoot, sim: sim, log: log, building: runnerBuilding)
                     try launcher.startDetached()
                 }.value

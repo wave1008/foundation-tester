@@ -3,7 +3,7 @@
 // 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeRouter.java の handleResponse* と ResponseProbe.java /
 // ResponseObserver.java、Runner/FleetestRunnerUITests/ResponseMeasurement.swift。
 // **ここを変えたら Android(VERSION_CODE / expectedBridgeVersionCode)と iOS(BridgeDTO.bridgeProtocolVersion)の
-// 両方の版を上げる**(Runner/project.yml と BridgeSourceSet.xcuitest に載るので、触ると iOS の指紋も動く)。
+// 両方の版を上げる**(project.xcproj の共有グループと BridgeSourceSet.xcuitest に載るので、触ると iOS の指紋も動く)。
 // 時刻の単位は ms。時計はブリッジごとに違う: Android = SystemClock.uptimeMillis(MotionEvent.downTime と同じ)/
 // iOS = mach_absolute_time を mach_timebase_info で ns に直して ms にした値(xctrace の time-info `mabs-epoch` と同じ時計)
 

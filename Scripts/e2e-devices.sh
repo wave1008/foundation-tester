@@ -84,7 +84,7 @@ for sut in $SUTS; do
     ios-native)
       [ "$RUN_IOS" = 1 ] || continue
       APP="$ROOT/E2EAppIOS"
-      if needs_rebuild "$APP/dist/ios-device/FTE2EIOS.app" "$APP/Sources" "$APP/project.yml"; then
+      if needs_rebuild "$APP/dist/ios-device/FTE2EIOS.app" "$APP/Sources" "$APP/FTE2EIOS.xcodeproj/project.xcproj"; then
         echo "→ SUT ios-native(実機用)をビルドし直します..."; "$APP/scripts/build-ios-device.sh"
         record_sdk "$APP/dist/ios-device/FTE2EIOS.app"
       fi

@@ -9,14 +9,13 @@
 | Target | Requirement |
 |---|---|
 | Machine and OS | A Mac with Apple silicon, macOS 26+ |
-| Xcode | Xcode 26+ (<https://apps.apple.com/app/xcode/id497799835>) |
+| Xcode | Xcode 27.2+ (<https://apps.apple.com/app/xcode/id497799835>) |
 | Homebrew | Homebrew (<https://brew.sh/>) |
 | VSCode | VSCode (<https://code.visualstudio.com/docs/setup/mac>) |
 | Android SDK | Android SDK (adb, Command-line Tools) (<https://developer.android.com/studio/install>) |
 
 ### What is installed automatically
 
-- xcodegen
 - Node.js
 - VSCode extension (fleetest mobile)
 - iOS Simulator runtime and Simulator

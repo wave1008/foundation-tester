@@ -177,8 +177,8 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   - **ssh 越しに何かを起動する経路を新設したら非対話 PATH の補正
     (`/opt/homebrew:/usr/local/bin`)を必ず写す**(既存は `RemoteShell.remoteRunCommand`)。
     **補正は Homebrew の2つだけなので、fleetest が呼ぶ外部の道具は素の名前を PATH 任せで撃たず Locator を通す**
-    (`XcodegenLocator` / `AdbLocator` / `BundletoolLocator`。M1Ultra の xcodegen は `~/.local/bin` で、版上げ後のランナーの作り直しが
-    全デバイスの供給を落とした。`XcodegenLocatorTests` が素の `["xcodegen"` の再混入を走査で落とす)
+    (`AdbLocator` / `BundletoolLocator`。ランナー機の道具は `~/.local/bin` にあることがあり、素の名前を PATH 任せで撃つと
+    非対話 ssh から見えず供給が落ちる)
   - **子プロセスを spawn する経路を足したら中断のリレーも足す**(`InterruptRelay`)。
     **async 文脈でパイプを行読みするときは `FTRemote.PipeLinePump`**(semaphore の `wait` を
     async 文脈に書かない = Swift 6 でエラー。同期関数の既存2箇所は据え置き)。

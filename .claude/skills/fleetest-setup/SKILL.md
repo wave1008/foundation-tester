@@ -114,7 +114,7 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
 
 - macOS 26+: `sw_vers -productVersion`（macOS 26 では FM の視覚検証 = occlusion-guard / screenLooksLike
   だけが使えない。画像入力が macOS 27+ のため。中断せず続行し、完了報告にその旨を残す）
-- Xcode 26+: `xcodebuild -version`（コマンド自体が license 未同意エラーで落ちたら 🧑 に
+- Xcode 27.2+（ブリッジのプロジェクトが Xcode 27.2 の形式で、それ未満は開けない。App Store で更新するのは 🧑）: `xcodebuild -version`（コマンド自体が license 未同意エラーで落ちたら 🧑 に
   `sudo xcodebuild -license accept` を依頼。sudo は代行不可）
 - 初回セットアップ: `xcodebuild -checkFirstLaunchStatus`（exit 0 以外なら 🧑 に `xcodebuild -runFirstLaunch` を依頼）
 
@@ -133,7 +133,7 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
 (この2つが揃うのは foundation-tester クローンだけ):
 
 - **両方ある = clone 構成**: いま foundation-tester クローンの中にいる。TOOL_ROOT = WORK_DIR =
-  そのディレクトリ。取得不要でステップ1へ。
+  そのディレクトリ。取得不要でステップ2へ。
 - **無い = 外部パッケージ構成(既定)**: WORK_DIR = このカレント(ここに TestProjects/ を作る)。
   ツールを供給するため foundation-tester を**兄弟ディレクトリ**に clone+build する(受け手の
   ディレクトリの中にネストさせない):
@@ -199,7 +199,7 @@ bash <SCRIPTS>/install.sh
   **N の手順を読んで原因を解決し、同じ引数で再実行する**（済んだ手順は skip されるので巻き戻らない）。
   解決に人間の操作が要るもの（Xcode の license 同意・`-runFirstLaunch`・Homebrew 導入）は 🧑 に依頼する。
 
-**以降のステップ1〜4・7・7.5 は「インストーラが失敗したときの手作業手順」**（成功したなら読み飛ばしてよい）。
+**以降のステップ2〜4・7・7.5 は「インストーラが失敗したときの手作業手順」**（成功したなら読み飛ばしてよい）。
 必ず実施するのは **9（反映操作の案内）** だけ。
 
 **インストーラの出力に載っている情報を、別コマンドで取り直さない**（承認が増えるだけ）:
@@ -209,10 +209,6 @@ bash <SCRIPTS>/install.sh
 | TOOL_ROOT の絶対パス（`cd … && pwd`） | preflight の `tool_root=` / インストーラの `[ok] layout` |
 | `.mcp.json` の内容（`cat`） | インストーラの `[ok] MCP` |
 | `fleetest doctor --roots-only` | インストーラが検証ゲートとして実行済み（`[ok] root-resolution`) |
-
-### 1. xcodegen
-
-`command -v xcodegen` で確認。無ければ `brew install xcodegen`（未導入だと iOS ブリッジ生成が失敗する）。
 
 ### 2. ビルド
 

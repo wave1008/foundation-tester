@@ -123,7 +123,7 @@ public enum RemoteSetupPlan {
     /// 消える**(preflight の needs-manual=2 が 1 に化け blocked と誤報した。rm も実行されず
     /// 一時ファイルが残った。localhost で実測)
     /// **PATH に Homebrew を足してから実行する**。非対話 ssh の PATH は
-    /// `/usr/bin:/bin:/usr/sbin:/sbin` だけで、install.sh が要求する `brew`(xcodegen の導入元)が
+    /// `/usr/bin:/bin:/usr/sbin:/sbin` だけで、install.sh が要求する `brew` が
     /// 見えない —— 入っているのに「Homebrew が無い」で落ちる(`RemoteShell.remoteRunCommand` と
     /// 同じ理由・同じ並び。片方だけ変えない)
     public static func runAndCleanupCommand(remotePath: String, args: [String]) -> String {

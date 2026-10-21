@@ -18,7 +18,7 @@
 set -euo pipefail
 
 # **PATH の補正はここで行う(`.mcp.json` は `bash -c`。`-l` を付けない)**。以前は `bash -lc` で
-# ログインシェルに swift / xcrun / xcodegen(Homebrew)を PATH に載せさせていたが、ログインシェルは
+# ログインシェルに swift / xcrun を PATH に載せさせていたが、ログインシェルは
 # ~/.bash_profile を読むので、そこに `echo` が1つあるだけで**JSON-RPC より前に stdout へ混ざり**
 # ハンドシェイクが壊れる。RemoteDispatch の非対話 ssh と同じ補正を自前で持つ
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"

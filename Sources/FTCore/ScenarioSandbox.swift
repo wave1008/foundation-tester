@@ -397,7 +397,7 @@ public enum ScenarioSandbox {
 
     /// `RepoRoot.hasRunner` と同じ目印(ツール本体のルートかどうか)
     private static func hasBridgeAssets(_ dir: URL) -> Bool {
-        FileManager.default.fileExists(atPath: dir.appendingPathComponent("Runner/project.yml").path)
+        FileManager.default.fileExists(atPath: dir.appendingPathComponent("Runner/FleetestRunner.xcodeproj/project.xcproj").path)
     }
 
     static func isLoopback(_ host: String) -> Bool {

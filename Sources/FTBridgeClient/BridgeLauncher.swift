@@ -75,47 +75,6 @@ public struct BridgeLauncher: Sendable {
         self.bridgeToken = physical ? BridgeAPI.makeBridgeToken() : nil
     }
 
-    /// 生成物(.xcodeproj)はコミットしない方針。project.yml を編集したら作り直す
-    /// (bundle id の変数化・署名設定の追加が反映されないと実機ビルドが旧設定のまま通る)
-    public func generateProjectIfNeeded() throws {
-        let manifest = repoRoot.appendingPathComponent("Runner/project.yml")
-        if FileManager.default.fileExists(atPath: projectPath.path), !isStale(manifest: manifest) {
-            return
-        }
-        // 場所は XcodegenLocator(素の "xcodegen" を PATH 任せで撃つと、非対話の ssh・launchd の PATH で見つからない)
-        guard let xcodegen = XcodegenLocator.find() else {
-            throw LauncherError.commandFailed("xcodegen generate", XcodegenLocator.notFoundMessage())
-        }
-        let result = try Shell.run(
-            [xcodegen, "generate"],
-            cwd: repoRoot.appendingPathComponent("Runner")
-        )
-        guard result.status == 0 else {
-            throw LauncherError.commandFailed("xcodegen generate", result.tail)
-        }
-    }
-
-    /// project.yml **またはランナーのソース**が .xcodeproj より新しいか
-    /// (取得できなければ「古くない」= 再生成しない)。
-    ///
-    /// **ソース側も見るのが要点**(実際に踏んだ): project.yml はディレクトリを指すので、
-    /// ランナーへファイルを1本足しても manifest の mtime は動かない。manifest だけを見ていると
-    /// **新しいファイルがターゲットに入らないまま**ビルドが走り、`cannot find X in scope` で
-    /// 落ちる(原因が project 生成側にあると気付きにくい)
-    private func isStale(manifest: URL) -> Bool {
-        func modified(_ url: URL) -> Date? {
-            (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-        }
-        guard let projectDate = modified(projectPath.appendingPathComponent("project.pbxproj")) else {
-            return false
-        }
-        if let manifestDate = modified(manifest), manifestDate > projectDate { return true }
-        let sourceDir = repoRoot.appendingPathComponent("Runner/FleetestRunnerUITests")
-        let contents = (try? FileManager.default.contentsOfDirectory(
-            at: sourceDir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        return contents.contains { (modified($0) ?? .distantPast) > projectDate }
-    }
-
     public func buildForTesting() throws {
         try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
         if XcodeSigningDiagnosis.shouldAttemptKeychainUnlock(
@@ -278,7 +237,7 @@ public struct BridgeLauncher: Sendable {
         // team 無しで走らせると xcodebuild が「No profiles for '...' were found」等の
         // 原因の分かりにくい署名エラーで落ちる。設定不足はここで明示的に止める
         guard let team = signing.team else { throw LauncherError.developmentTeamMissing }
-        // FT_BUNDLE_ID_PREFIX は project.yml が $(FT_BUNDLE_ID_PREFIX) で参照するユーザー定義設定。
+        // FT_BUNDLE_ID_PREFIX は project.xcproj が $(FT_BUNDLE_ID_PREFIX) で参照するユーザー定義設定。
         // ここでコマンドライン上書きすると3ターゲットの bundle id がまとめてチーム固有になる
         return ["-allowProvisioningUpdates",
                 "CODE_SIGN_STYLE=Automatic",
@@ -1347,14 +1306,14 @@ public struct BridgeLauncher: Sendable {
     }
 
     /// ランナーのビルド入力の最終更新時刻。入力 = **`BridgeSourceSet.xcuitest`(ブリッジの入力の正本:
-    /// UITests と、project.yml が取り込む共有 FTCore ファイル)** + project.yml + ホストアプリ(FleetestRunnerApp。
+    /// UITests と、project.xcproj が取り込む共有 FTCore ファイル)** + project.xcproj + ホストアプリ(FleetestRunnerApp。
     /// 挙動には効かないがビルドには入る)。自前の一覧を持たない —— 一覧が SnapshotDedupe.swift /
     /// TypeReadback.swift のような共有ファイルを1つでも落とすと、そのファイルだけを変えても
     /// 旧ビルドのまま走ってしまう。取得できない場合は nil = 「判定不能」として再ビルドさせる(古いまま走らせるより安全)
     static func newestRunnerSourceTimestamp(repoRoot: URL) -> Date? {
         guard let bridgeInputs = try? BridgeSourceSet.xcuitest.files(repoRoot: repoRoot) else { return nil }
         var inputs = bridgeInputs.map { repoRoot.appendingPathComponent($0) }
-            + [repoRoot.appendingPathComponent("Runner/project.yml")]
+            + [repoRoot.appendingPathComponent("Runner/FleetestRunner.xcodeproj/project.xcproj")]
         for dir in ["Runner/FleetestRunnerApp"] {
             let dirURL = repoRoot.appendingPathComponent(dir)
             guard let entries = try? FileManager.default.contentsOfDirectory(
@@ -1469,7 +1428,7 @@ public enum RepoRoot {
             guard hasRunner(dir) else {
                 throw LauncherError.commandFailed(
                     "repo root detection",
-                    "FT_TOOL_ROOT=\(override) has no bridge assets (Runner/project.yml). "
+                    "FT_TOOL_ROOT=\(override) has no bridge assets (Runner/FleetestRunner.xcodeproj/project.xcproj). "
                         + "Point it at the root of the foundation-tester clone")
             }
             return dir
@@ -1505,7 +1464,7 @@ public enum RepoRoot {
     }
 
     private static func hasRunner(_ dir: URL) -> Bool {
-        FileManager.default.fileExists(atPath: dir.appendingPathComponent("Runner/project.yml").path)
+        FileManager.default.fileExists(atPath: dir.appendingPathComponent("Runner/FleetestRunner.xcodeproj/project.xcproj").path)
     }
 
     /// 受け手パッケージの SPM checkout(.build/checkouts/<name>/)から Runner/ を持つものを探す。

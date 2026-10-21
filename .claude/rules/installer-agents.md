@@ -37,7 +37,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **`--runner [--base <dir>]` はリモートランナー機としての判定**(ready=0 / needs-manual=2 /
   blocked=1。`fleetest remote setup` が scp して実行する)。**既定モードの出力は1バイトも変えない**
   (共通判定は関数に括り出して両モードから呼ぶ)。**判定を足すときは blocked/needs-manual の
-  仕分けを間違えない** —— install.sh が自動導入するもの(xcodegen 等)を needs-manual にすると、
+  仕分けを間違えない** —— install.sh が自動導入するもの(node 等)を needs-manual にすると、
   `remote setup` が install.sh に到達できず「入れれば直るのに入れる工程まで進めない」で詰まる
 - 受け手の一括導入: `Scripts/install.sh`(clone〜検証ゲートを冪等に実行)。
   - **受け手の配布口は最新リリースタグ**(`X.Y.Z` の semver 最大。docs/releasing.md)。**外部構成のクローンは

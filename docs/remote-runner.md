@@ -609,7 +609,7 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
   パス依存のパッケージ名を**ディレクトリ名から導出**するため、受け手 Package.swift の
   `package: "foundation-tester"` と一致せず `unknown package` でマニフェストが壊れた
 - **非対話 ssh の PATH は `/usr/bin:/bin:/usr/sbin:/sbin` だけ**で Homebrew が入らない。
-  `xcodegen`(iOS ワーカーのビルドに必須)が見えず落ちるため、リモートコマンドの先頭で
+  `node` 等が見えず落ちるため、リモートコマンドの先頭で
   `export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"` を明示する
 - **ランナーの WORK_DIR には受け手パッケージ(Package.swift)が必要**。`install.sh --skip-project`
   は Package.swift 自体を作らないため、`remote setup` は**プロジェクト名を渡して**導入する
@@ -1240,8 +1240,7 @@ machine 名付きで並ぶ)。「マージの実装」は要らなかった。
 
 ```
 Scripts/preflight.sh --runner  既存に判定モードを追加(--base <dir>。既定は --remote-dir と
-                               同じ ~/fleetest-runner)。共通項目(macOS・Xcode・git/swift・
-                               xcodegen)は関数に括り出して両モードから呼ぶ。ランナー固有は
+                               同じ ~/fleetest-runner)。共通項目(macOS・Xcode・git/swift)は関数に括り出して両モードから呼ぶ。ランナー固有は
                                コンソールユーザー・スリープ・sshd・画面共有・FileVault/自動
                                ログイン・base 配下の導入状況。ready=0 / needs-manual=2 / blocked=1
 Scripts/install.sh             **そのまま流用**(外部構成で呼ぶ):
@@ -1327,7 +1326,7 @@ localhost へ1回流して初めて出た(単体テストは文字列しか見�
   **入っているのに「Homebrew が無い」で落ちた**。既存の `RemoteShell.remoteRunCommand` には
   同じ手当てがあり §12 にも書いてあったのに、新設した経路へ写していなかった。
   **ssh 越しに何かを起動する経路を足したら、この補正を必ず写す**
-- **preflight の xcodegen 判定は brew の有無まで見る**。「install.sh が入れるから人手扱いに
+- **preflight の自動導入ツール(Node.js 等)の判定は brew の有無まで見る**。「install.sh が入れるから人手扱いに
   しない」は brew がある前提で、両方無いと install.sh が clone 直後に fail する。
   **自動導入に頼る項目は、その導入手段の存在まで判定に含める**(install.sh の条件と一致させる)
 - **`set -u` の未代入参照は「その経路を通ったときだけ」落ちる**。ready 行だけが

@@ -82,7 +82,7 @@ blocked_reasons=()
 # ---- 共通判定(既定モード・--runner の両方が呼ぶ。docs/remote-runner.md §14 表の
 #      「既存の判定をそのまま再利用(コピーせず共通部分を関数に括り出す)」) -----------------
 check_core_toolchain() {
-  local os xcode_select_path xcode_out xcode_usable installed_xcode
+  local os xcode_select_path xcode_out xcode_usable installed_xcode xcode_num
   os="$(sw_vers -productVersion 2>/dev/null || echo unknown)"
   kv macos "$os"
   case "$os" in
@@ -98,6 +98,14 @@ check_core_toolchain() {
   if xcode_out="$(xcodebuild -version 2>&1)"; then
     xcode_usable=1
     kv xcode "$(first_line "$xcode_out")"
+    # 最低版は Sources/FTCore/XcodeRequirement.swift と同じ(27.2)。更新は App Store で人手なので blocked。
+    # 1行目が `Xcode <数字>.<数字>...` と読めないときは判定しない
+    xcode_num="$(first_line "$xcode_out")"; xcode_num="${xcode_num#Xcode }"
+    if [[ "$xcode_num" =~ ^([0-9]+)\.([0-9]+) ]]; then
+      if [ "${BASH_REMATCH[1]}" -lt 27 ] || { [ "${BASH_REMATCH[1]}" -eq 27 ] && [ "${BASH_REMATCH[2]}" -lt 2 ]; }; then
+        blocked_reasons+=("Xcode 27.2 or later is required (found Xcode $xcode_num) → a human must update Xcode from the App Store")
+      fi
+    fi
   else
     kv xcode unusable
     kv xcode_error "$(first_line "$xcode_out")"
@@ -128,15 +136,6 @@ check_core_toolchain() {
 
   command -v git  >/dev/null 2>&1 && kv git yes  || { kv git no;  blocked_reasons+=("git is missing"); }
   command -v swift >/dev/null 2>&1 && kv swift yes || { kv swift no; blocked_reasons+=("swift is missing (install Xcode)"); }
-}
-
-check_xcodegen() {
-  if command -v xcodegen >/dev/null 2>&1; then
-    kv xcodegen yes
-    return 0
-  fi
-  kv xcodegen no
-  return 1
 }
 
 check_adb() {
@@ -212,14 +211,7 @@ PMSET_OUT
   kv auto_login "$auto_login"
 
   check_core_toolchain
-  # xcodegen は install.sh が brew で入れるので**単独では needs-manual にしない**(自動で入るものを
-  # 人手扱いにすると、remote setup がこのモードの 0 以外で止まって install.sh に到達できない)。
-  # **ただし brew が無ければ install.sh も入れられず、clone の直後に fail で落ちる**
-  # (2026-08-16 に M1Ultra で実測)。両方無いときだけ人手の項目にする = install.sh の条件と同じ
   command -v brew >/dev/null 2>&1 && kv homebrew yes || kv homebrew no
-  if ! check_xcodegen && ! command -v brew >/dev/null 2>&1; then
-    runner_manual+=("neither xcodegen nor Homebrew is available → install Homebrew (https://brew.sh), then install.sh installs xcodegen automatically")
-  fi
   check_adb
   check_container_runtime
 
@@ -393,7 +385,6 @@ kv folder_name "$(basename "$WORK_DIR" | tr -cd 'A-Za-z0-9_-')"
 #      check_core_toolchain に括り出して --runner とも共有する) --------------------
 check_core_toolchain
 # 以下は install.sh が自動導入・スキップできるので blocked にはしない
-check_xcodegen || missing+=("xcodegen (install.sh installs it via brew)")
 # 拡張のビルドに使う固定版の Node.js(install.sh の NODE_MAJOR と同じ値。片方だけ変えない)
 PREFLIGHT_NODE_FORMULA="node@26"
 if command -v brew >/dev/null 2>&1 && "$(brew --prefix "$PREFLIGHT_NODE_FORMULA" 2>/dev/null)/bin/node" -v 2>/dev/null | grep -q '^v26\.'; then

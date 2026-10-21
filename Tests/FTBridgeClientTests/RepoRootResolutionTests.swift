@@ -19,9 +19,9 @@ final class RepoRootResolutionTests: XCTestCase {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("fleetest-toolroot-\(UUID().uuidString)")
         try FileManager.default.createDirectory(
-            at: dir.appendingPathComponent("Runner"), withIntermediateDirectories: true)
-        try "name: FleetestRunner".write(
-            to: dir.appendingPathComponent("Runner/project.yml"), atomically: true, encoding: .utf8)
+            at: dir.appendingPathComponent("Runner/FleetestRunner.xcodeproj"), withIntermediateDirectories: true)
+        try "{}".write(
+            to: dir.appendingPathComponent("Runner/FleetestRunner.xcodeproj/project.xcproj"), atomically: true, encoding: .utf8)
         return dir
     }
 

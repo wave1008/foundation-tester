@@ -10,11 +10,6 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-if ! command -v xcodegen >/dev/null 2>&1; then
-  echo "xcodegen 未インストール。'brew install xcodegen' を実行してください。" >&2
-  exit 1
-fi
-
 TEAM="${FT_DEVELOPMENT_TEAM:-}"
 if [ -z "$TEAM" ] && [ -f "$HOME/.config/fleetest/config.json" ]; then
   TEAM=$(python3 -c 'import json,os,sys;print(json.load(open(os.path.expanduser("~/.config/fleetest/config.json"))).get("developmentTeam",""))')
@@ -24,8 +19,6 @@ if [ -z "$TEAM" ]; then
   echo "   ~/.config/fleetest/config.json に developmentTeam を設定してください。" >&2
   exit 1
 fi
-
-(cd iosApp && xcodegen generate)
 
 # シミュレータ版(iosApp/build)と DerivedData を分ける(同じ場所だと片方のビルドがもう片方を作り直させる)
 xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \

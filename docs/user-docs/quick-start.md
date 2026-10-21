@@ -13,7 +13,7 @@ fleetest runs on a Mac with Apple silicon and macOS 26+. For details, see [Envir
 
 Install the following.
 
-- **Xcode 26+**
+- **Xcode 27.2+**
   - <https://apps.apple.com/app/xcode/id497799835>
   - After installing it, launch the Xcode app once and finish downloading its components.
 - **Homebrew**

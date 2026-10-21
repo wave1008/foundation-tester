@@ -6,7 +6,7 @@ CLAUDE.md「ビルド・検証」からの詳細分。コマンドと最重要�
 ## iOS ランナー(Runner/)の再ビルドは供給時に自動化済み(2026-07-28)
 
 `BridgeProvisioner.prepareSharedBuilds` はランナーのソース
-(`Runner/FleetestRunnerUITests/`・`Runner/FleetestRunnerApp/`・`Runner/project.yml`・
+(`Runner/FleetestRunnerUITests/`・`Runner/FleetestRunnerApp/`・`Runner/FleetestRunner.xcodeproj/project.xcproj`・
 共有 DTO の `Sources/FTCore/BridgeDTO.swift`)が xctestrun より新しければ
 build-for-testing を自動で再実行する(`BridgeLauncher.runnerNeedsRebuild`。
 InAppLauncher.needsBuild と対の mtime 判定)。稼働中の旧ランナーは
@@ -2758,7 +2758,7 @@ E2E-iOS を回すまで気付かなかった)。**距離を伸ばしても・画
 - **回帰の分担(ユーザー指示 2026-09-28)**: E2E はこの Mac(M2Ultra)で `Scripts/e2e.sh --local`、
   E2EX は `Scripts/e2ex.sh --on M1Ultra`(ssh でランナーのクローン `~/fleetest-runner/foundation-tester` に入り、
   **そこで SUT をビルドして**そこのデバイスで回す。残りの引数はそのまま渡す)を**同時に**起こす。向こうで動くのは
-  align 済みのコミットなので commit → `Scripts/align.sh` → 実行の順。M1Ultra の道具(xcodegen・Flutter は
+  align 済みのコミットなので commit → `Scripts/align.sh` → 実行の順。M1Ultra の道具(Flutter は
   ~/.local と ~/flutter、Homebrew の CocoaPods)は `~/.zprofile` の fleetest-tools ブロックの PATH にある
   (`zsh -lc` は `.zshrc` を読まない)
 - **`--align`: リモートランナーの版ズレは「部分実行」ではなく「1本も走らない」**(2026-08-28)。
@@ -2787,14 +2787,11 @@ E2E-iOS を回すまで気付かなかった)。**距離を伸ばしても・画
   解決先が端末ごとに揺れる(実測で別アプリへ配送された)。`DeepLinkSchemeSyncTests` が
   契約(`E2EAppCMP/docs/ui-contract.md` §ディープリンク)との一致と SUT 間の重複を検出する
 
-## Info.plist はビルド生成物 —— 直接編集しても次のビルドで消える(2026-08-09)
+## SUT の Info.plist はコミットするソース —— URL スキーム等は直接編集する
 
-xcodegen を使う SUT(E2EAppCMP / E2EAppIOS)の `Info.plist` は `project.yml` の
-`info.properties` から**毎ビルド上書き生成される**。plist を直接編集すると、
-**コミットもビルドも単体テストも緑のまま、次のビルドで消える**(生成物の中身を直接検査するまで
-気付けない罠)。生成物は追跡から外してあり(`.gitignore`)、`DeepLinkSchemeSyncTests` が
-「登録元は project.yml であること」と「生成物 Info.plist が再追跡されていないこと」の両方を守る。
-**受け手/SUT 側の設定を足すときは、そのファイルが生成物かどうかを先に確かめる**。
+iOS の SUT(E2EAppCMP / E2EAppIOS ほか)の `Info.plist` は `project.xcproj` と並ぶコミットするソースで、
+ビルドでは書き換わらない。`DeepLinkSchemeSyncTests` が契約(`E2EAppCMP/docs/ui-contract.md`)との一致を守る。
+Flutter / RN の SUT の `Info.plist` も同じ(ソース)。
 
 ## SpringBoard の確認アラートはアプリスコープのスナップショットに出ない(2026-08-09)
 
