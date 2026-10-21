@@ -138,7 +138,7 @@ final class BridgeHTTPServer {
         // **実機だけ** FT_BIND_ALL=1(ホスト側 BridgeLauncher が xctestrun に注入)で
         // 全インターフェースに開く。デバイス内のループバックはホストから見えないため。
         // 既定をループバックのままにするのは、シミュレータ運用で LAN に晒さないため
-        let bindAll = ProcessInfo.processInfo.environment["FT_BIND_ALL"] == "1"
+        let bindAll = ProcessInfo.processInfo.environment[BridgeAPI.bindAllEnvKey] == "1"
         addr.sin_addr = in_addr(s_addr: bindAll ? INADDR_ANY : inet_addr("127.0.0.1"))
         listensOnLoopbackOnly = !bindAll
 

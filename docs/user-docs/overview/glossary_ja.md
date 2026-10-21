@@ -9,7 +9,7 @@ fleetest 固有の用語を五十音順に並べました。英字で始まる�
 - **アプリプロファイル** — テスト対象のアプリ(bundle ID / パッケージ名、ビルド成果物のパス)を記す設定です。`profiles/apps/<name>.json` に置きます。 詳しくは [プロファイル(アプリ / 実行)](../reference/project/profiles_ja.md)。
 - **FM(Foundation Models)** — Apple のオンデバイスの言語モデルです。macOS 27 以降で Apple Intelligence を有効にすると使えます。使うのはオンデバイスのモデルだけで、画面の情報は Mac の外に出ません。テキストの可視性検証・`screenLooksLike`・`draft-scenario` の構造化などが使います。 詳しくは [環境](environments_ja.md)。
 - **MCP サーバ(ft_*)** — デバイス操作・シナリオ実行・シナリオ作成を `ft_*` ツールとして公開する stdio の MCP サーバ(`fleetest-mcp`)です。AIアシスタントが人の代わりに CLI・拡張と同じ機能を呼び出せます。 詳しくは [MCP サーバ](../reference/tools/mcp_server_ja.md)。
-- **エンジン** — iOS で画面を読み操作する経路です。in-app(アプリへ注入。高速)・XCUITest(汎用)・hybrid(in-app 主 + XCUITest フォールバック)があり、既定は hybrid です。iOS の実機は常に XCUITest です。Android に選択肢はありません。 詳しくは [実行プロファイルの設定項目](../reference/project/run_profile_ja.md)。
+- **エンジン** — iOS で画面を読み操作する経路です。in-app(アプリへ注入。高速)・XCUITest(汎用)・hybrid(in-app 主 + XCUITest フォールバック)があり、既定は hybrid です。iOS の実機も、アプリが**開発署名(デバッグ可能)**なら同じエンジンを使えます(そうでなければ自動で XCUITest に縮退します)。Android に選択肢はありません。 詳しくは [実行プロファイルの設定項目](../reference/project/run_profile_ja.md)。
 - **仮想デバイス** — Simulator(iOS)と Emulator(Android)の総称です。実機とは区別します。 詳しくは [フリートの考え方](../fleet/concepts_ja.md)。
 - **型付きセレクタ(Sel)** — セレクタ記法を型で書けるようにしたものです(例: `.id("login_btn").or(.text("ログイン"))`)。文字列版に併設され、綴り誤りをコンパイラで捕まえられます。 詳しくは [型付きセレクタ(Sel)](../reference/selector/typed_selector_ja.md)。
 - **結果 JSON** — `results/runs/<YYYY-MM>/<runID>/` に残る機械可読な記録です。run 全体は `run.json`、シナリオ1本ごとは `scenarios/<シナリオID>.json` で、CI のゲート判定やダッシュボードの情報源になります。 詳しくは [テスト結果ファイル](../reference/testclass/test_result_files_ja.md)。

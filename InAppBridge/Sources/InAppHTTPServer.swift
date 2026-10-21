@@ -21,6 +21,8 @@ final class InAppHTTPServer {
         let origin: String?
         let secFetchSite: String?
         let host: String?
+        /// `X-FT-Token` ヘッダの値(無ければ nil)。同期相手: BridgeAPI.bridgeTokenHeader。実機(FT_BIND_ALL)だけ検める
+        let token: String?
 
         /// クエリ1個の取り出し。同期相手: Runner の BridgeHTTPServer.Request.queryValue
         func queryValue(_ key: String) -> String? {
@@ -54,6 +56,10 @@ final class InAppHTTPServer {
 
     private let port: UInt16
     private let handler: (Request) -> Response
+    /// 実機(FT_BIND_ALL=1)だけ全インターフェースに bind しトークンを要る。シミュレータはループバックのみ・トークン無し。
+    /// 同期相手: Runner の BridgeHTTPServer(bindAll ⟺ トークン要)・ホスト側 InAppLauncher が env を渡す
+    private var listensOnLoopbackOnly = true
+    private var expectedToken: String?
     private var serverFD: Int32 = -1
     private(set) var isRunning = false
 
@@ -75,7 +81,16 @@ final class InAppHTTPServer {
         addr.sin_port = port.bigEndian
         // シミュレータはホストとネットワークスタックを共有するため、ループバックに bind すれば
         // Mac 側の 127.0.0.1 から直接届く(Runner の BridgeHTTPServer と同じ前提)。
-        addr.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+        // **実機だけ** FT_BIND_ALL=1(ホスト側 InAppLauncher が devicectl 起動で渡す)で全インターフェースに開く
+        // (デバイス内のループバックは iproxy からは見えない)。bindAll のときはトークン必須(fail closed)。
+        let bindAll = ProcessInfo.processInfo.environment[BridgeAPI.bindAllEnvKey] == "1"
+        listensOnLoopbackOnly = !bindAll
+        addr.sin_addr = in_addr(s_addr: bindAll ? INADDR_ANY : inet_addr("127.0.0.1"))
+        if BridgeAPI.bridgeTokenRequired(bindAll: bindAll) {
+            let token = ProcessInfo.processInfo.environment[BridgeAPI.bridgeTokenEnvKey]
+            guard let token, !token.isEmpty else { close(fd); throw NSError(domain: "InAppBridge.tokenMissing", code: 0) }
+            expectedToken = token
+        }
 
         let bindResult = withUnsafePointer(to: &addr) { ptr in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
@@ -110,11 +125,16 @@ final class InAppHTTPServer {
             setsockopt(clientFD, SOL_SOCKET, SO_RCVTIMEO, &rcvTimeout, socklen_t(MemoryLayout<timeval>.size))
             autoreleasepool {
                 if let request = readRequest(clientFD) {
-                    // 待受はループバックだけでトークンも無いので、Host も常に検める
                     if let refusal = BridgeAPI.browserRequestRefusal(
                         origin: request.origin, secFetchSite: request.secFetchSite, host: request.host,
-                        requireLoopbackHost: true) {
+                        requireLoopbackHost: listensOnLoopbackOnly) {
                         writeResponse(clientFD, .error(refusal, status: 403))
+                        return
+                    }
+                    // 実機(bindAll)だけトークンを検める。手掛かりを返さない(有無・長さも言わない)
+                    if let expectedToken,
+                       !BridgeAPI.bridgeTokenMatches(expected: expectedToken, provided: request.token) {
+                        writeResponse(clientFD, .error("unauthorized", status: 401))
                         return
                     }
                     // accept ループ(バックグラウンド)上でハンドラを呼ぶ。整定待ちはメインの
@@ -155,7 +175,9 @@ final class InAppHTTPServer {
         var origin: String?
         var secFetchSite: String?
         var host: String?
+        var token: String?
         var skipSettle = false
+        let tokenHeaderKey = BridgeAPI.bridgeTokenHeader.lowercased()
         let settleHeaderKey = BridgeAPI.settleHeader.lowercased()
         for line in lines.dropFirst() {
             let kv = line.split(separator: ":", maxSplits: 1)
@@ -167,6 +189,7 @@ final class InAppHTTPServer {
             case "origin": origin = value
             case "sec-fetch-site": secFetchSite = value
             case "host": host = value
+            case tokenHeaderKey: token = value
             default: break
             }
         }
@@ -184,7 +207,8 @@ final class InAppHTTPServer {
         return Request(method: String(parts[0]),
                        path: cut.map { String(target[target.startIndex..<$0]) } ?? target,
                        query: cut.map { String(target[target.index(after: $0)...]) } ?? "",
-                       body: body, skipSettle: skipSettle, origin: origin, secFetchSite: secFetchSite, host: host)
+                       body: body, skipSettle: skipSettle, origin: origin, secFetchSite: secFetchSite, host: host,
+                       token: token)
     }
 
     private func writeResponse(_ fd: Int32, _ response: Response) {

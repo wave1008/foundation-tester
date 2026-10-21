@@ -2562,8 +2562,9 @@ A/B は端末の状態を揃えてから測る。
 `devicectl device process launch --environment-variables '{"DYLD_INSERT_LIBRARIES":"<コンテナの絶対パス>/tmp/<dylib>"}'`
 で起動すると、constructor が走ってマーカーを書いた(書いた pid = 動いているアプリの pid)。環境変数なしの起動では書かれない(陰性対照)。
 **アプリのビルドし直しも再署名も要らない**。コンテナの絶対パスは `device copy to --json-output` の `destination` から得られる。
-in-app ブリッジを実機で動かすのに残る仕事(未着手): dylib の iphoneos ビルドと署名(SUT と同じチーム)・
-ホストからアプリ内の待受への到達(iproxy)・プロセス内のタッチ合成が実機で効くかの確認・データコンテナへの配置の自動化。
+**本実装済み(2026-10-22・開発署名のアプリのみ)**: in-app / hybrid を実機でも選べる(
+docs/design.md の該当節)。署名は `InAppCodeSign`・配置と起動は `InAppLauncher` の physical 経路・到達は
+XCUITest 実機と同じ `IOSDeviceTransport`。プロセス内のタッチ合成も実機で効くことを SE3 で確認(タップ・ジェスチャ・型入力)。
 
 ## xcuitest のスクロール探索スループット(2026-08-08 実測・未着手の較正候補)
 

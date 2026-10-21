@@ -24,12 +24,17 @@ public final class InAppDriver: AppDriver {
     /// 別アプリの手順は、そのアプリの実行プロファイルで回す別のシナリオに置く
     private let ownBundleID: String?
 
-    public init(repoRoot: URL, udid: String, port: UInt16, ownBundleID: String? = nil) {
+    public init(repoRoot: URL, udid: String, port: UInt16, ownBundleID: String? = nil,
+                physical: Bool = false, appBundle: String? = nil, wired: Bool = false) {
         self.ownBundleID = ownBundleID
         let simulatorUDID = udid == "booted" ? nil : udid
         self.simulatorUDID = simulatorUDID
-        self.client = BridgeClient(port: port, simulatorUDID: simulatorUDID)
-        self.launcher = InAppLauncher(repoRoot: repoRoot, udid: udid, port: port)
+        // 実機は iproxy のループバック + token(台帳から推測)で到達する。シミュレータは従来どおりループバック直結
+        self.client = physical
+            ? BridgeClient(port: port, physicalUDID: udid, simulatorUDID: nil)
+            : BridgeClient(port: port, simulatorUDID: simulatorUDID)
+        self.launcher = InAppLauncher(repoRoot: repoRoot, udid: udid, port: port,
+                                      physical: physical, appBundle: appBundle, wired: wired)
     }
 
     // launch/terminate だけ simctl(注入起動)

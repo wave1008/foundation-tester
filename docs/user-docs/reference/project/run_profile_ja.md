@@ -73,8 +73,9 @@ ON**、プロファイルを使わない素の `fleetest run` は既定 OFF で�
 ## iOS エンジン
 
 既定の実効エンジンは `hybrid`(in-app 主 + XCUITest フォールバック)です。`iosInappEngine: false`
-にすると XCUITest のみの実行に切り替わります。iOS の実機はこの設定に関わらず常に XCUITest です
-(dylib 注入が実機では使えないため)。
+にすると XCUITest のみの実行に切り替わります。iOS の実機も、アプリが**開発署名(get-task-allow)**
+なら同じエンジンを使えます(注入するブリッジはアプリと同じチームの証明書でツールが署名します)。
+開発署名でないアプリ(TestFlight / App Store)は自動で XCUITest に縮退します。
 
 ### Link
 - [index](../../index_ja.md)

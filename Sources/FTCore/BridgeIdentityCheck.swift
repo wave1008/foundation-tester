@@ -49,9 +49,10 @@ public enum BridgeIdentityCheck {
 
     /// 規則(材料が無ければ ok):
     /// ① status.udid があり期待 udid と違う → mismatch
-    /// ② status.udid が無いとき: 期待が実機なのに status.engine=="inapp"(実機に in-app は無い=
-    ///    相手はシミュレータ) → mismatch。期待エンジンと status.engine の inapp/非inapp が
-    ///    食い違う(どちらの向きも) → mismatch
+    /// ② status.udid が無いとき(実機は udid を申告しない。in-app も自プロセスの udid を知らない):
+    ///    期待エンジンと status.engine の inapp/非inapp が食い違う(どちらの向きも) → mismatch。
+    ///    **実機 + in-app はもう乗っ取りではない**(実機の in-app 対応。udid が両側で nil のときは
+    ///    エンジンの一致だけで見る —— ポートはデバイスを跨いで一意なので、実機の in-app の udid 不明は許す)
     /// `remedy` は**呼び手ごとの対処文**(run は「レーンを起動し直す」・ライブ操作は「宛先を直す」で
     /// 対処が違う)。**既定値を置かない** —— 新しい呼び手が渡し忘れたらコンパイルで止める
     /// (CLAUDE.md「共有するのは判定であって文言ではない」)
@@ -62,9 +63,6 @@ public enum BridgeIdentityCheck {
                 ? .ok : .mismatch(detail: detail(expected: expected, status: status, remedy: remedy))
         }
         if status.udid == nil {
-            if expected.physical, status.engine == "inapp" {
-                return .mismatch(detail: detail(expected: expected, status: status, remedy: remedy))
-            }
             let expectedEngine = expected.engine ?? "xcuitest"
             if let statusEngine = status.engine, (statusEngine == "inapp") != (expectedEngine == "inapp") {
                 return .mismatch(detail: detail(expected: expected, status: status, remedy: remedy))

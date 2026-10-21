@@ -9,18 +9,35 @@ public struct InAppLauncher: Sendable {
     public let repoRoot: URL
     public let udid: String
     public let port: UInt16
+    /// 実機(物理 iPhone)なら true。true のとき simctl/CoreSimulator ではなく devicectl + iproxy で注入起動する
+    public let physical: Bool
+    /// 実機で注入する dylib の署名に使う証明書を割り出すアプリバンドル(appPathPhysical ?? appPath)。
+    /// 署名可否は呼び手(供給)が `InAppCodeSign.inspect` で先に確かめてから渡す。シミュレータでは nil
+    public let appBundle: String?
+    /// USB(iproxy)で張るか。実機のみ参照(シミュレータはループバック共有)
+    public let wired: Bool
+    /// hybrid の実機で、相方(xcuitest)のトンネルのポート。in-app の establish がこれを消さないように残す
+    public let keepPeerPort: UInt16?
 
     var stateDir: URL { repoRoot.appendingPathComponent(".fleetest") }
 
-    public init(repoRoot: URL, udid: String, port: UInt16) {
+    public init(repoRoot: URL, udid: String, port: UInt16,
+                physical: Bool = false, appBundle: String? = nil, wired: Bool = false,
+                keepPeerPort: UInt16? = nil) {
         self.repoRoot = repoRoot
         self.udid = udid
         self.port = port
+        self.physical = physical
+        self.appBundle = appBundle
+        self.wired = wired
+        self.keepPeerPort = keepPeerPort
     }
 
-    /// 注入する dylib(InAppBridge/build.sh の出力)
-    public static func dylibPath(repoRoot: URL) -> URL {
-        repoRoot.appendingPathComponent("InAppBridge/build/libFTInAppBridge.dylib")
+    /// 注入する dylib(InAppBridge/build.sh の出力)。実機は iphoneos 版(未署名・署名は relaunch 時に per-app)
+    public static func dylibPath(repoRoot: URL, physical: Bool = false) -> URL {
+        repoRoot.appendingPathComponent(
+            physical ? "InAppBridge/build/libFTInAppBridge-device.dylib"
+                     : "InAppBridge/build/libFTInAppBridge.dylib")
     }
 
     /// dylib が未ビルド**または古い**なら InAppBridge/build.sh でビルドする
@@ -31,7 +48,8 @@ public struct InAppLauncher: Sendable {
     /// 「switch 型が出ない」で落ち続けた(判明した実例)。SUT の再ビルド判定(Scripts/e2e.sh の
     /// needs_rebuild)・シナリオの BuildFingerprint と同じ考え方を、ここにも置く。
     public func buildIfNeeded() throws {
-        guard Self.needsBuild(repoRoot: repoRoot) else { return }
+        let deviceStale = physical && Self.deviceDylibStale(repoRoot: repoRoot)
+        guard Self.needsBuild(repoRoot: repoRoot) || deviceStale else { return }
         let script = repoRoot.appendingPathComponent("InAppBridge/build.sh").path
         // script 不在は「repoRoot が受け手パッケージを指している」典型症状。bash の
         // "No such file or directory" だけでは原因に辿り着けないので、ここで言い当てる
@@ -41,6 +59,13 @@ public struct InAppLauncher: Sendable {
         let result = try Shell.run(["bash", script])
         guard result.status == 0 else {
             throw InAppLauncherError.buildFailed(result.tail)
+        }
+        // 実機は iphoneos 版も作る(署名は relaunch 時に per-app)
+        if physical {
+            let deviceResult = try Shell.run(["bash", script, "device"])
+            guard deviceResult.status == 0 else {
+                throw InAppLauncherError.buildFailed(deviceResult.tail)
+            }
         }
         ToolchainFingerprint.store(at: Self.fingerprintPath(repoRoot: repoRoot))
     }
@@ -59,6 +84,13 @@ public struct InAppLauncher: Sendable {
         // (旧 SDK でリンクした dylib を新ランタイムへ注入すると実行時に落ちる)
         return !ToolchainFingerprint.matches(
             storedAt: fingerprintPath(repoRoot: repoRoot), current: toolchain)
+    }
+
+    /// 実機 dylib が無い / 入力より古いなら true(simulator 用とは別物なので別に見る)
+    static func deviceDylibStale(repoRoot: URL) -> Bool {
+        guard let built = modifiedAt(dylibPath(repoRoot: repoRoot, physical: true)),
+              let newest = newestSourceTimestamp(repoRoot: repoRoot) else { return true }
+        return newest > built
     }
 
     /// dylib の入力(build.sh がコンパイルするソース一式 + build.sh 自身)の最終更新時刻。
@@ -91,6 +123,7 @@ public struct InAppLauncher: Sendable {
     /// waitMs=waitUntilReady())。BridgeProvisioner からは戻り値を使わず呼ぶ
     @discardableResult
     public func relaunch(bundleID: String) async throws -> LaunchTiming {
+        if physical { return try await relaunchPhysical(bundleID: bundleID) }
         let dylib = Self.dylibPath(repoRoot: repoRoot)
         guard FileManager.default.fileExists(atPath: dylib.path) else {
             throw InAppLauncherError.dylibMissing(dylib.path)
@@ -137,6 +170,119 @@ public struct InAppLauncher: Sendable {
         return LaunchTiming(actionMs: actionMs, waitMs: waitMs)
     }
 
+    /// 実機 in-app。**署名・配置・iproxy は供給(親プロセス)でだけ行い**、シナリオ(サンドボックスの中)の
+    /// 起こし直しは devicectl の起動だけにする —— サンドボックスはキーチェーン(codesign)も iproxy の
+    /// spawn も通さないため。初回(台帳が無い)は full、以降は token と container パスを台帳から再利用する。
+    @discardableResult
+    private func relaunchPhysical(bundleID: String) async throws -> LaunchTiming {
+        // 再利用: 供給で署名済みの dylib がホストに残っていれば、**毎回コンテナへコピーし直して**起動する。
+        // clearAppData は実機ではアプリの再インストール = データコンテナごと消えるので、置きっぱなしの
+        // パスを使い回すと注入なしで起動して落ちる。コピーはサンドボックスでも許す(codesign は供給だけ)
+        let signed = Self.signedDylibPath(repoRoot: repoRoot, port: port)
+        if FileManager.default.fileExists(atPath: signed.path),
+           let endpoint = BridgeEndpoint.recorded(port: port, repoRoot: repoRoot), let token = endpoint.token {
+            let clock = ContinuousClock()
+            let copyStart = clock.now
+            let containerPath = try copyDylibToContainer(signed: signed, bundleID: bundleID)
+            let copyMs = continuousClockMs(clock.now - copyStart)
+            return try await launchPhysical(bundleID: bundleID, containerPath: containerPath,
+                                            token: token, endpoint: endpoint, setupMs: copyMs)
+        }
+        // 初回(供給・親): 署名 → データコンテナへ配置 → iproxy トンネル → 起動 → 到達待ち
+        let deviceDylib = Self.dylibPath(repoRoot: repoRoot, physical: true)
+        guard FileManager.default.fileExists(atPath: deviceDylib.path) else {
+            throw InAppLauncherError.dylibMissing(deviceDylib.path)
+        }
+        guard let appBundle else { throw InAppLauncherError.launchFailed("no app bundle to sign the in-app dylib against") }
+        let info = InAppCodeSign.inspect(appBundle: appBundle)
+        guard let identity = info.identitySHA1 else {
+            // 供給が inspect で注入可を確かめてから in-app を選ぶので、ここへは来ない(保険)
+            throw InAppLauncherError.launchFailed("the app is not injectable (\(info.reason ?? "unknown")); it should have fallen back to XCUITest")
+        }
+        let clock = ContinuousClock()
+        let setupStart = clock.now
+        let signedNew = try InAppCodeSign.signedCopy(
+            deviceDylib: deviceDylib, identitySHA1: identity,
+            outputDir: Self.signedDylibPath(repoRoot: repoRoot, port: port).deletingLastPathComponent(),
+            basename: "libFTInAppBridge-\(port).dylib")
+        let containerPath = try copyDylibToContainer(signed: signedNew, bundleID: bundleID)
+        let setupMs = continuousClockMs(clock.now - setupStart)
+        let token = BridgeAPI.makeBridgeToken()
+        // iproxy トンネルを張り endpoint(token 入り)を台帳へ記録する。XCUITest 実機と同じ経路を流用。
+        // **起動より先に張る**(起動は devicectl なのでトンネルに依らず、以降の到達待ちにトンネルが要る)
+        let endpoint = try await IOSDeviceTransport.establish(
+            port: port, deviceUDID: udid, repoRoot: repoRoot, wired: wired, token: token,
+            keepPeerPorts: keepPeerPort.map { [$0] } ?? [])
+        return try await launchPhysical(bundleID: bundleID, containerPath: containerPath,
+                                        token: token, endpoint: endpoint, setupMs: setupMs)
+    }
+
+    /// 署名済み dylib(供給が per-port で署名して残す。シナリオの起こし直しはこれをコンテナへ再コピーする)
+    static func signedDylibPath(repoRoot: URL, port: UInt16) -> URL {
+        repoRoot.appendingPathComponent("InAppBridge/build/signed/libFTInAppBridge-\(port).dylib")
+    }
+
+    /// devicectl で注入起動して /status 到達を待つ(供給・シナリオの共通部分)。
+    /// `setupMs` は供給の署名・配置ぶん(再利用時は 0)で actionMs に足す
+    private func launchPhysical(bundleID: String, containerPath: String, token: String,
+                                endpoint: BridgeEndpoint, setupMs: Int) async throws -> LaunchTiming {
+        let clock = ContinuousClock()
+        let actionStart = clock.now
+        var env = [
+            "DYLD_INSERT_LIBRARIES": containerPath,
+            ProcessEnvironmentKey.port: "\(port)",
+            ProcessEnvironmentKey.ownerRepo: repoRoot.path,
+            BridgeAPI.bindAllEnvKey: "1",
+            BridgeAPI.bridgeTokenEnvKey: token,
+        ]
+        if let webViewDOM = ProcessInfo.processInfo.environment[ProcessEnvironmentKey.webViewDOM] {
+            env[ProcessEnvironmentKey.webViewDOM] = webViewDOM
+        }
+        try deviceLaunch(bundleID: bundleID, environment: env)
+        let actionMs = setupMs + continuousClockMs(clock.now - actionStart)
+        InAppBridgeState.write(stateDir: stateDir, port: port, udid: udid, bundleID: bundleID,
+                               sourceDigest: try? BridgeSourceSet.inApp.digest(repoRoot: repoRoot))
+        let waitStart = clock.now
+        do {
+            try await waitUntilReady(endpoint: endpoint)
+        } catch let InAppLauncherError.notReady(detail) {
+            throw InAppLauncherError.notReady(crashAnnotated(detail, bundleID: bundleID))
+        }
+        return LaunchTiming(actionMs: actionMs, waitMs: continuousClockMs(clock.now - waitStart))
+    }
+
+
+    /// 署名済み dylib をアプリのデータコンテナ(`tmp/`)へ置き、デバイス上の絶対パスを返す。
+    /// **コマンド形は固定**(サンドボックスの DevicectlPolicy の許可表と1対1)
+    private func copyDylibToContainer(signed: URL, bundleID: String) throws -> String {
+        let result = try Shell.run([
+            "xcrun", "devicectl", "device", "copy", "to", "--device", udid,
+            "--source", signed.path, "--destination", "tmp/libFTInAppBridge.dylib",
+            "--domain-type", "appDataContainer", "--domain-identifier", bundleID,
+            "--json-output", "-", "-q",
+        ], timeout: 120)
+        guard result.status == 0 else { throw InAppLauncherError.launchFailed("devicectl copy to failed:\n\(result.tail)") }
+        guard let data = result.output.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let r = json["result"] as? [String: Any],
+              let dest = r["destination"] as? String else {
+            throw InAppLauncherError.launchFailed("devicectl copy to: could not read the destination path")
+        }
+        return dest.replacingOccurrences(of: "file://", with: "")
+    }
+
+    /// devicectl で注入起動(既存プロセスは終了)。**コマンド形は固定**(DevicectlPolicy の許可表と1対1)。
+    /// `--environment-variables` は JSON 1引数(値にスペースを含まないので引用は不要)
+    private func deviceLaunch(bundleID: String, environment: [String: String]) throws {
+        let envJSON = String(data: try JSONSerialization.data(withJSONObject: environment, options: [.sortedKeys]),
+                             encoding: .utf8) ?? "{}"
+        let result = try Shell.run([
+            "xcrun", "devicectl", "device", "process", "launch", "--device", udid,
+            "--terminate-existing", "--environment-variables", envJSON, bundleID, "-q",
+        ], timeout: 120)
+        guard result.status == 0 else { throw InAppLauncherError.launchFailed("devicectl process launch failed:\n\(result.tail)") }
+    }
+
     /// InAppDriver.crashAnnotated と同型(あちらは切断直後なのでポーリングが要る。こちらは
     /// waitUntilReady のタイムアウト後 = クラッシュから数十秒経っているので1回だけ引く。
     /// 窓は待った時間ぶん広くとる — 即死は待ちの先頭で起きている)
@@ -179,11 +325,25 @@ public struct InAppLauncher: Sendable {
     }
 
     public func terminate(bundleID: String) {
+        if physical {
+            // **コマンド形は固定**(DevicectlPolicy の許可表と1対1)。bundleID を名指しして終了する
+            _ = try? Shell.run([
+                "xcrun", "devicectl", "device", "process", "terminate", "--device", udid,
+                "--bundle-identifier", bundleID, "-q",
+            ], timeout: 15)
+            return
+        }
         _ = try? Shell.run(["xcrun", "simctl", "terminate", udid, bundleID], timeout: 15)
     }
 
-    public func waitUntilReady(timeout: TimeInterval = 30) async throws {
-        let client = BridgeClient(port: port, timeoutSeconds: 3)
+    /// 実機は endpoint(iproxy のループバック + token)へ、シミュレータはループバックへ到達待ちする
+    public func waitUntilReady(endpoint: BridgeEndpoint? = nil, timeout: TimeInterval = 30) async throws {
+        let client: BridgeClient
+        if let endpoint {
+            client = BridgeClient(endpoint: endpoint, timeoutSeconds: 3, physicalUDID: physical ? udid : nil)
+        } else {
+            client = BridgeClient(port: port, timeoutSeconds: 3)
+        }
         let deadline = Date().addingTimeInterval(timeout)
         var lastError: Error?
         while Date() < deadline {

@@ -235,6 +235,25 @@ public enum DevicectlPolicy {
             return device(a[4]) ?? (SimctlPolicy.isBundleID(a[5]) ? nil : refuse("not a bundle ID: \(a[5])"))
         case let a where a.count == 6 && Array(a[0..<4]) == ["device", "process", "openURL", "--device"]:
             return device(a[4])
+        // in-app の実機注入(InAppLauncher)。署名済み dylib をデータコンテナへ置く。宛先は固定・子が書ける場所の source は断る
+        case let a where a.count == 16 && Array(a[0..<4]) == ["device", "copy", "to", "--device"]
+                && a[5] == "--source"
+                && Array(a[7...]) == ["--destination", "tmp/libFTInAppBridge.dylib",
+                                      "--domain-type", "appDataContainer", "--domain-identifier", a[12],
+                                      "--json-output", "-", "-q"]:
+            if let refusal = device(a[4]) { return refusal }
+            if !SimctlPolicy.isBundleID(a[12]) { return refuse("not a bundle ID: \(a[12])") }
+            // a[6] = source(署名済み dylib)。子が書ける場所の物は入れない(枠の中で作った物を実機へ送らせない)
+            return SimctlPolicy.isChildWritable(a[6], context: context)
+                ? refuse("devicectl copy to from a location the sandboxed scenario can write: \(a[6])") : nil
+        // in-app の注入起動(DYLD_INSERT_LIBRARIES は親が置いたコンテナの dylib)。env は JSON 1引数
+        case let a where a.count == 10 && Array(a[0..<4]) == ["device", "process", "launch", "--device"]
+                && a[5] == "--terminate-existing" && a[6] == "--environment-variables"
+                && a[9] == "-q":
+            return device(a[4]) ?? (SimctlPolicy.isBundleID(a[8]) ? nil : refuse("not a bundle ID: \(a[8])"))
+        case let a where a.count == 8 && Array(a[0..<4]) == ["device", "process", "terminate", "--device"]
+                && a[5] == "--bundle-identifier" && a[7] == "-q":
+            return device(a[4]) ?? (SimctlPolicy.isBundleID(a[6]) ? nil : refuse("not a bundle ID: \(a[6])"))
         default:
             return refuse("devicectl \(args.prefix(3).joined(separator: " ")) is not allowed from a sandboxed scenario")
         }

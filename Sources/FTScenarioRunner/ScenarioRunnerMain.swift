@@ -416,7 +416,10 @@ struct RunScenario: AsyncParsableCommand {
                     } else {
                         // in-app は launch=simctl 再起動+dylib 注入(自己再起動できないため)
                         let repoRoot = try RepoRoot.find()
-                        let inapp = InAppDriver(repoRoot: repoRoot, udid: udid ?? "booted", port: port, ownBundleID: appBundleID)
+                        // 実機 in-app は token(台帳)経由で到達し、起こし直しは devicectl。供給が署名・配置・トンネルを
+                        // 済ませているので、ここ(サンドボックスの中)は appBundle/wired 不要(署名は親でだけ = InAppLauncher)
+                        let inapp = InAppDriver(repoRoot: repoRoot, udid: udid ?? "booted", port: port,
+                                                ownBundleID: appBundleID, physical: physical)
                         if engine == "hybrid", let xcuiPort {
                             let xcuiHost = bridgeHost ?? BridgeEndpoint.loopbackHost
                             fallbackDriver = SystemUIDriver(port: xcuiPort, host: xcuiHost,

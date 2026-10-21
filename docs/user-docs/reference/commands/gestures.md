@@ -105,8 +105,9 @@ keep in mind:
   | `gesture` | ✅ | ✅ | ✅ | ✅ |
 
   - **"hybrid only"**: works only with the default hybrid engine (Simulator). **With an
-    `xcuitest`-only profile or on a physical device, a Compose app does not recognize the double
-    tap** (a physical device cannot be injected into, so there is no other way to send it).
+    `xcuitest`-only profile (or a physical device whose app is not development-signed, which
+    falls back to XCUITest), a Compose app does not recognize the double tap** (XCUITest cannot
+    send a double tap Compose registers).
   - **"△"**: it arrives, but a screen that detects taps in JavaScript (PanResponder and a clock,
     for example) can miss it intermittently.
   - **"—"** means not verified.

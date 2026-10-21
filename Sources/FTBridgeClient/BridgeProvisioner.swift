@@ -568,7 +568,16 @@ public struct BridgeProvisioner: Sendable {
         let inappSourceDigest = try? BridgeSourceSet.inApp.digest(repoRoot: repoRoot)
         for (position, target) in targets.enumerated() {
             let index = targetIndices[position]
-            let engine = target.spec.engine ?? "xcuitest"
+            var engine = target.spec.engine ?? "xcuitest"
+            // 実機の in-app/hybrid は、アプリが開発署名(get-task-allow)で、署名に使える証明書が手元にある
+            // ときだけ注入できる。満たさなければ XCUITest へ黙って縮退する(ユーザー決定。理由は1行ログに残す)
+            if target.sim.physical, engine == "inapp" || engine == "hybrid" {
+                let verdict = InAppCodeSign.inspect(appBundle: preinstallAppPath ?? "")
+                if !verdict.injectable {
+                    safeLog("→ \(target.name): in-app injection is not available (\(verdict.reason ?? "no app bundle to check")) — using XCUITest")
+                    engine = "xcuitest"
+                }
+            }
             var bridges: [(engine: String, plan: EnginePlan)] = []
             do {
                 if engine == "hybrid" {
@@ -982,7 +991,7 @@ public struct BridgeProvisioner: Sendable {
             if let inapp {
                 // dylib は全デバイス共有(udid/port は buildIfNeeded では未使用)
                 try InAppLauncher(repoRoot: repoRoot, udid: inapp.sim.udid,
-                                  port: inapp.port).buildIfNeeded()
+                                  port: inapp.port, physical: inapp.sim.physical).buildIfNeeded()
             }
             for xcui in xcuiByKind {
                 // xctestrun は同種別の全ポート共有(startDetached がポート注入コピーを作る)
@@ -1061,7 +1070,9 @@ public struct BridgeProvisioner: Sendable {
                 portsByEngine[bridge.engine] = try await executeBridge(
                     engine: bridge.engine, plan: bridge.plan, name: plan.name, sim: plan.sim,
                     bundleID: bundleID, preinstallAppPath: preinstallAppPath,
-                    claimed: { await claim.fire() }, log: log)
+                    claimed: { await claim.fire() }, log: log,
+                    // hybrid の実機: in-app のトンネルが相方(先に起動する xcuitest)のトンネルを消さないよう残す
+                    keepPeerPort: bridge.engine == "inapp" ? portsByEngine["xcuitest"] : nil)
                 await claim.fire()
             } catch {
                 await claim.fire()
@@ -1392,6 +1403,7 @@ public struct BridgeProvisioner: Sendable {
                                bundleID: String?, preinstallAppPath: String?,
                                claimed: @escaping @Sendable () async -> Void,
                                log: @escaping @Sendable (String) -> Void,
+                               keepPeerPort: UInt16? = nil,
                                escalating: Bool = false) async throws -> UInt16 {
         // **起動する枝にも印の段階を見せる**(.reuse の入口だけで見ると、ブリッジが死んで .launch になった印つきデバイスは
         // 一生の間はしごを登れない)。回復の途中の起動(escalating)は再帰になるので通さない
@@ -1707,15 +1719,18 @@ public struct BridgeProvisioner: Sendable {
                 // 1本ずつ .inapp 状態ファイルが積もる(実測: 連続 inapp で 6→12)。放置すると
                 // ポート範囲を食い潰し・シミュレータのリソースを消費する(scan の遅延自体は
                 // status(timeout:) 化で別途緩和済み)。
-                reclaimInAppOrphans(udid: sim.udid, exceptPort: port, name: name, log: log)
-                let launcher = InAppLauncher(repoRoot: repoRoot, udid: sim.udid, port: port)
+                // reclaimInAppOrphans は simctl 掃除なので実機では撃たない(実機は iproxy のトンネルだけで、ゾンビの溜まり方が違う)
+                if !sim.physical { reclaimInAppOrphans(udid: sim.udid, exceptPort: port, name: name, log: log) }
+                let launcher = InAppLauncher(repoRoot: repoRoot, udid: sim.udid, port: port,
+                                             physical: sim.physical, appBundle: preinstallAppPath, wired: sim.wired,
+                                             keepPeerPort: sim.physical ? keepPeerPort : nil)
                 let supplyStage = self.supplyStage
                 // dylib ビルドは prepareSharedBuilds で完了済み(ここで buildIfNeeded すると並列で競合)
                 try await Task.detached(priority: .userInitiated) {
-                    if !sim.booted, bootHandled.withLock({ $0.insert(sim.udid).inserted }) {
+                    if !sim.physical, !sim.booted, bootHandled.withLock({ $0.insert(sim.udid).inserted }) {
                         supplyStage?(name, "ios", .booting)
                     }
-                    try launcher.ensureBooted(log: log)  // simctl launch はブート済み前提(install も同様)
+                    if !sim.physical { try launcher.ensureBooted(log: log) }  // simctl launch はブート済み前提(実機にブートは無い)
                     if preinstallAppPath != nil, needsInstall { supplyStage?(name, "ios", .installing) }
                     try self.ensureAppInstalled(deviceName: name, sim: sim, bundleID: bundleID,
                                                 preinstallAppPath: preinstallAppPath,
@@ -1889,11 +1904,24 @@ public struct BridgeProvisioner: Sendable {
         if let preinstallAppPath {
             guard needsInstall else { return }
             log("→ \(deviceName): installing \(bundleID) (autoInstall: the contents changed)...")
-            let install = try Shell.run(["xcrun", "simctl", "install", sim.udid, preinstallAppPath])
+            // 実機は devicectl(simctl は物理端末を知らず "Invalid device" で落ちる)。実機のインストールは遅い(timeout 600)
+            let install = sim.physical
+                ? try Shell.run(["xcrun", "devicectl", "device", "install", "app", "--device", sim.udid, preinstallAppPath], timeout: 600)
+                : try Shell.run(["xcrun", "simctl", "install", sim.udid, preinstallAppPath])
             guard install.status == 0 else {
                 throw BridgeProvisionerError.preinstallFailed(device: deviceName, detail: install.tail)
             }
             log("✅ \(deviceName): install complete")
+            return
+        }
+        if sim.physical {
+            // 実機はコンテナ問い合わせの手段が simctl に無い。devicectl でインストール済みを確かめる
+            let check = try Shell.run(["xcrun", "devicectl", "device", "info", "apps", "--device", sim.udid,
+                                       "--bundle-id", bundleID, "--json-output", "-", "-q"], timeout: 60)
+            guard check.status == 0, check.output.contains(bundleID) else {
+                throw BridgeProvisionerError.appNotInstalled(
+                    device: deviceName, bundleID: bundleID, udid: sim.udid)
+            }
             return
         }
         let check = try Shell.run(["xcrun", "simctl", "get_app_container", sim.udid, bundleID])

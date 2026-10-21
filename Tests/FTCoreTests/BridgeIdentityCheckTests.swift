@@ -42,6 +42,15 @@ final class BridgeIdentityCheckTests: XCTestCase {
         }
     }
 
+    /// 実機の in-app 対応: 実機のレーンが in-app を期待し、相手も in-app(udid は両側 nil)なら ok。
+    /// ポートはデバイスを跨いで一意なので、実機の in-app が udid を申告できなくてもエンジンの一致で通す
+    func testNoStatusUDIDPhysicalExpectedInappAndEngineInappIsOK() {
+        let expected = BridgeIdentityCheck.Expected(port: 8138, udid: "PHYSICAL-SE3", physical: true, engine: "inapp")
+        XCTAssertEqual(
+            BridgeIdentityCheck.verdict(expected: expected, status: status(engine: "inapp", udid: nil), remedy: "REMEDY"),
+            .ok, "実機 + in-app はもう乗っ取りではない")
+    }
+
     /// 逆向き(期待が inapp、相手が xcuitest)も同じ規則で mismatch にする
     func testNoStatusUDIDExpectedInappButEngineXcuitestIsMismatch() {
         let expected = BridgeIdentityCheck.Expected(port: 8138, udid: nil, physical: false, engine: "inapp")

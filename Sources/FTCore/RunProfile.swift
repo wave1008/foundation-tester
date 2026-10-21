@@ -1154,7 +1154,6 @@ public enum ProfileError: Error, LocalizedError {
     /// kind=physical なのに同定に必要な識別子(iOS=udid / Android=serial)が無い
     case physicalDeviceMissingIdentifier(name: String, platform: String, run: String)
     /// kind=physical に dylib 注入エンジンが指定された(実機は注入不可)
-    case physicalDeviceUnsupportedEngine(name: String, engine: String, run: String)
     /// アプリプロファイルの platform が対象外にした結果、走らせるデバイスが 0 台
     case noDevicesForAppPlatform(run: String, app: String, scope: AppPlatformScope, ignored: Int)
     /// responseMeasurement なのに有効なデバイスが 1 台でない
@@ -1205,10 +1204,6 @@ public enum ProfileError: Error, LocalizedError {
                 : "the left column of adb devices"
             return "device \"\(name)\" in run profile \(run) is kind=physical but has no "
                 + "\"\(field)\" (set it to \(how))"
-        case .physicalDeviceUnsupportedEngine(let name, let engine, let run):
-            return "device \"\(name)\" in run profile \(run) is kind=physical, so "
-                + "engine=\(engine) cannot be used (dylib injection is impossible on physical devices; "
-                + "omit engine or set it to \"xcuitest\")"
         case .noDevicesForAppPlatform(let run, let app, let scope, let ignored):
             let other = scope == .ios ? "android" : "ios"
             return "run profile \(run) has no enabled \(scope.rawValue) devices"
@@ -1479,13 +1474,9 @@ public enum ProfileResolver {
             }
             let device = ResolvedDevice(platform: entry.platform, spec: entry.spec)
             try validatePhysical(device, run: runName)
-            if device.spec.isPhysical, device.platform == "ios" {
-                // 実機は dylib 注入不可。iosInappEngine の既定(hybrid)を無視して固定する
-                // (ここで潰さないと provision が inapp 経路に入り実行時に落ちる)
-                var spec = device.spec
-                spec.engine = "xcuitest"
-                devices.append(ResolvedDevice(platform: "ios", spec: spec))
-            } else if device.platform == "ios", device.spec.engine == nil {
+            // 実機 iOS も通常と同じエンジン解決(明示 > iosInappEngine の既定)。
+            // 実機の in-app/hybrid は、アプリが開発署名でなければ供給が XCUITest へ黙って縮退する(BridgeProvisioner)
+            if device.platform == "ios", device.spec.engine == nil {
                 var spec = device.spec
                 spec.engine = iosEngine
                 devices.append(ResolvedDevice(platform: "ios", spec: spec))
@@ -1669,11 +1660,8 @@ public enum ProfileResolver {
             throw ProfileError.physicalDeviceMissingIdentifier(
                 name: device.name, platform: device.platform, run: run)
         }
-        if device.platform == "ios", let engine = device.spec.engine,
-           engine != "xcuitest" {
-            throw ProfileError.physicalDeviceUnsupportedEngine(
-                name: device.name, engine: engine, run: run)
-        }
+        // 実機の in-app/hybrid は、アプリが開発署名でなければ供給が XCUITest へ黙って縮退する(ユーザー決定)。
+        // ここでは engine を拒否しない —— 縮退は供給時に注入可否を実機のアプリから判定する(BridgeProvisioner)
     }
 
     /// locale 形式検証(trim 済み文字列を渡すこと): 言語[-地域/バリアント...](BCP47 風の緩い検査)
@@ -1794,10 +1782,7 @@ public enum ProfileResolver {
         if (identifier?.trimmingCharacters(in: .whitespaces) ?? "").isEmpty {
             errors.append("device \"\(spec.name)\" is kind=physical but has no \"\(field)\"")
         }
-        if platform == "ios", let engine = spec.engine, engine != "xcuitest" {
-            errors.append("device \"\(spec.name)\" is kind=physical, so engine=\(engine) cannot be"
-                          + " used (dylib injection is impossible on physical devices)")
-        }
+        // 実機の in-app/hybrid はエディタでは許す(開発署名でなければ供給が XCUITest へ縮退する。BridgeProvisioner)
         return errors
     }
 

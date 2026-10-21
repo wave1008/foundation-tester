@@ -352,7 +352,7 @@ public struct BridgeLauncher: Sendable {
             env[ProcessEnvironmentKey.ownerRepo] = repoRoot.path
             // 実機はデバイス内ループバックがホストから見えないので全インターフェースに開く。
             // 同期相手: Runner/FleetestRunnerUITests/BridgeHTTPServer.swift の start()
-            if physical { env["FT_BIND_ALL"] = "1" }
+            if physical { env[BridgeAPI.bindAllEnvKey] = "1" }
             // LAN bind の認証トークン。同期相手: BridgeHTTPServer.start() の fail-closed 判定
             if let bridgeToken { env[BridgeAPI.bridgeTokenEnvKey] = bridgeToken }
             // ブリッジ内の所要内訳ログ(既定 off)。ホスト側の FT_HTTP_TIMING と対で使い、

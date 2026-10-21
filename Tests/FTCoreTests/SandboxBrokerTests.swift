@@ -319,6 +319,37 @@ final class DevicectlPolicyTests: XCTestCase {
         }
     }
 
+    /// in-app の実機注入が使う3形(copy to / process launch / process terminate)は通る
+    func testInAppInjectionShapesAreAllowed() {
+        for arguments in [
+            ["device", "copy", "to", "--device", "PHONE-1", "--source", "/Users/x/InAppBridge/build/signed/libFTInAppBridge-8123.dylib",
+             "--destination", "tmp/libFTInAppBridge.dylib", "--domain-type", "appDataContainer",
+             "--domain-identifier", "com.example.app", "--json-output", "-", "-q"],
+            ["device", "process", "launch", "--device", "PHONE-1", "--terminate-existing",
+             "--environment-variables", "{\"FT_PORT\":\"8123\"}", "com.example.app", "-q"],
+            ["device", "process", "terminate", "--device", "PHONE-1", "--bundle-identifier", "com.example.app", "-q"],
+        ] {
+            XCTAssertNil(refusal(arguments), arguments.joined(separator: " "))
+        }
+    }
+
+    /// copy to の source が子の書ける場所なら断る(枠の中で作った dylib を実機へ送らせない)
+    func testInAppCopyFromAChildWritableLocationIsRefused() {
+        XCTAssertNotNil(refusal(
+            ["device", "copy", "to", "--device", "PHONE-1", "--source", writable + "/evil.dylib",
+             "--destination", "tmp/libFTInAppBridge.dylib", "--domain-type", "appDataContainer",
+             "--domain-identifier", "com.example.app", "--json-output", "-", "-q"]))
+    }
+
+    /// in-app の注入形も別デバイスは断る
+    func testInAppInjectionToAnotherDeviceIsRefused() {
+        XCTAssertNotNil(refusal(
+            ["device", "process", "launch", "--device", "PHONE-2", "--terminate-existing",
+             "--environment-variables", "{}", "com.example.app", "-q"]))
+        XCTAssertNotNil(refusal(
+            ["device", "process", "terminate", "--device", "PHONE-2", "--bundle-identifier", "com.example.app", "-q"]))
+    }
+
     func testAnotherDeviceIsRefused() {
         XCTAssertNotNil(refusal(["device", "process", "openURL", "--device", "PHONE-2", "x://"]))
         XCTAssertNotNil(refusal(["device", "info", "lockState", "--device", "PHONE-2", "--json-output", "-"]))
@@ -357,7 +388,7 @@ final class DevicectlPolicyTests: XCTestCase {
         let known: Set<String> = [
             "list devices --json-output", "device info apps", "device info lockState", "device info details",
             "device info processes", "device install app", "device uninstall app", "device process openURL",
-            "device info displays",
+            "device info displays", "device copy to", "device process launch", "device process terminate",
         ]
         var found: [String] = []
         for module in ["FTBridgeClient", "FTCore", "FTAndroid", "FTScenarioRunner", "FTDSL"] {

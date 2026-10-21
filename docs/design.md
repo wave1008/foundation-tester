@@ -4082,8 +4082,16 @@ targeting = bundletool にしか決められない。feature module を足した
   が受け付けるのは前者だけ。Identifier を書いても解決はする)。Android 実機の `serial` は
   `adb devices` の左列(WiFi 接続なら `192.168.1.23:5555` 形式)
 - 拡張のデバイスピッカー(「+既存から選択」)が接続中の実機を出すので、手書きしなくてよい
-- **iOS 実機は engine が `xcuitest` に固定される**(dylib 注入は実機不可なので `iosInappEngine`
-  の既定 hybrid を無視する。`engine: "inapp"` を明示すると検証エラー)
+- **iOS 実機も in-app / hybrid に対応する**(開発署名のアプリのみ。ユーザー決定 2026-10-22)。供給が、注入する dylib を
+  アプリと同じチームの証明書で署名(`InAppCodeSign`。leaf 証明書の SHA-1 で `codesign`)→ `devicectl` でアプリの
+  データコンテナへ置き → `DYLD_INSERT_LIBRARIES` 付きで `devicectl process launch` → iproxy のトンネル(XCUITest 実機と同じ
+  `IOSDeviceTransport`)で到達する。**開発署名(get-task-allow)でないアプリは注入できないので、供給が engine を
+  `xcuitest` へ黙って縮退する**(`BridgeProvisioner`。`InAppCodeSign.inspect`)。サンドボックスのシナリオは codesign も iproxy も
+  起こせないので、**署名・配置・トンネルは供給(親)でだけ**行い、シナリオの起こし直しは署名済み dylib の再コピー + `devicectl`
+  起動だけにする(`clearAppData` = 実機では再インストール = データコンテナごと消えるため、起こし直しのたびに再コピーする)。
+  hybrid の実機は in-app と XCUITest の2本のトンネルを同じデバイスに張る(`IOSDeviceTransport.establish` の `keepPeerPorts` で
+  相方のトンネルを消さない)。実機の in-app ブリッジは `FT_BIND_ALL=1` で全インターフェースに bind しトークンを要求する
+  (XCUITest 実機と同じ fail-closed)
 - **一括起動(`devices up` / `api start-all-devices` / モニターの「全て起動」)は実機を含む**
   (ユーザー決定 2026-09-08。2026-08-30 の除外を撤回)—— 実機の「起動」= ブリッジの起動
   (iOS は `BridgeProvisioner` の供給、Android は `DeviceBooter.startPhysicalAndroidBridge`)。

@@ -101,8 +101,8 @@ hold("#btn_tooltip_anchor", holdSeconds: 3) {
   | `gesture` | ✅ | ✅ | ✅ | ✅ |
 
   - **「hybrid のみ」**: 既定の hybrid エンジン(Simulator)でだけ動きます。**`xcuitest` だけの
-    プロファイルと実機では、Compose のアプリはダブルタップを認識しません**(実機はアプリへの
-    注入ができないため、ほかに撃つ手段がありません)。
+    プロファイル(または開発署名でないアプリの実機 = XCUITest に縮退)では、Compose のアプリは
+    ダブルタップを認識しません**(XCUITest は Compose が数えるダブルタップを送れないため)。
   - **「△」**: 届きますが、アプリがタップを JavaScript(PanResponder と時計など)で判定している
     画面では、間欠的に取りこぼすことがあります。
   - **「—」** は未確認です。

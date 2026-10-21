@@ -843,7 +843,10 @@ final class BridgeRouter {
             return orientation
         }
         guard appOrientation() == .landscape else { return .portrait }
-        return XCUIDevice.shared.orientation == .landscapeRight ? .landscapeLeft : .landscapeRight
+        // 読み(== 比較)で、回転の書き込みではない。走査(RunnerQuiescenceCapCoverageTests)の
+        // `orientation *=` に当てないよう局所変数に受ける
+        let deviceOrientation = XCUIDevice.shared.orientation
+        return deviceOrientation == .landscapeRight ? .landscapeLeft : .landscapeRight
     }
 
     /// アプリの窓の縦横から読む向き(デバイスの向きではない。handleRotate のコメント参照)。

@@ -804,24 +804,18 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertEqual(resolved.androidDevices[0].spec.serial, "14141JEC204922")
     }
 
-    func testPhysicalIosDeviceForcesXcuitestEngine() throws {
-        // iosInappEngine の既定(true→hybrid)を実機は無視する。ここで潰さないと inapp 経路に入る
+    func testPhysicalIosDeviceGetsDefaultEngine() throws {
+        // 実機も通常と同じ: iosInappEngine の既定(true→hybrid)。縮退は供給が注入可否で行う(実機の in-app 対応)
         try writePhysicalFixture()
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
-        XCTAssertEqual(resolved.iosDevices[0].spec.engine, "xcuitest")
+        XCTAssertEqual(resolved.iosDevices[0].spec.engine, "hybrid")
     }
 
-    func testPhysicalIosDeviceRejectsInappEngine() throws {
+    func testPhysicalIosDeviceAcceptsInappEngine() throws {
+        // 実機の inapp は拒否しない(開発署名でなければ供給が XCUITest へ縮退する)
         try writePhysicalFixture(iosEngine: "inapp")
-        XCTAssertThrowsError(
-            try ProfileResolver.resolve(project: project, runName: "r")
-        ) { error in
-            guard case ProfileError.physicalDeviceUnsupportedEngine(let name, let engine, _) = error else {
-                return XCTFail("physicalDeviceUnsupportedEngine のはず: \(error)")
-            }
-            XCTAssertEqual(name, "実機iPhone")
-            XCTAssertEqual(engine, "inapp")
-        }
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
+        XCTAssertEqual(resolved.iosDevices[0].spec.engine, "inapp")
     }
 
     func testPhysicalDeviceWithoutIdentifierFails() throws {
@@ -1079,8 +1073,8 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertFalse(errors.contains { $0.contains("無効の実機") }, "\(errors)")
         XCTAssertTrue(errors.contains { $0.contains("実機") && $0.contains("udid") },
                       "iOS 実機の udid 欠落エラーが出るはず: \(errors)")
-        XCTAssertTrue(errors.contains { $0.contains("inapp") },
-                      "iOS 実機の inapp 拒否エラーが出るはず: \(errors)")
+        XCTAssertFalse(errors.contains { $0.contains("inapp") },
+                       "実機の inapp はエディタでも拒否しない(供給が縮退する): \(errors)")
         XCTAssertTrue(errors.contains { $0.contains("実機A") && $0.contains("serial") },
                       "Android 実機の serial 欠落エラーが出るはず: \(errors)")
         XCTAssertFalse(warnings.contains { $0.contains("kind") || $0.contains("serial") },

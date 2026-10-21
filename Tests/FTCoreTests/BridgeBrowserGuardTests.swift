@@ -73,7 +73,7 @@ final class BridgeBrowserGuardTests: XCTestCase {
         }
         // ランナーだけは LAN の待受(トークンで守る)で Host を見ない
         XCTAssertTrue(runner.contains("requireLoopbackHost: listensOnLoopbackOnly"))
-        XCTAssertTrue(inApp.contains("requireLoopbackHost: true"))
+        XCTAssertTrue(inApp.contains("requireLoopbackHost: listensOnLoopbackOnly"))
     }
 }
 

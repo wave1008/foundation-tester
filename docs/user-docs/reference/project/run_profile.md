@@ -72,8 +72,10 @@ profile's device list or supply pipeline (`iosInappEngine`, `updateWebView`, `wi
 ## iOS engine
 
 The effective iOS engine is `hybrid` (in-app primary, XCUITest fallback) by default —
-`iosInappEngine: false` switches a run to XCUITest only. A physical iOS device always uses
-XCUITest regardless of this setting (dylib injection is not available on physical devices).
+`iosInappEngine: false` switches a run to XCUITest only. A physical iOS device uses the same
+engines **when the app is development-signed** (get-task-allow; the tool signs the injected bridge
+with the app's own team). An app that is not development-signed (TestFlight / App Store) falls back
+to XCUITest automatically.
 
 ### Link
 - [index](../../index.md)

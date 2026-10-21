@@ -82,6 +82,7 @@ public enum IOSDeviceTransport {
     /// (BridgeAPI 参照)。呼び出し元は `launcher.bridgeToken` を渡す
     public static func establish(port: UInt16, deviceUDID: String, repoRoot: URL,
                                  wired: Bool, token: String?,
+                                 keepPeerPorts: Set<UInt16> = [],
                                  timeoutSeconds: TimeInterval = 180,
                                  log: @escaping (String) -> Void = { _ in },
                                  approvalPending: @escaping (Bool) -> Void = { _ in }) async throws -> BridgeEndpoint {
@@ -105,7 +106,7 @@ public enum IOSDeviceTransport {
             // ループバックへ戻すだけで、相手が認証を求めるかどうかとは無関係
             log("transport usb (iproxy USB tunnel)")
             try startIproxy(hostPort: port, devicePort: port,
-                            deviceUDID: deviceUDID, repoRoot: repoRoot)
+                            deviceUDID: deviceUDID, repoRoot: repoRoot, keepPeerPorts: keepPeerPorts)
             endpoint = Self.usbEndpoint(port: port, token: token)
         }
         endpoint.persist(repoRoot: repoRoot)
@@ -337,9 +338,9 @@ public enum IOSDeviceTransport {
     /// 再利用せず止めてから張り直す(そうしないと iPhone B の供給が iPhone A 宛のトンネルを
     /// 掴んだまま進む)
     static func startIproxy(hostPort: UInt16, devicePort: UInt16,
-                            deviceUDID: String, repoRoot: URL) throws {
+                            deviceUDID: String, repoRoot: URL, keepPeerPorts: Set<UInt16> = []) throws {
         if isIproxyRunning(hostPort: hostPort, deviceUDID: deviceUDID, repoRoot: repoRoot) {
-            stopStalePeerTunnels(hostPort: hostPort, deviceUDID: deviceUDID, repoRoot: repoRoot)
+            stopStalePeerTunnels(hostPort: hostPort, deviceUDID: deviceUDID, repoRoot: repoRoot, keepPeerPorts: keepPeerPorts)
             return
         }
         stopIproxy(hostPort: hostPort, repoRoot: repoRoot)
@@ -368,7 +369,7 @@ public enum IOSDeviceTransport {
         try? String(process.processIdentifier)
             .write(to: pidURL(hostPort: hostPort, repoRoot: repoRoot),
                    atomically: true, encoding: .utf8)
-        stopStalePeerTunnels(hostPort: hostPort, deviceUDID: deviceUDID, repoRoot: repoRoot)
+        stopStalePeerTunnels(hostPort: hostPort, deviceUDID: deviceUDID, repoRoot: repoRoot, keepPeerPorts: keepPeerPorts)
     }
 
     /// pid ファイルの pid が**今も、この UDID 向けの iproxy か**を見る。
@@ -438,9 +439,11 @@ public enum IOSDeviceTransport {
     /// **同じ UDID を向いているもの**を選ぶ(純粋関数。単体テスト対象)。`entries` は台帳から拾った
     /// (port, ps のコマンドライン)の組。`hostPort` 自身(今張った/再利用したトンネル)は対象外
     static func stalePeerPorts(entries: [(port: UInt16, command: String)],
-                               hostPort: UInt16, deviceUDID: String) -> [UInt16] {
+                               hostPort: UInt16, deviceUDID: String,
+                               keepPeerPorts: Set<UInt16> = []) -> [UInt16] {
+        // hybrid の実機は同じデバイスに2本のトンネル(in-app + xcuitest)を張る。相方のポートは残す
         entries
-            .filter { $0.port != hostPort }
+            .filter { $0.port != hostPort && !keepPeerPorts.contains($0.port) }
             .filter { iproxyMatches(command: $0.command, deviceUDID: deviceUDID) }
             .map(\.port)
     }
@@ -451,7 +454,7 @@ public enum IOSDeviceTransport {
     /// 残骸2)生き残っていた)。**台帳に無い iproxy(利用者が手で起こしたもの)は触らない** ——
     /// `.fleetest/iproxy-*.pid` を列挙した分だけが対象。生死・iproxy 判定は isIproxy(pid:) を
     /// 再利用する(素の kill(pid,0) は禁止。StaleLedgerSweep と同じ「台帳はプロセスの実体で掃除する」規律)
-    static func stopStalePeerTunnels(hostPort: UInt16, deviceUDID: String, repoRoot: URL) {
+    static func stopStalePeerTunnels(hostPort: UInt16, deviceUDID: String, repoRoot: URL, keepPeerPorts: Set<UInt16> = []) {
         let stateDir = repoRoot.appendingPathComponent(".fleetest")
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: stateDir.path) else { return }
         var entries: [(port: UInt16, command: String)] = []
@@ -468,7 +471,7 @@ public enum IOSDeviceTransport {
             entries.append((port, ps.output))
             pidByPort[port] = pid
         }
-        for port in stalePeerPorts(entries: entries, hostPort: hostPort, deviceUDID: deviceUDID) {
+        for port in stalePeerPorts(entries: entries, hostPort: hostPort, deviceUDID: deviceUDID, keepPeerPorts: keepPeerPorts) {
             if let pid = pidByPort[port] { kill(pid, SIGTERM) }
             try? FileManager.default.removeItem(at: pidURL(hostPort: port, repoRoot: repoRoot))
             ConsoleOut.err("stopped a stale USB tunnel for \(deviceUDID) on port \(port)"

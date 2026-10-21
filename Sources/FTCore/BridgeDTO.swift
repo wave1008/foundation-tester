@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 204
+    public static let bridgeProtocolVersion = 205
 
     /// `ErrorResponse.reason` の値: ref が指していた要素が、撃つ時点でもう同じ場所に居ない(古い ref)。
     /// **何も撃たずに断った**ことを保証する(422)。ホストは新しい木から引き直して撃ち直してよい。
@@ -202,6 +202,9 @@ public enum BridgeAPI {
     //
     // 不変条件: 「.fleetest/bridge-<port>.endpoint が在る」⟺「非ループバック(実機 LAN)」⟺
     // 「FT_BIND_ALL=1」⟺「トークンが要る」。この一致を壊さないこと。
+    /// 実機だけ全インターフェースに bind する環境変数(ホスト側が注入起動で渡す。値 "1")。同期相手:
+    /// Runner の BridgeHTTPServer / InAppBridge の InAppHTTPServer(どちらも生文字列で読む = 別モジュール)
+    public static let bindAllEnvKey = "FT_BIND_ALL"
     // 同期相手: Runner/FleetestRunnerUITests/BridgeHTTPServer.swift(要求側)⇄
     // Sources/FTBridgeClient/BridgeLauncher.swift(注入)⇄
     // Sources/FTBridgeClient/BridgeClient.swift・Sources/fleetest-devicepoll/main.swift(送信側)
