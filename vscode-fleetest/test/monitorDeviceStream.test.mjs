@@ -750,3 +750,44 @@ test("配信ヘルパーを落とす3経路とも webview へ streamStopped を�
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// ---- 手元の iOS Simulator の h264 は一斉に張らない(remoteStreamAdmission.ts の手元のエンコーダの枠) ----
+// パネルを隠して戻す・run のロックが外れる・モニターの再起動で全台が同じパスに並ぶ。10 本を同時に起こすと
+// AppleAVE がマシン全体で落ちた(2026-10-21)。配線(hardwareEncoded を立てる条件)が崩れると枠が効かない
+test("手元の iOS Simulator の h264 は1パスで3本ずつ起こし、mjpeg は絞らない", () => {
+  const { dir, binaryPath } = makeMockBinaryDir();
+  let codec = "h264";
+  const { deps } = makeDeps(binaryPath);
+  deps.getConfig = () => ({
+    binaryPath, iosStreamEnabled: true, androidStreamEnabled: false,
+    streamCodec: codec, liveFps: 12, monitorMaxWidth: 960, monitorInterval: 0.05,
+  });
+  const sims = Array.from({ length: 7 }, (_, i) => ({
+    ...iosDevice, id: `sim-${i}`, name: `iPhone ${i}`,
+    udid: `AAAAAAAA-BBBB-CCCC-DDDD-00000000000${i}`, kind: "virtual",
+  }));
+  const started = () => {
+    for (const sim of sims) {
+      controller.noteStreamRendered(sim.id);
+    }
+    return sims.filter((sim) => controller.isStreaming(sim.id)).length;
+  };
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices(sims);
+    assert.equal(started(), 3, "1パス目は3本");
+    controller.applyDevices(sims);
+    assert.equal(started(), 6, "続きは次のパスで起こす");
+    controller.applyDevices(sims);
+    assert.equal(started(), 7);
+
+    controller.setVisible(false);
+    controller.setVisible(true);
+    codec = "mjpeg";
+    controller.applyDevices(sims);
+    assert.equal(started(), 7, "mjpeg はエンコーダを使わないので1パスで全部");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

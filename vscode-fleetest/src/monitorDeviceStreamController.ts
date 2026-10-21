@@ -306,12 +306,16 @@ export class MonitorDeviceStreamController {
         this.deps.post({ type: "streamUnavailable", device: deviceId, unavailable: false });
       }
     }
-    // **リモートは一斉に張らない**(1機械あたり ssh が N+2 本になり sshd の MaxStartups に
-    // 当たる。remoteStreamAdmission.ts)。見送ったデバイスはこの reapply が次のモニター更新で
+    // **リモートと、手元の iOS Simulator の h264 は一斉に張らない**(リモートは sshd の MaxStartups、手元は
+    // ハードウェアエンコーダ。remoteStreamAdmission.ts)。見送ったデバイスはこの reapply が次のモニター更新で
     // また拾うので、取りこぼしにはならない
     const pending = [...qualifying]
       .filter(([deviceId]) => !this.pipelines.has(deviceId) && !this.gaveUpDeviceIds.has(deviceId))
-      .map(([deviceId, target]) => ({ deviceId, machine: target.machine }));
+      .map(([deviceId, target]) => ({
+        deviceId,
+        machine: target.machine,
+        hardwareEncoded: target.machine === undefined && target.platform === "ios" && target.codec === "h264",
+      }));
     for (const deviceId of admitStreamStarts(pending)) {
       const target = qualifying.get(deviceId);
       if (target) {
