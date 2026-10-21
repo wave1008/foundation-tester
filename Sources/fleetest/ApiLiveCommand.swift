@@ -471,11 +471,11 @@ struct ApiLiveServe: AsyncParsableCommand {
         }
         // **走査に載らない = 居ない、ではない**: このシミュレータのランナーが別ポートで忙しく /status に答えないだけのことがある
         // (実測: 見ずに自動起動へ進むと2本目が1本目を殺し、両方が落ちた)。ps で同じ台のランナーを引き、
-        // 接続拒否でないポートがあればそこへ乗り換える。resolve は答えない宛先をそのまま返す
+        // 残骸と言えないランナー(待受している・起動途中)があればそこへ乗り換える。resolve は答えない宛先をそのまま返す
         if !physical, let repoRoot, let busyPort = Self.busyRunnerPort(
             udid: udid, excluding: driverOptions.resolvedPort, repoRoot: repoRoot) {
-            logStderr("\(mismatch) — a runner for \(udid) is listening on port \(busyPort) but did not answer"
-                      + " /status (busy); using it instead of starting another")
+            logStderr("\(mismatch) — \(udid) already has a runner on port \(busyPort) that did not answer /status"
+                      + " (busy, or still starting); using it instead of starting another")
             let rerouted = await XCUIBridgeResolver.resolve(
                 preferred: busyPort, repoRoot: repoRoot, autoStart: false,
                 logger: { message in ConsoleOut.err("[live serve] " + message) })
@@ -507,13 +507,13 @@ struct ApiLiveServe: AsyncParsableCommand {
         return (placeholder, freePort, nil, "xcuitest")
     }
 
-    /// 同じシミュレータの別ポートで待受しているランナー(xcodebuild)のポート。接続拒否(残骸)は数えない。
+    /// 同じシミュレータの別ポートのランナー(xcodebuild)のうち、残骸と言えないもの(待受している・起動途中)のポート。
     /// 判定は `BridgeLauncher.partitionRunnersElsewhere`(自動起動の門と同じ1箇所)
     static func busyRunnerPort(udid: String, excluding port: UInt16, repoRoot: URL) -> UInt16? {
         guard let ps = try? Shell.run(["ps", "-axo", "pid=,command="]), ps.status == 0 else { return nil }
         return BridgeLauncher.partitionRunnersElsewhere(
             BridgeLauncher.runnersOnDevice(psOutput: ps.output, device: udid, excludingPort: port),
-            connect: { BridgeDiscovery.connectProbe(port: $0, repoRoot: repoRoot) }
+            repoRoot: repoRoot
         ).live.map(\.port).min()
     }
 

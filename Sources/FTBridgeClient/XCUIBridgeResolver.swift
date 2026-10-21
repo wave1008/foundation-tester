@@ -147,14 +147,14 @@ public enum XCUIBridgeResolver {
             return giveUp(RunnerAccessibilityHealth.deviceHeldByAnotherSessionMessage(
                 device: device, what: "starting an XCUITest bridge"))
         }
-        // **走査に載らない = 居ない、ではない**: この台の XCUITest ランナーが別ポートで忙しく /status に答えないだけの
-        // ことがある。起動すると2本目が1本目を殺し両方落ちる(LiveBridgeAutoStarter の門と同じ判定 = partitionRunnersElsewhere)
+        // **走査に載らない = 居ない、ではない**: この台の XCUITest ランナーが別ポートで忙しい・起動途中で /status に答えない
+        // だけのことがある。起動すると2本目が1本目を殺し両方落ちる(LiveBridgeAutoStarter の門と同じ判定 = partitionRunnersElsewhere)
         if let ps = try? Shell.run(["ps", "-axo", "pid=,command="]), ps.status == 0,
            let busy = BridgeLauncher.partitionRunnersElsewhere(
                BridgeLauncher.runnersOnDevice(psOutput: ps.output, device: booted[0].udid, excludingPort: 0),
-               connect: { BridgeDiscovery.connectProbe(port: $0, repoRoot: repoRoot) }).live.map(\.port).min() {
-            let note = "the XCUITest bridge of \(device) (port \(busy)) is listening but did not answer /status"
-                + " (busy) — using it instead of starting another"
+               repoRoot: repoRoot).live.map(\.port).min() {
+            let note = "\(device) already has an XCUITest runner on port \(busy) that did not answer /status"
+                + " (busy, or still starting) — using it instead of starting another"
             logger(note)
             return Resolution(endpoint: endpoint(port: busy, repoRoot: repoRoot), note: note, inApp: nil)
         }

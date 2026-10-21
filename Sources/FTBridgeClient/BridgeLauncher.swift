@@ -441,19 +441,69 @@ public struct BridgeLauncher: Sendable {
         return reported
     }
 
-    /// 同じ端末の別ポートのランナーの仕分け(純粋関数)。**「居ない」と確定したもの(接続拒否 = 残骸)だけ**
-    /// `leftovers`、それ以外(待受している・不明)は `live` —— 起動してよいのは live が空のときだけ。
+    /// 同じ端末の別ポートのランナーの仕分け(純粋関数)。**止めてよい残骸と言えたもの**だけ `leftovers`、
+    /// それ以外(待受している・不明・起動途中・別のワークスペースのもの)は `live` —— 起動してよいのは live が空のときだけ。
     /// 忙しいランナーは /status に答えないが待受は続く。答えない = 居ないと読んで2本目を起動すると
     /// 2本目が1本目を殺し、両方が落ちて端末からブリッジが消える
     public static func partitionRunnersElsewhere(
-        _ others: [(pid: Int32, port: UInt16)], connect: (UInt16) -> BridgeDiscovery.ConnectProbe
+        _ others: [(pid: Int32, port: UInt16)], isLeftover: (_ pid: Int32, _ port: UInt16) -> Bool
     ) -> (live: [(pid: Int32, port: UInt16)], leftovers: [(pid: Int32, port: UInt16)]) {
         var live: [(pid: Int32, port: UInt16)] = []
         var leftovers: [(pid: Int32, port: UInt16)] = []
         for other in others {
-            if connect(other.port) == .refused { leftovers.append(other) } else { live.append(other) }
+            if isLeftover(other.pid, other.port) { leftovers.append(other) } else { live.append(other) }
         }
         return (live, leftovers)
+    }
+
+    /// `partitionRunnersElsewhere` を実際の観測(待受・プロセス・台帳・起動ログ)でつなぐ口。呼び手はここを通す
+    /// (ライブ操作の自動起動・`ApiLiveServe.busyRunnerPort`・`XCUIBridgeResolver.start`)
+    public static func partitionRunnersElsewhere(
+        _ others: [(pid: Int32, port: UInt16)], repoRoot: URL
+    ) -> (live: [(pid: Int32, port: UInt16)], leftovers: [(pid: Int32, port: UInt16)]) {
+        partitionRunnersElsewhere(others) { pid, port in
+            let connect = BridgeDiscovery.connectProbe(port: port, repoRoot: repoRoot)
+            // 待ち受けている・不明なら残骸ではない(この先の ps・台帳は読まない)
+            guard connect == .refused,
+                  let ps = try? Shell.run(["ps", "-ww", "-p", String(pid), "-o", "etime=,command="]).outputIfSucceeded
+            else { return false }
+            let line = ps.trimmingCharacters(in: .whitespacesAndNewlines)
+            let etime = line.prefix { !$0.isWhitespace }
+            let command = String(line.dropFirst(etime.count))
+            let stateDir = repoRoot.appendingPathComponent(".fleetest")
+            let verdict = StartingRunnerVerdict.decide(
+                elapsed: PSElapsedTime.parse(String(etime)),
+                quietFor: BridgeLauncher(repoRoot: repoRoot, port: port, physical: false).logQuietFor(),
+                budget: startupTimeoutSeconds)
+            return isLeftoverRunner(
+                connect: connect,
+                ownedHere: runnerIsOwned(command: command, repoRoot: repoRoot),
+                readyMarked: BridgeReadyLedger.isMarked(stateDir: stateDir, port: port, pid: pid),
+                startVerdict: verdict)
+        }
+    }
+
+    /// そのランナー(xcodebuild のコマンド行)がこのワークスペースのものか。`BridgeOwnership.runnerProcess` で読めればその持ち主で決める。
+    /// **読めないときはコマンド行にこのクローンの `.fleetest/` が含まれるかで見る** —— runnerProcess は空白の無いパスしか読めないので、
+    /// 空白を含む場所のクローンでは自分のランナーまで「持ち主不明 = 止めない」になり、本物の残骸が門を塞ぎ続ける
+    static func runnerIsOwned(command: String, repoRoot: URL) -> Bool {
+        if let runner = BridgeOwnership.runnerProcess(fromCommand: command) {
+            return BridgeOwnership.isSameRepo(runner.ownerRepo, repoRoot)
+        }
+        let marker = "/.fleetest/"
+        return [repoRoot.path, repoRoot.standardizedFileURL.resolvingSymlinksInPath().path]
+            .contains { command.contains("-xctestrun \($0)\(marker)") }
+    }
+
+    /// 待受の無い同じ端末のランナーを「止めてよい残骸」と言えるか(純粋関数)。**3つとも揃ったときだけ**:
+    /// ①接続が拒否(誰も待ち受けていないと確定)②このワークスペースのランナー(別のワークスペースのものは止めない =
+    /// `BridgeOwnership`。読めないものも止めない)③起動途中ではない = 一度 ready になった(`BridgeReadyLedger`。
+    /// 待受が消えた = 2本目に殺されたランナーの xcodebuild)か、起動予算を超えて起動ログも止まっている(`StartingRunnerVerdict`)。
+    /// **起動途中のランナーはまだ待ち受けていない**ので①だけで決めると、run の供給や `bridge up` が起動中のランナーを止める
+    /// (供給の掃除 `sweepStuckStartingRunners` と同じ材料で決める)
+    public static func isLeftoverRunner(connect: BridgeDiscovery.ConnectProbe, ownedHere: Bool,
+                                        readyMarked: Bool, startVerdict: StartingRunnerVerdict) -> Bool {
+        connect == .refused && ownedHere && (readyMarked || startVerdict == .restart)
     }
 
     public static func runnersOnDevice(psOutput: String, device: String,

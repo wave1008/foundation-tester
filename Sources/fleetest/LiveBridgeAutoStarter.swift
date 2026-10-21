@@ -164,6 +164,13 @@ actor LiveBridgeAutoStarter {
             state = .idle
             logStderr("Bridge auto-start skipped: \(detail)")
         case .failure(let error):
+            // 同じ台に別のランナー(起動途中・忙しい)が居て断った回も数えない —— 起動途中のランナーを待つ間に上限へ達して
+            // failed に固定されると、そのランナーが準備できた後も二度と自動起動しない
+            if case LauncherError.deviceRunnerElsewhere = error {
+                state = .idle
+                logStderr("Bridge auto-start skipped: \(error.localizedDescription)")
+                return
+            }
             consecutiveFailures += 1
             let detail = error.localizedDescription
             if consecutiveFailures >= Self.maxConsecutiveFailures {
@@ -252,20 +259,20 @@ actor LiveBridgeAutoStarter {
                 return .failure(LauncherError.deviceRunnerElsewhere(
                     device: udid, port: other.port, pid: other.pid, physical: true))
             }
-            // **シミュレータでも、同じ台の別ポートに待受しているランナーが居れば起動しない**(実測: 忙しいランナーは
-            // /status に答えず走査に載らないので、「居ない」と読んで2本目を起動すると、2本目が1本目を殺し
-            // 両方が落ちて端末からブリッジが消えた)。居ないと確定している(接続拒否)ものだけ残骸として止める。
-            // 待受の有無は `partitionRunnersElsewhere`(`.refused` 以外は live = 不明も居る側)
+            // **シミュレータでも、同じ台に残骸と言えないランナーが居れば起動しない**(2本目が1本目を殺し、両方が落ちて端末から
+            // ブリッジが消えた = maintainer-notes §99)。忙しいランナーは /status に答えず、起動途中のランナーはまだ待ち受けていないので、
+            // 接続拒否だけでは残骸と言わない —— 判定は `partitionRunnersElsewhere`(`isLeftoverRunner` = 拒否・このワークスペース・
+            // 起動途中でない)。止めるのは残骸だけ。**起動先と同じポートも見る**(外すのは古いビルドの止め直し = stopFirst のときだけ):
+            // 見ないと startDetached の killOrphanRunners が同じポートの起動途中のランナーを止める(maintainer-notes §101)
             if !physical, let ps = try? Shell.run(["ps", "-axo", "pid=,command="]), ps.status == 0 {
                 let split = BridgeLauncher.partitionRunnersElsewhere(
-                    BridgeLauncher.runnersOnDevice(psOutput: ps.output, device: udid, excludingPort: port),
-                    connect: { BridgeDiscovery.connectProbe(port: $0, repoRoot: repoRoot) })
+                    BridgeLauncher.runnersOnDevice(psOutput: ps.output, device: udid, excludingPort: stopFirst ? port : 0),
+                    repoRoot: repoRoot)
                 if let other = split.live.first {
                     releaseLockOnce()
                     return .failure(LauncherError.deviceRunnerElsewhere(
                         device: udid, port: other.port, pid: other.pid, physical: false))
                 }
-                // 止めるのは**そのポートを誰も待ち受けていない(拒否が確定した)ものだけ**
                 for other in split.leftovers {
                     if BridgeLauncher.reapRunnerProcess(pid: other.pid) {
                         // 残すとそのポートが使用中に見え続ける(`.pid` はその xcodebuild を指すときだけ消す)

@@ -547,6 +547,33 @@ final class LiveAutoStarterDuplicateRunnerWiringTests: XCTestCase {
         XCTAssertLessThan(refuse.lowerBound, start.lowerBound, "断るのは startDetached より前")
     }
 
+    /// 起動先と同じポートの起動途中のランナーも門に掛ける(外すのは古いビルドの止め直し = stopFirst のときだけ)。
+    /// 外すと startDetached の killOrphanRunners が同じポートの起動途中のランナーを止める(陽性対照で実測)
+    func testSimulatorGateAlsoCoversTheTargetPort() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/fleetest/LiveBridgeAutoStarter.swift")
+        let code = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(code.contains("device: udid, excludingPort: stopFirst ? port : 0)"),
+                      "Simulator の門が起動先のポートを見ていない")
+    }
+
+    /// 門で断った回(deviceRunnerElsewhere)は連続失敗に数えない(数えると起動途中のランナーを待つ間に failed へ固定される)
+    func testRunnerElsewhereRefusalIsNotCountedAsAFailure() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/fleetest/LiveBridgeAutoStarter.swift")
+        let code = try String(contentsOf: url, encoding: .utf8)
+        guard let finish = code.range(of: "private func finishLaunch"),
+              let skip = code.range(of: "if case LauncherError.deviceRunnerElsewhere = error {", range: finish.upperBound..<code.endIndex),
+              let count = code.range(of: "consecutiveFailures += 1", range: finish.upperBound..<code.endIndex) else {
+            return XCTFail("finishLaunch の分岐が見当たらない — テストを見直すこと")
+        }
+        XCTAssertLessThan(skip.lowerBound, count.lowerBound, "断りを数える前に抜けていない")
+        let branch = code[skip.upperBound..<count.lowerBound]
+        XCTAssertTrue(branch.contains("state = .idle") && branch.contains("return"), String(branch))
+    }
+
     /// in-app → XCUITest の振り替え(XCUIBridgeResolver.start)も、同じ台の待受しているランナーへ振り替えてから起動へ進む
     func testXCUIResolverReusesBusyRunnerBeforeStarting() throws {
         let url = URL(fileURLWithPath: #filePath)

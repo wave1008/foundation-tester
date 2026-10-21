@@ -5287,7 +5287,8 @@ worktree の run がそれらの端末を「別のワークスペースのブリ
   - 2: `decide(... silent:)` が答えた 0〜1 本 + 沈黙ありを `.unanswered` にして採らない。**ただし答えた 1 本と同じ端末の in-app(in-app の台帳で udid が分かる)
     だけが黙っているなら採る** —— 背面へ回ったアプリの in-app は TCP を受けたまま HTTP に答えないので、数えると普通の構成で断り続ける。
     断る文言は、黙っているのが in-app ならアプリを前面へ戻すか `bridge up` を添える(「少し待て」だけだと待っても直らない)
-  - 3・4: `BridgeLauncher.partitionRunnersElsewhere`(ps の同じ udid のランナーを、接続拒否 = 残骸 / それ以外 = 居る に分ける純粋関数)を、ライブ操作の
+  - 3・4: `BridgeLauncher.partitionRunnersElsewhere`(ps の同じ udid のランナーを、残骸 / それ以外 = 居る に分ける。残骸の条件は §101 で
+    「接続拒否」から「接続拒否・このワークスペース・起動途中でない」に締めた)を、ライブ操作の
     自動起動の門(Simulator も起動を断る)・`ApiLiveServe` の乗り換え(`busyRunnerPort`)・`XCUIBridgeResolver.start` の振り替えで共有する。
     断る文言(`LauncherError.deviceRunnerElsewhere`)は実機と Simulator で文を分けて書く —— 拡張は英文を型として照合して訳す
     (`cliMessages.ts`・`cliMessageTranslation.test.mjs` が Swift との一致を検査)ので、主語を補間にすると訳文に英語が残る
@@ -5306,3 +5307,21 @@ worktree の run がそれらの端末を「別のワークスペースのブリ
   clearAppData を包むドライバ 6 種を通す口が無い)。窓が尽きたら撃ち直した回数と窓を添えて従来どおり投げる。止める操作は何度撃っても結果が同じなので二重実行の害は無い
 - **再現できていない**: SpringBoard を SIGKILL するとアプリも死んで 3、SIGSTOP すると terminate が返らず時間切れ(既存の撃ち直しの経路)で、64 は出せなかった。
   確認は単体テスト(`StopOnSimulatorRetryTests`)と変異まで。次に M1Max で同じ文言が出たら、実行ログに「after N retries」が出たかを見る
+
+## 101. ライブ操作の自動起動が、同じ Simulator の起動途中のランナーを残骸として止めていた(2026-10-21)
+
+- 事象: 起動途中のランナー(xcodebuild は立ったが、まだ待ち受けていない)は接続を拒否するので、ライブ操作の自動起動は2つの経路で止めていた:
+  1. 別のポート: 残骸の掃除(§99 の `partitionRunnersElsewhere`)が「接続拒否 = 残骸」で止めていた
+  2. **同じポート**: §99 の `busyRunnerPort` が起動途中のポートへ乗り換える → 最初の操作が接続拒否 → 自動起動が同じポートで `startDetached` →
+     `killOrphanRunners` が同じポートのランナーを止める(陽性対照: -07 に `bridge up` を起こした直後に `--port` なしの serve。止められた pid 11739)。
+     `--port` で起動途中のランナーを指した serve も同じ形になる
+- 直し:
+  - 残骸と言えるのは `BridgeLauncher.isLeftoverRunner` の3つが揃ったときだけ: 接続拒否・このワークスペースのランナー(`BridgeOwnership`)・起動途中でない
+    (一度 ready になった `BridgeReadyLedger` か、起動予算を超えて起動ログも止まった `StartingRunnerVerdict`)。供給の掃除 `sweepStuckStartingRunners` と同じ材料。
+    持ち主は `BridgeLauncher.runnerIsOwned`: `BridgeOwnership.runnerProcess` は空白の無いパスしか読めないので、読めないときはコマンド行の
+    `-xctestrun <このクローン>/.fleetest/` で見る(読めない = 止めない、に倒すと空白入りのクローンでは本物の残骸が門を塞ぎ続ける)
+  - 観測をつなぐ口は `partitionRunnersElsewhere(_:repoRoot:)` の1箇所。3つの呼び手(自動起動の門・`busyRunnerPort`・`XCUIBridgeResolver.start`)は
+    ここを通す(`SimulatorRunnerElsewhereGateTests.testCallersGoThroughTheWiredPartition`)
+  - 自動起動の門は起動先と同じポートも見る(外すのは古いビルドの止め直し = `stopFirst` のときだけ)
+  - 門で断った回(`deviceRunnerElsewhere`)は連続失敗に数えない。数えると起動途中のランナーを待つ間に上限へ達して `failed` に固定され、準備できた後も戻らない
+- 確認: 修正版で同じ手順 → serve は「already has an xcuitest runner (still starting…) on port 8152」で起動を見送り、ランナー(pid 18350)は生き残って `bridge up` が ready
