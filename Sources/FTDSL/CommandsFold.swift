@@ -9,6 +9,11 @@ import FTCore
 let foldNotFoldableSkipReason = "fold / unfold / hinge need a foldable device"
     + " (the iPhone Duo simulator or a foldable Android Emulator)"
 
+/// iOS の実機で fold / unfold / hinge をスキップとして記録するときの理由(docs/commands.md と同文)。
+/// 実機は開閉の状態を読む手段も送る手段も無い(Android の実機は device_state で折りたためるかを読める)
+let foldPhysicalIOSSkipReason = "fold / unfold / hinge cannot drive a physical iPhone"
+    + " (fold it by hand); they run on the iPhone Duo simulator"
+
 /// 閉じる(外側の画面へ)。閉じたことを `waitSeconds`(既定 = `tunables.defaultTimeout`)まで待って確かめ、
 /// 閉じなければ失敗。**折りたたみ機でなければシナリオを「対象外(skipped)」で記録する**(失敗ではない)
 public func fold(waitSeconds: Double? = nil, file: StaticString = #filePath, line: UInt = #line) {
@@ -62,19 +67,21 @@ private func foldFailureMessage(_ failure: FoldControl.Failure) -> String {
 private func foldCommand(_ target: FoldTarget, command: String, description: String, waitSeconds: Double?,
                          file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: command)
-    if !core.isDryRun, !core.scenarioAborted, !(core.platform == "ios" && core.physical),
-       case .notFoldable = FTSync.run({ await core.observeFold() }) {
-        core.skipScenarioNotApplicable(description: description, command: command,
-                                       reason: foldNotFoldableSkipReason, file: file, line: line)
-        return
+    if !core.isDryRun, !core.scenarioAborted {
+        if core.platform == "ios", core.physical {
+            core.skipScenarioNotApplicable(description: description, command: command,
+                                           reason: foldPhysicalIOSSkipReason, file: file, line: line)
+            return
+        }
+        if case .notFoldable = FTSync.run({ await core.observeFold() }) {
+            core.skipScenarioNotApplicable(description: description, command: command,
+                                           reason: foldNotFoldableSkipReason, file: file, line: line)
+            return
+        }
     }
     let wait = waitSeconds ?? core.tunables.defaultTimeout
     let driver = core.systemDriver
     core.performCustom(description: description, command: command, file: file, line: line) {
-        if core.platform == "ios", core.physical {
-            throw FoldCommandFailure("\(command) cannot drive a physical device (fold it by hand);"
-                + " it works on the iPhone Duo simulator")
-        }
         do {
             _ = try await FoldControl.apply(target, waitSeconds: wait,
                                             send: { try await driver.setHingeAngle(degrees: $0) },

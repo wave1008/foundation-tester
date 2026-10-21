@@ -68,7 +68,8 @@ hinge(130)              // half-open book posture
 - **`fold` / `unfold` / `hinge` need a foldable device.**
   - iOS: the iPhone Duo **simulator** (Xcode 27.2+), sent through the XCUITest bridge, so the engine must be `xcuitest` or `hybrid` (pure `inapp` cannot).
   - Android: a foldable **Emulator** (an AVD with a hinge sensor, e.g. Pixel 9 Pro Fold).
-  - Physical devices are not supported (fold by hand); the step fails with that message.
+  - A physical iPhone can neither be folded nor have its fold state read, so the scenario is recorded as skipped (not applicable), with the reason `fold / unfold / hinge cannot drive a physical iPhone (fold it by hand); they run on the iPhone Duo simulator`.
+  - On a physical Android device, a non-foldable model gets the not-applicable treatment below; a foldable model is not supported (fold by hand) and the step fails with that message.
 - **On a non-foldable device the scenario is recorded as skipped (not applicable), not failed**, from that step on (same treatment as `appSwitcher()` on a home-button iPhone). The reason reads: `fold / unfold / hinge need a foldable device (the iPhone Duo simulator or a foldable Android Emulator)`.
 - **The fold state is restored automatically at the end of the scenario** (like `rotateTo`'s orientation).
 - **A foldable Android device shows a lock screen ("swipe up to continue") over the app when it is folded.** `fold()` dismisses it so the app is on the outer screen before the next step (the same unlock fleetest does before each scenario; a PIN or pattern lock cannot be dismissed).

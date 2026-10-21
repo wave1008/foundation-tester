@@ -63,7 +63,8 @@ hinge(130)              // 半開きのブック姿勢
 - **`fold` / `unfold` / `hinge` は折りたたみ端末が必要です。**
   - iOS: iPhone Duo の **Simulator**(Xcode 27.2 以降)。XCUITest ブリッジ経由で送るので、エンジンは `xcuitest` か `hybrid` にします(`inapp` 単独は不可)。
   - Android: 折りたたみの **Emulator**(ヒンジセンサー付きの AVD。Pixel 9 Pro Fold など)。
-  - 物理端末は非対応です(手で畳んでください)。その旨の文言でステップが失敗します。
+  - iOS の実機は開閉を送れず状態も読めないので、そのシナリオを対象外(skipped)として記録します(理由は `fold / unfold / hinge cannot drive a physical iPhone (fold it by hand); they run on the iPhone Duo simulator`)。
+  - Android の実機は、折りたためない機種なら下の対象外の扱い、折りたたみの機種なら非対応(手で畳んでください)の文言でステップが失敗します。
 - **折りたためないデバイスでは、失敗にせず、この step 以降を対象外(skipped)としてシナリオを記録します**(ホームボタンの iPhone での `appSwitcher()` と同じ扱い)。理由は `fold / unfold / hinge need a foldable device (the iPhone Duo simulator or a foldable Android Emulator)` です。
 - **折りたたみ状態はシナリオ終了時に自動で元へ戻ります**(`rotateTo` の向きと同じ)。
 - **Android の折りたたみ機は、閉じるとアプリの上にロック画面(「上にスワイプで続行」)が出ます。** `fold()` はそれを外してアプリを外側の画面に出してから次へ進みます(画面ロックの解除と同じ操作。PIN やパターンのロックは外せません)。
