@@ -936,8 +936,9 @@ struct RemoteRunDispatcher {
             }
             // 実機の in-app はアプリと同じ証明書で dylib に署名する。その鍵はこの Mac にしか無いことがあるので
             // ここで署名して隣に置く(ランナー機は自分で署名できないときだけ使う)。失敗しても run は止めない
-            // = ランナー機では XCUITest へ縮退し、その理由を1行言う
-            if key.platform == "ios", key.physical {
+            // = ランナー機では XCUITest へ縮退し、その理由を1行言う。**`key.physical` で絞らない** —— 実機用の
+            // ビルドを `appPath` に書くプロファイルもある(Simulator 用ビルドは開発証明書を持たないので何もしない)
+            if key.platform == "ios" {
                 do {
                     if let line = try PresignedInAppDylib.prepare(appBundle: dest, repoRoot: localRepoRoot) {
                         log("==> \(line)")
