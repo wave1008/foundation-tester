@@ -7,39 +7,44 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { admitStreamStarts, MAX_LOCAL_HW_STREAM_STARTS_PER_PASS, MAX_REMOTE_STREAM_STARTS_PER_PASS } from "../src/remoteStreamAdmission";
+import {
+  admitStreamStarts,
+  LOCAL_HW_STREAM_STARTS_PER_WINDOW,
+  LOCAL_HW_STREAM_WINDOW_MS,
+  MAX_REMOTE_STREAM_STARTS_PER_PASS,
+} from "../src/remoteStreamAdmission";
 
 const remote = (n, machine) =>
   Array.from({ length: n }, (_, i) => ({ deviceId: `${machine}:d${i}`, machine }));
 
 test("1機械あたり1パスで起こす本数を上限で止める", () => {
-  const admitted = admitStreamStarts(remote(8, "M1Max"), 4);
+  const admitted = admitStreamStarts(remote(8, "M1Max"), 4, 0);
   assert.equal(admitted.length, 4);
   assert.deepEqual(admitted, ["M1Max:d0", "M1Max:d1", "M1Max:d2", "M1Max:d3"],
     "入力の順序を保つ(タイルの並び順で先頭から起こす)");
 });
 
 test("上限は機械ごとに独立(別の機械は互いに枠を食わない)", () => {
-  const admitted = admitStreamStarts([...remote(8, "M1Max"), ...remote(8, "M1Ultra")], 4);
+  const admitted = admitStreamStarts([...remote(8, "M1Max"), ...remote(8, "M1Ultra")], 4, 0);
   assert.equal(admitted.filter((id) => id.startsWith("M1Max:")).length, 4);
   assert.equal(admitted.filter((id) => id.startsWith("M1Ultra:")).length, 4);
 });
 
 test("手元のデバイス(machine 無し)は制限しない —— ssh を張らないので枠と無関係", () => {
   const local = Array.from({ length: 12 }, (_, i) => ({ deviceId: `local:d${i}` }));
-  assert.equal(admitStreamStarts(local, 4).length, 12);
+  assert.equal(admitStreamStarts(local, 4, 0).length, 12);
 });
 
 test("手元とリモートが混ざっても、絞られるのはリモートだけ", () => {
   const mixed = [
     { deviceId: "local:a" }, ...remote(6, "M1Max"), { deviceId: "local:b" },
   ];
-  const admitted = admitStreamStarts(mixed, 2);
+  const admitted = admitStreamStarts(mixed, 2, 0);
   assert.deepEqual(admitted, ["local:a", "M1Max:d0", "M1Max:d1", "local:b"]);
 });
 
 test("上限に満たなければ全部通す(常に絞る実装を通さない)", () => {
-  assert.equal(admitStreamStarts(remote(3, "M1Max"), 4).length, 3);
+  assert.equal(admitStreamStarts(remote(3, "M1Max"), 4, 0).length, 3);
 });
 
 test("既定値は monitor + host-metrics の 2 本を引いてなお余裕がある", () => {
@@ -70,7 +75,7 @@ test("ハードウェアエンコードでない手元の配信(mjpeg・Android)
   assert.equal(admitStreamStarts([...plain, ...localHw(6)], 4, 3).length, 12 + 3);
 });
 
-test("手元のエンコーダの枠の既定値は 3", () => {
-  assert.equal(MAX_LOCAL_HW_STREAM_STARTS_PER_PASS, 3);
-  assert.equal(admitStreamStarts(localHw(10)).length, 3, "既定引数でもこの値で絞る");
+test("手元のエンコーダの速さの上限は 0.5秒に1本(ユーザー決定)", () => {
+  assert.equal(LOCAL_HW_STREAM_STARTS_PER_WINDOW, 1);
+  assert.equal(LOCAL_HW_STREAM_WINDOW_MS, 500);
 });

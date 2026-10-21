@@ -14,6 +14,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -98,9 +99,12 @@ const waitSuppressWindow = () => new Promise((resolve) => setTimeout(resolve, 12
 test("窓の中に届いた描画 ack はまとめて1回の suppressFrames になる", async () => {
   const { dir, binaryPath } = makeMockBinaryDir();
   const { deps, controls } = makeDeps(binaryPath);
-  const controller = new MonitorDeviceStreamController(deps);
+  let clock = 10_000;
+  const controller = new MonitorDeviceStreamController(deps, { now: () => clock });
   try {
     const second = { ...iosDevice, id: "ios:second", name: "second" };
+    controller.applyDevices([iosDevice, second]);
+    clock += 500; // 手元の h264 は 0.5秒に1本(remoteStreamAdmission.ts)。2本目を起こすために時計を進める
     controller.applyDevices([iosDevice, second]);
     controller.noteStreamRendered(iosDevice.id);
     await new Promise((resolve) => setTimeout(resolve, 10)); // 別メッセージとして届く形
@@ -751,41 +755,115 @@ test("配信ヘルパーを落とす3経路とも webview へ streamStopped を�
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// ---- 手元の iOS Simulator の h264 は一斉に張らない(remoteStreamAdmission.ts の手元のエンコーダの枠) ----
-// パネルを隠して戻す・run のロックが外れる・モニターの再起動で全台が同じパスに並ぶ。10 本を同時に起こすと
-// AppleAVE がマシン全体で落ちた(2026-10-21)。配線(hardwareEncoded を立てる条件)が崩れると枠が効かない
-test("手元の iOS Simulator の h264 は1パスで3本ずつ起こし、mjpeg は絞らない", () => {
+// ---- 手元の iOS Simulator の h264 は一斉に張らない(0.5秒に1本。remoteStreamAdmission.ts の手元のエンコーダの枠) ----
+// パネルを隠して戻す・run のロックが外れる・モニターの再起動で全台が同じパスに並ぶ。10 本を約 0.16 秒の間に起こした直後に
+// AppleAVE がマシン全体で落ちた。配線(hardwareEncoded を立てる条件・直近の起動時刻の数え方)が崩れると上限が効かない
+function makeSims(n) {
+  return Array.from({ length: n }, (_, i) => ({
+    ...iosDevice, id: `sim-${i}`, name: `iPhone ${i}`,
+    udid: `AAAAAAAA-BBBB-CCCC-DDDD-00000000000${i}`, kind: "virtual",
+  }));
+}
+function countStarted(controller, sims) {
+  for (const sim of sims) {
+    controller.noteStreamRendered(sim.id);
+  }
+  return sims.filter((sim) => controller.isStreaming(sim.id)).length;
+}
+
+test("手元の iOS Simulator の h264 は 0.5秒に1本ずつ起こし、mjpeg は絞らない", () => {
   const { dir, binaryPath } = makeMockBinaryDir();
   let codec = "h264";
+  let clock = 10_000;
   const { deps } = makeDeps(binaryPath);
   deps.getConfig = () => ({
     binaryPath, iosStreamEnabled: true, androidStreamEnabled: false,
     streamCodec: codec, liveFps: 12, monitorMaxWidth: 960, monitorInterval: 0.05,
   });
-  const sims = Array.from({ length: 7 }, (_, i) => ({
-    ...iosDevice, id: `sim-${i}`, name: `iPhone ${i}`,
-    udid: `AAAAAAAA-BBBB-CCCC-DDDD-00000000000${i}`, kind: "virtual",
-  }));
-  const started = () => {
-    for (const sim of sims) {
-      controller.noteStreamRendered(sim.id);
-    }
-    return sims.filter((sim) => controller.isStreaming(sim.id)).length;
-  };
-  const controller = new MonitorDeviceStreamController(deps);
+  const sims = makeSims(7);
+  const controller = new MonitorDeviceStreamController(deps, { now: () => clock });
   try {
     controller.applyDevices(sims);
-    assert.equal(started(), 3, "1パス目は3本");
+    assert.equal(countStarted(controller, sims), 1, "最初のパスは1本");
     controller.applyDevices(sims);
-    assert.equal(started(), 6, "続きは次のパスで起こす");
+    assert.equal(countStarted(controller, sims), 1, "0.5秒たつまでは同じパスを回しても増えない");
+    clock += 499;
     controller.applyDevices(sims);
-    assert.equal(started(), 7);
+    assert.equal(countStarted(controller, sims), 1, "0.499秒ではまだ増えない");
+    clock += 1;
+    controller.applyDevices(sims);
+    assert.equal(countStarted(controller, sims), 2, "0.5秒たったら次の1本");
 
     controller.setVisible(false);
     controller.setVisible(true);
     codec = "mjpeg";
     controller.applyDevices(sims);
-    assert.equal(started(), 7, "mjpeg はエンコーダを使わないので1パスで全部");
+    assert.equal(countStarted(controller, sims), 7, "mjpeg はエンコーダを使わないので1パスで全部");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("起こし残した手元の配信は、モニターの更新を待たずに枠が空いたら起こす", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir();
+  const { deps } = makeDeps(binaryPath);
+  const sims = makeSims(3);
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices(sims);
+    assert.equal(countStarted(controller, sims), 1, "最初の瞬間に全部は起こさない");
+    // applyDevices を呼ばない(モニターの更新が来ない)まま待つ = タイマーだけで起こし直す
+    const deadline = Date.now() + 3000;
+    while (countStarted(controller, sims) < 3 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.equal(countStarted(controller, sims), 3, "約0.5秒ごとに1本ずつ起きる");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("同時に落ちた手元の配信の起動し直しも 0.5秒に1本に並ぶ(パイプラインの内部の再起動が枠を通る)", async () => {
+  // 起動のたびに時刻[ms]を書き、合図のファイル(go)が現れたら全員そろって異常終了する mock
+  // = 負荷で全配信の wedge が一斉に発火した形。順番待ちが無いと RESTART_DELAY_MS 後にそろって起き直す(間隔ほぼ 0ms)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-stream-crash-"));
+  const helper = path.join(dir, "fleetest-simstream");
+  const spawns = path.join(dir, "spawns");
+  const go = path.join(dir, "go");
+  // 時刻は zsh の組み込みで採る(perl 等の外部コマンドは初回の起動が遅く、書いた時刻が起動の時刻からずれる)
+  fs.writeFileSync(helper, `#!/bin/zsh\nzmodload zsh/datetime\nprintf '%.0f\\n' $(( EPOCHREALTIME * 1000 )) >> "${spawns}"\n`
+    + `while [ ! -f "${go}" ]; do sleep 0.02; done\nexit 1\n`);
+  fs.chmodSync(helper, 0o755);
+  // 書いたばかりの実行ファイルは初回の実行だけ macOS の検査で約 0.2 秒遅れ、時刻がずれる。先に1回走らせて消す
+  fs.writeFileSync(go, "");
+  try { execFileSync(helper); } catch { /* exit 1 は想定どおり */ }
+  fs.rmSync(go);
+  fs.rmSync(spawns, { force: true });
+  const { deps } = makeDeps(path.join(dir, "fleetest"));
+  const sims = makeSims(3);
+  const controller = new MonitorDeviceStreamController(deps);
+  const readTimes = () => (fs.existsSync(spawns)
+    ? fs.readFileSync(spawns, "utf8").split("\n").filter(Boolean).map(Number) : []);
+  try {
+    controller.applyDevices(sims);
+    const deadline = Date.now() + 3000;
+    while (readTimes().length < 3 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(readTimes().length, 3, "初回の3本が起きている");
+    // 3本を同じ瞬間に落とす
+    const crashedAt = Date.now();
+    fs.writeFileSync(go, "");
+    // 起動し直し(1秒後)の3本が並び終わるまで待つ
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    const restarts = readTimes().filter((t) => t > crashedAt).sort((a, b) => a - b).slice(0, 3);
+    assert.equal(restarts.length, 3, "3本とも起き直している");
+    const gaps = restarts.slice(1).map((t, i) => t - restarts[i]);
+    // 順番待ちが離すのは判断の時刻(500ms)で、測っているのはプロセスが実際に起きた時刻 = 負荷で1本だけ遅れると見かけの
+    // 間隔が縮む。枠の半分(250ms)を下限にする —— 順番待ちが無いと同じ瞬間に起き直すので間隔はほぼ 0ms
+    assert.ok(Math.min(...gaps) >= 250, `起き直しの間隔が詰まっている: ${gaps.join(", ")} ms`);
   } finally {
     controller.setVisible(false);
     fs.rmSync(dir, { recursive: true, force: true });

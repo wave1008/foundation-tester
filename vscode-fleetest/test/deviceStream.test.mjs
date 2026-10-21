@@ -451,3 +451,34 @@ test("一度でも映像が届いた後の終了は、何度でも張り直す(s
     pipeline.dispose();
   }
 });
+
+// 予期しない終了の後の起動し直しは admitRestart の順番待ちを通る(手元のハードウェアエンコーダの速さの上限。
+// monitorDeviceStreamController.ts)。通らないと、全配信が同時に落ちたとき RESTART_DELAY_MS 後にそろって開き直す
+test("起動し直しは admitRestart が許すまで待ってから起こす", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-stream-admit-"));
+  const helper = path.join(dir, "helper");
+  const spawns = path.join(dir, "spawns");
+  fs.writeFileSync(helper, `#!/bin/sh\necho x >> "${spawns}"\nexit 1\n`);
+  fs.chmodSync(helper, 0o755);
+  const spawnCount = () => (fs.existsSync(spawns) ? fs.readFileSync(spawns, "utf8").split("\n").filter(Boolean).length : 0);
+  let asked = 0;
+  const pipeline = new StreamPipeline({
+    command: helper, args: [], logPrefix: "ios-stream",
+    outputChannel: { appendLine() {} }, codec: "h264",
+    onFrame: () => {}, onChunk: () => {}, onConnectionOk: () => {}, onFailure: () => {},
+    // 1回目は 600ms 待たせ、2回目で許す
+    admitRestart: () => (asked++ === 0 ? 600 : 0),
+  });
+  try {
+    pipeline.start();
+    assert.ok(await waitFor(() => spawnCount() === 1), "最初の起動は順番待ちを通らない(呼び手が通してから start する)");
+    // RESTART_DELAY_MS(1s)で尋ねて断られる → 600ms 後にもう一度尋ねて起こす
+    await new Promise((r) => setTimeout(r, 1300));
+    assert.equal(spawnCount(), 1, "断られている間は起こさない");
+    assert.ok(await waitFor(() => spawnCount() >= 2, 2000), "許されたら起こす");
+    assert.ok(asked >= 2, "起こす前に毎回尋ねる");
+  } finally {
+    pipeline.dispose();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -9,12 +9,14 @@
 // **キューもタイマーも持たない**。呼び出し側(monitorDeviceStreamController.reapply)は
 // モニターの更新ごと(既定2秒)に「パイプラインが無いデバイス」を起こし直すので、
 // 今回見送ったデバイスは次のパスで拾われる。再試行の仕組みを二重に持たない = 取りこぼしで
-// 永久に張られない状態を作らない。
+// 永久に張られない状態を作らない。**手元のハードウェアエンコーダの上限(下)は例外** —— 速さの上限なので
+// モニターの更新(既定2秒)を待つと守れず、空く時刻に起こし直すタイマーと直近の起動時刻をコントローラ
+// (monitorDeviceStreamController.ts)が持つ。このファイルは今回の枠を受け取って振り分けるだけ。
 
 // **手元の iOS Simulator の h264 配信(fleetest-simstream)も一斉に張らない** —— こちらは ssh ではなく
 // ホストのハードウェアエンコーダ(AppleAVE)の枠。パネルを隠して戻した瞬間に手元の 10 本が同時にセッションを
 // 開き、AVE がマシン全体で -17691 を返し始めた(実測。約5分で自然回復)。同じ日の 9 本の一斉起動では
-// 起きていない = 観測1回で閾値は分からないので、同時に開く本数を十分下に抑える。Android Emulator の配信
+// 起きていない = 観測1回で閾値は分からないので、起こす速さを抑える(0.5秒に1本 = ユーザー決定)。Android Emulator の配信
 // (screenrecord)はエミュレータの中で符号化し、ホストのエンコーダの客にならない(同じ時刻の客は simstream だけ)ので数えない。
 
 /** 1回のパスで1機械あたり新しく起こす配信の本数。
@@ -24,20 +26,22 @@
  * 張れないのではなく張り終わるまでの時間が延びるだけになる。 */
 export const MAX_REMOTE_STREAM_STARTS_PER_PASS = 4;
 
-/** 1回のパスで新しく起こす、手元のハードウェアエンコーダを使う配信(iOS Simulator の h264)の本数。
- * 根拠: 10 本の同時起動で AVE が落ち、9 本では落ちなかった(各1回の観測)。その十分下の 3。
- * パスは主にモニターの更新ごと(既定2秒)で、手元 10 台は約 8 秒で張り終わる(その間タイルはポーリングで更新される)。
- * ただし `reapply`(配信の起こし直し・ロックの変化)は更新を待たずにパスを回すので、短い間隔で2パス = 6 本になることはある
- * **尽きたときは次のパスで続きを起こす**(リモートと同じ) */
-export const MAX_LOCAL_HW_STREAM_STARTS_PER_PASS = 3;
+/** 手元のハードウェアエンコーダを使う配信(iOS Simulator の h264)を起こす速さの上限:
+ * 直近 `LOCAL_HW_STREAM_WINDOW_MS` の間に `LOCAL_HW_STREAM_STARTS_PER_WINDOW` 本まで(= 0.5秒に1本。ユーザー決定)。
+ * 落ちた回は 10 本が約 0.16 秒の間にセッションを開いた直後だった(9 本の一斉起動では落ちていない = 閾値は不明)。
+ * 手元 10 台は約 4.5 秒で張り終わる(その間タイルはポーリングで更新される)。枠が尽きたら呼び手が空く時刻に起こし直す
+ * (monitorDeviceStreamController.ts。モニターの更新の周期を待たない) */
+export const LOCAL_HW_STREAM_STARTS_PER_WINDOW = 1;
+export const LOCAL_HW_STREAM_WINDOW_MS = 500;
 
 /** 今回のパスで起こしてよい deviceId を返す(入力の順序を保つ)。
  * machine が無い = 手元のデバイスは ssh を張らないので機械の枠では制限しない。
- * 手元でも `hardwareEncoded` のものはエンコーダの枠(`maxLocalHardwareEncoded`)で制限する */
+ * 手元でも `hardwareEncoded` のものはエンコーダの枠(`maxLocalHardwareEncoded` = 呼び手が直近の起動から求めた今の残り)で
+ * 制限する。**既定値を置かない** —— 渡し忘れると手元の一斉起動が素通りする */
 export function admitStreamStarts(
   pending: ReadonlyArray<{ deviceId: string; machine?: string; hardwareEncoded?: boolean }>,
-  maxPerMachine: number = MAX_REMOTE_STREAM_STARTS_PER_PASS,
-  maxLocalHardwareEncoded: number = MAX_LOCAL_HW_STREAM_STARTS_PER_PASS,
+  maxPerMachine: number,
+  maxLocalHardwareEncoded: number,
 ): string[] {
   const startedPerMachine = new Map<string, number>();
   let startedLocalHardwareEncoded = 0;

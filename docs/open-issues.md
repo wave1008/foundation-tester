@@ -47,7 +47,9 @@
     モニターのパネルが隠れて全台の配信が止まり(`Live streams stopped (the monitor panel is hidden)`)、約14秒後に戻った瞬間に
     手元の `fleetest-simstream` 10 本が同時にエンコードのセッションを開いて `AVE_USL_Drv_Start errorCode 0xfffffc0d`(-1011 → -17691)。
     同じ日の 9 本の一斉起動(20:28・23:43)と、E2E 中の毎分 40〜50 セッションでは誤りゼロ = 十分条件ではない。
-    対処: 手元の iOS Simulator の h264 配信を1パス3本ずつ起こす(`remoteStreamAdmission.ts` の `MAX_LOCAL_HW_STREAM_STARTS_PER_PASS`)。
+    対処: 手元の iOS Simulator の h264 配信を 0.5秒に1本ずつ起こす(ユーザー決定。`remoteStreamAdmission.ts` の `LOCAL_HW_STREAM_STARTS_PER_WINDOW` /
+    `LOCAL_HW_STREAM_WINDOW_MS`。枠が尽きたらモニターの更新を待たずにタイマーで起こし直す。配信ヘルパーが落ちた後の
+    `StreamPipeline` の内部の起動し直しも同じ枠を通す = 負荷で全配信が同時に落ちても一斉に開き直さない)。
     効いたかは次の発生の有無で見る
 - **AppleAVE(ハードウェアビデオエンコーダ)がマシン全体で壊れ、再起動まで戻らない**(2026-10-17〜18・M2 Ultra で3回)
   - 症状: 切り出しが `-17691` で失敗/合成映像も固まる。Simulator の録画の試し撮りが空になり、iOS の h264 配信も巻き添え

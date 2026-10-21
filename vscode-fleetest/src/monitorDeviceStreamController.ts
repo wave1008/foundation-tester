@@ -23,7 +23,12 @@ import { StreamPipeline } from "./deviceStream";
 import { t } from "./i18n";
 import type { MonitorDevice, MonitorPlatform } from "./monitorModel";
 import type { MonitorPanelDeps } from "./monitorPanel";
-import { admitStreamStarts } from "./remoteStreamAdmission";
+import {
+  admitStreamStarts,
+  LOCAL_HW_STREAM_STARTS_PER_WINDOW,
+  LOCAL_HW_STREAM_WINDOW_MS,
+  MAX_REMOTE_STREAM_STARTS_PER_PASS,
+} from "./remoteStreamAdmission";
 import { LOCAL_MACHINE_KEY } from "./runBoardModel";
 
 /** applyDevices が1サイクル分の qualifying 判定と同時に組み立てる、起動に必要な情報一式。 */
@@ -56,6 +61,12 @@ function matchesDeviceName(deviceId: string, name: string, machine?: string): bo
   return deviceId.endsWith(machine === undefined ? `:${name}` : `:${machine}/${name}`);
 }
 
+/** 手元のハードウェアエンコーダ(AppleAVE)を使う配信か = 速さの上限の対象(remoteStreamAdmission.ts)。
+ * 手元の iOS Simulator の h264 だけ(Android の screenrecord はエミュレータの中で符号化・実機は mjpeg) */
+function isLocalHardwareEncoded(target: QualifyingTarget): boolean {
+  return target.machine === undefined && target.platform === "ios" && target.codec === "h264";
+}
+
 export class MonitorDeviceStreamController {
   private readonly pipelines = new Map<string, StreamEntry>();
   /** webview がストリームフレームの描画を ack(streamRendered)済みで、ポーリングフレームを
@@ -82,7 +93,17 @@ export class MonitorDeviceStreamController {
    * (applyDevices は monitorInterval 秒毎に呼ばれるためスパム防止。syncSuppressFrames 参照)。 */
   private lastSuppressedIds: ReadonlySet<string> | undefined;
 
-  constructor(private readonly deps: MonitorPanelDeps) {}
+  /** 直近 `LOCAL_HW_STREAM_WINDOW_MS` の間に手元のハードウェアエンコードの配信を起こした時刻[ms]。古い順 */
+  private localHardwareStarts: number[] = [];
+  /** 枠が空く時刻に起こし直すタイマー(1本だけ。隠す・破棄で止める) */
+  private localHardwareRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly now: () => number;
+
+  /** `now` はテストの差し替え口。既定は単調な `performance.now()` —— `Date.now` はシステム時刻の変更で戻り、
+   * 記録した起動時刻が未来になって枠が空かず、新しい配信が戻った分だけ黙って起きなくなる */
+  constructor(private readonly deps: MonitorPanelDeps, options: { now?: () => number } = {}) {
+    this.now = options.now ?? (() => performance.now());
+  }
 
   isStreaming(deviceId: string): boolean {
     return this.streamingDeviceIds.has(deviceId);
@@ -314,13 +335,60 @@ export class MonitorDeviceStreamController {
       .map(([deviceId, target]) => ({
         deviceId,
         machine: target.machine,
-        hardwareEncoded: target.machine === undefined && target.platform === "ios" && target.codec === "h264",
+        hardwareEncoded: isLocalHardwareEncoded(target),
       }));
-    for (const deviceId of admitStreamStarts(pending)) {
+    const now = this.now();
+    this.pruneLocalHardwareStarts(now);
+    const hardwareBudget = Math.max(0, LOCAL_HW_STREAM_STARTS_PER_WINDOW - this.localHardwareStarts.length);
+    const admitted = new Set(admitStreamStarts(pending, MAX_REMOTE_STREAM_STARTS_PER_PASS, hardwareBudget));
+    for (const { deviceId, hardwareEncoded } of pending) {
       const target = qualifying.get(deviceId);
-      if (target) {
-        this.startPipeline(deviceId, target);
+      if (!admitted.has(deviceId) || !target) {
+        continue;
       }
+      this.startPipeline(deviceId, target);
+      if (hardwareEncoded) {
+        this.localHardwareStarts.push(now);
+      }
+    }
+    // 起こし残した手元の配信は、枠が空く時刻に起こし直す(モニターの更新 = 既定2秒を待つと 0.5秒に1本 にならない)
+    if (pending.some((item) => item.hardwareEncoded && !admitted.has(item.deviceId))) {
+      const oldest = this.localHardwareStarts[0] ?? now;
+      this.scheduleLocalHardwareRetry(oldest + LOCAL_HW_STREAM_WINDOW_MS - now);
+    }
+  }
+
+  private pruneLocalHardwareStarts(now: number): void {
+    this.localHardwareStarts = this.localHardwareStarts.filter((at) => now - at < LOCAL_HW_STREAM_WINDOW_MS);
+  }
+
+  /** パイプラインの内部の起動し直し(StreamPipeline の admitRestart)の順番待ち。初回の起動と同じ枠を数える。
+   * 今起こしてよいなら枠を取って 0、駄目なら空くまでの ms(1 以上) */
+  private reserveLocalHardwareSlot(): number {
+    const now = this.now();
+    this.pruneLocalHardwareStarts(now);
+    if (this.localHardwareStarts.length < LOCAL_HW_STREAM_STARTS_PER_WINDOW) {
+      this.localHardwareStarts.push(now);
+      return 0;
+    }
+    const oldest = this.localHardwareStarts[0] ?? now;
+    return Math.max(1, Math.ceil(oldest + LOCAL_HW_STREAM_WINDOW_MS - now));
+  }
+
+  private scheduleLocalHardwareRetry(delayMs: number): void {
+    if (this.localHardwareRetryTimer) {
+      return;
+    }
+    this.localHardwareRetryTimer = setTimeout(() => {
+      this.localHardwareRetryTimer = undefined;
+      this.reapply();
+    }, Math.max(0, delayMs));
+  }
+
+  private cancelLocalHardwareRetry(): void {
+    if (this.localHardwareRetryTimer) {
+      clearTimeout(this.localHardwareRetryTimer);
+      this.localHardwareRetryTimer = undefined;
     }
   }
 
@@ -419,6 +487,7 @@ export class MonitorDeviceStreamController {
       // helper が「この機械では h264 が無理」と降りたら mjpeg へ張り替える(webview の
       // codecError と同じ扱い。あちらは受け手の非対応、こちらは送り手の資源不足)
       onCodecUnavailable: () => this.fallbackToMjpeg(deviceId),
+      admitRestart: isLocalHardwareEncoded(target) ? () => this.reserveLocalHardwareSlot() : undefined,
       onFailure: (message) => {
         this.deps.outputChannel.appendLine(
           `[monitor-stream] ${deviceId}: ${message} ${t("monitor.deviceStream.fallbackToPolling")}`,
@@ -531,6 +600,7 @@ export class MonitorDeviceStreamController {
    * 見えない画面へ送り続けた(実測: 手元 16 台で 1 分 106 枚・3 MB。monitor の CPU は変わらず、
    * 無駄は送った先の拡張ホスト側)。抑止中も monitor は凍結の探りを間隔を落として続ける(観測は止めない) */
   private hideAll(): void {
+    this.cancelLocalHardwareRetry();
     for (const deviceId of [...this.pipelines.keys()]) {
       this.dropPipeline(deviceId);
       this.streamingDeviceIds.delete(deviceId);
@@ -543,6 +613,7 @@ export class MonitorDeviceStreamController {
   }
 
   dispose(): void {
+    this.cancelLocalHardwareRetry();
     this.disposeAll();
   }
 }

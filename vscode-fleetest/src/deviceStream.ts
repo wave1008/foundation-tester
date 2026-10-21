@@ -125,6 +125,11 @@ export interface StreamPipelineOptions {
    * **再起動はしない** —— 同じ引数では直らないので、呼び出し側が mjpeg で張り直す。
    * 未定義なら通常の異常終了として扱う(再起動する)。 */
   onCodecUnavailable?(): void;
+  /** 予期しない終了の後の起動し直しの順番待ち。呼ぶと「今起こしてよいなら枠を取って 0 / 駄目なら空くまでの ms」を返す
+   * (手元のハードウェアエンコーダの速さの上限 = monitorDeviceStreamController.ts)。**これが無いと、全配信が同時に
+   * 落ちた(負荷で wedge が一斉に発火した)とき、全部が `RESTART_DELAY_MS` 後にそろってエンコードのセッションを開き直す**。
+   * 未定義なら待たない */
+  readonly admitRestart?: () => number;
 }
 
 function errorMessage(error: unknown): string {
@@ -438,13 +443,21 @@ export class StreamPipeline implements LiveStreamPipeline {
 
   private scheduleRestart(): void {
     this.clearRestartTimer();
-    this.restartTimer = setTimeout(() => {
-      this.restartTimer = undefined;
-      if (this.disposed || this.gaveUp) {
-        return;
-      }
-      this.spawnProcess();
-    }, RESTART_DELAY_MS);
+    this.restartTimer = setTimeout(() => this.spawnWhenAdmitted(), RESTART_DELAY_MS);
+  }
+
+  /** `admitRestart` が許すまで待ってから起こす(待つ間も restartTimer に載せる = dispose で止まる) */
+  private spawnWhenAdmitted(): void {
+    this.restartTimer = undefined;
+    if (this.disposed || this.gaveUp) {
+      return;
+    }
+    const waitMs = this.options.admitRestart?.() ?? 0;
+    if (waitMs > 0) {
+      this.restartTimer = setTimeout(() => this.spawnWhenAdmitted(), waitMs);
+      return;
+    }
+    this.spawnProcess();
   }
 
   /** このパイプラインの寿命(再起動を跨ぐ)で1フレームでも受け取ったか。**wedge の扱いを
