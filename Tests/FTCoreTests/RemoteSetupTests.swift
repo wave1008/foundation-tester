@@ -82,8 +82,8 @@ final class RemoteSetupTests: XCTestCase {
                 + "bash '/tmp/preflight.sh' '--runner' '--base' '/x'; ft_status=$?; rm -f '/tmp/preflight.sh'; exit $ft_status")
     }
 
-    /// 非対話 ssh の PATH には Homebrew が入らない。install.sh は brew を使う(node の導入)ので、
-    /// これが抜けると**入っているのに「Homebrew が無い」で落ちる**(remoteRunCommand と同じ規律)
+    /// 非対話 ssh の PATH には Homebrew が入らない。preflight / install.sh は Homebrew の道具を見るので、
+    /// これが抜けると**入っているのに「無い」と判定する**(remoteRunCommand と同じ規律)
     func testRunAndCleanupCommandPrependsHomebrewToPath() {
         let command = RemoteSetupPlan.runAndCleanupCommand(remotePath: "/tmp/x.sh", args: [])
         XCTAssertTrue(command.hasPrefix("export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\";"), command)

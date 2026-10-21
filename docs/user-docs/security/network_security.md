@@ -69,7 +69,7 @@ How the files and destinations that test code (scenarios) can reach are restrict
 | fleetest itself | `github.com` | clone, pull, update check |
 | **20+ Swift dependencies** | `github.com` (`apple/*`, `grpc/*`, `swiftlang/*`, `swift-server/*`, `jpsim/Yams`) | `swift build` |
 | 8 VSCode extension dependencies | `registry.npmjs.org` | Building the extension |
-| `libimobiledevice` | Homebrew's distribution hosts | Setup |
+| `node@26` (to build the VSCode extension), `libimobiledevice` | Homebrew's distribution hosts | Setup |
 | Android system images and command-line tools | `dl.google.com` | Creating an Emulator, installing Android SDK tools |
 | Container images (when you use compose.yaml) | A container image registry (docker.io) | Start of a run, `fleetest services pull` |
 
@@ -141,7 +141,7 @@ Three things remain:
   `bash <TOOL_ROOT>/Scripts/install.sh` directly (the curl form will not work). Updates use
   `bash <TOOL_ROOT>/Scripts/update.sh` the same way
 - **npm**: point `registry` in `.npmrc` at the internal proxy
-- **Homebrew**: provide an internal tap, or pre-install `libimobiledevice`
+- **Homebrew**: provide an internal tap, or pre-install `node@26` and `libimobiledevice`
 
 To redirect only the initial clone, `FLEETEST_REPO_URL=<mirror URL>` also works.
 

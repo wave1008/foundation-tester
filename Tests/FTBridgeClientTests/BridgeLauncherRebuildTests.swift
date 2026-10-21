@@ -10,8 +10,8 @@ final class BridgeLauncherRebuildTests: XCTestCase {
     override func setUpWithError() throws {
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("ft-launcher-rebuild-\(UUID().uuidString)")
-        for dir in ["Runner/FleetestRunnerUITests", "Runner/FleetestRunnerApp", "Runner/FleetestRunner.xcodeproj",
-                    "Sources/FTCore"] {
+        for dir in ["Runner/FleetestRunnerUITests", "Runner/FleetestRunnerApp",
+                    "Runner/FleetestRunner.xcodeproj/xcshareddata/xcschemes", "Sources/FTCore"] {
             try FileManager.default.createDirectory(
                 at: root.appendingPathComponent(dir), withIntermediateDirectories: true)
         }
@@ -25,7 +25,9 @@ final class BridgeLauncherRebuildTests: XCTestCase {
     }
 
     /// ランナーのビルド入力(BridgeSourceSet.xcuitest の共有 FTCore ファイルを含む)
-    private static let inputs = ["Runner/FleetestRunner.xcodeproj/project.xcproj", "Runner/FleetestRunnerUITests/BridgeRouter.swift",
+    private static let inputs = ["Runner/FleetestRunner.xcodeproj/project.xcproj",
+                                 "Runner/FleetestRunner.xcodeproj/xcshareddata/xcschemes/FleetestRunner.xcscheme",
+                                 "Runner/FleetestRunnerUITests/BridgeRouter.swift",
                                  "Runner/FleetestRunnerApp/App.swift", "Sources/FTCore/BridgeDTO.swift",
                                  "Sources/FTCore/SnapshotDedupe.swift", "Sources/FTCore/TypeReadback.swift",
                                  "Sources/FTCore/AXFrameRescale.swift",
@@ -72,6 +74,17 @@ final class BridgeLauncherRebuildTests: XCTestCase {
         let xctestrun = try makeXCTestRun(modified: Date(timeIntervalSinceNow: -3600))
         try setModified("Runner/FleetestRunnerUITests/BridgeRouter.swift", Date())
         XCTAssertTrue(needsRebuild(xctestrun))
+    }
+
+    /// 共有スキームは project.xcproj と別ファイル(xctestrun へ焼き込む FT_PORT 等を持つ)
+    func testNewerProjectOrSchemeTriggersRebuild() throws {
+        for file in ["Runner/FleetestRunner.xcodeproj/project.xcproj",
+                     "Runner/FleetestRunner.xcodeproj/xcshareddata/xcschemes/FleetestRunner.xcscheme"] {
+            let xctestrun = try makeXCTestRun(modified: Date(timeIntervalSinceNow: -3600))
+            for input in Self.inputs { try setModified(input, Date(timeIntervalSinceNow: -7200)) }
+            try setModified(file, Date())
+            XCTAssertTrue(needsRebuild(xctestrun), "\(file) が新しければ作り直す")
+        }
     }
 
     func testNewerSharedDTOTriggersRebuild() throws {

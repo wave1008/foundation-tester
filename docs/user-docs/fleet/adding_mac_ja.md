@@ -40,7 +40,7 @@ Claude Code では `/fleetest-remote-setup` スキルが、必要な値(ラン�
 | システムスリープが無効であること(ディスプレイスリープと画面ロックは可) | `pmset -g \| grep " sleep"` |
 | リモートログインが ON であること | ステップ1で確認します |
 | ファイアウォールの「外部からの接続をすべてブロック」が OFF であること(ファイアウォール自体は ON のままでかまいません) | ステップ0の2を見てください |
-| Homebrew がインストールされていて、その macOS に対応する版であること | `brew --version` が動く |
+| Homebrew がインストールされていて、その macOS に対応する版であること(ランナー機で実機の iPhone・`.apks`・Homebrew で入れる Apple Container を使うときだけ) | `brew --version` が動く |
 | 画面共有が ON であること(推奨。ランナー機の再起動後に手元からログインし直せます。`fleetest remote setup` の判定には使いません) | システム設定 → 一般 → 共有 → 画面共有 |
 | テストで使う iOS Simulator のランタイムをダウンロードしていること(iOS を回すときだけ。無くても実行は止まらず、ステップ5で警告が出ます) | `xcodebuild -downloadPlatform iOS` |
 | Android SDK と AVD があること(Android を回すときだけ)。SDK は既定の場所(`~/Library/Android/sdk`)に置く | `fleetest doctor` |
@@ -92,8 +92,9 @@ fleetest は代わりに行いません。
      `~/.zshrc` などで設定した `ANDROID_HOME` は読まれません(fleetest は `ANDROID_HOME` → `ANDROID_SDK_ROOT` → 既定の場所の順に探します)。既定の場所なら何も設定しなくてよい。
    - Emulator(AVD)は Android Studio の Device Manager で作れます。ステップ4で fleetest から
      作ることもできます。
-7. **Homebrew をインストールする**。ステップ3で fleetest が必要なツール(Node.js)を Homebrew で
-   自動で入れるので、Homebrew が要ります。
+7. **Homebrew をインストールする**(必要なときだけ)。`fleetest remote setup` 自体は Homebrew を使いません。
+   ランナー機で実機の iPhone(`libimobiledevice`)・`.apks`(`bundletool`)・Apple Container(`container`)を
+   使うときに、その道具を入れるために要ります。
    - **Homebrew を入れたことがない場合**: ターミナルで次のコマンドを実行します(手順は
      <https://brew.sh/> にもあります)。途中でランナー機のログインパスワードを聞かれます。
      ```bash

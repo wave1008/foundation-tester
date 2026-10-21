@@ -190,13 +190,15 @@ struct Doctor: AsyncParsableCommand {
 
         let xcode = try Shell.run(["xcodebuild", "-version"])
         let xcodeLine = xcode.output.split(separator: "\n").first.map(String.init) ?? "unknown"
-        ConsoleOut.out(xcode.status == 0 ? "✅ \(xcodeLine)" : "❌ xcodebuild not found")
         if xcode.status != 0 {
+            ConsoleOut.out("❌ xcodebuild not found")
             problems += 1
         } else if XcodeRequirement.isSupported(versionOutput: xcode.output) == false {
-            problems += 1
             ConsoleOut.out("❌ \(XcodeRequirement.display) or later is required (found: \(xcodeLine))"
                 + " — the bridge project uses the JSON project format (project.xcproj)")
+            problems += 1
+        } else {
+            ConsoleOut.out("✅ \(xcodeLine)")
         }
 
         // macOS/Xcode の版とビルド。**情報だけ・赤にも警告にもしない** —— ずれていても正常に

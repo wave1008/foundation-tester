@@ -1306,14 +1306,16 @@ public struct BridgeLauncher: Sendable {
     }
 
     /// ランナーのビルド入力の最終更新時刻。入力 = **`BridgeSourceSet.xcuitest`(ブリッジの入力の正本:
-    /// UITests と、project.xcproj が取り込む共有 FTCore ファイル)** + project.xcproj + ホストアプリ(FleetestRunnerApp。
+    /// UITests と、project.xcproj が取り込む共有 FTCore ファイル)** + project.xcproj + 共有スキーム(xctestrun へ焼き込む
+    /// FT_PORT 等の環境変数を持つ。project.xcproj とは別ファイル)+ ホストアプリ(FleetestRunnerApp。
     /// 挙動には効かないがビルドには入る)。自前の一覧を持たない —— 一覧が SnapshotDedupe.swift /
     /// TypeReadback.swift のような共有ファイルを1つでも落とすと、そのファイルだけを変えても
     /// 旧ビルドのまま走ってしまう。取得できない場合は nil = 「判定不能」として再ビルドさせる(古いまま走らせるより安全)
     static func newestRunnerSourceTimestamp(repoRoot: URL) -> Date? {
         guard let bridgeInputs = try? BridgeSourceSet.xcuitest.files(repoRoot: repoRoot) else { return nil }
         var inputs = bridgeInputs.map { repoRoot.appendingPathComponent($0) }
-            + [repoRoot.appendingPathComponent("Runner/FleetestRunner.xcodeproj/project.xcproj")]
+            + [repoRoot.appendingPathComponent("Runner/FleetestRunner.xcodeproj/project.xcproj"),
+               repoRoot.appendingPathComponent("Runner/FleetestRunner.xcodeproj/xcshareddata/xcschemes/FleetestRunner.xcscheme")]
         for dir in ["Runner/FleetestRunnerApp"] {
             let dirURL = repoRoot.appendingPathComponent(dir)
             guard let entries = try? FileManager.default.contentsOfDirectory(

@@ -64,7 +64,7 @@
 | fleetest 本体 | `github.com` | clone・pull・更新の有無の確認 |
 | **Swift の依存 20 本超** | `github.com`(`apple/*`・`grpc/*`・`swiftlang/*`・`swift-server/*`・`jpsim/Yams`) | `swift build` |
 | VSCode 拡張の依存 8 個 | `registry.npmjs.org` | 拡張のビルド |
-| `libimobiledevice` | Homebrew の配信元 | 導入時 |
+| `node@26`(VSCode 拡張のビルド用)・`libimobiledevice` | Homebrew の配信元 | 導入時 |
 | Android のシステムイメージ・コマンドラインツール | `dl.google.com` | Emulator を作るとき・Android SDK のツールを入れるとき |
 | コンテナイメージ(compose.yaml を使うとき) | コンテナイメージのレジストリ(docker.io) | run の開始時・`fleetest services pull` |
 
@@ -130,7 +130,7 @@ SwiftPM もこの設定に従うので、依存の取得は `github.com` では�
   `bash <TOOL_ROOT>/Scripts/install.sh` を直接実行**してください(curl 形は使えません)。
   更新も同じく `bash <TOOL_ROOT>/Scripts/update.sh` を使います
 - **npm**: `.npmrc` の `registry` を社内プロキシへ向けます
-- **Homebrew**: 社内 tap を用意するか、`libimobiledevice` を事前に入れておきます
+- **Homebrew**: 社内 tap を用意するか、`node@26` と `libimobiledevice` を事前に入れておきます
 
 初回のクローンだけを差し替えるなら `FLEETEST_REPO_URL=<ミラーの URL>` も使えます。
 

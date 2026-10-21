@@ -1326,8 +1326,8 @@ localhost へ1回流して初めて出た(単体テストは文字列しか見�
   **入っているのに「Homebrew が無い」で落ちた**。既存の `RemoteShell.remoteRunCommand` には
   同じ手当てがあり §12 にも書いてあったのに、新設した経路へ写していなかった。
   **ssh 越しに何かを起動する経路を足したら、この補正を必ず写す**
-- **preflight の自動導入ツール(Node.js 等)の判定は brew の有無まで見る**。「install.sh が入れるから人手扱いに
-  しない」は brew がある前提で、両方無いと install.sh が clone 直後に fail する。
+- **preflight の自動導入ツール(当時は xcodegen)の判定は brew の有無まで見る必要があった**。「install.sh が入れるから人手扱いに
+  しない」は brew がある前提で、両方無いと install.sh が clone 直後に fail した。
   **自動導入に頼る項目は、その導入手段の存在まで判定に含める**(install.sh の条件と一致させる)
 - **`set -u` の未代入参照は「その経路を通ったときだけ」落ちる**。ready 行だけが
   `$tool_root_exists` 等を参照しており、手元(needs-manual)では出ず、ランナー機の

@@ -40,7 +40,7 @@ person can do, such as typing an SSH password.
 | System sleep disabled (display sleep and screen lock are fine) | `pmset -g \| grep " sleep"` |
 | Remote Login on | checked in Step 1 |
 | The firewall's "Block all incoming connections" is off (the firewall itself can stay on) | see item 2 of Step 0 |
-| Homebrew is installed, in a version that supports that macOS | `brew --version` runs |
+| Homebrew is installed, in a version that supports that macOS (only when the runner uses physical iPhones, `.apks` files, or Apple Container installed with Homebrew) | `brew --version` runs |
 | Xcode's license is accepted and its first-launch setup is done | `sudo xcodebuild -license accept`, then `sudo xcodebuild -runFirstLaunch` (`fleetest remote setup` stops if either is missing) |
 | Screen Sharing on (recommended: lets you log back in from your Mac after the runner restarts; `fleetest remote setup` does not require it) | System Settings → General → Sharing → Screen Sharing |
 | The iOS Simulator runtime you test with is downloaded (only when running iOS; runs are not stopped without it, but Step 5 warns) | `xcodebuild -downloadPlatform iOS` |
@@ -94,8 +94,9 @@ do them for you.
      configured.
    - You can create Emulators (AVDs) in Android Studio's Device Manager. You can also create them
      from fleetest in Step 4.
-7. **Install Homebrew**. In Step 3, fleetest uses Homebrew to install a tool it needs
-   (Node.js) automatically, so Homebrew is required.
+7. **Install Homebrew** (only when needed). `fleetest remote setup` itself does not use Homebrew.
+   You need it only to install the tools for physical iPhones (`libimobiledevice`), `.apks` files
+   (`bundletool`), or Apple Container (`container`) on the runner.
    - **If Homebrew has never been installed**: run the following command in the terminal (the
      instructions are also at <https://brew.sh/>). It asks for the runner's login password partway
      through.
