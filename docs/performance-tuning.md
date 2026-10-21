@@ -171,9 +171,15 @@ Demo 16 シナリオ(iOS 6+Android 10)を iOS/Android 同数のデバイスで A
    古いバイナリを温存して FoundationModels ABI 不整合で dyld クラッシュする罠(§CLAUDE.md)を
    スキップが助長しないため。**強制的に再ビルドさせたいときは `.fleetest/build-fingerprint-*.txt`
    を消すか手で `swift build` する**
-2. **ビルドとワーカー供給の並行化**(`fleetest api run`): ビルド(ホスト CPU)とデバイス供給
+2. **ビルドとワーカー供給の並行化**(`fleetest api run` と `fleetest run --profile`): ビルド(ホスト CPU)とデバイス供給
    (ブリッジ待ち・install)は独立なので、並列実行経路ではワーカー構築 Task を build より先に
-   開始する(`ApiRunCommand.run()`)。stderr の供給ログとビルドログは交互に出るようになった
+   開始する(`ApiRunCommand.run()`)。stderr の供給ログとビルドログは交互に出るようになった。
+   `fleetest run` は**ビルドが要る回だけ**、ビルドの前に準備の段(`ProfileRunner.prepareSupply`。サービス・開始スクリプト・
+   両 OS の供給タスク)を起こす(`ScenarioHost.buildNeeded`)。台数はそのとき確定している本数(`--scenario` の
+   `Class.method` の明示だけ)で絞るので、ビルドが要らない回は従来どおり一覧の後に正確な本数で絞る
+   (並行にしても得が無く、絞り込みだけ緩むため)。**どちらの回も Android と iOS の供給は同時に始まる**(別々のタスク。
+   以前の `run` は Android の供給が終わってから iOS を起こしていた)。失敗・中断・対象なしで抜けるときは、供給のタスクが
+   終わってから片付ける(`PreparedSupply.settle`。走っている iOS の準備の横で終了スクリプトやサービスの停止を走らせない)
 3. **コールド供給のデバイス間並列化**(`BridgeProvisioner.provision`): 「差分判定(並列)→
    プランニング=ポート採番(直列)→ 共有ビルド(直列)→ 起動(デバイス単位で並列)」に分離。
    hybrid の 2 ブリッジは同一シミュレータへの simctl 競合を避けるためデバイス内では従来どおり直列。

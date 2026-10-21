@@ -44,8 +44,9 @@ final class ResponseTraceWiringTests: XCTestCase {
         }
     }
 
+    /// run の取得と復元は準備の段(ProfileRunner+Supply.swift)にある
     func testBothEntrancesCaptureBeforeAndRestoreAfterTheAnimationSync() throws {
-        for path in Self.entrances {
+        for path in ["Sources/fleetest/ProfileRunner+Supply.swift", "Sources/fleetest/ApiRunCommand.swift"] {
             let lines = try Self.code(path)
             let capture = try XCTUnwrap(lines.firstIndex { $0.contains("captureAnimationRestore(") }, path)
             let restore = try XCTUnwrap(lines.firstIndex { $0.contains("restoreAnimations(") }, path)

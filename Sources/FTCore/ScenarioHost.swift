@@ -210,8 +210,7 @@ public enum ScenarioHost {
         }
 
         let fingerprint = BuildFingerprint.compute(repoRoot: root, scenariosDir: project.scenariosDir)
-        if let fingerprint,
-           fingerprint == BuildFingerprint.stored(productName: project.productName, repoRoot: root),
+        if !buildNeeded(fingerprint: fingerprint, project: project, root: root),
            let runner = try? runnerURL(project: project) {
             log?("→ No changes — skipping the scenario build")
             // swift test も同じ product を作り直す(ID が UUID 入りに戻る)ので、省いた経路でも揃える
@@ -230,6 +229,21 @@ public enum ScenarioHost {
         if let runner = try? runnerURL(project: project) {
             pinSigningIdentifier(binary: runner, productName: project.productName, log: log)
         }
+    }
+
+    /// `build` が swift build を呼ぶか(呼ばずに答える。省く条件は `build` と同じ1箇所)。
+    /// `fleetest run` はこれが true の回だけ、ビルドの前に供給を起こして並行に進める
+    public static func buildNeeded(project: TestProject) -> Bool {
+        guard let root = packageRoot() else { return true }
+        return buildNeeded(fingerprint: BuildFingerprint.compute(repoRoot: root, scenariosDir: project.scenariosDir),
+                           project: project, root: root)
+    }
+
+    private static func buildNeeded(fingerprint: String?, project: TestProject, root: URL) -> Bool {
+        guard let fingerprint,
+              fingerprint == BuildFingerprint.stored(productName: project.productName, repoRoot: root),
+              (try? runnerURL(project: project)) != nil else { return true }
+        return false
     }
 
     /// シナリオ実行バイナリのコード署名の Identifier を製品名に揃える。

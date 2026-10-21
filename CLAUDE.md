@@ -206,8 +206,8 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
   (`ResolvedProfile.deviceKeepCount` = 本数 + 予備1台)。実測で iOS の1本実行が 21.8s → 9.3s。
   **予備1台は必須**(用意したデバイスが blank/frozen で弾かれると run ごと落ちる)。
   **例外は `--broadcast`** —— 各デバイスで1回ずつ回すのが目的なので絞らない(分配だけ
-  `ScenarioDispatch.broadcast` に差し替え、他は同じ経路)。`fleetest api run` は
-  シナリオ一覧をビルドと並行に解決するので一覧を待てない —— 確定している `--scenario` の指定
+  `ScenarioDispatch.broadcast` に差し替え、他は同じ経路)。`fleetest api run` と、ビルドが要る回の
+  `fleetest run --profile` はシナリオ一覧をビルドと並行に解決するので一覧を待てない —— 確定している `--scenario` の指定
   だけで判断する(`ApiRun.exactScenarioCount`)
 - **E2E 実行中に `swift build` / `swift test` を打たない** → maintainer-notes §4.1。
   **E2E を投げたらビルドを伴う作業は止める**

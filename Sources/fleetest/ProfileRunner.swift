@@ -292,48 +292,21 @@ enum ProfileRunner {
                     supplyProgress: RunSupplyProgress,
                     // **既定値を置かない**(渡し忘れをコンパイルで止める)。呼び手はロック取得の直前に
                     // InterruptRelay を登録済みの interruptState を渡す(recorder は attachRecorder で後付け)
-                    interruptState: RunInterruptState
+                    interruptState: RunInterruptState,
+                    // ビルドの前に済ませた準備の段(ビルドが要る回に呼び手が渡す。片付けも呼び手が持つ)。
+                    // nil なら一覧の後にここで準備する。**既定値を置かない**(渡し忘れで並行にならないまま黙って通る)
+                    early: PreparedSupply?
     ) async throws -> (summary: RunSummary, fmSettings: FMSettingsRecord) {
         var items = rawItems
         let runClockStart = Date()
-        // 1. プロファイル合成
+        // 1. プロファイル合成(準備の段を先に済ませた run は、その解決をそのまま使う)
         PhaseLog.mark("profile-runner-start")
-        let resolvedAll = try ProfileResolver.resolve(
-            project: project, runName: profileName,
-            workspaceOverride: workspaceOverride, overrides: setOverrides)
-        if broadcast, resolvedAll.responseMeasurement {
-            throw ValidationError(ResponseMeasurementPolicy.combinationRejection(flag: "--broadcast"))
-        }
-        // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17)
-        // なので毎回雛形作成(既に揃っていれば何もしない。WorkspaceScaffold の宣言)。
-        // リモートディスパッチはこれとは別に、ミラー前のローカル側で同じ呼び出しを行う
-        // (RemoteRunDispatcher.prepareWorkspace)。続けて appPath の原本を apps/ へ
-        // ステージング(WorkspaceAppStaging)。**dest も原本も無ければここで throw する**
-        // (原本のパスを名指しする。呼び出し側で握り潰さない)
-        if let workspaceRoot = resolvedAll.workspaceRoot {
-            let created = (try? WorkspaceScaffold.ensure(root: workspaceRoot)) ?? []
-            if !created.isEmpty {
-                ConsoleOut.out("→ Created workspace scaffold: " + created.map { "\($0)/" }.joined(separator: ", "))
-            }
-            let staged = try WorkspaceAppStaging.stageWorkspaceApps(resolvedAll)
-            if !staged.isEmpty {
-                ConsoleOut.out("→ Staged app package(s) into the workspace: " + staged.joined(separator: ", "))
-            }
-        }
-        // --device / --device-machine(マシン別サブ実行が自分のぶんだけ回す)。**ホストで絞らないと
-        // 別の機械の同名デバイスまで掴む**(filteringDevices の宣言)。0台になったら止める
-        let full = resolvedAll.filteringDevices(names: deviceFilter, deviceMachine: deviceMachine)
-        if full.devices.isEmpty {
-            let scope = deviceFilter.isEmpty ? "--device-machine \(deviceMachine ?? "")"
-                : "--device \(deviceFilter.joined(separator: ", "))"
-                    + (deviceMachine.map { " --device-machine \($0)" } ?? "")
-            throw ValidationError(
-                "\(scope) matched no device in run profile \(profileName)"
-                + " (available: \(resolvedAll.devices.map(\.name).joined(separator: ", ")))")
-        }
+        let full = try early?.full ?? Self.resolveFullProfile(
+            project: project, profileName: profileName, setOverrides: setOverrides,
+            workspaceOverride: workspaceOverride, deviceFilter: deviceFilter, deviceMachine: deviceMachine,
+            broadcast: broadcast)
         // **filteringDevices/limitingDevices/broadcast は FM 設定に触れない**ので、devices を
         // 絞る前のこの時点で計算して 0 件早期リターン・本編の両方で使う
-        let fm = full.fm
         let fmSettings = Self.fmSettingsRecord(resolved: full)
         // OS 対象外(`@TestClass(platform:)` / `@Test(platform:)` がこの run に無い OS を指す)は
         // **キューへ入れる前に外す** —— 入れると RunOrchestrator の「担当ワーカーなし」に落ち、
@@ -357,7 +330,8 @@ enum ProfileRunner {
                   + " platform (this run covers \(runPlatforms.sorted().joined(separator: ", ")))")
             items = applicability.runnable
         }
-        // 全部が対象外ならデバイスを起こす意味がない(0 失敗で終える = 正しく緑)
+        // 全部が対象外ならデバイスを起こす意味がない(0 失敗で終える = 正しく緑)。
+        // 準備の段を先に済ませた run の片付けは呼び手が持つ
         if items.isEmpty {
             return (RunSummary(total: 0, failed: 0, performanceMode: performanceMode,
                                fmSettings: fmSettings), fmSettings)
@@ -371,101 +345,53 @@ enum ProfileRunner {
             if !scenariosHandedToOrchestrator { recorder?.recordLastResultsFailed(items.map(\.info.id)) }
         }
 
-        // **回す本数を超える台数を用意しない**(ResolvedProfile.limitingDevices の宣言参照)。
-        // 本数はここで確定している(items は呼び出し側で解決済み)ので、ブリッジ供給・アプリ版チェック・
-        // blank triage が丸ごと縮む。platform 未指定のシナリオは**両方**に数える(どちらでも走りうる)。
-        // **--broadcast は絞らない** —— 各デバイスで1回ずつ走らせるのが目的なので、絞ると回るべきデバイスが落ちる
-        let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
-        let (resolved, mcpWarnings) = Self.limitingDevicesAvoidingMCP(
-            full, iosScenarios: items.filter { $0.info.platform != "android" }.count,
-            androidScenarios: items.filter { $0.info.platform != "ios" }.count,
-            trim: !broadcast, leaseStateDir: leaseStateDir)
-        if broadcast {
-            ConsoleOut.out("→ Broadcasting \(items.count) scenario(s) to each of \(full.devices.count) device(s)"
-                + " (--broadcast)")
-        } else if resolved.devices.count < full.devices.count {
-            ConsoleOut.out("→ Using \(resolved.devices.count) of \(full.devices.count) device(s)"
-                + " for \(items.count) scenario(s)")
+        // 2. 準備の段(台数の絞り込み・サービス・開始スクリプト・供給のタスクの起動)。本数はここで確定している
+        // (items は解決済み)。platform 未指定のシナリオは**両方**に数える(どちらでも走りうる)
+        let prepared: PreparedSupply
+        if let early {
+            prepared = early
+        } else {
+            prepared = try await Self.prepareSupply(
+                full: full, profileName: profileName,
+                iosScenarios: items.filter { $0.info.platform != "android" }.count,
+                androidScenarios: items.filter { $0.info.platform != "ios" }.count,
+                scenarioCount: items.count, broadcast: broadcast, reportDirOverride: reportDirOverride,
+                failureLogDir: recorder?.runDir, supplyProgress: supplyProgress, interruptState: interruptState)
         }
-        for warning in resolved.warnings + mcpWarnings { ConsoleOut.out("⚠️ \(warning)") }
-
-        // 開始スクリプト(docs/remote-runner.md §17)。**デバイスに触る前**に撃つ ——
-        // 依存サービスが上がっていない状態でシミュレータを起こしてアプリを入れても、
-        // 全シナリオが「アプリの不具合」の顔で落ちるだけ。渡すのは絞り込み後の resolved
-        // (スクリプトが受け取るデバイス一覧を、この run が実際に使うデバイスと一致させる)。
-        // 終了スクリプトは defer で必ず撃つ(途中の throw・シナリオの失敗のいずれでも)。
-        // プロセスごと殺された場合は lease が残り、次の run と `fleetest hooks reap` が代わりに撃つ
-        let hookStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
-        // 二重使用は開始スクリプトと破壊的な準備より前に断る(rejectIfDevicesLeasedBeforePreparation)
-        try Self.rejectIfDevicesLeasedBeforePreparation(resolved: resolved, leaseStateDir: hookStateDir)
-        // サービス(scripts/compose.yaml)は開始スクリプトの前に上げ、片付けは終了スクリプトの後
-        // (defer は後に書いたものから走る = 下の終了スクリプトの defer より先に書く)
-        let reportDir = reportDirOverride.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
-        // レスポンス計測中はモニターを止める(ApiRunCommand.run と同じ。解除は defer = 中断・エラーでも通る)
-        let responseMonitorHold = resolved.responseMeasurement
-            ? hookStateDir.flatMap { ResponseMeasurementMonitorHold.acquire(stateDir: $0) { ConsoleOut.out($0) } }
-            : nil
-        defer { ResponseMeasurementMonitorHold.release(responseMonitorHold) { ConsoleOut.out($0) } }
+        defer { if early == nil { prepared.close() } }
+        let resolved = prepared.resolved
+        let reportDir = prepared.reportDir
+        let leaseStateDir = prepared.leaseStateDir
+        let repoRoot = prepared.repoRoot
+        let supplyLease = prepared.supplyLease
+        let triageBox = prepared.triageBox
+        let servicesSession = prepared.servicesSession
+        // 失敗の証跡: 赤の run の後に、各サービスのログの末尾を run の記録(無ければレポートの出力先)へ残す
+        let servicesLogDir = recorder?.runDir ?? reportDir
         // 計測 run の識別は finish を待たず run.json に書く(殺された run にも残す。ApiRunCommand.run と同じ)
         recorder?.recordResponseMeasurement(ResponseMeasurementPolicy.runInfo(resolved: resolved))
-        // 計測 run が書き換えた Android 実機のアニメーション設定を終了時に戻す。取得は開始時の同期(buildAndroidWorkers)より前
-        let animationRestores = resolved.responseMeasurement
-            ? ProfileWorkerFactory.captureAnimationRestore(resolved: resolved) : []
-        defer { ProfileWorkerFactory.restoreAnimations(animationRestores) { ConsoleOut.out($0) } }
-        let servicesSession = try ServicesSession.up(
-            resolved: resolved, stateDir: hookStateDir, options: .forRun(resolved), interruptState: interruptState) { ConsoleOut.out($0) }
-        defer { servicesSession?.down { ConsoleOut.out($0) } }
-        // 失敗の証跡: run-setup.sh が落ちたとき・赤の run の後に、各サービスのログの末尾を run の記録(無ければレポートの出力先)へ残す
-        let servicesLogDir = recorder?.runDir ?? reportDir
-        let hookSession: RunHookSession
+
+        // Android のレーンは開始前に揃える。iOS(ブリッジ供給=数十秒かかりうる)は lateWorkers として
+        // 分離し、Android を供給完了待ちにしない(api run の並列経路と同じ方針)
+        let workers: [RunWorker]
         do {
-            hookSession = try RunHookRunner.begin(
-                resolved: resolved, stateDir: hookStateDir, services: servicesSession, interrupt: interruptState) { ConsoleOut.out($0) }
+            workers = try await prepared.androidTask.value
         } catch {
-            servicesSession?.saveLogs(to: servicesLogDir) { ConsoleOut.out($0) }
+            // 片付け(defer の close)は iOS の準備が終わってから(PreparedSupply.settle の宣言)
+            await prepared.settle()
             throw error
         }
-        defer { RunHookRunner.end(hookSession) { ConsoleOut.out($0) } }
+        let iosDevicesExist = prepared.iosTask != nil
 
-
-        // fm は上(full 確定直後)で計算済み。filteringDevices/limitingDevices/broadcast は
-        // devices だけを変えるので resolved.fm も同じ値のまま(再計算しない)
-        await Self.warnIfFMDegraded(fm: fm) { ConsoleOut.out($0) }
-        RunEnvironment.apply(resolved)
-        let deviceList = resolved.devices
-            .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
-        ConsoleOut.out("🧩 Profile \(profileName): \(resolved.appName)")
-        ConsoleOut.out("   Devices: \(deviceList)")
-
-        let repoRoot = try RepoRoot.find()
-        await BackendHealthCheck.warnIfUnreachable(resolved: resolved) { ConsoleOut.out($0) }
-        // 供給フェーズ(install・凍結triage)の間も run-lease を保つ。RunOrchestrator の lease は
-        // シナリオ実行中しか書かれず、その手前に start-device が割り込む穴が空くため。best-effort: リポジトリ外
-        // 実行等で root が取れない場合は書かない(monitor 側の inRun 判定が false になるだけで安全)
-        let supplyLease = leaseStateDir.map { SupplyLeaseHolder(stateDir: $0) }
-        defer { supplyLease?.release() }
-        // 両レーンの実行前 triage を run.json(blankRepairs/blankExclusions/workerAnomalies)へ運ぶ
-        let triageBox = BlankTriageBox()
-
-        // 2. Android のレーン(手順は ProfileSupplyLanes.android の1箇所)。iOS(ブリッジ供給=数十秒かかりうる)は
-        // lateWorkers として分離し、Android を供給完了待ちにしない(api run の並列経路と同じ方針)
-        let workers = try await ProfileSupplyLanes.android(
-            resolved: resolved, supplyLease: supplyLease, supplyStage: supplyProgress.reporter,
-            triage: triageBox) { ConsoleOut.out($0) }
-        let iosDevicesExist = !resolved.iosDevices.isEmpty
-
-        // performanceMode では iOS の late join をやめて開始前に起動する。**理由は計測の歪みではなく
-        // ゲートの可視性** —— late join だと iOS ワーカーは run 開始後に起動するので、「iOS のレーンが
+        // performanceMode では iOS の late join をやめて開始前に揃える。**理由は計測の歪みではなく
+        // ゲートの可視性** —— late join だと iOS ワーカーは run 開始後に参加するので、「iOS のレーンが
         // 足りない」を開始前に検出できず、モードの約束(足りなければ開始しない)が iOS だけ守れない。
         // 計測そのものは late join でも歪まない(provider は全機をまとめて返すのでレーンは 0→N と
         // 一段で増え、シナリオはそれまで走らない)。Android が先行する混在プロファイルだけは
-        // 歪むが、そこは計測対象外(両OSを1プロファイルにまとめない方針)。
-        // lateWorkers provider と同じ関数を呼ぶ(2つ目の実装を書かない)
+        // 歪むが、そこは計測対象外(両OSを1プロファイルにまとめない方針)
         var eagerIOSWorkers: [RunWorker] = []
-        if performanceMode, iosDevicesExist {
-            eagerIOSWorkers = await ProfileSupplyLanes.ios(
-                resolved: resolved, supplyLease: supplyLease, supplyStage: supplyProgress.reporter,
-                triage: triageBox) { ConsoleOut.out($0) }
+        if performanceMode, let iosTask = prepared.iosTask {
+            eagerIOSWorkers = await iosTask.value
         }
         let hasLateIOS = iosDevicesExist && !performanceMode
 
@@ -530,10 +456,8 @@ enum ProfileRunner {
             project: project, workers: workers + eagerIOSWorkers, resolved: resolved, reportDir: reportDir,
             recorder: recorder, repoRoot: repoRoot, leaseStateDir: leaseStateDir, supplyLease: supplyLease,
             profile: profileName, progressHistoryRuns: lptHistoryRuns, interruptState: interruptState,
-            lateWorkers: hasLateIOS ? (platforms: Set(["ios"]), provider: { @Sendable in
-                await ProfileSupplyLanes.ios(
-                    resolved: resolved, supplyLease: supplyLease, supplyStage: supplyProgress.reporter,
-                    triage: triageBox) { ConsoleOut.out($0) }
+            lateWorkers: hasLateIOS ? (platforms: Set(["ios"]), provider: { @Sendable [iosTask = prepared.iosTask] in
+                await iosTask?.value ?? []
             }) : nil,
             supply: supplyProgress,
             onRevived: { _ in },

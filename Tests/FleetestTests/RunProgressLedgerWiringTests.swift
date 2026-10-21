@@ -191,10 +191,11 @@ final class RunProgressLedgerWiringTests: XCTestCase {
         let api = try Self.code("Sources/fleetest/ApiRunCommand.swift")
         XCTAssertEqual(api.components(separatedBy: "supplyStage: supplyProgress.reporter").count - 1, 2,
                        "api run の並列経路(Android / iOS のレーン)が箱を渡していない")
-        // run は Android のレーン・iOS の eager・iOS の遅延参加の3本
-        let runner = try Self.code("Sources/fleetest/ProfileRunner.swift")
-        XCTAssertEqual(runner.components(separatedBy: "supplyStage: supplyProgress.reporter").count - 1, 3,
-                       "run の供給(Android のレーン・iOS の eager・遅延参加)が箱を渡していない")
+        // run は準備の段の Android・iOS のレーンの2本(iOS の eager と遅延参加は同じタスクを待つ)
+        let runner = try Self.code("Sources/fleetest/ProfileRunner+Supply.swift")
+        XCTAssertEqual(runner.components(separatedBy: "supplyStage: progress").count - 1, 2,
+                       "run の供給(Android・iOS のレーン)が箱を渡していない")
+        XCTAssertTrue(runner.contains("let progress = supplyProgress.reporter"), "run の供給が箱の通知を使っていない")
         let factory = try String(contentsOf: root.appendingPathComponent("Sources/FTAndroid/ProfileWorkerFactory.swift"),
                                  encoding: .utf8)
         XCTAssertTrue(factory.contains("BridgeProvisioner(repoRoot: repoRoot, supplyStage: supplyStage,"),

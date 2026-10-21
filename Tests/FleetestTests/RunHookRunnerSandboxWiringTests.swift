@@ -36,7 +36,7 @@ final class RunHookRunnerSandboxWiringTests: XCTestCase {
 
     /// run の2経路がサービスと中断を渡し、`hooks reap` はスクリプトの孤児をサービスの孤児より先に片付ける
     func testBothRunPathsPassTheServicesSessionAndTheReapOrderIsScriptsFirst() throws {
-        for path in ["Sources/fleetest/ProfileRunner.swift", "Sources/fleetest/ApiRunCommand.swift"] {
+        for path in ["Sources/fleetest/ProfileRunner+Supply.swift", "Sources/fleetest/ApiRunCommand.swift"] {
             let text = try source(path)
             XCTAssertTrue(text.contains("services: servicesSession, interrupt: interruptState"), path)
         }

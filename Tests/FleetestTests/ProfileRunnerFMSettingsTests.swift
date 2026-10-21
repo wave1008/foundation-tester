@@ -49,7 +49,7 @@ final class ProfileRunnerFMSettingsTests: XCTestCase {
         let (summary, fmSettings) = try await ProfileRunner.run(
             project: project, profileName: "iosOnly", items: [androidOnly],
             reportDirOverride: nil, supplyProgress: RunSupplyProgress(),
-            interruptState: RunInterruptState(recorder: nil))
+            interruptState: RunInterruptState(recorder: nil), early: nil)
 
         XCTAssertEqual(summary.total, 0)
         XCTAssertEqual(summary.failed, 0)

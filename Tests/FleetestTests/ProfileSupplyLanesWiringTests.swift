@@ -38,20 +38,23 @@ final class ProfileSupplyLanesWiringTests: XCTestCase {
     /// 呼び手は手順を直に呼ばない。**例外は api run の `--port` 直指定の経路(runDirect)の
     /// prepareDevicesOnStart 1本だけ**(プロファイルが無いのでレーンを通らない)
     func testCallersDoNotCallTheStepsDirectly() throws {
-        let runner = try code("Sources/fleetest/ProfileRunner.swift")
+        let runner = try code("Sources/fleetest/ProfileRunner.swift") + code("Sources/fleetest/ProfileRunner+Supply.swift")
         let api = try code("Sources/fleetest/ApiRunCommand.swift")
         for step in Self.steps {
-            XCTAssertEqual(count(step, in: runner), 0, "ProfileRunner.swift が供給の手順を直に呼んでいる: \(step)")
+            XCTAssertEqual(count(step, in: runner), 0, "ProfileRunner(+Supply).swift が供給の手順を直に呼んでいる: \(step)")
             XCTAssertEqual(count(step, in: api), step == "prepareDevicesOnStart(" ? 1 : 0,
                            "ApiRunCommand.swift が供給の手順を直に呼んでいる: \(step)")
         }
     }
 
-    /// run は Android のレーン1本 + iOS(eager と遅延参加)2本。api run は並列経路と --debug の逐次経路で各2本
+    /// run は準備の段(ProfileRunner+Supply.swift)で Android・iOS のレーンを各1本のタスクで起こす(iOS の eager と
+    /// 遅延参加はどちらもそのタスクを待つ)。api run は並列経路と --debug の逐次経路で各2本
     func testBothEntryPointsGoThroughTheLanes() throws {
-        let runner = try code("Sources/fleetest/ProfileRunner.swift")
+        let runner = try code("Sources/fleetest/ProfileRunner+Supply.swift")
         XCTAssertEqual(count("ProfileSupplyLanes.android(", in: runner), 1)
-        XCTAssertEqual(count("ProfileSupplyLanes.ios(", in: runner), 2)
+        XCTAssertEqual(count("ProfileSupplyLanes.ios(", in: runner), 1)
+        XCTAssertEqual(count("ProfileSupplyLanes.", in: try code("Sources/fleetest/ProfileRunner.swift")), 0,
+                       "実行の段が供給のレーンを自分で起こしている(準備の段のタスクを待つ)")
         let api = try code("Sources/fleetest/ApiRunCommand.swift")
         XCTAssertEqual(count("ProfileSupplyLanes.android(", in: api), 2)
         XCTAssertEqual(count("ProfileSupplyLanes.ios(", in: api), 2)

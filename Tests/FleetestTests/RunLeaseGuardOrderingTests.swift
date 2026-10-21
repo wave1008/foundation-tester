@@ -44,7 +44,7 @@ final class RunLeaseGuardOrderingTests: XCTestCase {
     }
 
     func testRunChecksTheLeaseBeforeHooksAndPreparation() throws {
-        try assertGuardComesFirst(in: "Sources/fleetest/ProfileRunner.swift")
+        try assertGuardComesFirst(in: "Sources/fleetest/ProfileRunner+Supply.swift")
     }
 
     func testApiRunChecksTheLeaseBeforeHooksAndPreparation() throws {
