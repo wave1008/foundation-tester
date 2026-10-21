@@ -569,7 +569,7 @@ final class BridgeRouter {
     /// `/drag` の SpringBoard 版(tapAppIcon のページ送り)
     private func handleSystemUIDrag(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(DragRequest.self, body)
-        return try performDrag(req, in: systemUIAnchor())
+        return try performDrag(req, in: systemUIAnchor(), systemUI: true)
     }
 
     /// `/swipe` の SpringBoard 版(tapAppIcon が座標を作れなかったときの退避先)。
@@ -752,7 +752,8 @@ final class BridgeRouter {
     /// 採るのはプロセスで最初の1回(`static let` の初期化はスレッド安全)。XCUIScreen の
     /// スクショはアプリに触れない(`/screenshot` と同じ)。`UIImage.size` は pt
     /// **表示していない画面を撮らない**(開いた Duo の主画面 = DisplayRouting のファイル冒頭)ので測り方は DisplayRouting が持つ
-    private static let displaySides: (long: CGFloat, short: CGFloat)? = DisplayRouting.mainScreenSides()
+    /// CoordinatePinch.nativePoint も使う(撮影を2回しない)
+    static let displaySides: (long: CGFloat, short: CGFloat)? = DisplayRouting.mainScreenSides()
 
     /// frame は 1/scale pt 刻みの端数を持つので、ディスプレイちょうどの窓を落とさないよう 1pt 見逃す
     private static func fits(_ size: CGSize, within display: (long: CGFloat, short: CGFloat)) -> Bool {
@@ -767,11 +768,12 @@ final class BridgeRouter {
             throw refuseLandscapeSpringBoardTap()
         }
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y, expect: req.expect)
+        _ = QuiescenceWait.takeCapNote()  // 前の操作の数え残しを捨てる(応答の注記はこの操作の分だけ)
         QuiescenceWait.waitBeforeTouch(app, skip: skipSettle)
         // アプリが主画面以外の画面(Duo の内側)に出ているときは XCUICoordinate が届かない(DisplayRouting)
         if let display = DisplayRouting.target(for: app) {
             try CoordinatePinch.tap(at: point, display: display, touchSeconds: Self.doubleTapTouchDuration)
-            return .json(OKResponse())
+            return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
         }
         // 非公開 API が無い Xcode では下の XCUICoordinate へ縮退する
         if CoordinatePinch.isAvailable {
@@ -784,7 +786,6 @@ final class BridgeRouter {
         // ホスト側の actionMs からは分解できない。quiescence 側だけ swizzle 経由で数え、
         // 残り(synth)を引き算で出す(QuiescenceWait.quiescenceMs の但し書きも読むこと)
         QuiescenceWait.resetTiming()
-        _ = QuiescenceWait.takeCapNote()  // 前の操作の数え残しを捨てる(応答の注記はこの操作の分だけ)
         let start = DispatchTime.now()
         try QuiescenceWait.around(skip: skipSettle, skipByDefault: true) {
             ResponseMeasurement.noteInjection()
@@ -829,23 +830,14 @@ final class BridgeRouter {
         return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
     }
 
-    /// **iOS ではキーボードを閉じられない**(docs/design.md に不採用の記録)。Esc は不発で、
-    /// app.keyboards は別プロセス扱いでタイムアウトする(handleType のコメント参照)。
-    /// **嘘の成功を返さない**ため 501 を返す
-    /// アプリの窓の縦横から読む向き(デバイスの向きではない。handleRotate のコメント参照)。
-    /// **`snapshot()` ではなく `frame` を読む** —— 回転中の snapshot は高コストで失敗もし、
-    /// nil が返り続けると「回っていない」と誤判定して 3 秒待ち切る(2026-08-10 実測)。
-    /// セッションが無いときは窓で判定できないのでデバイスの向きに落ちる
-    /// (その場合だけは縦専用アプリを見抜けないが、/rotate をセッション無しで撃つ経路は無い)
-    /// **前面に居ないアプリの窓は読まない**(落ちた・背面のアプリの `frame` は XCTest を Tear Down させ、
-    /// ランナーごとブリッジが消える。待ちの途中でアプリが消える形もここで止める)
     /// 直接合成(CoordinatePinch)へ渡す**インターフェースの**向き。座標はアプリの木の座標なので、record の向きは
     /// アプリの UI の向きと一致させる。**デバイスの向きとは左右が逆**(`UIDeviceOrientation.landscapeLeft` =
     /// `UIInterfaceOrientation.landscapeRight`)—— /rotate はデバイスを `.landscapeLeft` に回すので、
     /// 横向きで `.landscapeLeft` を渡すと全 SUT で tap が外れた(実測)。XCUIApplication の非公開
     /// `interfaceOrientation`(WebDriverAgent と同じ)を読み、読めなければ窓の縦横とデバイスの向きから決める
     private func synthesisOrientation() -> UIInterfaceOrientation {
-        if let app, (app as NSObject).responds(to: Selector(("interfaceOrientation"))),
+        // 前面に居ないアプリの非公開の値を読まない(appOrientation と同じ理由 = 落ちたアプリへの問い合わせは XCTest を Tear Down させる)
+        if let app, app.state == .runningForeground, (app as NSObject).responds(to: Selector(("interfaceOrientation"))),
            let raw = (app as NSObject).value(forKey: "interfaceOrientation") as? Int,
            let orientation = UIInterfaceOrientation(rawValue: raw), orientation != .unknown {
             return orientation
@@ -854,6 +846,13 @@ final class BridgeRouter {
         return XCUIDevice.shared.orientation == .landscapeRight ? .landscapeLeft : .landscapeRight
     }
 
+    /// アプリの窓の縦横から読む向き(デバイスの向きではない。handleRotate のコメント参照)。
+    /// **`snapshot()` ではなく `frame` を読む** —— 回転中の snapshot は高コストで失敗もし、
+    /// nil が返り続けると「回っていない」と誤判定して 3 秒待ち切る(2026-08-10 実測)。
+    /// セッションが無いときは窓で判定できないのでデバイスの向きに落ちる
+    /// (その場合だけは縦専用アプリを見抜けないが、/rotate をセッション無しで撃つ経路は無い)
+    /// **前面に居ないアプリの窓は読まない**(落ちた・背面のアプリの `frame` は XCTest を Tear Down させ、
+    /// ランナーごとブリッジが消える。待ちの途中でアプリが消える形もここで止める)
     private func appOrientation() -> FTOrientation? {
         guard let app else { return XCUIDevice.shared.orientation.ftOrientation }
         guard app.state == .runningForeground else { return nil }
@@ -862,6 +861,9 @@ final class BridgeRouter {
         return frame.width > frame.height ? .landscape : .portrait
     }
 
+    /// **iOS ではキーボードを閉じられない**(docs/design.md に不採用の記録)。Esc は不発で、
+    /// app.keyboards は別プロセス扱いでタイムアウトする(handleType のコメント参照)。
+    /// **嘘の成功を返さない**ため 501 を返す
     private func handleHideKeyboard() throws -> BridgeHTTPServer.Response {
         .error("hideKeyboard is Android-only; on iOS use pressEnter to dismiss the keyboard",
                status: 501)
@@ -993,11 +995,11 @@ final class BridgeRouter {
     /// velocity=距離÷移動時間で「ゆっくりドラッグ(慣性なし)〜フリック」を再現する
     private func handleDrag(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(DragRequest.self, body)
-        return try performDrag(req, in: try requireForegroundAppForGesture())
+        return try performDrag(req, in: try requireForegroundAppForGesture(), systemUI: false)
     }
 
     /// ドラッグの実体。**`/systemui/drag` と共有する**(原点にするアプリだけが違う)
-    private func performDrag(_ req: DragRequest, in app: XCUIApplication) throws
+    private func performDrag(_ req: DragRequest, in app: XCUIApplication, systemUI: Bool) throws
         -> BridgeHTTPServer.Response {
         guard req.fromX.isFinite, req.fromY.isFinite, req.toX.isFinite, req.toY.isFinite else {
             throw BridgeError(400, "drag coordinates must be finite (got fromX=\(req.fromX)"
@@ -1020,7 +1022,7 @@ final class BridgeRouter {
             let start = CGPoint(x: req.fromX, y: req.fromY), end = CGPoint(x: req.toX, y: req.toY)
             try CoordinatePinch.synthesize(
                 fingers: [[(point: start, offset: 0), (point: start, offset: press), (point: end, offset: press + move)]],
-                name: "fleetest drag", orientation: .portrait, display: display)
+                name: "fleetest drag", orientation: .portrait, display: display, systemUI: systemUI)
             return .json(OKResponse())
         }
         guard let requestedDuration = req.duration else {
@@ -1063,6 +1065,7 @@ final class BridgeRouter {
         let req = try decode(TapRequest.self, body)
         let app = try requireForegroundAppForGesture()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y, expect: req.expect)
+        _ = QuiescenceWait.takeCapNote()  // 前の操作の数え残しを捨てる(応答の注記はこの操作の分だけ)
         QuiescenceWait.waitBeforeTouch(app, skip: skipSettle)
         // 主画面以外の画面(DisplayRouting)は API が無ければ縮退先も無い(XCUICoordinate は届かない)ので、
         // synthesize の 422 をそのまま返す
@@ -1075,10 +1078,9 @@ final class BridgeRouter {
                      (point: point, offset: Self.doubleTapSecondTouchDelay + Self.doubleTapTouchDuration)],
                 ],
                 name: "fleetest doubletap",
-                orientation: synthesisOrientation(), display: display)
+                orientation: synthesisOrientation(), display: display, systemUI: false)
             return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
         }
-        _ = QuiescenceWait.takeCapNote()
         try QuiescenceWait.around(skip: skipSettle, skipByDefault: true) {
             ResponseMeasurement.noteInjection()
             coordinate(app, point).doubleTap()
@@ -1089,8 +1091,8 @@ final class BridgeRouter {
     /// 各タッチの接触時間[秒]。実測 2026-09-24 でこの長さのときだけ RN の PanResponder が拾った
     private static let doubleTapTouchDuration: TimeInterval = 0.08
 
-    /// 単純タップの接触時間[秒]。iPhone SE3 の実測で、往復は 0.05s→295ms・0.01s→244ms(現行の
-    /// `XCUICoordinate.tap()` は 415ms)。残り約 230ms は合成そのもので接触時間では縮まない。
+    /// 単純タップの接触時間[秒]。iPhone SE3 の実測(合成だけの往復・アラートの確認を足す前)で 0.05s→295ms・0.01s→244ms
+    /// (縮退先の `XCUICoordinate.tap()` は 415ms)。接触時間を縮めた分しか縮まない = 残り約 230ms は合成そのもの。
     /// 0.01s で SwiftUI・Compose Multiplatform・Flutter・React Native の 4 SUT すべてがタップ(押下と遷移)を拾った
     private static let tapTouchDuration: TimeInterval = 0.01
     /// 1本目が触れてから2本目が触れるまでの間隔[秒](= OS のダブルタップ判定窓の内側。
@@ -1161,7 +1163,7 @@ final class BridgeRouter {
                 },
                 name: "fleetest pinch",
                 orientation: synthesisOrientation(),
-                display: DisplayRouting.target(for: app))
+                display: DisplayRouting.target(for: app), systemUI: false)
             return .json(OKResponse())
         }
         var target: XCUIElement = app
@@ -1224,7 +1226,7 @@ final class BridgeRouter {
             },
             name: "fleetest gesture",
             orientation: synthesisOrientation(),
-            display: DisplayRouting.target(for: app))
+            display: DisplayRouting.target(for: app), systemUI: false)
         return .json(OKResponse())
     }
 
@@ -1290,13 +1292,13 @@ final class BridgeRouter {
         }
         let app = try requireForegroundAppForGesture()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y, expect: req.expect)
+        _ = QuiescenceWait.takeCapNote()  // 前の操作の数え残しを捨てる(応答の注記はこの操作の分だけ)
         QuiescenceWait.waitBeforeTouch(app, skip: skipSettle)
         if let display = DisplayRouting.target(for: app) {
             try CoordinatePinch.synthesize(fingers: [[(point: point, offset: 0), (point: point, offset: req.duration)]],
-                                           name: "fleetest press", orientation: .portrait, display: display)
-            return .json(OKResponse())
+                                           name: "fleetest press", orientation: .portrait, display: display, systemUI: false)
+            return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
         }
-        _ = QuiescenceWait.takeCapNote()
         try QuiescenceWait.around(skip: skipSettle, skipByDefault: true) {
             ResponseMeasurement.noteInjection()
             coordinate(app, point).press(forDuration: req.duration)

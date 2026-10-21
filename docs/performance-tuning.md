@@ -2531,7 +2531,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 
 **XCUITest の1操作の往復**(ホストから USB 経由・各30回の中央値・ランナーを起動し直した直後):
 `/status` 5.8ms・`/snapshot` 54.6ms・**`/tap` 415.0ms**。所要のほとんどは tap。
-起動から1時間44分たったランナーでは tap 476.6ms・snapshot 64.2ms(長く生きたプロセスほど遅い)。
+起動から1時間44分たったランナーでは tap 476.6ms・snapshot 64.2ms(1回の観測。プロセスの寿命との関係は未確認)。
 
 **tap の直接合成**(`XCSynthesizedEventRecord` を `eventSynthesizer` で送る。`XCUICoordinate.tap()` を経由しない):
 接触 0.05s で 295.4ms(−29%)・**0.01s で 243.6ms(−41%)**。接触時間を 40ms 縮めると 52ms 縮むので、
@@ -2540,13 +2540,14 @@ SwiftUI・Compose Multiplatform・Flutter・React Native の4 SUT すべてで�
 **直接合成は XCTest の割り込み監視を通らない** —— 写真の権限アラートの「許可しない」の座標へ撃つと、
 `coordinate.tap()` は 422 で触れないのに対し、直接合成(既存の `/doubletap` を含む)は 200 でボタンを押した
 (Simulator で実測)。直接合成の送る口ではシステムアラートを自分で確かめる(`SystemAlertProbe`)。
-**採用した形(ブリッジ v202)の正味は −11.5%**: 同じビルドを環境変数で切り替え、ランナーを毎回起動し直して
-他の SUT を止めた同じ状態で ABAB に測ると、`coordinate.tap()` 411.7 / 413.4ms → 直接合成 + アラートの確認 363.5 /
-366.5ms。ハンドラの中の内訳(SE3・12回): アラートの確認 100〜130ms(1回目。続けて撃つと 2回目は 60〜80ms =
-quiescence を飛ばしても変わらない)・`app.frame`(向きの判定)20〜45ms・`app.state` 0ms(取得済みの値)・
-`XCUIDevice.orientation` 1〜5ms・合成 約 190ms。**アラートの確認は `coordinate.tap()` の中の割り込みの確認と
-同じ仕事なので、直接合成で浮いた分の大半はここで払い直している**。向きを `XCUIDevice.orientation` にすれば
-約 35ms 縮むが、縦固定のアプリを横に倒した状態で座標の解釈を誤るので採らない。
+**採用した形の正味**(同じビルドを環境変数で切り替え、ランナーを毎回起動し直し、他の SUT を止めた同じ状態で ABAB):
+- v200(直接合成 + アラートの確認。向きは `app.frame`): `coordinate.tap()` 411.7 / 413.4ms → 363.5 / 366.5ms(−11.5%)。
+  ハンドラの中の内訳(SE3・12回): アラートの確認 100〜130ms(1回目。続けて撃つと 2回目は 60〜80ms = quiescence を飛ばしても
+  変わらない)・`app.frame` 20〜45ms・`app.state` 0ms(取得済みの値)・`XCUIDevice.orientation` 1〜5ms・合成 約 190ms。
+  **アラートの確認は `coordinate.tap()` の中の割り込みの確認と同じ仕事なので、直接合成で浮いた分の大半はここで払い直している**
+- v204(向きは非公開の `interfaceOrientation`・操作の前の待ちを両方の経路に足した形): `coordinate.tap()` 448.4 / 458.8ms →
+  377.8 / 379.4ms(−16〜17%)。**main(v199)の tap 412ms に対する正味は約 −8%**(操作の前の待ちの分だけ両方が重くなった)
+
 **直接合成の座標は主画面の本来の向き(portrait)**: `XCSynthesizedEventRecord` の `interfaceOrientation` を
 どの値にしても点は回らない(横向きの木の座標をそのまま送ると1〜4のどれでも外れた)。木の座標をアプリの
 インターフェースの向き(XCUIApplication の非公開 `interfaceOrientation`)で portrait へ回してから送る

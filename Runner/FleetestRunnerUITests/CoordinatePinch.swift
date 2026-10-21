@@ -112,27 +112,29 @@ enum CoordinatePinch {
     /// - Parameter fingers: 各指のキーフレーム列。1本目の要素が touch down・最後が lift
     /// - Parameter display: アプリが主画面以外の画面に出ているときの送り先(`DisplayRouting.target`)。
     ///   **既定値を置かない** —— 渡し忘れると内側の画面に出ているアプリへ外側の画面で撃つ(黙って外れる)
+    /// - Parameter systemUI: システム UI(SpringBoard)そのものへの操作(/systemui/*)なら true = アラートの確認をしない
+    ///   (アラートを含むシステム UI を操作する口なので、アラートで断ると口の意味が無くなる)。**既定値を置かない**
     static func synthesize(fingers: [[(point: CGPoint, offset: TimeInterval)]], name: String,
-                           orientation: UIInterfaceOrientation, display: DisplayRouting.Target?) throws {
-        try send(fingers: fingers.map(resample), name: name, orientation: orientation, display: display)
+                           orientation: UIInterfaceOrientation, display: DisplayRouting.Target?, systemUI: Bool) throws {
+        try send(fingers: fingers.map(resample), name: name, orientation: orientation, display: display, systemUI: systemUI)
     }
 
     /// 主画面以外の画面への単純なタップ(XCUICoordinate は主画面にしか届かない = DisplayRouting)。
     /// 接触時間は doubletap の1回ぶんと同じ長さ(RN の PanResponder が拾った実測値。BridgeRouter.doubleTapTouchDuration)
     static func tap(at point: CGPoint, display: DisplayRouting.Target, touchSeconds: TimeInterval) throws {
         try send(fingers: [[(point: point, offset: 0), (point: point, offset: touchSeconds)]],
-                 name: "fleetest tap", orientation: .portrait, display: display)
+                 name: "fleetest tap", orientation: .portrait, display: display, systemUI: false)
     }
 
     /// 主画面への単純なタップを直接合成する(BridgeRouter.handleTap。接触時間は `tapTouchDuration`)
     static func tapOnMainScreen(at point: CGPoint, touchSeconds: TimeInterval,
                                 orientation: UIInterfaceOrientation) throws {
         try send(fingers: [[(point: point, offset: 0), (point: point, offset: touchSeconds)]],
-                 name: "fleetest tap", orientation: orientation, display: nil)
+                 name: "fleetest tap", orientation: orientation, display: nil, systemUI: false)
     }
 
     /// 送る直前の門。システムアラートが前面にあれば撃たず 422(押さない・撃ち直さない)。
-    /// 422 にする理由は 409/501 を避ける契約(BridgeRouterStatusContractTests)。問い合わせは SE3 で約 60ms
+    /// 422 にする理由は 409/501 を避ける契約(BridgeRouterStatusContractTests)。問い合わせは SE3 の tap の中で 100〜130ms
     private static func refuseIfSystemAlertInFront() throws {
         if let blocked = SystemAlertProbe.front() {
             throw BridgeError(422, InterruptionGuard.message(blocked))
@@ -144,7 +146,7 @@ enum CoordinatePinch {
     /// 外れ、portrait の座標へ回すと当たった)。木の座標(アプリの UI の向き)を本来の向きへ回す。
     /// landscapeRight = (幅 − y, x)・landscapeLeft = (y, 高さ − x)・upsideDown = (幅 − x, 高さ − y)。幅・高さは portrait の画面
     static func nativePoint(_ point: CGPoint, interface orientation: UIInterfaceOrientation) -> CGPoint {
-        guard orientation != .portrait, orientation != .unknown, let sides = nativeSides else { return point }
+        guard orientation != .portrait, orientation != .unknown, let sides = BridgeRouter.displaySides else { return point }
         let width = sides.short, height = sides.long
         switch orientation {
         case .landscapeRight: return CGPoint(x: width - point.y, y: point.x)
@@ -153,9 +155,6 @@ enum CoordinatePinch {
         default: return point
         }
     }
-
-    /// 主画面の長辺・短辺(pt)。測り方は撮影なのでプロセスで1回だけ(`static let` の初期化はスレッド安全)
-    private static let nativeSides: (long: CGFloat, short: CGFloat)? = DisplayRouting.mainScreenSides()
 
     /// 送る record を組む。display があればその画面へ・**本来の向き**(portrait)で組む —— 点は呼び手ではなく
     /// ここで `nativePoint` に回す(送り口を1つにして変換の漏れを作らない)
@@ -241,7 +240,7 @@ enum CoordinatePinch {
     /// **待つ送り方の唯一の場所**(pinch / gesture / doubletap が共有する。待たない送り方は holdWithoutWaiting)。フルに展開済みのキーフレームから
     /// 指1本につきパスを1本組み、全部を1つの record にまとめて送り、完了を待つ
     private static func send(fingers: [[(point: CGPoint, offset: TimeInterval)]], name: String,
-                             orientation: UIInterfaceOrientation, display: DisplayRouting.Target?) throws {
+                             orientation: UIInterfaceOrientation, display: DisplayRouting.Target?, systemUI: Bool) throws {
         guard let classes, let synthesizer else {
             // **422(501 ではない)**: 501 はホストが「このエンジンでは不可」= XCUITest へフォールバックと読むので、
             // XCUITest 自身が返すとフォールバック先が自分になる(docs/design.md §4.3)
@@ -267,7 +266,7 @@ enum CoordinatePinch {
         // 送信は非同期。**ここは HTTP のハンドラ(専用スレッド)なので待ってよい** ——
         // 待たずに返すと、ホストが直後に撮るスナップショットがジェスチャ前の木になる
         let done = DispatchSemaphore(value: 0)
-        try refuseIfSystemAlertInFront()
+        if !systemUI { try refuseIfSystemAlertInFront() }
         ResponseMeasurement.noteInjection()
         synthesizer.synthesize(record) { done.signal() }
         if done.wait(timeout: .now() + totalDuration + 10) == .timedOut {
