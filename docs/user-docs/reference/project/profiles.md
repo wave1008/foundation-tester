@@ -107,7 +107,7 @@ with the same combination pre-selected.
 
 | Command | Description |
 |---|---|
-| `fleetest profile setup --platform <ios\|android\|hybrid> --app-id <id> [--auto-device] [...]` | Create/refresh the app and run profiles together (idempotent). `--platform` is also written to the app profile's `platform`; adding the other OS to an existing app profile makes it `hybrid`. The app profile name is `--app-ref`; when omitted, the one the run profile already uses, else `<platform>-app` (`ios-app` / `android-app` / `hybrid-app`). The run profile name is `--run`; when omitted, `<platform>-run` (`ios-run` / `android-run`; `hybrid` makes one per OS) |
+| `fleetest profile setup --platform <ios\|android\|hybrid> --app-id <id> [--auto-device [--count <N>]] [...]` | Create/refresh the app and run profiles together (idempotent). `--count <N>` (with `--auto-device`) adds devices until the run profile holds N devices of that OS in total: devices already listed count, existing ones with the same model and OS are reused from the lowest number, and only the missing ones are created with unused numbers; nothing is added when it already has N or more. `--platform` is also written to the app profile's `platform`; adding the other OS to an existing app profile makes it `hybrid`. The app profile name is `--app-ref`; when omitted, the one the run profile already uses, else `<platform>-app` (`ios-app` / `android-app` / `hybrid-app`). The run profile name is `--run`; when omitted, `<platform>-run` (`ios-run` / `android-run`; `hybrid` makes one per OS) |
 | `fleetest profile list` | List run profiles and their devices |
 
 ## Editing in VS Code

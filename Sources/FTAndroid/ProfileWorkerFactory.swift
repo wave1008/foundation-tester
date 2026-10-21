@@ -133,6 +133,7 @@ public enum ProfileWorkerFactory {
         await pressHomeOnStart(workers, enabled: homeOnStart, log: log)
         await warnOnResidualSystemAlerts(workers, log: log)
         await warnOnNonPortraitIOS(workers, log: log)
+        await warnOnNonPortraitAndroid(workers, log: log)
     }
 
     /// run 開始時点で**縦向きでない iOS のデバイスを警告する**(回さない)。シナリオの `rotateTo` は
@@ -166,6 +167,45 @@ public enum ProfileWorkerFactory {
             + " rotateTo restores the orientation a scenario started in, so it stays \(orientation.rawValue);"
             + " scenarios written for portrait may not find elements near the bottom."
             + " Rotate it back to portrait (e.g. rotateTo(.portrait) or the live view)"
+    }
+
+    /// Android 版。`dumpsys window` の回転の固定と表示の寸法から向きを読む(`androidOrientation`)。
+    /// 警告だけで戻さない・読めない台は黙って飛ばす・台ごとに並行(iOS 版と同じ)
+    public static func warnOnNonPortraitAndroid(
+        _ workers: [RunWorker], log: @escaping @Sendable (String) -> Void
+    ) async {
+        guard let adb = try? AndroidDriver.findADB() else { return }
+        let targets: [(String, String)] = workers.compactMap { worker in
+            guard worker.platform == "android", let serial = worker.connection.serial else { return nil }
+            return (worker.label, serial)
+        }
+        guard !targets.isEmpty else { return }
+        await withTaskGroup(of: String?.self) { group in
+            for (label, serial) in targets {
+                group.addTask {
+                    let output = (try? Shell.run([adb, "-s", serial, "shell", "dumpsys", "window"],
+                                                 timeout: AndroidHealthProbe.adbTimeoutSeconds))?.outputIfSucceeded
+                    return nonPortraitWarning(label: label, orientation: output.flatMap(androidOrientation(fromDumpsysWindow:)))
+                }
+            }
+            for await line in group { if let line { log(line) } }
+        }
+    }
+
+    /// `dumpsys window` から向きを決める(純粋関数)。**回転が固定(`USER_ROTATION_LOCKED`)なら固定の向き**を採る ——
+    /// 警告を出す時点はホームを押した直後で、縦固定のランチャーが前面にあり `cur` は縦になるが、固定が 90/270 なら
+    /// 次に開くアプリは横で出る(実測: Android 16 の Emulator。`settings get system user_rotation` は 0 を返して当てにならない)。
+    /// 固定でなければ先頭のディスプレイの `cur=WxH`(回転後の寸法)。正方形・読めない出力は nil(不明)
+    static func androidOrientation(fromDumpsysWindow output: String) -> FTOrientation? {
+        if let lock = output.range(of: #"mUserRotationMode=USER_ROTATION_LOCKED mUserRotation=ROTATION_(\d+)"#,
+                                   options: .regularExpression),
+           let degrees = Int(output[lock].split(separator: "_").last ?? "") {
+            return degrees == 90 || degrees == 270 ? .landscape : .portrait
+        }
+        guard let range = output.range(of: #"cur=(\d+)x(\d+)"#, options: .regularExpression) else { return nil }
+        let parts = output[range].dropFirst(4).split(separator: "x").compactMap { Int($0) }
+        guard parts.count == 2, parts[0] != parts[1] else { return nil }
+        return parts[0] < parts[1] ? .portrait : .landscape
     }
 
     /// run 開始時点で画面に残っているアラートを**警告する**(ここでは閉じない。理由と背景は

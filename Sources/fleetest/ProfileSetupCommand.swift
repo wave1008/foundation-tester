@@ -63,7 +63,23 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         + " this CLI never accepts licenses on its own"))
     var acceptLicenses = false
 
+    @Option(help: ArgumentHelp(
+        "With --auto-device: make the run profile hold N devices of each selected OS in total (N >= 1)."
+        + " Devices already in the run profile count; it reuses existing devices with the same content"
+        + " (iOS: model and runtime / Android: model and system image) from the lowest number and creates only"
+        + " what is missing with the lowest unused numbers on this machine. Nothing is added when it already has N or more."
+        + " Omitted: registers one (the lowest-numbered, as before)"))
+    var count: Int?
+
     func run() async throws {
+        if let count {
+            guard count >= 1 else { throw ValidationError("--count must be 1 or more: \(count)") }
+            guard autoDevice else { throw ValidationError("--count requires --auto-device") }
+            if deviceName != nil || os != nil || udid != nil || avd != nil || serial != nil {
+                throw ValidationError("--count cannot be combined with --device-name/--os/--udid/--avd/--serial"
+                    + " (it picks the devices itself)")
+            }
+        }
         guard InitCommand.isValidAppID(appID) else {
             throw ValidationError("invalid --app-id: \(appID)"
                 + " (bundle ID / package name: letters, digits, '.', '_' and '-' only)")
@@ -87,7 +103,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         // 1回の呼び出しで両方作れるようにする(承認回数を減らすため。値は各プラットフォームで解決)
         var devices: [[String: Any]] = []
         for target in platforms {
-            devices.append(try await setUp(platform: target))
+            devices.append(contentsOf: try await setUp(platform: target))
         }
         // 古い雛形が作った all.json はデバイスの実在を知らないまま残る。
         // 両方作ったときはここで揃える。**無ければ作らない** —— 今の雛形は all.json を置かない(ユーザー決定)
@@ -107,20 +123,24 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         }
     }
 
-    /// 書いた devices[] の1要素を返す(all.json をまとめるのに使う)
+    /// 書いた devices[] の要素を返す(all.json をまとめるのに使う。--count で何も足さないときは空)
     @discardableResult
-    private func setUp(platform: String) async throws -> [String: Any] {
+    private func setUp(platform: String) async throws -> [[String: Any]] {
         let testProject = try ScenarioHost.project(named: project)
         let explicitName = self.deviceName
         // 名前未定は ""(実体の判定 hasDeviceBody は name を見ない)。下の確定後に空なら ValidationError
         var deviceName = explicitName ?? ""
         let runName = run ?? ProfileWriter.defaultRunName(platform: platform)
-        let fm = FileManager.default
         let appRef = ProfileWriter.resolvedAppRef(
             explicit: self.appRef,
             existingRunProfile: try readObject(testProject.runsDir.appendingPathComponent("\(runName).json")),
             platform: self.platform)
         var deviceDetail = ""
+
+        if let count {
+            return try await setUpCounted(
+                platform: platform, count: count, testProject: testProject, runName: runName, appRef: appRef)
+        }
 
         var device = Self.deviceEntry(platform: platform, name: deviceName,
                                       osVersion: os, udid: udid, avd: avd, serial: serial)
@@ -212,7 +232,16 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             deviceDetail = "\(deviceName) is already registered (copied as is)"
         }
 
-        // ---- アプリプロファイル ----
+        try writeProfiles(platform: platform, testProject: testProject, runName: runName, appRef: appRef,
+                          devices: [device], detail: deviceDetail)
+        return [device]
+    }
+
+    /// アプリプロファイルと実行プロファイルへ書き、解決できることを確かめて表示する(setUp / setUpCounted 共通。
+    /// 実行プロファイルが既存なら app を揃えて devices を upsert、無ければ devices で作る)
+    private func writeProfiles(platform: String, testProject: TestProject, runName: String, appRef: String,
+                               devices: [[String: Any]], detail: String) throws {
+        let fm = FileManager.default
         try fm.createDirectory(at: testProject.appsDir, withIntermediateDirectories: true)
         let appURL = testProject.appsDir.appendingPathComponent("\(appRef).json")
         let updatedApp = ProfileWriter.mergingAppProfile(
@@ -220,32 +249,86 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             appName: appName, defaultAppName: testProject.name, appID: appID, appPath: appPath)
         try ProfileWriter.json(updatedApp).write(to: appURL, options: .atomic)
 
-        // ---- 実行プロファイル(デバイスの実体を持つ。既存なら app を揃えてデバイスを upsert) ----
         try fm.createDirectory(at: testProject.runsDir, withIntermediateDirectories: true)
         let runURL = testProject.runsDir.appendingPathComponent("\(runName).json")
-        let runObject: [String: Any]
+        var runObject: [String: Any]
         if fm.fileExists(atPath: runURL.path) {
-            var existing = try readObject(runURL)
-            existing["app"] = appRef
-            runObject = try RunProfileDeviceEditor.upsertingDevice(inRunProfileObject: existing, device: device)
+            runObject = try readObject(runURL)
+            runObject["app"] = appRef
+            for device in devices {
+                runObject = try RunProfileDeviceEditor.upsertingDevice(inRunProfileObject: runObject, device: device)
+            }
         } else {
-            runObject = ProfileWriter.runProfile(appRef: appRef, devices: [device])
+            runObject = ProfileWriter.runProfile(appRef: appRef, devices: devices)
         }
         try ProfileWriter.json(runObject).write(to: runURL, options: .atomic)
 
         ConsoleOut.out("✅ Created the profiles (project \(testProject.name))")
         ConsoleOut.out("   App:     profiles/apps/\(appRef).json … \(appID)")
-        ConsoleOut.out("   Run:     profiles/runs/\(runName).json … app=\(appRef) / \(deviceDetail)")
+        ConsoleOut.out("   Run:     profiles/runs/\(runName).json … app=\(appRef) / \(detail)")
 
         // 検証ゲート: 書いた実行プロファイルが実際に解決できることまで確認する
         let resolved = try ProfileResolver.resolve(project: testProject, runName: runName)
         for warning in resolved.warnings {
             ConsoleOut.out("⚠️ \(warning)")
         }
-        let devices = resolved.devices.map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
-        ConsoleOut.out("   Resolved: \(resolved.appName) / \(devices)")
+        let names = resolved.devices.map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
+        ConsoleOut.out("   Resolved: \(resolved.appName) / \(names)")
         ConsoleOut.out("   To run: fleetest run --project \(testProject.name) --profile \(runName)")
-        return device
+    }
+
+    /// `--auto-device --count N`: 実行プロファイルの手元の同 OS のデバイスが全部で N 台になるまで足す。
+    /// 選定(機種・OS)は setUp の --auto-device と同じ。再利用と新規作成の振り分けは VirtualDeviceFactory.countPlan
+    private func setUpCounted(platform: String, count: Int, testProject: TestProject, runName: String,
+                              appRef: String) async throws -> [[String: Any]] {
+        let log: (String) -> Void = { ConsoleOut.out("   \($0)") }
+        let runURL = testProject.runsDir.appendingPathComponent("\(runName).json")
+        let registered = RunProfileDeviceEditor.localDeviceNames(
+            inRunProfileObject: try readObject(runURL), platform: platform)
+
+        var added: [[String: Any]] = []
+        if registered.count >= count {
+            ConsoleOut.out("   \(platform): the run profile already has \(registered.count) device(s) (--count \(count));"
+                + " nothing to add")
+        } else if platform == "ios" {
+            let ensured: [VirtualDeviceFactory.EnsuredSimulator]
+            do {
+                ensured = try VirtualDeviceFactory.ensureSimulators(
+                    target: try IOSAutoDevice.resolve(), registered: registered, total: count, log: log)
+            } catch let error as IOSRuntimeInstaller.Failure {
+                throw ValidationError(error.message)
+            }
+            for item in ensured {
+                var device = Self.deviceEntry(platform: platform, name: item.info.name, osVersion: nil,
+                                              udid: nil, avd: nil, serial: nil)
+                Self.stampSimulator(item.info, model: item.model, into: &device)
+                added.append(device)
+                ConsoleOut.out("   Auto-picked (ios): \(item.info.name) / \(item.info.os) / "
+                    + "\(item.info.udid) (\(item.created ? "created" : "existing"))")
+            }
+        } else {
+            let target = try await Self.pickAndroidTarget()
+            let acceptLicenses = self.acceptLicenses
+            let ensured = try VirtualDeviceFactory.ensureAVDs(
+                deviceID: target.deviceID, modelName: target.modelName, package: target.image.package,
+                apiLevel: target.image.apiLevel, tag: target.image.tag, registered: registered, total: count,
+                beforeCreate: { try Self.installIfNeeded(target, acceptLicenses: acceptLicenses, log: log) },
+                log: log)
+            for item in ensured {
+                var device = Self.deviceEntry(platform: platform, name: item.name, osVersion: nil,
+                                              udid: nil, avd: item.id, serial: nil)
+                device["name"] = item.name
+                added.append(device)
+                ConsoleOut.out("   Auto-picked (android): \(item.name) / \(item.id) "
+                    + "(\(item.created ? "created" : "existing"))")
+            }
+        }
+
+        let names = added.compactMap { $0["name"] as? String }
+        try writeProfiles(
+            platform: platform, testProject: testProject, runName: runName, appRef: appRef, devices: added,
+            detail: names.isEmpty ? "no devices added" : "registered \(names.joined(separator: ", ")) (\(platform))")
+        return added
     }
 
     /// 実行プロファイルの devices[] へ書く1件を組み立てる(I/O 無し。自動選定と kind の判定は呼び出し側)。

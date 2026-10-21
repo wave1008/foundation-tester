@@ -1017,6 +1017,7 @@ else:
     skills = tool_root + "/.claude/skills"
     BODY = "## テスト(fleetest)\n\n" + MANAGED + """
 
+- 利用者への返答は利用者が書いた言語で行う(この入口は日本語だが、英語で頼まれたら英語で答える) / Reply in the language the user writes in.
 - シナリオ作成・対象アプリ/デバイスの追加・更新は手順書に従う: `""" + skills + """/fleetest-scenario/SKILL.md`・`fleetest-profiles/SKILL.md`・`fleetest-update/SKILL.md`(Claude Code ではスキル `/fleetest-scenario` 等として呼べる)
 - シナリオを書いて通すまでの短い手引き(英語): `""" + tool_root + """/docs/user-docs/reference/tools/agent_guide.md`
 - `""" + tool_root + """`(fleetest 本体のクローン)は**読み取り専用**として扱う。手順書・docs は読んでよいが、ファイルの編集・作成・削除はしない(編集ツール・シェル・自作のスクリプトのどれでも)。中を書き換えてよいのは fleetest のコマンドと手順書が呼ぶスクリプト(install.sh・update.sh)だけ。本体に不具合や直したい点を見つけたら、自分で直さず利用者に報告する

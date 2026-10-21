@@ -114,12 +114,14 @@ fleetest profile setup --project <プロジェクト> --platform <ios|android|hy
   `--platform` はアプリプロファイルの対象 OS(`platform`)にも書かれる。既存のアプリプロファイルに別の OS を足すと `hybrid` になる。
 - 機種/OS をユーザーが指定した場合だけ `--auto-device` を外し、実体を明示する
   (iOS: `--device-name "<シミュレータ名>" --os <version>` か `--udid`、Android: `--avd <avdID>` か `--serial`)。
-- 仮想デバイスを**新規作成**する必要があるとき(0台・指定に合うものが無い)は
-  `fleetest api create-device`(→ 下の 4-b)で作ってから、`profile setup --device-name <作った名前>` を呼ぶ。
+- 機種/OS をユーザーが指定して仮想デバイスを**新規作成**する必要があるとき(指定に合うものが無い)は
+  `fleetest api create-device`(→ 下の 4-b)で作ってから登録する(登録の渡し方は 4-b)。
 - `--app-path` は入力があったときだけ渡す(渡すと `autoInstall` が有効になる)。
-- **台数の指定があれば**(例「デバイスは2台にして」): `--auto-device` は1回で1台(`-01`)しか登録せず、
-  呼び直しても同じ `-01` を再利用する。2台目以降は `-01` と同じ機種・OS で、空いている番号(`-02` …)を使い 4-b の
-  create-device で作り、`profile setup --device-name <作った名前>` で同じ実行プロファイルへ追記する。
+- **台数の指定があれば**(例「デバイスは2台にして」): **`--auto-device --count <N>` を付けた1回で済ませる**
+  (番号はコマンドが決める。エージェントに「-02」等を選ばせない・create-device を呼ばない)。実行プロファイルの該当 OS の
+  デバイスが**全部で N 台になるまで**足す: 載っている分は数え、中身(iOS = 機種+runtime / Android = 機種+system image)が同じ
+  既存デバイスを番号の小さい順に再利用し、足りない分だけこの機械の既存の名前を全部避けた最小の番号で作る。既に N 台以上なら
+  何もしない(その旨を1行出す)。`--platform hybrid` なら各 OS に効く。`--device-name`/`--avd`/`--udid` とは併用できない。
   ステップ5の報告に全台を並べる。
 
 #### 4-b. 新規作成が要るとき(create-device)
@@ -129,8 +131,12 @@ fleetest api create-device --no-register \
   --platform <plat> --name "<論理名>" --model "<機種 identifier/id>" --os "<ランタイム identifier / システムイメージ package>"
 ```
 
-**`--no-register` を必ず付ける**(作るだけ。登録は続く `profile setup --device-name` が行い、実行プロファイルが
-まだ無ければそこで作られる)。`--profile` で登録させると、実行プロファイルが無い最初の1台目で
+**`--no-register` を必ず付ける**(作るだけ。登録は続く `profile setup` が行い、実行プロファイルが
+まだ無ければそこで作られる)。**登録に渡す値は create-device の finished イベントの `device` から取る**:
+**Android は `device.avd` を `--avd` で渡す**(`--device-name` だけでは「device … is not in any run profile」で失敗する)/
+**iOS は `--device-name`(または `device.udid` を `--udid`)**。
+**この機械に同じ論理名のデバイスが既にあると create-device は作らずに失敗する**(重複を作らない)。その名前のデバイスを使うなら
+作らず登録だけ(`profile setup --device-name`(iOS)/ `--avd`(Android))、作り直すなら `--overwrite`、そうでなければ別の名前にする。`--profile` で登録させると、実行プロファイルが無い最初の1台目で
 `run profile <名>.json does not exist` になって止まる。
 
 `--model` / `--os` の値は `fleetest api device-catalog` の

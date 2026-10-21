@@ -90,6 +90,14 @@ public enum RunProfileDeviceEditor {
         }
     }
 
+    /// 手元のデバイス名のうち platform("ios" / "android")のものだけ(`profile setup --count` が載っている台数を数える)
+    public static func localDeviceNames(inRunProfileObject object: [String: Any], platform: String) -> [String] {
+        devices(object).compactMap { device in
+            effectiveMachine(of: device) == nil && (device["platform"] as? String) == platform
+                ? device["name"] as? String : nil
+        }
+    }
+
     /// AVD ID として使える文字([A-Za-z0-9._-])以外を "_" に置換し、連続する "_"
     /// (置換由来・元から "_" だったもの問わず)は 1 つに圧縮、先頭・末尾の "_" は除去する。
     /// 結果が空なら "avd" を返す(avdmanager の -n が空文字を受け付けないため)

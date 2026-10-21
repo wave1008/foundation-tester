@@ -594,7 +594,8 @@ extension MCPServer {
         tool("ft_list_projects", "List the test projects (TestProjects/) and their run profiles", [:],
              scope: .none),
         tool("ft_doctor", "Check Foundation Models, Vision and OCR availability (only with fmAndVision: true — "
-            + "MCP does not use them by default)", ["fmAndVision": fmAndVisionProperty], scope: .none),
+            + "MCP does not use them by default). It checks only FM / Vision availability; for the whole environment "
+            + "(Xcode version, Simulator, adb, tool root) run the CLI `fleetest doctor`", ["fmAndVision": fmAndVisionProperty], scope: .none),
     ]
 
     /// ツールがどの引数群を要るか。**デバイスに触らないツールへ5つ足さない**のが要点 ——

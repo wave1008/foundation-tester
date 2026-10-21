@@ -39,9 +39,9 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
     var os: String
 
     @Flag(help: ArgumentHelp(
-        "Replace an existing simulator/AVD of the same name instead of creating a variant"
-        + " (deletes it first; refuses while it is running). Without this flag the new AVD gets a"
-        + " _2 / _3 ... suffix so both survive"))
+        "Replace the existing simulator(s)/AVD(s) of the same name (deletes them first; refuses while one is"
+        + " running). Without this flag the command refuses to create a second device with the same name on"
+        + " this machine and names the existing one"))
     var overwrite = false
 
     @Flag(name: .customLong("no-register"), help: ArgumentHelp(

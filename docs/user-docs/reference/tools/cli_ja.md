@@ -42,7 +42,7 @@ foundation-tester のクローン内で作業している場合は `swift run fl
 | `project copy <元> <新>` | テストプロジェクトを別名で複製する(reports / results / `.fleetest` の状態は除く) | — | 同上 |
 | `project rename <旧> <新>` | テストプロジェクトの名前を変え、`Package.swift` を更新する | — | 同上 |
 | `project delete <名前>` | テストプロジェクトをゴミ箱へ移し、`Package.swift` から外す | `--yes`(必須。無いと何もしない) | 同上 |
-| `profile setup` | アプリプロファイルと実行プロファイルを整合させて作る(冪等) | `--platform`・`--app-id`・`--auto-device`・`--app-path` | [プロファイル](../project/profiles_ja.md) |
+| `profile setup` | アプリプロファイルと実行プロファイルを整合させて作る(冪等) | `--platform`・`--app-id`・`--auto-device`・`--count`・`--app-path` | [プロファイル](../project/profiles_ja.md) |
 | `profile list` | 実行プロファイルと構成要素を一覧し、この Mac での解決結果を表示する | `--project` | 同上 |
 
 実行プロファイルの設定項目は[実行プロファイルの設定項目](../project/run_profile_ja.md)にあります。

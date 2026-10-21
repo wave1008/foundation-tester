@@ -100,7 +100,7 @@
 
 | コマンド | 説明 |
 |---|---|
-| `fleetest profile setup --platform <ios\|android\|hybrid> --app-id <id> [--auto-device] [...]` | アプリ/実行プロファイルをまとめて整合させて作成する(冪等)。`--platform` はアプリプロファイルの `platform` にも書かれ、既存のアプリプロファイルに別の OS を足すと `hybrid` になる。アプリプロファイル名は `--app-ref` で指定し、省略時は実行プロファイルが既に指すもの、それも無ければ `<platform>-app`(`ios-app` / `android-app` / `hybrid-app`)。実行プロファイル名は `--run` で指定し、省略時は `<platform>-run`(`ios-run` / `android-run`。`hybrid` は OS ごとに1つずつ) |
+| `fleetest profile setup --platform <ios\|android\|hybrid> --app-id <id> [--auto-device [--count <N>]] [...]` | アプリ/実行プロファイルをまとめて整合させて作成する(冪等)。`--count <N>`(`--auto-device` と併用)は、実行プロファイルのその OS のデバイスが全部で N 台になるまで足す(載っている分は数え、同じ機種・OS の既存を番号の小さい順に再利用し、足りない分だけ空いている番号で作る。既に N 台以上なら何もしない)。`--platform` はアプリプロファイルの `platform` にも書かれ、既存のアプリプロファイルに別の OS を足すと `hybrid` になる。アプリプロファイル名は `--app-ref` で指定し、省略時は実行プロファイルが既に指すもの、それも無ければ `<platform>-app`(`ios-app` / `android-app` / `hybrid-app`)。実行プロファイル名は `--run` で指定し、省略時は `<platform>-run`(`ios-run` / `android-run`。`hybrid` は OS ごとに1つずつ) |
 | `fleetest profile list` | 実行プロファイルの一覧とそのデバイスを表示する |
 
 ## VSCode での編集

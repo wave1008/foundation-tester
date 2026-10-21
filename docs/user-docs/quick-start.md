@@ -46,7 +46,7 @@ following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
 
    <img src="images/quick_start/en/device_monitor.png" width="640" alt="The device monitor just opened">
 
-7. Ask your AI assistant to "run fleetest doctor and report the result", and confirm that no errors are reported
+7. Ask your AI assistant to "run `../foundation-tester/.build/debug/fleetest doctor` and report the result", and confirm that no errors are reported
 
 ## 4. Preparing the sample app
 
@@ -118,11 +118,11 @@ Go back to your work folder and run the following. The installation creates no t
 ../foundation-tester/.build/debug/fleetest project create project1
 
 # iOS
-../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.sutec.mobile.ios --auto-device --app-name "SUT Store" \
+../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.sutec.mobile.ios --auto-device --count 2 --app-name "SUT Store" \
   --app-path ../sut-ec-mobile/build/ios-sim/Build/Products/Debug-iphonesimulator/iosApp.app
 
 # Android
-../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.sutec.mobile.android --auto-device --app-name "SUT Store" \
+../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.sutec.mobile.android --auto-device --count 2 --app-name "SUT Store" \
   --app-path ../sut-ec-mobile/androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
@@ -131,7 +131,7 @@ Passing the built app to `--app-path` makes the run install it on the device aut
 `--auto-device` picks a Simulator/Emulator with the newest iOS runtime and the newest Pixel (and creates it
 when missing; a missing iOS runtime is downloaded first: several GB, several minutes to tens of minutes;
 one that is not running is started automatically at run time). The app profiles are named `ios-app` and `android-app`, and the
-run profiles `ios-run` and `android-run`. These commands register one device; add the second one with "Add device" on the
+run profiles `ios-run` and `android-run`. `--count 2` makes the run profile hold two devices of that OS in total (existing devices with the same settings are reused in ascending number order and the missing ones are created; it is the same as "use two devices" in the instruction). You can also add devices later with "Add device" on the
 "Profiles" tab of the VSCode extension's device monitor.
 
 </details>

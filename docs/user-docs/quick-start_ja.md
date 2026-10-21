@@ -46,7 +46,7 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 
    <img src="images/quick_start/ja/device_monitor.png" width="640" alt="デバイスモニターが開いたところ">
 
-7. AIアシスタントへ「fleetest doctor を実行して結果を報告して」と指示し、エラーが出ないことを確かめます
+7. AIアシスタントへ「`../foundation-tester/.build/debug/fleetest doctor` を実行して結果を報告して」と指示し、エラーが出ないことを確かめます
 
 ## 4. サンプルアプリの準備
 
@@ -118,11 +118,11 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 ../foundation-tester/.build/debug/fleetest project create project1
 
 # iOS
-../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.sutec.mobile.ios --auto-device --app-name "SUT Store" \
+../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.sutec.mobile.ios --auto-device --count 2 --app-name "SUT Store" \
   --app-path ../sut-ec-mobile/build/ios-sim/Build/Products/Debug-iphonesimulator/iosApp.app
 
 # Android
-../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.sutec.mobile.android --auto-device --app-name "SUT Store" \
+../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.sutec.mobile.android --auto-device --count 2 --app-name "SUT Store" \
   --app-path ../sut-ec-mobile/androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
@@ -131,7 +131,7 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 `--auto-device` は、最新の iOS ランタイムと最新の Pixel を使う Simulator/Emulator を自動で選びます
 (足りなければ作成します。iOS のランタイムが未導入のときは数 GB をダウンロードするので数分〜数十分かかります。
 起動していないものは実行時に自動で起動します)。アプリプロファイルの名前は `ios-app`・`android-app`、実行プロファイルの名前は `ios-run`・`android-run` になります。
-手で登録するのは1台です。2台目は VSCode 拡張のデバイスモニターの「プロファイル」タブにある「デバイスを追加」で足せます。
+`--count 2` は、その実行プロファイルの該当 OS のデバイスを全部で2台にします(同じ内容の既存デバイスは番号の小さい順に再利用し、足りない分を作ります。指示文の「デバイスは2台にして」と同じです)。あとから VSCode 拡張のデバイスモニターの「プロファイル」タブにある「デバイスを追加」でも足せます。
 
 </details>
 <br>

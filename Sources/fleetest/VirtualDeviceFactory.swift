@@ -25,10 +25,17 @@ enum VirtualDeviceFactory {
 
     // MARK: - iOS
 
-    /// `deviceTypeID` / `runtimeID` は simctl の identifier。overwrite のときだけ同名の既存を消す
-    /// (iOS は同名を何台でも作れる。付けなければ同名が並ぶ = simctl の既定)
+    /// `deviceTypeID` / `runtimeID` は simctl の identifier。同名のシミュレータが既にあれば、overwrite なら消して作り直し、
+    /// でなければ作らず失敗する(simctl は同名を何台でも作れるが、並ぶと名前で引けない = sameNameRefusal)
     static func createSimulator(name: String, deviceTypeID: String, runtimeID: String, overwrite: Bool,
                                 log: (String) -> Void) throws -> CreatedSimulator {
+        if !overwrite {
+            let clashes = ((try? SimulatorCatalog.devices()) ?? []).filter { !$0.physical && $0.name == name }
+            if let message = sameNameRefusal(
+                platform: "ios", name: name, existing: clashes.map { "UDID \($0.udid)" }) {
+                throw Failure(message)
+            }
+        }
         log("Resolving the simulator model/runtime...")
         let deviceTypesResult = try Shell.run(["xcrun", "simctl", "list", "-j", "devicetypes"])
         guard deviceTypesResult.status == 0,
@@ -118,20 +125,42 @@ enum VirtualDeviceFactory {
 
     // MARK: - Android
 
+    /// 同じ論理名のデバイスが既にあるのに作ろうとしたときの拒否文(無ければ nil。existing は既存の識別子の説明)。
+    /// 論理名が同じデバイスが並ぶと名前で引けない(iOS は曖昧・Android は同じ表示名の AVD が2つ)ので作らない
+    static func sameNameRefusal(platform: String, name: String, existing: [String]) -> String? {
+        guard !existing.isEmpty else { return nil }
+        let register = platform == "ios"
+            ? "profile setup --device-name \"\(name)\" (or --udid)" : "profile setup --avd <AVD id>"
+        let kind = platform == "ios" ? "a simulator" : "an AVD"
+        return "\(kind) named \"\(name)\" already exists on this machine (\(existing.joined(separator: ", ")))."
+            + " To use it, register it with fleetest \(register); to delete it and create it again, pass --overwrite;"
+            + " otherwise choose another name (an unused serial number)"
+    }
+
     /// 作った AVD の ID を返す。ID は名前から機械的に生成する(avdmanager -n の制約に合わせて英数字・._- のみ)。
-    /// 既存 AVD と衝突したら overwrite なら消して同じ ID で作り直し、でなければ _2, _3... を足して両方残す
-    /// (呼び出し側が「上書きするか」を人に聞けるようにするため、ここでは黙って選ばない)
+    /// 同じ論理名(表示名)の AVD が既にあれば、overwrite なら全部消して作り直し、でなければ作らず失敗する。
+    /// 論理名は違うが ID だけ衝突したときは _2, _3... を足す
     static func createAVD(name: String, deviceID: String, package: String, overwrite: Bool,
                           log: (String) -> Void) throws -> String {
         guard let avdmanagerURL = AndroidSDKLocator.findAVDManager() else {
             throw Failure(AndroidSDKLocator.avdManagerMissingMessage + ". "
                 + AndroidSDKLocator.avdManagerInstallHint)
         }
-        let installedIDs = Set(AndroidDeviceCatalog.installedAVDs().map(\.id))
+        let installed = AndroidDeviceCatalog.installedAVDs()
+        let installedIDs = Set(installed.map(\.id))
         let baseID = RunProfileDeviceEditor.sanitizedAVDID(from: name)
         var avdID = baseID
-        if installedIDs.contains(baseID), overwrite {
-            try deleteExistingAVD(baseID, avdmanagerPath: avdmanagerURL.path, log: log)
+        let sameName = installed.filter { ($0.displayName ?? $0.id) == name }.map(\.id)
+        if !overwrite, let message = sameNameRefusal(
+            platform: "android", name: name, existing: sameName.map { "AVD id \($0)" }) {
+            throw Failure(message)
+        }
+        if overwrite, !(sameName.isEmpty && !installedIDs.contains(baseID)) {
+            var doomed = sameName
+            if installedIDs.contains(baseID), !doomed.contains(baseID) { doomed.append(baseID) }
+            for id in doomed {
+                try deleteExistingAVD(id, avdmanagerPath: avdmanagerURL.path, log: log)
+            }
         } else {
             var suffix = 2
             while installedIDs.contains(avdID) {
@@ -321,5 +350,104 @@ enum VirtualDeviceFactory {
         try beforeCreate()
         let id = try createAVD(name: name, deviceID: deviceID, package: package, overwrite: false, log: log)
         return EnsuredAVD(id: id, name: name, created: true)
+    }
+
+    // MARK: - N 台そろえる(profile setup --auto-device --count N)
+
+    /// 「実行プロファイルの該当 OS のデバイスが全部で total 台になるまで」の足し方
+    struct CountPlan: Equatable {
+        /// 既存を再利用して登録する名前(番号の小さい順)
+        let reuse: [String]
+        /// 新規に作る名前(この機械の既存の名前を全部避けた小さい順)
+        let create: [String]
+        /// 足りない台数(0 = 足りた)。01〜99 を使い切ると 0 にならない
+        let shortfall: Int
+        /// 既に total 台以上載っていて何も足さない
+        var isSatisfied: Bool { reuse.isEmpty && create.isEmpty && shortfall == 0 }
+    }
+
+    /// registered = 実行プロファイルに既に載っている手元の同 OS の名前、existing = この機械の既存デバイスの名前全部、
+    /// isReusable = `<base>-NN` の名前が中身も一致するか。**載っている分は数えて、足りない分だけ**足す
+    static func countPlan(base: String, existing: [String], registered: [String], total: Int,
+                          isReusable: (String) -> Bool) -> CountPlan {
+        let need = max(0, total - registered.count)
+        guard need > 0 else { return CountPlan(reuse: [], create: [], shortfall: 0) }
+        let registeredSet = Set(registered)
+        var seen = Set<String>()
+        let candidates = existing.compactMap { name -> (number: Int, name: String)? in
+            guard let number = VirtualDeviceNaming.serialNumber(of: name, base: base),
+                  !registeredSet.contains(name), isReusable(name), seen.insert(name).inserted else { return nil }
+            return (number, name)
+        }.sorted { $0.number < $1.number }
+        let reuse = Array(candidates.prefix(need).map(\.name))
+        let create = VirtualDeviceNaming.nextUnusedNames(
+            base: base, existing: existing, count: need - reuse.count)
+        return CountPlan(reuse: reuse, create: create, shortfall: need - reuse.count - create.count)
+    }
+
+    static func shortfallFailure(base: String) -> Failure {
+        Failure("all serial numbers 01-99 of \(base) are in use; delete some or pass --device-name")
+    }
+
+    /// ensureSimulator の N 台版。中身(機種+ランタイム)が同じ既存を番号の小さい順に再利用し、足りない分だけ作る
+    static func ensureSimulators(target: IOSAutoDevice, registered: [String], total: Int,
+                                 log: (String) -> Void) throws -> [EnsuredSimulator] {
+        let simulators = try SimulatorCatalog.devices().filter { !$0.physical }
+        let base = VirtualDeviceNaming.baseName(model: target.modelName, osLabel: target.runtimeName)
+        let blueprints = SimulatorCatalog.blueprintsByUDID()
+        let sameContent = { (device: SimDeviceInfo) in
+            blueprints[device.udid]?.deviceTypeIdentifier == target.deviceTypeID
+                && blueprints[device.udid]?.runtimeIdentifier == target.runtimeID
+        }
+        let plan = countPlan(
+            base: base, existing: simulators.map(\.name), registered: registered, total: total,
+            isReusable: { name in simulators.contains { $0.name == name && sameContent($0) } })
+        if plan.shortfall > 0 { throw shortfallFailure(base: base) }
+        let models = SimulatorCatalog.modelNamesByUDID()
+        var result: [EnsuredSimulator] = []
+        for name in plan.reuse {
+            guard let found = simulators.first(where: { $0.name == name && sameContent($0) }) else { continue }
+            result.append(EnsuredSimulator(info: found, model: models[found.udid] ?? target.modelName, created: false))
+        }
+        if !plan.create.isEmpty, target.needsDownload {
+            try installRuntime(version: target.runtimeVersion, identifier: target.runtimeID, log: log)
+        }
+        for name in plan.create {
+            let made = try createSimulator(
+                name: name, deviceTypeID: target.deviceTypeID,
+                runtimeID: target.runtimeID, overwrite: false, log: log)
+            let info = SimDeviceInfo(udid: made.udid, name: name, os: "iOS \(made.runtimeVersion)", booted: false)
+            result.append(EnsuredSimulator(info: info, model: made.deviceTypeName, created: true))
+        }
+        return result
+    }
+
+    /// ensureAVD の N 台版(方針は ensureSimulators と同じ。beforeCreate は最初に作る直前に1回だけ)
+    static func ensureAVDs(deviceID: String, modelName: String, package: String, apiLevel: Int, tag: String,
+                           registered: [String], total: Int, beforeCreate: () throws -> Void = {},
+                           log: (String) -> Void) throws -> [EnsuredAVD] {
+        let installed = AndroidDeviceCatalog.installedAVDs()
+        let labelOf = { (avd: (id: String, displayName: String?)) in avd.displayName ?? avd.id }
+        let base = VirtualDeviceNaming.baseName(
+            model: modelName, osLabel: VirtualDeviceNaming.androidOSLabel(apiLevel: apiLevel, tag: tag))
+        let sameContent = { (avd: (id: String, displayName: String?)) in
+            AndroidDeviceCatalog.avdModelAndOS(id: avd.id).model == deviceID
+                && AndroidDeviceCatalog.avdSystemImage(id: avd.id)?.package == package
+        }
+        let plan = countPlan(
+            base: base, existing: installed.map(labelOf), registered: registered, total: total,
+            isReusable: { name in installed.contains { labelOf($0) == name && sameContent($0) } })
+        if plan.shortfall > 0 { throw shortfallFailure(base: base) }
+        var result: [EnsuredAVD] = []
+        for name in plan.reuse {
+            guard let found = installed.first(where: { labelOf($0) == name && sameContent($0) }) else { continue }
+            result.append(EnsuredAVD(id: found.id, name: name, created: false))
+        }
+        if !plan.create.isEmpty { try beforeCreate() }
+        for name in plan.create {
+            let id = try createAVD(name: name, deviceID: deviceID, package: package, overwrite: false, log: log)
+            result.append(EnsuredAVD(id: id, name: name, created: true))
+        }
+        return result
     }
 }

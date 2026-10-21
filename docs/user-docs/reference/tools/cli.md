@@ -42,7 +42,7 @@ child commands. `fleetest --version` shows the version.
 | `project copy <source> <new-name>` | Duplicate a test project under a new name (excludes reports / results / `.fleetest` state) | — | Same as above |
 | `project rename <old-name> <new-name>` | Rename a test project and update `Package.swift` | — | Same as above |
 | `project delete <name>` | Move a test project to the Trash and remove it from `Package.swift` | `--yes` (required; without it nothing is deleted) | Same as above |
-| `profile setup` | Create app and run profiles consistently (idempotent) | `--platform`, `--app-id`, `--auto-device`, `--app-path` | [Profiles](../project/profiles.md) |
+| `profile setup` | Create app and run profiles consistently (idempotent) | `--platform`, `--app-id`, `--auto-device`, `--count`, `--app-path` | [Profiles](../project/profiles.md) |
 | `profile list` | List run profiles and their component profiles, and show how they resolve on this machine | `--project` | Same as above |
 
 The settings of a run profile are in [Run profile settings](../project/run_profile.md).
