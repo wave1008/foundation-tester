@@ -1094,10 +1094,10 @@ final class BridgeRouter {
     /// 各タッチの接触時間[秒]。実測 2026-09-24 でこの長さのときだけ RN の PanResponder が拾った
     private static let doubleTapTouchDuration: TimeInterval = 0.08
 
-    /// 単純タップの接触時間[秒]。iPhone SE3 の実測(合成だけの往復・アラートの確認を足す前)で 0.05s→295ms・0.01s→244ms
-    /// (縮退先の `XCUICoordinate.tap()` は 415ms)。接触時間を縮めた分しか縮まない = 残り約 230ms は合成そのもの。
-    /// 0.01s で SwiftUI・Compose Multiplatform・Flutter・React Native の 4 SUT すべてがタップ(押下と遷移)を拾った
-    private static let tapTouchDuration: TimeInterval = 0.01
+    /// 単純タップの接触時間[秒]。**0.01s に縮めない** —— ボタンの押下と遷移は4 SUT とも拾うが、実機の SwiftUI の
+    /// Toggle(UISwitch)を反転させない回がある(E2E-iOS の画像で要素を探す.S0010 を各6回: 0.01s で SE3 4/6・iPhone 13 5/6 が赤、
+    /// 0.05s で両機 6/6 緑)。合成だけの往復は SE3 で 0.05s→295ms・0.01s→244ms(縮退先の `XCUICoordinate.tap()` は 415ms)
+    private static let tapTouchDuration: TimeInterval = 0.05
     /// 1本目が触れてから2本目が触れるまでの間隔[秒](= OS のダブルタップ判定窓の内側。
     /// 1本目は `doubleTapTouchDuration` で離れているので、2本目の直前には
     /// 0.25 - 0.08 = 0.17 秒の空きができる)

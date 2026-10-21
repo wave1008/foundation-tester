@@ -2535,8 +2535,11 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 
 **tap の直接合成**(`XCSynthesizedEventRecord` を `eventSynthesizer` で送る。`XCUICoordinate.tap()` を経由しない):
 接触 0.05s で 295.4ms(−29%)・**0.01s で 243.6ms(−41%)**。接触時間を 40ms 縮めると 52ms 縮むので、
-残りの約 230ms は合成の往復そのもの(デーモン側の固定費。ツールからは削れない)。0.01s の接触は
-SwiftUI・Compose Multiplatform・Flutter・React Native の4 SUT すべてでボタンの押下と画面遷移として拾われた。
+残りの約 230ms は合成の往復そのもの(デーモン側の固定費。ツールからは削れない)。**採用は 0.05s**。
+0.01s の接触は SwiftUI・Compose Multiplatform・Flutter・React Native の4 SUT すべてでボタンの押下と画面遷移として
+拾われたが、**実機の SwiftUI の `Toggle`(UISwitch)を反転させない回があった**(E2E-iOS の `画像で要素を探す.S0010` を
+XCUITest で各6回: 0.01s で SE3 4/6・iPhone 13 5/6 が赤 → 0.05s で両機 6/6 緑。`coordinate.tap()` に戻すと SE3 6/6 緑。
+Simulator の E2E は in-app で回るのでこの経路を通らず、実機を回すまで出なかった)。下の v200・v204 の正味は 0.01s での値。
 **直接合成は XCTest の割り込み監視を通らない** —— 写真の権限アラートの「許可しない」の座標へ撃つと、
 `coordinate.tap()` は 422 で触れないのに対し、直接合成(既存の `/doubletap` を含む)は 200 でボタンを押した
 (Simulator で実測)。直接合成の送る口ではシステムアラートを自分で確かめる(`SystemAlertProbe`)。
