@@ -323,7 +323,32 @@ final class FTInAppBridge {
     static func keyboardFrameIfVisible() -> CGRect? {
         guard keyboardIsVisible(), let observed = observedKeyboardFrame,
               observed.height >= 1 else { return nil }
-        return observed
+        return excludingInputAccessory(observed)
+    }
+
+    /// 通知の枠から、キーボードに載って表示されている inputAccessoryView(チャットの入力バー等)の分を除き、キーの部分だけにする。
+    /// UIKit のキーボードの枠は付属のバーを含むが、バーの中の要素は人も合成タッチも押せる —— 含めたまま判定すると、
+    /// 入力バーの送信ボタンを「キーボードの下」として撃たなかった(実測 2026-10-21 iOS 27.0・E2EY の反転チャット:
+    /// 通知の上端 486・バー 486〜539・送信ボタン 497〜527)。バーが枠の上端に接していなければ通知の枠のまま
+    private static func excludingInputAccessory(_ observed: CGRect) -> CGRect {
+        guard let window = keyboardAccessoryWindow() else { return observed }
+        var top = observed.minY
+        for accessory in inputAccessoryRoots(keyWindow: window) {
+            let frame = accessory.convert(accessory.bounds, to: nil)
+            if abs(frame.minY - top) <= 1, frame.maxY > top, frame.maxY < observed.maxY { top = frame.maxY }
+        }
+        return top == observed.minY ? observed
+            : CGRect(x: observed.minX, y: top, width: observed.width, height: observed.maxY - top)
+    }
+
+    /// アプリのキーウィンドウ(無ければ最初の窓)。keyWindow() と同じ選び方の static 版
+    private static func keyboardAccessoryWindow() -> UIWindow? {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            if let key = windowScene.windows.first(where: { $0.isKeyWindow }) { return key }
+            if let first = windowScene.windows.first { return first }
+        }
+        return nil
     }
 
     /// 自分自身から window までのクラス名(interop 判定用。UIKit 参照だがメイン外でも
