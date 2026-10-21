@@ -49,6 +49,9 @@ public enum InAppCodeSign {
         let dest = outputDir.appendingPathComponent(basename)
         try? FileManager.default.removeItem(at: dest)
         try FileManager.default.copyItem(at: deviceDylib, to: dest)
+        // ssh 越しの dispatch(リモート機での供給)では署名鍵のキーチェーンが解錠されておらず codesign が
+        // errSecInternalComponent で落ちる。XCUITest ランナーの署名と同じ空パスワード解錠を先に通す(ssh-codesign-keychain-traps)
+        unlockSigningKeychains()
         let result = try Shell.run(["codesign", "-f", "-s", identitySHA1, dest.path])
         guard result.status == 0 else {
             throw InAppCodeSignError.signingFailed(result.tail)
@@ -81,6 +84,18 @@ public enum InAppCodeSign {
     }
 
     // MARK: - Shell 経由
+
+    /// 署名鍵のキーチェーンを空パスワードで解錠する(XCUITest ランナーの BridgeLauncher.attemptKeychainUnlock と同じ機構)。
+    /// ローカル(GUI セッション)では既に解錠済みなので実質 no-op。ssh の非対話セッションでだけ効く
+    private static func unlockSigningKeychains() {
+        let listed = try? Shell.run(XcodeSigningDiagnosis.listKeychainsArguments(), timeout: 5)
+        let paths = XcodeSigningDiagnosis.keychainsToUnlock(
+            listKeychainsOutput: listed?.status == 0 ? listed?.output : nil,
+            homeDirectory: NSHomeDirectory())
+        for path in paths {
+            _ = try? Shell.run(XcodeSigningDiagnosis.unlockKeychainArguments(path: path), timeout: 5)
+        }
+    }
 
     private static func codesigningIdentities() -> Set<String> {
         let output = (try? Shell.run(["security", "find-identity", "-v", "-p", "codesigning"]))?.outputIfSucceeded ?? ""
