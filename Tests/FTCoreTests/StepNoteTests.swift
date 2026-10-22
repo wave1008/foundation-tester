@@ -44,6 +44,7 @@ final class StepNoteTests: XCTestCase {
         XCTAssertEqual(StepNote.blankScreenshotRetaken.rawValue, "blank-screenshot-retaken")
         XCTAssertEqual(StepNote.settledBeforeGesture.rawValue, "settled-before-gesture")
         XCTAssertEqual(StepNote.staleRefRetried.rawValue, "stale-ref-retried")
+        XCTAssertEqual(StepNote.staleRefAtTap.rawValue, "stale-ref-at-tap")
         XCTAssertEqual(StepNote.inAppTapOutsideHitArea.rawValue, "inapp-tap-outside-hit-area")
         XCTAssertEqual(StepNote.inAppActivationPointOffCentre.rawValue, "inapp-activation-point-off-centre")
     }

@@ -731,6 +731,9 @@ extension StepExecutor {
                             noteCodesThisStep.insert(.inAppActivationPointOffCentre)
                             driverFallback = Self.joinNotes(driverFallback, StepNote.inAppActivationPointOffCentre.text
                                 + " (activation point (\(Int(x.rounded())), \(Int(y.rounded()))), centre \(centre))")
+                        case .movedBeforeFire:
+                            noteCodesThisStep.insert(.staleRefAtTap)
+                            driverFallback = Self.joinNotes(driverFallback, StepNote.staleRefAtTap.text + " (at \(centre))")
                         }
                     }
                 } catch {

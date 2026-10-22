@@ -303,6 +303,10 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 引き直した(`executeActionRetryingStaleRef`)。立つのは断りが1回でもあった回だけ。**緑の run でこの経路が
     /// 働いたかを数える唯一の印**(無いと、経路が黙って効かなくなっても赤の率でしか気付けない)
     case staleRefRetried = "stale-ref-retried"
+    /// **測定用(`FT_STALE_TAP_PROBE=1` のときだけ立つ)**: XCUITest の ref タップで、撃つ直前に撮り直した木に要素がもう
+    /// 控えた枠に居なかった(`TapHitAreaMiss.Kind.movedBeforeFire`)。**判定は変えない・撃ち直さない**。率を見て `/tap` にも
+    /// `/type` と同じ断り → 引き直しを入れるかを決める
+    case staleRefAtTap = "stale-ref-at-tap"
 
     /// 1番目の occlusion-guard 評価だけで、ガード自身の所要(FM の呼び出しの枠の待ち+推論)が
     /// このステップの待ち予算を食い潰し、1回もポーリングできないまま反転が確定しかけたので、
@@ -400,6 +404,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
                 + " (the reason is in the end-of-scenario warning)"
         case .settledBeforeGesture:
             return "the screen was still moving before the gesture, so the gesture waited for it to settle"
+        case .staleRefAtTap:
+            return "the element had already moved from where the last snapshot saw it when the tap was sent"
+                + " (measured with FT_STALE_TAP_PROBE; the tap was sent anyway)"
         case .staleRefRetried:
             return "the bridge refused the action without performing it because the element had moved,"
                 + " so the target was resolved again from a fresh tree"

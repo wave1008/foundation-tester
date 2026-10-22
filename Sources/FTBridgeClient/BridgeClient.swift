@@ -939,10 +939,20 @@ public final class BridgeClient: AppDriver, Sendable {
             try await tap(x: center.x, y: center.y)
             return
         }
-        let res: OKResponse = try await post("/tap", body: TapRequest(ref: ref, expect: refExpectations[ref]),
+        let probe = Self.staleTapProbeEnabled(ProcessInfo.processInfo.environment) ? true : nil
+        let res: OKResponse = try await post("/tap", body: TapRequest(ref: ref, expect: refExpectations[ref],
+                                                                      probeStaleRef: probe),
                                              timeout: interactionTimeout)
         lastActionNote = res.note
         lastTapHitAreaMiss = res.hitAreaMiss
+    }
+
+    /// **測定用の保守者のスイッチ**(`=1` のときだけ)。ref の `/tap` に `probeStaleRef` を付け、XCUITest ランナーが撃つ直前に
+    /// 撮り直して古い ref を数える(1回 30〜120ms = 既定では撃たない)。シナリオの子は親の環境変数を受け継ぐ
+    public static let staleTapProbeKey = "FT_STALE_TAP_PROBE"
+
+    static func staleTapProbeEnabled(_ environment: [String: String]) -> Bool {
+        environment[staleTapProbeKey] == "1"
     }
 
     /// tap(ref:) が受け取った OKResponse.hitAreaMiss(AppDriver.lastTapHitAreaMiss)。tap(ref:) の冒頭でクリア

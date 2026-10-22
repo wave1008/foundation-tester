@@ -208,6 +208,9 @@
     撮り直しだけが断つ。`/tap` `/press` は撮り直さない)
   - 手がかり: ホストの新しい経路が古い ref で撃つ誤り(maintainer-notes §92.4)を `/tap` でも断つなら、`AppDriver` に期待を渡す口を
     足すか、`/tap` にも撮り直しを入れる(1 回 30〜120ms の費用との相談)
+  - 測り方(ブリッジ版 211): `FT_STALE_TAP_PROBE=1` で回すと、XCUITest ランナーの ref の `/tap` が撃つ直前に撮り直し、要素がもう
+    控えた枠に居なかった回に注記 `stale-ref-at-tap` を残す(断らずに撃つ = 判定は変わらない)。率が 0 なら `/tap` は据え置き、
+    出るなら `/type` と同じ断り → 引き直しを、出た画面の形に絞って入れる。`/press`・in-app・Android は測っていない
 
 - **OCR の段をオフにした構成では、FM の空の転写(読める文字に `""`)が今も赤になる**
   - 場所: `StepExecutor+Assert.swift` の空の転写の確認は `ocrTextVisibilityCheck` がオンのときだけ OCR を使う(オフの段は使わない)

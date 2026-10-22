@@ -770,10 +770,12 @@ final class BridgeRouter {
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y, expect: req.expect)
         _ = QuiescenceWait.takeCapNote()  // 前の操作の数え残しを捨てる(応答の注記はこの操作の分だけ)
         QuiescenceWait.waitBeforeTouch(app, skip: skipSettle)
+        // 測定用(probeStaleRef のときだけ): 整定の待ちの後 = 撃つ直前に確かめ、結果に関わらず撃つ
+        let moved = req.probeStaleRef == true ? movedBeforeFire(app, ref: req.ref, point: point) : nil
         // アプリが主画面以外の画面(Duo の内側)に出ているときは XCUICoordinate が届かない(DisplayRouting)
         if let display = DisplayRouting.target(for: app) {
             try CoordinatePinch.tap(at: point, display: display, touchSeconds: Self.doubleTapTouchDuration)
-            return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
+            return .json(OKResponse(note: QuiescenceWait.takeCapNote(), hitAreaMiss: moved))
         }
         // 非公開 API が無い Xcode では下の XCUICoordinate へ縮退する。
         // **セッションが SpringBoard のタップは直接合成に乗せない** —— 相手がシステム UI そのもの(hybrid の
@@ -783,7 +785,7 @@ final class BridgeRouter {
             try CoordinatePinch.tapOnMainScreen(
                 at: point, touchSeconds: Self.tapTouchDuration,
                 orientation: synthesisOrientation())
-            return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
+            return .json(OKResponse(note: QuiescenceWait.takeCapNote(), hitAreaMiss: moved))
         }
         // 縮退経路の計測: `tap()` は「イベント合成」と「暗黙の quiescence 待ち」の両方を含む1呼び出しで、
         // ホスト側の actionMs からは分解できない。quiescence 側だけ swizzle 経由で数え、
@@ -802,7 +804,7 @@ final class BridgeRouter {
             NSLog("[fleetest] tapTiming total=%.0f quiesce=%.0f synth=%.0f", totalMs,
                   QuiescenceWait.quiescenceMs, totalMs - QuiescenceWait.quiescenceMs)
         }
-        return .json(OKResponse(note: QuiescenceWait.takeCapNote()))
+        return .json(OKResponse(note: QuiescenceWait.takeCapNote(), hitAreaMiss: moved))
     }
 
     /// typeText("\n") は XCUITest 内部で Return キー相当に落ちる(ソフトキーボードの改行/送信
@@ -1807,6 +1809,14 @@ final class BridgeRouter {
         if !StaleRefGuard.isStillPresent(stored, in: fresh.elements) {
             throw refuseStaleRef(ref, "it is no longer on the screen at the same place")
         }
+    }
+
+    /// 測定用(`TapRequest.probeStaleRef`): 木を1回撮り直し、控えた要素がもう同じ枠に居なければ `.movedBeforeFire`。
+    /// **断らない**(requireRefStillOnScreen と違い挙動を変えない)。撮り直せない・ref が無いときは nil(言えないことは言わない)
+    func movedBeforeFire(_ app: XCUIApplication, ref: Int?, point: CGPoint) -> TapHitAreaMiss? {
+        guard let ref, let stored = refElements[ref], let fresh = try? captureOnce(app),
+              !StaleRefGuard.isStillPresent(stored, in: fresh.elements) else { return nil }
+        return TapHitAreaMiss(x: Double(point.x), y: Double(point.y), kind: .movedBeforeFire)
     }
 
     func resolvePoint(ref: Int?, x: Double?, y: Double?, expect: RefExpectation? = nil) throws -> CGPoint {

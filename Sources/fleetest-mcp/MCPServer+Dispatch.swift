@@ -1151,6 +1151,9 @@ extension MCPServer {
             return " Note: the in-app engine activated this element at its activation point"
                 + " (\(Int(x.rounded())), \(Int(y.rounded()))), which is not the centre of its frame \(centre)"
                 + " that a coordinate tap presses."
+        case .movedBeforeFire:
+            return " Note: when the tap was sent, this element was no longer at \(centre) where the snapshot saw it"
+                + " (FT_STALE_TAP_PROBE); the tap may have landed on something else."
         }
     }
 

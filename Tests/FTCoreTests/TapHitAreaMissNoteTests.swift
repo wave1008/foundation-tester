@@ -63,6 +63,18 @@ final class TapHitAreaMissNoteTests: XCTestCase {
         XCTAssertTrue(text.contains("ChatInputBar at (354, 845)"), text)
     }
 
+    /// 測定用のプローブ(FT_STALE_TAP_PROBE)が「撃つ直前に要素が動いていた」と申告したら、判定を変えずに別のコードで残す
+    func testMovedBeforeFireIsNotedAsStaleRefAtTap() async {
+        let driver = MissReportingDriver(miss: TapHitAreaMiss(x: 354, y: 844, kind: .movedBeforeFire))
+        let outcome = await tap(driver)
+
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(driver.refTaps, [1], "撃ち直さない")
+        XCTAssertTrue(outcome.notes.contains(.staleRefAtTap), "\(outcome.notes)")
+        XCTAssertFalse(outcome.notes.contains(.inAppTapOutsideHitArea), "\(outcome.notes)")
+        XCTAssertTrue((outcome.driverFallback ?? "").contains("at (354, 844)"), outcome.driverFallback ?? "")
+    }
+
     /// 活性化の点のずれ(SwiftUI の `.contentShape` 抜け)は別のコードと事実の括弧書きで残す
     func testActivationPointOffCentreIsNotedWithItsOwnCode() async {
         let driver = MissReportingDriver(miss: TapHitAreaMiss(x: 201, y: 570.3,

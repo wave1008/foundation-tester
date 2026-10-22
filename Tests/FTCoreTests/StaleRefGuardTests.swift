@@ -230,6 +230,24 @@ final class StaleRefRunnerWiringTests: XCTestCase {
         }
     }
 
+    /// 測定用のプローブ: /tap は probeStaleRef のときだけ、整定の待ちの後・撃つ前に確かめ、**断らず**全部の返し口で結果を返す
+    func testTapProbeChecksBeforeFiringWithoutRefusing() throws {
+        let router = try runnerSource("BridgeRouter.swift")
+        let tap = try body(of: "private func handleTap(", in: router)
+        let probeAt = try XCTUnwrap(tap.range(of: "req.probeStaleRef == true ? movedBeforeFire(")?.lowerBound,
+                                    "handleTap がプローブを見ていない")
+        let waitAt = try XCTUnwrap(tap.range(of: "QuiescenceWait.waitBeforeTouch(")?.lowerBound)
+        XCTAssertLessThan(waitAt, probeAt, "整定の待ちの前に確かめている(撃つ瞬間から遠い)")
+        for fire in ["CoordinatePinch.tap(at:", "CoordinatePinch.tapOnMainScreen(", "coordinate(app, point).tap()"] {
+            let fireAt = try XCTUnwrap(tap.range(of: fire)?.lowerBound, fire)
+            XCTAssertLessThan(probeAt, fireAt, "\(fire) の後に確かめている")
+        }
+        XCTAssertEqual(tap.components(separatedBy: "hitAreaMiss: moved").count - 1, 3, "返し口のどれかが結果を落としている")
+        let probe = try body(of: "func movedBeforeFire(", in: router)
+        XCTAssertTrue(probe.contains("StaleRefGuard.isStillPresent("))
+        XCTAssertFalse(probe.contains("throw"), "プローブが断っている(測定は挙動を変えない)")
+    }
+
     /// 撮り直した木で ref の表を置き換えない(番号がずれて別の要素に撃つ)
     func testFreshCaptureDoesNotReplaceTheRefTables() throws {
         let router = try runnerSource("BridgeRouter.swift")

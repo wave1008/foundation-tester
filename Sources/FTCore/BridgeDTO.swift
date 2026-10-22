@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 210
+    public static let bridgeProtocolVersion = 211
 
     /// `ErrorResponse.reason` の値: ref が指していた要素が、撃つ時点でもう同じ場所に居ない(古い ref)。
     /// **何も撃たずに断った**ことを保証する(422)。ホストは新しい木から引き直して撃ち直してよい。
@@ -1092,11 +1092,17 @@ public struct TapRequest: Codable {
     public var y: Double?
     /// ホストが `ref` に期待する要素(`RefExpectation`)。ref と一緒に送り、食い違えば撃たずに断られる
     public var expect: RefExpectation?
-    public init(ref: Int? = nil, x: Double? = nil, y: Double? = nil, expect: RefExpectation? = nil) {
+    /// **測定用(既定 nil = 費用 0)**。true なら XCUITest ランナーが撃つ直前に木を1回撮り直し(30〜120ms)、ref の要素が
+    /// 同じ枠に居なければ `hitAreaMiss = .movedBeforeFire` を返す。**断らずにそのまま撃つ**(挙動は変えない)。
+    /// in-app と Android は見ない。送るのは BridgeClient の `staleTapProbeKey` が有効なときだけ
+    public var probeStaleRef: Bool?
+    public init(ref: Int? = nil, x: Double? = nil, y: Double? = nil, expect: RefExpectation? = nil,
+                probeStaleRef: Bool? = nil) {
         self.ref = ref
         self.x = x
         self.y = y
         self.expect = expect
+        self.probeStaleRef = probeStaleRef
     }
 }
 
@@ -1608,6 +1614,9 @@ public struct TapHitAreaMiss: Codable, Equatable, Sendable {
         case receivedBy(String)
         /// activate が使う活性化の点(スクリーン座標 pt)。枠の中心からずれていた
         case activationPoint(x: Double, y: Double)
+        /// XCUITest ランナーの座標タップ(`TapRequest.probeStaleRef` のときだけ・v211〜): 撃つ直前に撮り直した木で、
+        /// ref の要素がもう控えた枠に居なかった(`StaleRefGuard.isStillPresent`)。x/y は控えた枠の中心 = 撃った点
+        case movedBeforeFire
     }
     /// 枠の中心(スクリーン座標 pt。座標タップ・XCUITest が押す点)。`.activationPoint` は撃つ瞬間の
     /// `accessibilityFrame` の中心(活性化の点と同じ時刻の枠で比べる。保持している枠は動く要素で古い)
