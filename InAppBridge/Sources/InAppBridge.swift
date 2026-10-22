@@ -1567,20 +1567,27 @@ final class FTInAppBridge {
     private func handleDrag(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(DragRequest.self, body)
         try requireSelfRenderedFramework("drag")
-        let values = [req.fromX, req.fromY, req.toX, req.toY]
-        guard values.allSatisfy(\.isFinite) else {
-            throw InAppError(400, "drag coordinates must be finite")
-        }
+        let press = max(req.press ?? 0.05, 0)
         let duration = max(req.duration ?? 0.3, Self.pinchStepInterval)
-        let steps = max(2, Int((duration / Self.pinchStepInterval).rounded()))
-        let points = (0...steps).map { i -> CGPoint in
-            let f = Double(i) / Double(steps)
-            return CGPoint(x: req.fromX + (req.toX - req.fromX) * f, y: req.fromY + (req.toY - req.fromY) * f)
+        guard [req.fromX, req.fromY, req.toX, req.toY, press, duration].allSatisfy(\.isFinite) else {
+            throw InAppError(400, "drag coordinates and durations must be finite")
         }
+        // 絶対上限は XCUITest の /drag と同じ(方針の上限はホストが先に断る)。超えた値で刻みの数を作ると整数化で
+        // 落ち、ブリッジが載るアプリごと落ちる
+        if let violation = BridgeAPI.gestureDurationViolation("drag", seconds: press + duration,
+                                                               cap: BridgeAPI.gestureSecondsCeiling) {
+            throw InAppError(400, violation)
+        }
+        let steps = max(2, Int((duration / Self.pinchStepInterval).rounded()))
         try performWithSettle { window in
+            // 座標は screen(snapshot と同じ)→ window(handleTap の topmostHitView と同じ変換)
+            let points = (0...steps).map { i -> CGPoint in
+                let f = Double(i) / Double(steps)
+                return window.convert(CGPoint(x: req.fromX + (req.toX - req.fromX) * f,
+                                              y: req.fromY + (req.toY - req.fromY) * f), from: nil)
+            }
             points.withUnsafeBufferPointer {
-                FTSynthDrag(window, $0.baseAddress!, Int32(points.count), max(req.press ?? 0.05, 0),
-                            duration / Double(steps))
+                FTSynthDrag(window, $0.baseAddress!, Int32(points.count), press, duration / Double(steps))
             }
         }
         return ok()

@@ -210,7 +210,7 @@ FoundationModels はモデル型を2つ持ち、**`PrivateCloudComputeLanguageMo
 **`AppDriver` プロトコル**が唯一のプラットフォーム境界。iOS ブリッジ(Runner/)・Android
 ブリッジ(AndroidRunner/)・InApp ブリッジは共通コア 13 エンドポイント(status/session/
 snapshot/tap/type/clear/pressEnter/swipe/press/doubletap/pinch/screenshot/terminate)を
-共有しつつ、XCUITest は 27、Android は 17、InApp は 16 という差分がある(追加分の内訳は §4.3 の表)(唯一の正は §4.3 の表 = `Tests/FTCoreTests/BridgeContractTests.swift`)。
+共有しつつ、XCUITest は 34、Android は 23、InApp は 18 という差分がある(追加分の内訳は §4.3 の表)(唯一の正は §4.3 の表 = `Tests/FTCoreTests/BridgeContractTests.swift`)。
 `FTFoundationModels` / `FTCore` / `FTDSL` はプラットフォーム非依存のまま両OSで動く
 (ブリッジ設計の詳細は §4、Swift DSL の詳細は §10)。
 
@@ -432,7 +432,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 |---|---|---|
 | XCUITest(Runner/) | `POST /drag`・`POST /gesture`・`POST /hold`・`POST /appswitcher`・`POST /home`・`POST /hinge`(折りたたみの Duo の Simulator のヒンジ角。仮想 HID・`FTCore.FoldControl`)・共通コアの /screenshot のクエリ `display=<id>`(追加のルートではない。内蔵画面が2枚以上 = `/status` の `multiDisplay` のとき必須。ホストが devicectl で確かめた表示中の画面を渡す。`DisplayRouting`)・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/covering`・`GET /systemui/snapshot`・`POST /systemui/tap`・`POST /systemui/drag`・`POST /systemui/swipe`・`POST /waitForSettle`(§4.7)・`POST /responsePrepare`・`POST /responseCollect`・`POST /responseObservation`・`POST /responseObservationStop`(応答時間計測。docs/response-measurement.md §5・§7) | 34 |
 | Android(AndroidRunner/) | `POST /gesture`・`POST /hold`・`POST /locale`・`POST /settle`・`POST /scrollAction`(§4.5)・`POST /waitForSettle`(§4.7)・`POST /responsePrepare`・`POST /responseCollect`・`POST /responseObservation`・`POST /responseObservationStop`(応答時間計測。docs/response-measurement.md §8.5) | 23 |
-| InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`POST /tapprobe`(iOS の hideKeyboard が叩く点がキーボード・ステータスバー・別のウィンドウの上でないか。`InAppTapProbe.swift`) | 17 |
+| InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`POST /tapprobe`(iOS の hideKeyboard が叩く点がキーボード・ステータスバー・別のウィンドウの上でないか。`InAppTapProbe.swift`)・`POST /drag`(自前描画の Compose・Flutter だけ。実時間 60Hz で move を処理させ、終点の後に1刻み待って離す。それ以外は 501 = hybrid は XCUITest へ) | 18 |
 
 **ジェスチャの秒数(`/press` の duration・`/drag` の press+移動・速度つき `/swipe`・`/pinch`・`/gesture` の全体)の上限は2層**:
 方針(既定 10 秒・コマンドの `maxGestureSeconds` で最大 60 秒)は**ホスト側**(`FlowStep.gestureDurationViolation` /
