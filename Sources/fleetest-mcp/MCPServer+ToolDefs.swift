@@ -180,6 +180,17 @@ extension MCPServer {
         a ref, assertions and lifecycle commands (launchApp, clearAppData, …) are rejected, and \
         the run stops at the first failure. Explore with the single-operation tools, then batch \
         the part you have already worked out.
+
+        Write scenarios the way a tester does: do not read source code — neither fleetest's \
+        (its Sources/ and its unit tests in Tests/) nor the app under test's. The test code of the fleetest \
+        test projects is the exception: read the project's scenarios (TestProjects/<project>/scenarios/) when you add to them or match their \
+        style. Learn the app from its screens (ft_snapshot, \
+        ft_screenshot), the request and the project's test bases (docs/testbases/), and ask the \
+        user when that is not enough. Learn fleetest from its documentation: ft_dsl_commands lists \
+        every DSL command and the values you can read from a grabbed element, and the user docs in \
+        the fleetest clone (the folder in FT_TOOL_ROOT) start at docs/user-docs/index.md, with the \
+        full DSL reference in docs/commands.md. If the docs do not answer the question, say so in \
+        your report.
         """
 
     /// 全ツール共通のデバイス選択プロパティ。tool() が無条件で足す

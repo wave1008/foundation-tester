@@ -30,6 +30,22 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
   一緒に返る** —— これはチームが書いた実物なので、流れに合うなら組み込みより優先して使う。
   **組み込み・project どちらの索引にも無い名前は存在しない**(コンパイルエラーになる)。
   project のヘルパーは `ft_batch` では実行できない(シナリオの .swift に直接書く)。
+- **ソースコードは読まない**(実務のテスト担当者と同じ立場で書く)。fleetest 本体のソース(`Sources/`)・ユニットテスト(`Tests/`)も、
+  **テスト対象アプリのソースも**読まない。**例外は fleetest のテストプロジェクトのテストコード**(`TestProjects/<プロジェクト>/scenarios/` のシナリオ)で、
+  既存のテストに足す・書き方を合わせるときは読む。アプリの振る舞いは、画面(`ft_snapshot` / `ft_screenshot`)・依頼文・
+  プロジェクトの仕様書(`TestProjects/<プロジェクト>/docs/testbases/`)から得て、それでも決まらないことは人に聞く(選択ダイアログ)。
+  fleetest の仕様は docs から得る。docs はクローン(`.fleetest/state.json` の TOOL_ROOT。外部構成なら作業フォルダの隣の
+  `../foundation-tester`)にある:
+
+  | 知りたいこと | 読む場所 |
+  |---|---|
+  | コマンドの名前・署名・掴んだ要素から読める値 | `ft_dsl_commands`(値は `category: "property"` = `exist(sel).text` 等、読んだ値の検証は `category: "this"`) |
+  | コマンドの引数・挙動 | `docs/commands.md`・`docs/user-docs/reference/commands/` |
+  | テストクラスの構造(`beforeEach` / `setUpDevice` 等) | `docs/user-docs/reference/testclass/testcode_structure_ja.md`・`docs/user-docs/reference/commands/descriptors_ja.md` |
+  | セレクタの書き方 | `docs/user-docs/reference/selector/` |
+
+  docs で答えが見つからなければ、ソースを読みに行かず、完了報告で「docs に無かったこと」として挙げる
+  (docs の不足を直す材料になる)。
 - **画面に Material3 の定番部品(ページャ・ボトムシート・メニュー・日付ピッカー・ドロワー・
   引っ張って更新・スナックバー・検索バー 等)があるなら、書く前に
   docs/user-docs/reference/writing/ui_component_patterns_ja.md の該当節を読む**。モーダルの間は背後が木から
