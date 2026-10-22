@@ -7,11 +7,11 @@ import type { MessageDict } from "../core";
 
 export const workbenchStrings = {
   "workbench.activate.noWorkspaceLog": {
-    ja: "[fleetest] フォルダーが開かれていないため初期化を中止しました。foundation-tester リポジトリのフォルダーを開いてから再読み込みしてください。",
+    ja: "[fleetest] フォルダが開かれていないため初期化を中止しました。foundation-tester リポジトリのフォルダを開いてから再読み込みしてください。",
     en: "[fleetest] No folder is open; aborting initialization. Open the foundation-tester repository folder and reload.",
   },
   "workbench.activate.noWorkspaceWarning": {
-    ja: "fleetest: フォルダーが開かれていません。リポジトリのフォルダーを開いてください。",
+    ja: "fleetest: フォルダが開かれていません。リポジトリのフォルダを開いてください。",
     en: "fleetest: No folder is open. Please open the repository folder.",
   },
   "workbench.activate.noProjectsDirLog": {

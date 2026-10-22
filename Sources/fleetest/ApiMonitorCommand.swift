@@ -766,7 +766,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// 誰も観測していないデバイス。**state は "unknown"** で、offline(= 止まっている)とは区別する。
     /// detail は hold(`fleetest monitor pause`)が理由を載せるための口(既定は空)。
     /// hold の値 "held (fleetest monitor resume)" は接頭辞 'held' を拡張の webview が
-    /// 「モニタ停止中」表示の目印にする(vscode-fleetest/src/webview/monitor/deviceTiles.js と
+    /// 「モニター停止中」表示の目印にする(vscode-fleetest/src/webview/monitor/deviceTiles.js と
     /// 同期。monitorHoldDetailSync.test.mjs が突き合わせる)
     static func unobservedInfo(target: MonitorTarget, detail: String = "") -> ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(

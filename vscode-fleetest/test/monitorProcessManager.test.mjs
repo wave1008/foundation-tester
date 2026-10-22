@@ -598,7 +598,7 @@ test("spawn が投げても生存確認が撃ち続けない(連敗カウンタ�
 
 // ---- 占有(dispatch.lock)の行と `fleetest monitor pause` の同居 ----
 // 実害(2026-09-01 報告): --performance の E2E は e2e.sh が手元のモニターを pause する。保持中は
-// 全タイルが state:"unknown"(「モニタ停止中」)になるのに、占有の行は「タイルはポーリングで
+// 全タイルが state:"unknown"(「モニター停止中」)になるのに、占有の行は「タイルはポーリングで
 // 更新」と請け合っていた。行の文言は保持の有無で切り替える(deviceOps.log.machineLockHeld*)。
 
 /** monitor の stdout へ NDJSON を1行流す。 */
@@ -758,7 +758,7 @@ test("`monitor pause` 保持中の占有の行はポーリング更新を請け�
   const held = lines.filter((line) => line.includes("run が実行中です"));
   assert.equal(held.length, 1);
   assert.doesNotMatch(held[0], /タイルはポーリングで更新/);
-  assert.match(held[0], /モニタ停止中のためタイルも更新されません/);
+  assert.match(held[0], /モニター停止中のためタイルも更新されません/);
 });
 
 // ---- 占有の行は「実際に畳んだか」で言うことを変える(2026-09-21) ----
@@ -791,19 +791,19 @@ const lockHeldMine = {
 
 test("自分の run + 「ライブ更新」オンは畳まないので「停止します」と言わない", () => {
   assert.deepEqual(heldLines(lockHeldMine), [
-    "[monitor] mac2 で wave1008 の run が実行中です — 「ライブ更新」がオンのため、この機械のライブ配信は続けます",
+    "[monitor] mac2 で wave1008 の run が実行中です — 「ライブ更新」がオンのため、このマシンのライブ配信は続けます",
   ]);
 });
 
 test("他人の run は畳むので「停止します」と言う", () => {
   assert.deepEqual(heldLines(lockHeld), [
-    "[monitor] mac2 で wave1008 の run が実行中です — この機械のライブ配信を停止します(タイルはポーリングで更新)",
+    "[monitor] mac2 で wave1008 の run が実行中です — このマシンのライブ配信を停止します(タイルはポーリングで更新)",
   ]);
 });
 
 test("「ライブ更新」オフなら自分の run も畳むので「停止します」と言う", () => {
   assert.deepEqual(heldLines(lockHeldMine, { isShowStreamDuringRun: () => false }), [
-    "[monitor] mac2 で wave1008 の run が実行中です — この機械のライブ配信を停止します(タイルはポーリングで更新)",
+    "[monitor] mac2 で wave1008 の run が実行中です — このマシンのライブ配信を停止します(タイルはポーリングで更新)",
   ]);
 });
 

@@ -111,7 +111,7 @@ class SignInExample {
 利用者に「実行して」と指示されたら `ft_start_run` を使う。`fleetest run --profile` と同じ実行を裏で始めて
 すぐ返るので、`ft_run_status` で進み具合と結果を見る(止めるのは `ft_stop_run`)。
 `ft_start_run` は利用者の設定で承認を求めることがある。断られたら、シェルの `fleetest run` などで回り道をせず、
-実行に承認が要ることを利用者に伝える(承認の設定は利用者が選んだ安全の線引き)。MCP サーバの中で動くので、
+実行に承認が要ることを利用者に伝える(承認の設定は利用者が選んだ安全の線引き)。MCP サーバーの中で動くので、
 シェルのサンドボックスの中のエージェントからも使える。
 アプリが依存するサービス(compose.yaml)を探索やライブ操作のために起こすなら `ft_services`(`up` → 使う → `down`)。`ft_start_run` は自分で起こし直すので `up` のままでよい。
 
@@ -151,7 +151,7 @@ class SignInExample {
 
 ## 関連
 
-- [MCP サーバ](mcp_server_ja.md)
+- [MCP サーバー](mcp_server_ja.md)
 - [Claude Code 以外の AIアシスタント](other_agents_ja.md)
 - [コマンドリファレンス](../../index_ja.md)(「関数/プロパティ」の各ページ)
 

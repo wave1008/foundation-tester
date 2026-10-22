@@ -66,18 +66,18 @@ export const deviceOpsStrings = {
   // **畳んだときだけ「停止します」と言う**。畳むかどうかの判定は machineLockModel.ts の
   // streamFoldMachines の1箇所で、ここはその結果で文言を選ぶだけ(判定を文言側に作らない)
   "deviceOps.log.machineLockHeld": {
-    ja: "[monitor] {machine} で {issuer} の run が実行中です — この機械のライブ配信を停止します(タイルはポーリングで更新)",
+    ja: "[monitor] {machine} で {issuer} の run が実行中です — このマシンのライブ配信を停止します(タイルはポーリングで更新)",
     en: "[monitor] A run by {issuer} is in progress on {machine} — stopping live streams there (tiles keep updating by polling)",
   },
   // 畳まなかったとき(「ライブ更新」がオン + 自分の run)。**配信は続くので「停止します」と言わない**
   "deviceOps.log.machineLockHeldStreamKept": {
-    ja: "[monitor] {machine} で {issuer} の run が実行中です — 「ライブ更新」がオンのため、この機械のライブ配信は続けます",
+    ja: "[monitor] {machine} で {issuer} の run が実行中です — 「ライブ更新」がオンのため、このマシンのライブ配信は続けます",
     en: "[monitor] A run by {issuer} is in progress on {machine} — \"Live Updates\" is on, so live streams there are kept",
   },
   // `fleetest monitor pause` 保持中の言い換え。保持中は全タイルが state:"unknown"
-  // (「モニタ停止中」)になりポーリングでの更新も止まるので、上の括弧書きは嘘になる
+  // (「モニター停止中」)になりポーリングでの更新も止まるので、上の括弧書きは嘘になる
   "deviceOps.log.machineLockHeldWhilePaused": {
-    ja: "[monitor] {machine} で {issuer} の run が実行中です — この機械のライブ配信を停止します(モニタ停止中のためタイルも更新されません)",
+    ja: "[monitor] {machine} で {issuer} の run が実行中です — このマシンのライブ配信を停止します(モニター停止中のためタイルも更新されません)",
     en: "[monitor] A run by {issuer} is in progress on {machine} — stopping live streams there (tiles are not updating either: the monitor is paused)",
   },
   "deviceOps.log.machineLockFree": {
@@ -536,7 +536,7 @@ export const deviceOpsStrings = {
   },
   // ランナーの再起動を時間ではなくデータ(その機械のデバイスが観測できるようになったこと)で拾った1行
   "deviceOps.log.hostMetricsObservedAgain": {
-    ja: "[host-metrics] この機械のデバイスを再び観測できるようになったため、自動再起動を再開しました。",
+    ja: "[host-metrics] このマシンのデバイスを再び観測できるようになったため、自動再起動を再開しました。",
     en: "[host-metrics] This machine's devices are observable again — resumed automatic restarts.",
   },
   "deviceOps.log.hostMetricsGaveUp": {
@@ -560,7 +560,7 @@ export const deviceOpsStrings = {
   "deviceOps.type.liveServe": { ja: "ライブ配信", en: "Live stream" },
   "deviceOps.type.stream": { ja: "画面ストリーム", en: "Screen stream" },
   "deviceOps.type.run": { ja: "実行(run)", en: "Run (run)" },
-  "deviceOps.type.mcp": { ja: "MCPサーバ", en: "MCP server" },
+  "deviceOps.type.mcp": { ja: "MCPサーバー", en: "MCP server" },
   "deviceOps.type.recorderWatch": { ja: "録画の見張り", en: "Recorder watch" },
 
   "deviceOps.parent.systemLaunchd": { ja: "launchd(システム)", en: "launchd (system)" },

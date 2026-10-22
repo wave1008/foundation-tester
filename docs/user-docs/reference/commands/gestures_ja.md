@@ -106,7 +106,7 @@ hold("#btn_tooltip_anchor", holdSeconds: 3) {
   - **「△」**: 届きますが、アプリがタップを JavaScript(PanResponder と時計など)で判定している
     画面では、間欠的に取りこぼすことがあります。
   - **「—」** は未確認です。
-  - MCP からの使い方は [MCP サーバ](../tools/mcp_server_ja.md) を参照してください。
+  - MCP からの使い方は [MCP サーバー](../tools/mcp_server_ja.md) を参照してください。
 - **ダブルタップが効かない構成では、拡大の確認に `pinchOut` を使ってください。** 地図・写真の
   ように、ダブルタップが「拡大」を意味する画面なら、`pinchOut` で同じ拡大を起こして確かめられます。
   ピンチは Compose を含む全フレームワークで、どちらのモードでも動きます:

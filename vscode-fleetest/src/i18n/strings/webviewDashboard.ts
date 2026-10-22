@@ -26,7 +26,7 @@ export const webviewDashboardStrings = {
     en: "No scenario passed in both runs (only scenarios that passed on both sides are compared).",
   },
   "wvDashboard.perf.selectedConfigDiffers": {
-    ja: "profile または machine が違う2件です(デバイス構成・機械の性能の差が所要に混ざります)。",
+    ja: "profile または machine が違う2件です(デバイス構成・マシンの性能の差が所要に混ざります)。",
     en: "The 2 runs differ in profile or machine (differences in devices and machine performance mix into the durations).",
   },
   "wvDashboard.perf.selectTitle": { ja: "計測の比較に使う(2件まで)", en: "Use for comparing measurements (up to 2)" },

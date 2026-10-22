@@ -12,7 +12,7 @@
       "guards": "requireVisible の幾何の段(木に居るが中心が画面外なら不可視)。FM は使わない",
       "scenarios": {
         "S0010": { "expect": "red", "command": "exist", "failureKind": "assertion",
-                   "detailContains": ["false positive (offscreen)"] },
+                   "detailContains": ["text visibility check failed (offscreen)"] },
         "S0020": { "expect": "green" },
         "S0030": { "expect": "green" }
       }
@@ -31,7 +31,7 @@
       "guards": "テキストの可視性検証が FM に訊いて反転する経路(2段目)",
       "scenarios": {
         "S0010": { "expect": "red", "command": "exist", "failureKind": "assertion",
-                   "detailContains": ["false positive (occlusion"],
+                   "detailContains": ["text visibility check failed (on screen"],
                    "detailNotContains": ["judged by OCR alone"],
                    "fmCallsAtLeast": { "occlusion": 2 },
                    "requiresFM": true },

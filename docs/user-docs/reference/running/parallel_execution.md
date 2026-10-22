@@ -93,7 +93,7 @@ warning is printed once at the start of the run.
 once on **every** device of the run profile (e.g. a warm-up pass), rather than dividing them. It
 still needs `--profile`; `--device` narrows which devices are included (when devices with the same
 name exist on more than one machine, say which machine with `--runner` or `--all-machines`; see
-[Remote Runners](../../fleet/remote_runners.md). When the `--device` name narrows to just one remote machine, the run goes to that machine even without `--runner`). Results are told apart
+[Remote Runners](../../fleet/remote_runners.md). When the `--device` name narrows to just one runner machine, the run goes to that runner machine even without `--runner`). Results are told apart
 by their `worker` field, since the same `scenarioID` appears once per device (see
 [results_analysis.md](./results_analysis.md)).
 

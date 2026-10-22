@@ -9,7 +9,7 @@ fleetest の中核は**エージェント固有ではありません**。Claude 
 | 要るもの | 用意の仕方 | エージェント依存 |
 |---|---|---|
 | 機械作業(clone・ビルド・テストパッケージの用意・VSCode 拡張) | 下の clone とインストーラ | 無し |
-| `ft_*`(画面の探索・操作・シナリオ実行) | `fleetest-mcp` を MCP サーバとして登録 | 設定ファイルの書式だけ |
+| `ft_*`(画面の探索・操作・シナリオ実行) | `fleetest-mcp` を MCP サーバーとして登録 | 設定ファイルの書式だけ |
 | 手順書(runbook) | クローンの `SKILL.md`(ツール中立の markdown)を読ませる | 置き場所だけ |
 
 得られないのは**スキルの自動発見**だけです —— `/fleetest-setup` のように名前で呼べる仕組み。
@@ -38,17 +38,17 @@ bash ../foundation-tester/Scripts/install.sh
 置きます。`.mcp.json` は `--skip-mcp` で、入口(`AGENTS.md` と、それを読み込むだけの
 `CLAUDE.md`)は `--skip-entry-point` で抑止できますが、`.claude/settings.json`(Bash 承認の
 許可リストと、本体のクローンを読み取り専用にする規則)は現状抑止できません(他のエージェントからは無視されるだけで無害です)。
-他のエージェントの MCP 登録は、次の「2. MCP サーバを登録する」で行います
+他のエージェントの MCP 登録は、次の「2. MCP サーバーを登録する」で行います
 (インストーラはエージェントのグローバル設定には書き込みません)。
 
 手順の全体像と前提は[クイックスタート](../../quick-start_ja.md)、更新は[更新](../../update_ja.md)、
 アンインストールは[アンインストール](../../uninstall_ja.md)を参照してください。
 
-## 2. MCP サーバを登録する
+## 2. MCP サーバーを登録する
 
 セットアップの途中で、AIアシスタントが MCP を登録するか聞きます。「はい」と答えると、AIアシスタントが自分の CLI で
 登録します。そのとき断った場合も、後から「**MCP を登録して**」と指示すれば同じように登録します。
-Codex なら次のコマンドで登録します(同じ名前で登録し直すと上書きされ、他のサーバの設定は残ります)。
+Codex なら次のコマンドで登録します(同じ名前で登録し直すと上書きされ、他のサーバーの設定は残ります)。
 登録したら AIアシスタントを再起動し、テスト用フォルダで新しいセッションを開いてください。
 
 ```bash
@@ -57,7 +57,7 @@ codex mcp add fleetest --env FT_TOOL_ROOT=<ABS_TOOL_ROOT> -- bash -c 'exec "<ABS
 
 自分で設定ファイルに書く場合は、以下の形です。
 
-`fleetest-mcp` は標準の stdio MCP サーバなので、**MCP に対応したクライアントならどれでも**
+`fleetest-mcp` は標準の stdio MCP サーバーなので、**MCP に対応したクライアントならどれでも**
 使えます。設定の書き方は各クライアントに従い、起動コマンドとして次を渡します
 (`<ABS_TOOL_ROOT>` は `foundation-tester` クローンの絶対パス。2箇所とも同じ値):
 
@@ -96,8 +96,8 @@ approval_mode = "prompt"
 ```
 
 画面の探索やシナリオ作成中の確認は止まらず、テストの実行やサービスの起動を指示したときにだけ聞かれます。
-`ft_start_run` は実行プロファイルの setup / teardown スクリプトを動かし、`runner` で別の機械へ送ることも
-できるためです。承認を求める範囲の選び方は [MCP サーバ](./mcp_server_ja.md#サンドボックスと承認)にあります。
+`ft_start_run` は実行プロファイルの setup / teardown スクリプトを動かし、`runner` で別のマシンへ送ることも
+できるためです。承認を求める範囲の選び方は [MCP サーバー](./mcp_server_ja.md#サンドボックスと承認)にあります。
 非対話の `codex exec` では `prompt` のツールは断られるので、`codex exec` で実行まで任せるときは
 この2つ(`[mcp_servers.fleetest.tools.ft_start_run]` と `[mcp_servers.fleetest.tools.ft_services]`)を外します。
 
@@ -105,7 +105,7 @@ approval_mode = "prompt"
 > `[mcp_servers.fleetest]` が2つになると**設定ファイル全体が無効**になります。既にある場合は
 > 追記ではなく既存テーブルの値を書き換えてください。
 
-引数と ツールの一覧は [MCP サーバ](./mcp_server_ja.md)にあります。
+引数と ツールの一覧は [MCP サーバー](./mcp_server_ja.md)にあります。
 
 ## 3. 手順書(SKILL.md)を渡す
 
@@ -118,7 +118,7 @@ approval_mode = "prompt"
 | `fleetest-update` | 修正版の取り込み |
 | `fleetest-profiles` | アプリ/実行プロファイルの一括作成 |
 | `fleetest-scenario` | テストシナリオ(.swift)の作成 |
-| `fleetest-mcp` | MCP サーバだけの登録 |
+| `fleetest-mcp` | MCP サーバーだけの登録 |
 | `fleetest-remote-setup` | 別の Mac をランナー機にする |
 
 インストーラは手順書を作業フォルダの `.claude/skills/` へ写します(Claude Code では
@@ -127,17 +127,17 @@ approval_mode = "prompt"
 `Scripts/update.sh` に任せます(update.sh が呼ぶ install.sh が元のファイルから写し直し、
 `✅ [ok] skills: <n> placed, <n> refreshed, <n> removed (in <dir>)` と報告します。変化が無ければ `skills: already up to date`)。写した後は**エージェントを再起動**してください。
 インストーラは `.claude/skills/` に印 `.fleetest-copied` を残します。作業フォルダに無いスキルは印に関わらず置きます。
-印が決めるのは「既にある同名のスキルを更新・削除してよいか」だけです(印に無い同名は受け手のものとして触りません)。
+印が決めるのは「既にある同名のスキルを更新・削除してよいか」だけです(印に無い同名はあなたのものとして触りません)。
 
 ## Codex を使う場合(サンドボックス)
 
-Codex はシェルコマンドをサンドボックスの中で実行します。**MCP サーバはその外で動く**ので、
+Codex はシェルコマンドをサンドボックスの中で実行します。**MCP サーバーはその外で動く**ので、
 影響はきれいに2つに分かれます。
 
 **影響なし(設定不要)** — `ft_*` ツール経由の作業すべて。画面の探索・シナリオ作成・実行・
 Simulator や実機の駆動。結果の履歴や録画を残す本番の実行も `ft_start_run` で通ります
 (シェルの `fleetest run` は下の理由で通らないので、エージェントにはこちらを使わせます)。
-サンドボックスの外でプロジェクトのコードが動くことの注意は[MCP サーバ](mcp_server_ja.md#サンドボックスと承認)にあります。`--sandbox read-only` でもファイルシステムと loopback に
+サンドボックスの外でプロジェクトのコードが動くことの注意は[MCP サーバー](mcp_server_ja.md#サンドボックスと承認)にあります。`--sandbox read-only` でもファイルシステムと loopback に
 アクセスできます。
 
 **サンドボックスの中では通らない** — 導入・更新の手順。シェル経由で走るためです:

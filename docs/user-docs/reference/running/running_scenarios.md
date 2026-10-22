@@ -36,7 +36,7 @@ foundation-tester clone itself, `swift run fleetest` does the same.
 | `--broadcast` | Run the selected scenarios once on **every** device of the run profile, instead of sharing them out (e.g. a warm-up). Requires `--profile`; results are told apart by their `worker` field (see [results_analysis.md](./results_analysis.md)) |
 | `--no-lpt` | Disable LPT ordering (longest-past-runtime-first dispatch) and run in scenario ID order |
 | `--lpt-history-runs <n>` | Number of past runs to read for LPT ordering (default 5) |
-| `--runner <runner>` / `--fleet <fleet>` | Dispatch to a remote machine or a fleet of machines over SSH (see [Remote Runners](../../fleet/remote_runners.md)) |
+| `--runner <runner>` / `--fleet <fleet>` | Dispatch to a runner machine or a fleet of machines over SSH (see [Remote Runners](../../fleet/remote_runners.md)) |
 | `--wait-lock <seconds>` | When another run is active on this Mac, queue up and wait for up to this many seconds instead of failing right away |
 | `--device <name>` | Run on only that device of the run profile (repeatable). Also narrows `--broadcast` |
 | `--all-machines` | When a `--device` name matches devices on more than one machine, run on every matching machine instead of refusing |

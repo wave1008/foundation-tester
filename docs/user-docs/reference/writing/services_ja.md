@@ -2,7 +2,7 @@
 
 [in English](services.md)
 
-テスト対象のアプリが DB・API・スタブサーバなどを必要とするときは、
+テスト対象のアプリが DB・API・スタブサーバーなどを必要とするときは、
 `TestProjects/<プロジェクト>/workspace/scripts/compose.yaml`(`run-setup.sh` と同じ `scripts/`)に宣言します。
 fleetest が **run ごとにサービスを起動し、終わったら止めます**。起動の完了(`healthcheck`)を待ってから `run-setup.sh` が走り、
 `run-teardown.sh` の後に止めます。ファイルが無ければ何も起きません。
@@ -10,7 +10,7 @@ fleetest が **run ごとにサービスを起動し、終わったら止めま�
 動くのは `fleetest run`・VS Code 拡張からの実行・MCP の `ft_start_run` です。`ft_run_scenario`(単発)と `--dry-run`
 では起動しません。探索のためにサービスを上げておくには `fleetest services up` を使います
 ([手で起動して止める](#手で起動して止める))。[リモートランナー](../../fleet/remote_runners_ja.md)へ送った run では、
-サービスは**ランナー機の上で**(その機械のランタイムと設定で)起動します。
+サービスは**ランナー機の上で**(そのマシンのランタイムと設定で)起動します。
 
 ## ランタイム
 
@@ -137,10 +137,10 @@ volumes:
 添えます。run を止めない警告(張れなかった `adb reverse`)は、その run の `run.json` に `servicesWarnings` として
 記録されます。
 
-## レジストリに届かない機械でのイメージ
+## レジストリに届かないマシンでのイメージ
 
 イメージは無いときにランタイムが取得するので、初回の run はレジストリへの通信が要ります。先に用意しておく・届かない
-機械で使うには次を使います。
+マシンで使うには次を使います。
 
 | コマンド | 内容 |
 |---|---|
@@ -184,11 +184,11 @@ fleetest-services port api 8080            # 公開先の host:port を印字(UD
 
 MCP では `ft_services` が同じことをします。`action` は `up` / `down` / `status`、`profile` は `up` / `down` で必須、
 `project`・`physical`・`androidSerials`(文字列の配列)は任意です。`ft_start_run` と同じく承認を求めます
-([MCP サーバ](../tools/mcp_server_ja.md#サンドボックスと承認))。
+([MCP サーバー](../tools/mcp_server_ja.md#サンドボックスと承認))。
 
 ## 途中で死んだら
 
-run が片付けられずに死んだとき(ssh の切断・SIGKILL)は、その機械で次に走る run か `fleetest hooks reap` が、控えに
+run が片付けられずに死んだとき(ssh の切断・SIGKILL)は、そのマシンで次に走る run か `fleetest hooks reap` が、控えに
 記録した ID でコンテナとネットワークを消します。ランナー機では `fleetest remote clean` を使います。
 
 ### Link

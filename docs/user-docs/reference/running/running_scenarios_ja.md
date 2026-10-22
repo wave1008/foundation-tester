@@ -36,7 +36,7 @@
 | `--broadcast` | 選択したシナリオを、共有配分ではなく実行プロファイルの**全デバイス**で1回ずつ実行する(warmup 等)。`--profile` が必須。結果は `worker` 欄で区別される([results_analysis_ja.md](./results_analysis_ja.md)参照) |
 | `--no-lpt` | LPT 順序付け(実績時間の長い順)を無効化し、シナリオ ID 順で投入する |
 | `--lpt-history-runs <n>` | LPT 順序付けに読む過去 run 数(既定 5) |
-| `--runner <runner>` / `--fleet <fleet>` | SSH 経由でリモートマシン/フリートへディスパッチする([リモート実行](../../fleet/remote_runners_ja.md)参照) |
+| `--runner <runner>` / `--fleet <fleet>` | SSH 経由でランナー機/フリートへディスパッチする([リモート実行](../../fleet/remote_runners_ja.md)参照) |
 | `--wait-lock <秒>` | この Mac で別の run が走っているとき、すぐ失敗せずに待機列に並んで待つ上限(秒) |
 | `--device <名>` | 実行プロファイルのそのデバイスだけで実行する(複数回指定可)。`--broadcast` の絞り込みにも使える |
 | `--all-machines` | `--device` の名前が複数のマシンのデバイスに当たるとき、断らずに当たった全マシンで実行する |
@@ -76,7 +76,7 @@ fleetest run --platform android
 | コマンド | 説明 |
 |---|---|
 | `fleetest devices up` / `devices down` | 全実行プロファイルのデバイスの和集合を起動・停止する(`--profile` を付けるとそのプロファイルのデバイスだけ) |
-| `fleetest bridge up` / `bridge down` / `bridge status` | 常駐ブリッジ(iOS: XCUITest ランナー / Android: 端末常駐サーバ)を管理する |
+| `fleetest bridge up` / `bridge down` / `bridge status` | 常駐ブリッジ(iOS: XCUITest ランナー / Android: 端末常駐サーバー)を管理する |
 
 ### Link
 - [index](../../index_ja.md)

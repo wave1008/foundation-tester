@@ -247,7 +247,7 @@ extension StepExecutorTests {
         guard case .failed(let msg) = await executor.execute(step).status else {
             XCTFail("覆われ続けたら失敗するはず"); return
         }
-        XCTAssertTrue(msg.contains("occlusion"), "occlusion 失敗を返すこと: \(msg)")
+        XCTAssertTrue(msg.contains("text visibility check failed (on screen"), "occlusion 失敗を返すこと: \(msg)")
     }
 
     /// launch 直後(noteAppLaunched)に crop が全画素同一(launch storyboard 相当)なら、
@@ -270,7 +270,7 @@ extension StepExecutorTests {
         guard case .failed(let msg) = outcome.status else {
             XCTFail("延長しても覆われ続ければ最終的に失敗するはず: \(outcome.status)"); return
         }
-        XCTAssertTrue(msg.contains("occlusion"), "occlusion 失敗を返すこと: \(msg)")
+        XCTAssertTrue(msg.contains("text visibility check failed (on screen"), "occlusion 失敗を返すこと: \(msg)")
         XCTAssertEqual(delegate.visibleCalls, 1, "同じ絵(バイト同一)の2周目は控えで済むはず(VisibilityVerdictMemo)")
         XCTAssertTrue(outcome.notes.contains(.firstFramePending),
                       "延長した回に first-frame-pending が付くはず: \(outcome.notes)")
@@ -496,7 +496,7 @@ extension StepExecutorTests {
         guard case .failed(let msg) = outcome.status else {
             XCTFail("延長しても覆われ続ければ最終的に失敗するはず: \(outcome.status)"); return
         }
-        XCTAssertTrue(msg.contains("occlusion"), "occlusion 失敗を返すこと: \(msg)")
+        XCTAssertTrue(msg.contains("text visibility check failed (on screen"), "occlusion 失敗を返すこと: \(msg)")
         XCTAssertEqual(delegate.visibleCalls, 1, "同じ絵(バイト同一)の2周目は控えで済むはず(VisibilityVerdictMemo)")
         XCTAssertTrue(outcome.notes.contains(.firstFramePending))
         XCTAssertTrue(outcome.notes.contains(.firstFrameTimeout))
@@ -583,7 +583,7 @@ extension StepExecutorTests {
         guard case .failed(let msg) = outcome.status else {
             XCTFail("撮り直しても覆われ続ければ失敗するはず: \(outcome.status)"); return
         }
-        XCTAssertTrue(msg.contains("occlusion"), msg)
+        XCTAssertTrue(msg.contains("text visibility check failed (on screen"), msg)
         XCTAssertEqual(delegate.calls, 2, "延長は1回だけなので2回で打ち切るはず")
         XCTAssertFalse(outcome.notes.contains(.guardRetaken),
                        "撮り直しても通らなければ注記は立たないはず: \(outcome.notes)")

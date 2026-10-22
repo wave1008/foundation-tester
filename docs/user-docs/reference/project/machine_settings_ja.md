@@ -58,7 +58,7 @@
 | `developmentTeam` | 文字列 | なし(実機のビルドはできない) | iOS 実機ブリッジの署名に使う Apple Developer の Team ID。環境変数 `FT_DEVELOPMENT_TEAM` が優先されます | [実機を追加する](../../fleet/adding_physical_devices_ja.md) |
 | `bundleIDPrefix` | 文字列 | `com.example` | iOS 実機ブリッジの bundle id の前置き。他チームの登録と重ならない値にします。環境変数 `FT_BUNDLE_ID_PREFIX` が優先されます | [実機を追加する](../../fleet/adding_physical_devices_ja.md) |
 | `issuerId` | 文字列 | `ユーザー名@ホスト名` | リモート実行で「誰が起動したか」を記す自己申告の名前(認証ではありません)。環境変数 `FT_ISSUER` が優先されます | [リモート実行](../../fleet/remote_runners_ja.md)・[実機を追加する](../../fleet/adding_physical_devices_ja.md) |
-| `fmConcurrency` | 整数 | `1` | **この Mac** で Apple Intelligence(Foundation Models)を同時に呼ぶ数。1 以上の整数。環境変数 `FT_FM_CONCURRENCY` が優先されます。リモートのランナー機のぶんは、その機械の登録(`remoteHosts` の `fmConcurrency`)に置きます | 調整の根拠は保守者向けの `docs/performance-tuning.md` |
+| `fmConcurrency` | 整数 | `1` | **この Mac** で Apple Intelligence(Foundation Models)を同時に呼ぶ数。1 以上の整数。環境変数 `FT_FM_CONCURRENCY` が優先されます。リモートのランナー機のぶんは、そのランナー機の登録(`remoteHosts` の `fmConcurrency`)に置きます | 調整の根拠は保守者向けの `docs/performance-tuning.md` |
 | `defaultProject` | 文字列 | なし | `--project` を省略したときに使うプロジェクト名。プロジェクトの改名・削除(`fleetest project`)に合わせて自動で直ります | [プロジェクトの作成](creating_project_ja.md) |
 | `lastRunProfile` | オブジェクト(プロジェクト名 → 実行プロファイル名) | なし | 拡張が最後に選んだ実行プロファイルを覚えておく欄です。**拡張が書くので、手で編集しません** | — |
 | `localMachineEnabled` | 真偽値 | `true` | 拡張の設定タブの「マシン有効」(この Mac の行)。`false` のときだけ保存されます。**拡張が書くので、手で編集しません** | [VSCode 拡張](../tools/vscode_extension_ja.md) |

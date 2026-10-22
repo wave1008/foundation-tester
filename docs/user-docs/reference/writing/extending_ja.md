@@ -9,9 +9,9 @@
 |---|---|---|
 | 繰り返す手順をまとめたい | Swift の関数(独自コマンド) | [独自コマンド](../testclass/custom_commands_ja.md) |
 | DSL に無い処理を1ステップにしたい | `procedure { }` | [記述子](../commands/descriptors_ja.md) |
-| テストデータ・外部のサーバとつなぎたい | `account()` / `data()` / `dataFile()` / `httpRequest` | [テストデータ・アカウント](../commands/dataset_ja.md)・[HTTP リクエスト](../commands/http_request_ja.md) |
+| テストデータ・外部のサーバーとつなぎたい | `account()` / `data()` / `dataFile()` / `httpRequest` | [テストデータ・アカウント](../commands/dataset_ja.md)・[HTTP リクエスト](../commands/http_request_ja.md) |
 | ライブラリを使いたい・共通部品を共有したい | `Package.swift` に依存を足す | [テストプロジェクトの作成](../project/creating_project_ja.md) |
-| run の前後に DB やスタブサーバを用意したい | `compose.yaml` と開始/終了スクリプト | [アプリが依存するサービス](services_ja.md)と、このページの[run の前後で処理を走らせる](#run-の前後で処理を走らせる) |
+| run の前後に DB やスタブサーバーを用意したい | `compose.yaml` と開始/終了スクリプト | [アプリが依存するサービス](services_ja.md)と、このページの[run の前後で処理を走らせる](#run-の前後で処理を走らせる) |
 
 ## 1. 手順を関数にまとめる
 
@@ -71,21 +71,21 @@ procedure("テスト用の注文を API で作る") {
 - クラスの前後処理は `beforeEach()` / `afterEach()`、run で1回だけの準備は `beforeAll()`、デバイスごとに1回だけの準備と片付けは
   `setUpDevice()` / `tearDownDevice()` に書きます。
 
-## 3. テストデータ・外部のサーバとつなぐ
+## 3. テストデータ・外部のサーバーとつなぐ
 
 | 関数 | 使いどころ |
 |---|---|
 | `account()` / `data()` | アカウントや入力値を JSON から引きます。パスワードなどはこの Mac の設定側に置き、リポジトリに入れません |
 | `dataFile()` | CSV・JSON・画像などをファイルのまま使います |
 | `addMedia()` | 写真・動画をデバイスの写真ライブラリへ入れます(iOS 実機には入れられません) |
-| `httpRequest` / `fleetestURLSession` | API でテストデータを用意する・後片付けする・サーバ側の状態を読む |
+| `httpRequest` / `fleetestURLSession` | API でテストデータを用意する・後片付けする・サーバー側の状態を読む |
 | [`writeMemo` / `readMemo`](../commands/memo_ja.md) | `beforeAll()` で用意した値を他のシナリオへ渡す |
 
 よくある使い方:
 
 - テストの前に API でユーザーや注文を作り、`afterEach()` で消す
 - 認証メールやワンタイムパスワードを受信箱の API から取ってきて入力する
-- 画面に出た値を、サーバ側の値と突き合わせる
+- 画面に出た値を、サーバー側の値と突き合わせる
 
 シナリオは既定では Mac の外へ通信できません。宛先をこの Mac の設定で許可してから使います
 ([シナリオから外部へ通信する](network_access_ja.md))。
@@ -102,7 +102,7 @@ procedure("テスト用の注文を API で作る") {
 ## run の前後で処理を走らせる
 
 run の前後でデータを用意する(シードの投入・準備用 API の呼び出しなど)・後で片付けるには、テストプロジェクトの
-ワークスペースにスクリプトを置きます。**サーバ・DB・スタブはスクリプトで起こしません**。`scripts/compose.yaml` に宣言します
+ワークスペースにスクリプトを置きます。**サーバー・DB・スタブはスクリプトで起こしません**。`scripts/compose.yaml` に宣言します
 ([アプリが依存するサービス](services_ja.md))。
 
 | ファイル | 走るとき |
@@ -121,7 +121,7 @@ run の前後でデータを用意する(シードの投入・準備用 API の�
   - `~/.ssh` などの秘密は読めません。
   - 繋げるのは、compose.yaml で公開したポート(`127.0.0.1:<port>`)と、プロキシ経由の `sandbox.allowedDomains` だけです。
     ブリッジ・adb・Docker には繋げません。
-  - **サーバ・DB・スタブをスクリプトで起こさないでください**(`docker` / `container` は使えません)。compose.yaml に
+  - **サーバー・DB・スタブをスクリプトで起こさないでください**(`docker` / `container` は使えません)。compose.yaml に
     宣言します。コンテナの中の操作は `fleetest-services` です
     ([アプリが依存するサービス](services_ja.md#スクリプトからコンテナを操作する))。
   - 背景に残したプロセスは、run の後に止められます。

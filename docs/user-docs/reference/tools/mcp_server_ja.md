@@ -1,21 +1,21 @@
-# MCP サーバ
+# MCP サーバー
 
 [in English](mcp_server.md)
 
 `fleetest-mcp` はデバイス操作・シナリオ実行・シナリオ作成を `ft_*` ツールとして公開する stdio
-[MCP](https://modelcontextprotocol.io) サーバです。CLI・VSCode 拡張と同じ機能を、人間の代わりに
+[MCP](https://modelcontextprotocol.io) サーバーです。CLI・VSCode 拡張と同じ機能を、人間の代わりに
 エージェントから呼び出せるようにしたものです。
 
 ## セットアップ
 
-`fleetest` サーバは導入時(`install.sh` / `/fleetest-setup`)に登録されます。Claude Code は
+`fleetest` サーバーは導入時(`install.sh` / `/fleetest-setup`)に登録されます。Claude Code は
 作業フォルダの `.mcp.json` に**クローンの絶対パス**で書かれるので、どこでエージェントを開いても
-同じサーバが起動します(初回呼び出し時にビルドが走ります)。VSCode 拡張やプロジェクト作成を
-伴わず、別のプロジェクトに MCP サーバだけを追加したい場合は
+同じサーバーが起動します(初回呼び出し時にビルドが走ります)。VSCode 拡張やプロジェクト作成を
+伴わず、別のプロジェクトに MCP サーバーだけを追加したい場合は
 [Claude Code スキル](./claude_code_skills_ja.md)(`/fleetest-mcp`)を参照してください。
 
 **それ以外のエージェント(Codex・Cline など)でも使えます。** `fleetest-mcp` は標準の stdio
-MCP サーバなので、MCP に対応したクライアントならどれでも登録できます。設定の書き方は各
+MCP サーバーなので、MCP に対応したクライアントならどれでも登録できます。設定の書き方は各
 クライアントに従い、起動コマンドとして次を渡してください(`<ABS_TOOL_ROOT>` は clone の
 絶対パス。TOML での書き方と手順書の渡し方は[Claude Code 以外の AIアシスタント](./other_agents_ja.md)):
 
@@ -28,9 +28,9 @@ MCP サーバなので、MCP に対応したクライアントならどれでも
 ```
 
 `bash -c` で足ります —— `mcp-server.sh` 自身が先頭で `/opt/homebrew/bin:/usr/local/bin` を PATH に足すので、
-最小の PATH でサーバを起こすクライアントでも Swift/Xcode を引けます。`-l`(ログインシェル)にはしないでください:
+最小の PATH でサーバーを起こすクライアントでも Swift/Xcode を引けます。`-l`(ログインシェル)にはしないでください:
 `~/.bash_profile` の `echo` が stdout に混ざり JSON-RPC のハンドシェイクを壊します。`FT_TOOL_ROOT` はブリッジ資産の位置で、
-cwd(受け手パッケージ)とは別物です。
+cwd(あなたのパッケージ)とは別物です。
 
 ## 共通引数
 
@@ -74,13 +74,13 @@ cwd(受け手パッケージ)とは別物です。
 | `ft_screenshot` | 視覚確認用のスクリーンショット画像 |
 | `ft_capture_element` | 要素を画像分類器の見本として保存し、学習の点検結果を返す(`checkIsON` / `imageIs` の見本。[imageIs](../commands/image_assertion_ja.md)) |
 | `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(自動ビルド込み。コンパイルエラーはそのまま返る)。`id` にクラス名を渡すと `fleetest run` と同じく `@Deleted`/`@Draft` 以外の全本を順に流す。`profile:` は `port`/`serial`/`platform`/`udid` と併用できない。**`fleetest run` と違い、プロファイルの setup/teardown スクリプト・run 開始時の home・`results/` への記録は行わない**。また **iOS では常に XCUITest ブリッジで走る**(`fleetest run` はプロファイルのモード = 既定 inapp)ので、Compose Multiplatform のダブルタップのようにモードで結果が割れるステップは本番と違いうる(応答にもそう出る)(フルの run は CLI で)。アプリを入れるのは、`autoInstall` のアプリを持つ `profile:` を iOS で指定したときだけ(ワークスペースへコピーし、入っている版が古ければインストールする)。それ以外は `ft_install` で入れておく。**失敗は isError で返り**、失敗したステップ・失敗した瞬間の要素一覧とスクリーンショット(最初に落ちた1本だけ)・レポートパスが載る。**既定では FM と Vision を使わずに動く**(テキストの可視性検証なし・`screenLooksLike` のステップは飛ばす・`checkIsON` は木だけで読む)。使うときは `fmAndVision: true`。`heal`(指紋照合の上書き。既定はプロファイルの値、無ければ false)を渡せる。`scripts/compose.yaml` のサービスは起こさない(先に `ft_services` で上げておく) |
-| `ft_start_run` / `ft_run_status` / `ft_stop_run` | `fleetest run --profile` と同じ本番の実行。`ft_start_run` は裏で始めてすぐ返り(`profile` 必須・`scenario` / `folder` は配列・`failed`・`broadcast`・その回だけ別の機械へ送る `runner` = 登録済みの機械名か `local`)、`ft_run_status` が進み具合と結果(runID・合否・失敗したシナリオのレポート・ログの末尾)を返す。止めるのは `ft_stop_run`(SIGTERM)。結果の履歴(`results/`)・録画・セットアップ/後始末のスクリプトまで含む。MCP サーバの中で動くので、シェルのサンドボックスの中のエージェント(Codex の既定など)からも使える。同時に動かせるのはこのサーバから1本。**この Mac で別の run が走っていると既定ではすぐ終わる**(1台の Mac で同時に走る run は1本)—— 並んで待たせるときは `waitLockSeconds`(待つ上限の秒数。`fleetest run --wait-lock` と同じ)を渡す。待っている間も `ft_stop_run` で止められる。**`ft_run_scenario` と同じく、`fmAndVision: true` を渡さなければ FM と Vision を使わずに動く**(プロファイルの4つのスイッチを `--set` で切る) |
+| `ft_start_run` / `ft_run_status` / `ft_stop_run` | `fleetest run --profile` と同じ本番の実行。`ft_start_run` は裏で始めてすぐ返り(`profile` 必須・`scenario` / `folder` は配列・`failed`・`broadcast`・その回だけ別のマシンへ送る `runner` = 登録済みのマシン名か `local`)、`ft_run_status` が進み具合と結果(runID・合否・失敗したシナリオのレポート・ログの末尾)を返す。止めるのは `ft_stop_run`(SIGTERM)。結果の履歴(`results/`)・録画・セットアップ/後始末のスクリプトまで含む。MCP サーバーの中で動くので、シェルのサンドボックスの中のエージェント(Codex の既定など)からも使える。同時に動かせるのはこのサーバーから1本。**この Mac で別の run が走っていると既定ではすぐ終わる**(1台の Mac で同時に走る run は1本)—— 並んで待たせるときは `waitLockSeconds`(待つ上限の秒数。`fleetest run --wait-lock` と同じ)を渡す。待っている間も `ft_stop_run` で止められる。**`ft_run_scenario` と同じく、`fmAndVision: true` を渡さなければ FM と Vision を使わずに動く**(プロファイルの4つのスイッチを `--set` で切る) |
 | `ft_services` | `scripts/compose.yaml` が宣言するサービスを、探索・ライブ操作のために起動・停止・確認する(`fleetest services up` / `down` / `status` と同じ)。`action`: `up` / `down` / `status`・`profile`(`up` / `down` で必須)・`project`・`physical`・`androidSerials`(文字列の配列)。`ft_start_run` と同じく承認を求める(下記)。詳細は[アプリが依存するサービス](../writing/services_ja.md) |
 | `ft_results` | 結果の履歴。`fleetest results <query>` と同じ文面(JSON は無い)。`query` は必須で `list` / `summary` / `flaky` / `trend`(`scenario` 必須) / `devices` / `slow` / `insights` / `log`(1 run のシナリオごとの実行ログ。`runId`・既定 `latest`)。任意: `since`(既定 `90d`・`log` では使わない)・`scenario`・`limit`(`list` / `slow`)・`minRuns`(`flaky`)。ファイルを読むだけなので、シェルのサンドボックスの中のエージェント(Codex の既定など)からも使える |
 | `ft_dry_run` | デバイス不要の検証(セレクタの構文誤りは失敗 = isError。アサーション無しの expectation・実在しない `#id` は ⚠️ 行の警告で、失敗にはしない)。platform 宣言の無いシナリオは `platform:`(既定 ios)で `ios { } / android { }` の分岐と `#id` 台帳を選ぶ |
 | `ft_list_projects` | テストプロジェクトと実行プロファイルの一覧 |
 | `ft_draft_scenario` | 探索した操作列を Swift シナリオの下書きにして返す(ファイルには書かない) |
-| `ft_list_devices` / `ft_list_apps` / `ft_logs` | デバイス・アプリ・ログの棚卸し。`ft_list_devices` の `profile:` はその実行プロファイルが参照するデバイスだけに絞る。別の機械に居るデバイスは名前だけ挙げて一覧には出さない |
+| `ft_list_devices` / `ft_list_apps` / `ft_logs` | デバイス・アプリ・ログの棚卸し。`ft_list_devices` の `profile:` はその実行プロファイルが参照するデバイスだけに絞る。別のマシンに居るデバイスは名前だけ挙げて一覧には出さない |
 
 ## 実機
 
@@ -98,7 +98,7 @@ SpringBoard で閉じた後は `ft_launch bundleId: <app> resume: true` で、
 ## iOS のモード選択
 
 **MCP の iOS は常に XCUITest ブリッジで動きます。** モードを選ぶ必要はありません。デバイスは `udid` で指定し、
-`port` は渡さずにおけば、サーバがそのデバイスの XCUITest ブリッジを使います。
+`port` は渡さずにおけば、サーバーがそのデバイスの XCUITest ブリッジを使います。
 
 - `profile` を渡しても、iOS は XCUITest で動きます(プロファイルの `iosMode` は MCP では使いません)。
   デバイスの選び方はプロファイルに従います。
@@ -114,7 +114,7 @@ SpringBoard で閉じた後は `ft_launch bundleId: <app> resume: true` で、
 
 ## サンドボックスと承認
 
-MCP サーバはエージェントのシェルのサンドボックスの**外**で動きます。ビルドと実行を伴うツール
+MCP サーバーはエージェントのシェルのサンドボックスの**外**で動きます。ビルドと実行を伴うツール
 (`ft_list_scenarios`・`ft_dry_run`・`ft_run_scenario`・`ft_start_run`)は、プロジェクトのシナリオ(`.swift`)を
 任意の Swift のコードとして実行します(dry-run でも動きます)。`ft_services` は、プロジェクトが `scripts/compose.yaml` で
 宣言したコンテナを起動します。
@@ -129,7 +129,7 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
   | 承認を求めるツール | 使い勝手 | 人を通るもの |
   |---|---|---|
   | なし | 止まらない | なし(信頼できるリポジトリとアプリが前提) |
-  | `ft_start_run`・`ft_services`(おすすめ) | テストの実行やサービスの起動を指示したときに1回 | サービスの起動と停止・setup / teardown スクリプト・別の機械への送り出し |
+  | `ft_start_run`・`ft_services`(おすすめ) | テストの実行やサービスの起動を指示したときに1回 | サービスの起動と停止・setup / teardown スクリプト・別のマシンへの送り出し |
   | `ft_list_scenarios`・`ft_dry_run`・`ft_run_scenario`・`ft_start_run`・`ft_services` | シナリオ作成中もコンパイル・確認のたびに聞かれる | シナリオの実行すべて |
 
   Claude Code では、インストーラが作業フォルダの `.claude/settings.json` に「fleetest のツールは許可
@@ -137,7 +137,7 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
   消せば、以後の更新でも戻しません)。あわせて、fleetest 本体のクローンを読み取り専用にする設定(読むのは許可・
   編集は拒否)も書きます(作業フォルダがクローンの中にある構成では書きません)。Auto モードでは、確認の要否を
   AI が自動で判断します。ただし判断の対象はツールの呼び出しで、シナリオの中身ではありません。
-  Codex での書き方は[Claude Code 以外の AIアシスタント](other_agents_ja.md)にあります(サーバ全体は `default_tools_approval_mode`、
+  Codex での書き方は[Claude Code 以外の AIアシスタント](other_agents_ja.md)にあります(サーバー全体は `default_tools_approval_mode`、
   ツールごとは `[mcp_servers.fleetest.tools.<ツール名>]` の `approval_mode`)。読むだけのツールに承認を省く
   `writes` は、画面の操作(タップ・入力)も書き込みとして聞かれるので、探索のたびに数十回の承認になります。
 - **各ツールは MCP の annotations で性質を宣言します。** 承認の扱いをこれで分けるクライアントでは、宣言どおりに
@@ -151,10 +151,10 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
   | プロジェクトのコードを実行する(`destructiveHint: true`・`openWorldHint: true`) | `ft_list_scenarios`・`ft_dry_run`・`ft_run_scenario`・`ft_start_run`・`ft_services` |
 - **他人から受け取ったシナリオは、中身を確かめてから実行してください。** サンドボックスはホストを守りますが、
   [注意事項と制限事項](../../security/limitations_ja.md)に挙げたものと、テスト対象のアプリやアカウントへの操作(削除・購入など)は止めません。
-- **`ft_start_run` の `runner` は、登録済みの機械名と `local` だけを受け付けます。** `user@host` のような
-  生の宛先は断ります(シナリオとプロファイルを、利用者が登録していない機械へ送らないため)。
-  機械は `fleetest remote machines add` で登録します。CLI の `fleetest run --runner` は生の宛先も受け付けます。
-- `ft_stop_run` / `ft_run_status` が扱うのは、そのサーバが `ft_start_run` で起こした実行だけです。
+- **`ft_start_run` の `runner` は、登録済みのマシン名と `local` だけを受け付けます。** `user@host` のような
+  生の宛先は断ります(シナリオとプロファイルを、利用者が登録していないマシンへ送らないため)。
+  マシンは `fleetest remote machines add` で登録します。CLI の `fleetest run --runner` は生の宛先も受け付けます。
+- `ft_stop_run` / `ft_run_status` が扱うのは、そのサーバーが `ft_start_run` で起こした実行だけです。
 - `ft_start_run` は決まったコマンド(`fleetest run`)に、検査した引数を配列で渡します(シェルを通さないので、
   引数から任意のコマンドは注入できません)。`profile`・`runner`・`scenario`・`folder` の値が `-` で始まると断ります
   (`fleetest run` のオプションとして読まれ、上の `runner` の制限をすり抜けられるためです)。
@@ -162,7 +162,7 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
 
 ## 構造化出力(明示的に有効にしたときだけ)
 
-サーバの環境(MCP の登録の `env`)に `FT_MCP_STRUCTURED_CONTENT=1` を設定すると、`ft_run_scenario`・
+サーバーの環境(MCP の登録の `env`)に `FT_MCP_STRUCTURED_CONTENT=1` を設定すると、`ft_run_scenario`・
 `ft_dry_run`・`ft_list_scenarios` が `structuredContent`(シナリオごとの成否とレポートのパス、または
 シナリオの一覧を JSON にしたもの)も返します。クライアントが MCP 2025-06-18 以降で交渉したときだけ
 送ります。**Claude Code では有効にしないでください**: Claude Code は `structuredContent` があると

@@ -8,7 +8,7 @@
 3つが、そのまま特徴になっている。
 
 - **fleet** — ローカルとリモートにまたがって複数のデバイス（シミュレータ・エミュレータ・実機）で編成した **デバイスフリート**による並列実行
-- **fleetest** — ドライバーをカリカリにチューニングして高速化。単体で最高クラスの性能
+- **fleetest** — ドライバをカリカリにチューニングして高速化。単体で最高クラスの性能
 - **free** — ローカルのデバイスだけで完結するので**テスト実行は無料**
 
 **設計思想: 「AI がテストを作り、コードが決定的に再生する」**
@@ -26,7 +26,7 @@
 |---|---|
 | **CLI** | fleetest によるテストをコントロールする各種コマンド |
 | **VSCode 拡張** | GUIを提供。シナリオ実行・デバッグ実行・ライブ操作・デバイスモニター・結果ダッシュボード |
-| **MCP サーバ** | AIがデバイスを操作して発見的にテストコードを作成したりデバッグする。探索的テストも可能 |
+| **MCP サーバー** | AIがデバイスを操作して発見的にテストコードを作成したりデバッグする。探索的テストも可能 |
 | **Swift DSL** | テストコード記述用のSwiftの関数セット |
 
 ## 必要環境
@@ -65,7 +65,7 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 必要なのは次の3つで、いずれもエージェント固有ではない:
 
 1. **機械作業** —— 下の「エージェント無しで入れる」インストーラで済む
-2. **`ft_*`(MCP)** —— `fleetest-mcp` は標準の stdio MCP サーバなので、**MCP に対応した
+2. **`ft_*`(MCP)** —— `fleetest-mcp` は標準の stdio MCP サーバーなので、**MCP に対応した
    クライアントならどれでも使える**。あなたのエージェントの MCP 設定に次を足す
    (`<ABS_TOOL_ROOT>` は clone の絶対パス。2箇所とも同じ値):
 
@@ -117,7 +117,7 @@ bash ../foundation-tester/Scripts/install.sh
 
 ```bash
 # 1. 本体をビルド(全プロダクト。fleetest 本体＋映像ストリーミングヘルパー
-#    fleetest-simstream / fleetest-androidstream ＋ MCP サーバをまとめて生成)
+#    fleetest-simstream / fleetest-androidstream ＋ MCP サーバーをまとめて生成)
 swift build
 
 # 2. 事前診断(FM 可用性・Xcode・シミュレータ・adb をまとめて確認)
@@ -279,7 +279,7 @@ swift run fleetest bridge down --all              # 全ブリッジ停止
 
 エミュレータ/実機を接続しておけば(`adb devices`)、同じコマンドに `--platform android` を
 付けるだけ。**セットアップ不要** — 初回操作時にデバイス常駐ブリッジ(AndroidRunner/、
-iOS ブリッジとプロトコル互換の instrumentation サーバ)が自動インストール・自動起動され、
+iOS ブリッジとプロトコル互換の instrumentation サーバー)が自動インストール・自動起動され、
 snapshot が uiautomator dump の約2秒からミリ秒オーダーになる。
 
 - 手動管理(任意): `fleetest bridge up|down|status --platform android [--serial S]`
@@ -502,9 +502,9 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 セットアップ手順・各機能の詳細・設定一覧(`fleetest.*`)は
 [vscode-fleetest/README.md](vscode-fleetest/README.md) を参照。
 
-## MCP サーバ(エージェント連携)
+## MCP サーバー(エージェント連携)
 
-`fleetest-mcp` は同じ機能を MCP(Model Context Protocol)ツールとして公開する stdio サーバ。
+`fleetest-mcp` は同じ機能を MCP(Model Context Protocol)ツールとして公開する stdio サーバー。
 登録は `Scripts/install.sh` が行う(**絶対パス**で書くので、どのディレクトリでエージェントを
 開いても解決できる。初回呼び出しでビルドが走る):
 
@@ -520,7 +520,7 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 | `ft_doctor` | FM 可用性。`fmAndVision: true` を渡したときだけ FM・Vision・OCR を検査する(MCP は既定で使わない)。使えないときは**止まる機能(screenLooksLike / テキストの可視性検証)と代わりの書き方**まで返す(自己修復は FM を使わないため対象外) |
 | `ft_launch` / `ft_terminate` | アプリ起動・終了 |
 | `ft_install` | アプリをパッケージファイルからインストールする(iOS: `.app` バンドル / Android: `.apk`、分割バンドルの `.apks` は bundletool で) |
-| `ft_snapshot` | 画面要素一覧(set-of-mark 圧縮形式)。**`waitFor` を渡すと出るまでホスト側で待つ**(セレクタ記法は DSL と同じ。既定 5 秒)。**対象アプリが前面に居なければ先頭で警告する**(XCUITest の木はセッションのアプリに閉じているので、別アプリが前面でも同じ木を返してしまう。**iOS 実機では OS が前面状態を正しく申告しないため警告は出ない**)。**スクロール容器の外に取り残された要素(ghost)は先頭と各行で名指しする**(`⚠️scroll-leftover`) —— 一覧の見た目は普通の行と同じだが、その座標には別のものが描かれていることがある。**スクロール容器の行には `scroll` を付ける**(`scrollFrame:` に指定できる領域。**2つ以上あるときだけ**先頭でも名指しする)—— ただし**印が無い = スクロールしない、ではない**(Compose / Flutter の in-app は自前描画で申告できない)。撮った `#id` は `<プロジェクト>/.fleetest/selector-inventory.json` に貯まり、`ft_dry_run` の綴り誤り照合に使われる。**同じ id の大群(地図の POI など。非操作の葉が20件以上)は1行に畳む** —— 見出しに続けて「ラベル[ref]」の索引が出るので ref では撃てる。frame まで要るときは `expandBulk: true`。**上限で要素が落ちたときは先頭で言う**(何件・何が落ちたか。内訳は iOS のブリッジが申告する) —— 落ちた要素は木から消えているので `waitFor` も `ft_scroll_to` も一生見つけられない。**ラベルも id も無い clickable には `#容器 >> .clickable[n]` を添える**(id を持つ祖先があるときだけ。無ければ従来どおり「ref か座標しかない」)。**同じラベルが複数に当たるときは「代わりに書けるセレクタ」を一致ごとに出す**(`#id` > 一意ラベル > `#容器 >> .型[n]`。書けないものは「—」で明示する = 無言のケースを作らない。**勧める前にサーバ自身が引いて当人が返ることを確かめている**)。**打ち切ったときは枠を食っている id 群まで名指しする**(`#VKPointFeature が 119 件中 87 件` のように)—— 読み手にできる手は「それを描いている物を畳む」なので、原因を当てさせない。**`interactiveOnly: true` でレイアウト専用の行を隠す**(ラベルも値も持たず、操作もスクロールもしない要素。密な画面では半分以上が消える)—— ref も frame も変わらず、隠れた行も ref では撃てる |
+| `ft_snapshot` | 画面要素一覧(set-of-mark 圧縮形式)。**`waitFor` を渡すと出るまでホスト側で待つ**(セレクタ記法は DSL と同じ。既定 5 秒)。**対象アプリが前面に居なければ先頭で警告する**(XCUITest の木はセッションのアプリに閉じているので、別アプリが前面でも同じ木を返してしまう。**iOS 実機では OS が前面状態を正しく申告しないため警告は出ない**)。**スクロール容器の外に取り残された要素(ghost)は先頭と各行で名指しする**(`⚠️scroll-leftover`) —— 一覧の見た目は普通の行と同じだが、その座標には別のものが描かれていることがある。**スクロール容器の行には `scroll` を付ける**(`scrollFrame:` に指定できる領域。**2つ以上あるときだけ**先頭でも名指しする)—— ただし**印が無い = スクロールしない、ではない**(Compose / Flutter の in-app は自前描画で申告できない)。撮った `#id` は `<プロジェクト>/.fleetest/selector-inventory.json` に貯まり、`ft_dry_run` の綴り誤り照合に使われる。**同じ id の大群(地図の POI など。非操作の葉が20件以上)は1行に畳む** —— 見出しに続けて「ラベル[ref]」の索引が出るので ref では撃てる。frame まで要るときは `expandBulk: true`。**上限で要素が落ちたときは先頭で言う**(何件・何が落ちたか。内訳は iOS のブリッジが申告する) —— 落ちた要素は木から消えているので `waitFor` も `ft_scroll_to` も一生見つけられない。**ラベルも id も無い clickable には `#容器 >> .clickable[n]` を添える**(id を持つ祖先があるときだけ。無ければ従来どおり「ref か座標しかない」)。**同じラベルが複数に当たるときは「代わりに書けるセレクタ」を一致ごとに出す**(`#id` > 一意ラベル > `#容器 >> .型[n]`。書けないものは「—」で明示する = 無言のケースを作らない。**勧める前にサーバー自身が引いて当人が返ることを確かめている**)。**打ち切ったときは枠を食っている id 群まで名指しする**(`#VKPointFeature が 119 件中 87 件` のように)—— 読み手にできる手は「それを描いている物を畳む」なので、原因を当てさせない。**`interactiveOnly: true` でレイアウト専用の行を隠す**(ラベルも値も持たず、操作もスクロールもしない要素。密な画面では半分以上が消える)—— ref も frame も変わらず、隠れた行も ref では撃てる |
 | `ft_tap` / `ft_type` / `ft_swipe` / `ft_long_press` | 画面操作(`ft_tap` は `alertButton:` で前面のシステムアラートのボタンを押せる。`ft_type` は `pressEnter: true` で入力後に Enter/IME アクションまで撃つ。`text` を省けば Enter だけ)。**ref は撃つ直前に撮り直して照合する** —— 動いていれば今の位置へ撃ち直し、消えていれば撃たずに理由を返す。スクロール残像は撃つが、**何に当たったかもしれないかを警告に添える**(黙って別の要素を叩かない)。**ref を撃つ操作系は「その操作を再現するセレクタ」を必ず返す**(`tap [40] done (selector: #btn_add)`)—— ref はセッション限りの番号でシナリオには書けないため。安定セレクタが無ければ「無い」と明示し、座標には出さない(再現できる根拠が無い)。**操作系のツール(`ft_tap` / `ft_type` / `ft_swipe` / `ft_drag` / `ft_double_tap` / `ft_long_press` / `ft_pinch` / `ft_gesture` ほか)は `snapshotAfter: true` で結果の一覧まで一緒に返す** —— 操作のたびに `ft_snapshot` を撃つ往復が消える(`waitFor` を併せて渡せば、結果の画面に目的のセレクタが出るまで待ってから返す)。長押しの秒数は DSL と同語彙の `holdSeconds`(`ft_long_press`) |
 | `ft_scroll_to` | セレクタが出るまでスクロールして、**撮り直した一覧を返す**。`ft_swipe` + `ft_snapshot` の繰り返しより確実で、探索そのものは DSL の `scrollTo` と同じ実装(整定・容器基準の刻み・飛び越しの拾い直し)。`scrollFrame` でスクロールする容器を指定できる(候補は `ft_snapshot` の `scroll` 印)。**半開きのシートの中でリストが動かなくなったら、グラバーを引き上げて1度だけやり直す**(判定は DSL と共有の `StepNote.sheetCollapsed`。やり直したことは note で言う)—— グラバーを名前で特定できないときは何もしない(当てずっぽうのドラッグで地図やリストを動かさない) |
 | `ft_batch` | **DSL の手を並べて1回の承認で実行する**(`"steps": "tap '#a'; type '#field' 'abc'; scrollTo '#btn' direction: .down"`)。構文は最小記述の1つだけ —— 引数は引用符(`'…'`/`"…"` 等価)+空白区切り・手は `;` か改行。正形の括弧・カンマ・配列は書き換え方を添えて拒否する。operation/scroll コマンドのみ(launchApp 等は `ft_launch` へ誘導)・対象はセレクタ指定(ref 不可)・全手を実行前に検証し、最初の失敗で止まってその画面を返す(成功時は最後の画面を1回だけ)。通ったバッチは `ft_draft_scenario` がそのまま正形の DSL にする |
@@ -595,7 +595,7 @@ TestProjects/          テストプロジェクト(コミットして資産化�
     .fleetest/        ロケータの指紋等(プロジェクト別)
 Sources/
   fleetest/         CLI(swift-argument-parser。project/profile/remote コマンド含む)
-  fleetest-mcp/     MCP サーバ(stdio / JSON-RPC、自前実装)
+  fleetest-mcp/     MCP サーバー(stdio / JSON-RPC、自前実装)
   fleetest-simstream/     iOS シミュレータ画面のヘッドレス映像ストリーミング(変化駆動で JPEG を stdout 配信)
   fleetest-androidstream/ Android 画面のヘッドレス映像ストリーミング(iOS 版とフレームプロトコル互換)
   fleetest-devicepoll/    実機(iOS/Android)専用の画面配信。定間隔スクリーンショットで供給する第3の配信源
@@ -610,7 +610,7 @@ Sources/
   FTEmulatorGrpc/  Android エミュレータの gRPC(EmulatorController)直叩き。スクリーンショット等を adb より高速に取得し、失敗時は FTAndroid が adb へフォールバックする
   FTRemote/        リモートの純粋ロジック(SSH ディスパッチ・登録簿の解決・dispatch.lock・占有・setup 計画。利用側は fleetest CLI だけ)
   FTTestSupport/   テスト専用の共有資源ロック・実アプリ固定コーパスの読み込み(production からは import しない)
-Runner/            ブリッジ本体(project.xcproj + HTTP サーバ内蔵 UI テスト)
+Runner/            ブリッジ本体(project.xcproj + HTTP サーバー内蔵 UI テスト)
 SampleApp/         検証用 SwiftUI デモアプリ(test@example.com / password123)
 vscode-fleetest/    VSCode 拡張(UI 入口。詳細は vscode-fleetest/README.md)
 docs/              設計書・実装知見
@@ -633,7 +633,7 @@ Jenkins の例と flaky の扱いは [docs/ci.md](docs/ci.md)。
 
 | 操作 | 実測 | 補足 |
 |---|---|---|
-| ブリッジ `/status` | 13ms | HTTP サーバ自体のオーバーヘッドはほぼゼロ |
+| ブリッジ `/status` | 13ms | HTTP サーバー自体のオーバーヘッドはほぼゼロ |
 | スナップショット(iOS) | 約 80〜90ms(初回/画面遷移直後は約 250ms) | XCUITest のツリー取得コストが本体(performance-tuning.md §8) |
 | スナップショット(Android) | 中央値 8.7ms | 常駐ブリッジ(AndroidRunner/) |
 | MCP ツール呼び出し | +0ms 相当 | ブリッジ直叩きと差なし(常駐プロセス) |

@@ -68,9 +68,9 @@ function judge(spec, result) {
   return { verdict, reasons }
 }
 
-const redSpec = { expect: 'red', command: 'exist', failureKind: 'assertion', detailContains: ['false positive (offscreen)'] }
+const redSpec = { expect: 'red', command: 'exist', failureKind: 'assertion', detailContains: ['text visibility check failed (offscreen)'] }
 const failed = (step, extra = {}) => ({ passed: false, failedSteps: [step], timeline: [], ...extra })
-const offscreen = { command: 'exist', failureKind: 'assertion', detail: 'false positive (offscreen): centre (201, 889)' }
+const offscreen = { command: 'exist', failureKind: 'assertion', detail: 'text visibility check failed (offscreen): centre (201, 889)' }
 
 test('期待どおりの場所・理由で落ちれば ✅', () => {
   assert.equal(judge(redSpec, failed(offscreen)).verdict, 'ok')
@@ -121,18 +121,18 @@ test('appCrash の evidence が違う・無いなら ❌', () => {
 })
 
 const fmSpec = {
-  expect: 'red', command: 'exist', detailContains: ['false positive (occlusion'],
+  expect: 'red', command: 'exist', detailContains: ['text visibility check failed (on screen'],
   detailNotContains: ['judged by OCR alone'], fmCallsAtLeast: { occlusion: 2 }, requiresFM: true,
 }
 
 test('FM が判定を返さなかった回は ⚠️ 未検証(✅ に畳まない)', () => {
-  const ocrOnly = failed({ command: 'exist', detail: 'false positive (occlusion, judged by OCR alone because FM gave no verdict)' },
+  const ocrOnly = failed({ command: 'exist', detail: 'text visibility check failed (on screen, judged by OCR alone because FM gave no verdict)' },
     { timeline: [{ notes: ['visibility-guard-skipped'] }] })
   assert.equal(judge(fmSpec, ocrOnly).verdict, 'unverified')
 })
 
 test('FM が判定を返した回は FM の呼び出し回数まで見る', () => {
-  const byFM = (calls) => failed({ command: 'exist', detail: 'false positive (occlusion): covered' },
+  const byFM = (calls) => failed({ command: 'exist', detail: 'text visibility check failed (on screen): covered' },
     { fm: { byKind: { occlusion: { calls } } } })
   assert.equal(judge(fmSpec, byFM(2)).verdict, 'ok')
   assert.equal(judge(fmSpec, byFM(1)).verdict, 'fail')

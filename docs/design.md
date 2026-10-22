@@ -3967,7 +3967,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
   iOS は testTag が自動で accessibilityIdentifier になるため起きない(Android 固有)
 - **テキストの可視性検証の run(実行プロファイル `fmTextVisibilityCheck` / `ocrTextVisibilityCheck` のどちらか。**既定はどちらも true**)では、
   `exist`/`textIs` は既定 `requireVisible: true` のため、ソフトキーボードに覆われた要素は
-  「`false positive (occlusion)`」で失敗する**。入力を伴う画面では検証対象・操作対象を入力欄より**上**に置く
+  「`text visibility check failed (on screen)`」で失敗する**。入力を伴う画面では検証対象・操作対象を入力欄より**上**に置く
   (TestProjects/E2E-CMP のテキスト入力画面がこの配置。2026-07-22 実測)
 - **in-app ブリッジは注入先アプリのプロセス内常駐**なので、アプリがクラッシュ/終了すると HTTP が
   `DriverError.bridgeConnectionRefused`(「Could not connect」)になる。xcuitest/Android はブリッジが

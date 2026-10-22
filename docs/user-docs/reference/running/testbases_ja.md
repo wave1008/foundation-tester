@@ -140,7 +140,7 @@ docs/testbases の仕様書を根拠に、iOS 向けのシナリオを書いて�
 
 下書きを経由せず、AIアシスタントが仕様書を直接読んでシナリオを書くこともできます。`draft-scenario` は、
 まず骨組みを機械的に作ってから仕上げたいときの入口です。なお、MCP の `ft_draft_scenario` は別物で、
-探索中に実行した操作列を Swift シナリオにして返します([MCP サーバ](../tools/mcp_server_ja.md))。
+探索中に実行した操作列を Swift シナリオにして返します([MCP サーバー](../tools/mcp_server_ja.md))。
 
 ## 仕様違反が見つかったとき
 

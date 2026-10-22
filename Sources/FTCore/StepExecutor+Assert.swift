@@ -117,7 +117,7 @@ extension StepExecutor {
         // Tier-0: 画面外は見えていない。**スクショも FM も要らない**ので最初に置く。
         // 足切り(型・ラベル)より前 —— アイコンや無ラベル要素は FM 照合の対象外でも、画面外なのは同じ
         if let c = TapTargetGeometry.offscreenScrollGateCentre(for: element, screen: screen) {
-            return .failed("false positive (offscreen): present in the tree but its centre"
+            return .failed("text visibility check failed (offscreen): present in the tree but its centre"
                            + " (\(Int(c.x)), \(Int(c.y))) is outside the screen, so it is not visible"
                            + " (scroll it into view before this step)")
         }
@@ -394,7 +394,7 @@ extension StepExecutor {
         // observedText は原因切り分けの鍵: 空なら「FM に画像が渡っていない/白紙を見た」
         // (SCA 劣化で添付が落ちる仮説・起動遷移画面)、期待どおりの文字列なら「読めたのに
         // 覆われていると答えた」= 純粋な判定誤り。これが無くて切り分けに窮した。
-        return .failed("false positive (occlusion): present in the tree but not visually visible [\(v.state)] \(v.reason)"
+        return .failed("text visibility check failed (on screen): present in the tree but not visually visible [\(v.state)] \(v.reason)"
                        + " observed=\"\(v.observedText)\""
                        + emptyTranscriptOnInk
                        + Self.blankAppAreaFact(screenshot: screenshot, elements: elements, screen: screen))
@@ -485,7 +485,7 @@ extension StepExecutor {
             // FM の反転と同じ扱い(呼び出し側の poll が見えるまで撮り直し、尽きたら赤)
             consumeFirstFrameGate(visible: false, sd: ink, screenshot: screenshot, element: element, screen: screen)
             let judgedBy = fmGaveNoVerdict ? "judged by OCR alone because FM gave no verdict" : "judged by OCR"
-            return .failed("false positive (occlusion, \(judgedBy)):"
+            return .failed("text visibility check failed (on screen, \(judgedBy)):"
                            + " present in the tree but not visually visible [\(state.rawValue)]"
                            + " observed=\"\(ocrReading.map { $0.lines.joined(separator: " ") } ?? "")\""
                            + Self.blankAppAreaFact(screenshot: screenshot, elements: elements, screen: screen))

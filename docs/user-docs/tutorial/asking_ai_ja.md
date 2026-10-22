@@ -71,7 +71,7 @@ AIアシスタントは「アプリの不具合」と「テストの書き方の
 
 <img src="../images/tutorial/ja/how_it_works.png" width="720" alt="テストを作る段では AIアシスタントがデバイスを操作してシナリオを書き、再生する段では fleetest が AI を使わずにシナリオを再生する">
 
-依頼を受けた AIアシスタントは、fleetest の **MCP サーバ**(`ft_*` ツール)と**手順書**(Claude Code ではスキル)を
+依頼を受けた AIアシスタントは、fleetest の **MCP サーバー**(`ft_*` ツール)と**手順書**(Claude Code ではスキル)を
 使って作業します。
 
 - 画面を読む・タップする・文字を入れる(デバイス上のアプリを実際に操作する)
@@ -82,7 +82,7 @@ AIアシスタントは「アプリの不具合」と「テストの書き方の
 同じテストは毎回同じ動きをし、推論の待ち時間も API の利用料もかかりません。
 
 中で何が起きているかを知りたいときは、リファレンスの
-[MCP サーバ](../reference/tools/mcp_server_ja.md)・[Claude Code のスキル](../reference/tools/claude_code_skills_ja.md)を
+[MCP サーバー](../reference/tools/mcp_server_ja.md)・[Claude Code のスキル](../reference/tools/claude_code_skills_ja.md)を
 参照してください。
 
 ## Claude Code 以外の AIアシスタント

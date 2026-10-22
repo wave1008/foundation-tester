@@ -79,7 +79,7 @@ tolerated.
 | <img src="../../images/text_visibility_check/en/full_cover.png" width="187" alt="fully covered"> | `Game Center` | (nothing legible) | A plain overlay hides all of it (`notRendered`) |
 | <img src="../../images/text_visibility_check/en/other_text.png" width="187" alt="other text"> | `Game Center` | `Walpaper` | Unrelated text is drawn there (`textMismatch`) |
 
-The failure message is `false positive (occlusion): present in the tree but not visually visible
+The failure message is `text visibility check failed (on screen): present in the tree but not visually visible
 [<reason>] ...`. When FM is turned off and the OCR reading decided the failure it adds `judged by OCR`, and when FM
 is turned on but was unavailable and OCR alone decided it adds `judged by OCR alone because FM gave no verdict`. In both cases the step does not fail at once: it keeps taking new screenshots for its
 wait time (`waitSeconds`) and passes if the text becomes visible.

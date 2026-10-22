@@ -56,12 +56,12 @@ export const webviewMonitorAStrings = {
     en: "Could not get video (the host may be unable to encode). Stream fewer tiles, or turn on \"Use polling mode\" in the settings tab. See the fleetest OUTPUT channel for details.",
   },
   "wvMonitor.tile.stateUnknownTip": {
-    ja: "この機械からは状態を観測できません(simctl/adb は手元にしか効きません)。その機械の fleetest の版が揃っているか確認してください。",
+    ja: "このマシンからは状態を観測できません(simctl/adb は手元にしか効きません)。そのマシンの fleetest の版が揃っているか確認してください。",
     en: "This machine cannot observe the state (simctl/adb are local only). Check that the other machine's fleetest is on the same version.",
   },
   "wvMonitor.tile.stateUnknown": { ja: "状態不明", en: "Unknown" },
   // fleetest monitor pause 中(state=unknown + detail 'held…')。タイルは狭いので短く
-  "wvMonitor.tile.monitorPaused": { ja: "モニタ停止中", en: "Monitor paused" },
+  "wvMonitor.tile.monitorPaused": { ja: "モニター停止中", en: "Monitor paused" },
   "wvMonitor.tile.monitorPausedTip": {
     ja: "fleetest monitor pause で観測と配信を停止しています。fleetest monitor resume(または --for の期限切れ)で再開します。",
     en: "Observation and streaming are held by `fleetest monitor pause`. Resume with `fleetest monitor resume` (or when the --for window expires).",

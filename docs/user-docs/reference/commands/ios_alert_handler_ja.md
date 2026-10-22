@@ -119,7 +119,7 @@ iosAlertHandler(alert: "*トラッキング*||*wants to track*",
   そのまま残ります —— ツールがアラートのボタンを自分で押すことも、操作を撃ち直すこともありません。
 - **`clearAppData()` で権限をリセットできます** —— 同じダイアログが次の run でも再び出るので、
   常に未決定の状態から始めたいシナリオに使えます。
-- MCP からの使い方は [MCP サーバ](../tools/mcp_server_ja.md) を参照してください。
+- MCP からの使い方は [MCP サーバー](../tools/mcp_server_ja.md) を参照してください。
 
 ### Link
 - [index](../../index_ja.md)

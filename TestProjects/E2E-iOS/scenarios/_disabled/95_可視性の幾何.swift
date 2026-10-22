@@ -1,10 +1,10 @@
 // 95_可視性の幾何.swift
-// **陽性対照**(既定スイートには載せない): `requireVisible`(実行プロファイル `fmTextOcclusionCheck` か
-// `ocrTextOcclusionCheck` が true)の幾何 Tier-0 =「木に居ても収まる軸の中心が画面外なら不可視」が
+// **陽性対照**(既定スイートには載せない): `requireVisible`(実行プロファイル `fmTextVisibilityCheck` か
+// `ocrTextVisibilityCheck` が true)の幾何 Tier-0 =「木に居ても収まる軸の中心が画面外なら不可視」が
 // デバイスで効くことを確かめる。この経路は赤を出すときだけ通るので、緑の run では1度も実行されない。
 // 回し方: scenarios/ 直下へ一時的に出し、`fleetest run --project E2E-iOS --profile ios-fpc --scenario 可視性の幾何`
-// (ios-fpc = fmTextOcclusionCheck: true・1台)。**S0010 は落ちるのが正常**(失敗理由に
-// `false positive (offscreen)` と中心座標が出る)。S0020 / S0030 は通る。
+// (ios-fpc = fmTextVisibilityCheck: true・1台)。**S0010 は落ちるのが正常**(失敗理由に
+// `text visibility check failed (offscreen)` と中心座標が出る)。S0020 / S0030 は通る。
 // witness はホーム直後の `#nav_diagnostics`(y=858・高さ62 → 中心 889 > 画面高 874。SwiftUI の
 // ScrollView は画面外の子も frame ごと a11y に出す)。FM が死んでいても(このホストの
 // ModelManagerError(1001))幾何は効く = FM 不在時のフォールバックの確認でもある。

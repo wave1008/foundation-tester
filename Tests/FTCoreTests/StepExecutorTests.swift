@@ -165,7 +165,7 @@ final class StepExecutorTests: XCTestCase {
         guard case .failed(let msg) = outcome.status else {
             XCTFail("occlusion 反転で失敗を期待したが \(outcome.status) だった"); return
         }
-        XCTAssertTrue(msg.contains("occlusion"), "失敗理由に occlusion を含むこと: \(msg)")
+        XCTAssertTrue(msg.contains("text visibility check failed (on screen"), "失敗理由に occlusion を含むこと: \(msg)")
         // poll-until-visible: 覆われ続ける間は timeout まで繰り返し照合する(1回とは限らない)
         XCTAssertGreaterThanOrEqual(delegate.visibleCalls, 1)
     }
@@ -352,7 +352,7 @@ final class StepExecutorTests: XCTestCase {
                 guard case .failed(let reason) = outcome.status else {
                     return XCTFail("古い絵で素通りせず、追いついた絵の遮蔽で赤にする: \(outcome.status)")
                 }
-                XCTAssertTrue(reason.contains("false positive"), "\(assertKind): \(reason)")
+                XCTAssertTrue(reason.contains("text visibility check failed"), "\(assertKind): \(reason)")
             }
         }
         }
@@ -601,7 +601,7 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("timeout で失敗するはず"); return
         }
         XCTAssertTrue(msg.contains("does not equal"), "テキスト不一致を返すこと: \(msg)")
-        XCTAssertFalse(msg.contains("occlusion"), "stale な occlusion を返さないこと: \(msg)")
+        XCTAssertFalse(msg.contains("text visibility check failed (on screen"), "stale な occlusion を返さないこと: \(msg)")
     }
 
     /// #4 修正: label セレクタの exist("Hello, World")はユーザー期待値。結合 `, ` 規則でガードを
@@ -620,7 +620,7 @@ final class StepExecutorTests: XCTestCase {
         guard case .failed(let msg) = await executor.execute(step).status else {
             XCTFail("ユーザーラベルの句読点でガードがスキップされ pass してしまった"); return
         }
-        XCTAssertTrue(msg.contains("occlusion"), "occlusion 失敗を返すこと: \(msg)")
+        XCTAssertTrue(msg.contains("text visibility check failed (on screen"), "occlusion 失敗を返すこと: \(msg)")
         XCTAssertGreaterThanOrEqual(delegate.visibleCalls, 1, "ガードが実行されること")
     }
 
@@ -638,7 +638,7 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("timeout で失敗するはず"); return
         }
         XCTAssertTrue(msg.contains("not found"), "未発見を返すこと: \(msg)")
-        XCTAssertFalse(msg.contains("occlusion"), "stale な occlusion を返さないこと: \(msg)")
+        XCTAssertFalse(msg.contains("text visibility check failed (on screen"), "stale な occlusion を返さないこと: \(msg)")
     }
 
     /// timeout==0 の exist は「初回照会のみ・リトライなし」。0回照会で必ず失敗する回帰を防ぐ
@@ -681,7 +681,7 @@ final class StepExecutorTests: XCTestCase {
         guard case .failed(let msg) = await executor.execute(step).status else {
             XCTFail("一致かつ覆われ=occlusion 失敗のはず"); return
         }
-        XCTAssertTrue(msg.contains("occlusion"), "occlusion 失敗を返すこと: \(msg)")
+        XCTAssertTrue(msg.contains("text visibility check failed (on screen"), "occlusion 失敗を返すこと: \(msg)")
     }
 
     /// occlusionGuardEnabled=false(実行プロファイルの fmTextVisibilityCheck:false)は per-step の

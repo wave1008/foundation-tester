@@ -165,7 +165,7 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 
 - [CLI リファレンス(fleetest のサブコマンド)](reference/tools/cli_ja.md)
 - [VSCode 拡張](reference/tools/vscode_extension_ja.md)
-- [MCP サーバ](reference/tools/mcp_server_ja.md)
+- [MCP サーバー](reference/tools/mcp_server_ja.md)
 - [Claude Code のスキル](reference/tools/claude_code_skills_ja.md)
 - [Claude Code 以外の AIアシスタント](reference/tools/other_agents_ja.md)
 - [エージェント向けの手引き](reference/tools/agent_guide_ja.md)

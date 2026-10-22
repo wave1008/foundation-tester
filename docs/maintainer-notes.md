@@ -3437,8 +3437,9 @@ tap / screenshot / launch / list-apps / bridge up も同様)。コールド起�
 - **kAXErrorAPIDisabled の長い継続**: sim-08 / -09 / -10 で、ある時間帯に前面アプリの読みが数分〜13 分続けて失敗した(案内は「一時的・数秒で
   直る」)。sim-08 では XCTest でアプリを launch し直すと即座に読めたが、新しく起動した Simulator で 30 分・60 回読んでも 0 件で再現せず、
   「起動直後の時間帯」「XCTest が起こしていないアプリ」の仮説はどちらも否定。原因が分からないので案内文は変えていない
-- 失敗文言の英語 `false positive (occlusion…)` は日本語で禁止した極性の語(§11)の英語版だが、negative controls・user-docs・design が
-  参照する契約なので今回は変えていない
+- 失敗文言の英語 `false positive (occlusion…)` は日本語で禁止した極性の語(§11)の英語版だったので、2026-10-23 に
+  `text visibility check failed (offscreen | on screen…)` へ変えた(negative controls・user-docs・design も同時に。
+  `FailureWordingVocabularyTests` が Sources への再混入を落とす)
 - CLI の Android `terminate` は起動の記録が無いと何もせずに「✅ Terminated」と言う(iOS はセッション中のアプリを止める。MCP は正直に言う)
 - `ft_snapshot` の巨大な `waitSeconds` は §62.6 のとおり上限なし(呼び手の明示)。M1mini では別のワークスペース(`~/dev/foundation-tester`・
   別版)のブリッジが端末を握っていて設計どおり止めずに断った。sim-10 の自動起動 9 回は §59.6 / §62.1 と同じ「押下の途中でランナーが塞がり、

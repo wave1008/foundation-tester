@@ -16,7 +16,7 @@
 | シナリオ間で値を渡す | `writeMemo` / `readMemo` |
 | 秘密をレポートに残さない | `redactAccountValues` |
 | 外部の Swift パッケージを使う | `fleetestScenarioDependencies` |
-| run の前後に DB やスタブサーバを用意する | `scripts/compose.yaml` / `run-setup.sh` / `run-teardown.sh` |
+| run の前後に DB やスタブサーバーを用意する | `scripts/compose.yaml` / `run-setup.sh` / `run-teardown.sh` |
 
 ## ファイルを書く(TestLog)
 
@@ -101,7 +101,7 @@ response.status.thisIs(201)
 run の開始時と終了時に走らせる処理は、`TestProjects/<プロジェクト>/workspace/scripts/run-setup.sh` / `run-teardown.sh` に書きます
 (MCP の `ft_run_scenario` では走りません)。スクリプトも自分用のサンドボックスの中で走ります。書けるのは `<workspace>/data/` と
 `hooks.writablePaths` だけで、繋げるのは compose.yaml で公開したポートとプロキシ経由の許可ドメインだけです。
-テスト対象のアプリが依存する DB・スタブサーバは `scripts/compose.yaml` に宣言すると、fleetest が起動・停止します
+テスト対象のアプリが依存する DB・スタブサーバーは `scripts/compose.yaml` に宣言すると、fleetest が起動・停止します
 ([サービスの宣言](services_ja.md))。コンテナの中の操作は `fleetest-services` で行います。
 
 詳細: [自分で機能を足す](extending_ja.md)

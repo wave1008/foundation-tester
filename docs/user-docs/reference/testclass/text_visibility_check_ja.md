@@ -75,7 +75,7 @@ OCR を切っていても、FM の書き起こしが期待と違う回(許容は
 | <img src="../../images/text_visibility_check/ja/full_cover.png" width="367" alt="全面の覆い"> | `アクセシビリティ` | (何も読めない) | 無地の覆いで全体が隠れている(`notRendered`) |
 | <img src="../../images/text_visibility_check/ja/other_text.png" width="367" alt="別の文字"> | `アクセシビリティ` | `スクリーンタイム` | 期待と無関係な文字が描かれている(`textMismatch`) |
 
-失敗の文言は `false positive (occlusion): present in the tree but not visually visible [<理由>] ...` です。
+失敗の文言は `text visibility check failed (on screen): present in the tree but not visually visible [<理由>] ...` です。
 FM を切っていて OCR の読みで失敗にしたときは `judged by OCR`、FM を使う設定なのに FM が使えず OCR だけで
 判定したときは `judged by OCR alone because FM gave no verdict` と添えます。
 どちらも、すぐには失敗にせず、待ち時間(`waitSeconds`)のあいだ撮り直して、見えるようになれば緑にします。

@@ -26,7 +26,7 @@ child commands. `fleetest --version` shows the version.
 
 | Command | Description | Main options | Details |
 |---|---|---|---|
-| `init` | Create the consumer package (a `Package.swift` that depends on fleetest via SPM, plus a first test project) | `--no-project`, `--name` | [Quick Start](../../quick-start.md) |
+| `init` | Create your package (a `Package.swift` that depends on fleetest via SPM, plus a first test project) | `--no-project`, `--name` | [Quick Start](../../quick-start.md) |
 | `doctor` | Preflight checks for Foundation Models, Xcode and simulators. It also stops bridges that are certainly stale | `--fm-only`, `--roots-only`, `--bundle <path>` | [Troubleshooting](../../in_action/troubleshooting.md) |
 
 `doctor --bundle <path>` writes a zip of diagnostic logs to attach when reporting a problem (nothing is sent anywhere).

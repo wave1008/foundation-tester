@@ -1055,7 +1055,7 @@ requireVisible)は OCR だけで判定する**(`OCROnlyVisibility`。OCR が判�
 **幾何の段(中心が画面外なら不可視)は FM が死んでいても効いている**ので、この注記が付いた緑は
 「木に居て画面内」までは確かめた緑。
 幾何の段の**陽性対照は `TestProjects/E2E-iOS/scenarios/_disabled/95_可視性の幾何.swift`**
-(プロファイル `ios-fpc`。S0010 が `false positive (offscreen)` で落ちるのが正常。`_disabled/` に
+(プロファイル `ios-fpc`。S0010 が `text visibility check failed (offscreen)` で落ちるのが正常。`_disabled/` に
 あるので既定スイートでは1度も実行されない)。
 
 ## 覆い(別ウィンドウのモーダル)の witness は E2EAppIOS にある(2026-08-20)

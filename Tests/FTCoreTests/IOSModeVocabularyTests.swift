@@ -13,6 +13,7 @@
 import Foundation
 import XCTest
 import FTCore
+import FTTestSupport
 
 final class IOSModeVocabularyTests: XCTestCase {
 
@@ -42,24 +43,13 @@ final class IOSModeVocabularyTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     }
 
-    /// 追跡分 + 無視されていない未追跡分(足したばかりのファイルも見る)。git が失敗したら投げる(空で緑にしない)
-    private static func listedFiles(in root: URL) throws -> [String] {
-        let result = try Shell.run(["/usr/bin/git", "-C", root.path, "ls-files", "-z",
-                                    "--cached", "--others", "--exclude-standard"])
-        guard let output = result.outputIfSucceeded else {
-            throw NSError(domain: "IOSModeVocabularyTests", code: Int(result.status),
-                          userInfo: [NSLocalizedDescriptionKey: "git ls-files failed: \(result.tail)"])
-        }
-        return output.split(separator: "\0").map(String.init)
-    }
-
     private static func scan() throws -> (hits: [String], scannedPaths: Set<String>) {
         let root = repoRoot
         let regexes = try bannedPatterns.map { try NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
         let selfPath = String(#filePath.dropFirst(root.path.count + 1))
         var hits: [String] = []
         var scannedPaths: Set<String> = []
-        for relative in try listedFiles(in: root) where relative != selfPath && !isExcluded(relative) {
+        for relative in try GitListedFiles.list(in: root) where relative != selfPath && !isExcluded(relative) {
             let file = root.appendingPathComponent(relative)
             // 追跡中でも作業ツリーで消したファイルは読めない = 飛ばす
             guard scannedExtensions.contains(file.pathExtension),

@@ -26,7 +26,7 @@ foundation-tester のクローン内で作業している場合は `swift run fl
 
 | コマンド | 説明 | 主なオプション | 詳細 |
 |---|---|---|---|
-| `init` | 受け手のパッケージ(SPM で fleetest に依存する `Package.swift` と最初のテストプロジェクト)を作る | `--no-project`・`--name` | [クイックスタート](../../quick-start_ja.md) |
+| `init` | あなたのパッケージ(SPM で fleetest に依存する `Package.swift` と最初のテストプロジェクト)を作る | `--no-project`・`--name` | [クイックスタート](../../quick-start_ja.md) |
 | `doctor` | Foundation Models・Xcode・Simulator の事前チェック。ブリッジのうち確実に古いものは止める | `--fm-only`・`--roots-only`・`--bundle <パス>` | [トラブルシューティング](../../in_action/troubleshooting_ja.md) |
 
 `doctor --bundle <パス>` は、問題を報告するときに添付する診断ログの zip を書き出します(どこにも送信しません)。
@@ -60,7 +60,7 @@ foundation-tester のクローン内で作業している場合は `swift run fl
 | `results trend` | 1本のシナリオの実行履歴を時系列で表示する | `--scenario`(必須)・`--since` | 同上 |
 | `results devices` | ワーカー(デバイス)ごと・プラットフォームごとの実行回数と成功率を集計する | `--since`・`--json` | 同上 |
 | `results slow` | 平均所要時間の長い順にシナリオを一覧する | `--limit`・`--since` | 同上 |
-| `results response` | レスポンス計測の run の応答時間(最初のフレームまで・操作可能まで)をステップごとに集計し、同じ機械・同じ端末の前回との差を出す | `--since`・`--json` | [レスポンス計測](../running/response_measurement_ja.md) |
+| `results response` | レスポンス計測の run の応答時間(最初のフレームまで・操作可能まで)をステップごとに集計し、同じマシン・同じ端末の前回との差を出す | `--since`・`--json` | [レスポンス計測](../running/response_measurement_ja.md) |
 | `results insights` | 注意すべき兆候(退行・連続失敗・アサーション以外の失敗・古くなったセレクタ)を検出する | `--since`・`--json` | [結果の分析](../running/results_analysis_ja.md) |
 | `results log <runID>` | run のシナリオごとの実行ログ(`events/*.ndjson`)を表示する。runID に `latest` も使える | `--scenario`・`--raw` | 同上 |
 | `clean` | 古い録画・実行ログ・レポート・ログ・Simulator の添付・xcresult を削除する。上限の 90% を超えたカテゴリを 90% まで掃除する | `--dry-run`・`--recordings`・`--event-logs`・`--reports`・`--logs` | [長く使うためのメンテナンス](../../in_action/maintenance_ja.md) |
@@ -71,7 +71,7 @@ foundation-tester のクローン内で作業している場合は `swift run fl
 |---|---|---|---|
 | `devices up` | 実行プロファイルのデバイスを起動する(同時に 2 台まで。起動済みは飛ばす) | `--profile`・`--no-bridge`・`--device-machine` | [シナリオの実行](../running/running_scenarios_ja.md) |
 | `devices down` | ブリッジを止め、Simulator / Emulator を停止する(実機は停止せずブリッジだけ止める)。`--profile` を付けるとそのプロファイルのデバイスだけ | `--profile`・`--device-machine`・`--force` | [並列実行](../running/parallel_execution_ja.md) |
-| `bridge up` | ブリッジを起動して常駐させる(iOS: Simulator のランナー / Android: デバイス上のサーバ) | `--device`・`--port`・`--physical`・`--platform` | [並列実行](../running/parallel_execution_ja.md) |
+| `bridge up` | ブリッジを起動して常駐させる(iOS: Simulator のランナー / Android: デバイス上のサーバー) | `--device`・`--port`・`--physical`・`--platform` | [並列実行](../running/parallel_execution_ja.md) |
 | `bridge down` | ブリッジを止める | `--port`・`--all`・`--platform`・`--force` | [並列実行](../running/parallel_execution_ja.md)・[実機を追加する](../../fleet/adding_physical_devices_ja.md) |
 | `bridge status` | ブリッジの状態を表示する | `--platform`・`--port`・`--serial` | [トラブルシューティング](../../in_action/troubleshooting_ja.md) |
 | `install <パッケージ>` | パッケージからアプリを入れる(iOS: `.app` / Android: `.apk` か `.apks`) | `--platform`・`--port`・`--serial` | 下の「デバイスを手で操作する」 |
@@ -86,7 +86,7 @@ foundation-tester のクローン内で作業している場合は `swift run fl
 
 ## デバイスを手で操作する
 
-MCP の `ft_*` ツール([MCP サーバ](./mcp_server_ja.md))と同じ操作の CLI 版です。ブリッジが起動している端末へ、
+MCP の `ft_*` ツール([MCP サーバー](./mcp_server_ja.md))と同じ操作の CLI 版です。ブリッジが起動している端末へ、
 画面の読み取りと基本の操作を直接送ります。シナリオを書く前の画面の観察や、動作の切り分けに使えます。
 宛先は共通のオプション `--platform`(ios / android。既定 ios)・`--port`(iOS のブリッジのポート。既定 8123)・
 `--serial`(Android の端末。接続が 1 台だけなら省略可)で指定します。
@@ -139,7 +139,7 @@ MCP の `ft_*` ツール([MCP サーバ](./mcp_server_ja.md))と同じ操作の 
 
 ## 外部ツール向け(api)
 
-`api` は、VSCode 拡張や MCP サーバのような外部ツールが使う**機械向けの口**です(出力は標準出力の JSON か NDJSON、
+`api` は、VSCode 拡張や MCP サーバーのような外部ツールが使う**機械向けの口**です(出力は標準出力の JSON か NDJSON、
 診断は標準エラー出力)。人が日常的に打つものではありません。代表的な子コマンドだけを挙げます。全体は
 `fleetest api --help` で確かめられます。
 
@@ -155,7 +155,7 @@ MCP の `ft_*` ツール([MCP サーバ](./mcp_server_ja.md))と同じ操作の 
 | `api results` | 結果データベースを集計する(`fleetest results` の機械向け) |
 | `api retention` | 保持容量(掃除の上限)の方針を読む・更新する |
 
-拡張の使い方は [VSCode 拡張](./vscode_extension_ja.md)、MCP は [MCP サーバ](./mcp_server_ja.md)を参照してください。
+拡張の使い方は [VSCode 拡張](./vscode_extension_ja.md)、MCP は [MCP サーバー](./mcp_server_ja.md)を参照してください。
 
 ### Link
 - [index](../../index_ja.md)

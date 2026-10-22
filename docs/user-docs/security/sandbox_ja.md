@@ -324,7 +324,7 @@ iOS で S0060 を実行して、結果を見せて。
 </details>
 <br>
 
-`allowDirectAdb` が `false` のときは、adb は起動しても adb サーバ(ポート 5037)に繋げず、
+`allowDirectAdb` が `false` のときは、adb は起動しても adb サーバー(ポート 5037)に繋げず、
 `adb: failed to check server version: cannot connect to daemon` で S0060 が失敗します(サンドボックスがこのポートを閉じています)。
 `true` にすると成功します。確かめたら `false` に戻します。
 

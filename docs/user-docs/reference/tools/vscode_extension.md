@@ -82,7 +82,7 @@ is unavailable.
   **Shift(⇧)+drag traces the exact finger path** ("Trace" lights up while Shift is held). Plain drags
   are not sent to the device. A double-click on the screen is two taps, so to toggle the selection
   double-click outside the screen (the device name row or the margin). On a foldable device (the iPhone Duo
-  simulator or a foldable Android Emulator) **Fold** and **Unfold** buttons appear as well (also in the
+  Simulator or a foldable Android Emulator) **Fold** and **Unfold** buttons appear as well (also in the
   Live Control tab's button row; never for physical devices).
   These go through the same path as the Live Control tab, so if the Live Control tab had another device
   open it switches to this one (while another device is being recorded, the switch is refused).

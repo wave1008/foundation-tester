@@ -38,7 +38,7 @@ id もラベルも持たないアイコンのように、セレクタで指せ�
 ```
 
 - 見本は、探したい要素の**枠そのもの**を切り出したものを置きます(`fleetest vision capture` で切り出せます。
-  MCP からの使い方は [MCP サーバ](../tools/mcp_server_ja.md))。
+  MCP からの使い方は [MCP サーバー](../tools/mcp_server_ja.md))。
 - `findImages` もラベルのフォルダの見本を全部使います。同じ要素に複数の見本が当たったときは、最も近い距離で1件にまとめます(Shirates の `findImages` は見本を1枚だけ使います)。
 
 ## 例

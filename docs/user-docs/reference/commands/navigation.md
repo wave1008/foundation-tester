@@ -66,7 +66,7 @@ hinge(130)              // half-open book posture
 - **`settle: false`** skips this command's post-action wait for the screen to settle (the next step may see a moving screen). See [tap](./tap.md) for details.
 
 - **`fold` / `unfold` / `hinge` need a foldable device.**
-  - iOS: the iPhone Duo **simulator** (Xcode 27.2+), sent through the XCUITest bridge, which both iOS modes support.
+  - iOS: the iPhone Duo **Simulator** (Xcode 27.2+), sent through the XCUITest bridge, which both iOS modes support.
   - Android: a foldable **Emulator** (an AVD with a hinge sensor, e.g. Pixel 9 Pro Fold).
   - A physical iPhone can neither be folded nor have its fold state read, so the scenario is recorded as skipped (not applicable), with the reason `fold / unfold / hinge cannot drive a physical iPhone (fold it by hand); they run on the iPhone Duo simulator`.
   - On a physical Android device, a non-foldable model gets the not-applicable treatment below; a foldable model is not supported (fold by hand) and the step fails with that message.
@@ -74,7 +74,7 @@ hinge(130)              // half-open book posture
 - **The fold state is restored automatically at the end of the scenario** (like `rotateTo`'s orientation).
 - **A foldable Android device shows a lock screen ("swipe up to continue") over the app when it is folded.** `fold()` dismisses it so the app is on the outer screen before the next step (the same unlock fleetest does before each scenario; a PIN or pattern lock cannot be dismissed).
 - **`hinge` does not verify which screen shows.** On the iPhone Duo simulator the switch depends on the previous state (measured: opening switches between 120 and 150 degrees, closing between 20 and 10 degrees). On a foldable Android Emulator the posture follows angle ranges (Pixel 9 Pro Fold AVD: 0-30 closed, 30-150 half-opened, 150-180 opened). Use `fold()` / `unfold()` when the scenario needs a specific screen.
-- **iOS mechanism**: Apple provides no public API to fold the simulator, so fleetest sends the same undocumented hinge event as Xcode's DeviceHub. A future Xcode may stop accepting it; `fold` / `unfold` verify the switch, so they would then fail loudly, never pass silently.
+- **iOS mechanism**: Apple provides no public API to fold the Simulator, so fleetest sends the same undocumented hinge event as Xcode's DeviceHub. A future Xcode may stop accepting it; `fold` / `unfold` verify the switch, so they would then fail loudly, never pass silently.
 
 ### Link
 - [index](../../index.md)

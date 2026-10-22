@@ -58,11 +58,11 @@
 
 ## 通信先
 
-<img src="../../images/security/ja/network.png" width="720" alt="シナリオは localhost のサービスへ直接繋がり、Wi-Fi の iOS 実機のブリッジへは fleetest 本体の中継を通って繋がる。adb サーバと Emulator のポートは閉じている。外部へは fleetest 本体のプロキシを通り、allowedDomains の宛先だけ中継され、それ以外は 403。プロキシを通らない直接の通信は外へ出られない">
+<img src="../../images/security/ja/network.png" width="720" alt="シナリオは localhost のサービスへ直接繋がり、Wi-Fi の iOS 実機のブリッジへは fleetest 本体の中継を通って繋がる。adb サーバーと Emulator のポートは閉じている。外部へは fleetest 本体のプロキシを通り、allowedDomains の宛先だけ中継され、それ以外は 403。プロキシを通らない直接の通信は外へ出られない">
 
 | 宛先 | 可否 |
 |---|---|
-| この Mac の localhost(ブリッジなど) | 繋がります。adb サーバ(既定 5037)・Emulator のポート(5554〜5585)・TCP で公開した Docker の API(2375 / 2376)だけは閉じています |
+| この Mac の localhost(ブリッジなど) | 繋がります。adb サーバー(既定 5037)・Emulator のポート(5554〜5585)・TCP で公開した Docker の API(2375 / 2376)だけは閉じています |
 | Wi-Fi で繋いだ iOS 実機のブリッジ | この Mac の `localhost` にある fleetest 本体の中継を通って繋がります(USB のトンネルと同じ形)。中継は、そのシナリオが動いている間だけ、その実機のブリッジにだけ繋ぎます。実機以外のホストへは繋がりません |
 | `sandbox.allowedDomains` に書いた宛先 | fleetest 本体のプロキシを経由して繋がります |
 | それ以外(インターネット・社内 LAN) | 繋がりません |

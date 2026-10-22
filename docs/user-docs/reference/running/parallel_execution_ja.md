@@ -43,7 +43,7 @@ fleetest bridge down --all              # 全ブリッジ停止
   台数を増やしたときだけ赤が出るなら、減らした台数に戻します。
 - コールドブート直後の Simulator はアクセシビリティ IPC がタイムアウトしやすいです。ワーカーは
   開始時に snapshot ウォームアップを自動で行いますが、それでも落ちる場合は `bridge up` の後に
-  MCP の `ft_launch` と `ft_snapshot` でアプリを一度起動して画面を取ってから([MCP サーバ](../tools/mcp_server_ja.md)参照)実行してください。
+  MCP の `ft_launch` と `ft_snapshot` でアプリを一度起動して画面を取ってから([MCP サーバー](../tools/mcp_server_ja.md)参照)実行してください。
 
 ## Mac が混んでいるときの減速
 
@@ -86,7 +86,7 @@ fleetest bridge down --all              # 全ブリッジ停止
 `--broadcast` はシナリオを分配**しない**唯一の例外です。選んだシナリオを、分配ではなく実行
 プロファイルの**全デバイス**で1回ずつ実行します(warmup 等の用途)。`--profile` は必須で、
 `--device` で対象デバイスを絞れます(同じ名前のデバイスが複数のマシンにあるときは、`--runner` か
-`--all-machines` でどのマシンかを明示します。`--device` の名前がリモートの 1 機械だけに絞れたときは、`--runner` 無しでもその機械へ配ります。[リモート実行](../../fleet/remote_runners_ja.md)参照)。同じ `scenarioID` が台数ぶん並ぶため、結果は `worker` 欄で
+`--all-machines` でどのマシンかを明示します。`--device` の名前が 1 台のランナー機だけに絞れたときは、`--runner` 無しでもそのランナー機へ配ります。[リモート実行](../../fleet/remote_runners_ja.md)参照)。同じ `scenarioID` が台数ぶん並ぶため、結果は `worker` 欄で
 区別します([results_analysis_ja.md](./results_analysis_ja.md)参照)。
 
 ## 1台のマシンで同時に走る実行は1本

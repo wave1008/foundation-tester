@@ -1,6 +1,6 @@
 // hold 中のタイル表示は言語境界を跨ぐ文字列契約で繋がっている:
 // Swift 側(ApiMonitorCommand.swift)が detail に "held (fleetest monitor resume)" を載せ、
-// webview 側(deviceTiles.js)が接頭辞 'held' で「モニタ停止中」表示へ切り替える。
+// webview 側(deviceTiles.js)が接頭辞 'held' で「モニター停止中」表示へ切り替える。
 // 型検査が効かないので、両側の文字列の同時存在をソース走査で縛る(片方だけ変えると落ちる)。
 import { test } from "node:test";
 import assert from "node:assert/strict";

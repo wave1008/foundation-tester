@@ -270,7 +270,7 @@ export class MonitorProcessManager {
   private machineLocks: ReadonlyMap<string, MachineLock> = new Map();
   /**
    * `fleetest monitor pause` の保持中か(供給元は monitorHold イベント)。保持中は観測ごと
-   * 止まり全タイルが「モニタ停止中」になるので、占有の行から「タイルはポーリングで更新」を
+   * 止まり全タイルが「モニター停止中」になるので、占有の行から「タイルはポーリングで更新」を
    * 落とすためだけに持つ(applyMachineLock)。
    */
   private monitorHoldActive = false;
