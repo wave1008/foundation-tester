@@ -948,7 +948,8 @@ public final class BridgeClient: AppDriver, Sendable {
     }
 
     /// **測定用の保守者のスイッチ**(`=1` のときだけ)。ref の `/tap` に `probeStaleRef` を付け、XCUITest ランナーが撃つ直前に
-    /// 撮り直して古い ref を数える(1回 30〜120ms = 既定では撃たない)。シナリオの子は親の環境変数を受け継ぐ
+    /// 撮り直して古い ref を数える(1回 30〜120ms = 既定では撃たない)。シナリオの子へ届くのは `FT_` 接頭辞が
+    /// `ScenarioSandbox.inheritedEnvironmentPrefixes` の許可リストを通るから(子の環境は許可リストで絞られる)
     public static let staleTapProbeKey = "FT_STALE_TAP_PROBE"
 
     static func staleTapProbeEnabled(_ environment: [String: String]) -> Bool {

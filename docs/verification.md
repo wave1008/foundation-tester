@@ -2703,8 +2703,9 @@ viewport が画面全体になり**、「見えている」と誤判定して探
 
 **`/tap` が古い ref の座標を撃っている率は `FT_STALE_TAP_PROBE=1` で測る**(保守者の測定スイッチ。XCUITest ランナーの ref の
 `/tap` が撃つ直前に木を撮り直し、要素がもう控えた枠に居なかった回に注記 `stale-ref-at-tap`。断らずに撃つので判定は変わらず、
-タップ1回ごとに撮り直しの 30〜120ms を払う = 性能の測定と同時にしない。シナリオの子は親の環境変数を受け継ぐが、`e2ex.sh --on` の
-ssh の先へは届かないので、ランナー機で直接 `FT_STALE_TAP_PROBE=1 Scripts/e2ex.sh …` と起こす)。
+タップ1回ごとに撮り直しの費用(簡単な画面で実測 +21ms)を払い、撃つのもその分遅れる = 性能の測定と同時にしない。シナリオの子へ届くのは
+`FT_` 接頭辞が子の環境の許可リスト(`ScenarioSandbox.inheritedEnvironmentPrefixes`)を通るからで、`e2ex.sh --on` の ssh の先へは
+届かないので、ランナー機で直接 `FT_STALE_TAP_PROBE=1 Scripts/e2ex.sh …` と起こす)。
 
 **空打ちが今も要るかは `FT_EMPTY_DRAG=off` で測る**(保守者の殺しスイッチ。2026-09-12 の計測:
 止めて E2E-CMP / ios-xcuitest を3回回すと `S0080`(`selected=-`・注記 swallowed)と横向きの `S0020` が

@@ -30,6 +30,9 @@
   - E2EX-Flutter Android「スワイプで行を削除」S0010(`Dismissible`): 3/58(10/5〜)。Android の注入は終点の MOVE を UP の前に撃つので上の型とは別
   - E2EX-Flutter iOS XCUITest のグリッド S0010: 上への探索が cell_46 を見つけた後、慣性で流れ去って解決できない(1/63)
   - E2EY-RN iOS XCUITest の OTP S0020: `type "123456"` が緑なのに欄は `13456`(1/23)。読み返しの後に RN の制御入力が書き戻した疑い
+    - 同じ型の2例目(2026-10-22・M1Ultra の E2EX-RN `--ios-xcuitest`・ブリッジ v211): 検索バー S0020 で `type "banana"` が緑なのに
+      欄は `bnana`(中央の1文字が欠けた形 = 読み返しが見ていれば打ち直す形)。**type が緑のまま値が違う = 誤った緑**(後の textIs が
+      赤にした)。次に見るもの: `FT_BRIDGE_TRACE` を付けて反復し、読み返しの時点の値と、その後に値が変わった時刻を採る
 
 - **AppleAVE の一時的な失敗(-17691)が 60 秒で戻る型と、その 2〜3 分後に Compose Multiplatform の iOS アプリが白紙を描く型**
   (2026-10-18 の負荷テスト・M2 Ultra・3 回)

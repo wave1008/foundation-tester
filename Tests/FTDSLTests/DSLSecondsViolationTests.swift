@@ -142,6 +142,17 @@ final class DSLSecondsViolationTests: XCTestCase {
         XCTAssertEqual(sink.steps.last { $0.command == "doUntilTrue" }?.status, "passed")
     }
 
+    /// 間隔が waitSeconds より長くても、眠るのは waitSeconds まで(試行の回数は同じ・期限の後に1回だけ試して終わる)。
+    /// 上限が無いと 30 秒眠ってから2回目を試す = このテストは 30 秒かかって落ちる
+    func testDoUntilTrueDoesNotSleepPastTheWaitWhenItKeepsFailing() {
+        var attempts = 0
+        let start = Date()
+        _ = run { doUntilTrue("f", waitSeconds: 0.3, intervalSeconds: 30) { attempts += 1; return false } }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 10, "間隔の分だけ眠っている")
+        XCTAssertEqual(attempts, 2, "期限の後に試すのは1回だけ")
+        XCTAssertEqual(sink.steps.last { $0.command == "doUntilTrue" }?.status, "failed")
+    }
+
     /// 境界(0 と上限ちょうど)は断らない。ifCanSelect の 0 は「初回の木だけ見る」既定値そのもの
     func testBoundaryValuesAreAccepted() {
         let driver = run { ifCanSelect("#missing", waitSeconds: 0) {} }

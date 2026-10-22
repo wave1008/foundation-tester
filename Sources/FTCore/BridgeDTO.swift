@@ -1585,7 +1585,8 @@ public struct OKResponse: Codable {
     /// ホストは true で「署名が2回続けて不変」を待たずに切り上げ、false で「動いた」と数える
     /// (`AppDriver.reachedEdgeOnLastSwipe`)。旧ブリッジ・答えられない経路は nil = 従来どおりの判定
     public var atEdge: Bool?
-    /// in-app の ref タップ(`/tap` の ref 指定)だけが立てる(v159〜)。`TapHitAreaMiss` の doc
+    /// in-app の ref タップ(`/tap` の ref 指定)が立てる(v159〜)。XCUITest ランナーは `TapRequest.probeStaleRef` の
+    /// 測定のときだけ `.movedBeforeFire` を立てる(v211〜)。`TapHitAreaMiss` の doc
     public var hitAreaMiss: TapHitAreaMiss?
     public init(ok: Bool = true, note: String? = nil, atEdge: Bool? = nil, hitAreaMiss: TapHitAreaMiss? = nil) {
         self.ok = ok
@@ -1595,6 +1596,7 @@ public struct OKResponse: Codable {
     }
 }
 
+/// **3つ目の種類 `.movedBeforeFire` は別系統**(XCUITest ランナーの測定用。種類の doc)。以下は in-app の2つ:
 /// in-app が ref タップで要素を直接撃ったとき(accessibilityActivate、または activate 不発の合成タッチ ——
 /// **合成タッチは要素が載っている窓へ直接送るので、手前の窓(inputAccessoryView 等)を素通りする**)、
 /// **撃った点(activate なら枠の中心 = 座標タップ・XCUITest が押す点)で本物のタッチを受ける view が、

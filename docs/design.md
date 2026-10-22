@@ -412,7 +412,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 | `GET  /status` | ランナー生存確認・シミュレータ情報。inapp は `applicationState`(active/inactive/background)も返す(背面 suspend 診断用・追加 optional・旧ブリッジは返さず nil) |
 | `POST /session` | `{bundleID}` → `XCUIApplication(bundleIdentifier:).launch()` |
 | `GET  /snapshot` | アクセシビリティツリーを圧縮 JSON で返す(4.4) |
-| `POST /tap` | `{ref}` または `{x,y}`。ref を撃つ要求(`/tap` `/press` `/type` `/clear`)は任意で `expect: {identifier?, type}` を添えられる(下の `stale-ref`) |
+| `POST /tap` | `{ref}` または `{x,y}`。ref を撃つ要求(`/tap` `/press` `/type` `/clear`)は任意で `expect: {identifier?, type}` を添えられる(下の `stale-ref`)。**測定用の `probeStaleRef: true`**(v211〜・XCUITest ランナーだけが見る・ホストは `FT_STALE_TAP_PROBE=1` のときだけ送る)を添えると、撃つ直前に木を1回撮り直し(撃つのがその分 約 20〜120ms 遅れる)、ref の要素がもう控えた枠に居なければ応答の `hitAreaMiss.kind` に `movedBeforeFire` を載せる。**断らずに撃つ** |
 | `POST /type` | `{ref, text}`(tap → typeText)。ref 経路は打つ前のタップの直前に木を1回撮り直し(`app.snapshot()`・ライブクエリなし)、ref の要素が同じ枠に居なければ撃たずに断る |
 | `POST /swipe` | `{direction}` or `{fromRef, direction}`。用途つきの任意項目あり(下記「スクロールの語彙」) |
 | `POST /press` | `{ref, duration}` または `{x, y, duration}` 長押し |

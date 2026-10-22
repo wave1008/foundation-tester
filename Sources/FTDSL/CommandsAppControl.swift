@@ -912,13 +912,14 @@ public func doUntilTrue(_ title: String, waitSeconds: Double? = nil, intervalSec
     let waitSeconds = waitSeconds ?? core.tunables.doUntilTrueTimeout
     let intervalSeconds = intervalSeconds ?? core.tunables.doUntilTrueInterval
     let maxLoopCount = maxLoopCount ?? core.tunables.doUntilTrueMaxLoopCount
-    // 間隔は断らずに丸める(負値・NaN・無限大は 0、上限は waitSecondsCeiling = 桁外れの有限値も IdleAllowance の
-    // Int(秒 * 1000) で trap させない。CommandDispatchTests.testNegativeIntervalDoesNotCrashTheProcess の契約)
-    let pause = intervalSeconds.isFinite ? min(max(0, intervalSeconds), ArgumentBounds.waitSecondsCeiling) : 0
     if rejectsOutOfRangeSeconds(core, ["waitSeconds": waitSeconds],
                                 description: description, command: "doUntilTrue", file: file, line: line) {
         return
     }
+    // 間隔は断らずに丸める(負値・NaN・無限大は 0 = CommandDispatchTests.testNegativeIntervalDoesNotCrashTheProcess の契約)。
+    // 上限は waitSeconds: 期限を過ぎた後に試すのは1回だけなので、それ以上眠っても試行の回数は変わらず終わりが遅れるだけ
+    // (桁外れの有限値で Thread.sleep が戻らない・IdleAllowance の Int(秒 * 1000) が trap する形も消える)
+    let pause = intervalSeconds.isFinite ? min(max(0, intervalSeconds), waitSeconds) : 0
     let clock = ContinuousClock()
     let start = clock.now
     var deadline = Date().addingTimeInterval(waitSeconds)
