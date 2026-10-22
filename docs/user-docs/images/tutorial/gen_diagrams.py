@@ -102,9 +102,10 @@ def parallel(t):
     b+=f'<text x="520" y="285" text-anchor="middle" font-size="14" fill="{C["ink"]}">{t["par_q"]}</text>'
     b+=f'<text x="520" y="308" text-anchor="middle" font-size="14" fill="{C["sub"]}">{t["par_note"]}</text>'
     for i in range(6): b+=arrow(232,84+i*48,386,195)
-    devs=[("iPhone 17 Pro",["S0010","S0040"]),("iPhone 17 Pro-01",["S0020","S0050"]),("iPhone 17 Pro-02",["S0030","S0060"])]
+    # チュートリアルの「デバイスを用意する」で ios-run を2台にする流れに合わせる
+    devs=[("iPhone 17-01",["S0010","S0030","S0050"]),("iPhone 17-02",["S0020","S0040","S0060"])]
     for i,(d,ss) in enumerate(devs):
-        y=70+i*100
+        y=110+i*110
         b+=box(820,y,230,80,C["devBg"],C["dev"],d,", ".join(ss),ts=16)
         b+=arrow(652,195,816,y+40)
     return svg(W,H,b)
@@ -116,7 +117,9 @@ def render(name,lang,svgtext,w,h):
     out=f"{OUT}/{lang}/{name}.png"
     subprocess.run([CHROME,"--headless=new","--disable-gpu","--hide-scrollbars","--force-device-scale-factor=2",f"--window-size={w},{h}",f"--screenshot={out}",f"file://{p}"],check=True,capture_output=True)
     print(out)
+# 引数で図の名前を渡すとその図だけ作り直す(省略で全部。作り直すとフォントの描画差で無変更の図も差分になる)
+only=set(sys.argv[1:])
 for lang,t in T.items():
-    render("how_it_works",lang,overview(t),1200,520)
-    render("ai_workflow",lang,steps(t),1100,200)
-    render("parallel_run",lang,parallel(t),1100,380)
+    for name,fn,w,h in [("how_it_works",overview,1200,520),("ai_workflow",steps,1100,200),("parallel_run",parallel,1100,380)]:
+        if not only or name in only:
+            render(name,lang,fn(t),w,h)
