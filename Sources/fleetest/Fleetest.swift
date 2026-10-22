@@ -228,7 +228,7 @@ struct DriverOptions: ParsableArguments {
 struct RunScenarios: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "run",
-        abstract: "Run Swift DSL scenarios (TestProjects/<name>/scenarios/). FM only steps in on failure")
+        abstract: "Run Swift DSL scenarios (TestProjects/<name>/scenarios/)")
 
     /// 中断した run の要約行の但し書き。始まらなかった分も失敗数に入る(RunRecorder.recordInterruptedBeforeStart
     /// = exit を非ゼロにするため)ので、言わないと「16 of 16 failed」が1本も走っていない run に付く
@@ -318,7 +318,7 @@ struct RunScenarios: AsyncParsableCommand {
     var remoteDir: String?
 
     @Option(name: .customLong("remote-timeout"),
-            help: "Timeout in seconds for the whole remote dispatch (default: auto, sized from the scenario count; see docs/remote-runner.md)")
+            help: "Timeout in seconds for the whole remote dispatch (default: auto, sized from the scenario count; see docs/user-docs/fleet/remote_runners.md)")
     var remoteTimeout: Int?
 
     @Flag(name: .customLong("performance"),
@@ -326,14 +326,14 @@ struct RunScenarios: AsyncParsableCommand {
     var performanceMode = false
 
     @Option(help: ArgumentHelp("Dispatch this run across a fleet of hosts in parallel: "
-        + "profiles/fleets/<name>.json (docs/remote-runner.md §13). Each entry runs as its own "
+        + "profiles/fleets/<name>.json. Each entry runs as its own "
         + "child process, with output lines prefixed by the entry's host name. Mutually exclusive "
         + "with --runner/--profile/--port/--failed/--report-dir/--skip-build. --junit is supported: "
-        + "each entry's report is merged into one file (docs/remote-runner.md §8). Experimental"))
+        + "each entry's report is merged into one file. Experimental"))
     var fleet: String?
 
     @Flag(help: ArgumentHelp("With --fleet: distribute the scenario set across the fleet's entries "
-        + "(LPT bin packing by past duration; docs/remote-runner.md §8) instead of running the same "
+        + "(LPT bin packing by past duration) instead of running the same "
         + "set on every entry. Requires a local build+scenario list to resolve the assignment "
         + "(skipped by plain --fleet), and resolves each entry's platform from its run profile's "
         + "devices. Entries assigned 0 scenarios are not dispatched. Experimental"))
@@ -341,12 +341,12 @@ struct RunScenarios: AsyncParsableCommand {
 
     @Flag(name: .customLong("force-lock"),
           help: ArgumentHelp("Steal the dispatch.lock (this Mac's or a remote host's) instead of failing fast when another dispatch "
-            + "already holds it (docs/remote-runner.md §5). Needs a run profile, --runner or --fleet"))
+            + "already holds it (docs/user-docs/fleet/remote_runners.md). Needs a run profile, --runner or --fleet"))
     var forceLock = false
 
     @Option(name: .customLong("wait-lock"),
             help: ArgumentHelp("Instead of failing fast, poll until the dispatch.lock (this Mac's or a remote host's) is released, "
-              + "up to this many seconds (docs/remote-runner.md §5). Cannot be combined with --force-lock"))
+              + "up to this many seconds (docs/user-docs/fleet/remote_runners.md). Cannot be combined with --force-lock"))
     var waitLock: Int?
 
     /// ブロードキャスト実行。warmup のように「全デバイスがそれぞれ準備される」
@@ -364,8 +364,7 @@ struct RunScenarios: AsyncParsableCommand {
     @Option(name: .customLong("device"), parsing: .upToNextOption,
             help: ArgumentHelp("Run on only these devices of the run profile (device names as written in "
                 + "the run profile). Repeatable; defaults to every device the run profile lists. "
-                + "Used by the per-host sub-runs when one run profile spans devices on several machines "
-                + "(docs/remote-runner.md §13)"))
+                + "Used by the per-host sub-runs when one run profile spans devices on several machines"))
     var devices: [String] = []
 
     /// **どの機械のデバイスを使うか**。`--device` は名前でしか絞れないが、一意なのは (host, name)

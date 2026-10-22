@@ -13,7 +13,7 @@ import FTServices
 struct ServicesCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "services",
-        abstract: "Start, stop, inspect or reset the services a workspace declares in scripts/compose.yaml (docs/remote-runner.md §17)",
+        abstract: "Start, stop, inspect or reset the services a workspace declares in scripts/compose.yaml (docs/user-docs/reference/writing/services.md)",
         subcommands: [Up.self, Down.self, Status.self, Pull.self, Load.self, Reset.self])
 
     struct Target {

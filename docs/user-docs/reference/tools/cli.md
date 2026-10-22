@@ -51,7 +51,7 @@ The settings of a run profile are in [Run profile settings](../project/run_profi
 
 | Command | Description | Main options | Details |
 |---|---|---|---|
-| `run` | Run Swift DSL scenarios (FM only steps in on failure) | `--profile`, `--scenario`, `--folder`, `--failed`, `--dry-run`, `--set`, `--junit`, `--runner`, `--fleet` | [Running scenarios](../running/running_scenarios.md) |
+| `run` | Run Swift DSL scenarios | `--profile`, `--scenario`, `--folder`, `--failed`, `--dry-run`, `--set`, `--junit`, `--runner`, `--fleet` | [Running scenarios](../running/running_scenarios.md) |
 | `run-file <file>` | Run an unregistered `.swift` scenario as-is (profiles are borrowed from an existing project) | `--project`, `--profile`, `--scenario` | [Running scenarios](../running/running_scenarios.md) |
 | `draft-scenario` | Generate a scenario draft from a test base (`docs/testbases/*.md`) | `--testbase`, `--name`, `--no-fm`, `--dry-run` | [Test bases and scenario drafts](../running/testbases.md) |
 | `results list` | List runs, newest first | `--since`, `--limit`, `--json` | [Analysing results](../running/results_analysis.md) |

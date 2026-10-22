@@ -11,7 +11,7 @@ import FTCore
 struct HooksCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "hooks",
-        abstract: "Maintenance for the run profile's setup/teardown scripts (docs/remote-runner.md §17)",
+        abstract: "Maintenance for the run profile's setup/teardown scripts",
         subcommands: [Reap.self])
 
     struct Reap: AsyncParsableCommand {

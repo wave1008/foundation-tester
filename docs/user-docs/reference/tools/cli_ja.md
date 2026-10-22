@@ -51,7 +51,7 @@ foundation-tester のクローン内で作業している場合は `swift run fl
 
 | コマンド | 説明 | 主なオプション | 詳細 |
 |---|---|---|---|
-| `run` | Swift DSL のシナリオを実行する(FM は失敗時にしか出ない) | `--profile`・`--scenario`・`--folder`・`--failed`・`--dry-run`・`--set`・`--junit`・`--runner`・`--fleet` | [シナリオの実行](../running/running_scenarios_ja.md) |
+| `run` | Swift DSL のシナリオを実行する | `--profile`・`--scenario`・`--folder`・`--failed`・`--dry-run`・`--set`・`--junit`・`--runner`・`--fleet` | [シナリオの実行](../running/running_scenarios_ja.md) |
 | `run-file <ファイル>` | 登録していない `.swift` のシナリオをそのまま実行する(プロファイルは既存のプロジェクトから借りる) | `--project`・`--profile`・`--scenario` | [シナリオの実行](../running/running_scenarios_ja.md) |
 | `draft-scenario` | テストベース(`docs/testbases/*.md`)からシナリオの下書きを作る | `--testbase`・`--name`・`--no-fm`・`--dry-run` | [テストベースとシナリオの下書き](../running/testbases_ja.md) |
 | `results list` | run を新しい順に一覧する | `--since`・`--limit`・`--json` | [結果の分析](../running/results_analysis_ja.md) |

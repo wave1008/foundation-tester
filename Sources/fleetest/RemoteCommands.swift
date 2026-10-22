@@ -22,7 +22,7 @@ struct RemoteCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "remote",
         abstract: "Fleet operations for --runner dispatch: provision, diagnose, clean up and query remote runners "
-            + "(docs/remote-runner.md §14/§16.4/§16.5)",
+            + "(docs/user-docs/fleet/remote_runners.md)",
         subcommands: [Status.self, Clean.self, Unlock.self, Setup.self, Teardown.self, Align.self, Exec.self, Machines.self])
 
     // MARK: - status
