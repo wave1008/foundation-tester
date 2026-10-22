@@ -323,11 +323,16 @@ def check(command, env=None, full_ok=None, depth=0, cwd=None):
             if "--help" in words or "-h" in words:
                 continue
             value = option_value(words, "--filter")
+            if value is not None:
+                value = expand(value, env)  # 同じコマンドの `T=Class; swift test --filter $T` を通す
             if value is None:
                 if not full_ok:
                     reasons.append("swift test に --filter が無い(全体)。全体テストは作業の区切りにユーザーが回す運用 ——"
                                    "変更が通るテストクラスを --filter '<Class>|<Class>' で名指しする"
                                    "(ユーザーが全体テストを頼んだときだけ FT_FULL_TEST=1 を書く)")
+            elif "$" in value:
+                reasons.append(f"--filter の値に展開できない変数がある({value})。フックは同じコマンドの代入しか読めないので、"
+                               "同じコマンドで代入するかクラス名を直接書く")
             else:
                 bad = filter_problems(value, classes_here())
                 if bad:
