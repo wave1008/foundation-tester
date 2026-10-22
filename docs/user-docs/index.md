@@ -24,6 +24,7 @@ then continue with the [Tutorial](#tutorial).
 - [Asking the AI assistant](tutorial/asking_ai.md)
 - [Preparing the app and devices](tutorial/preparing_app_and_devices.md)
 - [Preparing the servers your app depends on](tutorial/preparing_app_server.md)
+- [Testing an app that needs a login](tutorial/logging_in.md)
 - [Creating tests](tutorial/creating_tests.md)
 - [Running tests](tutorial/running_tests.md)
 - [Running smoke and regression separately](tutorial/smoke_and_regression.md)

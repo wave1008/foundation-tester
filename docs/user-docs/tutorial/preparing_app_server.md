@@ -147,7 +147,7 @@ Things you write yourself (do not have the AI assistant write them):
 
 Related: [Services the app depends on](../reference/writing/services.md) / [Network access from scenarios](../reference/writing/network_access.md) / [Extending](../reference/writing/extending.md)
 
-Next: [Creating tests](creating_tests.md)
+Next: [Testing an app that needs a login](logging_in.md)
 
 ### Link
 - [index](../index.md)

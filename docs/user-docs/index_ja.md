@@ -23,6 +23,7 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 - [AIアシスタントへの指示の仕方](tutorial/asking_ai_ja.md)
 - [アプリとデバイスを用意する](tutorial/preparing_app_and_devices_ja.md)
 - [アプリが依存するサーバーを用意する](tutorial/preparing_app_server_ja.md)
+- [ログインが必要なアプリをテストする](tutorial/logging_in_ja.md)
 - [テストを作る](tutorial/creating_tests_ja.md)
 - [テストを実行する](tutorial/running_tests_ja.md)
 - [スモークと回帰を分けて回す](tutorial/smoke_and_regression_ja.md)
