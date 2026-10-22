@@ -13,9 +13,10 @@ This suits your first test. It creates one test for the normal flow only (add er
 ```text
 In the fleetest test project project1, create one happy-path test (the normal flow) for SUT Store.
 Search for a product on the search screen (narrowing by category is fine), open it, add it to the cart, and check that the product is in the cart. No login is needed.
+When it is ready, run it on iOS (ios-run) to confirm.
 ```
 
-At the end of the work it runs the compile, the verification without a device (dry-run) and a run on a device, and reports the result.
+The AI assistant compiles it, verifies it without a device (dry-run), runs it on a device, and reports the result.
 
 <img src="../images/tutorial/en/ai_workflow.png" width="720" alt="Operate and read the screen, write the scenario, compile, dry-run, run on a device, report the result">
 
@@ -25,7 +26,7 @@ At the end of the work it runs the compile, the verification without a device (d
 
 ```text
 In the fleetest test project project1, add a case to the SUT Store happy-path test: without logging in, set the quantity to 3 in the product details and add it to the cart.
-Check that the total in the cart is three times the unit price.
+Check that the quantity of that product in the cart is 3. When it is ready, run it on iOS (ios-run) to confirm.
 ```
 
 If the behavior you ask for is not in the app, the AI assistant reports the actual behavior and leaves the decision of whether that matches the specification to you.
