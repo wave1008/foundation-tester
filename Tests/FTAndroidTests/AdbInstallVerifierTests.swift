@@ -166,10 +166,10 @@ final class AdbInstallVerifierTests: XCTestCase {
     }
 
     /// 配線の固定: プロファイルの `playProtectBypass` を環境変数へ渡す4経路(run / api run / MCP の
-    /// profile 解決 / ProfileRunner)がどれも `FTCore.RunEnvironment.apply` を通る(キルスイッチを
+    /// profile 解決 / ProfileRunner の供給の段 = ProfileRunner+Supply)がどれも `FTCore.RunEnvironment.apply` を通る(キルスイッチを
     /// "0" で書くのはそちらの1箇所。`RunEnvironmentTests` が固定)。**素の setenv に戻さない**
     func testEveryProfileEntryPointInjectsTheKillSwitch() throws {
-        for file in ["fleetest/ProfileRunner.swift", "fleetest/ApiRunCommand.swift",
+        for file in ["fleetest/ProfileRunner+Supply.swift", "fleetest/ApiRunCommand.swift",
                      "fleetest/Fleetest.swift", "fleetest-mcp/MCPServer+Dispatch.swift"] {
             let source = try String(contentsOf: sourcesRoot.appendingPathComponent(file), encoding: .utf8)
             XCTAssertTrue(source.contains("RunEnvironment.apply("),

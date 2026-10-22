@@ -343,6 +343,8 @@ public final class AndroidDriver: AppDriver {
     /// 入れ直しが失敗しても note は付く(消した事実は変わらない)ので、呼び手は result の成否と別に扱う
     /// 子のサンドボックスからも通る形だけを撃つ(`uninstall <pkg>` / `install <apk>` / debuggable プローブ = AdbPolicy 許可済み)
     func reinstallAfterSignatureMismatch(packagePath: String, apkPackageName: String?) throws -> (result: Shell.Result, note: String) {
+        // uninstall / install は期限なし = 撃つ関数の入口で端末が答えるか確かめる(AndroidDeviceAnswerTimeoutScanTests)
+        try requireDeviceAnswers()
         let who = serial ?? "?"
         let package = apkPackageName.flatMap { AndroidPackageName.isShellSafe($0) ? $0 : nil }
         var debuggable: Bool?
