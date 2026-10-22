@@ -318,7 +318,7 @@ public final class AppAttachDriver: AppDriver {
     }
 
     // ライフサイクル・install/uninstall はアプリ本体(primary=in-app)が担う。attach 用では no-op。
-    public func install(packagePath: String) async throws {}
+    public func install(packagePath: String) async throws -> String? { nil }
     public func uninstall(bundleID: String) async throws {}
     public func launch(bundleID: String) async throws {}
     /// セッションを持つのは XCUITest 側だけなので、ここは素通しする(no-op にしない)

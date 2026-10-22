@@ -195,7 +195,7 @@ public final class SystemUIDriver: AppDriver {
     public func status() async throws -> StatusResponse { try await client.status() }
 
     // ライフサイクル・install/uninstall はアプリ本体(primary=in-app)が担う。フォールバックでは no-op。
-    public func install(packagePath: String) async throws {}
+    public func install(packagePath: String) async throws -> String? { nil }
     public func uninstall(bundleID: String) async throws {}
     public func launch(bundleID: String) async throws {}
     public func terminate() async throws {}

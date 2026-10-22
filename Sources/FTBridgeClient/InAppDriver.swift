@@ -62,7 +62,8 @@ public final class InAppDriver: AppDriver {
     // 以下は in-app ブリッジへ HTTP 委譲(XCUITest と同一プロトコル)
 
     public func status() async throws -> StatusResponse { try await withCrashContext { try await client.status() } }
-    public func install(packagePath: String) async throws {
+    @discardableResult
+    public func install(packagePath: String) async throws -> String? {
         try await withCrashContext { try await client.install(packagePath: packagePath) }
     }
     public func uninstall(bundleID: String) async throws {

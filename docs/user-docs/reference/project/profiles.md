@@ -30,7 +30,7 @@ combined by reference rather than by inheritance:
   (each one is reported as a warning; the run profile's JSON is not changed). A run whose devices are
   all ignored fails with an error naming the app profile.
 - `autoInstall` is a top-level key (default: whether `appPath` or `appPathPhysical` is
-  set — write `false` explicitly to opt out even with a path present).
+  set — write `false` explicitly to opt out even with a path present). On Android, if the device already has the same package signed with a different key, fleetest uninstalls it and reinstalls only on an Emulator or when the installed one is a debuggable build (this deletes the app's data); otherwise (a store/release install on a physical device, or when fleetest cannot tell) it stops and tells you the `adb uninstall` command to run yourself.
 - `appName` (display name), `app` (bundle ID / package) and `appPath` are only read from the
   `ios`/`android` sections, so the display name can differ per OS.
 - `appName` must be exactly the name shown under the app icon on the home screen: `tapAppIcon()`

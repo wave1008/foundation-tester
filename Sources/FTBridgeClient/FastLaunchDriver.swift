@@ -108,7 +108,8 @@ public final class FastLaunchDriver: AppDriver {
     }
 
     public func status() async throws -> StatusResponse { try await base.status() }
-    public func install(packagePath: String) async throws { try await base.install(packagePath: packagePath) }
+    @discardableResult
+    public func install(packagePath: String) async throws -> String? { try await base.install(packagePath: packagePath) }
     public func uninstall(bundleID: String) async throws { try await base.uninstall(bundleID: bundleID) }
     public func clearAppData(bundleID: String) async throws { try await base.clearAppData(bundleID: bundleID) }
     public func openURL(_ url: String, bundleID: String?) async throws {

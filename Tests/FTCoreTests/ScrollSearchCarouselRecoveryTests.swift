@@ -18,7 +18,7 @@ private final class CarouselDriver: AppDriver {
     func status() async throws -> StatusResponse {
         StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
     }
-    func install(packagePath: String) async throws {}
+    func install(packagePath: String) async throws -> String? { nil }
     func uninstall(bundleID: String) async throws {}
     func launch(bundleID: String) async throws {}
     func isAppForeground(bundleID: String) async throws -> Bool { true }
@@ -70,7 +70,7 @@ private final class NoDragPrimary: AppDriver {
     private(set) var dragAttempts = 0
     init(inner: CarouselDriver) { self.inner = inner }
     func status() async throws -> StatusResponse { try await inner.status() }
-    func install(packagePath: String) async throws {}
+    func install(packagePath: String) async throws -> String? { nil }
     func uninstall(bundleID: String) async throws {}
     func launch(bundleID: String) async throws {}
     func isAppForeground(bundleID: String) async throws -> Bool { true }

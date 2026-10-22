@@ -221,7 +221,7 @@ final class DisplayFreezeWatchTests: XCTestCase {
 /// 撮影・home を呼ばれない前提のドライバ(テストは閉包で差し替える。呼ばれたら 501)
 private struct StubDriver: AppDriver {
     func status() async throws -> StatusResponse { throw DriverError.badResponse(status: 501, body: "stub") }
-    func install(packagePath: String) async throws {}
+    func install(packagePath: String) async throws -> String? { nil }
     func uninstall(bundleID: String) async throws {}
     func launch(bundleID: String) async throws {}
     func isAppForeground(bundleID: String) async throws -> Bool { false }

@@ -86,7 +86,7 @@ final class DefaultClassifierTests: XCTestCase {
         func status() async throws -> StatusResponse {
             StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
         }
-        func install(packagePath: String) async throws {}
+        func install(packagePath: String) async throws -> String? { nil }
         func uninstall(bundleID: String) async throws {}
         func isAppForeground(bundleID: String) async throws -> Bool { false }
         func foregroundAppID() async throws -> String? { nil }

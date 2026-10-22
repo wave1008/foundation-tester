@@ -38,7 +38,7 @@ final class VideoRecordingCoordinatorTests: XCTestCase {
 private struct UnusedDriver: AppDriver {
     struct Unused: Error {}
     func status() async throws -> StatusResponse { throw Unused() }
-    func install(packagePath: String) async throws { throw Unused() }
+    func install(packagePath: String) async throws -> String? { throw Unused() }
     func uninstall(bundleID: String) async throws { throw Unused() }
     func launch(bundleID: String) async throws { throw Unused() }
     func snapshot() async throws -> SnapshotResponse { throw Unused() }

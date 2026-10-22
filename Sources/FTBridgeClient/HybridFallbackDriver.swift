@@ -350,7 +350,8 @@ public final class HybridFallbackDriver: AppDriver {
         return true
     }
     public func terminate() async throws { try await primary.terminate() }
-    public func install(packagePath: String) async throws {
+    @discardableResult
+    public func install(packagePath: String) async throws -> String? {
         try await primary.install(packagePath: packagePath)
     }
     public func uninstall(bundleID: String) async throws {

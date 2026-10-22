@@ -70,6 +70,17 @@ final class MCPClearAppDataPhysicalTests: XCTestCase {
         XCTAssertNil(server.launchedBundleIDs[key])
     }
 
+    /// install が返した通知(署名違いの入れ直し等)は ft_install の応答に載る。無いときは載らない
+    func testFtInstallResponseCarriesTheDriversNote() async throws {
+        let plain = try await server.call(tool: "ft_install", args: ["packagePath": appA!])
+        XCTAssertEqual(plain.first?["text"] as? String, "Installed: \(appA!)")
+
+        driver.installNote = "⚠️ emulator-5554: com.example.app was reinstalled; the app's data on this device was deleted"
+        let noted = try await server.call(tool: "ft_install", args: ["packagePath": appA!])
+        let text = try XCTUnwrap(noted.first?["text"] as? String)
+        XCTAssertTrue(text.contains("was reinstalled; the app's data on this device was deleted"), text)
+    }
+
     /// 明示 `packagePath` は事前の ft_install が無くても使える
     func testExplicitPackagePathIsUsedWithoutAPriorInstall() async throws {
         driver.clearAppDataError = Self.physicalOnly501

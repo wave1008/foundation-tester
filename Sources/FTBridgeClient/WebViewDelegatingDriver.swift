@@ -364,7 +364,8 @@ public final class WebViewDelegatingDriver: AppDriver {
         resetDelegation()
         try await primary.terminate()
     }
-    public func install(packagePath: String) async throws {
+    @discardableResult
+    public func install(packagePath: String) async throws -> String? {
         try await primary.install(packagePath: packagePath)
     }
     public func uninstall(bundleID: String) async throws {

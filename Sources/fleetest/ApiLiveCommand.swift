@@ -1152,7 +1152,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                 logStderr("→ install: skipped (contents identical to the installed app): \(bundleID)")
                 return
             }
-            try await driver.install(packagePath: path)
+            if let note = try await driver.install(packagePath: path) { logStderr(note) }
             if driverOptions.resolvedPlatform == "ios", let udid,
                let bundleID = Self.bundleID(inAppBundle: path) {
                 InstalledAppCheck.recordInstalled(udid: udid, bundleID: bundleID, appPath: path)

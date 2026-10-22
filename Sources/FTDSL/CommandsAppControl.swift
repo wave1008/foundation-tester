@@ -93,7 +93,7 @@ public func clearAppData(_ appID: String? = nil,
             ) {
             case .usable(let path):
                 try await driver.uninstall(bundleID: bundle)
-                try await driver.install(packagePath: path)
+                if let note = try await driver.install(packagePath: path) { core.emit(.log("⚠️ \(note)")) }
                 outcome.viaReinstall = true
             case .unknown:
                 throw FTCommandError.message(
@@ -162,7 +162,7 @@ public func installApp(_ appPackageFile: String? = nil,
         guard FileManager.default.fileExists(atPath: expanded) else {
             throw FTCommandError.message("installApp: package not found at \(expanded)")
         }
-        try await driver.install(packagePath: expanded)
+        if let note = try await driver.install(packagePath: expanded) { core.emit(.log("⚠️ \(note)")) }
     }
 }
 

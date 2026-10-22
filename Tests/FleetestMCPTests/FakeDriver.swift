@@ -54,8 +54,12 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         return statusResponse
     }
 
-    func install(packagePath: String) async throws {
+    /// 非 nil にすると install がその1行を返す(ft_install の応答に載ることの確認用)
+    var installNote: String?
+
+    func install(packagePath: String) async throws -> String? {
         try record("install(\(packagePath))", "install")
+        return installNote
     }
 
     func uninstall(bundleID: String) async throws {

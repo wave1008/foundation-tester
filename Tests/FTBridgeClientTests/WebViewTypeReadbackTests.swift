@@ -35,7 +35,7 @@ private final class DOMPrimaryDriver: AppDriver, @unchecked Sendable {
     func status() async throws -> StatusResponse {
         StatusResponse(ready: true, device: "d", osVersion: "-", sessionBundleID: nil)
     }
-    func install(packagePath: String) async throws {}
+    func install(packagePath: String) async throws -> String? { nil }
     func uninstall(bundleID: String) async throws {}
     func isAppForeground(bundleID: String) async throws -> Bool { false }
     func foregroundAppID() async throws -> String? { nil }
@@ -67,7 +67,7 @@ private final class DelegatedDriver: AppDriver, @unchecked Sendable {
     func status() async throws -> StatusResponse {
         StatusResponse(ready: true, device: "d", osVersion: "-", sessionBundleID: nil)
     }
-    func install(packagePath: String) async throws {}
+    func install(packagePath: String) async throws -> String? { nil }
     func uninstall(bundleID: String) async throws {}
     func isAppForeground(bundleID: String) async throws -> Bool { false }
     func foregroundAppID() async throws -> String? { nil }

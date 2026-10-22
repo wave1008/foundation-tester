@@ -30,7 +30,7 @@ private final class FakeDriver: AppDriver, @unchecked Sendable {
         calls.append("status")
         return StatusResponse(ready: true, device: "fake", osVersion: "", sessionBundleID: nil)
     }
-    func install(packagePath: String) async throws { calls.append("install") }
+    func install(packagePath: String) async throws -> String? { calls.append("install"); return nil }
     func uninstall(bundleID: String) async throws { calls.append("uninstall") }
     func isAppForeground(bundleID: String) async throws -> Bool {
         calls.append("isAppForeground(\(bundleID))")

@@ -31,7 +31,7 @@ final class CommandDispatchTests: XCTestCase {
         func status() async throws -> StatusResponse {
             StatusResponse(ready: true, device: "stub", osVersion: "-", sessionBundleID: nil)
         }
-        func install(packagePath: String) async throws { installedPaths.append(packagePath) }
+        func install(packagePath: String) async throws -> String? { installedPaths.append(packagePath); return nil }
         func uninstall(bundleID: String) async throws { uninstalledIDs.append(bundleID) }
         func isAppForeground(bundleID: String) async throws -> Bool {
             isAppForegroundQueried.append(bundleID)
@@ -1285,7 +1285,7 @@ final class CommandDispatchTests: XCTestCase {
         func status() async throws -> StatusResponse {
             StatusResponse(ready: true, device: "stub", osVersion: "-", sessionBundleID: nil)
         }
-        func install(packagePath: String) async throws {}
+        func install(packagePath: String) async throws -> String? { nil }
         func uninstall(bundleID: String) async throws {}
         // アイコンを押したらアプリが前面になる(tapAppIcon は押した後に前面を確かめる)
         func isAppForeground(bundleID: String) async throws -> Bool { !tappedRefs.isEmpty }

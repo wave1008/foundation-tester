@@ -52,8 +52,12 @@ public enum HitTestAnswer: Sendable, Equatable {
 
 public protocol AppDriver {
     func status() async throws -> StatusResponse
-    /// パッケージファイル(iOS: .app バンドル / Android: .apk / .apks)からアプリをインストールする
-    func install(packagePath: String) async throws
+    /// パッケージファイル(iOS: .app バンドル / Android: .apk / .apks)からアプリをインストールする。
+    /// 戻り値 = 単純なインストール以上のことをしたとき(今は署名違いのアンインストール→入れ直し)に
+    /// 呼び手が利用者へ見せる1行。無ければ nil。**ラッパーは内側の戻り値をそのまま返す**
+    /// (握りつぶすと MCP の応答・run のログに載らず、データが消えたことを呼び手が知れない)
+    @discardableResult
+    func install(packagePath: String) async throws -> String?
     /// アプリをアンインストールする(DSL の removeApp)。**プロトコル要件として宣言すること**
     /// (install(packagePath:) と同じ理由。extension だけに置くと存在型越しの呼び出しが
     /// 静的ディスパッチで既定実装に落ち、ドライバ側の実装が呼ばれないまま黙って無視される)

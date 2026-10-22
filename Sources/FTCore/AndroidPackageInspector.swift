@@ -45,6 +45,13 @@ public enum AndroidPackageInspector {
         reader.contents("AndroidManifest.xml").flatMap(manifestPackage(axml:))
     }
 
+    /// .apk のパッケージ名。.apk 以外(.apks 等)・開けない・読めないは nil
+    public static func packageName(apkPath: String) -> String? {
+        guard (apkPath as NSString).pathExtension.lowercased() == "apk",
+              let reader = AppPackageReader.open(path: apkPath) else { return nil }
+        return packageName(in: reader)
+    }
+
     /// バイナリ XML(ResXMLTree)から、最初の要素 `manifest` の属性 `package` の値を読む純粋関数。
     /// 構造: ResChunk_header(type u16, headerSize u16, size u32)の連なり。文字列は ResStringPool
     /// (flags の 0x100 = UTF-8、無ければ UTF-16LE)、要素は RES_XML_START_ELEMENT(0x0102)の属性表

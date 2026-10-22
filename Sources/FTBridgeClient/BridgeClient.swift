@@ -472,7 +472,8 @@ public final class BridgeClient: AppDriver, Sendable {
     /// シミュレータの対象特定は /status のデバイス名から行う。同名デバイス(Shutdown の複製等)が
     /// あると名前指定 simctl は失敗するため、Booted かつ同名の UDID に解決してから実行する
     /// (解決不能時は名前のまま試す)。
-    public func install(packagePath: String) async throws {
+    @discardableResult
+    public func install(packagePath: String) async throws -> String? {
         if case .physical(let udid) = try await installTarget() {
             let result = try Shell.run(
                 ["xcrun", "devicectl", "device", "install", "app",
@@ -482,7 +483,7 @@ public final class BridgeClient: AppDriver, Sendable {
                     body: "devicectl device install app failed"
                         + " (check that the .app/.ipa is signed and the device is connected): \(result.tail)")
             }
-            return
+            return nil
         }
         let target = try await simctlTarget("install")
         let result = try Shell.run(["xcrun", "simctl", "install", target, packagePath])
@@ -490,6 +491,7 @@ public final class BridgeClient: AppDriver, Sendable {
             throw DriverError.badResponse(status: Int(result.status),
                 body: "simctl install failed: \(result.tail)")
         }
+        return nil
     }
 
     /// uninstall は install と対で HTTP エンドポイントを持たず simctl / devicectl の役割。

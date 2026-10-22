@@ -1222,7 +1222,8 @@ public enum ProfileWorkerFactory {
                     }
                     supplyStage?(worker.logicalName ?? worker.label, worker.platform, .installing)
                     do {
-                        try await installOne(worker: worker, bundleID: app.bundleID, appPath: appPath)
+                        let note = try await installOne(worker: worker, bundleID: app.bundleID, appPath: appPath)
+                        if let note { safeLog("⚠️ \(worker.label): \(note)") }
                         safeLog("✅ \(worker.label): install complete")
                         return (index, worker)
                     } catch {
@@ -1293,7 +1294,8 @@ public enum ProfileWorkerFactory {
             }
             let waited = try await recovery.awaitPackageManager(serial)
             log("→ \(worker.label): the package manager answered \(String(format: "%.0f", waited))s after the reboot")
-            try await installOne(worker: worker, bundleID: bundleID, appPath: appPath)
+            let note = try await installOne(worker: worker, bundleID: bundleID, appPath: appPath)
+            if let note { log("⚠️ \(worker.label): \(note)") }
             log("✅ \(worker.label): install complete (after Wipe Data)")
             return worker
         } catch {
@@ -1306,11 +1308,14 @@ public enum ProfileWorkerFactory {
     /// (InstallHandlerFactory)が共用する唯一の実行口(ロジックを複製しない)。差分スキップ
     /// (installedIsCurrent)は呼ばない — 呼び出し側の判断に委ねる(installApp() は明示要求なので
     /// 常に実行、installIfNeeded は自動インストールなのでスキップ判定を挟む)
-    public static func installOne(worker: RunWorker, bundleID: String, appPath: String) async throws {
-        try await worker.driver.install(packagePath: appPath)
+    /// 戻り値は `AppDriver.install` の通知文(呼び手が利用者へ見せる)
+    @discardableResult
+    public static func installOne(worker: RunWorker, bundleID: String, appPath: String) async throws -> String? {
+        let note = try await worker.driver.install(packagePath: appPath)
         if worker.platform == "ios", let udid = worker.connection.udid {
             InstalledAppCheck.recordInstalled(udid: udid, bundleID: bundleID, appPath: appPath)
         }
+        return note
     }
 
     /// 凍結したシミュレータを **shutdown → boot** で戻し、**ブリッジを張り直した**

@@ -314,19 +314,59 @@ public final class AndroidDriver: AppDriver {
         output.contains("Error:")
     }
 
-    public func install(packagePath: String) async throws {
+    @discardableResult
+    public func install(packagePath: String) async throws -> String? {
         try requireDeviceAnswers()
-        // .apks(App Bundle 由来のスプリット)は adb install に渡せない(単一 APK ではない)
+        // .apks(App Bundle 由来のスプリット)は adb install に渡せない(単一 APK ではない)。
+        // 署名違いの入れ直し(AndroidSignatureMismatch)は bundletool の失敗出力が別の形なのでこちらには掛けない
         if ApksBundle.isApks(path: packagePath) {
             try installSplitBundle(apksPath: packagePath)
-            return
+            return nil
         }
         // Play Protect の門は adb(_:) が引数で掛ける(AdbInstallVerifier)
-        let result = try adb(["install", "-r", packagePath])
-        guard result.output.contains("Success") else {
-            throw DriverError.badResponse(status: Int(result.status),
-                body: "failed to install the app: \(result.tail)")
+        var result = try adb(["install", "-r", packagePath])
+        var note: String?
+        if !result.output.contains("Success"), AndroidSignatureMismatch.isMismatch(installOutput: result.output) {
+            let reinstalled = try reinstallAfterSignatureMismatch(
+                packagePath: packagePath, apkPackageName: AndroidPackageInspector.packageName(apkPath: packagePath))
+            (result, note) = (reinstalled.result, reinstalled.note)
         }
+        guard result.output.contains("Success") else {
+            // 入れ直しの途中で落ちたら、アンインストール済み(データは消えた)ことも失敗文に残す
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "failed to install the app: \(result.tail)" + (note.map { " (\($0))" } ?? ""))
+        }
+        return note
+    }
+
+    /// 署名違いの入れ直し(方針は AndroidSignatureMismatch)。入れ直した結果と、呼び手が見せる1行(`install` の戻り値)を返す。
+    /// 入れ直しが失敗しても note は付く(消した事実は変わらない)ので、呼び手は result の成否と別に扱う
+    /// 子のサンドボックスからも通る形だけを撃つ(`uninstall <pkg>` / `install <apk>` / debuggable プローブ = AdbPolicy 許可済み)
+    func reinstallAfterSignatureMismatch(packagePath: String, apkPackageName: String?) throws -> (result: Shell.Result, note: String) {
+        let who = serial ?? "?"
+        let package = apkPackageName.flatMap { AndroidPackageName.isShellSafe($0) ? $0 : nil }
+        var debuggable: Bool?
+        if let package, let probe = WebViewDOMFallback.probeCommand(packageID: package),
+           let probed = try? adbAnswering(probe) {
+            debuggable = AndroidSignatureMismatch.installedDebuggable(probeOutput: probed.output, status: probed.status)
+        }
+        // 入れ直しの前提が package を要るので、名前が判らなければ事実が揃わない
+        let isEmulator: Bool? = package == nil ? nil : serial.map { $0.hasPrefix("emulator-") }
+        let decision = AndroidSignatureMismatch.action(isEmulator: isEmulator, installedDebuggable: debuggable)
+        guard let package, case .reinstall(let reason) = decision else {
+            var unknown = true
+            if case .refuse(let u) = decision, package != nil { unknown = u }
+            throw DriverError.badResponse(status: 0, body: AndroidSignatureMismatch.refusalMessage(
+                serial: who, package: package, unknown: unknown))
+        }
+        // 消せたと確かめてから「消した」と言う(失敗した uninstall の後に入れ直しても同じ失敗になるだけ)
+        let removed = try adb(["uninstall", package])
+        guard removed.output.contains("Success") else {
+            throw DriverError.badResponse(status: Int(removed.status),
+                body: AndroidSignatureMismatch.uninstallFailedMessage(serial: who, package: package, tail: removed.tail))
+        }
+        let note = AndroidSignatureMismatch.reinstalledNotice(package: package, reason: reason)
+        return (try adb(["install", packagePath]), note)
     }
 
     /// .apks は bundletool へ委譲する(スプリットの選別は toc.pb の targeting = ApksBundle 参照)。

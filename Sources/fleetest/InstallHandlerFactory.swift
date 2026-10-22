@@ -17,8 +17,9 @@ enum InstallHandlerFactory {
             case .error(let message):
                 return (false, message)
             case .resolved(let path, let bundleID):
+                let note: String?
                 do {
-                    try await ProfileWorkerFactory.installOne(
+                    note = try await ProfileWorkerFactory.installOne(
                         worker: worker, bundleID: bundleID, appPath: path)
                 } catch {
                     return (false, "installApp: \(error.localizedDescription)")
@@ -29,9 +30,10 @@ enum InstallHandlerFactory {
                 // 利用者の明示要求なので普通にインストールし、注記だけ返す)
                 if worker.platform == "ios", let engine = worker.connection.engine,
                    engine == "inapp" || engine == "hybrid" {
-                    return (true, "the in-app bridge will be reinjected on the next launchApp()")
+                    let reinject = "the in-app bridge will be reinjected on the next launchApp()"
+                    return (true, note.map { "\($0); \(reinject)" } ?? reinject)
                 }
-                return (true, "")
+                return (true, note ?? "")
             }
         }
     }

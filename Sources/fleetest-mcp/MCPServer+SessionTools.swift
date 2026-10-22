@@ -166,7 +166,7 @@ extension MCPServer {
     func ftInstall(_ args: [String: Any]) async throws -> [[String: Any]] {
         let packagePath = try Self.requiredStringArgument(args, "packagePath")
         let installKey = Self.engineKey(args)
-        try await driver(args).install(packagePath: packagePath)
+        let installNote = try await driver(args).install(packagePath: packagePath)
         // ft_clear_app_data が実機で uninstall+install に化けるときの再インストール元
         // (installedPackagePaths 参照)
         installedPackagePaths[installKey] = packagePath
@@ -178,7 +178,7 @@ extension MCPServer {
         if launchedBundleIDs[installKey] != nil {
             toolStoppedBundleIDs[installKey] = "ft_install"
         }
-        return text("Installed: \(packagePath)")
+        return text("Installed: \(packagePath)" + (installNote.map { "\n\($0)" } ?? ""))
     }
 
     func ftLaunch(_ args: [String: Any]) async throws -> [[String: Any]] {
@@ -339,14 +339,15 @@ extension MCPServer {
                 throw MCPError(refusal)
             }
             try await clearAppDataDriver.uninstall(bundleID: bundleID)
-            try await clearAppDataDriver.install(packagePath: path)
+            let reinstallNote = try await clearAppDataDriver.install(packagePath: path)
             // 意図した再インストールなので、以後の別アプリの木は「すり替わり」ではない
             // (ft_terminate と同じ扱い)
             launchedBundleIDs[clearAppDataKey] = nil
             launchTimestamps[clearAppDataKey] = nil
             systemAlertProbePending.insert(clearAppDataKey)
             return text("Reinstalled \(bundleID) from \(path) (physical device: app data"
-                + " wiped by uninstall + install; permission grants are reset too)")
+                + " wiped by uninstall + install; permission grants are reset too)"
+                + (reinstallNote.map { "\n\($0)" } ?? ""))
         }
         // 次の ft_launch が初回起動と同じ扱いになる(systemAlertProbePending 参照)
         systemAlertProbePending.insert(clearAppDataKey)

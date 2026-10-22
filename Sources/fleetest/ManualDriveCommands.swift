@@ -27,7 +27,8 @@ struct Install: AsyncParsableCommand {
         guard FileManager.default.fileExists(atPath: packagePath) else {
             throw ValidationError("package file not found: \(packagePath)")
         }
-        try await driverOptions.makeDriver().install(packagePath: packagePath)
+        let note = try await driverOptions.makeDriver().install(packagePath: packagePath)
+        if let note { ConsoleOut.err("⚠️ \(note)") }
         ConsoleOut.out("✅ Installed: \(packagePath)")
     }
 }

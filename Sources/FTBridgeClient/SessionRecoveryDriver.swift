@@ -101,7 +101,8 @@ public final class SessionRecoveryDriver: AppDriver {
     private var accessibilityOutageNote: String?
 
     public func status() async throws -> StatusResponse { try await base.status() }
-    public func install(packagePath: String) async throws { try await base.install(packagePath: packagePath) }
+    @discardableResult
+    public func install(packagePath: String) async throws -> String? { try await base.install(packagePath: packagePath) }
     public func uninstall(bundleID: String) async throws { try await base.uninstall(bundleID: bundleID) }
     // install と同じくセッション不要の host 側操作なので回復なしで素通し
     public func clearAppData(bundleID: String) async throws { try await base.clearAppData(bundleID: bundleID) }

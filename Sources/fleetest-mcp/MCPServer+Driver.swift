@@ -222,8 +222,9 @@ extension MCPServer {
             if case .ios(let provisioned, let iosApp) = target, let iosApp, iosApp.autoInstall,
                let packagePath = iosApp.packagePath(physical: provisioned.physical),
                await installedVerdict(bundleID: iosApp.bundleID, driver: created, args: args) == .notInstalled {
-                try await created.install(packagePath: packagePath)
+                let installNote = try await created.install(packagePath: packagePath)
                 Self.logStderr("installed \(iosApp.bundleID) from \(packagePath) (the profile's autoInstall)")
+                if let installNote { Self.logStderr(installNote) }
             }
             return created
         }

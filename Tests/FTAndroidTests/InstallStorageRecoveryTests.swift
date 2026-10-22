@@ -22,7 +22,7 @@ private final class FlakyInstallDriver: AppDriver, @unchecked Sendable {
         remainingFailures = failures
         self.failureText = failureText
     }
-    func install(packagePath: String) async throws {
+    func install(packagePath: String) async throws -> String? {
         let fail: Bool = lock.withLock {
             installCalls += 1
             guard remainingFailures > 0 else { return false }
@@ -30,6 +30,7 @@ private final class FlakyInstallDriver: AppDriver, @unchecked Sendable {
             return true
         }
         if fail { throw InstallFailure(text: failureText) }
+        return nil
     }
     func status() async throws -> StatusResponse {
         StatusResponse(ready: true, device: "-", osVersion: "-", sessionBundleID: nil)
