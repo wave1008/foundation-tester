@@ -103,22 +103,21 @@ extension BridgeRouter {
         // ここは 422 で先に失敗させて揃える(409 は requireApp() 専用という不変条件)
         let focusAfter = try Self.requireKeyboardFocus(app)
         try Self.requireFocusMoved(from: focusBefore, to: focusAfter, tapped: tapped, action: "type")
-        // **末尾に改行があるときだけ、焦点中の要素を読み返しに乗せる**(v129)。改行が無ければ
-        // 取りこぼしても後続の読みで収束するが、改行はこの直後に Return を撃って確定させるため、
-        // 取りこぼした最後の1文字を Return がそのまま確定させる
-        // (E2E-RN 実測: `tap("#field_single")` → `type("pqr\n")` が "pq" で確定。打鍵はキーボード
-        // 経由で非同期に届くため、高負荷では届く前に Return が先着する)。
+        // **焦点中の要素を読み返しに乗せる(改行の有無に関わらない)**。「改行が無ければ後続の読みで収束する」は誤り ——
+        // 打鍵は遅れて届くだけでなく**失われる**: RN の検索欄で `tap` → `type("banana")` を 240 回撃つと 23 回欠けたまま
+        // 200 を返し、返ってから 1.5 秒たっても欠けたままだった(2026-10-22・M1Ultra)。XCUITest はホストも読み返さない
+        // (`verifiesTypedText`)ので、ここで確かめないと誤った緑になる。改行は本文の読み返しが通った後に送る
+        // (E2E-RN 実測: `type("pqr\n")` が "pq" で確定 = 届く前に Return が先着する)。
         // 対象は焦点(`focusAfter`)を直近の snapshot と identifier/frame で突き合わせて特定する
         // (`matchFocusedElement`)。ref 経路が使う `refElements` の表はこの経路(ref なし)には無いので
-        // ここで一度だけ突き合わせる。曖昧・非入力欄・secure 欄・文中に改行が残る形は
+        // ここで一度だけ突き合わせる(撮り直し1回 = 30〜120ms)。曖昧・非入力欄・secure 欄・文中に改行が残る形は
         // 検証不能として従来どおり一発撃ちへ落ちる
-        if hasTrailingNewline, !main.contains("\n"),
+        if !main.contains("\n"),
            let captured = try? captureOnce(app),
            let target = Self.matchFocusedElement(focusAfter, in: captured.elements),
            TypeReadback.isTextInput(target), !TypeReadback.isMaskedInput(target) {
             let note = try performTypeReadback(app, target: target, main: main)
-            ResponseMeasurement.noteInjection()
-            app.typeText("\n")
+            if hasTrailingNewline { ResponseMeasurement.noteInjection(); app.typeText("\n") }
             return note
         }
         ResponseMeasurement.noteInjection()

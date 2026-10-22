@@ -248,6 +248,22 @@ final class StaleRefRunnerWiringTests: XCTestCase {
         XCTAssertFalse(probe.contains("throw"), "プローブが断っている(測定は挙動を変えない)")
     }
 
+    /// ref 無しの /type も、末尾の改行の有無に関わらず焦点の欄を読み返す(XCUITest はホストが読み返さない =
+    /// ここで確かめないと打鍵が失われても緑。RN の検索欄で 240 回中 23 回)。改行は読み返しの後に送る
+    func testRefLessTypeReadsBackWithoutATrailingNewline() throws {
+        let input = try runnerSource("BridgeRouter+TextInput.swift")
+        let function = try body(of: "private func typeAndReadBack(", in: input)
+        let focusMatch = try XCTUnwrap(function.range(of: "matchFocusedElement(focusAfter")?.lowerBound,
+                                       "ref 無しの経路が焦点の欄を特定していない")
+        let branchStart = try XCTUnwrap(function[..<focusMatch].range(of: "if ", options: .backwards)?.lowerBound)
+        let condition = function[branchStart..<focusMatch]
+        XCTAssertFalse(condition.contains("hasTrailingNewline"), "読み返しが末尾の改行のある形に限られている: \(condition)")
+        let readback = try XCTUnwrap(function[focusMatch...].range(of: "performTypeReadback(")?.lowerBound)
+        let newline = try XCTUnwrap(function[readback...].range(of: "app.typeText(\"\\n\")")?.lowerBound,
+                                    "読み返しの後に改行を送っていない")
+        XCTAssertLessThan(readback, newline)
+    }
+
     /// 撮り直した木で ref の表を置き換えない(番号がずれて別の要素に撃つ)
     func testFreshCaptureDoesNotReplaceTheRefTables() throws {
         let router = try runnerSource("BridgeRouter.swift")
