@@ -46,7 +46,7 @@ final class BridgeContractTests: XCTestCase {
     //                 (指を置いたら応答を返す = 置いている間に木を読める)
     static let inAppRoutes: Set<String> = [
         "GET /screenshot", "GET /snapshot", "GET /status",
-        "POST /appstate", "POST /clear", "POST /doubletap", "POST /hidekeyboard", "POST /tapprobe", "POST /pinch",
+        "POST /appstate", "POST /clear", "POST /doubletap", "POST /drag", "POST /hidekeyboard", "POST /tapprobe", "POST /pinch",
         "POST /press", "POST /pressEnter", "POST /rotate", "POST /session", "POST /swipe",
         "POST /tap", "POST /terminate", "POST /type",
     ]
@@ -131,10 +131,10 @@ final class BridgeContractTests: XCTestCase {
         .inApp: [
             "InAppBridge/Sources/Bridging.h": "08799e6d190f958eed7c6bb4406f1cbbfea1bed1d252ce4572636273c65a5aad",
             "InAppBridge/Sources/DisplayHeartbeat.swift": "7d907d41d42721c6e7a769aaa610fa74ee0103f95111281cb2231206c748bbc5",
-            "InAppBridge/Sources/InAppBridge.swift": "72929ec996e601f9329a69f1929ad9995f86edffbd2d4a601a3c53bd3aa04a6b",
+            "InAppBridge/Sources/InAppBridge.swift": "a3595f5920bcd983d8c2a173913d1c13cfe2469f6f1638d0e8f2b2e2f3409b4c",
             "InAppBridge/Sources/InAppHTTPServer.swift": "2c0dd9eaa35bb794004378e8c9fb8655fc66b42630bd582dd75e73754d361f9c",
-            "InAppBridge/Sources/InAppInput.h": "8e8463e115844721d0bc6c7b018549236f042604dd2168d0efba4c9c69bea8a2",
-            "InAppBridge/Sources/InAppInput.m": "e7bfd2bff159e9f7144dfd7f56a1d884eee36f759a770ebb13e3fc79ee5efc92",
+            "InAppBridge/Sources/InAppInput.h": "334537da65d98ae36f9fb11fa0b29d5f0b2586e2e4298415d4637bcc36c113cd",
+            "InAppBridge/Sources/InAppInput.m": "43e1d8de8a3b175dd5dd8335a65b0dd610ffe1861cdefc4ac8fd1f57839f3b97",
             "InAppBridge/Sources/InAppSettle.swift": "5871ae6c3ecb272614528e7d1657aa6c6bcaee31fa6db3f3e02b6a81caa61c80",
             "InAppBridge/Sources/InAppSnapshot.swift": "e12ac1a0f6d1fbd6a15ad411797db8705645a249d855c8941cf606222e370a02",
             "InAppBridge/Sources/InAppTapProbe.swift": "f612eb38316c5440aeca26df02b56b077f15bcc54702268bd0a8b54a0658e06b",
@@ -142,7 +142,7 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "3cf8cb7316059b4f5d4e2a33d915c6b4cd5318dad7a68718f18a010b630c8713",
             "Sources/FTCore/AXFrameRescale.swift": "eef63f86079f246da9f30f7543f4efb7e912eb70f6a01c721dde6789a1ebe7e7",
-            "Sources/FTCore/BridgeDTO.swift": "f79ac38ba5d860ab38e64fe33d6fa1dbe683190540957d132a9c10f6507c5457",
+            "Sources/FTCore/BridgeDTO.swift": "53ddde3a8709e38519c4ff8abf7ad1f96d7fe9d9e48343f757ca803a5c9a6993",
             "Sources/FTCore/TypeReadback.swift": "540049e120e476538772df5e4611e3a78ec5717cd42fb7a683fdb606fad88027",
             "Sources/FTCore/UIFrameworkMarkers.swift": "1601c9feecaa817d73deea4445523522341ae1b777086b55c33c6e0a74fef6b8",
             "Sources/FTCore/WebViewDOMSnapshot.swift": "a47ced947063748e979fdad3140286eada7e3013c7a132b750dd5e2fde64a96e",
@@ -164,7 +164,7 @@ final class BridgeContractTests: XCTestCase {
             "Runner/FleetestRunnerUITests/ResponseMeasurement.swift": "6254e04c6f0a85d4504e45657f847f6d1a761fe2f635819b482457c34dd095b1",
             "Runner/FleetestRunnerUITests/VirtualHID.swift": "8ee358d73f27c9aabefbd6f98e41091dfde837ee8f15e5066997df1d97df802e",
             "Sources/FTCore/AXFrameRescale.swift": "eef63f86079f246da9f30f7543f4efb7e912eb70f6a01c721dde6789a1ebe7e7",
-            "Sources/FTCore/BridgeDTO.swift": "f79ac38ba5d860ab38e64fe33d6fa1dbe683190540957d132a9c10f6507c5457",
+            "Sources/FTCore/BridgeDTO.swift": "53ddde3a8709e38519c4ff8abf7ad1f96d7fe9d9e48343f757ca803a5c9a6993",
             "Sources/FTCore/ResponseMeasurementWire.swift": "19f9ba212d1ce05ad3431dd350895329f0fc62a8bdbf6210c362583d22175dcd",
             "Sources/FTCore/SnapshotDedupe.swift": "f987a913f2010e8cd81e381c595c15242f58225c71a11a9be206590baccf8c9b",
             "Sources/FTCore/TypeReadback.swift": "540049e120e476538772df5e4611e3a78ec5717cd42fb7a683fdb606fad88027",

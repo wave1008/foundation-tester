@@ -257,7 +257,11 @@ public final class InAppDriver: AppDriver {
     public func openAppSwitcher() async throws { throw Self.inappOnly("appSwitcher") }
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {
-        throw Self.inappOnly("drag")
+        // 自前描画だけ in-app が受ける(それ以外は 501 → hybrid は XCUITest へ)
+        try await withCrashContext {
+            try await client.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
+                                  pressSeconds: pressSeconds, durationSeconds: durationSeconds)
+        }
     }
     public func press(x: Double, y: Double, duration: Double) async throws {
         throw Self.inappOnly("press by coordinates")

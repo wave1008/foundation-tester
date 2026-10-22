@@ -221,6 +221,26 @@ void FTSynthTwoFingerSteps(UIWindow *window, const CGPoint *a, const CGPoint *b,
     ftDispatch2(window, t1, t2, p1, p2, UITouchPhaseEnded);
 }
 
+void FTSynthDrag(UIWindow *window, const CGPoint *points, int count, double pressSeconds, double stepDelay) {
+    if (count < 2) return;
+    UIView *hit = [window hitTest:points[0] withEvent:nil] ?: window;
+    UITouch *t = ftMakeTouch(window, hit, points[0], NSProcessInfo.processInfo.systemUptime);
+    ftDispatch(window, t, points[0], UITouchPhaseBegan);
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:pressSeconds]];
+    for (int i = 1; i < count; i++) {
+        [t _setLocationInWindow:points[i] resetPrevious:NO];
+        [t setPhase:UITouchPhaseMoved];
+        [t setTimestamp:NSProcessInfo.processInfo.systemUptime];
+        ftDispatch(window, t, points[i], UITouchPhaseMoved);
+        // 実時間を進める(タイムスタンプだけ進めても速度計算が追随しない)。最後の move の後の1回が「終点の move を
+        // 処理させてから離す」の待ち
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:stepDelay]];
+    }
+    [t setPhase:UITouchPhaseEnded];
+    [t setTimestamp:NSProcessInfo.processInfo.systemUptime];
+    ftDispatch(window, t, points[count - 1], UITouchPhaseEnded);
+}
+
 void FTSynthSwipe(UIWindow *window, CGPoint from, CGPoint to, int steps) {
     if (steps < 1) steps = 10;
     UIView *hit = [window hitTest:from withEvent:nil] ?: window;

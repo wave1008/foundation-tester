@@ -138,6 +138,7 @@ final class FTInAppBridge {
             case ("POST", "/swipe"): return try handleSwipe(req.body)
             case ("POST", "/doubletap"): return try handleDoubleTap(req.body)
             case ("POST", "/pinch"): return try handlePinch(req.body)
+            case ("POST", "/drag"): return try handleDrag(req.body)
             case ("POST", "/rotate"): return try handleRotate(req.body)
             case ("POST", "/press"): return try handlePress(req.body)
             case ("GET", "/screenshot"): return try handleScreenshot()
@@ -1560,6 +1561,30 @@ final class FTInAppBridge {
     /// 持つのは `BridgeDTO.PinchRequest.fingers` のドキュメント参照)—— ここは指を組まず、host が
     /// 送った2本指のキーフレーム(押す→…→離す)を `FTSynthTwoFingerSteps` へ再生できる密度に
     /// 補間して渡すだけ
+    /// 1本指のドラッグ(自前描画だけ。UIKit/SwiftUI の認識器は合成タッチを受理しない = 501 で XCUITest へ)。
+    /// 刻みはピンチと同じ 60Hz・終点の後に1刻み待ってから離す(FTSynthDrag)
+    private func handleDrag(_ body: Data) throws -> InAppHTTPServer.Response {
+        let req = try decode(DragRequest.self, body)
+        try requireSelfRenderedFramework("drag")
+        let values = [req.fromX, req.fromY, req.toX, req.toY]
+        guard values.allSatisfy(\.isFinite) else {
+            throw InAppError(400, "drag coordinates must be finite")
+        }
+        let duration = max(req.duration ?? 0.3, Self.pinchStepInterval)
+        let steps = max(2, Int((duration / Self.pinchStepInterval).rounded()))
+        let points = (0...steps).map { i -> CGPoint in
+            let f = Double(i) / Double(steps)
+            return CGPoint(x: req.fromX + (req.toX - req.fromX) * f, y: req.fromY + (req.toY - req.fromY) * f)
+        }
+        try performWithSettle { window in
+            points.withUnsafeBufferPointer {
+                FTSynthDrag(window, $0.baseAddress!, Int32(points.count), max(req.press ?? 0.05, 0),
+                            duration / Double(steps))
+            }
+        }
+        return ok()
+    }
+
     private func handlePinch(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(PinchRequest.self, body)
         try requireSelfRenderedFramework("pinch")

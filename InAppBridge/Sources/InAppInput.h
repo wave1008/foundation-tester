@@ -12,6 +12,12 @@ void FTSynthTap(UIWindow *window, CGPoint point);
 /// from→to(window 座標)へスワイプを合成する(down→moved×steps→up)。steps<1 は既定 10。
 void FTSynthSwipe(UIWindow *window, CGPoint from, CGPoint to, int steps);
 
+/// 1本指のドラッグ。from で down → pressSeconds 待つ → stepDelay 秒刻みで実時間どおりに move(各刻みでランループを回し
+/// アプリに処理させる)→ 終点の move の後にもう1刻み待ってから同じ点で up。**終点への移動を up と別のイベントで届ける**
+/// (Compose の drag() は up に載った位置変化を捨てる)。待ちを1刻みにするのは離す瞬間の速度を残すため
+/// (Compose・Flutter の速度計算は 40ms 超の空きを停止と読む)
+void FTSynthDrag(UIWindow *window, const CGPoint *points, int count, double pressSeconds, double stepDelay);
+
 /// point で down 後、duration 秒ランループを回して(長押しタイマ発火のため)up する。
 void FTSynthPress(UIWindow *window, CGPoint point, double duration);
 
