@@ -8,7 +8,7 @@ If you have not run anything yet, go through the [Quick Start](../quick-start.md
 ## What you can ask for
 
 - "In the fleetest test project myshop, create profiles for this app" → [Preparing the app and devices](preparing_app_and_devices.md)
-- "In the fleetest test project myshop, create an exploratory test that covers only the login screen" → [Creating tests](creating_tests.md)
+- "In the fleetest test project myshop, create a happy-path test (the normal flow of logging in successfully) for the login screen" → [Creating tests](creating_tests.md)
 - "Put the server my app depends on in a container and declare it to fleetest" → [Preparing the servers your app depends on](preparing_app_server.md)
 - "Run the scenarios you created on iOS" → [Running tests](running_tests.md)
 - "Summarize the current run results. If there are failures, investigate the cause" → [Read results and investigate failures](investigating_failures.md)
@@ -25,7 +25,7 @@ You can watch runs in the VSCode extension's device monitor ([Watch in VSCode](w
 Limit each request to one screen or one flow of operations.
 
 ```text
-In the fleetest test project myshop, create an exploratory test that covers only the My Shop login screen.
+In the fleetest test project myshop, create a happy-path test (the normal flow of logging in successfully) for the My Shop login screen.
 ```
 
 ### 2. Add the OS and device
@@ -33,7 +33,7 @@ In the fleetest test project myshop, create an exploratory test that covers only
 Say whether it is iOS or Android. If you know the run profile name, writing it is the most reliable.
 
 ```text
-In the fleetest test project myshop, with the run profile android-run, create an exploratory test that covers only the cart screen.
+In the fleetest test project myshop, with the run profile android-run, create a happy-path test (the normal flow) for the cart screen.
 ```
 
 ### 3. Write the completion condition

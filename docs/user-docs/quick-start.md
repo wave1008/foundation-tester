@@ -145,25 +145,25 @@ See [Profiles](./reference/project/profiles.md) for the details.
 
 ## 6. Create the scenarios
 
-Let's create exploratory tests for the login screen.
+Let's create a happy-path test (the normal flow) up to opening a product.
 
 ### Prompt for the AI
 
 ```text
-Create exploratory tests on iOS for just the login screen of sut-ec-mobile (SUT Store). Put the step that switches the app to English mode in setUpDevice. Stop once you've told me the file name of the new scenario.
+In sut-ec-mobile (SUT Store), create one happy-path test (the normal flow) on iOS that opens a product from the home screen and shows its product details. Put the step that switches the app to English mode in setUpDevice. Stop once you've told me the file name of the new scenario.
 ```
 
 `setUpDevice` is where you put the preparation that is done once per device before the tests (here, switching the language).
 For Android, read "on iOS" as "on Android".
 
-The AI assistant launches the app on a device, reads the elements of the login screen while
-operating it, and turns the behavior it finds into scenarios.
-Before exploring, the AI assistant starts the server declared in compose.yaml with `ft_services`.
+The AI assistant launches the app on a device, reads the elements of the screens while
+operating them, and turns that flow into a scenario.
+Before it starts operating the app, the AI assistant starts the server declared in compose.yaml with `ft_services`.
 
 <details>
 <summary><b>If you do it manually (click to show details)</b></summary>
 
-Start the server by hand, explore, and stop it when you are done.
+Start the server by hand, create the test, and stop it when you are done.
 
 ```bash
 ../foundation-tester/.build/debug/fleetest services up --profile ios-run

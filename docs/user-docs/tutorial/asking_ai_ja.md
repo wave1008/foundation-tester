@@ -8,7 +8,7 @@ fleetest は、Claude Code などの AIアシスタントへ**自然言語で指
 ## 指示できること
 
 - 「fleetest のテストプロジェクト myshop に、このアプリのプロファイルを作って」 → [アプリとデバイスを用意する](preparing_app_and_devices_ja.md)
-- 「fleetest のテストプロジェクト myshop で、ログイン画面だけを対象に探索的テストを作成して」 → [テストを作る](creating_tests_ja.md)
+- 「fleetest のテストプロジェクト myshop で、ログイン画面の基本ルート(正常にログインできる流れ)のテストを作成して」 → [テストを作る](creating_tests_ja.md)
 - 「アプリが依存するサーバーをコンテナにして、fleetest に宣言して」 → [アプリが依存するサーバーを用意する](preparing_app_server_ja.md)
 - 「作成したシナリオを iOS で実行して」 → [テストを実行する](running_tests_ja.md)
 - 「今の実行結果を要約して。失敗があれば原因を調べて」 → [結果を読み、失敗を調べる](investigating_failures_ja.md)
@@ -25,7 +25,7 @@ fleetest は、Claude Code などの AIアシスタントへ**自然言語で指
 1回の依頼で扱うのは1画面か1つの操作の流れにします。
 
 ```text
-fleetest のテストプロジェクト myshop で、My Shop のログイン画面だけを対象に、探索的テストを作成して。
+fleetest のテストプロジェクト myshop で、My Shop のログイン画面の基本ルート(正常にログインできる流れ)のテストを作成して。
 ```
 
 ### 2. OS とデバイスを添える
@@ -33,7 +33,7 @@ fleetest のテストプロジェクト myshop で、My Shop のログイン画�
 iOS か Android かを書きます。実行プロファイル名が分かっていれば、それを書くのが一番確実です。
 
 ```text
-fleetest のテストプロジェクト myshop の実行プロファイル android-run で、カート画面だけを対象に探索的テストを作成して。
+fleetest のテストプロジェクト myshop の実行プロファイル android-run で、カート画面の基本ルート(正常に進む流れ)のテストを作成して。
 ```
 
 ### 3. 完了条件を書く

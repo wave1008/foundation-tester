@@ -144,25 +144,25 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 
 ## 6. シナリオを作る
 
-ログイン画面を対象に、探索的テストを作成してみましょう。
+商品を開くまでの基本ルート(正常に進む流れ)のテストを作成してみましょう。
 
 ### AIへの指示文
 
 ```text
-sut-ec-mobile(SUT Store)のログイン画面だけを対象に、探索的テストを iOS で作成して。アプリを日本語モードに切り替える処理は setUpDevice に書いて。シナリオのファイル名を報告したら終わりにして。
+sut-ec-mobile(SUT Store)で、ホームから商品を1つ開いて商品詳細が表示されるまでの基本ルート(正常に進む流れ)のテストを、iOS で1本作成して。アプリを日本語モードに切り替える処理は setUpDevice に書いて。シナリオのファイル名を報告したら終わりにして。
 ```
 
 `setUpDevice` は、テストの前にデバイスごとに1回だけ行う準備を書く場所です(ここでは言語の切り替え)。
 Android の場合は「iOS で」を「Android で」に読み替えてください。
 
-AIアシスタントはデバイス上でアプリを起動し、ログイン画面を操作しながら要素を読み取って、
-見つけた挙動をシナリオに落とします。
-AIアシスタントは探索の前に、compose.yaml に宣言したサーバーを `ft_services` で起こします。
+AIアシスタントはデバイス上でアプリを起動し、画面を操作しながら要素を読み取って、
+その流れをシナリオに落とします。
+AIアシスタントは操作を始める前に、compose.yaml に宣言したサーバーを `ft_services` で起こします。
 
 <details>
 <summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
-サーバーを手で起こしてから探索し、終わったら止めます。
+サーバーを手で起こしてからテストを作り、終わったら止めます。
 
 ```bash
 ../foundation-tester/.build/debug/fleetest services up --profile ios-run

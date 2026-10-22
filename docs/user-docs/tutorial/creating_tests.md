@@ -4,21 +4,17 @@
 
 You have an AI assistant create the tests. The result is a Swift file (scenario) under `TestProjects/myshop/scenarios/`.
 
-## 1. Create an exploratory test
+## 1. Create a happy-path test
 
-This suits your first test. You specify a screen and let the AI assistant decide what to check as well.
+This suits your first test. It creates one test for the normal flow only (add error cases and the like later with "Add to an existing test").
 
 ### Prompt for the AI
 
 ```text
-In the fleetest test project myshop, create an exploratory test for just the My Shop login screen.
+In the fleetest test project myshop, create one happy-path test (the normal flow of logging in successfully) for the My Shop login screen.
 ```
 
 At the end of the work it runs the compile, the verification without a device (dry-run) and a run on a device, and reports the result.
-
-What you'll see (an example with the sample app [SUT Store](https://github.com/wave1008/sut-ec-mobile)):
-
-<img src="../images/tutorial/en/explore_result.png" width="720" alt="Exploring the login screen produced five tests (open the screen, submit empty, wrong input, go to sign-up and back, back button), all passing on iOS">
 
 <img src="../images/tutorial/en/ai_workflow.png" width="720" alt="Operate and read the screen, write the scenario, compile, dry-run, run on a device, report the result">
 
