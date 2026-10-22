@@ -2,43 +2,39 @@
 
 [in English](running_tests.md)
 
-作ったテストは、AIアシスタントへ指示しても、VSCode・ターミナルから自分で動かしても、同じように実行されます。
-**実行そのものに AI は使いません** —— シナリオはコードとして決定的に再生されるので、AIアシスタントは
-「実行を始めて結果を読む」役だけを担います。
+作ったテストを実行します。実行そのものに AI は使いません(シナリオはコードとして決定的に再生されます)。
 
-## デバイス無しで確かめる(dry-run)
-
-デバイスで動かす前に、デバイスを使わない検証(dry-run)を通すと、書き間違い・検証の抜けを数秒で見つけられます。
+## 1. デバイス無しで確かめる(dry-run)
 
 ### AIへの指示文
 
 ```text
-fleetest のシナリオを全部 dry-run で検証し、警告があれば一覧にして報告して。
+fleetest のテストプロジェクト myshop のシナリオを全部 dry-run で検証し、警告があれば一覧にして報告して。
 ```
 
 <details>
 <summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 ```bash
-../foundation-tester/.build/debug/fleetest run --dry-run
+../foundation-tester/.build/debug/fleetest run --project myshop --dry-run
 ```
 
 VSCode では Test Explorer でシナリオを選び、「実行 (dry-run)」を使います。
 
 </details>
 
-## 実行する
+## 2. 実行する
 
 ### AIへの指示文
 
 ```text
-fleetest のシナリオを全部 iOS で実行し、終わったら成否を報告して。
+fleetest のテストプロジェクト myshop のシナリオを全部 iOS で実行し、終わったら成否を報告して。
 ```
 
 1本だけ・一部だけを動かすときは、テストの名前や画面で指定します。
 
 ```text
-fleetest のログインのテストだけを Android で実行して。
+fleetest のテストプロジェクト myshop のログインのテストだけを Android で実行して。
 ```
 
 <details>
@@ -46,82 +42,77 @@ fleetest のログインのテストだけを Android で実行して。
 
 ```bash
 # 全部
-../foundation-tester/.build/debug/fleetest run --profile ios-run
+../foundation-tester/.build/debug/fleetest run --project myshop --profile ios-run
 
 # クラス(ファイル)単位・1本単位
-../foundation-tester/.build/debug/fleetest run --profile ios-run --scenario LoginTest
-../foundation-tester/.build/debug/fleetest run --profile ios-run --scenario LoginTest.S0010
+../foundation-tester/.build/debug/fleetest run --project myshop --profile ios-run --scenario LoginTest
+../foundation-tester/.build/debug/fleetest run --project myshop --profile ios-run --scenario LoginTest.S0010
 ```
 
-VSCode では Test Explorer でシナリオを選び、「実行」をクリックします。
-初めて実行する前に、コマンドパレットの `fleetest: 実行プロファイルを選択` で使う実行プロファイル(例: `ios-run`)を
-選んでおきます。選んでいないと、実行は始まらずにエラーになります。
+VSCode では Test Explorer でシナリオを選び、「実行」をクリックします(実行プロファイルはコマンドパレットの
+`fleetest: 実行プロファイルを選択` で選びます。1つしか無ければ自動で選ばれます)。
 
 </details>
 <br>
 
-`--scenario` には、クラス名で1ファイル分、`クラス名.テスト名` で1本を指定します。
-上のコマンドの `../foundation-tester/.build/debug/fleetest` の意味は[クイックスタート](../quick-start_ja.md)を参照してください。
-詳しくは[シナリオの実行](../reference/running/running_scenarios_ja.md)。
+## 3. 複数のデバイスで速く回す
 
-## 複数のデバイスで速く回す
+### AIへの指示文
 
-実行プロファイルに複数のデバイスが入っていれば、シナリオは自動で振り分けられて並列に走ります。
-シナリオ側の変更は要りません。デバイスの増やし方は[アプリとデバイスを用意する](preparing_app_and_devices_ja.md)。
+```text
+fleetest のテストプロジェクト myshop のシナリオを、実行プロファイル ios-run の全デバイスに振り分けて並列に実行して。
+```
+
+実行プロファイルに複数のデバイスが入っていれば、シナリオ側の変更なしで自動で振り分けられます。デバイスの増やし方は[アプリとデバイスを用意する](preparing_app_and_devices_ja.md)。
 
 <img src="../images/tutorial/ja/parallel_run.png" width="640" alt="6本のシナリオを fleetest が3台のデバイスへ自動で振り分ける">
 
 全部のデバイスで同じシナリオを1回ずつ動かしたいとき(機種ごとの見え方を比べたいときなど)は、そう指示します。
 
 ```text
-fleetest のログインのテストを、iOS の全デバイスで1回ずつ実行して。
+fleetest のテストプロジェクト myshop のログインのテストを、iOS の全デバイスで1回ずつ実行して。
 ```
 
-## 落ちたテストだけ実行し直す
+## 4. 落ちたテストだけ実行し直す
 
-アプリを直したあと、前回落ちたテストだけを動かして確かめられます。
+### AIへの指示文
 
 ```text
-fleetest で、前回 iOS で落ちたシナリオだけを実行し直して。
+fleetest のテストプロジェクト myshop で、前回 iOS で落ちたシナリオだけを実行し直して。
 ```
 
 <details>
 <summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 ```bash
-../foundation-tester/.build/debug/fleetest run --profile ios-run --failed
+../foundation-tester/.build/debug/fleetest run --project myshop --profile ios-run --failed
 ```
 
 </details>
 
 ## 失敗したときの動き
 
-- テストの途中で1か所でも失敗すると、**そのシナリオの残りは実行せずに打ち切ります**
-  (前提の崩れた画面で操作を続けると、誤った結果や意図しない操作を生むため)。
-  他のシナリオはそのまま続きます。
-- **失敗した操作を自動で撃ち直すことはしません**。届いていたかどうか分からない操作(送信・購入など)を
-  二重に実行しないためです。不安定なテストは、撃ち直しではなく原因を直します
-  ([結果を読み、失敗を調べる](investigating_failures_ja.md))。
-- **ただし、シナリオを最初から丸ごとやり直すことはあります**。デバイスが固まったなど、デバイス側の不調で
-  結果を信用できないと分かったときです(直前に成功したシナリオもやり直すことがあり、止める設定はありません)。
-  **送信・購入・登録のような取り消せない操作は、1回の実行の中で2回行われることがあります**。そうした
-  シナリオは、2回行われても困らない相手(テスト用の決済・ステージングのサーバー)に向けてください
-  ([CI で回す](../in_action/ci_ja.md)・[壊れにくいシナリオの書き方](../reference/writing/writing_robust_scenarios_ja.md))。
-- 画面の ID が変わっただけのような軽い変化は、**自己修復**が吸収してテストを続けます。
-  その場合は、レポートに「シナリオをこう直してください」という提案が残り、実行の終わりにそのセレクタが
-  **シナリオのソースへ自動で書き戻されます**(git で差分を確認してコミットします。
-  [アプリの変更にテストを追従させる](keeping_up_with_app_changes_ja.md))。
+### AIへの指示文
+
+```text
+fleetest のテストプロジェクト myshop のシナリオのうち、送信・購入・登録のような取り消せない操作を含むものを洗い出し、
+テスト用の決済・ステージングのサーバーに向いているか確認して。
+```
+
+- 1か所でも失敗すると、そのシナリオの残りは実行せず打ち切ります。他のシナリオは続きます。
+- 失敗した操作を自動で撃ち直すことはしません。
+- ただし、デバイスの不調で結果を信用できないときは、シナリオを最初から丸ごとやり直すことがあります。**送信・購入・登録のような取り消せない操作は、1回の実行の中で2回行われることがあります**。2回行われても困らない相手(テスト用の決済・ステージングのサーバー)に向けてください([CI で回す](../in_action/ci_ja.md)・[壊れにくいシナリオの書き方](../reference/writing/writing_robust_scenarios_ja.md))。
+- 画面の ID が変わった程度の変化は自己修復が吸収し、実行の終わりに直したセレクタがシナリオのソースへ自動で書き戻されます。git で差分を確認してコミットします([アプリの変更にテストを追従させる](keeping_up_with_app_changes_ja.md))。
+
+失敗の調べ方は[結果を読み、失敗を調べる](investigating_failures_ja.md)。
 
 ## 別の Mac・CI で回す
 
-- 別の Mac のデバイスを使う: [リモート実行](../fleet/remote_runners_ja.md)
-- Jenkins などで定期的に回す: [CI で回す](../in_action/ci_ja.md)
+[リモート実行](../fleet/remote_runners_ja.md)・[CI で回す](../in_action/ci_ja.md)
 
 ## もっと詳しく
 
-- アプリがサーバー・DB に依存するなら、compose.yaml に宣言すると実行のたびに起動・停止します → [アプリが依存するサービス](../reference/writing/services_ja.md)
-- [シナリオの実行(fleetest run)](../reference/running/running_scenarios_ja.md) —— オプションの全一覧
-- [dry-run](../reference/running/dry_run_ja.md)・[並列実行](../reference/running/parallel_execution_ja.md)
+[シナリオの実行(fleetest run)](../reference/running/running_scenarios_ja.md)・[dry-run](../reference/running/dry_run_ja.md)・[並列実行](../reference/running/parallel_execution_ja.md)・[アプリが依存するサービス](../reference/writing/services_ja.md)
 
 次へ: [結果を読み、失敗を調べる](investigating_failures_ja.md)
 

@@ -2,110 +2,86 @@
 
 [in Japanese(日本語)](preparing_app_and_devices_ja.md)
 
-To run tests, you register with fleetest **what** to run (the target app) and **where** to run it (the devices).
-The registration consists of two kinds of profiles.
+Register your app and the devices to test on with fleetest.
 
-| Profile | What it decides |
-|---|---|
-| App profile | The app's display name, app ID, and the path to the built app |
-| Run profile | Which app to run, on which devices, and with what settings |
-
-You can create both by asking an AI assistant. You do not need to write JSON by hand.
-
-## First registration
+## 1. Register the app
 
 ### Prompt for the AI
 
 ```text
-Create fleetest profiles for my app.
+Create a new fleetest test project named myshop and register my app in it.
 The display name is "My Shop". The app ID is com.example.myshop on iOS and com.example.myshop.android on Android.
-The builds are ~/builds/MyShop.app (for the iOS Simulator) and ~/builds/myshop-debug.apk.
+The source is in ~/src/myshop. Build it for the iOS Simulator and the Android Emulator and use those builds
+(if it is a React Native app, build it in the Release configuration).
 For devices, use Simulators / Emulators with the newest OS available on this Mac.
 When you're done, tell me the names of the run profiles you created. There's no need to run any tests.
 ```
 
-- Use the **display name** exactly as it appears under the icon on the home screen (do not add notes such as "(for testing)").
-  fleetest looks for the home-screen icon by this name, and uses it to tell which app a system dialog belongs to.
-- If you give the **path to the built app**, it is installed on the device automatically when tests run.
-  Pass a `.app` for the iOS Simulator and an `.apk` for Android.
-  For how to build a `.app` for the Simulator, see the `xcodebuild` example in the manual steps of the [Quick Start](../quick-start.md).
-  You can also ask the AI assistant to "build this project for the Simulator".
-- For an app that exists only on iOS or only on Android, writing just one side is enough.
+- Use the display name exactly as it appears under the icon on the home screen.
+- If you already have builds, give their paths (`.app` / `.apk`) instead of the source.
+- Name the test project (`myshop`) in your later prompts too.
 
-In Claude Code, `/fleetest-profiles` does the same thing (it asks you for the app name and so on, one by one).
+What you'll see: the AI assistant reports the run profile names (such as `ios-run`). In VSCode, switch to `myshop` with
+`fleetest: Select Project` in the Command Palette, and they appear in the **Profiles** tab of the device monitor.
 
 <details>
 <summary><b>If you do it manually (click to show details)</b></summary>
 
-```bash
-../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.example.myshop --auto-device \
-  --app-path ~/builds/MyShop.app
-../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.example.myshop.android --auto-device \
-  --app-path ~/builds/myshop-debug.apk
-../foundation-tester/.build/debug/fleetest profile list
-```
+Build the app first (the [Quick Start](../quick-start.md) has an `xcodebuild` example for the iOS Simulator;
+build React Native apps in the Release configuration), then run these in the work folder.
 
-You can also create and edit them from the **Profiles** tab of the VSCode extension's device monitor.
+```bash
+../foundation-tester/.build/debug/fleetest project create myshop
+../foundation-tester/.build/debug/fleetest profile setup --project myshop --platform ios --app-id com.example.myshop \
+  --app-name "My Shop" --auto-device --app-path ~/builds/MyShop.app
+../foundation-tester/.build/debug/fleetest profile setup --project myshop --platform android --app-id com.example.myshop.android \
+  --app-name "My Shop" --auto-device --app-path ~/builds/myshop-debug.apk
+```
 
 </details>
 
-## Add more devices
-
-With more devices, tests are distributed to them automatically and the overall time gets shorter
-(you do not need to rewrite any scenario).
+## 2. Add more devices
 
 ### Prompt for the AI
 
 ```text
-Add two more iPhone Simulators to the fleetest run profile ios-run.
+Add two more iPhone Simulators to the run profile ios-run in the fleetest test project myshop.
 If there aren't enough, you can create them with the same model and OS.
 Then show me the profile's updated device list.
 ```
 
-The number of devices that can run at once is limited by the Mac's memory and CPU. If adding devices makes things slower, ask to reduce them.
+If the Mac gets slow, ask to reduce them.
 
 <details>
 <summary><b>If you do it manually (click to show details)</b></summary>
 
-In the **Profiles** tab of the VSCode extension's device monitor, use the run profile's "Add device" button,
-or choose the devices to use with the checkboxes in the device list.
+In the **Profiles** tab of the device monitor, press the run profile's "Add device" button.
 
 </details>
 
-## Use physical devices (real iPhone / Android)
+## 3. Use a physical device (optional)
 
-A physical device connected over USB can also be used for tests. **First turn off auto-lock on the device**
-(iOS: Settings → Display & Brightness → Auto-Lock → Never. Android: Settings → Display → set Screen timeout long enough).
-fleetest cannot wake a device whose screen has turned off.
+Turn off auto-lock on the device first (fleetest cannot wake a device whose screen has turned off).
 
 ### Prompt for the AI
 
 ```text
-Register the iPhone connected over USB as a new fleetest run profile named ios-physical.
+Register the iPhone 15 connected over USB as a new run profile named ios-physical in the fleetest test project myshop.
 Use the app from the existing app profile; the build for physical devices is ~/builds/MyShop.ipa.
 Then tell me the profile name and whether the device was recognized.
 ```
 
-If several physical devices are connected, name the one you mean by its model ("Register the iPhone 15 connected over USB...").
-Otherwise the AI assistant cannot decide which one to register and stops with a question.
-
-An app for a physical iOS device must be signed (an `.ipa` or an `.app`).
-Preparing the device itself (Developer Mode, USB debugging and so on) and using a physical device connected to another Mac are covered in [Adding physical devices](../fleet/adding_physical_devices.md).
+Preparing the device itself (Developer Mode, USB debugging and so on) is covered in [Adding physical devices](../fleet/adding_physical_devices.md).
 
 ## When you rebuild the app
 
-If the app path is unchanged, you do not need to do anything. On every run, the app installed on the device is
-compared with the app at the path, and it is reinstalled if they differ. Only when the path or file name changes do you
-ask for the registration to be fixed.
+If the path is unchanged, you do not need to do anything (on every run, the app is reinstalled if it has changed). Ask only when the path changes.
 
 ```text
-Change the iOS app path in the fleetest app profile to ~/builds/MyShop-2.0.app.
+Change the iOS app path in the app profile of the fleetest test project myshop to ~/builds/MyShop-2.0.app.
 ```
 
-## More details
-
-- List of settable items: [Profiles](../reference/project/profiles.md) and [Run profile settings](../reference/project/run_profile.md)
-- To split test projects (the unit that groups tests): [Creating a test project](../reference/project/creating_project.md)
+Settable items: [Profiles](../reference/project/profiles.md) and [Run profile settings](../reference/project/run_profile.md)
 
 Next: [Preparing the servers your app depends on](preparing_app_server.md)
 

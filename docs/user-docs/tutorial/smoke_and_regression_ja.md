@@ -2,17 +2,14 @@
 
 [in English](smoke_and_regression.md)
 
-シナリオが数本たまったら、毎回回す短い一式(スモーク)と、全部を回す一式(回帰)に分けます。
-シナリオを書き換える必要はありません。フォルダに分けるだけです。
+毎回回す短い一式(スモーク)と、全部を回す一式(回帰)に分けます。シナリオの書き換えは要りません。
 
 ## 1. フォルダに分ける
-
-`scenarios/` の直下にフォルダを作り、代表的なシナリオ(ログインして主要な画面に入れる、など)を移します。
 
 ### AIへの指示文
 
 ```text
-TestProjects/project1/scenarios/ の下に smoke フォルダを作って、ログインの確認とトップ画面の確認のシナリオを移して。
+fleetest のテストプロジェクト myshop の scenarios/ の下に smoke フォルダを作って、ログインの確認とトップ画面の確認のシナリオを移して。
 移したらコンパイルが通ることを確かめて。
 ```
 
@@ -20,8 +17,8 @@ TestProjects/project1/scenarios/ の下に smoke フォルダを作って、ロ�
 <summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 ```bash
-mkdir TestProjects/project1/scenarios/smoke
-mv TestProjects/project1/scenarios/ログイン.swift TestProjects/project1/scenarios/smoke/
+mkdir TestProjects/myshop/scenarios/smoke
+mv TestProjects/myshop/scenarios/ログイン.swift TestProjects/myshop/scenarios/smoke/
 ```
 
 シナリオの ID(`クラス名.メソッド名`)はフォルダに関係なく変わりません。
@@ -34,14 +31,14 @@ mv TestProjects/project1/scenarios/ログイン.swift TestProjects/project1/scen
 ### AIへの指示文
 
 ```text
-fleetest の ios-run プロファイルで、smoke フォルダのシナリオだけを実行して。
+fleetest のテストプロジェクト myshop の ios-run プロファイルで、smoke フォルダのシナリオだけを実行して。
 ```
 
 <details>
 <summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 ```bash
-../foundation-tester/.build/debug/fleetest run --profile ios-run --folder smoke
+../foundation-tester/.build/debug/fleetest run --project myshop --profile ios-run --folder smoke
 ```
 
 `--folder` には `scenarios/` 直下のサブフォルダの名前を渡します。複数回指定できます。`--scenario`・`--failed` とも併用できます。
@@ -57,14 +54,14 @@ fleetest の ios-run プロファイルで、smoke フォルダのシナリオ�
 ### AIへの指示文
 
 ```text
-前回の実行で落ちたシナリオだけを、同じプロファイルで実行し直して。
+fleetest のテストプロジェクト myshop で、前回の実行で落ちたシナリオだけを、同じプロファイルで実行し直して。
 ```
 
 <details>
 <summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
 ```bash
-../foundation-tester/.build/debug/fleetest run --profile ios-run --failed
+../foundation-tester/.build/debug/fleetest run --project myshop --profile ios-run --failed
 ```
 
 結果はプロファイルごとに記録されるので、前回と同じプロファイルで回します。
@@ -74,24 +71,26 @@ fleetest の ios-run プロファイルで、smoke フォルダのシナリオ�
 
 ## 4. 使わなくなったテスト・作りかけのテストを外す
 
-回帰にまだ入れたくないシナリオは、クラスかメソッドに印を付けます。付けたものは、全実行・フォルダ実行・クラス名指定の一括実行から外れます。
-シナリオ ID を完全に指定したときだけ回せます。
+### AIへの指示文
 
-- `@Draft("理由")`: 作りかけ(これから使う)。
-- `@Deleted("理由")`: もう使わない。コードは残るので、復活は印を外すだけです。
+```text
+fleetest のテストプロジェクト myshop の作りかけのシナリオ「〇〇」に @Draft("理由") を付けて、全実行から外して。
+もう使わないシナリオなら @Deleted("理由") を付けて。
+```
+
+- 印を付けたシナリオは、全実行・フォルダ実行・クラス名指定の一括実行から外れ、シナリオ ID を完全に指定したときだけ回せます。
+- `@Draft` は作りかけ、`@Deleted` はもう使わないもの(コードは残るので、復活は印を外すだけです)。
+
+詳しくは[シナリオの実行(fleetest run)](../reference/running/running_scenarios_ja.md)の「主なオプション」(`--scenario`)。
+
+## 5. CI に載せる
 
 ### AIへの指示文
 
 ```text
-作りかけのシナリオ「〇〇」に @Draft を付けて、全実行から外して。
+fleetest のテストプロジェクト myshop を CI で回すジョブを2つ作って。
+1つは --folder smoke を付けて毎回、もう1つは付けずに夜に回す。
 ```
-
-実行の指定との関係は[シナリオの実行(fleetest run)](../reference/running/running_scenarios_ja.md)の「主なオプション」(`--scenario`)にあります。
-
-## 5. CI に載せる
-
-CI では、スモークを毎回、全部を夜に回します。ジョブを2つ作り、`--folder smoke` を付けたものと付けないものを定期実行にします
-([CI で回す](../in_action/ci_ja.md))。
 
 次へ: [CI で回す](../in_action/ci_ja.md)
 

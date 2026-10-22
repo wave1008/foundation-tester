@@ -2,110 +2,86 @@
 
 [in English](preparing_app_and_devices.md)
 
-テストを動かすには、**何を**(テスト対象のアプリ)**どこで**(デバイス)動かすかを fleetest に登録します。
-登録の中身は2種類のプロファイルです。
+自分のアプリと、テストに使うデバイスを fleetest に登録します。
 
-| プロファイル | 決めること |
-|---|---|
-| アプリプロファイル | アプリの表示名・アプリ ID・ビルド済みアプリのパス |
-| 実行プロファイル | どのアプリを、どのデバイスで、どんな設定で動かすか |
-
-どちらも AIアシスタントへ指示すれば作れます。JSON を手で書く必要はありません。
-
-## 最初の登録
+## 1. アプリを登録する
 
 ### AIへの指示文
 
 ```text
-自分のアプリ向けに、fleetest のプロファイルを作成して。
+fleetest のテストプロジェクト myshop を新しく作り、自分のアプリを登録して。
 アプリの表示名は「My Shop」。アプリ ID は iOS が com.example.myshop、Android が com.example.myshop.android。
-ビルド済みのアプリは ~/builds/MyShop.app(iOS Simulator 向け)と ~/builds/myshop-debug.apk にある。
+アプリのソースは ~/src/myshop にある。iOS Simulator 向けと Android Emulator 向けにビルドして使って
+(React Native のアプリなら Release 構成でビルドして)。
 デバイスには、この Mac で使える最新 OS の Simulator / Emulator を選んで。
 作成した実行プロファイルの名前を報告したら終わりにして。テストは実行しなくてよい。
 ```
 
-- **表示名**は、ホーム画面でアイコンの下に出る名前そのものにします(「(テスト用)」などの注記を足さない)。
-  fleetest はこの名前でホーム画面のアイコンを探し、システムのダイアログがどのアプリのものかを見分けます。
-- **ビルド済みのアプリのパス**を渡すと、テストの実行時にデバイスへ自動でインストールされます。
-  iOS Simulator には `.app`、Android には `.apk` を渡します。
-  Simulator 向けの `.app` の作り方は[クイックスタート](../quick-start_ja.md)の手動手順の `xcodebuild` の例を参考にしてください。
-  AIアシスタントへ「このプロジェクトを Simulator 向けにビルドして」と指示することもできます。
-- iOS だけ・Android だけのアプリなら、片方だけ書けば足ります。
+- 表示名は、ホーム画面でアイコンの下に出る名前そのままにします。
+- ビルド済みのアプリがあるなら、ソースの代わりにそのパス(`.app` / `.apk`)を伝えます。
+- 以降の指示にも、テストプロジェクト名(`myshop`)を添えます。
 
-Claude Code では `/fleetest-profiles` でも同じことができます(アプリ名などを順に質問されます)。
+見えるもの: AIアシスタントが実行プロファイル名(`ios-run` など)を報告します。VSCode では、コマンドパレットの
+`fleetest: プロジェクトを選択` で `myshop` に切り替えると、デバイスモニターの「プロファイル」タブに並びます。
 
 <details>
 <summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
-```bash
-../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.example.myshop --auto-device \
-  --app-path ~/builds/MyShop.app
-../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.example.myshop.android --auto-device \
-  --app-path ~/builds/myshop-debug.apk
-../foundation-tester/.build/debug/fleetest profile list
-```
+アプリをビルドしてから(iOS Simulator 向けの `xcodebuild` の例は[クイックスタート](../quick-start_ja.md)。
+React Native は Release 構成)、作業フォルダで実行します。
 
-VSCode 拡張のデバイスモニターの「プロファイル」タブからも作成・編集できます。
+```bash
+../foundation-tester/.build/debug/fleetest project create myshop
+../foundation-tester/.build/debug/fleetest profile setup --project myshop --platform ios --app-id com.example.myshop \
+  --app-name "My Shop" --auto-device --app-path ~/builds/MyShop.app
+../foundation-tester/.build/debug/fleetest profile setup --project myshop --platform android --app-id com.example.myshop.android \
+  --app-name "My Shop" --auto-device --app-path ~/builds/myshop-debug.apk
+```
 
 </details>
 
-## デバイスを増やす
-
-デバイスを増やすと、テストが複数のデバイスへ自動で振り分けられ、全体の時間が短くなります
-(シナリオを書き換える必要はありません)。
+## 2. デバイスを増やす
 
 ### AIへの指示文
 
 ```text
-fleetest の実行プロファイル ios-run に、iPhone の Simulator をあと2台追加して。
+fleetest のテストプロジェクト myshop の実行プロファイル ios-run に、iPhone の Simulator をあと2台追加して。
 使える Simulator が無ければ、同じ機種・同じ OS で作成してよい。
 追加したら、実行プロファイルのデバイス一覧を報告して。
 ```
 
-同時に動かせる台数は Mac のメモリと CPU で決まります。増やして遅くなったら、減らすよう指示してください。
+増やして Mac が重くなったら、減らすよう指示します。
 
 <details>
 <summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
-VSCode 拡張のデバイスモニターの「プロファイル」タブで、実行プロファイルの「デバイスを追加」を使うか、
-デバイス一覧のチェックボックスで使うデバイスを選びます。
+デバイスモニターの「プロファイル」タブで、実行プロファイルの「デバイスを追加」を押します。
 
 </details>
 
-## 実機(本物の iPhone / Android)を使う
+## 3. 実機を使う(任意)
 
-USB でつないだ実機もテストに使えます。**先に端末側で自動ロックを切ってください**
-(iOS: 設定 → 画面表示と明るさ → 自動ロック → なし。Android: 設定 → ディスプレイ → 画面消灯を十分長く)。
-fleetest は画面の消えた端末を起こせません。
+先に端末の自動ロックを切ってください(画面が消えると fleetest は端末を起こせません)。
 
 ### AIへの指示文
 
 ```text
-USB でつないだ iPhone を、fleetest の新しい実行プロファイル ios-physical として登録して。
+USB でつないだ iPhone 15 を、fleetest のテストプロジェクト myshop に新しい実行プロファイル ios-physical として登録して。
 アプリは既存のアプリプロファイルのものを使い、実機向けのビルドには ~/builds/MyShop.ipa を使って。
 登録したら、実行プロファイルの名前と、端末が認識されたかどうかを報告して。
 ```
 
-実機を複数つないでいるときは、どの端末かを機種名で添えてください(「USB でつないだ iPhone 15 を…」)。
-添えないと、AIアシスタントはどれを登録するか決められずに質問で止まります。
-
-iOS の実機向けアプリは署名済みのもの(`.ipa` または `.app`)が要ります。
-端末側の準備(デベロッパモード・USB デバッグなど)と、別の Mac につないだ実機の使い方は[実機を追加する](../fleet/adding_physical_devices_ja.md)にあります。
+端末側の準備(デベロッパモード・USB デバッグなど)は[実機を追加する](../fleet/adding_physical_devices_ja.md)にあります。
 
 ## アプリを作り直したとき
 
-アプリのパスが同じなら、何もしなくて構いません。実行のたびに、デバイスに入っているアプリと
-パスのアプリを比べ、違っていればインストールし直します。パスやファイル名が変わったときだけ、
-登録を直すよう指示します。
+パスが同じなら何もしなくて構いません(実行のたびに、変わっていれば入れ直します)。パスが変わったときだけ指示します。
 
 ```text
-fleetest のアプリプロファイルにある iOS のアプリのパスを、~/builds/MyShop-2.0.app に変えて。
+fleetest のテストプロジェクト myshop のアプリプロファイルにある iOS のアプリのパスを、~/builds/MyShop-2.0.app に変えて。
 ```
 
-## もっと詳しく
-
-- 設定できる項目の一覧: [プロファイル](../reference/project/profiles_ja.md)・[実行プロファイルの設定項目](../reference/project/run_profile_ja.md)
-- テストプロジェクト(テストをまとめる単位)を分けたいとき: [テストプロジェクトの作成](../reference/project/creating_project_ja.md)
+設定できる項目: [プロファイル](../reference/project/profiles_ja.md)・[実行プロファイルの設定項目](../reference/project/run_profile_ja.md)
 
 次へ: [アプリが依存するサーバーを用意する](preparing_app_server_ja.md)
 
