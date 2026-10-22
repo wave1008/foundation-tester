@@ -1,4 +1,4 @@
-// FlowStep を通らない DSL の秒数(fold / unfold・ifCanSelect・repeatWhileCanSelect・doUntilTrue)は StepExecutor の入口の
+// FlowStep を通らない DSL の秒数(fold / unfold・ifCanSelect・repeatWhileCanSelect・doUntilTrue の waitSeconds)は StepExecutor の入口の
 // 検査が効かないので、各コマンドの入口で FlowStep.secondsViolation を当てる。範囲外が届くと FoldControl.apply / IdleAllowance の
 // `Int(秒 * 1000)` でテストプロセスごと落ちる(`.infinity` は期限が無くなり止まらない)= 検査を外す変異は中断かハングとして現れる。
 // 状態の読みは Android の経路(foldObservation)= simctl / devicectl に触れない。
@@ -126,15 +126,20 @@ final class DSLSecondsViolationTests: XCTestCase {
         }
     }
 
-    func testDoUntilTrueRejectsOutOfRangeWaitAndIntervalSeconds() {
+    func testDoUntilTrueRejectsOutOfRangeWaitSeconds() {
         for seconds in outOfRange {
             var ran = false
             _ = run { doUntilTrue("w", waitSeconds: seconds) { ran = true; return true } }
             assertRejected("doUntilTrue", seconds, ranBody: ran)
-            ran = false
-            _ = run { doUntilTrue("i", intervalSeconds: seconds) { ran = true; return true } }
-            assertRejected("doUntilTrue", seconds, ranBody: ran)
         }
+    }
+
+    /// doUntilTrue の間隔は断らずに丸める(負値の契約は CommandDispatchTests)。桁外れの有限値も trap せずに回る
+    func testDoUntilTrueClampsAHugeIntervalInsteadOfTrapping() {
+        var attempts = 0
+        _ = run { doUntilTrue("h", waitSeconds: 1, intervalSeconds: 1e30) { attempts += 1; return true } }
+        XCTAssertEqual(attempts, 1)
+        XCTAssertEqual(sink.steps.last { $0.command == "doUntilTrue" }?.status, "passed")
     }
 
     /// 境界(0 と上限ちょうど)は断らない。ifCanSelect の 0 は「初回の木だけ見る」既定値そのもの

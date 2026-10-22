@@ -557,7 +557,7 @@ public func ifCanSelect(_ selector: Sel, waitSeconds: Double = 0,
     ifCanSelectImpl(selector.ftSelector, waitSeconds: waitSeconds, file: file, line: line, body)
 }
 
-/// FlowStep を通らない待ち(ifCanSelect / repeatWhileCanSelect / doUntilTrue)の秒数の検査。範囲外は
+/// FlowStep を通らない待ち(ifCanSelect / repeatWhileCanSelect / doUntilTrue の waitSeconds)の秒数の検査。範囲外は
 /// `IdleAllowance.during` の `Int(秒 * 1000)` で trap し、`.infinity` は期限が無くなる。断ったら失敗を記録して true。
 /// dry-run でも断る(実行より前の検査 = セレクタの構文誤りと同じ扱い)
 private func rejectsOutOfRangeSeconds(_ core: FTDriveCore, _ values: KeyValuePairs<String, Double>,
@@ -912,7 +912,10 @@ public func doUntilTrue(_ title: String, waitSeconds: Double? = nil, intervalSec
     let waitSeconds = waitSeconds ?? core.tunables.doUntilTrueTimeout
     let intervalSeconds = intervalSeconds ?? core.tunables.doUntilTrueInterval
     let maxLoopCount = maxLoopCount ?? core.tunables.doUntilTrueMaxLoopCount
-    if rejectsOutOfRangeSeconds(core, ["waitSeconds": waitSeconds, "intervalSeconds": intervalSeconds],
+    // 間隔は断らずに丸める(負値・NaN・無限大は 0、上限は waitSecondsCeiling = 桁外れの有限値も IdleAllowance の
+    // Int(秒 * 1000) で trap させない。CommandDispatchTests.testNegativeIntervalDoesNotCrashTheProcess の契約)
+    let pause = intervalSeconds.isFinite ? min(max(0, intervalSeconds), ArgumentBounds.waitSecondsCeiling) : 0
+    if rejectsOutOfRangeSeconds(core, ["waitSeconds": waitSeconds],
                                 description: description, command: "doUntilTrue", file: file, line: line) {
         return
     }
@@ -923,7 +926,7 @@ public func doUntilTrue(_ title: String, waitSeconds: Double? = nil, intervalSec
     var failure: (reason: String, kind: StepFailureKind?)?
     // 本体が DSL を呼ばない素の Swift なら周回の間は出力が無い。期限を越える最後の1周の間隔までを親の idle 打ち切りへ
     // 申告する(1周の本体そのものの長さは分からない = 本体が長く黙るなら申告の外)
-    IdleAllowance.during(seconds: waitSeconds + (intervalSeconds.isFinite ? max(0, intervalSeconds) : 0)) {
+    IdleAllowance.during(seconds: waitSeconds + pause) {
         while true {
             let pacedBefore = core.pacedMsTotal.value
             var held = false
@@ -948,8 +951,7 @@ public func doUntilTrue(_ title: String, waitSeconds: Double? = nil, intervalSec
                            + " (\(loops) attempt(s))", nil)
                 break
             }
-            // 負値・NaN は 0 に丸める(UInt64 へ直す経路と同じ規律。trap させない)
-            Thread.sleep(forTimeInterval: intervalSeconds.isFinite ? max(0, intervalSeconds) : 0)
+            Thread.sleep(forTimeInterval: pause)
         }
     }
     if core.scenarioAborted { return }
