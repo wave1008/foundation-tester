@@ -1552,7 +1552,8 @@ final class FTInAppBridge {
         let req = try decode(TapRequest.self, body)
         try requireSelfRenderedFramework("doubleTap")
         try performWithSettle { window in
-            let p = try self.resolvePoint(ref: req.ref, x: req.x, y: req.y)
+            // 座標は screen(snapshot と同じ)→ window(handleTap の topmostHitView と同じ変換)
+            let p = window.convert(try self.resolvePoint(ref: req.ref, x: req.x, y: req.y), from: nil)
             FTSynthDoubleTap(window, p, Self.doubleTapGapSeconds)
         }
         return ok()
@@ -1603,9 +1604,21 @@ final class FTInAppBridge {
               fingers[0].points.count >= 2, fingers[1].points.count >= 2 else {
             throw InAppError(400, "pinch needs exactly 2 fingers with at least 2 points each")
         }
+        let points = fingers.flatMap(\.points)
+        guard points.allSatisfy({ $0.x.isFinite && $0.y.isFinite && $0.t.isFinite && $0.t >= 0 }) else {
+            throw InAppError(400, "pinch points must be finite with non-negative times")
+        }
+        // 絶対上限は XCUITest と同じ(方針の上限はホストが先に断る)。超えた秒数で刻みの数を作ると整数化で
+        // 落ち、ブリッジが載るアプリごと落ちる(handleDrag と同じ)
+        if let violation = BridgeAPI.gestureDurationViolation("pinch", seconds: points.map(\.t).max() ?? 0,
+                                                               cap: BridgeAPI.gestureSecondsCeiling) {
+            throw InAppError(400, violation)
+        }
         try performWithSettle { window in
             let (a, b, stepDelay) = Self.pinchSteps(fingers[0], fingers[1])
-            FTSynthTwoFingerSteps(window, a, b, Int32(a.count), stepDelay)
+            // 座標は screen → window(handleDrag と同じ)
+            let wa = a.map { window.convert($0, from: nil) }, wb = b.map { window.convert($0, from: nil) }
+            FTSynthTwoFingerSteps(window, wa, wb, Int32(wa.count), stepDelay)
         }
         return ok()
     }

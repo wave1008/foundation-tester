@@ -56,9 +56,12 @@ final class InAppGestureRoutingTests: XCTestCase {
                               + "501 を返して XCUITest へ回さないと黙って無反応になります")
         }
         // in-app はアプリのプロセスに載るので、上限を超えた秒数で刻みを作るとアプリごと落ちる(XCUITest の /drag と同じ絶対上限)
-        if let range = bridge.range(of: "private func handleDrag") {
-            XCTAssertTrue(bridge[range.lowerBound...].prefix(1500).contains("BridgeAPI.gestureDurationViolation(\"drag\""),
-                          "handleDrag が秒数の絶対上限を検査していません")
+        for (handler, what) in [("handleDrag", "drag"), ("handlePinch", "pinch")] {
+            guard let range = bridge.range(of: "private func \(handler)") else {
+                XCTFail("\(handler) が見つかりません(改名したら走査の名前も直す)"); continue
+            }
+            XCTAssertTrue(bridge[range.lowerBound...].prefix(1800).contains("BridgeAPI.gestureDurationViolation(\"\(what)\""),
+                          "\(handler) が秒数の絶対上限を検査していません")
         }
         XCTAssertTrue(bridge.contains("[\"compose\", \"flutter\"].contains(uiFramework)"),
                       "requireSelfRenderedFramework の判定対象が変わっています")
