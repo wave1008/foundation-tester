@@ -73,10 +73,10 @@ MCP の **profile 無しの iOS 経路**(`ft_snapshot` 等を `platform: ios` �
 払うだけになる(実測 244 秒 = このスイートの重複分)。OS の絞り込みは `--ios` / `--android`。
 
 **印は回さなかった側に付く**: e2e.sh は `BridgeSourceSet` の digest を
-`.fleetest/<mode>-e2e-verified` に記録し(**全部成功したときだけ**)、次の実行で
+`.fleetest/<bridge>-e2e-verified` に記録し(**全部成功したときだけ**)、次の実行で
 **回さない側**のモードのブリッジの入力が動いていれば開始時と終了時に警告する。落とさず警告だけ。
 
-**E2EX(`Scripts/e2ex.sh`)も同じ仕組みで別の印 `.fleetest/<mode>-e2ex-verified` を書く**
+**E2EX(`Scripts/e2ex.sh`)も同じ仕組みで別の印 `.fleetest/<bridge>-e2ex-verified` を書く**
 (全部成功したときだけ。`--on` で回した回の印は向こうのクローンに残る)。**警告は in-app の印にだけ出す**
 (`--ios-xcuitest` の実行のときだけ見る)—— E2EX の XCUITest は断続的な赤が残り
 (docs/framework-differences.md §5.1。決まって赤のものは 2026-10-08 に 1 本 = 90_不具合の回帰 S0020)で全部成功するとは限らない = 警告にすると下の節と同じ「鳴りっぱなし」になる。
@@ -103,7 +103,7 @@ delete × 実際値の文字数 + 期待値 / ホストは clearInput + type)。
 
 **誤検知の監視**: 打ち直しが起きた事実は緑でも残る(DSL の注記 `type-retyped` / 諦めた回は
 `type-retype-abandoned` / XCUITest ランナーの `OKResponse.note` → `driverFallback` / MCP の返答)。
-印(`.fleetest/<mode>-e2e-verified`)は e2e.sh が全緑で自動的に書き、打ち直しの回数は門ではない ——
+印(`.fleetest/<bridge>-e2e-verified`)は e2e.sh が全緑で自動的に書き、打ち直しの回数は門ではない ——
 **印が付いた後で結果 JSON から打ち直しを数え、真陽性(打った本文の中央が欠けた形)だけであることを
 確かめる**(初回の数え上げ = 2026-09-14: 39 run・type ステップ 190 で打ち直し 2 回、どちらも真陽性(E2E-RN xcuitest の
 `persist99`)・誤検知 0)。
@@ -305,7 +305,7 @@ Flutter と RN の実機用は **Release 構成**(Flutter の Debug は flutter 
 - **小さい画面と遅い機種でだけ出る赤を拾う**のが役目(2026-10-12 に 510 回中 14 回の赤 = 6 種を見つけた:
   折り返しの下の要素・キーボードで縮む窓・動いている一覧へのタップ・慣性の長さの前提・端末に残った永続設定・
   ホームボタン機)。シナリオや SUT の配置を変えたら e2e-sut.md の「両方の画面で」の確かめ方として回す
-- **陽性対照とモードの検証済みの印(`.fleetest/*-e2e-verified`)には触らない**(実機は XCUITest だけで、
+- **陽性対照とブリッジの検証済みの印(`.fleetest/*-e2e-verified`)には触らない**(実機は XCUITest だけで、
   利用者の既定モードの経路を通らない)
 - **全実施を頼まれたとき以外は `--scenario <Class か Class.method>`(繰り返し可)で絞る**(絞らない起動は
   `Scripts/test-scope-guard.py` が断る)。直したシナリオの確かめは、SUT と OS も絞って

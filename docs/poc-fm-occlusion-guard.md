@@ -133,7 +133,7 @@ hittable は無く、②Compose iOS では `isHittable` 自体が壊れている
 
 ## 5.7 実 UI(Simulator)再計測 — 合成では見えなかった重大な誤反転(2026-07-21)
 
-空きデバイス **A012ADD8**(iPhone 17 Pro/iOS 27、モニター占有外)に inapp ブリッジを注入起動し、
+空きデバイス **A012ADD8**(iPhone 17 Pro/iOS 27、モニター占有外)に in-app ブリッジを注入起動し、
 **sut-ec-mobile** の実画面で計測(ハーネス `ftester-poc-occlusion` の Live.swift・§8、
 `ftester-poc-occlusion live <udid> <bundle> <port> <dir>`)。ground truth はスクショ目視で確定。
 

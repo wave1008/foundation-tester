@@ -167,12 +167,12 @@ final class PlanBridgeTests: XCTestCase {
         ]
         guard case .reuse(let port) = try planInApp(bundleID: "com.example.appA",
                                                     running: running, sim: sim) else {
-            return XCTFail("同一アプリの inapp ブリッジは reuse するはず")
+            return XCTFail("同一アプリの in-app ブリッジは reuse するはず")
         }
         XCTAssertEqual(port, 8125)
     }
 
-    /// 別アプリに注入された inapp ブリッジは再利用せず、停止対象(stopStalePort)として新規起動する。
+    /// 別アプリに注入された in-app ブリッジは再利用せず、停止対象(stopStalePort)として新規起動する。
     /// 再利用すると、対象アプリ前面化で旧アプリが suspend → probe 無応答 → 誤ルーティング →
     /// 旧アプリが握ったポートで relaunch して bind 失敗、の連鎖で全滅する(2026-07-23 実害)。
     func testInAppDoesNotReuseForeignBundleID() throws {
@@ -184,13 +184,13 @@ final class PlanBridgeTests: XCTestCase {
         ]
         guard case .launch(let port, _, let stopStalePort, _) =
                 try planInApp(bundleID: "com.example.appB", running: running, sim: sim) else {
-            return XCTFail("別アプリの inapp ブリッジは reuse せず launch のはず")
+            return XCTFail("別アプリの in-app ブリッジは reuse せず launch のはず")
         }
         XCTAssertNotEqual(port, 8125, "旧アプリが握っているポートを新規起動に使わない")
         XCTAssertEqual(stopStalePort, 8125, "別アプリの旧ブリッジは停止対象にする")
     }
 
-    /// sessionBundleID を返さない旧 inapp ブリッジも再利用しない(注入先不明のまま掴まない)。
+    /// sessionBundleID を返さない旧 in-app ブリッジも再利用しない(注入先不明のまま掴まない)。
     func testInAppDoesNotReuseUnknownBundleID() throws {
         let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
         let running: [UInt16: BridgeProvisioner.RunningBridge] = [
@@ -200,11 +200,11 @@ final class PlanBridgeTests: XCTestCase {
         ]
         guard case .launch = try planInApp(bundleID: "com.example.appB",
                                            running: running, sim: sim) else {
-            return XCTFail("注入先不明の inapp ブリッジは reuse しないはず")
+            return XCTFail("注入先不明の in-app ブリッジは reuse しないはず")
         }
     }
 
-    /// **旧版の inapp ブリッジは同一アプリでも再利用しない**。dylib を作り直しても
+    /// **旧版の in-app ブリッジは同一アプリでも再利用しない**。dylib を作り直しても
     /// bridgeProtocolVersion を上げ忘れると稼働中の旧ブリッジが掴まれ、追加した
     /// エンドポイントが 404 になる/変えた挙動が反映されない(調査中に実際に踏んだ)。
     /// xcuitest 側だけが版ゲートを持っていた時期があるので、inapp 側の退行をここで止める
@@ -217,13 +217,13 @@ final class PlanBridgeTests: XCTestCase {
         ]
         guard case .launch(let port, _, let stopStalePort, _) =
                 try planInApp(bundleID: "com.example.appA", running: running, sim: sim) else {
-            return XCTFail("旧版の inapp ブリッジは同一アプリでも reuse せず launch のはず")
+            return XCTFail("旧版の in-app ブリッジは同一アプリでも reuse せず launch のはず")
         }
         XCTAssertNotEqual(port, 8125, "旧版が握っているポートを新規起動に使わない")
-        XCTAssertEqual(stopStalePort, 8125, "旧版の inapp ブリッジは停止対象にする")
+        XCTAssertEqual(stopStalePort, 8125, "旧版の in-app ブリッジは停止対象にする")
     }
 
-    /// 版を申告しない inapp ブリッジ(この定数導入前のビルド)も同じ扱いにする。
+    /// 版を申告しない in-app ブリッジ(この定数導入前のビルド)も同じ扱いにする。
     func testInAppDoesNotReuseBridgeWithoutProtocolVersion() throws {
         let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
         let running: [UInt16: BridgeProvisioner.RunningBridge] = [
@@ -233,7 +233,7 @@ final class PlanBridgeTests: XCTestCase {
         ]
         guard case .launch(let port, _, let stopStalePort, _) =
                 try planInApp(bundleID: "com.example.appA", running: running, sim: sim) else {
-            return XCTFail("版申告の無い inapp ブリッジは reuse せず launch のはず")
+            return XCTFail("版申告の無い in-app ブリッジは reuse せず launch のはず")
         }
         XCTAssertNotEqual(port, 8125)
         XCTAssertEqual(stopStalePort, 8125)

@@ -3,7 +3,7 @@
 // なぜ要るか: 1回の実行が見るのは iOS の2モードのうち片方だけ。2026-08-09 に in-app/xcuitest の
 // 両方を変えた回の E2E 254 本が全部 xcuitest モード で、in-app 側は1度も動かないまま緑になった。
 // ゲート自体が壊れても誰も気付かないので、ここで両方向を固定する。
-// 2026-08-11 に既定が in-app へ反転し、印もモードごと(.fleetest/<mode>-e2e-verified)になった。
+// 2026-08-11 に既定が in-app へ反転し、印もブリッジごと(.fleetest/<bridge>-e2e-verified)になった。
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -25,7 +25,7 @@ const BINARY_PATH = join(ROOT, '.build', 'debug', 'fleetest')
 const BINARY_EXISTS = existsSync(BINARY_PATH)
 
 /** ゲートの2ブロック(判定・記録)だけを取り出し、変数を差し替えて実行する。
- * marker は「モード名 → 中身」。mode_marker が組み立てるパス($ROOT/.fleetest/<mode>-e2e-verified)
+ * marker は「ブリッジ名(= モード名と同じ値)→ 中身」。bridge_marker が組み立てるパス($ROOT/.fleetest/<bridge>-e2e-verified)
  * に置くので、テスト側でパスの組み立て規則を二重に持たない。 */
 function runGate({ profile, failed, markers = {}, digest }) {
   const dir = mkdtempSync(join(tmpdir(), 'engine-gate-'))

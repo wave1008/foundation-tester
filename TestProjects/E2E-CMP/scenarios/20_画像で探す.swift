@@ -42,7 +42,7 @@ class 画像で要素を探す {
         scenario {
             scene(1, "起動直後の初回訪問でチェックボックスを findImage で掴んで叩く") {
                 condition {
-                    // 切り替えた直後は絵が木より遅れる(XCUITest エンジンは直していない既知の制約。
+                    // 切り替えた直後は絵が木より遅れる(XCUITest ブリッジは直していない既知の制約。
                     // docs/framework-differences.md §3)ので、**待つ**書き方にする。
                     // 待たずに撮る版(in-app の v117 の証人)は 23_絵の追いつき_inapp.swift
                     launchApp()

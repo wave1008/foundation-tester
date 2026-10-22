@@ -21,7 +21,7 @@
 # 前提: 実機がつながっていてロックが解除されていること(iOS は「このコンピュータを信頼」・Developer Mode・
 # 証明書の信頼)。iPhone 13 は M1Ultra につながっているので、M1Ultra がこの clone と同じコミットでないと
 # 適合チェックで落ちる(揃えるのは Scripts/align.sh。ここでは揃えない = push を伴うので指示があるときだけ)。
-# 陽性対照(e2e-negative.sh)と、モードの検証済みの印(.fleetest/*-e2e-verified)には触らない
+# 陽性対照(e2e-negative.sh)と、ブリッジの検証済みの印(.fleetest/*-e2e-verified)には触らない
 # —— 実機のスイートは利用者の既定(inapp モード)の経路を通らないので、その印の根拠にならない。
 set -euo pipefail
 

@@ -1,6 +1,6 @@
 // Scripts/e2ex.sh の「E2EX を最後に全部通したときからブリッジの入力が動いていないか」の印と警告を検証する。
 // 仕組みは Scripts/e2e.sh と同じ(inappE2EGate.test.mjs)だが、2点が違うのでここで固定する:
-// ①印は `.fleetest/<mode>-e2ex-verified`(E2E の印と混ぜない)
+// ①印は `.fleetest/<bridge>-e2ex-verified`(E2E の印と混ぜない)
 // ②警告は in-app の印にだけ出す(XCUITest は既知の赤 13 本で全部成功しない = 警告が鳴りっぱなしになる)
 
 import { test } from 'node:test'
@@ -51,7 +51,7 @@ test('既定(in-app)の実行は xcuitest の印が無くても警告しない(�
 
 test('--ios-xcuitest の実行は E2EX の in-app の印が無ければ警告する', () => {
   const { out } = runGate({ profile: 'ios-xcuitest', failed: 0, digest: 'abc' })
-  assert.match(out, /inapp ブリッジの入力が/)
+  assert.match(out, /in-app ブリッジの入力が/)
   assert.match(out, /未検証のまま/)
 })
 
@@ -66,7 +66,7 @@ test('E2E の印(-e2e-verified)は E2EX の印として数えない', () => {
   const { out } = runGate({
     profile: 'ios-xcuitest', failed: 0, markers: { 'inapp-e2e-verified': 'abc\n' }, digest: 'abc',
   })
-  assert.match(out, /inapp ブリッジの入力が/)
+  assert.match(out, /in-app ブリッジの入力が/)
 })
 
 test('全部成功したら回したモードの E2EX の印を書く', () => {

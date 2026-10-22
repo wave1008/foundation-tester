@@ -201,7 +201,7 @@ extension MCPServer {
             // ルート(root(of:))を渡してはいけない — 外部パッケージ構成では別ディレクトリで、
             // InAppBridge/build.sh が無く provision が必ず落ちる(.fleetest の状態も CLI と食い違う)
             let provisioner = BridgeProvisioner(repoRoot: try RepoRoot.find())
-            // bundleID/preinstallAppPath は inapp ブリッジのコールドスタートに必須。
+            // bundleID/preinstallAppPath は in-app ブリッジのコールドスタートに必須。
             // 稼働中ブリッジ再利用時は使われないため、欠落しても露見しにくい(実際に欠落バグが起きた)
             let iosApp = resolved.apps["ios"]
             // provision の進捗クロージャは @escaping のため inout の prologue を直接キャプチャできない

@@ -92,20 +92,20 @@ if [ "$IOS_MODE_ONLY" = 1 ]; then
 fi
 
 # 全部成功した回だけ、そのモードのブリッジ入力の digest を記録する(Scripts/e2e.sh と同じ仕組み。印は
-# `.fleetest/<mode>-e2ey-verified` で E2E の印とは別。--on で回した回は向こうのクローンに残る)。
+# `.fleetest/<bridge>-e2ey-verified` で E2E の印とは別。--on で回した回は向こうのクローンに残る)。
 # **警告は in-app の印にだけ出す**(Scripts/e2ex.sh と同じ方針。XCUITest だけの赤が残ると全部成功が条件の印が
 # 更新されず、警告が鳴りっぱなしになる)。
 # XCUITest のブリッジの検証は E2E の `--ios-xcuitest` の印が担う
 bridge_digest() { "$FLEETEST" api bridge-sources --bridge "$1" --digest 2>/dev/null; }
-mode_marker() { echo "$ROOT/.fleetest/$1-e2ey-verified"; }
+bridge_marker() { echo "$ROOT/.fleetest/$1-e2ey-verified"; }
 RUN_MODE=inapp
 if [ "$IOS_PROFILE" = "ios-xcuitest" ]; then RUN_MODE=xcuitest; fi
-MODE_STALE=""
+BRIDGE_STALE=""
 if [ "$RUN_IOS" = 1 ] && [ "$RUN_MODE" = xcuitest ]; then
   CURRENT_DIGEST="$(bridge_digest inapp)"
-  if [ -n "$CURRENT_DIGEST" ] && [ "$CURRENT_DIGEST" != "$(cat "$(mode_marker inapp)" 2>/dev/null)" ]; then
-    MODE_STALE=1
-    echo "⚠️ inapp ブリッジの入力が、最後に E2EY を全部通した状態から変わっています(この実行は XCUITest だけ)。"
+  if [ -n "$CURRENT_DIGEST" ] && [ "$CURRENT_DIGEST" != "$(cat "$(bridge_marker inapp)" 2>/dev/null)" ]; then
+    BRIDGE_STALE=1
+    echo "⚠️ in-app ブリッジの入力が、最後に E2EY を全部通した状態から変わっています(この実行は XCUITest だけ)。"
     echo "   → Scripts/e2ey.sh を回してください"
   fi
 fi
@@ -185,12 +185,12 @@ fi
 # **印を更新するのは全部成功したときだけ**(失敗したまま更新すると「検証済み」と言い張る装置になる)。
 # `[ … ] && { … }` の形にしない(偽のとき終了ステータス 1 を残す。Scripts/e2e.sh の末尾と同じ理由)
 if [ "$FAILED" = 0 ] && [ "$RUN_IOS" = 1 ]; then
-  MARKER="$(mode_marker "$RUN_MODE")"
+  MARKER="$(bridge_marker "$RUN_MODE")"
   mkdir -p "$(dirname "$MARKER")"
   bridge_digest "$RUN_MODE" > "$MARKER"
   echo "→ E2EY の $RUN_MODE 経路を検証済みとして記録しました($MARKER)"
 fi
-if [ -n "$MODE_STALE" ]; then
+if [ -n "$BRIDGE_STALE" ]; then
   echo "⚠️ E2EY の inapp 経路は未検証のままです(Scripts/e2ey.sh)"
 fi
 exit "$FAILED"

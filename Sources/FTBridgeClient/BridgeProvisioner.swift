@@ -954,7 +954,7 @@ public struct BridgeProvisioner: Sendable {
             usedPorts.remove(stale.key)
             stopStalePort = stale.key
         }
-        // 別アプリに注入された・または旧版のままの同一デバイスの inapp ブリッジ
+        // 別アプリに注入された・または旧版のままの同一デバイスの in-app ブリッジ
         // (上の再利用条件から漏れたもの)
         if bridge == "inapp", let stale = running.first(where: {
             sameDevice($0.value) && $0.value.bridge == "inapp" && !claimed.contains($0.key)
@@ -965,7 +965,7 @@ public struct BridgeProvisioner: Sendable {
             if case .foreign(let owner) = stale.value.ownership {
                 claimed.insert(stale.key)
                 return .blockedByForeign(port: stale.key, owner: owner,
-                                         reason: "inapp bridge injected into another app or of another version")
+                                         reason: "in-app bridge injected into another app or of another version")
             }
             claimed.insert(stale.key)
             stopStalePort = stale.key
@@ -1494,7 +1494,7 @@ public struct BridgeProvisioner: Sendable {
             if bridge == "inapp", bundleID != nil {
                 let client = BridgeClient(endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot))
                 do { _ = try await client.status(timeout: 3) } catch DriverError.bridgeConnectionRefused {
-                    log("→ \(name): the inapp bridge on port \(port) is gone (its app was terminated) — relaunching it")
+                    log("→ \(name): the in-app bridge on port \(port) is gone (its app was terminated) — relaunching it")
                     return try await executeBridge(
                         bridge: bridge,
                         plan: .launch(port: port, needsInstall: false, stopStalePort: nil, reclaimInApp: false),

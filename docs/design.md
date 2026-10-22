@@ -3969,7 +3969,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
   `exist`/`textIs` は既定 `requireVisible: true` のため、ソフトキーボードに覆われた要素は
   「`false positive (occlusion)`」で失敗する**。入力を伴う画面では検証対象・操作対象を入力欄より**上**に置く
   (TestProjects/E2E-CMP のテキスト入力画面がこの配置。2026-07-22 実測)
-- **inapp ブリッジは注入先アプリのプロセス内常駐**なので、アプリがクラッシュ/終了すると HTTP が
+- **in-app ブリッジは注入先アプリのプロセス内常駐**なので、アプリがクラッシュ/終了すると HTTP が
   `DriverError.bridgeConnectionRefused`(「Could not connect」)になる。xcuitest/Android はブリッジが
   別プロセスのためこの切断は起きない(inapp 固有)。切断時は `InAppDriver` がホストの
   `~/Library/Logs/DiagnosticReports` から対象 bundleID の直近 `.ips` を探し、レポートのエラー行に

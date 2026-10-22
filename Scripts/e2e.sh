@@ -159,17 +159,18 @@ fi
 # in-app/xcuitest 両方変えた回の E2E 254 本が全部 mode=xcuitest だった)。
 # **警告だけで落とさない** —— 検知は警告から始める、が本リポジトリの方針。
 # 一覧の定義元は Sources/FTCore/BridgeSourceSet.swift(ここに二重に書かない)
+# 引数はブリッジ名。iOS のモード名と同じ値(inapp / xcuitest)なので RUN_MODE / SKIP_MODE をそのまま渡す
 bridge_digest() { "$FLEETEST" api bridge-sources --bridge "$1" --digest 2>/dev/null; }
-mode_marker() { echo "$ROOT/.fleetest/$1-e2e-verified"; }
+bridge_marker() { echo "$ROOT/.fleetest/$1-e2e-verified"; }
 # このスイートが回す iOS モードと、回さない側
 RUN_MODE=inapp; SKIP_MODE=xcuitest
 # **`[ … ] && { … }` の形にしない**(偽のとき終了ステータス 1 を残す。末尾の exit の項も参照)
 if [ "$IOS_PROFILE" = "ios-xcuitest" ]; then RUN_MODE=xcuitest; SKIP_MODE=inapp; fi
-MODE_STALE=""
+BRIDGE_STALE=""
 if [ "$RUN_IOS" = 1 ]; then
   CURRENT_DIGEST="$(bridge_digest "$SKIP_MODE")"
-  if [ -n "$CURRENT_DIGEST" ] && [ "$CURRENT_DIGEST" != "$(cat "$(mode_marker "$SKIP_MODE")" 2>/dev/null)" ]; then
-    MODE_STALE=1
+  if [ -n "$CURRENT_DIGEST" ] && [ "$CURRENT_DIGEST" != "$(cat "$(bridge_marker "$SKIP_MODE")" 2>/dev/null)" ]; then
+    BRIDGE_STALE=1
     echo "⚠️ $SKIP_MODE ブリッジの入力が、最後にそれを通した状態から変わっています。"
     echo "   この実行は iOS を $RUN_MODE でしか回さないので、$SKIP_MODE 経路は検証されません。"
     echo "   → Scripts/e2e.sh --ios-$SKIP_MODE を回してください(1 SUT だけでも可)"
@@ -334,7 +335,7 @@ run_profile() {  # $1 = プロジェクト名, $2 = プロファイル名
   fi
 }
 
-# inapp ブリッジだけの証人(@Draft = 通常の実行には入らない)を名指しで回す。
+# in-app ブリッジだけの証人(@Draft = 通常の実行には入らない)を名指しで回す。
 # XCUITest では既知の制約で赤になるので、in-app のときだけ
 # (同期相手: TestProjects/E2E-CMP/scenarios/23_絵の追いつき_inapp.swift)
 run_inapp_witness() {  # $1 = プロジェクト名, $2 = シナリオ ID
@@ -450,7 +451,7 @@ if [ "$PLANNED_SORTED" != "$RAN_SORTED" ]; then
   echo "   ran:     $(printf '%s' "$RAN_SORTED" | tr '\n' '/')"
 fi
 
-# 陽性対照は本体と別に数える: 印(mode_marker)は「ブリッジの入力が緑の E2E を通った」記録なので
+# 陽性対照は本体と別に数える: 印(bridge_marker)は「ブリッジの入力が緑の E2E を通った」記録なので
 # 本体の FAILED だけで決める。exit には両方を載せる
 NEG_FAILED=0
 if [ "$NEGATIVE" = 1 ] && [ "$PERFORMANCE" = 0 ] && [ "$IOS_PROFILE" != "ios-xcuitest" ]; then
@@ -484,7 +485,7 @@ fi
 # **通した状態を覚えるのは全部成功したときだけ** —— 失敗したまま印を更新すると、
 # 次回から「検証済み」と言い張る装置になる
 if [ "$FAILED" = 0 ] && [ "$RUN_IOS" = 1 ]; then
-  MARKER="$(mode_marker "$RUN_MODE")"
+  MARKER="$(bridge_marker "$RUN_MODE")"
   mkdir -p "$(dirname "$MARKER")"
   bridge_digest "$RUN_MODE" > "$MARKER"
   echo "→ $RUN_MODE 経路を検証済みとして記録しました($MARKER)"
@@ -492,7 +493,7 @@ fi
 # 最後にもう一度言う: 冒頭の1行は数分のログに流されて読まれない。
 # **`[ … ] && echo` の形にしない** —— 偽のとき終了ステータス 1 を残すので、
 # 直後の `exit "$FAILED"` を誰かが消した瞬間に「成功したのに失敗扱い」へ化ける
-if [ -n "$MODE_STALE" ]; then
+if [ -n "$BRIDGE_STALE" ]; then
   echo "⚠️ $SKIP_MODE 経路は未検証のままです(Scripts/e2e.sh --ios-$SKIP_MODE)"
 fi
 

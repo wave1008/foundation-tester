@@ -201,7 +201,7 @@ final class SystemAlertWatchlistTests: XCTestCase {
 final class SystemUIGateTests: XCTestCase {
 
     /// **申告が present:true のときだけ**覆われている扱い。nil(ランナーが居ない構成)は
-    /// 判定しない —— ここを「nil も怪しい」に倒すと inapp ブリッジ単独と Android で操作が止まる
+    /// 判定しない —— ここを「nil も怪しい」に倒すと in-app ブリッジ単独と Android で操作が止まる
     func testOnlyAnExplicitPresentCounts() {
         XCTAssertTrue(SystemUIGate.isCovered(SystemAlertProbeResponse(present: true)))
         XCTAssertFalse(SystemUIGate.isCovered(SystemAlertProbeResponse(present: false)))

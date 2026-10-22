@@ -25,7 +25,7 @@
 // S0020 は陰性対照(覆いを外せば同じ要素が通る)。**S0020 では FM は呼ばれない** ——
 // 覆いを外すと文字が戻ってインク量が上がり、Tier-1 の足切りで FM を省くため(それが正しい挙動)。
 //
-// **2026-09-03 の実測**(M1Max・in-app エンジン・当時の `textVisualCheck: true` = 今の `fmTextOcclusionCheck: true`):
+// **2026-09-03 の実測**(M1Max・inapp モード・当時の `textVisualCheck: true` = 今の `fmTextOcclusionCheck: true`):
 //   S0010 → `false positive (occlusion): present in the tree but not visually visible [covered]
 //            Text is covered by a solid color overlay [crop: …] observed=""`
 //   fm.byKind.occlusion.calls = **2**(選別 + 詳細)/ crop も保存された / S0020 は緑・FM 呼び出し 0。

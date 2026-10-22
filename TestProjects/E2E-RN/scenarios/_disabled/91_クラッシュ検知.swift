@@ -4,7 +4,7 @@
 //
 // fleetest 機能: 操作でアプリが落ちたときの検知とレポート添付。#btn_crash_confirm で
 // プロセスを即異常終了させ、以降のコマンドが失敗としてレポートに記録される。
-// iOS は in-app で回す(.ips が appCrash に載る)。XCUITest エンジンは appCrash を記録しない
+// iOS は in-app で回す(.ips が appCrash に載る)。xcuitest モードは appCrash を記録しない
 // (docs/results-json.md)ので「session's app is not in the foreground」(422)としか現れない。
 // Android は crash バッファの FATAL EXCEPTION(スレッド mqt_v_native)が appCrash に載る。
 // SUT のクラッシュ手段: `setTimeout` でイベントループの外に出してから投げる未捕捉例外

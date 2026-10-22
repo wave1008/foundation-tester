@@ -4,7 +4,7 @@
 //
 // fleetest 機能: 操作でアプリが落ちたときの検知とレポート添付。#btn_crash_confirm で
 // プロセスを即異常終了させ、以降のコマンドが失敗としてレポートに記録される。
-// iOS は in-app で回す(.ips が appCrash に載る)。XCUITest エンジンは appCrash を記録しない
+// iOS は in-app で回す(.ips が appCrash に載る)。xcuitest モードは appCrash を記録しない
 // (docs/results-json.md)ので「session's app is not in the foreground」(422)としか現れない。
 // Android は crash バッファの `Fatal signal 11` + debuggerd の `>>> <package> <<<` が appCrash(nativeSignal)に載る。
 // SUT のクラッシュ手段: dart:ffi の NULL 参照(SIGSEGV)。Dart の throw はフレームワークに捕捉されて

@@ -142,10 +142,10 @@ class ジェスチャが正しく検出されること {
                     select("#txt_double_count").textIs("double=0")
                 }
             }
-            // **iOS の Compose だけエンジンに関わらず対象外**: XCUITest ランナーが private API で
+            // **iOS の Compose だけモードに関わらず対象外**: XCUITest ランナーが private API で
             // 送る2回の独立したタッチ(間隔 0.1秒・0.25秒とも実測)を Compose はダブルタップとして
             // 一度も検出しない(2026-09-24 実測)。ios-xcuitest プロファイルもこのシナリオを回すため
-            // Android に閉じたまま —— iOS の doubleTap カバレッジは in-app エンジン
+            // Android に閉じたまま —— iOS の doubleTap カバレッジは inapp モード
             // (E2E-iOS(SwiftUI)・E2E-Flutter・E2E-RN)が担保する
             scene(16, "ダブルタップでカウントが1増える(iOS の Compose は対象外)") {
                 action {

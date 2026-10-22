@@ -28,7 +28,7 @@ class 引っ張って更新できること {
                     select("#txt_refresh_count", waitSeconds: 5).textIs("refresh=1")
                 }
             }
-            // scrollToTop の後の回数は読まない(iOS の XCUITest エンジンでは更新が余分に走る。90_不具合の回帰.swift の S0020)
+            // scrollToTop の後の回数は読まない(iOS の xcuitest モードでは更新が余分に走る。90_不具合の回帰.swift の S0020)
             scene(3, "下端まで送って上端へ戻せる") {
                 action {
                     scrollToBottom()

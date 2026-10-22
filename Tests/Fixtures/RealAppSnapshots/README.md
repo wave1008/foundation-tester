@@ -16,7 +16,7 @@
 | `and-` | Google マップ 11.x / Android 15(emulator) | 塗り順 `z` を**持つ**木・全画面シート・横カルーセル。`and-maps_suggest_ime` は IME を開いたまま採った木(`keyboardFrame` 申告付き。ブリッジ版53以降でだけ採れる)。`and-sutec_home` は sut-ec-mobile を Android 実機で採った1枚(下の節を参照) |
 | `ios-` | Apple マップ / iOS 27.0(Simulator・xcuitest) | `z` を**持たない**木(ツリー順フォールバック)。`ios-maps_suggest_keyboard`(キーボード + `keyboardFrame`)と `ios-maps_station`(地図 POI 67個 = bulk 間引き後の高密度画面)は 2026-08-08・版58 で採取。**`ios-maps_suggest_guides` と `ios-place_guides_scrolled` は 2026-08-09 の監査で足した witness** —— 前者は行セルの中心を中の帯が横取りする形(`nested`)、後者は申告されたスクロール容器の上へ抜けた行(`scrolledOut`)の供給源で、どちらも Simulator 上で誤タップを実測してから採った |
 | `sut-` | E2E-CMP(自前) | 契約で盤面が固定された対照 |
-| `sutec-` | sut-ec-mobile / iOS 27.0(Simulator・**in-app**) | in-app エンジンの木(それまで1枚も無かった)・画面外中心(`offscreen`)の供給源・下部バーの遮蔽。**接頭辞は OS を表すだけ**なので、同じ sut-ec-mobile の Android 実機キャプチャは `sutec-` ではなく `and-sutec_home` に載る(`and-` = Android の意味を守るため) |
+| `sutec-` | sut-ec-mobile / iOS 27.0(Simulator・**in-app**) | in-app ブリッジの木(それまで1枚も無かった)・画面外中心(`offscreen`)の供給源・下部バーの遮蔽。**接頭辞は OS を表すだけ**なので、同じ sut-ec-mobile の Android 実機キャプチャは `sutec-` ではなく `and-sutec_home` に載る(`and-` = Android の意味を守るため) |
 
 **2026-08-12 に足した6枚**(コーパスの地図比率を 14/19 → 14/25 へ下げるため。いずれも実アプリ):
 

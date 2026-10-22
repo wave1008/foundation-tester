@@ -10,7 +10,7 @@ import FTDSL
 @TestClass
 class 修正した不具合が再発しないこと {
 
-    @Test("ページャの scrollToLeftEdge が端まで届く(全エンジン・修正済み)")
+    @Test("ページャの scrollToLeftEdge が端まで届く(全ブリッジ・修正済み)")
     func S0010() {
         scenario {
             scene(1, "最後のページへ") {

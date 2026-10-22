@@ -2,7 +2,7 @@
 // 破壊的(アプリを実際にクラッシュさせる)なので通常実行(scenarios/ 直下)には載せず _disabled/ に置く。
 // 回すのは Scripts/e2e-negative.sh(期待値 = Scripts/negative-controls.json の appCrash。iOS は in-app で回す)。
 //
-// fleetest 機能: inapp ブリッジ切断時のクラッシュレポート添付。#btn_crash_confirm でプロセスを
+// fleetest 機能: in-app ブリッジ切断時のクラッシュレポート添付。#btn_crash_confirm でプロセスを
 // 即異常終了させ、以降のコマンドが bridgeConnectionRefused としてレポートに .ips 情報付きで
 // 記録される。
 
@@ -34,7 +34,7 @@ class クラッシュ検知でブリッジ切断とレポートが記録され�
                 action {
                     tap("#btn_crash_confirm")
                 }.expectation {
-                    // ここで inapp ブリッジのプロセスごと落ちるため、この exist は
+                    // ここで in-app ブリッジのプロセスごと落ちるため、この exist は
                     // DriverError.bridgeConnectionRefused として失敗し、レポートに
                     // クラッシュレポート(.ips)のパスと終了理由が添付されることを人が確認する
                     exist("#txt_home_marker", waitSeconds: 3)

@@ -711,7 +711,7 @@ public struct StatusResponse: Codable, Sendable {
     /// UIApplication.applicationState の文字列化("active"/"inactive"/"background")。
     /// inapp 専用診断(背面 suspend でハングしていないかの申告)。xcuitest ブリッジは返さない → nil 許容。
     public var applicationState: String?
-    /// inapp ブリッジが自己申告する UI フレームワーク(AppUIFramework の rawValue。規則は UIFrameworkMarkers)。
+    /// in-app ブリッジが自己申告する UI フレームワーク(AppUIFramework の rawValue。規則は UIFrameworkMarkers)。
     /// xcuitest/Android ブリッジは返さない → nil 許容。**直接読まない** —— AppUIFrameworkQuery.bridgeReport(_:about:)
     /// を通す(申告は注入先アプリのもの)
     public var uiFramework: String?

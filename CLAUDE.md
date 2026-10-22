@@ -239,7 +239,7 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
   モード指定(`--ios-inapp` / `--ios-xcuitest`)は **iOS だけを回す**(Android にモードの
   選択肢は無いので既定スイートと同一の実行を二度払うだけ)。OS の絞り込みは `--ios` / `--android`
 - **この漏れは e2e.sh が検出する** —— **回さなかった側**のブリッジ入力集合(`BridgeSourceSet`)の
-  digest を、そのモードの実行が**全部成功したときだけ** `.fleetest/<mode>-e2e-verified` へ
+  digest を、そのモードの実行が**全部成功したときだけ** `.fleetest/<bridge>-e2e-verified` へ
   記録し、開始時と終了時に食い違いを警告する(`fleetest api bridge-sources --bridge inapp|xcuitest --digest`)。**落とさず警告だけ**
   —— **xcuitest の警告は 2026-08-30〜09-14 のあいだ鳴りっぱなしだった**(既知の打鍵中抜け2本で
   E2E-RN が赤 → 全緑が条件の印が更新されなかった)。**v104 で中抜けを直した**(`TypeReadback.plan`
@@ -472,6 +472,11 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
 実機と紛らわしい)。デバイス上での実行一般は「デバイス実行」「デバイス上」でよい。
 **「デバイスで動かした」と書きたくなった瞬間に、何の上で動かしたかを確認する**
 → maintainer-notes §7
+
+**用語(iOS のモードとブリッジ)**: 利用者が選ぶ設定は**モード**(`iosMode` / `devices[].mode` の値 `inapp` / `xcuitest`。
+「`inapp` モード」= in-app ブリッジ主 + XCUITest ブリッジの合成)、部品は**ブリッジ**(「in-app ブリッジ」「XCUITest ブリッジ」と
+ハイフン付きで書く)。「エンジン」と、モード名としての hybrid は使わない(`platform: "hybrid"` = iOS と Android の両方、は別の語)。
+`IOSModeVocabularyTests` が走査で落とす
 
 **用語(モニターのペイン)**: 「デバイスモニター」タブは上から**ラインビュー**(タイルの並び)・
 **グリッドビュー**(選択したデバイスの拡大表示)・**実行ログビュー**(選択したデバイスの実行ログ)の

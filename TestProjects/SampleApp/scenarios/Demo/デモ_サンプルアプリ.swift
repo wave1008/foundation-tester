@@ -121,7 +121,7 @@ class デモ_サンプルアプリ {
                     ensureLoggedIn()
                     tap("#tab_settings||設定")
                 }.expectation {
-                    // 型は縛らない: トグルは xcuitest=Switch / in-app エンジン=Button で露出が異なる
+                    // 型は縛らない: トグルは xcuitest=Switch / in-app ブリッジ=Button で露出が異なる
                     exist("#notif_toggle||通知")
                     exist("#darkmode_toggle||ダークモード")
                 }
