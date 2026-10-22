@@ -47,7 +47,7 @@ select("#toggle_notifications").checkIsON()
 ## Judging the checked state from images (CheckStateClassifier)
 
 Parts whose accessibility reports no checked state can be judged by an image classifier trained from
-sample images (same location and labels as Shirates' Vision edition).
+sample images.
 
 ```
 <project>/vision/classifiers/CheckStateClassifier/
@@ -79,7 +79,7 @@ sample images (same location and labels as Shirates' Vision edition).
   While the step waits, it takes the screenshot again.
 - When a check judged from the image fails, the screenshot the classifier judged is attached to the report
   right under the failed step, so you can see what it looked at.
-- `options=` / `imageFilter=binary` in Shirates' `MLImageClassifier.swift` are read with the same meaning.
+- `options=` (training settings) and `imageFilter=binary` (also train on black-and-white versions of the samples) in the header comment of an `MLImageClassifier.swift` placed in the classifier folder are read too.
 - [imageIs](image_assertion.md) uses the same mechanism to assert the label of an element's image.
 - Capture and check samples with `fleetest vision capture --classifier CheckStateClassifier --label "[ON]" --selector "#…"`
   and `fleetest vision check` (details on the [imageIs](image_assertion.md) page).

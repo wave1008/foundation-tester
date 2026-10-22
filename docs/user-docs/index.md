@@ -155,7 +155,7 @@ scenarios the AI assistant wrote, or to write some yourself.
 ### Running
 
 - [Running scenarios (fleetest run)](reference/running/running_scenarios.md)
-- [dry-run (No-Load-Run)](reference/running/dry_run.md)
+- [dry-run](reference/running/dry_run.md)
 - [Self-healing](reference/running/self_healing.md)
 - [Parallel execution](reference/running/parallel_execution.md)
 - [Analysing results (fleetest results, dashboard)](reference/running/results_analysis.md)

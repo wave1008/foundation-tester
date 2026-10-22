@@ -71,8 +71,7 @@ class LoginFlow {
   in-progress; both are excluded from bulk runs (all-scenarios, folder, class-name) and can
   only be run by an exact ID. See
   [Creating a test class](../testclass/creating_testclass.md) for the full annotation reference.
-- fleetest does not have Shirates's `describe` / `caption` / `manual` / `knownIssue`
-  annotations — a scene's title string is where that kind of description belongs.
+- Describe the steps in the scene's title string.
 
 ### Link
 - [index](../../index.md)

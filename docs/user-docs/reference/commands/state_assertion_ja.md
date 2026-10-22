@@ -45,8 +45,7 @@ select("#toggle_notifications").checkIsON()
 
 ## 画像でチェック状態を判定する(CheckStateClassifier)
 
-アクセシビリティが状態を出さない部品は、見本画像から学習した画像分類器で判定できます
-(Shirates の Vision 版と同じ置き場所・同じラベルです)。
+アクセシビリティが状態を出さない部品は、見本画像から学習した画像分類器で判定できます。
 
 ```
 <プロジェクト>/vision/classifiers/CheckStateClassifier/
@@ -76,7 +75,7 @@ select("#toggle_notifications").checkIsON()
   アクセシビリティだけで判定します(注記 `check-state-classifier-failed`)。待っている間は撮り直します。
 - 画像で判定したチェックが失敗すると、分類器が判定に使ったスクリーンショットを、レポートの失敗した
   ステップのすぐ下に添えます(何を見て判定したかを確かめられます)。
-- Shirates の `MLImageClassifier.swift` の `options=` / `imageFilter=binary` も同じ意味で読みます。
+- 分類器のフォルダに置いた `MLImageClassifier.swift` の先頭のコメントの `options=`(学習の設定)と `imageFilter=binary`(見本を二値化した画像も学習に加える)も読みます。
 - 同じ仕組みで、要素の画像のラベルを検証する [imageIs](image_assertion_ja.md) もあります。
 - 見本の切り出しと点検は `fleetest vision capture --classifier CheckStateClassifier --label "[ON]" --selector "#…"`
   と `fleetest vision check` でできます(詳しくは [imageIs](image_assertion_ja.md) のページ)。

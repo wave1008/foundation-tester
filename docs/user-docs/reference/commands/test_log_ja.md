@@ -5,7 +5,6 @@
 シナリオの中でファイルを書くときに使うフォルダを返します。シナリオはサンドボックスの中で動くので、
 **書けるのはこの2つのフォルダ(とその下)だけ**です。`NSTemporaryDirectory()` や
 `FileManager.default.temporaryDirectory` が返す場所には書けません(「You don’t have permission」で失敗します)。
-`TestLog.directoryForLog` の名前と単位は Shirates に合わせています。
 
 ## プロパティ
 

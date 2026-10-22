@@ -4,8 +4,7 @@
 
 組み込みの DSL コマンドで足りない、自分のアプリ固有の繰り返し手順(ログイン・共通の前提条件・
 [`gesture`](../commands/gestures_ja.md) で組んだ独自のマルチタッチジェスチャ等)は、`scenarios/`
-配下に**素の Swift 関数**として書きます。これは Shirates の `macro` に相当しますが、fleetest では
-独立した機構ではなく、ただの関数です。
+配下に**素の Swift 関数**として書きます。
 
 ```swift
 func login(user: String, password: String) {

@@ -31,8 +31,7 @@ expectation {
   that must not fail, write tree-based checks (`exist` / `textIs` / `countIs`) instead.
 - **It does not count as an assertion.** An `expectation` with only `screenLooksLike` in it is warned
   about as having no assertions. A failure still aborts the scenario, like any other check.
-- Unlike Shirates(Classic)'s `screenIs`, there is no screen-nickname mechanism — you always
-  describe what the screen should look like in the call itself.
+- You always describe what the screen should look like in the call itself.
 
 ### Link
 - [index](../../index.md)

@@ -3,7 +3,7 @@
 [in Japanese(日本語)](memo_ja.md)
 
 Share values between scenarios. Every `@Test` runs as its own process, so a Swift variable does
-not carry over; the memo is shared by **every scenario of the run, on every device** (see Scope below). Names and behavior follow Shirates.
+not carry over; the memo is shared by **every scenario of the run, on every device** (see Scope below).
 
 ## Functions
 

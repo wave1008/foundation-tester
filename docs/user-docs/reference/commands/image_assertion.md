@@ -3,7 +3,7 @@
 [in Japanese(日本語)](image_assertion_ja.md)
 
 Classifies the **image** of the last grabbed element with a classifier trained from sample images
-(DefaultClassifier) and asserts its label (a port of `imageIs` from Shirates' Vision edition).
+(DefaultClassifier) and asserts its label.
 
 ## Functions
 
@@ -28,8 +28,8 @@ Classifies the **image** of the last grabbed element with a classifier trained f
   same way when it is judged).
 - The classifier always answers one of the sample labels. **Add samples of the other, easily confused elements on
   the same screen too**, not only the one you want to recognise (at least two labels are needed).
-- Files starting with `#` are not used for training. `options=` / `imageFilter=binary` in `MLImageClassifier.swift`
-  are read with the same meaning as in Shirates.
+- Files starting with `#` are not used for training. `options=` (training settings) and `imageFilter=binary`
+  (also train on black-and-white versions of the samples) in the header comment of an `MLImageClassifier.swift` placed in the classifier folder are read too.
 - The first judgement trains the classifier (a few seconds). The result is kept under `.fleetest/` and is retrained
   only when the samples change.
 - It works the same way as [CheckStateClassifier](state_assertion.md), which judges checked states from images

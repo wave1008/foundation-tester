@@ -5,7 +5,7 @@
 Returns the folders to use when a scenario writes files. Scenarios run inside a sandbox, so **these two folders
 (and what is under them) are the only places a scenario can write**. The locations returned by
 `NSTemporaryDirectory()` and `FileManager.default.temporaryDirectory` are not writable (the write fails with
-"You don’t have permission"). The name and scope of `TestLog.directoryForLog` follow Shirates.
+"You don’t have permission").
 
 ## Properties
 

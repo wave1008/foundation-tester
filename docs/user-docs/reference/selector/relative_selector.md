@@ -56,7 +56,7 @@ Each step's result becomes the anchor for the next step.
 tap("<Change&&.button>:right(Quantity)")
 ```
 
-In Shirates the anchor is wrapped the anchor in angle brackets. This is optional syntax
+You can also wrap the anchor in angle brackets. This is optional syntax
 sugar — it parses to the same result as writing the anchor unwrapped — but makes a
 multi-word anchor easier to read at a glance.
 
@@ -68,18 +68,6 @@ tap("#row >> Quantity:rightButton")
 
 A scope (`>>`) can precede a relative selector; it narrows both the anchor and the
 candidates to inside the scoped container.
-
-## Notation not implemented
-
-Compared to Shirates(Classic)'s relative selector vocabulary:
-
-- **`:inner*`** — covered by the ancestor `>>` descendant scope instead.
-- **`:next*` / `:pre*`** (tree-order neighbor) and **`:parent`** (child pointing at its
-  parent) are **not implemented**. `:right`/`:below`/etc. approximate "next item" for a
-  single-column layout, but can pick the wrong row once content wraps or is arranged in a
-  grid.
-- **`:flow` / `:vflow`** (flow-based grouping) are **not implemented** — they require an
-  arbitrary row-grouping threshold with no principled default.
 
 ### Link
 - [index](../../index.md)

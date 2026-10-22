@@ -25,7 +25,7 @@ Combination strength (tightest first): `&&` > `>>` > `||`.
 | `#list >> .clickable[2]` | **scope** (ancestor >> descendant). Ordinals are counted within the scope, so screen chrome or scroll position doesn't shift them. **The ancestor must be exposed in the app's accessibility tree** — a collapsed container (e.g. Flutter's `MergeSemantics`) hides its descendants and can't be scoped into |
 | `Notification:rightSwitch` | **relative selector** (**anchor comes first**). The nearest candidate in that direction within the anchor's band; fails if none matches — see [Relative selector](./relative_selector.md) |
 | `Quantity:right(2)` / `#a:below(.button&&Item)` / `Heading:right:belowButton` | ordinal / arbitrary filter / chained relative selector |
-| `<Change&&.button>:right(Quantity)` | anchor wrapped in `<...>` (the Shirates way of writing it; optional, makes the anchor's extent easier to read) |
+| `<Change&&.button>:right(Quantity)` | anchor wrapped in `<...>` (optional, makes the anchor's extent easier to read) |
 | `=#a raw label starting with #` | `=` escape, forces label interpretation (also used for labels containing `>>` `&&` `:right` `*`) |
 
 ## Short-form / full-form equivalence

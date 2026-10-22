@@ -2,7 +2,7 @@
 
 [in English](find_image.md)
 
-画面の中から、見本画像に最も近い見た目の要素を探します(Shirates の Vision 版の `findImage` / `findImages` の移植です)。
+画面の中から、見本画像に最も近い見た目の要素を探します。
 id もラベルも持たないアイコンのように、セレクタで指せない要素を掴むときに使います。
 `existImage` は同じ探し方で、画像が画面にあることを検証します。
 
@@ -12,7 +12,7 @@ id もラベルも持たないアイコンのように、セレクタで指せ�
 |---|---|
 | `findImage(label, threshold:, aspectRatioTolerance:, waitSeconds:, scroll:, maxSwipes:)` | 見本画像に最も近い要素を1つ掴みます。見つからなくても失敗せず、空の要素を返します(`.isEmpty` で分岐します)。既定では今の画面を1回だけ見ます(`waitSeconds` 既定 0)。出るのを待つときは `waitSeconds` に秒数を渡します。 |
 | `findImages(label, threshold:, aspectRatioTolerance:)` | `threshold` を下回る要素を、近い順にすべて返します(`[FTElement]`)。今の画面を1回だけ見ます(待たない・スクロールしない)。`threshold: nil` なら絞りません。 |
-| `existImage(label, threshold:, aspectRatioTolerance:, waitSeconds:, scroll:, maxSwipes:)` | 見本画像が画面にあることを検証します(Shirates の Vision 版の `existImage` の移植)。探し方は `findImage` と同じで、**見つからなければ失敗**します。見つけた要素を返します。`waitSeconds` を省くと、実行プロファイルの既定の待ち時間まで、出るのを待ちます(`exist` と同じ)。 |
+| `existImage(label, threshold:, aspectRatioTolerance:, waitSeconds:, scroll:, maxSwipes:)` | 見本画像が画面にあることを検証します。探し方は `findImage` と同じで、**見つからなければ失敗**します。見つけた要素を返します。`waitSeconds` を省くと、実行プロファイルの既定の待ち時間まで、出るのを待ちます(`exist` と同じ)。 |
 | `element.tap(holdSeconds:, maxGestureSeconds:, settle:)` | 掴んだ要素をタップします。`findImage` / `findImages` で掴んだ要素は、見つけた枠の中心を座標でタップします。`holdSeconds` を 0 より大きくすると長押しになります(上限は既定 10 秒で、`maxGestureSeconds:` を渡すとこの1回だけ最大 60 秒まで上げられます)。 |
 
 ## 探し方
@@ -39,7 +39,7 @@ id もラベルも持たないアイコンのように、セレクタで指せ�
 
 - 見本は、探したい要素の**枠そのもの**を切り出したものを置きます(`fleetest vision capture` で切り出せます。
   MCP からの使い方は [MCP サーバー](../tools/mcp_server_ja.md))。
-- `findImages` もラベルのフォルダの見本を全部使います。同じ要素に複数の見本が当たったときは、最も近い距離で1件にまとめます(Shirates の `findImages` は見本を1枚だけ使います)。
+- `findImages` もラベルのフォルダの見本を全部使います。同じ要素に複数の見本が当たったときは、最も近い距離で1件にまとめます。
 
 ## 例
 
@@ -92,7 +92,7 @@ existImage("[Share Icon]", scroll: .down).tap()
   覆われた要素は、画面全体の絵では覆いの絵として比べられます。
 - 見つけた要素に書けるセレクタ(id か一意なラベル)があれば、`textIs` などの検証をつなげられます。
 - 見つけてから画面を動かすと、`tap()` は古い座標をタップします。見つけた直後にタップしてください。
-- 画像の区分けで部品を切り出す Shirates と違い、切り出しはアクセシビリティ要素の枠です。アクセシビリティに
+- 候補の切り出しはアクセシビリティ要素の枠です。アクセシビリティに
   出てこない部品は探せません。
 
 ### Link

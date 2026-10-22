@@ -2,8 +2,7 @@
 
 [in English](image_assertion.md)
 
-直前に掴んだ要素の**画像**を、見本画像から学習した分類器(DefaultClassifier)で分類し、ラベルを検証します
-(Shirates の Vision 版の `imageIs` の移植です)。
+直前に掴んだ要素の**画像**を、見本画像から学習した分類器(DefaultClassifier)で分類し、ラベルを検証します。
 
 ## 関数
 
@@ -28,8 +27,8 @@
   (判定のときも要素の枠で切り出すため、切り方を揃えます)。
 - 分類器は必ず、見本のどれかのラベルを答えます。**見分けたい要素だけでなく、同じ画面で紛らわしい要素の見本も
   置いてください**(ラベルが2つ以上必要です)。
-- `#` で始まるファイルは学習に使いません。`MLImageClassifier.swift` の `options=` / `imageFilter=binary` も
-  Shirates と同じ意味で読みます。
+- `#` で始まるファイルは学習に使いません。分類器のフォルダに置いた `MLImageClassifier.swift` の
+  先頭のコメントの `options=`(学習の設定)と `imageFilter=binary`(見本を二値化した画像も学習に加える)も読みます。
 - 見本を置くと、初回の判定で学習します(数秒)。学習結果は `.fleetest/` に保存され、見本を変えたときだけ
   学び直します。
 - チェック状態を画像で判定する [CheckStateClassifier](state_assertion_ja.md) と同じ仕組みです

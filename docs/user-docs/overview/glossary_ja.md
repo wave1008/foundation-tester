@@ -33,7 +33,7 @@ fleetest 固有の用語を五十音順に並べました。英字で始まる�
 - **テストプロジェクト** — 1つのアプリに対するシナリオ・プロファイル・レポートをまとめる器です。`TestProjects/<name>/` に置きます。 詳しくは [テストプロジェクトの作成](../reference/project/creating_project_ja.md)。
 - **テストベース** — シナリオの根拠にする仕様・テスト観点・元ネタを Markdown で置いたものです。`TestProjects/<プロジェクト>/docs/testbases/` に置き、`fleetest draft-scenario` でシナリオの下書き(`@Draft` 付き)にできます。 詳しくは [テストベースとシナリオの下書き](../reference/running/testbases_ja.md)。
 - **デバイスモニター** — VSCode 拡張のタブで、デバイスの画面と状態を見る場所です。上から順に、ラインビュー(デバイスタイルの並び)・グリッドビュー(選択したデバイスの拡大表示)・実行ログビュー(選択したデバイスの実行ログ)の3つの常設のペインに分かれます。グリッドビューと実行ログビューに出るのは、ラインビューで選択したデバイスだけです。 詳しくは [VSCode 拡張](../reference/tools/vscode_extension_ja.md)。
-- **dry-run** — デバイスにも FM にも触れず、シナリオのステップを列挙・検証する実行です(`fleetest run --dry-run`)。セレクタの構文誤りやアサーションの無い `expectation` などを数秒で見つけます。 詳しくは [dry-run(No-Load-Run)](../reference/running/dry_run_ja.md)。
+- **dry-run** — デバイスにも FM にも触れず、シナリオのステップを列挙・検証する実行です(`fleetest run --dry-run`)。セレクタの構文誤りやアサーションの無い `expectation` などを数秒で見つけます。 詳しくは [dry-run](../reference/running/dry_run_ja.md)。
 - **hooks(run-setup.sh / run-teardown.sh)** — run の前後に走らせるスクリプトです。ワークスペースの `scripts/` に置き、`run-setup.sh` はサービスの起動完了を待ってから、`run-teardown.sh` は run の後に走ります。死んだ run が残した後始末は `fleetest hooks reap` が行います。 詳しくは [アプリが依存するサービス(compose.yaml)](../reference/writing/services_ja.md)。
 - **フリート** — テストを実行するデバイス(仮想デバイスと実機)の集まりです。ローカルとリモートの Mac のデバイスを足して増強できます。マシンと実行プロファイルの組を並べた「フリート定義」(`profiles/fleets/<名前>.json`)を `--fleet` で指定することもできます。 詳しくは [フリートの考え方](../fleet/concepts_ja.md)。
 - **ブリッジ** — fleetest とデバイスをつなぐ、デバイス側の常駐部分です。iOS は XCUITest のランナーと、アプリの中に注入する in-app の2種類、Android はデバイス上の常駐サーバーです。`fleetest bridge up` / `down` / `status` で扱います。 詳しくは [CLI リファレンス](../reference/tools/cli_ja.md)。

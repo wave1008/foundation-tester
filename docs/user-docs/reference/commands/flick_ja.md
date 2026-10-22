@@ -25,12 +25,8 @@ flickCenterToTop(scrollFrame: "#carousel")  // 特定のスクロール可能領
 
 - `flick` は**コンテンツを見ないジェスチャ**です。要素が見つかるまで探索して止まる
   `scroll*` と違い、`flick` は単に1回速いストロークを送るだけです。既定の
-  `durationSeconds`/`intervalSeconds` は `swipe` より短く、Shirates の flick のタイミングに
-  合わせています。
-- `scrollableElement` 引数はありません —— 対象領域は [scroll](./scroll_ja.md) と同じく
-  `scrollFrame:` のセレクタ式で指定します。
-- Shirates の `flickAndGo*` 一族(画面遷移トリガ)や、要素基点の `flickTo*`/`flickOut*` は
-  持ちません。
+  `durationSeconds`/`intervalSeconds` は `swipe` より短くしてあります。
+- 対象領域は [scroll](./scroll_ja.md) と同じく `scrollFrame:` のセレクタ式で指定します。
 - **`flick` は「端に着いたか」を判定しません。** `scrollToBottom` 等の代わりに flick を
   何回か並べて速く送っても、到達したかどうかは分かりません —— 払った後は自分で到達先を
   検証してください。

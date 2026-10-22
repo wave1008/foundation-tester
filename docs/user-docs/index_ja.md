@@ -154,7 +154,7 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 ### 実行
 
 - [シナリオの実行(fleetest run)](reference/running/running_scenarios_ja.md)
-- [dry-run(No-Load-Run)](reference/running/dry_run_ja.md)
+- [dry-run](reference/running/dry_run_ja.md)
 - [自己修復](reference/running/self_healing_ja.md)
 - [並列実行](reference/running/parallel_execution_ja.md)
 - [結果の分析(fleetest results・ダッシュボード)](reference/running/results_analysis_ja.md)

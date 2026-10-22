@@ -25,11 +25,8 @@ flickCenterToTop(scrollFrame: "#carousel")  // flick inside a specific scrollabl
 
 - `flick` is a **content-agnostic gesture** — unlike `scroll*` (which searches for an element and
   stops once found), `flick` just sends a single fast stroke. Its default `durationSeconds` /
-  `intervalSeconds` are shorter than `swipe`'s, matching Shirates' flick timing.
-- There is no `scrollableElement` argument — pass the region as a `scrollFrame:` selector
-  instead, same as [scroll](./scroll.md).
-- There is no `flickAndGo*` family (screen-transition triggers) and no element-anchored
-  `flickTo*` / `flickOut*`.
+  `intervalSeconds` are shorter than `swipe`'s.
+- Pass the target region as a `scrollFrame:` selector, same as [scroll](./scroll.md).
 - **`flick` has no notion of "reached the edge."** Chaining several flicks to move faster than
   `scrollToBottom` etc. does not tell you whether you arrived — verify the destination yourself
   after flicking.

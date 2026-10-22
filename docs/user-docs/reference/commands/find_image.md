@@ -2,8 +2,8 @@
 
 [in Japanese(日本語)](find_image_ja.md)
 
-Finds the element on the screen whose appearance is nearest to a sample image (a port of `findImage` / `findImages`
-from Shirates' Vision edition). Use it to grab elements a selector cannot point at, such as icons with neither an id nor a label.
+Finds the element on the screen whose appearance is nearest to a sample image.
+Use it to grab elements a selector cannot point at, such as icons with neither an id nor a label.
 `existImage` searches the same way and asserts that the image is on the screen.
 
 ## Functions
@@ -12,7 +12,7 @@ from Shirates' Vision edition). Use it to grab elements a selector cannot point 
 |---|---|
 | `findImage(label, threshold:, aspectRatioTolerance:, waitSeconds:, scroll:, maxSwipes:)` | Grabs the one element nearest to the sample image. Returns an empty element instead of failing when nothing is found (branch with `.isEmpty`). By default it looks at the current screen once (`waitSeconds` defaults to 0). Pass seconds to `waitSeconds` to wait for it to appear. |
 | `findImages(label, threshold:, aspectRatioTolerance:)` | Returns every element below `threshold`, nearest first (`[FTElement]`). Looks at the current screen once (no waiting, no scrolling). `threshold: nil` returns every candidate. |
-| `existImage(label, threshold:, aspectRatioTolerance:, waitSeconds:, scroll:, maxSwipes:)` | Asserts that the sample image is on the screen (a port of `existImage` from Shirates' Vision edition). It searches the same way as `findImage` and **fails when nothing is found**. Returns the found element. Without `waitSeconds` it waits for the image to appear up to the run profile's default wait (same as `exist`). |
+| `existImage(label, threshold:, aspectRatioTolerance:, waitSeconds:, scroll:, maxSwipes:)` | Asserts that the sample image is on the screen. It searches the same way as `findImage` and **fails when nothing is found**. Returns the found element. Without `waitSeconds` it waits for the image to appear up to the run profile's default wait (same as `exist`). |
 | `element.tap(holdSeconds:, maxGestureSeconds:, settle:)` | Taps the grabbed element. An element grabbed by `findImage` / `findImages` is tapped at the centre of the found frame. `holdSeconds` greater than 0 makes it a long press, capped at 10s by default — pass `maxGestureSeconds:` to allow up to 60 for this one call. |
 
 ## How it searches
@@ -40,7 +40,7 @@ It uses the same samples as [imageIs](image_assertion.md).
 
 - Put images cut out by **the element's own frame** (`fleetest vision capture` cuts them for you;
   for MCP, see [MCP server](../tools/mcp_server.md)).
-- `findImages` also uses every sample in the label folder. When several samples hit the same element, it is returned once with the nearest distance (Shirates' `findImages` uses only one sample).
+- `findImages` also uses every sample in the label folder. When several samples hit the same element, it is returned once with the nearest distance.
 
 ## Example
 
@@ -95,7 +95,7 @@ existImage("[Share Icon]", scroll: .down).tap()
   whatever covers it.
 - When the found element has a writable selector (an id or a unique label), you can chain assertions such as `textIs`.
 - Moving the screen after finding makes `tap()` hit the old coordinates. Tap right after finding.
-- Unlike Shirates, which cuts parts out by segmenting the image, the candidates are the frames of accessibility
+- The candidates are the frames of accessibility
   elements. Parts that do not appear in accessibility cannot be found.
 
 ### Link

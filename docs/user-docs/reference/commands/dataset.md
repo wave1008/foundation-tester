@@ -2,8 +2,7 @@
 
 [in Japanese(日本語)](dataset_ja.md)
 
-Read accounts and test data from JSON files instead of writing them into the scenario source. Names, arguments and
-the key format are the same as Shirates.
+Read accounts and test data from JSON files instead of writing them into the scenario source.
 
 ## Functions
 
@@ -27,8 +26,7 @@ A successful call records no step (it only returns a value).
 
 ## Where the files go, and overriding
 
-The files have the same shape as Shirates dataset JSON (attribute values must be strings; a dataset with a number or
-boolean attribute is rejected).
+Attribute values must be strings (a dataset with a number or boolean attribute is rejected).
 
 ```json
 {
@@ -56,7 +54,7 @@ failure text lists every file it looked at and what was missing (never the value
 
 ## Dry-run
 
-Dry-run and listing do not read the files and **return the key string as is** (same as Shirates' no-load run).
+Dry-run and listing do not read the files and **return the key string as is**.
 
 ## Using a file as it is (`dataFile`)
 

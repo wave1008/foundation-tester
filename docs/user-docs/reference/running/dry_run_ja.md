@@ -1,8 +1,8 @@
-# dry-run(No-Load-Run)
+# dry-run
 
 [in English](dry_run.md)
 
-`fleetest run --dry-run`(Shirates の No-Load-Run 相当)は、**デバイスにも FM にも触れず**、
+`fleetest run --dry-run` は、**デバイスにも FM にも触れず**、
 シナリオのステップを列挙・検証します。デバイス実行の最中や後でしか気づけない誤りを、数秒で
 検知できます。
 

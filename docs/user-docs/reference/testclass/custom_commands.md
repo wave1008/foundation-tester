@@ -4,8 +4,7 @@
 
 When the built-in DSL commands don't cover a repeated step in your own app (log in, a shared
 precondition, a custom multi-finger gesture assembled with [`gesture`](../commands/gestures.md)),
-write it as a **plain Swift function** under `scenarios/`. This is what Shirates calls a `macro` —
-in fleetest it's not a separate mechanism, just a function.
+write it as a **plain Swift function** under `scenarios/`.
 
 ```swift
 func login(user: String, password: String) {
