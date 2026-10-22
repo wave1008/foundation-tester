@@ -37,7 +37,7 @@ What success looks like: each step prints one line, and on a second run most of 
 
 ```bash
 # Run: --quiet suppresses per-step lines, --junit writes JUnit XML
-fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml
+fleetest run --profile ios-run --quiet --junit reports/junit.xml
 ```
 
 - **Exit code**: `0` = every scenario passed, `1` = at least one failure (JUnit is still written
@@ -67,7 +67,7 @@ suggestion).
 The job definition (a Jenkinsfile, …) can be written by the AI.
 
 ```text
-Create a Jenkinsfile in this repository. Stages: "install fleetest idempotently with install.sh", then "fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml". In post, collect the JUnit, and on failure archive reports/junit.xml and TestProjects/*/reports/ as artifacts.
+Create a Jenkinsfile in this repository. Stages: "install fleetest idempotently with install.sh", then "fleetest run --profile ios-run --quiet --junit reports/junit.xml". In post, collect the JUnit, and on failure archive reports/junit.xml and TestProjects/*/reports/ as artifacts.
 ```
 
 <details>
@@ -83,7 +83,7 @@ pipeline {
       steps { sh 'bash ../foundation-tester/Scripts/install.sh --work-dir "$PWD" --skip-extension --skip-mcp --no-doctor' }
     }
     stage('Run scenarios') {
-      steps { sh '../foundation-tester/.build/debug/fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml' }
+      steps { sh '../foundation-tester/.build/debug/fleetest run --profile ios-run --quiet --junit reports/junit.xml' }
     }
   }
   post {
@@ -124,7 +124,7 @@ Have the job start periodically (in Jenkins, `triggers { cron('H 2 * * *') }`; f
 ### Prompt for the AI
 
 ```text
-Add a nightly 2 a.m. schedule to the Jenkinsfile. Give fleetest run --wait-lock 1800, and run fleetest devices down --profile ios-xcuitest at the end of the job.
+Add a nightly 2 a.m. schedule to the Jenkinsfile. Give fleetest run --wait-lock 1800, and run fleetest devices down --profile ios-run at the end of the job.
 ```
 
 What success looks like: overlapping jobs run one after another if they carry `--wait-lock`, and stop with the message above if they do not.

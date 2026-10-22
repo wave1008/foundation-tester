@@ -102,9 +102,15 @@ Re-run only the fleetest scenarios that failed on iOS last time.
 - **A failed operation is never retried automatically.** This is so that operations that may or may not have
   arrived (such as submitting or purchasing) are not executed twice. For an unstable test, fix the cause instead of retrying
   ([Read results and investigate failures](investigating_failures.md)).
+- **A whole scenario can, however, be rerun from the start.** This happens when a device problem (such as a frozen
+  device) means the result cannot be trusted (a scenario that just passed may be rerun too, and there is no setting to
+  turn this off). **An irreversible operation such as submitting, purchasing or registering can therefore happen twice
+  in one run.** Point such scenarios at something where doing it twice is harmless (a test payment, a staging server)
+  ([Run in CI](../in_action/ci.md), [Writing robust scenarios](../reference/writing/writing_robust_scenarios.md)).
 - Minor changes, such as only a screen ID having changed, are absorbed by **self-healing** and the test continues.
-  Even then, the report keeps a suggestion saying "fix the scenario like this"
-  ([Keep tests up to date with app changes](keeping_up_with_app_changes.md)).
+  The report then keeps a suggestion saying "fix the scenario like this", and at the end of the run the selector is
+  **written back to the scenario source automatically** (review the diff in git and commit it;
+  [Keep tests up to date with app changes](keeping_up_with_app_changes.md)).
 
 ## Run on another Mac or in CI
 

@@ -37,7 +37,7 @@ bash foundation-tester/Scripts/install.sh --work-dir "$PWD" --skip-extension --s
 
 ```bash
 # 実行: --quiet でステップ行を抑制、--junit で JUnit XML を書く
-fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml
+fleetest run --profile ios-run --quiet --junit reports/junit.xml
 ```
 
 - **exit code**: `0` = 全シナリオ成功 / `1` = 失敗あり(JUnit は失敗時も書かれます)。
@@ -66,7 +66,7 @@ worker が入ります。**inconclusive**(`verify` のアサーション0個)は
 ジョブの定義(Jenkinsfile など)は AI に書かせられます。
 
 ```text
-このリポジトリに Jenkinsfile を作って。ステージは「install.sh で fleetest を冪等に導入」→「fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml」。post で junit を集計し、失敗時は reports/junit.xml と TestProjects/*/reports/ を成果物に残して。
+このリポジトリに Jenkinsfile を作って。ステージは「install.sh で fleetest を冪等に導入」→「fleetest run --profile ios-run --quiet --junit reports/junit.xml」。post で junit を集計し、失敗時は reports/junit.xml と TestProjects/*/reports/ を成果物に残して。
 ```
 
 <details>
@@ -82,7 +82,7 @@ pipeline {
       steps { sh 'bash ../foundation-tester/Scripts/install.sh --work-dir "$PWD" --skip-extension --skip-mcp --no-doctor' }
     }
     stage('Run scenarios') {
-      steps { sh '../foundation-tester/.build/debug/fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml' }
+      steps { sh '../foundation-tester/.build/debug/fleetest run --profile ios-run --quiet --junit reports/junit.xml' }
     }
   }
   post {
@@ -121,7 +121,7 @@ pipeline {
 ### AIへの指示文
 
 ```text
-Jenkinsfile に毎晩 2 時の定期実行を足して。fleetest run には --wait-lock 1800 を付け、ジョブの末尾で fleetest devices down --profile ios-xcuitest を実行して。
+Jenkinsfile に毎晩 2 時の定期実行を足して。fleetest run には --wait-lock 1800 を付け、ジョブの末尾で fleetest devices down --profile ios-run を実行して。
 ```
 
 成功するとこう見える: 重なったジョブは、`--wait-lock` を付けていれば順番に実行され、付けていなければ上の文言で止まります。
