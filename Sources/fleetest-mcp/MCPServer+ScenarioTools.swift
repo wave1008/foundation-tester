@@ -541,6 +541,12 @@ extension MCPServer {
         var commands = DSLCommandIndex.all
         if let category { commands = commands.filter { $0.category == category } }
         if let name { commands = commands.filter { $0.name == name } }
+        // 要素のプロパティは絞ったときだけ行として出す(既定の一覧ではヘッダに名前だけ添える)
+        var properties = DSLCommandIndex.elementProperties
+        if let category { properties = properties.filter { $0.category == category } }
+        if let name { properties = properties.filter { $0.name == name } }
+        if category == nil, name == nil { properties = [] }
+        commands += properties
 
         let requestedProject = args["project"] as? String
         var projectCommands: [ProjectCommandEntry] = []
@@ -558,6 +564,7 @@ extension MCPServer {
 
         guard !commands.isEmpty || !projectCommands.isEmpty else {
             var categories = Set(DSLCommandIndex.all.map(\.category))
+            categories.insert(DSLCommandIndex.propertyCategory)
             if requestedProject != nil { categories.insert("project") }
             return text("no command matched. Categories: \(categories.sorted().joined(separator: ", "))."
                 + " A name that is not in this index does not exist (it will not compile)")
@@ -579,7 +586,9 @@ extension MCPServer {
         var header = detailed
             ? "\(commands.count + projectCommands.count) command(s)"
             : "\(commands.count + projectCommands.count) commands (pass category: or name: for summaries)."
-                + " Chain-only: \(DSLCommandIndex.chainOnlyNames.sorted().joined(separator: ", "))"
+                + " Chain-only: \(DSLCommandIndex.chainOnlyNames.sorted().joined(separator: ", "))."
+                + " Values of a grabbed element (pass category: \"\(DSLCommandIndex.propertyCategory)\" for details): "
+                + DSLCommandIndex.elementProperties.map(\.signature).joined(separator: ", ")
         if !projectCommands.isEmpty {
             header += ". \(projectCommands.count) from the project (marked [project: file:line]) —"
                 + " these are real, written by the project itself; ft_batch cannot run them"

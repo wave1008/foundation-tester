@@ -554,4 +554,20 @@ public enum DSLCommandIndex {
 
     /// 型の静的メンバとして生える索引項目(`TestLog.directoryForLog` 等)。名前は `型.メンバ` の形で索引に載る
     public static let staticMemberNames: Set<String> = ["TestLog.directoryForLog", "TestLog.directoryForTemp"]
+
+    /// 掴んだ要素(`exist` / `select` / 操作の戻り値)から読む値。**コマンドではないので `all` に入れない**
+    /// (`all` は `ft_batch` の手の解決と独自コマンドの名前の照合にも使う)。載っていないと、画面の値を読む書き方を
+    /// 知るために生成側が fleetest のソースを読みに行く。`CommandIndexSyncTests` が FTElement の `public var` と突き合わせる
+    public static let propertyCategory = "property"
+    public static let elementProperties: [DSLCommandInfo] = [
+        .init("isEmpty", propertyCategory, "select(selector).isEmpty",
+              "True when nothing was grabbed (not found, or select found it but it is not visible). Branch on it."),
+        .init("isNotEmpty", propertyCategory, "select(selector).isNotEmpty", "True when an element was grabbed."),
+        .init("text", propertyCategory, "exist(selector).text",
+              "The grabbed element's displayed text (String?), as read when it was grabbed (not re-read)."
+                + " Use it to keep a value for a later screen, then assert with thisIs / thisContains etc."),
+        .init("value", propertyCategory, "exist(selector).value",
+              "The grabbed element's value (String?), e.g. an input field's content."),
+        .init("id", propertyCategory, "exist(selector).id", "The grabbed element's identifier (String?)."),
+    ]
 }

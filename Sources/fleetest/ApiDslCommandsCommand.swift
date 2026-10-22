@@ -13,7 +13,7 @@ struct ApiDslCommandsCommand: AsyncParsableCommand {
             + " (name, category, signature, summary, chainable, unsupportedOn, origin). Touches no device")
 
     @Option(help: ArgumentHelp("Only the commands of one category ("
-        + DSLCommandIndex.categories.joined(separator: "/") + "/project)"))
+        + DSLCommandIndex.categories.joined(separator: "/") + "/" + DSLCommandIndex.propertyCategory + "/project)"))
     var category: String?
 
     @Option(help: "Only the command with this exact name")
@@ -24,7 +24,8 @@ struct ApiDslCommandsCommand: AsyncParsableCommand {
     var project: String?
 
     func run() async throws {
-        var commands = DSLCommandIndex.all
+        // 要素のプロパティ(category: property)もコマンドと同じ絞り込みで載せる
+        var commands = DSLCommandIndex.all + DSLCommandIndex.elementProperties
         if let category {
             commands = commands.filter { $0.category == category }
         }
@@ -52,6 +53,7 @@ struct ApiDslCommandsCommand: AsyncParsableCommand {
         let entries = commands.map { DSLCommandJSONEntry(builtin: $0) }
             + projectCommands.map { DSLCommandJSONEntry(project: $0) }
         var categories = Set(DSLCommandIndex.all.map(\.category))
+        categories.insert(DSLCommandIndex.propertyCategory)
         if !projectCommands.isEmpty { categories.insert("project") }
 
         let output = Output(

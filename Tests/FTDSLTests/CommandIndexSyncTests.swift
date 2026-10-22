@@ -113,6 +113,33 @@ final class CommandIndexSyncTests: XCTestCase {
                        "索引の chainable と FTElement のメソッドがズレている")
     }
 
+    /// 要素から読む値(`elementProperties`)は FTElement の `public var` と一致する。
+    /// 載っていないと、画面の値を読む書き方を知るために生成側が fleetest のソースを読みに行く
+    func testElementPropertiesMatchFTElementVars() throws {
+        let commandsSource = try self.commandsSource()
+        guard let structRange = commandsSource.range(of: "public struct FTElement {") else {
+            return XCTFail("FTElement の宣言が見つからない(索引の elementProperties を照合できない)")
+        }
+        let body = commandsSource[structRange.upperBound...]
+        let end = body.range(of: "\n}") ?? body.startIndex..<body.startIndex
+        var vars: Set<String> = []
+        for line in body[body.startIndex..<end.lowerBound].split(separator: "\n") {
+            let text = line.trimmingCharacters(in: .whitespaces)
+            guard text.hasPrefix("public var ") else { continue }
+            let rest = text.dropFirst("public var ".count)
+            if let colon = rest.firstIndex(of: ":") { vars.insert(String(rest[rest.startIndex..<colon])) }
+        }
+        XCTAssertFalse(vars.isEmpty, "FTElement の public var を1つも拾えない(走査が壊れている)")
+        XCTAssertEqual(Set(DSLCommandIndex.elementProperties.map(\.name)), vars,
+                       "索引の elementProperties と FTElement の public var がズレている")
+        for property in DSLCommandIndex.elementProperties {
+            XCTAssertEqual(property.category, DSLCommandIndex.propertyCategory, property.name)
+            XCTAssertTrue(property.signature.hasSuffix(".\(property.name)"), "\(property.name): signature が別の値を指している")
+        }
+        // all と混ぜない(all は ft_batch の手の解決・独自コマンドの名前の照合にも使う)
+        XCTAssertTrue(Set(DSLCommandIndex.all.map(\.name)).isDisjoint(with: DSLCommandIndex.elementProperties.map(\.name)))
+    }
+
     func testEveryEntryIsFilledIn() {
         for command in DSLCommandIndex.all {
             XCTAssertFalse(command.signature.isEmpty, "\(command.name): signature が空")
