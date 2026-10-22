@@ -113,9 +113,20 @@ public enum ContainerGeometry {
             let siblings = LocatorResolver.descendants(of: candidate, in: elements).filter { $0.depth == element.depth }
             let inside = siblings.filter { ScrollGeometry.intersection($0.frame, candidate.frame) != nil }
             if inside.isEmpty { continue }
-            return inside.count >= 2 ? candidate.frame : nil
+            guard inside.count >= 2 else { return nil }
+            // **行の中心を1件も収めない候補も飛ばす**(縁で交差するだけ)。XCUITest の木は push の最中、前の画面の
+            // ボタン(d13・画面の左外 -105,156 135x58)を新しい画面の行(d14)の直前に置き、行2件が角で交差して
+            // 容器に選ばれていた → visibleTapRect が 14x12pt の角を撃って外した(E2EY-iOS 58 S0020・M1Max で 10/10)。
+            // 本物の容器は見えている行の中心を内側に持つ(縁にかかる行・ghost が混ざっても他の行で満たす)
+            guard inside.contains(where: { holdsCentre(candidate.frame, $0.frame) }) else { continue }
+            return candidate.frame
         }
         return nil
+    }
+
+    private static func holdsCentre(_ outer: FTRect, _ inner: FTRect) -> Bool {
+        let cx = inner.x + inner.width / 2, cy = inner.y + inner.height / 2
+        return cx >= outer.x && cx <= outer.x + outer.width && cy >= outer.y && cy <= outer.y + outer.height
     }
 
     /// `outer` が `inner` を**収められる大きさ**か(位置は見ない。上の doc)。
