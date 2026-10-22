@@ -7,6 +7,9 @@
 //   - ただし **UIKit/SwiftUI では合成タッチを UIGestureRecognizer が受理しない**ので、
 //     in-app が 200 を返すと黙って無反応になる → 501 を返して XCUITest へ回す必要がある
 //
+//   - 座標ドラッグも同じ(2026-10-22): XCUITest の合成では負荷下で Compose が最後の移動を捨て、in-app の実時間の
+//     ドラッグ(FTSynthDrag)なら位置も速度も届く。UIKit/SwiftUI は 501 で XCUITest へ
+//
 // この振り分けが失われると**エンジンによって効いたり効かなかったりする無音の退行**になる。
 // E2E はエンジンで分岐できない(同じシナリオが両プロファイルで走る)ため、ここでソースを走査して守る。
 
@@ -33,13 +36,15 @@ final class InAppGestureRoutingTests: XCTestCase {
                       "in-app ブリッジが /doubletap を失っています(Compose の doubleTap が単タップに戻る)")
         XCTAssertTrue(bridge.contains("(\"POST\", \"/pinch\")"),
                       "in-app ブリッジが /pinch を失っています(Flutter のピンチが効かなくなる)")
+        XCTAssertTrue(bridge.contains("(\"POST\", \"/drag\")"),
+                      "in-app ブリッジが /drag を失っています(Compose の払いきりが XCUITest の合成に戻り、最後の移動を捨てる)")
     }
 
     /// 両ハンドラが**自前描画フレームワークに限定**していること。
     /// この判定を外すと UIKit/SwiftUI で 200 を返しながら何も起きない(無音の失敗)
     func testInAppGestureHandlersRejectUIKit() throws {
         let bridge = try source("InAppBridge/Sources/InAppBridge.swift")
-        for handler in ["handleDoubleTap", "handlePinch"] {
+        for handler in ["handleDoubleTap", "handlePinch", "handleDrag"] {
             guard let range = bridge.range(of: "private func \(handler)") else {
                 return XCTFail("\(handler) が見つかりません")
             }
@@ -62,6 +67,8 @@ final class InAppGestureRoutingTests: XCTestCase {
                       "InAppDriver が doubleTap をブリッジへ渡していません")
         XCTAssertTrue(driver.contains("client.pinch(request:"),
                       "InAppDriver が pinch をブリッジへ渡していません")
+        XCTAssertTrue(driver.contains("client.drag(fromX: fromX"),
+                      "InAppDriver が drag をブリッジへ渡していません(自前描画のドラッグが XCUITest の合成に戻る)")
         XCTAssertTrue(driver.contains("PinchGesture.ios(frame: frame"),
                       "InAppDriver が指の置き方を PinchGesture.ios に委ねていません(ホストが指を組んで fingers で送る)")
     }

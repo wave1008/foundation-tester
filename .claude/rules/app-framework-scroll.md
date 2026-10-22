@@ -52,7 +52,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   現にこの規則の導入(`8a416bc0`)が xcuitest 限定の退行を入れ、フル E2E 緑のまま通った
   (**5日後の `931897d6` で修正済み** —— 申告の祖先へ倒すのは「深さ由来の候補が要素を収められない」
   ときだけ。経緯と壊れ方は maintainer-notes §4.5.1)
-  **座標ドラッグは `StepExecutor.dragWithFallback` だけから撃つ**(in-app は drag が 501。
+  **座標ドラッグは `StepExecutor.dragWithFallback` だけから撃つ**(in-app の drag は自前描画だけ受け、UIKit/SwiftUI は 501。
   `driver.drag` を直に呼ぶと hybrid で黙って不発になる)
 - **端送りは「最後に動いてから `edgeClaimGraceAfterMove`(1.0 秒)」経つまで端と確定しない**(窓の外に描き足す
   RN の FlatList で途中止まりした)。**ドライバの `atEdge: false`(= 確かに動かした)は事実を知っている経路だけが返す**

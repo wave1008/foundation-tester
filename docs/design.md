@@ -1833,8 +1833,8 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   遷移中はタッチが捨てられる)。省くのは 250ms の小休止と 2 回目の取り直し・activate だけ。
   語彙が読めなければ従来どおり撃ち直す。
 - **Compose/Flutter のスクロールは UIAccessibility の scroll アクションで駆動する**(2026-07-31)。
-  両者は `UIScrollView` を持たないので `contentOffset` 経路が無く、合成タッチの drag も受理
-  されないが、**VoiceOver が使う `accessibilityScroll` は実装している**
+  両者は `UIScrollView` を持たないので `contentOffset` 経路が無く、move を一気に流す合成タッチの drag も受理
+  されない(実時間で刻む `/drag` = 座標ドラッグは 2026-10-22 から受理を確認。スクロールには使っていない)が、**VoiceOver が使う `accessibilityScroll` は実装している**
   (Compose = `AccessibilityElement` / Flutter = `SemanticsObjectContainer`)。1回 = 1ページで、
   実測では XCUITest の実スワイプより**距離が長く**(row_01→27 対 row_01→16)、
   **1回あたり 106ms 対 456ms**。scrollToTop の中央値は 5,304→1,714ms。

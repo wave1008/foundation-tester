@@ -598,7 +598,7 @@ extension StepExecutor {
     }
 
     /// スクロール探索直後の「空打ち」極小ドラッグ(呼ぶ条件は呼び出し側の判定を参照)。
-    /// **in-app エンジンは drag を一切実装しない**(501)ため、hybrid では typeDriver=XCUITest へ
+    /// **in-app の drag は自前描画(Compose・Flutter)だけ**(それ以外は 501)なので、hybrid では typeDriver=XCUITest へ
     /// 回さないとこの対策が丸ごと不発になる(= Compose の容器がタッチを1回吸ったままになり、
     /// 直後の tap/press が空振りする)。空打ちは補助でありこれ自体の失敗はステップの失敗にしない
     /// (両経路とも失敗したら黙って進む = `try?` と同じ扱い)
@@ -608,7 +608,7 @@ extension StepExecutor {
     }
 
     /// **座標ドラッグの唯一の入口**(空打ち・見切れ回復の slowDrag・ヒント跳躍の hintDrag)。
-    /// in-app エンジンは drag を一切実装しない(501)ので、hybrid では typeDriver=XCUITest へ回す。
+    /// in-app の drag は自前描画(Compose・Flutter)だけで、それ以外は 501 なので hybrid では typeDriver=XCUITest へ回す。
     /// slowDrag / hintDrag が `driver.drag` を直に呼んで 501 を「失敗」として握りつぶすと、
     /// **in-app 主の run(利用者の既定 hybrid)では見切れ回復のドラッグが一度も出なくなる**
     /// (受け手の最小再現 R0020: 容器推定を直しても全画面スワイプに落ちて届かず not-found。
@@ -657,8 +657,8 @@ extension StepExecutor {
         } catch {
             // 「このエンジンでは不可」(501 / ルート不明 404)だけ XCUITest へ回す。
             // 409 を含めない理由は DriverError.isEngineIncapable 参照。
-            // **座標つきは in-app が必ず 501 を返す**(合成タッチの drag を受理しないため)ので、
-            // scrollFrame 指定時の hybrid はここで XCUITest へ落ちる
+            // **座標つきの swipe は in-app が 501 を返す**(in-app の swipe は座標を撃たず AX の scroll / contentOffset で
+            // 動かす = 領域の枠が無いと絞れない)ので、scrollFrame 指定時の hybrid はここで XCUITest へ落ちる
             guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
             let start = clock.now
             try await td.swipe(direction, intent: intent, path: path)

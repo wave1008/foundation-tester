@@ -1102,7 +1102,8 @@ final class FTInAppBridge {
         // AX の scroll は端でも受理するフレームワーク(Compose)があるので、受理を false にしない
         var atEdge: Bool?
         // **スクロール領域の指定(SwipeRequest.path)は「座標を撃つ指示」ではなく
-        // 「どこを・どれだけ動かすか」の指示として読む**。合成タッチの drag は受理されないので
+        // 「どこを・どれだけ動かすか」の指示として読む**。スクロール目的では合成タッチの drag を使わない(実時間で刻む
+        // handleDrag は Compose・Flutter に受理されるが、スクロールの経路としては未検証)ので
         // 座標そのものは注入できないが、
         //   - 始点(fromX/fromY)は**必ず対象領域の中**にある(ホストがマージンを内側に取るため)
         //     → 動かすスクロールビュー/AX 要素を選ぶのに使える
@@ -1111,7 +1112,7 @@ final class FTInAppBridge {
         // 座標を無視して画面全体を動かしてはいけない —— **指定と違う領域が黙って動く**
         // Compose / Flutter は自前描画で UIScrollView を持たない(Compose の画面には**本体の
         // スクロールとは無関係な UIScrollView が存在する**ので、contentOffset を動かしても
-        // 見た目は変わらず黙った空振りになる)。合成タッチの drag も受理されない
+        // 見た目は変わらず黙った空振りになる)。move を一気に流す合成タッチ(FTSynthSwipe)の drag は受理されない
         // (tap のみ通る。2026-07-22 実測)。**UIAccessibility の scroll アクションだけが通る** ——
         // VoiceOver が使う経路なので両フレームワークとも実装している(2026-07-31 実測。
         // Compose = AccessibilityElement / Flutter = SemanticsObjectContainer が受理)。
@@ -1188,8 +1189,8 @@ final class FTInAppBridge {
             return ok()
         }
         if ["compose", "flutter"].contains(uiFramework) {
-            // ジェスチャ目的の swipe。自前描画で合成タッチの drag を受理しないので従来どおり
-            // XCUITest へ回す(上の AX 経路はスクロールしか代行できない)
+            // ジェスチャ目的の swipe。従来どおり XCUITest へ回す(上の AX 経路はスクロールしか代行できない。
+            // 座標の決まったドラッグは handleDrag が受けるが、方向だけの swipe の撃ち方はここでは変えていない)
             throw InAppError(501, "gesture swipes do not work via the in-app engine on \(uiFramework)"
                 + " (self-rendered without UIScrollView, and synthetic drags are not accepted)."
                 + " hybrid falls back to XCUITest")

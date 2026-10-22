@@ -422,7 +422,7 @@ public final class StepExecutor {
     /// press(長押し)専用。swipe とは申告も経路も別(typeDriverGestures もアクション別に持つ)
     var pressFallbackLatched = false
     /// drag(スクロール探索直後の空打ち)専用のラッチ。**swipeFallbackLatched と共有しない**:
-    /// in-app は drag を一切実装しないので必ず 501 になるが、swipe は UIKit なら
+    /// in-app の drag は UIKit/SwiftUI では 501 になるが、swipe は UIKit なら
     /// contentOffset 経路で決定的に効く。共有すると drag の 501 だけで全 swipe が XCUITest 実
     /// スワイプ化し、バウンス由来の flake を持ち込む(typeDriverGestures の注意書きと同じ理由)
     var dragFallbackLatched = false

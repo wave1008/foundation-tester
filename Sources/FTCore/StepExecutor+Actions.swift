@@ -1031,7 +1031,7 @@ extension StepExecutor {
                                             pressSeconds: FlowStep.defaultDragPressSeconds, durationSeconds: swipeDuration)
                 phase.actionMs += Self.ms(clock.now - start)
             } catch {
-                // in-app エンジンは drag を一切実装しない(501)ため、hybrid では typeDriver=XCUITest
+                // in-app の drag は自前描画だけ(それ以外は 501)ため、hybrid では typeDriver=XCUITest
                 // で始点・終点を取り直す(ref はブリッジごとに別名前空間)
                 guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
                 guard try await dragViaTypeDriver(td, step: step, endStep: endStep,
