@@ -11,6 +11,45 @@ public enum AppIconLocator {
         snapshot.elements.first { $0.label == name }
     }
 
+    /// iOS の App ライブラリの検索欄(SpringBoard の識別子。表示言語に依らない)。ホームのページに置かれていないアプリは
+    /// App ライブラリにしか居ない(実測: -06 のホーム1ページに「FT E2E iOS」が無く「Other」フォルダの中だけ)。
+    /// ページ送りは右端の App ライブラリで止まるので、送り切った木にこれがあれば検索で探せる
+    public static let appLibrarySearchFieldID = "dewey-search-field"
+
+    public static func appLibrarySearchField(in snapshot: SnapshotResponse) -> ElementInfo? {
+        snapshot.elements.first { $0.identifier == appLibrarySearchFieldID }
+    }
+
+    /// App ライブラリの検索バー(一覧の行はこの下に潜って隠れる)
+    static let appLibrarySearchBarID = "dewey-search-bar"
+
+    /// 一覧の行を押してよい帯: 検索バーの下端 〜 キーボードの上端(出ていなければ画面の下端)
+    static func appLibraryListBand(in snapshot: SnapshotResponse) -> (top: Double, bottom: Double) {
+        let bar = snapshot.elements.first { $0.identifier == appLibrarySearchBarID }?.frame
+        let top = bar.map { $0.y + $0.height } ?? snapshot.screen.y
+        var bottom = snapshot.screen.y + snapshot.screen.height
+        if KeyboardWait.isShown(snapshot), let keyboard = snapshot.keyboardFrame { bottom = min(bottom, keyboard.y) }
+        return (top, bottom)
+    }
+
+    /// 名前順一覧の行を押せるか: 中心が画面内で、検索バーの下・キーボードの上(覆われた行を押すとキーボードに当たる)
+    public static func isTappableInAppLibraryList(_ row: ElementInfo, in snapshot: SnapshotResponse) -> Bool {
+        let point = centre(of: row)
+        let band = appLibraryListBand(in: snapshot)
+        return TapTargetGeometry.isPointOnScreen(x: point.x, y: point.y, screen: snapshot.screen)
+            && point.y > band.top && point.y < band.bottom
+    }
+
+    /// 一覧を下へ送る(指は上へ)ドラッグ: 押してよい帯の 80% → 20%(帯の 60% ぶん動かす)。帯が潰れていれば nil
+    public static func appLibraryListDragPath(in snapshot: SnapshotResponse)
+        -> (fromX: Double, fromY: Double, toX: Double, toY: Double)? {
+        let band = appLibraryListBand(in: snapshot)
+        let span = band.bottom - band.top
+        guard span > 0 else { return nil }
+        let x = snapshot.screen.x + snapshot.screen.width / 2
+        return (x, band.top + span * 0.8, x, band.top + span * 0.2)
+    }
+
     public static func centre(of icon: ElementInfo) -> (x: Double, y: Double) {
         (icon.frame.x + icon.frame.width / 2, icon.frame.y + icon.frame.height / 2)
     }

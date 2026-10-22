@@ -17,6 +17,49 @@ final class AppIconLocatorTests: XCTestCase {
                          elements: elements, truncatedCount: 0)
     }
 
+    // MARK: - appLibrarySearchField
+
+    /// App ライブラリの検索欄は識別子で拾う(実測の木: searchField id=dewey-search-field ph="アプリライブラリ")
+    func testAppLibrarySearchFieldIsFoundByIdentifier() {
+        let field = ElementInfo(ref: 7, type: "searchField", identifier: "dewey-search-field", label: nil, value: nil,
+                                placeholder: "アプリライブラリ", enabled: true,
+                                frame: FTRect(x: 26, y: 90, width: 350, height: 48), depth: 0)
+        XCTAssertEqual(AppIconLocator.appLibrarySearchField(in: snapshot([element(1, label: "Other"), field]))?.ref, 7)
+        XCTAssertNil(AppIconLocator.appLibrarySearchField(in: snapshot([element(1, label: "アプリライブラリ")])),
+                     "ラベル・プレースホルダ(言語で変わる)では拾わない")
+    }
+
+    /// 実測の名前順一覧(402x874・検索バー 0..162・キーボード 545..874)
+    private func libraryList(keyboard: Bool) -> SnapshotResponse {
+        func row(_ ref: Int, _ y: Double) -> ElementInfo {
+            ElementInfo(ref: ref, type: "clickable", identifier: nil, label: "App\(ref)", value: nil, placeholder: nil,
+                        enabled: true, frame: FTRect(x: 0, y: y, width: 402, height: 72), depth: 2)
+        }
+        let bar = ElementInfo(ref: 1, type: "other", identifier: "dewey-search-bar", label: nil, value: nil, placeholder: nil,
+                              enabled: true, frame: FTRect(x: 0, y: 0, width: 402, height: 162), depth: 1)
+        return SnapshotResponse(sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                                elements: [bar, row(2, 90), row(3, 450), row(4, 522), row(5, 900)], truncatedCount: 0,
+                                keyboardFrame: keyboard ? FTRect(x: 0, y: 545, width: 402, height: 329) : nil)
+    }
+
+    func testLibraryRowIsTappableOnlyBetweenTheSearchBarAndTheKeyboard() {
+        let list = libraryList(keyboard: true)
+        let rows = Dictionary(uniqueKeysWithValues: list.elements.map { ($0.ref, $0) })
+        XCTAssertFalse(AppIconLocator.isTappableInAppLibraryList(rows[2]!, in: list), "検索バーの下に潜った行")
+        XCTAssertTrue(AppIconLocator.isTappableInAppLibraryList(rows[3]!, in: list), "バーとキーボードの間")
+        XCTAssertFalse(AppIconLocator.isTappableInAppLibraryList(rows[4]!, in: list), "中心 558 がキーボード(545〜)の下")
+        XCTAssertFalse(AppIconLocator.isTappableInAppLibraryList(rows[5]!, in: list), "画面の外")
+        XCTAssertTrue(AppIconLocator.isTappableInAppLibraryList(rows[4]!, in: libraryList(keyboard: false)),
+                      "キーボードが無ければ画面の下端まで押せる")
+    }
+
+    func testLibraryDragMovesWithinTheVisibleBand() {
+        let path = AppIconLocator.appLibraryListDragPath(in: libraryList(keyboard: true))
+        XCTAssertEqual(path?.fromY ?? 0, 162 + 383 * 0.8, accuracy: 0.01)
+        XCTAssertEqual(path?.toY ?? 0, 162 + 383 * 0.2, accuracy: 0.01)
+        XCTAssertEqual(path?.fromX, 201)
+    }
+
     // MARK: - findIcon
 
     func testFindIconMatchesExactLabel() {

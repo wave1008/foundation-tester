@@ -44,7 +44,10 @@ hinge(130)              // half-open book posture
   when a field may still have focus.
 - **`tapAppIcon` search order**: current screen first; if not found, Android opens the app
   drawer and scrolls (`flickCenterToTop`, up to 8 times), iOS pages through the home screens
-  (`flickRightToLeft`, up to 5 times, stopping after two unchanged pages). Fails with
+  (`flickRightToLeft`, up to 5 times, stopping after two unchanged pages). On iOS, an app that is not
+  on any home screen page (only in the App Library) is opened from the alphabetical list that
+  appears when the App Library search field (where the paging ends) is tapped, scrolling the list until
+  the row is visible. Fails with
   `"App icon not found.(name)"` if never found. The icon is tapped only after its position is
   the same in two consecutive screen reads (a moving drawer or page swallows the tap). When the
   icon is your app's, the step then waits for the app to come to the foreground and fails (without

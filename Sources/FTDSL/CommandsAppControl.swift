@@ -316,6 +316,11 @@ private let tapAppIconIOSMaxPages = 5
 /// 対象アプリ以外のアイコンをタップした後の整定待ち(Shirates 準拠)。前面になったかを問える相手
 /// (シナリオの対象アプリ)は `waitForAppForeground` が待つので、これは問えない相手の分だけ
 private let tapAppIconSettleSeconds = 1.5
+/// App ライブラリの名前順一覧を送る上限(安全弁)。実際の終端は2回連続の不変化(一覧の末尾)。
+/// 1回の送りは見えている一覧の 60%(72pt の行で約3行)なので、30回で約90本のアプリまで届く
+private let tapAppIconLibraryMaxDrags = 30
+/// 一覧を送るドラッグの所要秒。ゆっくり引いて慣性で行き過ぎない(送った分だけ動かす)
+private let tapAppIconLibraryDragSeconds = 0.5
 
 /// 前面になるまで `waitSeconds`(= `tunables.screenWaitTimeout`)ポーリングする。
 /// 戻り値: true = 前面 / false = 問えて前面でなかった / nil = 一度も問えなかった(判定材料なし)。
@@ -512,6 +517,40 @@ public func tapAppIcon(_ appIconName: String? = nil,
             previousSignature = signature
             if AppIconLocator.shouldStopSearch(consecutiveUnchanged: unchanged,
                                                attempts: attempt, maxAttempts: maxAttempts) {
+                // ホームのページに無い = App ライブラリにしか居ない(送りは右端の App ライブラリで止まる)。
+                // 検索欄を押すと全アプリの名前順一覧が出る(行のラベルは名前そのもの)。**文字は打たない** —— 背面から
+                // 撃つスコープ経路は type を断る(ref の名前空間が違う)。行が押せる位置に来るまで一覧を送る
+                if platform == "ios", let field = AppIconLocator.appLibrarySearchField(in: last) {
+                    try await driver.tap(ref: field.ref)
+                    var list = try await driver.snapshot()
+                    var listSignature = AppIconLocator.signature(of: list)
+                    var listUnchanged = 0
+                    var drags = 0
+                    while true {
+                        if let row = AppIconLocator.findIcon(appIconName, in: list) {
+                            let (settled, latest) = try await settledIcon(from: row)
+                            if let settled, let latest, AppIconLocator.isTappableInAppLibraryList(settled, in: latest) {
+                                try await driver.tap(ref: settled.ref)
+                                try await afterTap(settled)
+                                return
+                            }
+                            if let latest { list = latest }
+                        }
+                        drags += 1
+                        guard drags <= tapAppIconLibraryMaxDrags,
+                              let path = AppIconLocator.appLibraryListDragPath(in: list) else { break }
+                        try await driver.drag(fromX: path.fromX, fromY: path.fromY, toX: path.toX, toY: path.toY,
+                                              pressSeconds: FlowStep.defaultDragPressSeconds,
+                                              durationSeconds: tapAppIconLibraryDragSeconds)
+                        list = try await driver.snapshot()
+                        let signature = AppIconLocator.signature(of: list)
+                        listUnchanged = signature == listSignature ? listUnchanged + 1 : 0
+                        listSignature = signature
+                        if listUnchanged >= 2 { break }
+                    }
+                    throw FTCommandError.message("App icon not found.(\(appIconName)) — not on the home screen pages "
+                        + "nor in the App Library list")
+                }
                 throw FTCommandError.message("App icon not found.(\(appIconName))")
             }
         }
