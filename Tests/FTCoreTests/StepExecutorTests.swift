@@ -484,13 +484,13 @@ final class StepExecutorTests: XCTestCase {
     /// "hello123" を type した直後の exist("placeholder=WebView 入力") が誤って覆い扱いされ反転した。
     ///
     /// **この規則を「web 規則があるから冗長」と消さないこと。** 同じ WebView の入力欄でも、
-    /// **エンジンによって発火する規則が違う**(2026-09-02 に xcuitest ブリッジの生 JSON で実測):
+    /// **ブリッジによって発火する規則が違う**(2026-09-02 に xcuitest ブリッジの生 JSON で実測):
     ///   in-app  = DOM 経路。`web:true` / label は aria-label   → **web 規則**が拾う
     ///   xcuitest = a11y 経路。`web` は立たず、代わりに placeholder を申告する
     ///              `{type:"textField", label:"WebView 入力", placeholder:"WebView 入力",
     ///                value:"hello123"}` → **この規則**だけが拾う
     /// つまり web 規則を消すと in-app が、この規則を消すと xcuitest が誤反転に戻る。
-    /// 下の引数がその xcuitest の実形そのもの(web: nil はエンジン差を表す)
+    /// 下の引数がその xcuitest の実形そのもの(web: nil はブリッジ差を表す)
     func testEligibilityExcludesPlaceholderHiddenByEnteredValue() {
         XCTAssertFalse(OcclusionEligibility.eligible(type: "textField", label: "WebView 入力",
                                                       value: "hello123", placeholder: "WebView 入力",
@@ -1197,7 +1197,7 @@ final class StepExecutorTests: XCTestCase {
                        "登録が無いのに聞いてはいけない: \(log.entries)")
     }
 
-    /// **ランナーが居ない構成でも1往復も払わない**。ここが止まると engine=inapp 固定と
+    /// **ランナーが居ない構成でも1往復も払わない**。ここが止まると inapp モード固定と
     /// Android が全滅する
     func testActionCostsNothingWithoutAFallbackBridge() async throws {
         let log = CallLog()

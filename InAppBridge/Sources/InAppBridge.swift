@@ -181,7 +181,7 @@ final class FTInAppBridge {
                 device: device.name,
                 osVersion: "\(device.systemName) \(device.systemVersion)",
                 sessionBundleID: Bundle.main.bundleIdentifier,
-                engine: "inapp",
+                bridge: "inapp",
                 // 版申告が無いと旧 dylib のままの稼働中ブリッジが再利用され、新エンドポイントが
                 // 404 になる(BridgeProvisioner.planBridge が再利用可否をこの版で判定する)
                 protocolVersion: BridgeAPI.bridgeProtocolVersion,
@@ -266,7 +266,7 @@ final class FTInAppBridge {
             truncatedCount: merged.truncated,
             note: merged.note,
             webViewPath: merged.webViewPath,
-            // in-app は window 一覧から実際に「非表示」を確認できる唯一のエンジン
+            // in-app は window 一覧から実際に「非表示」を確認できる唯一のブリッジ
             // (XCUITest/Android は不明を false 相当で返すしかない)。false を nil に潰すと
             // keyboardIsNotShown() が unknown 扱いになりタイムアウトする(実害・再発させない)
             keyboardShown: keyboardShown,
@@ -438,7 +438,7 @@ final class FTInAppBridge {
         }
         guard !domByRef.isEmpty else {
             // **1つも読めなかった**。XCUITest ブリッジが居れば従来どおりホストが画面ごと
-            // 委譲するが、`iosInappEngine` のデバイスには委譲先が居ない —— そこで黙ると
+            // 委譲するが、XCUITest ブリッジが無いときは委譲先が居ない —— そこで黙ると
             // **Web の要素が丸ごと消えた木を「これが全部」として返す**ことになり、
             // 実在する要素に対する exist が満了まで落ち続ける(理由は何も残らない)。
             // だから読めなかったことを経路と注記で名乗る。判定は変えない(委譲の可否はホストが決める)
@@ -535,12 +535,12 @@ final class FTInAppBridge {
             // 下の topmostHitView はキーボードの窓を拾えず、下に隠れた要素を activate していた
             // (実測: キーボードの下へ押し上げられた #tab_home の枠内を撃つと遷移した)。
             // 枠は通知由来の keyboardFrameIfVisible(TextEffects 窓の frame は全画面のまま居残るので使わない)。
-            // **501(このエンジンにはできない)で返す**: 人の指はキーを押せるので、hybrid ではホストが XCUITest で撃つ
-            // (`StepExecutor` の `isEngineIncapable`)。422 だと hybrid でも失敗した。画面の外は人も押せないので 422 のまま
+            // **501(このブリッジにはできない)で返す**: 人の指はキーを押せるので、inapp モードではホストが XCUITest で撃つ
+            // (`StepExecutor` の `isBridgeIncapable`)。422 だと inapp モードでも失敗した。画面の外は人も押せないので 422 のまま
             if let keyboard = Self.keyboardFrameIfVisible(), keyboard.contains(p) {
                 throw InAppError(501, "the point (\(Int(p.x)), \(Int(p.y))) is on the software keyboard"
                     + " (\(Int(keyboard.minX)),\(Int(keyboard.minY)) \(Int(keyboard.width))x\(Int(keyboard.height)))"
-                    + " — the in-app engine cannot press keys, and what lies beneath is not visible."
+                    + " — the in-app bridge cannot press keys, and what lies beneath is not visible."
                     + " Use type to enter text; pressEnter closes the keyboard so what is under it can be reached")
             }
             // 座標指定は直近 snapshot で point を含む最小要素を activate(SwiftUI の活性化要素は
@@ -623,10 +623,10 @@ final class FTInAppBridge {
         func synthFallback(_ window: UIWindow) {
             // FTSynthTap は成否を返さない。整定後に絵が1画素も変わらなかったことだけを事実として注記に足す
             // (throw はしない: 見た目を変えないタップ = 正常もあるので、誤った赤で正常系を壊す方が害が大きい)。
-            // 反応しない場合は accessibilityIdentifier(testTag)を付けるか engine=xcuitest を検討
-            // (hybrid の XCUITest フォールバックは springboard 参照でアプリ要素には効かない)。
+            // 反応しない場合は accessibilityIdentifier(testTag)を付けるか xcuitest モードを検討
+            // (inapp モードの XCUITest ブリッジへの回し先は springboard 参照でアプリ要素には効かない)。
             note = "activate did not fire -> synthetic touch (if the element does not respond,"
-                + " consider adding a testTag or engine=xcuitest)"
+                + " consider adding a testTag or iosMode: \"xcuitest\")"
             let before: Int
             do {
                 let p = try freshTapPoint ?? self.resolvePoint(ref: ref, x: req.x, y: req.y)
@@ -725,7 +725,7 @@ final class FTInAppBridge {
             if AppUIFramework(rawValue: self.uiFramework)?.rejectsSyntheticTap(nodeIsView: node is UIView) == true {
                 thrown = InAppError(501, "activate did not fire on this SwiftUI element and a synthetic touch"
                     + " would be silently ignored (UIGestureRecognizer does not accept synthetic touches)."
-                    + " hybrid falls back to XCUITest")
+                    + " inapp mode hands it to the XCUITest bridge")
                 sem.signal()
                 return
             }
@@ -1009,13 +1009,13 @@ final class FTInAppBridge {
             }
         }
         guard inserted else {
-            // hybrid の XCUITest フォールバック(SystemUIDriver)は springboard 参照のシステム UI 専用で
-            // アプリの入力欄を解決できない(2026-07-20 実証)。ここで hybrid を案内しないこと。
+            // inapp モードの XCUITest ブリッジへの回し先(SystemUIDriver)は springboard 参照のシステム UI 専用で
+            // アプリの入力欄を解決できない(2026-07-20 実証)。ここで inapp モードの回し先を案内しないこと。
             throw InAppError(409, "no focused input field — tap the target field first."
                 + " If it still fails on a focused field, the input is not UIKit-backed"
-                + " (Compose Multiplatform / Flutter) and the in-app engine cannot attach a"
-                + " first responder to type into it: run with an engine=xcuitest run profile"
-                + " (iosInappEngine: false). If the field never appears in the AX tree"
+                + " (Compose Multiplatform / Flutter) and the in-app bridge cannot attach a"
+                + " first responder to type into it: run with an iosMode: \"xcuitest\" run profile."
+                + " If the field never appears in the AX tree"
                 + " (no accessibilityIdentifier/testTag), add a testTag in the app."
                 + " Diagnostics: \(FTFirstResponderDiagnostics())")
         }
@@ -1049,9 +1049,9 @@ final class FTInAppBridge {
         guard cleared else {
             throw InAppError(409, "no focused input field — tap the target field first."
                 + " If it still fails on a focused field, the input is not UIKit-backed"
-                + " (Compose Multiplatform / Flutter) and the in-app engine cannot attach a"
-                + " first responder to clear it: run with an engine=xcuitest run profile"
-                + " (iosInappEngine: false). If the field never appears in the AX tree"
+                + " (Compose Multiplatform / Flutter) and the in-app bridge cannot attach a"
+                + " first responder to clear it: run with an iosMode: \"xcuitest\" run profile."
+                + " If the field never appears in the AX tree"
                 + " (no accessibilityIdentifier/testTag), add a testTag in the app."
                 + " Diagnostics: \(FTFirstResponderDiagnostics())")
         }
@@ -1073,16 +1073,16 @@ final class FTInAppBridge {
             // (Compose = insertText("\n") / UITextField = Return の再現 / Flutter = engine への
             // アクション配送)。ここへ来るのはフォーカスが無いか、Flutter の私有 API が
             // 版差で欠けた場合。xcuitest 経路は in-app が立てたフォーカスに届かないため、
-            // hybrid では救済されない(engine=xcuitest 単独プロファイルを案内する)。
-            // **エンジン切替を最初に勧めない**(2026-08-08 の監査): 実際に多いのは
-            // 「フォーカスが無いだけ」で、それはどのエンジンでも Enter が意味を持たない ——
+            // inapp モードでは救済されない(xcuitest モードを案内する)。
+            // **モード切替を最初に勧めない**(2026-08-08 の監査): 実際に多いのは
+            // 「フォーカスが無いだけ」で、それはどのブリッジでも Enter が意味を持たない ——
             // 先に「欄を tap/type しろ」を言い、切替は「フォーカス済みでも失敗する」場合に限る
-            throw InAppError(409, "could not fire Enter via the in-app engine."
+            throw InAppError(409, "could not fire Enter via the in-app bridge."
                 + " Most likely no input field is focused — tap or type into the field first"
-                + " (Enter needs focus on every engine, so switching engines will not fix that)."
+                + " (Enter needs focus on every bridge, so switching modes will not fix that)."
                 + " If a field is focused and this still fails, the input implementation is"
-                + " unsupported here: run with an engine=xcuitest run profile"
-                + " (iosInappEngine: false). Diagnostics: \(FTFirstResponderDiagnostics())")
+                + " unsupported here: run with an iosMode: \"xcuitest\" run profile."
+                + " Diagnostics: \(FTFirstResponderDiagnostics())")
         }
         return ok()
     }
@@ -1138,9 +1138,9 @@ final class FTInAppBridge {
             // XCUITest へ回す(あちらは座標を実際に撃てるので領域どおりに動く)。
             if let path = req.path {
                 guard let region = path.region else {
-                    throw InAppError(501, "the in-app engine cannot confine a scroll to a region on"
+                    throw InAppError(501, "the in-app bridge cannot confine a scroll to a region on"
                         + " \(uiFramework) without the region's frame (self-rendered: neither hitTest nor"
-                        + " AX can narrow the area from two points). hybrid falls back to XCUITest")
+                        + " AX can narrow the area from two points). inapp mode hands it to the XCUITest bridge")
                 }
                 var outcome = RegionScroll.noMatch
                 try performSettlingIfMoved { window -> Bool in
@@ -1159,8 +1159,8 @@ final class FTInAppBridge {
                     return ok(atEdge: req.edge == true)
                 case .noMatch:
                     throw InAppError(501, "no scrollable element on this screen has the frame of the"
-                        + " requested region on \(uiFramework) (the in-app engine only scrolls a region"
-                        + " that is itself a scroll container). hybrid falls back to XCUITest")
+                        + " requested region on \(uiFramework) (the in-app bridge only scrolls a region"
+                        + " that is itself a scroll container). inapp mode hands it to the XCUITest bridge")
                 }
             }
             var scrolled = false
@@ -1180,20 +1180,20 @@ final class FTInAppBridge {
                 return scrolled
             }
             guard scrolled else {
-                // 501 = このエンジンでは未対応(/terminate と同じ慣習)。409(Conflict)はキーウィンドウ
+                // 501 = このブリッジでは未対応(/terminate と同じ慣習)。409(Conflict)はキーウィンドウ
                 // 不在等の一時的競合と同じコードのため、フォールバック判定に使うと取り違える。
-                throw InAppError(501, "nothing on this screen scrolls via the in-app engine"
+                throw InAppError(501, "nothing on this screen scrolls via the in-app bridge"
                     + " (no element accepts the UIAccessibility scroll action, and synthetic"
-                    + " drags are not accepted). hybrid falls back to XCUITest")
+                    + " drags are not accepted). inapp mode hands it to the XCUITest bridge")
             }
             return ok()
         }
         if ["compose", "flutter"].contains(uiFramework) {
             // ジェスチャ目的の swipe。従来どおり XCUITest へ回す(上の AX 経路はスクロールしか代行できない。
             // 座標の決まったドラッグは handleDrag が受けるが、方向だけの swipe の撃ち方はここでは変えていない)
-            throw InAppError(501, "gesture swipes do not work via the in-app engine on \(uiFramework)"
+            throw InAppError(501, "gesture swipes do not work via the in-app bridge on \(uiFramework)"
                 + " (self-rendered without UIScrollView, and synthetic drags are not accepted)."
-                + " hybrid falls back to XCUITest")
+                + " inapp mode hands it to the XCUITest bridge")
         }
         try performSettlingIfMoved { window -> Bool in
             // UIKit/SwiftUI のスクロールは合成タッチでは駆動できない(ジェスチャ認識器が受理しない)ため、
@@ -1210,9 +1210,9 @@ final class FTInAppBridge {
             //   空振りする flake)。従来どおり無害な no-op にする(次の snapshot が解決を判定する)
             let scrollViews = Self.visibleScrollViews(in: window)
             guard !scrollViews.isEmpty else {
-                throw InAppError(501, "no scroll view on this screen can be driven by the in-app engine"
+                throw InAppError(501, "no scroll view on this screen can be driven by the in-app bridge"
                     + " (synthetic drags are not accepted by gesture recognizers)."
-                    + " hybrid falls back to XCUITest")
+                    + " inapp mode hands it to the XCUITest bridge")
             }
             // **指の下が UIPageViewController のスクロールビューなら動かさず XCUITest へ回す**(余地の判定より先):
             // 中の _UIQueuingScrollView は contentOffset を直に書いてもページが切り替わらず、余地の計算も
@@ -1224,8 +1224,8 @@ final class FTInAppBridge {
                 sv.convert(sv.bounds, to: window).contains(fingerPoint) && Self.isOwnedByPageViewController(sv)
             }) {
                 throw InAppError(501, "the scroll view under the finger belongs to a UIPageViewController, which"
-                    + " the in-app engine cannot page (setting contentOffset does not change the page)."
-                    + " hybrid falls back to XCUITest")
+                    + " the in-app bridge cannot page (setting contentOffset does not change the page)."
+                    + " inapp mode hands it to the XCUITest bridge")
             }
             // 余地なし = 端。no-op で 200 を返し、**動かしていないので整定も待たない**。
             // **端送りならその事実を返す**(ホストが署名の2回不変を待たずに切り上げられる)
@@ -1531,7 +1531,7 @@ final class FTInAppBridge {
     // (Compose だけでなく SwiftUI の onLongPressGesture でも発火しないことを 2026-07-23 に
     // TestProjects/E2E-iOS で実測。tap だけが通る)。黙って空振りさせず xcuitest へ誘導するため、
     // 実装(FTSynthPress 経路)は持たず常に 501 を返す。
-    // 501 = このエンジンでは未対応(/terminate と同じ慣習。409 は一時的競合なので取り違えない)。
+    // 501 = このブリッジでは未対応(/terminate と同じ慣習。409 は一時的競合なので取り違えない)。
     /// 合成タッチの多点・連打を受理するのは**自前描画のフレームワークだけ**(2026-08-04 実測):
     /// Compose / Flutter は生タッチを自前のアリーナで捌くので通るが、UIKit/SwiftUI の
     /// UIGestureRecognizer は受理しない(press / drag が in-app で 501 なのと同じ機構)。
@@ -1539,9 +1539,9 @@ final class FTInAppBridge {
     /// ホストに XCUITest へ回させる(あちらは UIKit/SwiftUI では正しく動く)
     private func requireSelfRenderedFramework(_ action: String) throws {
         guard ["compose", "flutter"].contains(uiFramework) else {
-            throw InAppError(501, "\(action) does not work via the in-app engine on \(uiFramework)"
+            throw InAppError(501, "\(action) does not work via the in-app bridge on \(uiFramework)"
                 + " (UIGestureRecognizer does not accept synthetic touches)."
-                + " hybrid falls back to XCUITest")
+                + " inapp mode hands it to the XCUITest bridge")
         }
     }
 
@@ -1693,10 +1693,9 @@ final class FTInAppBridge {
     }
 
     private func handlePress(_ body: Data) throws -> InAppHTTPServer.Response {
-        throw InAppError(501, "press (long-press) does not work via the in-app engine"
+        throw InAppError(501, "press (long-press) does not work via the in-app bridge"
             + " (gesture recognizers do not accept a held synthetic touch)."
-            + " hybrid falls back to XCUITest; with engine=inapp alone, set"
-            + " iosInappEngine: false (xcuitest) in the run profile")
+            + " inapp mode hands it to the XCUITest bridge")
     }
 
     private func handleScreenshot() throws -> InAppHTTPServer.Response {

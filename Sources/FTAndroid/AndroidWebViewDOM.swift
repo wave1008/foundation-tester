@@ -23,7 +23,7 @@
 // debug ビルドの活動)。開いていなければ黙って a11y のまま(下の `read` の宣言参照)。
 //
 // **JS も木への差し込みロジックも iOS と共有する**(`FTCore.WebViewDOM`)。あちらは in-app
-// エンジンから WKWebView の a11y が見えない事情で先に入った経路で、返す形(role/label/矩形)も
+// in-app ブリッジから WKWebView の a11y が見えない事情で先に入った経路で、返す形(role/label/矩形)も
 // 共通なので、**同じ JS を Android で走らせれば木が一致する** = セレクタが同じ書き方で通る。
 // 座標写し(`elements`)・WebView 選択(`webViewElement`/`webViewFrame`)・差し込み
 // (`droppingWebViewSubtree`)は `FTCore.WebViewDOM` の関数を直接呼ぶ(ここに2つ目を持たない)。

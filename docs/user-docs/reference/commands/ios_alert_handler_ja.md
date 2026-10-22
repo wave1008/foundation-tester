@@ -9,7 +9,7 @@
 
 | 関数 | 説明 |
 |---|---|
-| `iosAlertHandler(alert:, button:)` | これから出るシステムアラートを1枚登録します。`alert:`(どのアラートか。題名との照合)は必須です。`alert:` も `button:` もセレクタと同じ記法(`\|\|` で候補・`*` で一致方法)を使います。押せた登録は外れます —— 2枚目を待つならもう一度呼びます。`engine=hybrid` のときだけ効きます。 |
+| `iosAlertHandler(alert:, button:)` | これから出るシステムアラートを1枚登録します。`alert:`(どのアラートか。題名との照合)は必須です。`alert:` も `button:` もセレクタと同じ記法(`\|\|` で候補・`*` で一致方法)を使います。押せた登録は外れます —— 2枚目を待つならもう一度呼びます。 |
 
 ## 例
 
@@ -27,11 +27,10 @@ iosAlertHandler(alert: "*トラッキング*||*wants to track*",
 アプリ自身のアクセシビリティツリーには最初から現れません。よって
 [`irregularHandler`](./irregular_handler_ja.md) はこれらを見ることも閉じることもできません。
 
-| エンジン | 書き方 |
+| モード | 書き方 |
 |---|---|
-| **hybrid**(実行プロファイルの既定) | 普通に書けます —— `tap("許可")` / `exist(...)` / `ifCanSelect(...)` は、アプリ側で解決できないセレクタを SpringBoard 側へ照会して掴みます。`iosAlertHandler` で登録しない限り、自動では何も閉じません。 |
-| **xcuitest 単独** | hybrid と同じく書けます(iOS 実機はこの構成です)。 |
-| **inapp 単独** | SpringBoard 側のセレクタを解決できません(注入先アプリのプロセスしか見えません)。アラートを操作するシナリオは hybrid か xcuitest で回してください。 |
+| **inapp**(実行プロファイルの既定) | 普通に書けます —— `tap("許可")` / `exist(...)` / `ifCanSelect(...)` は、アプリ側で解決できないセレクタを SpringBoard 側へ照会して掴みます。`iosAlertHandler` で登録しない限り、自動では何も閉じません。 |
+| **xcuitest** | inapp と同じく書けます。 |
 
 宣言なしで既定で自動的に閉じるのは、`openURL` の初回確認アラートだけです。
 
@@ -76,7 +75,7 @@ iosAlertHandler(alert: "*トラッキング*||*wants to track*",
 ```
 ❌ 6. [action] tap "#btn_something"
    system UI is covering the app ("MyApp"が写真ライブラリへのアクセスを求めています).
-   The in-app engine could still reach the app, but a person could not, so the step was not
+   The in-app bridge could still reach the app, but a person could not, so the step was not
    performed. None of the registered iosAlertHandler entries
    (*写真ライブラリ*→許可) matched a button on it.
    Buttons on this alert: "写真を選択" / "フルアクセスを許可" / "許可しない".
@@ -87,7 +86,7 @@ iosAlertHandler(alert: "*トラッキング*||*wants to track*",
   正しい文字列を知る手段として、数秒で消えるアラートを動画で捕まえずに済みます。
 - システムアラートの下で失敗した回のレポートには、アプリの要素一覧が載りません(どれも押せなかった
   画面のため)。省いたことはレポートに書かれ、アラートの題名とボタンは失敗メッセージに出ます。
-- これが要る理由は、in-app エンジンのタップが OS のタッチイベントではなく直接の呼び出し
+- これが要る理由は、in-app ブリッジのタップが OS のタッチイベントではなく直接の呼び出し
   だからです —— 何もしなければ、覆っているアラートの下にあるアプリへ、人には不可能な操作が
   届いてしまいます。Android は影響を受けません(木の根が active window なので、覆われた
   アプリの要素は木から消えます)。
@@ -114,8 +113,8 @@ iosAlertHandler(alert: "*トラッキング*||*wants to track*",
   警告が出て、その端末で以降のシナリオが全部上記の失敗になります。
 - **残ったアラートは run を跨ぎます。** run 開始時に端末に既にアラートが残っていると警告が
   出ます。
-- **アラートが前面にある間、XCUITest を通る操作は届きません。** xcuitest エンジンと、hybrid で
-  in-app エンジンが撃てない操作(ホーム・アプリスイッチャー・座標のドラッグや長押し)が対象です。
+- **アラートが前面にある間、XCUITest を通る操作は届きません。** xcuitest モードと、inapp モードで
+  in-app ブリッジが撃てない操作(ホーム・アプリスイッチャー・座標のドラッグや長押し)が対象です。
   ステップは `a system alert is in front of the app (title: …, buttons: …)` で失敗し、アラートは
   そのまま残ります —— ツールがアラートのボタンを自分で押すことも、操作を撃ち直すこともありません。
 - **`clearAppData()` で権限をリセットできます** —— 同じダイアログが次の run でも再び出るので、

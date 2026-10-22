@@ -1,7 +1,7 @@
 // 画像判定(テキストの可視性検証・findImage / existImage / imageIs・分類器・screenLooksLike / screenIs)の絵を
 // どちらのドライバで撮るか。撮るのは `StepExecutor.judgmentScreenshot` の1箇所。
 //
-// hybrid の主ドライバ(in-app)の絵はアプリ自身の window だけで、キーボードもシステムアラートも写らない
+// inapp モードの主ドライバ(in-app)の絵はアプリ自身の window だけで、キーボードもシステムアラートも写らない
 // (覆われた要素を「見えている」と読む = 誤った緑)。毎回 XCUITest で撮ると判定のたびに数百 ms 増える
 // (in-app 約 45〜125ms)ので、**覆いがあると分かっているときだけ**画面全体の絵(fallbackDriver)にする:
 //   - キーボード: 判定に使う木が申告している(`KeyboardWait.isShown`。往復なし)
@@ -22,7 +22,7 @@ public enum JudgmentCapture {
         case probeSystemAlert
     }
 
-    /// - primaryOmitsSystemUI: 主ドライバの絵にキーボード・システムアラートが写らない構成(hybrid)
+    /// - primaryOmitsSystemUI: 主ドライバの絵にキーボード・システムアラートが写らない構成(inapp モード)
     /// - hasWholeScreen: 画面全体を撮れるドライバ(fallbackDriver)がある
     /// - alwaysWholeScreen: 判定が1回で数秒かかり、往復の差が効かないもの(screenLooksLike / screenIs の FM)
     /// - alertCovering: このフェーズの照会の答え。nil = まだ聞いていない

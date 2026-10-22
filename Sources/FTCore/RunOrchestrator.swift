@@ -141,28 +141,28 @@ public struct RunWorker: @unchecked Sendable {
         return String(label[..<open])
     }
 
-    /// 実行プロファイルが頼んだ iOS のエンジンと、供給が縮退したときの理由(プロファイル経路の iOS だけ。
-    /// 他は nil = 頼んだエンジン = 実効エンジン)
-    public let requestedEngine: String?
-    public let engineFallbackReason: String?
+    /// 実行プロファイルが頼んだ iOS のモードと、供給が縮退したときの理由(プロファイル経路の iOS だけ。
+    /// 他は nil = 頼んだモード = 実効モード)
+    public let requestedMode: String?
+    public let modeFallbackReason: String?
 
     public init(label: String, platform: String, driver: AppDriver, connection: DriverConnection,
-                logicalName: String? = nil, requestedEngine: String? = nil, engineFallbackReason: String? = nil) {
+                logicalName: String? = nil, requestedMode: String? = nil, modeFallbackReason: String? = nil) {
         self.label = label
         self.platform = platform
         self.driver = driver
         self.connection = connection
         self.logicalName = logicalName
-        self.requestedEngine = requestedEngine
-        self.engineFallbackReason = engineFallbackReason
+        self.requestedMode = requestedMode
+        self.modeFallbackReason = modeFallbackReason
     }
 
-    /// run.json の `workerEngines` の1件(iOS だけ)。worker はシナリオの記録の `worker` と同じ文字列(join できる)。
-    /// 理由は頼んだエンジンと実効エンジンが違うときだけ
-    public var engineRecord: WorkerEngineRecord? {
-        connection.recordedEngine.map {
-            WorkerEngineRecord.resolved(worker: ScenarioRunner.recordingWorker(self), requested: requestedEngine,
-                                        effective: $0, fallbackReason: engineFallbackReason)
+    /// run.json の `workerModes` の1件(iOS だけ)。worker はシナリオの記録の `worker` と同じ文字列(join できる)。
+    /// 理由は頼んだモードと実効モードが違うときだけ
+    public var modeRecord: WorkerModeRecord? {
+        connection.recordedMode.map {
+            WorkerModeRecord.resolved(worker: ScenarioRunner.recordingWorker(self), requested: requestedMode,
+                                        effective: $0, fallbackReason: modeFallbackReason)
         }
     }
 }
@@ -859,7 +859,7 @@ public final class RunOrchestrator: Sendable {
     /// (in-app ブリッジのようにホスト側にプロセスが無い形)。BridgeLiveness.decide の材料
     private let runnerProcessAlive: (@Sendable (RunWorker) -> Bool?)?
     /// 失敗後チェックの /status プローブ 1 回分。isDeviceFrozen と同じ理由で注入(BridgeClient は
-    /// FTBridgeClient)。hybrid は主ポート(in-app)が別アプリのシナリオ中サスペンドされ
+    /// FTBridgeClient)。inapp モードは主ポート(in-app)が別アプリのシナリオ中サスペンドされ
     /// 「TCP 受理・HTTP 無応答」になるため、注入側で xcuitest 側ポートを叩く(design §8.8)。
     /// 未注入時は worker.driver への素朴なプローブにフォールバック
     private let probeBridge: (@Sendable (RunWorker) async -> BridgeProbeOutcome)?
@@ -1133,7 +1133,7 @@ public final class RunOrchestrator: Sendable {
     }
 
     /// /status 1回分(5s 期限)。refused=ポート LISTEN なし(プロセス死亡)、silent=期限内無応答。
-    /// probeBridge(注入)があればそちら(hybrid の suspend 回避で xcuitest 側ポートを叩く)。
+    /// probeBridge(注入)があればそちら(inapp モードの suspend 回避で xcuitest 側ポートを叩く)。
     /// 未注入時は worker.driver に対する素朴なプローブ
     private func probeBridgeOnce(_ worker: RunWorker) async -> BridgeProbeOutcome {
         if let probeBridge { return await probeBridge(worker) }
@@ -1339,8 +1339,8 @@ public final class RunOrchestrator: Sendable {
                 sampleCPU: { cpuSampler.sample() },
                 sleep: { try? await Task.sleep(for: .seconds($0)) })
             func admit(_ worker: RunWorker, _ queue: ScenarioQueue) async {
-                // 実効エンジンを run.json へ(初期も遅延参加もここを通る = 参加したデバイスだけが載る)
-                if let engine = worker.engineRecord { recorder?.recordWorkerEngine(engine) }
+                // 実効モードを run.json へ(初期も遅延参加もここを通る = 参加したデバイスだけが載る)
+                if let record = worker.modeRecord { recorder?.recordWorkerMode(record) }
                 await startGate.waitForTurn(log: { [continuation] message in
                     continuation.yield(.workerLog(worker: worker.label, message: message))
                 })
@@ -1577,8 +1577,8 @@ public final class RunOrchestrator: Sendable {
                     kind: "recovered", worker: Self.workerID(newWorker), label: newWorker.label,
                     reason: "worker revived after \(retired.label) dropped out",
                     recovery: .workerRevive))
-                // 起こし直したデバイスは admit を通らないので、ここで記録し直す(別のエンジンで戻ったら後の値が残る)
-                if let engine = newWorker.engineRecord { recorder?.recordWorkerEngine(engine) }
+                // 起こし直したデバイスは admit を通らないので、ここで記録し直す(別のモードで戻ったら後の値が残る)
+                if let record = newWorker.modeRecord { recorder?.recordWorkerMode(record) }
                 current = newWorker
             }
         }

@@ -13,23 +13,23 @@ import Foundation
 
 public enum BridgeDiscovery {
 
-    /// 応答した1本。device/engine は取り違え防止のため**必ず利用者に見せる**
+    /// 応答した1本。device/bridge は取り違え防止のため**必ず利用者に見せる**
     public struct Found: Sendable, Equatable {
         public let port: UInt16
         public let device: String
-        public let engine: String
+        public let bridge: String
         /// `StatusResponse.udid`(申告しない旧ブリッジ・SIMULATOR_UDID の無い実機は nil)。
         /// **scan が status から埋め、実機だけ BridgeDeviceRecord の記録で補う**(resolveUDID)
         public let udid: String?
 
-        public init(port: UInt16, device: String, engine: String, udid: String? = nil) {
+        public init(port: UInt16, device: String, bridge: String, udid: String? = nil) {
             self.port = port
             self.device = device
-            self.engine = engine
+            self.bridge = bridge
             self.udid = udid
         }
 
-        public var label: String { "port \(port) (\(device), \(engine))" }
+        public var label: String { "port \(port) (\(device), \(bridge))" }
     }
 
     /// `/status` に 2 秒答えなかったが、**待受は確定的に消えていない**ポート(`connectProbe != .refused`)。
@@ -49,8 +49,8 @@ public enum BridgeDiscovery {
         }
 
         public var label: String {
-            let engine = isInApp ? "in-app, " : ""
-            return udid.map { "port \(port) (\(engine)udid \($0))" } ?? "port \(port)"
+            let bridge = isInApp ? "in-app, " : ""
+            return udid.map { "port \(port) (\(bridge)udid \($0))" } ?? "port \(port)"
         }
     }
 
@@ -328,7 +328,7 @@ public enum BridgeDiscovery {
                         return .absent
                     }
                     guard status.ready else { return .absent }
-                    return .found(Found(port: port, device: status.device, engine: status.engine ?? "xcuitest",
+                    return .found(Found(port: port, device: status.device, bridge: status.bridge ?? "xcuitest",
                                         udid: resolveUDID(reported: status.udid, recorded: recorded)))
                 }
             }
@@ -366,7 +366,7 @@ public enum BridgeDiscovery {
 
     /// 本人確認(`FTCore.BridgeIdentityCheck`)に渡す前の status。**申告が無いときだけ**記録で udid を
     /// 補う(規則は `resolveUDID`)。補わずに渡すと、実機の XCUITest ランナー(udid を申告しない)は
-    /// 「udid 不明・エンジン一致 = 一致」に倒れ、**既定ポートに居る別の実機のブリッジを自分のものとして
+    /// 「udid 不明・ブリッジ一致 = 一致」に倒れ、**既定ポートに居る別の実機のブリッジを自分のものとして
     /// 掴む**(実地: iPhone wave のライブ操作に 8123 の iPhone SE3 の画面が出た)
     public static func statusForIdentityCheck(_ status: StatusResponse, port: UInt16, repoRoot: URL?) -> StatusResponse {
         guard status.udid == nil,

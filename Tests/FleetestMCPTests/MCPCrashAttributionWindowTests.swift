@@ -74,7 +74,7 @@ final class MCPCrashAttributionWindowTests: XCTestCase {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in driver },
                                recordSnapshot: { _, _, _ in })
         _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.example.app"])
-        let key = MCPServer.engineKey([:])
+        let key = MCPServer.sessionKey([:])
         XCTAssertNotNil(server.launchTimestamps[key], "ft_launch が launchTimestamps を刻んでいない")
 
         server.forgetDeviceState(key)

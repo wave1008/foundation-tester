@@ -28,7 +28,7 @@ final class InAppSourceDigestReuseTests: XCTestCase {
     }
 
     private func planInApp(running: [UInt16: BridgeProvisioner.RunningBridge],
-                           digest: String?) throws -> BridgeProvisioner.EnginePlan {
+                           digest: String?) throws -> BridgeProvisioner.BridgePlan {
         let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130,
                                             // この Mac で生きているブリッジ(lsof)に結果を左右させない
                                             portHeldByAnotherDevice: { _, _ in false })
@@ -36,14 +36,14 @@ final class InAppSourceDigestReuseTests: XCTestCase {
         var used = Set(running.keys)
         let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
         return try provisioner.planBridge(
-            engine: "inapp", preferred: nil, name: sim.name, sim: sim,
+            bridge: "inapp", preferred: nil, name: sim.name, sim: sim,
             bundleID: "com.example.app", appIsCurrent: [:], preinstallAppPath: nil,
             running: running, starting: [:], inappSourceDigest: digest,
             claimed: &claimed, usedPorts: &used)
     }
 
     private func runningInApp(digest: String?) -> [UInt16: BridgeProvisioner.RunningBridge] {
-        [8123: .init(udid: "UDID-A", name: "iPhone 17 Pro", engine: "inapp",
+        [8123: .init(udid: "UDID-A", name: "iPhone 17 Pro", bridge: "inapp",
                      protocolVersion: BridgeAPI.bridgeProtocolVersion,
                      sessionBundleID: "com.example.app", sourceDigest: digest)]
     }

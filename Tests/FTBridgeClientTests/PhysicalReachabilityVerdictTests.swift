@@ -21,7 +21,7 @@ final class PhysicalReachabilityVerdictTests: XCTestCase {
     }
 
     private func spec(_ udid: String) -> DeviceSpec {
-        DeviceSpec(name: "target", kind: .physical, udid: udid, engine: "xcuitest")
+        DeviceSpec(name: "target", kind: .physical, udid: udid, mode: "xcuitest")
     }
 
     func testTrustsTheListWhenItSaysConnectedAndDoesNotAsk() throws {

@@ -1,7 +1,7 @@
 // AppDriver.acknowledgeOpenURLConsentIfPresent の既定実装は no-op(ほとんどのドライバは正しく
 // それでよい)。実装を持つべきなのは springboard を見られる接続の2箇所だけ:
 //   - BridgeClient(XCUITest 接続)自身
-//   - AppAttachDriver(WebViewDelegatingDriver.openURL が hybrid でここへ明示的に回す)
+//   - AppAttachDriver(WebViewDelegatingDriver.openURL が inapp モードでここへ明示的に回す)
 // AppAttachDriver は client: BridgeClient を private に包んで他の操作を1つずつ転送しており、
 // この転送を消すと**コンパイルは通ったまま**既定の no-op(何もしない)に静かに落ちる
 // (AppDriverDefaultDispatchTests が守るのは「宣言漏れ」で、この「個々の転送漏れ」は別物。
@@ -21,7 +21,7 @@ final class OpenURLConsentForwardingTests: XCTestCase {
 
         XCTAssertTrue(source.contains("func acknowledgeOpenURLConsentIfPresent(bundleID: String) async"),
                       "AppAttachDriver が acknowledgeOpenURLConsentIfPresent を宣言していません"
-                          + "(既定の no-op に落ちると hybrid の openURL 同意が springboard を見られる"
+                          + "(既定の no-op に落ちると inapp モードの openURL 同意が springboard を見られる"
                           + "側でも常に空振りする)")
         XCTAssertTrue(source.contains("client.acknowledgeOpenURLConsentIfPresent(bundleID: bundleID)"),
                       "AppAttachDriver.acknowledgeOpenURLConsentIfPresent が client へ転送していません")

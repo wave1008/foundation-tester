@@ -1,9 +1,9 @@
 // ft_launch resume: true(activate without terminating)。
 //
 // AppDriver.activate(bundleID:) は実装済み(BridgeClient → POST /session LaunchRequest(activate:
-// true)・ランナー・Android も)だったが MCP は一度も呼んでいなかった。in-app/hybrid は
+// true)・ランナー・Android も)だったが MCP は一度も呼んでいなかった。inapp モード(in-app ブリッジ)は
 // activate に override が無く AppDriver の既定実装(= launch)へ落ちるので、そのまま resume を
-// 通すと「resumed」と嘘をついて実際には毎回終了→起動する — その2エンジンだけ拒否する。
+// 通すと「resumed」と嘘をついて実際には毎回終了→起動する — その構成だけ拒否する。
 
 import XCTest
 import FTCore
@@ -12,7 +12,7 @@ import FTCore
 final class MCPLaunchResumeTests: XCTestCase {
     private var driver: FakeDriver!
     private var server: MCPServer!
-    private let key = MCPServer.engineKey([:])
+    private let key = MCPServer.sessionKey([:])
 
     override func setUp() {
         super.setUp()
@@ -21,7 +21,7 @@ final class MCPLaunchResumeTests: XCTestCase {
         server = MCPServer(write: { _ in }, makeDriver: { _ in fake }, recordSnapshot: { _, _, _ in })
     }
 
-    /// **resume: true は activate を撃つ**(launch ではない)。既定エンジン(差し替えドライバは
+    /// **resume: true は activate を撃つ**(launch ではない)。既定のモード(差し替えドライバは
     /// xcuitest を名乗る)なので拒否されない
     func testResumeCallsActivateNotLaunch() async throws {
         let result = try await server.call(

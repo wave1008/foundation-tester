@@ -3,8 +3,8 @@
 // ホスト側は**ステータス番号だけ**で分岐しており、番号ごとに別の回復動作が走る:
 //   409 → SessionRecoveryDriver がセッション消失と断定し activate で張り直す
 //   503 → アプリが起動していない(requireLiveApp)
-//   501 / "not found:" 付き 404 → このエンジンでは不可 = XCUITest へフォールバック
-//         (DriverError.isEngineIncapable)
+//   501 / "not found:" 付き 404 → このブリッジでは不可 = XCUITest へフォールバック
+//         (DriverError.isBridgeIncapable)
 // つまり番号を1つ足すだけで、無関係な回復動作が黙って発火する。
 //
 // 実害(2026-07-31): handleClear が「フォーカス欄が無い」「消し切れなかった」に 409 を使ったため、
@@ -155,7 +155,7 @@ final class BridgeRouterStatusContractTests: XCTestCase {
 
     /// **/pressEnter も焦点が無ければ 422 で断る**(/type・/clear と同じ)。ランナーは XCUI の失敗を記録しない
     /// (下のテスト)ので、焦点の無い `app.typeText("\n")` は何も起きていないのに 200 を返していた
-    /// = hybrid の in-app 409 から回ってきた Enter が iOS でだけ黙って成功扱いになる
+    /// = inapp モードの in-app 409 から回ってきた Enter が iOS でだけ黙って成功扱いになる
     func testPressEnterRefusesWithoutKeyboardFocus() throws {
         let body = try XCTUnwrap(handlerBody("handlePressEnter", in: try routerSource))
         XCTAssertTrue(body.contains("guard focused.exists else {") && body.contains("BridgeError(422,"),
@@ -224,7 +224,7 @@ final class BridgeRouterStatusContractTests: XCTestCase {
     }
 
     /// XCUITest ランナーの 501 は `handleHideKeyboard` の**1箇所だけ**。
-    /// 501 は isEngineIncapable が真になり、ホストは XCUITest へフォールバックする ——
+    /// 501 は isBridgeIncapable が真になり、ホストは XCUITest へフォールバックする ——
     /// つまり**フォールバック先が自分自身**になるので、増やすと無限の遠回りを作る。
     ///
     /// 唯一の例外が hideKeyboard で、これは iOS に実装手段が無い(§10)ため in-app も
@@ -233,7 +233,7 @@ final class BridgeRouterStatusContractTests: XCTestCase {
     /// **これ以外の 501 を足さないこと**(「今は無理」は 422)
     /// **ホームボタン機の appSwitcher は断る**(2026-08-28・実機 iPhone SE3 で2案とも実測)。
     /// 黙って別の面(コントロールセンター / ホーム)を開いて ok を返していたので、
-    /// 「できないと言う」ことそのものが仕様。**501 ではなく 422**(501 は他エンジンへの
+    /// 「できないと言う」ことそのものが仕様。**501 ではなく 422**(501 は他ブリッジへの
     /// フォールバック指示で、実機には代わりが無い)
     func testAppSwitcherRefusesOnHomeButtonPhonesInsteadOfDoingSomethingElse() throws {
         let source = try routerSource
@@ -243,7 +243,7 @@ final class BridgeRouterStatusContractTests: XCTestCase {
                       "機種判定が消えている(全機に Face ID のジェスチャを撃つ状態へ戻っている)")
     }
 
-    func testRunnerNeverClaimsEngineIncapable() throws {
+    func testRunnerNeverClaimsBridgeIncapable() throws {
         let source = try routerSource
         // **ランナーの全ファイルで数える**(BridgeRouter* だけを読むと、CoordinatePinch.swift の 501 を見逃していた)
         let everyRunnerFile = try allRunnerSources()

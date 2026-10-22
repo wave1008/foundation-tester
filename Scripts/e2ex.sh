@@ -11,9 +11,9 @@
 #   ios-native     E2EXAppIOS/      SwiftUI(+UIKit)       → TestProjects/E2EX-iOS     (ios のみ)
 #
 # 使い方(オプションの意味は Scripts/e2e.sh に揃えてある):
-#   Scripts/e2ex.sh                 # 全 SUT。iOS は in-app(利用者の既定エンジン hybrid)と Android
+#   Scripts/e2ex.sh                 # 全 SUT。iOS は inapp モード(利用者の既定)と Android
 #   Scripts/e2ex.sh --cmp           # SUT を絞る(--flutter / --rn / --android-native / --ios-native も同様。併記可)
-#   Scripts/e2ex.sh --ios-xcuitest  # **iOS だけ**を XCUITest エンジンで(--ios-inapp も同様)
+#   Scripts/e2ex.sh --ios-xcuitest  # **iOS だけ**を xcuitest モードで(--ios-inapp も同様)
 #   Scripts/e2ex.sh --ios           # OS を絞る(--android も同様)
 #   Scripts/e2ex.sh --rebuild       # SUT を必ず再ビルドしてから実行
 #   Scripts/e2ex.sh --on M1Ultra    # **丸ごとその機械で回す**(ssh でランナーのクローンに入り、そこで SUT をビルドして
@@ -27,7 +27,7 @@
 # **プロファイルは -01〜-08 の8台を名前で指す(udid を持たない)**ので、同名のデバイスを持つどの機でも同じ
 # プロファイルで回る。常に `--runner local`(同名のデバイスがリモートにもあり、--runner を付けないと
 # リモートへ飛ぶ)。--align は持たない(Scripts/align.sh を先に)。
-# **`--ios-xcuitest` は既定エンジン(in-app)で緑のシナリオのうち、決まって赤のものは 2026-10-08 に 1 本**(下の S0020)で、
+# **`--ios-xcuitest` は既定モード(inapp)で緑のシナリオのうち、決まって赤のものは 2026-10-08 に 1 本**(下の S0020)で、
 # 断続的な赤も残る(一覧は docs/framework-differences.md §5.1 末尾の「残っている制約」・docs/open-issues.md)。代表は 90_不具合の回帰.swift S0020
 # (XCUITest は容器が「まだ送れるか」を申告しないので、scrollToTop の端の確認が上端で「引っ張る」になる)。
 set -euo pipefail
@@ -39,7 +39,7 @@ FLEETEST="$ROOT/.build/debug/fleetest"
 FORCE_REBUILD=0
 RUN_IOS=1
 RUN_ANDROID=1
-IOS_ENGINE_ONLY=0
+IOS_MODE_ONLY=0
 IOS_PROFILE="ios-inapp"
 SUTS=""
 
@@ -68,8 +68,8 @@ for arg in "$@"; do
     --rebuild) FORCE_REBUILD=1 ;;
     --ios) RUN_ANDROID=0 ;;
     --android) RUN_IOS=0 ;;
-    --ios-inapp) IOS_PROFILE="ios-inapp"; IOS_ENGINE_ONLY=1 ;;
-    --ios-xcuitest) IOS_PROFILE="ios-xcuitest"; IOS_ENGINE_ONLY=1 ;;
+    --ios-inapp) IOS_PROFILE="ios-inapp"; IOS_MODE_ONLY=1 ;;
+    --ios-xcuitest) IOS_PROFILE="ios-xcuitest"; IOS_MODE_ONLY=1 ;;
     --cmp|--flutter|--rn|--android-native|--ios-native) SUTS="$SUTS ${arg#--}" ;;
     *) echo "不明な引数: $arg" >&2; exit 2 ;;
   esac
@@ -84,29 +84,29 @@ trap 'crash_dialog_restore' EXIT
 trap 'crash_dialog_restore; exit 130' INT TERM HUP
 crash_dialog_suppress
 
-# エンジンの指定は iOS だけを回す(Android にエンジンの選択肢は無い。理由は Scripts/e2e.sh の同じ箇所)
-if [ "$IOS_ENGINE_ONLY" = 1 ] && [ "$RUN_IOS" = 0 ]; then
+# モードの指定は iOS だけを回す(Android にモードの選択肢は無い。理由は Scripts/e2e.sh の同じ箇所)
+if [ "$IOS_MODE_ONLY" = 1 ] && [ "$RUN_IOS" = 0 ]; then
   echo "❌ --ios-inapp / --ios-xcuitest と --android は併記できません(前者は iOS だけを回します)" >&2
   exit 2
 fi
-if [ "$IOS_ENGINE_ONLY" = 1 ]; then
+if [ "$IOS_MODE_ONLY" = 1 ]; then
   RUN_ANDROID=0
 fi
 
-# 全部成功した回だけ、そのエンジンのブリッジ入力の digest を記録する(Scripts/e2e.sh と同じ仕組み。印は
-# `.fleetest/<engine>-e2ex-verified` で E2E の印とは別。--on で回した回は向こうのクローンに残る)。
+# 全部成功した回だけ、そのモードのブリッジ入力の digest を記録する(Scripts/e2e.sh と同じ仕組み。印は
+# `.fleetest/<mode>-e2ex-verified` で E2E の印とは別。--on で回した回は向こうのクローンに残る)。
 # **警告は in-app の印にだけ出す**: XCUITest は断続的な赤が残り(上の注記)、
 # 全部成功が条件の印は更新されない = 警告にすると鳴りっぱなしになる(E2E で 2026-08-30〜09-14 に実際に起きた形)。
 # XCUITest のブリッジの検証は E2E の `--ios-xcuitest` の印が担う
-engine_digest() { "$FLEETEST" api bridge-sources --bridge "$1" --digest 2>/dev/null; }
-engine_marker() { echo "$ROOT/.fleetest/$1-e2ex-verified"; }
-RUN_ENGINE=inapp
-if [ "$IOS_PROFILE" = "ios-xcuitest" ]; then RUN_ENGINE=xcuitest; fi
-ENGINE_STALE=""
-if [ "$RUN_IOS" = 1 ] && [ "$RUN_ENGINE" = xcuitest ]; then
-  CURRENT_DIGEST="$(engine_digest inapp)"
-  if [ -n "$CURRENT_DIGEST" ] && [ "$CURRENT_DIGEST" != "$(cat "$(engine_marker inapp)" 2>/dev/null)" ]; then
-    ENGINE_STALE=1
+bridge_digest() { "$FLEETEST" api bridge-sources --bridge "$1" --digest 2>/dev/null; }
+mode_marker() { echo "$ROOT/.fleetest/$1-e2ex-verified"; }
+RUN_MODE=inapp
+if [ "$IOS_PROFILE" = "ios-xcuitest" ]; then RUN_MODE=xcuitest; fi
+MODE_STALE=""
+if [ "$RUN_IOS" = 1 ] && [ "$RUN_MODE" = xcuitest ]; then
+  CURRENT_DIGEST="$(bridge_digest inapp)"
+  if [ -n "$CURRENT_DIGEST" ] && [ "$CURRENT_DIGEST" != "$(cat "$(mode_marker inapp)" 2>/dev/null)" ]; then
+    MODE_STALE=1
     echo "⚠️ inapp ブリッジの入力が、最後に E2EX を全部通した状態から変わっています(この実行は XCUITest だけ)。"
     echo "   → Scripts/e2ex.sh を回してください"
   fi
@@ -187,12 +187,12 @@ fi
 # **印を更新するのは全部成功したときだけ**(失敗したまま更新すると「検証済み」と言い張る装置になる)。
 # `[ … ] && { … }` の形にしない(偽のとき終了ステータス 1 を残す。Scripts/e2e.sh の末尾と同じ理由)
 if [ "$FAILED" = 0 ] && [ "$RUN_IOS" = 1 ]; then
-  MARKER="$(engine_marker "$RUN_ENGINE")"
+  MARKER="$(mode_marker "$RUN_MODE")"
   mkdir -p "$(dirname "$MARKER")"
-  engine_digest "$RUN_ENGINE" > "$MARKER"
-  echo "→ E2EX の $RUN_ENGINE 経路を検証済みとして記録しました($MARKER)"
+  bridge_digest "$RUN_MODE" > "$MARKER"
+  echo "→ E2EX の $RUN_MODE 経路を検証済みとして記録しました($MARKER)"
 fi
-if [ -n "$ENGINE_STALE" ]; then
+if [ -n "$MODE_STALE" ]; then
   echo "⚠️ E2EX の inapp 経路は未検証のままです(Scripts/e2ex.sh)"
 fi
 exit "$FAILED"

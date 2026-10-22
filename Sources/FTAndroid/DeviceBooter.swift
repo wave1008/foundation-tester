@@ -702,7 +702,7 @@ public enum DeviceBooter {
             let catalog = try SimulatorCatalog.devices()
             let sim = try SimulatorCatalog.resolve(spec: spec, in: catalog)
             // ブリッジ停止は booted ガードより先に、pid ファイル+プロセス引数の UDID 照合で行う
-            // (stopMatching 参照)。①hybrid は同一シミュに複数ブリッジ ②/status 無応答のゾンビ
+            // (stopMatching 参照)。①inapp モードは同一シミュに複数ブリッジ ②/status 無応答のゾンビ
             // xcodebuild は HTTP スキャン不可視 ③シミュ停止済みでもゾンビが残っていると生きた
             // XCUITest セッションがシミュレータを再ブートさせ「停止したのに起動中に戻る」症状になる
             if let repoRoot {

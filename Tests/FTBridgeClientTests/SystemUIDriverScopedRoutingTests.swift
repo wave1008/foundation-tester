@@ -193,9 +193,9 @@ final class SystemUIDriverScopedRoutingTests: XCTestCase {
         XCTAssertFalse(stub.received("POST /clear"))
     }
 
-    /// **hybrid(ブリッジを共有していない)は従来どおり**: セッションを springboard へ移し、
+    /// **inapp モード(ブリッジを共有していない)は従来どおり**: セッションを springboard へ移し、
     /// ref もジェスチャもアプリ側のルートで撃つ。scoped の判定を広げていないことの対照
-    func testHybridKeepsTheLegacySessionPath() async throws {
+    func testInappModeKeepsTheLegacySessionPath() async throws {
         let stub = try RoutingStubServer()
         defer { stub.stop() }
         let driver = SystemUIDriver(port: stub.port, host: BridgeEndpoint.loopbackHost,

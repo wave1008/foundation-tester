@@ -1,8 +1,8 @@
-// DriverError.errorDescription は構成(プラットフォーム込みのエンジン・実機か)ごとに
+// DriverError.errorDescription は構成(プラットフォーム込みのブリッジ・実機か)ごとに
 // その構成で起こりうる原因だけを並べる(DriverErrorContext/DriverErrorMessage 参照)。
 //
 // 2026-09-16 の負荷テストで実際に踏んだ2件:
-// - Android エミュレータの adb 断に iOS inapp/hybrid 向けの案内(「シミュレータ専用」)が付いた
+// - Android エミュレータの adb 断に iOS の in-app ブリッジ向けの案内(「シミュレータ専用」)が付いた
 // - iOS xcuitest ランナーを外から殺した接続拒否で「アプリが落ちた」が第一容疑にされた
 //   (xcuitest はアプリと別プロセスなので的外れ)
 
@@ -11,18 +11,18 @@ import XCTest
 
 final class DriverErrorMessageTests: XCTestCase {
 
-    private let iosInAppSimulator = DriverErrorContext(engine: .iosInApp, physicalDevice: false)
-    private let iosXCUITestSimulator = DriverErrorContext(engine: .iosXCUITest, physicalDevice: false)
-    private let iosXCUITestPhysical = DriverErrorContext(engine: .iosXCUITest, physicalDevice: true)
-    private let androidEmulator = DriverErrorContext(engine: .android, physicalDevice: false)
-    private let androidPhysical = DriverErrorContext(engine: .android, physicalDevice: true)
+    private let iosInAppSimulator = DriverErrorContext(bridge: .iosInApp, physicalDevice: false)
+    private let iosXCUITestSimulator = DriverErrorContext(bridge: .iosXCUITest, physicalDevice: false)
+    private let iosXCUITestPhysical = DriverErrorContext(bridge: .iosXCUITest, physicalDevice: true)
+    private let androidEmulator = DriverErrorContext(bridge: .android, physicalDevice: false)
+    private let androidPhysical = DriverErrorContext(bridge: .android, physicalDevice: true)
 
     // MARK: - unreachable: 構成ごとの文面を等号固定する
 
     func testUnreachableIOSInAppSimulator() {
         let text = DriverErrorMessage.unreachable(context: iosInAppSimulator, detail: "connection refused")
         XCTAssertEqual(text,
-            "Cannot reach the driver (not running, or slow to respond). In hybrid/mixed runs the"
+            "Cannot reach the driver (not running, or slow to respond). In inapp mode the"
                 + " backgrounded app can be suspended, so TCP is accepted but no HTTP response comes"
                 + " back. Check: fleetest bridge up."
                 + " connection refused")
@@ -53,9 +53,9 @@ final class DriverErrorMessageTests: XCTestCase {
                 + " adb forward failed: adb: device offline")
     }
 
-    /// **Android の文面には "xcuitest" も "inapp"/"hybrid" も出ない**(2026-09-16 に実際に踏んだ
+    /// **Android の文面には "xcuitest" も "inapp" も出ない**(2026-09-16 に実際に踏んだ
     /// 事故: Android の一時的な adb 断に iOS 向けの案内が付いた)
-    func testAndroidUnreachableMessagesNeverMentionIOSEngines() {
+    func testAndroidUnreachableMessagesNeverMentionIOSBridges() {
         for context in [androidEmulator, androidPhysical] {
             let text = DriverErrorMessage.unreachable(context: context, detail: "device offline")
             XCTAssertFalse(text.lowercased().contains("xcuitest"), text)

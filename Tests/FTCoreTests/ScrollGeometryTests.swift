@@ -159,9 +159,9 @@ final class ScrollGeometryTests: XCTestCase {
         XCTAssertNil(StepExecutor.scrollFrameNote(wrapper, in: snapshot([wrapper, list])))
     }
 
-    /// **申告できないエンジン(Compose/Flutter の in-app)では黙る**。全要素 nil のときに
+    /// **申告できないブリッジ(Compose/Flutter の in-app)では黙る**。全要素 nil のときに
     /// 警告すると誤報になる —— 使ってよいのは true を見つけたときだけ
-    func testStaysSilentWhenTheEngineCannotReportScrollable() {
+    func testStaysSilentWhenTheBridgeCannotReportScrollable() {
         let header = el(1, id: "header", y: 100, h: 40)
         let list = el(2, id: "list", y: 200, h: 500)
         XCTAssertNil(StepExecutor.scrollFrameNote(header, in: snapshot([header, list])))

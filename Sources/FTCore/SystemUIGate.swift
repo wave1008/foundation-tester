@@ -33,7 +33,7 @@ import Foundation
 public enum SystemUIGate {
 
     /// 覆われているか。**申告が無い(nil)なら判定しない** —— XCUITest ランナーが居ない構成
-    /// (engine=inapp 固定・Android・旧ランナー)で操作を止めてはいけない
+    /// (XCUITest ブリッジが無いとき・Android・旧ランナー)で操作を止めてはいけない
     public static func isCovered(_ probe: SystemAlertProbeResponse?) -> Bool {
         probe?.present == true
     }
@@ -83,7 +83,7 @@ public enum SystemUIGate {
                                           currentAppDisplayName: String? = nil) -> String {
         let what = described.map { "a system alert (\($0))" } ?? "a system alert"
         var message = "\(what) is in front of the app and no iosAlertHandler is registered for it"
-            + " — the in-app engine still reaches the app behind it, but a person could not."
+            + " — the in-app bridge still reaches the app behind it, but a person could not."
             + " Register iosAlertHandler(alert: \"*…*\", button: \"…\") before the step that"
             + " triggers it, or dismiss it in the scenario"
         if mayBeLeftover(title: title, currentAppDisplayName: currentAppDisplayName) {
@@ -105,7 +105,7 @@ public enum SystemUIGate {
                                       declaredButtons: [String]) -> String {
         var message = "system UI is covering the app"
         if let covering { message += " (\(covering))" }
-        message += ". The in-app engine could still reach the app, but a person could not,"
+        message += ". The in-app bridge could still reach the app, but a person could not,"
             + " so the step was not performed."
         message += " None of the registered iosAlertHandler entries"
             + " (\(declaredButtons.joined(separator: " / "))) matched a button on it."

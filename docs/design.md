@@ -348,9 +348,9 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   使うので、変えるときは 5 SUT のフル E2E で退行を見る(受け手の最小再現: 横カルーセルの右縁で
   見切れた項目への `exist(scroll: .right)` がカードを viewport にして送れず not-found になっていた)。
   **同じ最小再現で見つかった第2の穴**: 見切れ回復の `slowDrag` とヒント跳躍の `hintDrag` が
-  `driver.drag` を直に呼んでいて、in-app エンジンは drag を実装しない(501)ので失敗扱い → 全画面
-  スワイプに落ちていた = **利用者の既定 hybrid では見切れ回復のドラッグが一度も出ていなかった**
-  (当時の MCP は hybrid で `HybridFallbackDriver` が drag を転送していたので `ft_scroll_to` は同じ画面で通った。
+  `driver.drag` を直に呼んでいて、in-app ブリッジは drag を実装しない(501)ので失敗扱い → 全画面
+  スワイプに落ちていた = **利用者の既定の inapp モードでは見切れ回復のドラッグが一度も出ていなかった**
+  (当時の MCP は inapp モードで `HybridFallbackDriver` が drag を転送していたので `ft_scroll_to` は同じ画面で通った。
   run と MCP で結果が割れたらドライバ合成の差を疑う)。座標ドラッグは
   `StepExecutor.dragWithFallback` が唯一の入口(501 → typeDriver へ latch。空打ち emptyDrag と同じ規律)
 - **起動前にポートの LISTEN 実体を確かめる(2026-08-23)**: `scanRunningBridges` は /status 応答で
@@ -375,23 +375,22 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   (木の中の `alert`。描かれているものだけ = 枠が0・画面外は閉じた後の残り)は、その部分木だけを返す。判定は
   `FTCore.AlertTreeScope` の1箇所で、MCP の木を返す口(`snapshotBody` と `ft_scroll_to`)と DSL の失敗レポートの
   要素一覧(`FTRuntime.handleFailure` = システムアラートの下では一覧ごと伏せ、レポートが伏せた理由を1行言う)が共有する(題名・ボタンを名指しして SpringBoard へ attach する手順を出す。
-  SpringBoard に attach 中は断らない)。**MCP だけ警告でなく拒否**なのは、どちらのエンジンでも操作が
+  SpringBoard に attach 中は断らない)。**MCP だけ警告でなく拒否**なのは、どちらのブリッジでも操作が
   届くため —— in-app はアラートを残したまま背面のアプリが反応し、XCUITest は XCTest の割り込み処理が
   アラートのボタンを押して権限を黙って変えていた(拒否側とは限らず「許可」も押し、遮られた操作を撃ち直した。2026-10-03 にランナーへ `InterruptionGuard` を置いて既定のハンドラを止めた = **遮られた操作は 422 で返り、アラートは押されない**。MCP の事前拒否は、7 秒待たずに題名とボタンを名指しする口として残す)。座標の操作は断らない(XCUITest では
   アラートそのものに当たる)。判定は `SystemUIGate` の1箇所
 - **失敗時の証跡の絵は画面全体を撮る(2026-09-20)**: in-app の `/screenshot` はアプリ自身の window を
-  描き直すだけで、SpringBoard のアラートは写らない。hybrid は `fallbackDriver`(XCUITest =
+  描き直すだけで、SpringBoard のアラートは写らない。inapp モードは `fallbackDriver`(XCUITest =
   `XCUIScreen`)で撮り、撮れなければ主ドライバへ落ちる(`FTRuntime.handleFailure`。白フレームの
   撮り直しも同じ撮り方)。DSL の `screenshot` も同じ撮り方(2026-10-20)。
 - **画像判定の絵は覆いがあると分かっているときだけ画面全体を撮る(2026-10-20)**: テキストの可視性検証・
-  findImage / existImage / imageIs・分類器(checkIsON / checkIsOFF)は、hybrid では in-app の絵を使い、**判定に使った木がキーボードを
+  findImage / existImage / imageIs・分類器(checkIsON / checkIsOFF)は、inapp モードでは in-app の絵を使い、**判定に使った木がキーボードを
   申告しているとき**と**そのフェーズの照会(`GET /systemalert`。フェーズごとに1回・触る操作の照会の答えも使う)で
   アラートが前面にあったとき**だけ `fallbackDriver` で撮る(`FTCore.JudgmentCapture` /
   `StepExecutor.judgmentScreenshot`)。screenLooksLike / screenIs の FM は1回で数秒かかるので常に画面全体。
   毎回 XCUITest で撮らないのは、可視性検証が既定で有効で、検証のたびに数百 ms(in-app 約 45〜125ms)増えるため。
-  画面全体の絵には in-app の絵の追いつき待ち(`InAppRenderCatchUp`)が効かないが、xcuitest 単独と同じ条件で、
-  可視性検証は見えないと判定した回に撮り直して待つ。見逃すもの: 通知バナー等の他の覆い・フェーズの途中で出たアラート・
-  inapp 単独(撮り直す先が無い)
+  画面全体の絵には in-app の絵の追いつき待ち(`InAppRenderCatchUp`)が効かないが、xcuitest モードと同じ条件で、
+  可視性検証は見えないと判定した回に撮り直して待つ。見逃すもの: 通知バナー等の他の覆い・フェーズの途中で出たアラート
 - **起動元の自己申告と doctor の刈り取り(2026-07-30)**: 3ブリッジとも `/status` で起動元
   (`ownerRepo`。iOS xcuitest はホスト上で停止できる `ownerPid` も)と直前の無通信秒数
   (`idleSeconds`)を申告する(注入経路: xctestrun 環境変数 / `-e owner` / SIMCTL_CHILD)。
@@ -416,10 +415,10 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 | `POST /type` | `{ref, text}`(tap → typeText)。ref 経路は打つ前のタップの直前に木を1回撮り直し(`app.snapshot()`・ライブクエリなし)、ref の要素が同じ枠に居なければ撃たずに断る |
 | `POST /swipe` | `{direction}` or `{fromRef, direction}`。用途つきの任意項目あり(下記「スクロールの語彙」) |
 | `POST /press` | `{ref, duration}` または `{x, y, duration}` 長押し |
-| `POST /hold` | `{x, y, duration}` 指を置いたら応答を返し、`duration` 秒後にブリッジが自分で離す(DSL の `hold { }`)。`/press` は離すまで応答せず、その間は木もスクショも返せない。XCUITest は `CoordinatePinch` と同じ非公開 API(無い Xcode では 422)、Android は離す側を別スレッドで注入(前の指が下りたままなら 409)。**in-app は持たない**(hybrid は XCUITest へ回す) |
+| `POST /hold` | `{x, y, duration}` 指を置いたら応答を返し、`duration` 秒後にブリッジが自分で離す(DSL の `hold { }`)。`/press` は離すまで応答せず、その間は木もスクショも返せない。XCUITest は `CoordinatePinch` と同じ非公開 API(無い Xcode では 422)、Android は離す側を別スレッドで注入(前の指が下りたままなら 409)。**in-app ブリッジは持たない**(inapp モードは XCUITest ブリッジへ回す) |
 | `POST /doubletap` | `{ref}` または `{x,y}`。**2回の /tap では代用できない**(往復で OS のダブルタップ判定時間を超える)。XCUITest ランナーは非公開 API(`CoordinatePinch` と同じ経路)で2回の独立したタッチ(0.08秒ずつ・2回目は0.25秒後)を送る(XCTest の `doubleTap()` = 1回のタッチに tapCount=2 は RN が単タップと読む)。非公開 API が無い Xcode では XCTest の `doubleTap()` へフォールバック |
 | `POST /pinch` | `{scale, frame?, identifier?, durationSeconds?, fingers?}` 2本指ズーム。**指の座標はホスト側 `FTCore.PinchGesture` が OS ごとの規則(iOS/Android で別)で1箇所に決め、`fingers` として送る**。**全ブリッジがそのまま再生**(XCUITest は非公開 API = `CoordinatePinch`)。**`fingers` が無い・座標ピンチが使えないときだけ** XCUITest が `identifier` で要素を引く(**縮退したことを注記で必ず言う**) |
-| `POST /gesture` | `{fingers: [{points: [{x, y, t}]}]}` 指ごとの時刻つき経路を**1回のタッチ列として**再生する(DSL の `gesture` / MCP の `ft_gesture`)。各指は最初の点で押し最後の点で離す・同じ点が続く区間は静止。XCUITest は `CoordinatePinch` と同じ非公開 API、Android は多点 `MotionEvent`。**in-app は持たない**(hybrid は既定の 501 で XCUITest へ回す)。非公開 API が無い Xcode では 422(501 は自分へ戻るので使わない)。本数・点数・秒数はホストの `TouchGesture.validate` が断り、両ブリッジも同じ上限で最後に断る |
+| `POST /gesture` | `{fingers: [{points: [{x, y, t}]}]}` 指ごとの時刻つき経路を**1回のタッチ列として**再生する(DSL の `gesture` / MCP の `ft_gesture`)。各指は最初の点で押し最後の点で離す・同じ点が続く区間は静止。XCUITest は `CoordinatePinch` と同じ非公開 API、Android は多点 `MotionEvent`。**in-app ブリッジは持たない**(inapp モードは既定の 501 で XCUITest ブリッジへ回す)。非公開 API が無い Xcode では 422(501 は自分へ戻るので使わない)。本数・点数・秒数はホストの `TouchGesture.validate` が断り、両ブリッジも同じ上限で最後に断る |
 | `POST /clear` | `{ref}` 省略可(省略時はフォーカス中の入力欄)。入力欄のクリア |
 | `POST /pressEnter` | Return キー相当(受け口ごとの機構は §10) |
 | `GET  /screenshot` | `XCUIScreen.main.screenshot()` → PNG |
@@ -432,7 +431,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 |---|---|---|
 | XCUITest(Runner/) | `POST /drag`・`POST /gesture`・`POST /hold`・`POST /appswitcher`・`POST /home`・`POST /hinge`(折りたたみの Duo の Simulator のヒンジ角。仮想 HID・`FTCore.FoldControl`)・共通コアの /screenshot のクエリ `display=<id>`(追加のルートではない。内蔵画面が2枚以上 = `/status` の `multiDisplay` のとき必須。ホストが devicectl で確かめた表示中の画面を渡す。`DisplayRouting`)・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/covering`・`GET /systemui/snapshot`・`POST /systemui/tap`・`POST /systemui/drag`・`POST /systemui/swipe`・`POST /waitForSettle`(§4.7)・`POST /responsePrepare`・`POST /responseCollect`・`POST /responseObservation`・`POST /responseObservationStop`(応答時間計測。docs/response-measurement.md §5・§7) | 34 |
 | Android(AndroidRunner/) | `POST /gesture`・`POST /hold`・`POST /locale`・`POST /settle`・`POST /scrollAction`(§4.5)・`POST /waitForSettle`(§4.7)・`POST /responsePrepare`・`POST /responseCollect`・`POST /responseObservation`・`POST /responseObservationStop`(応答時間計測。docs/response-measurement.md §8.5) | 23 |
-| InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`POST /tapprobe`(iOS の hideKeyboard が叩く点がキーボード・ステータスバー・別のウィンドウの上でないか。`InAppTapProbe.swift`)・`POST /drag`(自前描画の Compose・Flutter だけ。実時間 60Hz で move を処理させ、終点の後に1刻み待って離す。それ以外は 501 = hybrid は XCUITest へ) | 18 |
+| InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`POST /tapprobe`(iOS の hideKeyboard が叩く点がキーボード・ステータスバー・別のウィンドウの上でないか。`InAppTapProbe.swift`)・`POST /drag`(自前描画の Compose・Flutter だけ。実時間 60Hz で move を処理させ、終点の後に1刻み待って離す。それ以外は 501 = inapp モードは XCUITest ブリッジへ) | 18 |
 
 **ジェスチャの秒数(`/press` の duration・`/drag` の press+移動・速度つき `/swipe`・`/pinch`・`/gesture` の全体)の上限は2層**:
 方針(既定 10 秒・コマンドの `maxGestureSeconds` で最大 60 秒)は**ホスト側**(`FlowStep.gestureDurationViolation` /
@@ -450,7 +449,7 @@ XCUITest で絶対上限を外せない理由は maintainer-notes §49.1(桁外�
 InApp の `GET /screenshot` は `drawHierarchy(afterScreenUpdates: false)` で可視の窓を奥から重ねて描くが、
 **自前描画のアプリ(`uiFramework` の `isSelfRendered` = Compose / Flutter)では、a11y の木が絵より先に進む**
 —— CMP の起動後の初回訪問で、タップが返ってから 0.27〜0.45 秒のあいだ切り替え前の絵がバイト同一で返った
-(2026-09-19 実測。2回目の訪問・SwiftUI では起きない。**XCUITest エンジンでも起きるが直していない** = docs/framework-differences.md §3)。その絵で findImage / imageIs /
+(2026-09-19 実測。2回目の訪問・SwiftUI では起きない。**XCUITest ブリッジでも起きるが直していない** = docs/framework-differences.md §3)。その絵で findImage / imageIs /
 分類器 / occlusion-guard が判定すると、木の枠で別の画面の画素を切る。v117 の `InAppRenderCatchUp`
 (`InAppSettle.swift`)が守る規律は3つ: **①操作の直前に 0.25 倍の画素の指紋と木(frames)の指紋を控える**
 (`captureRenderBefore`。操作を起こす経路は `tapByRef` と `performSettlingIfMoved` の2つで、両方が通す。
@@ -481,11 +480,11 @@ ref を引く表が2つあるので、**呼び手は直前に撮った木と同�
 素通しすると**両方の名前空間が 1 から採番される**ため、番号がアプリ側の `refFrames` で
 引き当たり、システム UI を操作したつもりで無関係なアプリの要素へ届く。
 
-**なぜ要るか**(2026-08-25): `engine=xcuitest` は**ブリッジが1本しかなく、主ドライバと
+**なぜ要るか**(2026-08-25): xcuitest モードは**ブリッジが1本しかなく、主ドライバと
 共有している**。旧経路はセッションを springboard へ移し ref 表を空にするので、権限アラートを
 閉じた次のステップが SpringBoard の木を読んで `cannot resolve the locator` で落ちた
-(E2E-iOS の `16_システムアラート.swift` で実測)。hybrid はフォールバックが別ブリッジなので
-巻き添えが無く、旧経路のままでも正しく動いていた —— **同じホストのコードが、エンジンによって
+(E2E-iOS の `16_システムアラート.swift` で実測)。inapp モードはフォールバックが別ブリッジなので
+巻き添えが無く、旧経路のままでも正しく動いていた —— **同じホストのコードが、モードによって
 壊れたり壊れなかったりしていた**。ホスト側で「見た後に張り直す」ことでも塞げるが、
 戻し忘れが**次のステップで**沈黙して失敗する形になるため、ブリッジ側に不変条件を置いた。
 
@@ -514,15 +513,15 @@ Android の整定判定は**スナップショットの画面サイズ**で行�
 成功にしない。
 
 **エラーの status はホスト側の分岐に使われる契約**(ブリッジ実装とホストで同期が必要。
-`DriverError.isEngineIncapable` / `AppAttachDriver` / `SessionRecoveryDriver`):
+`DriverError.isBridgeIncapable` / `AppAttachDriver` / `SessionRecoveryDriver`):
 
 | status | 意味 | ホストの反応 |
 |---|---|---|
-| `501` / `404`(本文 `not found:`) | このエンジンでは**原理的に不可** | XCUITest へフォールバック(§10 の「in-app で不可・XCUITest で可」) |
+| `501` / `404`(本文 `not found:`) | このブリッジでは**原理的に不可** | XCUITest へフォールバック(§10 の「in-app で不可・XCUITest で可」) |
 | `404`(ref 不明) | スナップショット取り直しが要る本物の失敗 | 失敗(フォールバックしない。本文前置で 501 系と区別) |
 | `409` | 一時的競合(キーウィンドウ不在・セッション消失) | セッション消失だけ `SessionRecoveryDriver` が張り直す。**フォールバック判定に使わない** |
 | `422` + `reason: "stale-ref"`(XCUITest ランナー。`ErrorResponse.reason`) | ref が指していた要素が、撃つ時点でもう同じ場所に居ない(`/type` `/clear` は撃つ直前の撮り直しで、全 ref 操作はホストの `expect` との identifier・型の矛盾で)。**何も撃っていない**ことの保証 | `DriverError.staleRef` に写し、`StepExecutor.executeActionRetryingStaleRef` が木を撮り直して引き直し、`waitSeconds` の予算内で撃ち直す。**この断りだけが撃ち直してよい**(他の 422 は届いたかもしれない)。in-app・Android は未対応 |
-| `422` | セッションはあるが**今のこの画面では実行できない**(フォーカス欄が無い・**入力欄でない ref を叩いても焦点が前の欄に残った**(XCUITest の type / clear)・クリアしきれない・type の読み返しが期待値に届かない・**中身のあるマスク欄への追記**・in-app の**座標タップの点が画面外**(ソフトキーボードの上は 501 = hybrid では XCUITest が撃つ。ブリッジ v197)・**セッションのアプリが背面のままの type / clear / pressEnter**(焦点のライブクエリがランナーを落とすので撃つ前に断る)・**同じく背面のままの tap / swipe / drag / doubleTap / pinch / press**(座標は Find the Application、ref は要素のライブクエリが刺さる。v101)・**home を 3 回送っても前面が外れない**) | 失敗。`clearInput` だけ 409 と同様に typeDriver へ回す(`isClearInputFallback`) |
+| `422` | セッションはあるが**今のこの画面では実行できない**(フォーカス欄が無い・**入力欄でない ref を叩いても焦点が前の欄に残った**(XCUITest の type / clear)・クリアしきれない・type の読み返しが期待値に届かない・**中身のあるマスク欄への追記**・in-app の**座標タップの点が画面外**(ソフトキーボードの上は 501 = inapp モードでは XCUITest ブリッジが撃つ。ブリッジ v197)・**セッションのアプリが背面のままの type / clear / pressEnter**(焦点のライブクエリがランナーを落とすので撃つ前に断る)・**同じく背面のままの tap / swipe / drag / doubleTap / pinch / press**(座標は Find the Application、ref は要素のライブクエリが刺さる。v101)・**home を 3 回送っても前面が外れない**) | 失敗。`clearInput` だけ 409 と同様に typeDriver へ回す(`isClearInputFallback`) |
 | `422`(Android。本文 `no-active-window-root:`) | `/snapshot` の再試行(WAKEUP 注入込み)後もアクティブウィンドウの a11y 根が読めない一時ストール(実測 Pixel 3a/Android 12: 13〜37 秒。app switcher・画面消灯・ウィンドウ遷移の最中に起きる) | 失敗(自然回復を待つ)。`DriverError.isNoReadableWindow` が判定・MCP は撃ち直しても同じ答えになることと前面復帰の手を案内する |
 | `503` | iOS: セッションはあるが**対象アプリが起動していない**(XCUITest の `requireLiveApp`)。**Android: UiAutomation の接続が死んだ = ブリッジが自分で exit する** | iOS は `AppAttachDriver` が activate して1回再試行(包まれていない xcuitest 経路では素の失敗)。Android は status で分岐しない(ブリッジの起動し直しは供給と監視が拾う) |
 | `504` | in-app: **main で実行されないまま締切を過ぎた**。XCUITest: **ハンドラが固まった = ランナーが自分で終わる** | status で分岐しない(失敗として返す。XCUITest は以後の接続断を供給・監視が拾う) |
@@ -614,7 +613,7 @@ Android の整定判定は**スナップショットの画面サイズ**で行�
   木から落ちると scrollFrame 解決が全滅する — 下記「scrollFrame の fail-fast」)。
   **この cap 免除は Swift 側(iOS の xcuitest ランナー・in-app dylib・WebView DOM マージ)だけが持つ**。
   Android の `SnapshotBuilder`(Java、tier0〜2 のみ)は tier0 を最後に捨てる点は同じだが、
-  scrollable の cap 免除は持たない。また Compose/Flutter を xcuitest エンジンで撮った木は
+  scrollable の cap 免除は持たない。また Compose/Flutter を XCUITest ブリッジで撮った木は
   スクロール容器が `.other` として出て `scrollable` を申告できず(in-app なら申告できる)、
   この免除には最初から乗らない。
 
@@ -782,9 +781,9 @@ Android の整定判定は**スナップショットの画面サイズ**で行�
   一致していなければ意味がない。範囲外の指定は**黙って無視せず**警告する(番号を1つ外しただけで
   別の手が落ちるので、効かなかったことに気付けないと誤った下書きを持ち帰る)
 - **宛先は入口で1つに畳む**(`MCPServer.foldingUDIDIntoPort`。2026-08-10)。`udid` は
-  `call(tool:args:)` で `port` へ解決してから配る。**機ごとの記憶は `engineKey` で引く**
+  `call(tool:args:)` で `port` へ解決してから配る。**機ごとの記憶は `sessionKey` で引く**
   (`lastSnapshots` / `launchedBundleIDs` / `uiFrameworkHints` / `connections` /
-  `pendingWarnings` / `udids` / `engines` / `rememberedSnapshotFilters` の8つ)が、`engineKey` は
+  `pendingWarnings` / `udids` / `bridges` / `rememberedSnapshotFilters` の8つ)が、`sessionKey` は
   生の引数しか見ないので、畳まないと udid で指した機が全部 `port=nil` の同じキーへ落ちる。
   実測した3症状(すべて同じ根): ft_status が `@ port …` を出さない / allowVersionSkew の
   警告が出ない / 機A に Preferences・機B に Maps を launch した後、機A への ft_open_url が
@@ -798,7 +797,7 @@ Android の整定判定は**スナップショットの画面サイズ**で行�
   道連れ**になり、その文面が案内する `ft_list_devices` 自身が同じエラーを返す袋小路になっていた
   (maintainer-notes §46.5。集合は `DeviceIndependentToolsIgnoreTargetTests` が等号で固定する)。
   **セッション内デバイス記憶も同じ入口で畳む**(`MCPServer.foldInRememberedDevice`。2026-08-12)——
-  当初 `driver(_:)` 内で適用していたが、キャッシュキーと `engineKey` が生の引数を見るため
+  当初 `driver(_:)` 内で適用していたが、キャッシュキーと `sessionKey` が生の引数を見るため
   「明示切替後の省略呼び出しが旧デバイスのキャッシュ済みドライバを引く」
   「明示 port で採った ref が省略呼び出しから見えない」の2症状を生んだ(上と同根)。
   適用条件は「udid/port/serial のどれも有効値で来ていない、かつ profile なし」で、
@@ -822,7 +821,7 @@ Android の整定判定は**スナップショットの画面サイズ**で行�
   なので、そこを境に警告から拒否へ格上げした(1台のセッションの手数は変わらない)。
   拒否は候補を名指しする —— 断るだけだと読み手は総当たりで udid を試し、結局どれかの機を操作する
 - **キーが指す機が変わったら、そのキーの状態は全部捨てる**(`MCPServer.forgetDeviceState`。2026-08-13)。
-  `engineKey` は `direct:ios:<port>:<serial>` で、**iOS のポートはセッション中に動く**
+  `sessionKey` は `direct:ios:<port>:<serial>` で、**iOS のポートはセッション中に動く**
   (監視が別ポートで起動し直す。実測: -03 が 8128→8126)ので、死んだポートは後で別のシミュレータに
   再利用され得る。`forgetConnection` が `drivers`/`connections`/`connectedPorts` しか消して
   いなかったため、`lastSnapshots` と `refGenerations` は**前の機の木**、`launchedBundleIDs` は
@@ -844,7 +843,7 @@ Android の整定判定は**スナップショットの画面サイズ**で行�
   snapshot に限り、取得前に短い待機(実測 350ms で staleness 0/10)を入れて遷移後の fresh ツリーを
   返す(`BridgeRouter.settlePending`)。連続 snapshot(操作を挟まない再取得)は据え置きで課金しない。
   固定待機は XCUITest が非同期遷移完了の event-driven な信号を出さないための妥協(要 private の
-  quiescence API を使えば event-driven 化できるが未採用)。inapp エンジンは tap 側の `InAppSettle`
+  quiescence API を使えば event-driven 化できるが未採用)。in-app ブリッジは tap 側の `InAppSettle`
   (アニメ整定をイベント駆動で待つ)が既に遷移を待つため対象外。
   **2026-10-09 からタップ・ダブルタップ・長押しは XCTest の quiescence 待ちを既定で飛ばす**(`QuiescenceWait.around` の
   `skipByDefault`)ので、タップ系の遷移の整定は操作直後の取得の `captureSettled`(2回続けて同じ木・予算で打ち切り)が
@@ -909,7 +908,7 @@ WebView(iOS=WKWebView / Android=android.webkit.WebView)の中身は、経路ご�
 - **中身が出ないまま待ちが尽きたら木がそう名乗る**(2026-08-15。`WebViewPath.delegatedEmpty`)。
   委譲直後は XCUITest 側の WebView AX 活性化に時間がかかるので中身ゼロの木を待つが、
   上限(`contentWaitMs` = 5000)は **Simulator の実測 2.3s に対する余裕**でしかなく、
-  hybrid は実機でも動く —— 13_WebView のシナリオ自身が「SUT により最大 約8秒」と書いている。
+  inapp モードは実機でも動く —— 13_WebView のシナリオ自身が「SUT により最大 約8秒」と書いている。
   尽きたときに黙って空の木を返すと**否定アサーションは必ず通る**(空の木に要素は無い)。
   木からは「AX がまだ公開されていない」と「本当に空のページ」を区別できないので**判定は変えず**、
   `StepNote.webViewNotRendered`(通った回にも残る)と失敗文言で名乗る。
@@ -972,7 +971,7 @@ Android のアプリ内 WebView・ブラウザ)と、a11y が id を出す構成
 
 **`#x` は identifier で引けなければ placeholder を引く**(2026-08-15 ユーザー指示。
 判定は `LocatorResolver.candidates` の1箇所)。**構成ごとに意味を変える例外ではない** ——
-規則はどの OS・エンジンでも同じで、`#` が指す名前の集合が「identifier ∪(identifier で
+規則はどの OS・モードでも同じで、`#` が指す名前の集合が「identifier ∪(identifier で
 引けないときの)placeholder」になる。入力欄はまさにここが経路で割れる(xcuitest は HTML id を
 出さないが placeholder は出す / Android は WebView の版で **id と placeholder が入れ替わる**)ので、
 シナリオ側に分岐を書かせない。**identifier が1件でも当たったらそちらだけ**を使う ——
@@ -997,7 +996,7 @@ Flutter は中立(9.5s。ドラッグ後の再計測サイクルが重く相殺�
 ノードを実座標のまま**ツリーに載せる(旧記述「画面外ノードを出さない」は誤り —
 `BridgeRouter.shouldInclude` の画面交差ガードが落としていただけ。クランプも無い: 画面 402x874 に
 対し y=2784 や y=-1200 が取れ、スクロール量に追従する)。Android と同じ契約
-(ref=0・elements に混ぜない)で供給する。**hybrid には流さない**: WebView 委譲中の snapshot は
+(ref=0・elements に混ぜない)で供給する。**inapp モードには流さない**: WebView 委譲中の snapshot は
 `WebViewDelegatingDriver` が offscreen を落とす(in-app の contentOffset 短絡 1.5s の方が速く、
 ヒントが乗ると跳躍 = XCUITest 実ドラッグが優先されて遅くなる方向に挙動が変わるため)。
 効果(WebView シナリオ・ios-xcuitest・アイドル3周 A/B): scrollTo 9.3〜9.6s→6.5〜7.3s
@@ -1058,8 +1057,8 @@ iOS ブリッジと区別なく扱える。
 **iOS の既知の制約(Compose Multiplatform 等の高密度・縦スクロール画面):**
 ビューポート外(フォールド下)の要素は、iOS アクセシビリティの慣習でスクロールコンテナ下端バンドに
 frame がクランプされ(y が実描画より小さく・高さが膨張して)報告されることがある。原因は Compose が
-iOS の a11y 層に出す frame 自体で、**xcuitest / inapp どちらのエンジンでも同じ frame を読む**ため
-エンジン切替や座標補正では直らない。実害: クランプされた座標/ref をタップすると、そこに実在する別要素
+iOS の a11y 層に出す frame 自体で、**xcuitest / inapp どちらのモードでも同じ frame を読む**ため
+モード切替や座標補正では直らない。実害: クランプされた座標/ref をタップすると、そこに実在する別要素
 (または余白)に当たり、目的の要素は発火しない。可視領域内の要素の frame は正確。
 
 回避策(利用側。**唯一確実**):
@@ -1107,10 +1106,9 @@ Android `VERSION_CODE` 100。XCUITest ランナーと Android ブリッジが持
 **比べる範囲は常に各辺を 10% ずつ除く**。スクロールバー・インジケータのフェード、ステータスバー、ホームインジケータは本体が止まった後も
 変わり続けるため(§3.34 の実測: Android のタップの 0.3〜2 秒後に出る変化は装飾だけ)。止まらない物(スピナー・シマー)は DSL の `selector` で範囲から外す。
 
-**エンジンごとの経路と理由**:
-- **iOS は hybrid(既定)でも、撮影は常に XCUITest ランナー**。in-app のスクリーンショットはアプリ自身の描画しか写さず(キーボード・システムアラート・
-  他プロセスが無い)、アプリのプロセスの中で撮り続けるとメインスレッドを塞ぐため。`engine: "inapp"` だけで XCUITest ランナーを持たないデバイスは、
-  hybrid か xcuitest への切り替えを案内して失敗する。木の段は**次のステップを解決するドライバ**を使う(hybrid なら in-app の木 = 次の解決が読む木と揃える)
+**モード・ブリッジごとの経路と理由**:
+- **iOS は inapp モード(既定)でも、撮影は常に XCUITest ランナー**。in-app のスクリーンショットはアプリ自身の描画しか写さず(キーボード・システムアラート・
+  他プロセスが無い)、アプリのプロセスの中で撮り続けるとメインスレッドを塞ぐため。木の段は**次のステップを解決するドライバ**を使う(inapp モードなら in-app の木 = 次の解決が読む木と揃える)
 - **Android は instrumentation ブリッジの中で撮る**。実機は連続で撮り、エミュレータは 50ms → 変化している間は 50→100ms → 窓の中ほどと終わり
   (エミュレータのスクリーンショットはホストの CPU を使うため間引く)
 - **静止の窓 `quietSeconds` の既定**は `FTCore.WaitForSettleDefaults.quietSeconds(framework:isAndroid:)` の1箇所(iOS の Compose Multiplatform と
@@ -1392,7 +1390,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   「アプリが本当に値を戻した」のかが記録から割れない(2026-09-20 の誤った赤 →
   maintainer-notes §39.1)
 - **Android の 409 / 500 に受け皿は無い**。ホストが `typeDriver` へフォールバックできるのは
-  iOS の hybrid だけ(`ScenarioRunnerMain` が iOS の分岐でしか渡さない)なので、
+  iOS の inapp モードだけ(`ScenarioRunnerMain` が iOS の分岐でしか渡さない)なので、
   ブリッジのこの判断がそのままシナリオの合否になる
 
 **評価して不採用(再提案しない)**: `ACTION_FOCUS` でフォーカスを立てる案は **NPE を誘発して
@@ -1433,8 +1431,8 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   **reap** し、直後の `waitUntilExit()` が終了通知を取りこぼして**永久ハング**する(SIGTERM を
   無視した子で実測: ワーカー全体が `waitUntilExit` で停止)。**生存確認は reap しない `kill(pid, 0)`**
   を使うこと(`process.isRunning` は使わない)。この凍結は scenarioTimeout(当時の既定 90s)を超えるシナリオでのみ
-  顕在化する潜在バグで、hybrid の suspend 誤ルーティング(performance-tuning §6.4)が引き金だった。
-- **hybrid の in-app suspend**: system-UI シナリオと in-app シナリオを混在実行すると、背面の
+  顕在化する潜在バグで、inapp モードの suspend 誤ルーティング(performance-tuning §6.4)が引き金だった。
+- **inapp モードの in-app suspend**: system-UI シナリオと in-app シナリオを混在実行すると、背面の
   注入先アプリが iOS に suspend され in-app ブリッジが無応答になる。ドライバ選択は provision 時の
   注入先 bundleID で分岐する(詳細と対策は performance-tuning §6.4「suspend 時のルーティング」)。
 - **規模並列(20台級)は timeout flaky を生む**: 競合で画面ロードが遅れ、本来通る `exist` が既定
@@ -1444,7 +1442,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   17件中、実バグは陳腐化ラベル2系統のみで残りは flaky/ロケール/デバイス状態だった。2026-07-16)。
   空き機は fleet(モニター所有)に触れず別途起動: Android は空き AVD を `-port 5590 -no-window` で
   起動→`ft_run_scenario --serial`、iOS は空きシムを boot→一時 machine/run プロファイル
-  (`iosInappEngine:false`=xcuitest、fleet と衝突しない空きポートを device.port に明示)→`--profile`。
+  (`iosMode:"xcuitest"`、fleet と衝突しない空きポートを device.port に明示)→`--profile`。
 
 ## 9. 検証方法(E2E)
 
@@ -1485,7 +1483,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
    ネイティブ SUT(SwiftUI/View)と同型で揃う**(RCTUITextField/ReactEditText がそれぞれ
    `UITextField`/`EditText` 派生のため。詳細は `E2EAppRN/docs/ui-contract.md`)
 
-   **入力欄は「エンジン間で揃える」ところまでが担保**で、OS 間では揃わない(2026-08-06 実測)。
+   **入力欄は「モード間で揃える」ところまでが担保**で、OS 間では揃わない(2026-08-06 実測)。
    iOS の自前描画フレームワーク(Compose / Flutter)の入力欄は UIKit の `UITextField` ではないので、
    in-app ブリッジのクラス判定を素通りして `other` に落ちていた —— **in-app だけ `other`・
    xcuitest は `textView`** という食い違いで、MCP で探索した型がシナリオで通らなかった。
@@ -1761,7 +1759,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   | SwiftUI + UIKit | `UITableView` の `accessibilityIdentifier` |
   | View/XML | `RecyclerView` の `android:id` |
   | Flutter | `Semantics(container: true, explicitChildNodes: true)`。**`MergeSemantics` で包まない** |
-  | React Native | `FlatList`/`ScrollView` に `testID`。**iOS は id 付きラッパー(`RCTScrollView`・非 scrollable)と実 scroll ノードが同 frame で別要素に割れるため、ホスト側の正規化で統合する**(両エンジン) |
+  | React Native | `FlatList`/`ScrollView` に `testID`。**iOS は id 付きラッパー(`RCTScrollView`・非 scrollable)と実 scroll ノードが同 frame で別要素に割れるため、ホスト側の正規化で統合する**(両モード) |
 
   **畳むと子孫が消えてスコープ対象が無くなる**のが唯一の落とし穴(Flutter の `MergeSemantics`、
   Compose の Box+重ね置き `#pad_swipe` は iOS で子 Text が同 depth に平坦化される)。
@@ -1813,7 +1811,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   「見た目の次の入力欄」と食い違う。**方向セレクタで取れなかった実例が出てから**再検討する
 - **一致品質(exact/substring)は記法ではなく掴んだ要素で決まる**(`LocatorResolver.quality`)。
   `*ログイン*` が `"ログインに失敗しました"` を掴めば substring、`"ログイン"` を掴めば exact。
-  読み手は**hybrid の tap アクションだけ**で、primary が substring 止まりなら fallback を照会し
+  読み手は**inapp モードの tap アクションだけ**で、primary が substring 止まりなら fallback を照会し
   fallback の exact を優先する(§performance-tuning「フォールバック検証の誤検知」)
 - **inapp の tap は activate 不発時に「整定待ち→要素取り直し→再 activate」で粘る**(2026-07-27)。
   Compose iOS は**画面遷移直後、要素が AX ツリーに載っていても accessibilityActivate がまだ
@@ -1887,15 +1885,15 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   状態保持で attach)→ snapshot → type(ref は typeDriver 側 snapshot で取り直す。ref 名前空間は
   ブリッジごとに独立)。**springboard 参照の SystemUIDriver(fallbackDriver)はアプリ要素を一切
   見られないため type の受け皿にできない**(実測: snapshot は SBSwitcherWindow 等8要素のみ)。
-  用途を混ぜないこと。engine=inapp 単独(xcuiPort 無し)ではこの経路は無く、409 メッセージが
+  用途を混ぜないこと。XCUITest ブリッジが無いとき(xcuiPort 無し)はこの経路は無く、409 メッセージが
   xcuitest プロファイルへ誘導する
 - **`type` の `\n` は iOS では XCUITest 経路へ回す**(2026-07-28。`StepExecutor` の type 2経路):
   `typeText` は改行を **Return キー押下**として発火するので **iOS 既定の挙動そのもの**になり、
   「改行を入れるか確定アクションを撃つか」をフィールドが決める。in-app の `insertText` は改行の解釈が
   フレームワーク任せで OS 既定と揃わない(Compose は完全一致 `"\n"` だけアクション化、Flutter は握り潰す)。
-  **`\n` を含まない入力は両経路で結果が同じ**なので、この振り分けは**エンジン間の観測可能な差を生まない**
-  (エンジンはツール内部の最適化であり、シナリオから見えてはいけない)。判定は `typeDriver` の有無だけで
-  行い、プラットフォーム判定は書かない(`typeDriver` は iOS hybrid でしか設定されないため自動的に
+  **`\n` を含まない入力は両経路で結果が同じ**なので、この振り分けは**モード間の観測可能な差を生まない**
+  (モードはツール内部の最適化であり、シナリオから見えてはいけない)。判定は `typeDriver` の有無だけで
+  行い、プラットフォーム判定は書かない(`typeDriver` は iOS の inapp モードでしか設定されないため自動的に
   iOS 限定。条件を二重に持つと将来ずれる)。**ロケータ無しの `type`** も同じ規則で回るが、ref が無く
   attach 前だと 409 になるため `AppAttachDriver.type(ref: nil)` に activate 再試行を入れてある
   (ref 有りには入れない — activate が refFrames をクリアする)
@@ -1911,11 +1909,11 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   (`textFieldShouldReturn:` + `EditingDidEndOnExit`。SwiftUI の `onSubmit` もこの経路)。
   UITextView は Return = 改行挿入なのでそのまま `insertText("\n")`。
   **この関数を通るのは `pressEnter` だけ**(`type` の `\n` は上記のとおり XCUITest へ回るので
-  in-app の `handleType` には届かない。engine=inapp 単独=xcuiPort 無しのときだけ来る)。
+  in-app の `handleType` には届かない。XCUITest ブリッジが無い(xcuiPort 無し)ときだけ来る)。
   **React Native は `RCTUITextField`/`RCTUITextView` が UIKit 派生なのでこの UITextField/UITextView
   経路をそのまま通る**(新しい分岐は不要。2026-08-08 実測。E2EAppRN/docs/ui-contract.md)。
   **Flutter は engine の私有 API へアクションを配送する**: `insertText("\n")` は engine に
-  握り潰され(文字も入らずアクションも出ないのに 200 が返る最悪の形)、hybrid の xcuitest
+  握り潰され(文字も入らずアクションも出ないのに 200 が返る最悪の形)、inapp モードの xcuitest
   フォールバックも **in-app の合成タッチが立てたフォーカスに届かない**ため、in-app で完結させるしかない。
   `[view textInputDelegate]` → `flutterTextInputView:performAction:withClient:` を
   `returnKeyType`(UIKit の公開 enum)からの逆写像で呼ぶ。**私有 API なので各段で存在確認し、
@@ -2019,9 +2017,9 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   囲んだ形**(`"名前"`)を含む / ボタンが**ちょうど2つ** / 押すのは**ツリー順で最後**
   (右側=確定)。**素の部分一致にしてはいけない** —— 表示名は互いの部分文字列になり得る
   (`FT E2E` ⊂ `FT E2E RN`。iOS の4 SUT が同居する E2E シミュレータで実際に起き得る形)
-- **in-app エンジン単独では自動了承できない**(in-app ブリッジの `/session` は自分の bundle
-  以外を 409 で拒否するため springboard を見られない)。hybrid 構成では XCUITest 側の接続が
-  受け持つ。4 SUT の `ios-inapp` プロファイル全緑で hybrid 経路の動作を確認済み
+- **XCUITest ブリッジが無いとき(in-app ブリッジ単独)は自動了承できない**(in-app ブリッジの `/session` は自分の bundle
+  以外を 409 で拒否するため springboard を見られない)。inapp モードでは XCUITest ブリッジの接続が
+  受け持つ。4 SUT の `ios-inapp` プロファイル全緑で inapp モードの経路の動作を確認済み
 
 ### Shirates(Classic) 準拠の方針と承認済みの差分(2026-08-04 更新)
 
@@ -2045,14 +2043,14 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
 | 相対セレクタの引数の `(a\|b)` は括弧を自分で書く | `:right(...)` の括弧が引数の括弧で `\|` の囲みにならないため |
 | `scrollFrame:` に型付きセレクタ(`Sel`)版が無い(String 固定) | ユーザー決定 2026-08-04・**再提案しない**。1対1を保証するのは**対象セレクタ**まで。`scrollTo` は対象と `scrollFrame` の両方を取るためオーバーロードが 2×2 になり、他20コマンドと合わせて語彙が増える割に、`scrollFrame` は生成コードにほとんど出ない(下記「型付きセレクタ」) |
 | フローベース相対セレクタ(`:flow` 等)を持たない | 根拠の無い調整値を要求する(上記 2026-07-26 決定・再提案しない) |
-| `pressEnter` の iOS 実装がソフトキー tap ではない(xcuitest = `typeText("\n")` / inapp = 受け口ごとに Compose は `insertText("\n")`・UIKit は delegate 再現・Flutter は engine への配送) | キーボード要素をスナップショットから除外しているため tap できない。受け口で機構が違うのは iOS 側の事情(上記「iOS の Enter は…」)。観測できる挙動(Return キー相当)はいずれも同等 |
+| `pressEnter` の iOS 実装がソフトキー tap ではない(xcuitest = `typeText("\n")` / inapp = 受け口ごとに Compose は `insertText("\n")`・UIKit は delegate 再現・Flutter は Flutter engine への配送) | キーボード要素をスナップショットから除外しているため tap できない。受け口で機構が違うのは iOS 側の事情(上記「iOS の Enter は…」)。観測できる挙動(Return キー相当)はいずれも同等 |
 | `back()` は Shirates の `pressBack`(Android 専用)を home()/appSwitcher() と同列の OS 差吸収コマンドとして両 OS 提供(iOS はエッジスワイプ) | iOS に物理バックが無く、コマンド語彙を OS で割らない方針 |
 | `swipePointToPoint` / `swipeElementToElement` に withOffset・offsetY・intervalSeconds・repeat・safeMode・marginRatio・adjust が無い | ブリッジの drag が単発ジェスチャのため |
 | `optional:` 引数を持たない(Shirates は `throwsException: false`) | ユーザー決定 2026-08-02・**再提案しない**。「出るか不定」はアプリ内メッセージなら `irregularHandler`、その場限りなら `ifCanSelect { }` で表す。空振りを黙って許す引数が操作系に付いていると、腐ったセレクタが緑のまま残る。掴めないことが答えになり得る `select` だけは失敗させず空要素を返す |
 | `notExist`(Shirates は `dontExist`) | 否定の意味が読み取りやすく `exist` との対称も保てる(ユーザー決定 2026-07-31・**再提案しない**) |
 | `existAll` / `dontExistAll` を持たない | `exist` のチェーンで書く方が保守しやすく、要素ごとに `waitSeconds:` / `scroll:` を指定できる(ユーザー決定 2026-07-31・**再提案しない**) |
 | `clearInput` がソフトキー/Appium clear 機構ではない(xcuitest=末尾タップ+delete 連打 / inapp=first responder のテキスト置換(WebView の欄は全選択+削除1回で、確かめは呼び手が木で行う)/ Android=ACTION_SET_TEXT "") | キーボード要素を snapshot から除外しているため(pressEnter と同じ事情) |
-| キーボード可視の取得元がエンジンで違う(iOS xcuitest=AX ツリーの `.keyboard` ノード / iOS in-app=`UITextEffectsWindow` の可視判定 / Android=ホストが見る dumpsys の InputMethod window) | IME が別プロセスの window でアプリの a11y ツリーに出ないため(iOS の2経路の事情は下記「キーボードの観測と `hideKeyboard`」) |
+| キーボード可視の取得元がブリッジで違う(iOS xcuitest=AX ツリーの `.keyboard` ノード / iOS in-app=`UITextEffectsWindow` の可視判定 / Android=ホストが見る dumpsys の InputMethod window) | IME が別プロセスの window でアプリの a11y ツリーに出ないため(iOS の2経路の事情は下記「キーボードの観測と `hideKeyboard`」) |
 | `waitForDisplay` / `waitForClose` に `throwsException` が無い(タイムアウトは常に失敗として記録) | `optional:` 全廃(2026-08-02)と同じ方針。空振りを許すと腐ったセレクタが緑のまま残る(2026-08-03 承認) |
 | `waitForClose` の expression 省略(Shirates の直前セレクタ再利用)は不可 | 2026-08-04 に `lastElement`(暗黙の要素保持)を実装したので当初の理由(概念が無い)は消えたが、**省略形は引き続き置かない** —— 待っている対象がソース上で読めなくなり、直前のコマンド次第で待ち先が変わる。値の読み出しと違って**待ちは何を待つかが読めることが要**(2026-08-03 承認の判断を維持) |
 | `waitForDisplay` の判定は `exist` と同じ可視性込み(Shirates は `safeElementOnly=false` のツリー存在判定) | コマンド名の意味(displayed)に沿い、既存の exists 検証機構をそのまま使う(2026-08-03 承認) |
@@ -2063,7 +2061,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
 | `appIs` はニックネーム解決を持たず ID(iOS=bundle ID / Android=package)を直接書く | fleetest はアプリのニックネーム機構自体を持たない(既存方針。2026-08-03 承認) |
 | `packageIs` を持たない | 2026-08-03 ユーザー決定(いったん実装後に削除)。ニックネームが無い fleetest では `appIs` が ID 直指定のため Android で完全に同じ検査になり、同じことを2通りで書ける語彙になる。**再提案しない** |
 | `tapAppIcon` が `auto` 相当のみ(method 切替・マクロ機構なし) | 対象は実質エミュレータ/シミュレータで `auto` の分岐だけで足りる。名前省略時の既定は installApp と同じ形で親が解決する(`--app-name` = プロファイルの `appName`。2026-08-03 決定。実行自体は子のまま — UI 操作は「1シナリオ=1プロセス=1ドライバ」の子の責務で、親が同じランナーを叩くと二重クライアントの事故型になる) |
-| `installApp` の実行主体がオーケストレータ(親プロセス)である | 2026-08-03 ユーザー決定。子(シナリオサブプロセス)は install の依頼だけを親へ送り(stdin/stdout RPC)、親が実行プロファイルの `appPath` を解決して実インストールする。パス解決の優先順は明示引数 > プロファイルの `appPath`(Shirates の `appPackageFile` 既定に一致)。オーケストレータ無しの単独実行だけ、子が直接 `driver.install` を呼ぶ従来経路にフォールバックする(パス解決は 明示引数 > `--app-path` > 明示エラー)。iOS in-app/hybrid ではインストールで in-app ブリッジが道連れになるが、次の `launchApp()` が再注入する(注記は実行中の ℹ️ ログにのみ出る。保存レポートには残らない) |
+| `installApp` の実行主体がオーケストレータ(親プロセス)である | 2026-08-03 ユーザー決定。子(シナリオサブプロセス)は install の依頼だけを親へ送り(stdin/stdout RPC)、親が実行プロファイルの `appPath` を解決して実インストールする。パス解決の優先順は明示引数 > プロファイルの `appPath`(Shirates の `appPackageFile` 既定に一致)。オーケストレータ無しの単独実行だけ、子が直接 `driver.install` を呼ぶ従来経路にフォールバックする(パス解決は 明示引数 > `--app-path` > 明示エラー)。iOS の inapp モードではインストールで in-app ブリッジが道連れになるが、次の `launchApp()` が再注入する(注記は実行中の ℹ️ ログにのみ出る。保存レポートには残らない) |
 | `enabledIs(expected:)`/`checkedIs(expected:)`(生文字列親形)を持たず、糖衣形 `enabledIsTrue/False`・`checkIsON/OFF` のみ | 生値比較は OS 依存(checked の iOS "1"/"")で、正規化済み Bool と衝突する。糖衣形は OS 差を吸収済みで fleetest の正規化と一致(2026-08-04 ユーザー決定。旧 `isEnabled` 系4名からの改名も同決定 — Is 後置の社内語彙とも揃う) |
 
 ### `clearInput` の受け口ごとの機構と Flutter の縮退(2026-07-30)
@@ -2079,11 +2077,11 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
    それでも残れば失敗。ref 無し版は `ElementInfo.focused` で対象を突き合わせる
    (`focused` を足したのはこのため。特定できないときは検証をスキップ = 検証不能を失敗にしない)
 
-**Flutter iOS の in-app は非対応**(409 → xcuitest フォールバック)。**engine への editing state 配送は
+**Flutter iOS の in-app は非対応**(409 → xcuitest フォールバック)。**Flutter engine への editing state 配送は
 評価のうえ不採用**(3回のデバイス実測):`flutterTextInputView:updateEditingClient:withState:` は実在し
 (ランタイムのメソッド列挙で確認)、client も state のキー集合も正しいが、**Dart 側の
 `TextEditingController` は空にならない**。`replaceRange` も view のローカル状態しか変えない
-(併用すると engine への旧値の再通知が同期配送を上書きする挙動も観測)。**推測で私有 API を
+(併用すると Flutter engine への旧値の再通知が同期配送を上書きする挙動も観測)。**推測で私有 API を
 積み増さない**方針(pressEnter の Flutter 対応と同じ規律)に従い、409 で既知の縮退へ落とす。
 **pressEnter と違い clear は xcuitest フォールバックが届く**(ref 有/無とも実測。1.1〜2.2s)ので
 機能は成立する。**再提案しない**(やるなら Flutter engine 側の公開経路が増えたとき)。
@@ -2098,7 +2096,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
 - **iOS xcuitest**: AX ツリー走査中に `.keyboard` ノードを見たか(`app.keyboards` クエリは使わない
   — キーボードが別プロセス扱いでタイムアウトする。`handleType` のコメントと同じ事情)。
   **「非表示」を確定できない**(見なかった = 不明で `keyboardShown == nil`)ため、
-  `keyboardIsNotShown` はこのエンジンでは通らない(下記の nil 規約どおり明示的に失敗する)
+  `keyboardIsNotShown` はこのブリッジでは通らない(下記の nil 規約どおり明示的に失敗する)
 - **iOS in-app**: **`UITextEffectsWindow` の可視判定**。キーボードはキーウィンドウの外に載るので
   AX ツリー走査では見つからない(閉じても window は残るため、画面内に張り出しているかで見る)。
   **非表示を false で確定できる唯一の iOS 経路**(2026-08-08 に一度 nil へ潰して
@@ -2119,11 +2117,11 @@ frame を申告しないが shown は言える)ため統合しない。
 出ていないときは何もせず成功する(冪等)。
 
 - **Android**: 戻るキー。**出ているときだけ撃つ**(出ていないと画面が戻ってしまうので、dumpsys で可視を確かめてから送る)
-- **iOS(エンジン非依存・ホスト側 `StepExecutor`)**: 木を取り、キーボードの上の領域を**下から上・左から右**の行で走査して
+- **iOS(モード非依存・ホスト側 `StepExecutor`)**: 木を取り、キーボードの上の領域を**下から上・左から右**の行で走査して
   「何もない点」を探す。何もない点 = どの要素にも載らない点、または画面幅の操作できない容器だけに載る点。
   **文字・画像の葉の上、操作可能・入力の型の要素の上、`overlayWindowFrames` の上には置かない**。撃つ前に in-app ブリッジの
   `POST /tapprobe`(ブリッジ版 195)で、その点がキーボード・ステータスバー・キーでない window(トースト等)の上でないことを確かめる。
-  答えられないエンジン(XCUITest)は木だけで決め、**木の最上端の要素より上は撃たない**(ステータスバーを避けるため)。
+  答えられないブリッジ(XCUITest)は木だけで決め、**木の最上端の要素より上は撃たない**(ステータスバーを避けるため)。
   点が無ければ待って探し直す(ステップの制限時間まで。トーストが消えることがある)。撃った後は最大 1.5 秒キーボードが閉じるのを待つ。
   閉じれば成功で、注記に撃った点を書く(撃った後にキーボードより上の要素が消えていれば、何も発火していないか確かめる注記も添える。
   要素の比較は id があれば id で)。**閉じなければ(または点が無ければ)Enter を送る**(ユーザー決定)。注記に、Enter が欄の
@@ -2183,7 +2181,7 @@ select(.id("txt_result")).textIs("dialog=none")   // 検証はセレクタを取
   指定は各コマンドの `scroll:` だけ = 同じことを2通りで書ける組み合わせを作らない(生成側の語彙のブレを消す)。
   Shirates の名前は `UnavailableCommands.swift` がコンパイルエラーで書き方を返す。**別名を再提案しない**
 - 組み立てるのは**文字列版と同じ `FlowLocator`**。解決・実行・レポート・ヒールは完全に共通で、
-  実行エンジンは分岐しない(`SelTests` が全構文について「文字列版と同じ FlowLocator になること」を固定)
+  実行モードは分岐しない(`SelTests` が全構文について「文字列版と同じ FlowLocator になること」を固定)
 - フィルタ系メソッド(`text`/`type`/`nth` 等)は常に「**現在の対象**」に AND する:
   相対ステップより前なら基準(アンカー)、後ならそのステップの対象。`nth` も同様に、
   相対ステップの後では ordinal(近い順)になる
@@ -2304,18 +2302,18 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   **`scroll:` を渡す(または `withScroll*` ブロックに入れる)と意味が変わる**: その向きへ
   探索しながら探し、**見つかった時点で失敗**する(`exist(scroll:)` の裏返し)。
   見つからなければ従来どおり現在のビューポートでの消滅待ちに進む。
-  hybrid では **不在を確定する側でだけ** `fallbackDriver` を1回照会する(pass 経路の固定費 1 回。
+  inapp モードでは **不在を確定する側でだけ** `fallbackDriver` を1回照会する(pass 経路の固定費 1 回。
   システム UI のダイアログが primary の snapshot に映らないため。miss 毎に払う `exist` 側とは事情が逆)
 - **`checkIsON` / `checkIsOFF`**(セレクタの `checked=`・スナップショットの `checked`/`indeterminate` 表示も同じ源)は
   **`FTCore.CheckStateReading` だけが読む**(オン / オフ / indeterminate / 不明の4値)。ワイヤの `checked` は
   true のときだけ送る(iOS = selected trait / Android = `isChecked || isSelected`)ので、オフと indeterminate は
-  value から確定させる。実測(2026-09-18・iOS 27・両エンジン同値)と一次ソースで決めた規則:
+  value から確定させる。実測(2026-09-18・iOS 27・両モード同値)と一次ソースで決めた規則:
   | 実装 | オン | オフ |
   |---|---|---|
   | Flutter の Checkbox/Switch・SwiftUI Toggle・RN の role=switch・WebKit | 型 switch + value "1" | value "0"(WebKit の indeterminate は "2"。ARIA / RN の語は mixed) |
   | RN の role=checkbox / radio | value に語 `checked` | 語 `unchecked`(OSS の RN は翻訳表が空 = 英語固定) |
   | Compose iOS | selected trait | 何も出さない(Switch だけは型 switch・value 無し = オフと読める) |
-  | Flutter iOS の Radio | selected trait | 何も出さない(engine が value を出さない) |
+  | Flutter iOS の Radio | selected trait | 何も出さない(Flutter engine が value を出さない) |
   | Android | `isChecked`(checkable なら value "1"/"0") | value "0" |
   | DOM(WebView) | value "1" | value "0"(`aria-checked`・`indeterminate` も読む) |
   **value は型で絞って読む**(iOS は switch/checkBox、Android は入力欄以外)—— バッジの数字 "1" や入力欄の
@@ -2563,7 +2561,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   `scrollLeft ×2` 4.3 → 0.47 秒、Flutter の `scrollToLeftEdge` 8.9 → 1.7 秒・`scrollDown ×2` 5.5 → 0.53 秒。
   **scrollFrame 無しは画面中央に揃える**(v113): XCUITest / Android は画面中央を払うが、in-app は UIKit 系が
   「画面のどこかの余地のある最大の容器」、自前描画が「木の順で最初に受理した要素」を動かしていたので、縦リストが
-  中央にある画面で横に払うと画面下のカルーセルが動いた(in-app の Flutter・SwiftUI・RN だけ。4 SUT × 3 エンジンで実測)。
+  中央にある画面で横に払うと画面下のカルーセルが動いた(in-app の Flutter・SwiftUI・RN だけ。4 SUT × 3 構成で実測)。
   いまは UIKit 系が「画面中央を含み余地のある最も内側」、自前描画が「枠が画面中央を含まない要素を部分木ごと飛ばす」
   (`ScrollPointReach`。枠 0 の入れ物は通す)。witness = 05_スクロール S0091 scene 5。
   時間指定は持たない(上記の承認済み差分)。
@@ -2589,7 +2587,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   への**インスタンス毎の準拠**。Compose の AccessibilityElement は `conformsToProtocol:` を
   自前実装しスクロール可能なノードでだけ準拠を名乗る —— 公開プロトコルなので私有 API ではない。
   2026-08-08 PoC: sut-ec-mobile 3画面 + E2E-Flutter で誤検知0・見逃し0。id 無しの容器も
-  snapshot に出すようにした)。**申告できないエンジン(Compose/Flutter の xcuitest)では
+  snapshot に出すようにした)。**申告できないブリッジ(Compose/Flutter の XCUITest ブリッジ)では
   黙る** —— 使ってよいのは true を見つけたときだけで、
   「false = スクロールできない」と読むと誤報になる
 
@@ -2695,7 +2693,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   セーフエリアぶん内側で、内容を潜らせた容器の下端と揃わない(実測: 帯 778..840 / 容器 200..873)。
   採ったのは**容器の中心線のどちら側にあるか**。
   witness は `E2E-iOS/scenarios/17_縁の帯に潜る.swift`(`#btn_under_footer`)で、
-  **効くのは xcuitest だけ** —— in-app エンジンは要素を直接活性化するので座標のヒットテストを
+  **効くのは xcuitest だけ** —— in-app ブリッジは要素を直接活性化するので座標のヒットテストを
   通らず、機能を殺しても緑のままになる
 - **「この木は画面を代表しているか」も MCP と共有する**(2026-08-15。`TreeCoverage`)。
   形は2つで、どちらも**幾何からしか疑えない**(打ち切りと違いブリッジの申告が無い):
@@ -2959,7 +2957,7 @@ iOS Simulator ではアプリのプロセスの描画が壊れ、アプリを起
   `fleetest project create/sync` で Package.swift へ登録していない .swift をそのまま実行する。
   実装は「対象プロジェクトの `scenarios/_runfile/` へコピー → 通常どおり `RunScenarios` へ委譲 →
   実行後に撤去」だけで、**ビルド・プロファイル・レポート・ヒール・並列は通常 run と完全に同一**。
-  - シナリオを**解釈実行**する軽量モードは採らない。実行エンジンが2本になると意味論が必ず分岐し、
+  - シナリオを**解釈実行**する軽量モードは採らない。実行系が2本になると意味論が必ず分岐し、
     生 Swift・`procedure`・ホスト言語の制御構造という DSL 最大の資産を単発実行だけ失う
   - ファイルが既に登録済みターゲットの中にあるならコピーしない(重複クラス定義になる)。
     `_disabled/` はコンパイル対象外なので、退避したままの単発実行はステージ側に回る
@@ -3115,7 +3113,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
   再利用ではない)。決定的なナビ状態リセットはアプリ側の責務で、ツールは状態リセットの注入
   (`SIMCTL_CHILD_FT_RESET` 等)を意図的に提供しない(ユーザー決定・2026-07-20)。
   シナリオ側は scene1 で対象タブをルートへ正規化して吸収する
-- **`launchApp` は全エンジンで常にプロセスを再起動する**(前面化ではない。Android は
+- **`launchApp` は全モードで常にプロセスを再起動する**(前面化ではない。Android は
   ブリッジの force-stop+起動、xcuitest は FastLaunchDriver の terminate 込み launch)。
   「起動済みならプロセス温存でエントリー画面へ」の warm 化は 2026-08-08 に実装・検証まで
   行ったうえで**中止・破棄**した: Android は `am start --activity-clear-task` で成立するが、
@@ -3150,7 +3148,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
   **スクリーンショットも可視な窓を重ねて描く** —— キーウィンドウ1枚だけだと
   「モーダルが写っていない証跡」を残すことになる
 - **inapp は Compose Multiplatform(iOS)の swipe/scrollTo/press を駆動できない**
-  (2026-07-22・`TestProjects/E2E-CMP` で切り分け確定)。同一アプリ・同一シナリオの両エンジン差分:
+  (2026-07-22・`TestProjects/E2E-CMP` で切り分け確定)。同一アプリ・同一シナリオの両モード差分:
   - inapp: `tap`/`type` は通る。`swipe` 4方向・`scrollTo`・`press`(長押し)が**すべて無反応**
   - xcuitest: 同じシナリオが**全て成功**
 
@@ -3171,11 +3169,11 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
      ような誤診断を防ぐ方が価値が高い。
      **409 ではなく 501 なのは意図的**: 409 はキーウィンドウ不在等の一時的競合にも使われるため、
      フォールバック判定に使うと「アプリが前面に無い」状況を隠して別画面を操作しかねない
-     (`/terminate` が既に 501=このエンジンでは未対応 を返している慣習に合わせた)。
+     (`/terminate` が既に 501=このブリッジでは未対応 を返している慣習に合わせた)。
      **スクロール目的(`SwipeRequest.scroll`)だけは 2026-07-31 から in-app で通る** ——
      UIAccessibility の scroll アクション経由(上の「Compose/Flutter のスクロールは
      UIAccessibility の scroll アクションで駆動する」の節)。この段の記述は**ジェスチャ目的に限る**
-  2. **事前ルーティング**(2026-07-23 導入 / 2026-07-31 に swipe を除外): hybrid は in-app と
+  2. **事前ルーティング**(2026-07-23 導入 / 2026-07-31 に swipe を除外): inapp モードは in-app ブリッジと
      XCUITest の両ブリッジを張るので、起動時プローブの **`/status.unsupportedActions`**
      (ブリッジが「この対象アプリでは実行できない」アクション名を申告する)に該当し typeDriver
      ありなら**最初から** typeDriver(`AppAttachDriver`)へ回す
@@ -3188,18 +3186,18 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
      `type` の 409 安全網と同じ形。**press は ref がブリッジごとに別名前空間**なので
      typeDriver 側で snapshot し直して再解決する(`pressViaTypeDriver`)
 
-  これにより **hybrid では Compose でもジェスチャが通る**(`TestProjects/E2E-CMP` の `ios-inapp` が
+  これにより **inapp モードでは Compose でもジェスチャが通る**(`TestProjects/E2E-CMP` の `ios-inapp` が
   18/18・37.3s。導入前は3シナリオ失敗・93.9s)。tap/type/スナップショットは高速な in-app のまま。
-  409 が表面化するのは **typeDriver が無い構成**(engine=inapp 単独・xcuiPort 無し)だけで、
+  409 が表面化するのは **typeDriver が無い構成**(XCUITest ブリッジが無い・xcuiPort 無し)ときだけ。
   そのときはメッセージが xcuitest プロファイルへ誘導する。
   なお `type` の事前ルーティング(`preferTypeDriver`)は別物で廃止済み — Compose でも inapp の
   type が可能かつ高速(266ms vs attach 1.0〜1.3s)なため。ジェスチャは inapp が**不可能**なので
   トレードオフの向きが逆になり、事前ルーティングが常に得になる
 - **「in-app で不可・XCUITest で可」は常に XCUITest へ回す**(2026-07-28 にユーザー決定で一般化)。
-  判定は `DriverError.isEngineIncapable` の1箇所: **501 と「ルート不明の 404」(本文 `not found:` 前置)
+  判定は `DriverError.isBridgeIncapable` の1箇所: **501 と「ルート不明の 404」(本文 `not found:` 前置)
   だけ**。**409 は含めない**(上記の理由。in-app の 404 には ref 不明もあるため本文で見分ける)。
   対象は3つ:
-  - `home` / `appSwitcher`: in-app は自プロセス外を触れないので**原理的に不可**。hybrid では
+  - `home` / `appSwitcher`: in-app は自プロセス外を触れないので**原理的に不可**。inapp モードでは
     501 の往復を作らず最初から XCUITest へ直行する(`FTDriveCore.systemDriver`)。XCUITest 側の
     `/home`・`/appswitcher` は**セッション不要**なので attach も activate も挟まない
   - `drag`(スクロール探索直後の**空打ち極小ドラッグ**): in-app は drag を実装しない。回さないと
@@ -3209,23 +3207,23 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
   - `swipe` / `press`: 既存の申告+事後キャッチ(上記 2〜3)。判定だけ共通化した
 
   **入力系(`pressEnter` / `type(ref: nil)` / `clearInput(ref: nil)`)だけは別の判定で 409 も回す**
-  (`DriverError.isTextInputFallback` = 409 / `isClearInputFallback` = 409 + 422 + isEngineIncapable。
+  (`DriverError.isTextInputFallback` = 409 / `isClearInputFallback` = 409 + 422 + isBridgeIncapable。
   422 は XCUITest ランナーが同じ事情に使う status —— あちらは 409 を使えない(§4.3))。
   **DSL(`StepExecutor`)と `HybridFallbackDriver`(ライブ操作。MCP は iOS を XCUITest だけで動かすので通らない)が同じ判定を通る** ——
-  2026-09-23 まで DSL 側だけがインラインで持っていたため、**同じ hybrid 構成の同じ操作が
+  2026-09-23 まで DSL 側だけがインラインで持っていたため、**同じ inapp モードの同じ操作が
   シナリオでは通るのに `ft_type`(`pressEnter`)/ `ft_clear_input` では 409 で落ちた**
   (maintainer-notes §45.1)。**`withFallback` の既定は変えない** —— あれは tap/swipe/hideKeyboard を
   含む 14 操作と共有で、409 を既定に入れると全部を巻き込む(hideKeyboard は「409 では回さない」と
   決めている)。**`ref` ありは回さない** —— ref はブリッジごとに別名前空間で、この層には
   取り直す手段が無い(DSL は `typeViaTypeDriver` が typeDriver 側の snapshot で取り直す)
-- **MCP(`ft_*`)の iOS のエンジン**(経緯: 2026-08-04 に「実行プロファイルのエンジンに追従する」= in-app / hybrid も
+- **MCP(`ft_*`)の iOS の構成**(経緯: 2026-08-04 に「実行プロファイルのモードに追従する」= inapp モードも
   使う形にしたが、利用者の決定で取り消した。in-app を主にした合成 `HybridFallbackDriver` は今はライブ操作だけが使う)
   - **MCP の iOS は常に XCUITest**(ユーザー決定。in-app は使わない)。profile 無しで in-app のポートに繋いでも
     `ExploreDriverResolver` が同じデバイスの XCUITest へ振り替え(用意できなければ in-app へは落とさず断る)、
-    udid だけの呼び出しは XCUITest のポートを先に採る(`MCPServer.explorationOrder`)。profile ありもエンジンを
+    udid だけの呼び出しは XCUITest のポートを先に採る(`MCPServer.explorationOrder`)。profile ありもモードを
     xcuitest に差し替えて供給する(`resolveProfileTarget`)。理由: in-app の合成タッチは注入される前提で作られて
     いないアプリ(Apple マップの経路カード)で効かないまま ok を返し、別アプリ・システムアラートの扱いでも
-    エンジンを意識させた。システムアラートは `ft_tap alertButton:`(SpringBoard へ向けて押し、`attach` で戻る)
+    ブリッジを意識させた。システムアラートは `ft_tap alertButton:`(SpringBoard へ向けて押し、`attach` で戻る)
   - **宛先そのものも探す**(`BridgeDiscovery`。2026-08-06)。`port` 未指定で既定 8123 が無応答なら
     範囲(8123〜8154)を走査し、**生きているブリッジが1本だけなら自動採用**(採用理由を stderr へ)・
     **複数ならデバイス名付きで列挙してエラー**(別デバイスを黙って操作させない)・0本なら
@@ -3240,8 +3238,8 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     タイムアウト(`bridgeUnreachable`)の素の文言は「未起動 / 遅い / suspend」の**3択を並べるだけ**
     だった —— 実アプリ監査で ft_type がこれで落ち、直後の ft_status は「そのポートにブリッジが無い」と
     一意に答えられた(判定材料はあるのに操作系が使っていなかった)。判定の順序が要:
-    **先に当のポートを `BridgeDiscovery.isBound` で見る**。bound のときの言い分は**エンジンで分ける**
-    (`bridgeBusyHint(connection:engine:)`)—— xcuitest は busy(整定待ちは実測 33.7s /status 無応答 >
+    **先に当のポートを `BridgeDiscovery.isBound` で見る**。bound のときの言い分は**ブリッジで分ける**
+    (`bridgeBusyHint(connection:bridge:)`)—— xcuitest は busy(整定待ちは実測 33.7s /status 無応答 >
     interaction timeout 20s)なので「まだ繋がっている・リトライせよ」だが、**in-app は suspend でも
     kernel が handshake を返すので bound のまま** = リトライは永遠に当たらない助言になる。
     こちらは「ft_launch で前面へ戻すか、その機の xcuitest ポートを使え」。どちらも
@@ -3271,7 +3269,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     `POST /session {"bundleID":"<未インストール>"}` を投げると、無応答(待受のみ)を約5秒挟んで
     10秒以内にランナーが消える。**判定できないときは素通し**(実機・同名デバイス複数・simctl/adb 不調)。
     システムアプリ(springboard/Safari)は `get_app_container` が runtime のパスを返すので弾かれない
-  - **hybrid でも別 bundle(springboard・他アプリ)を開いたら読み書きごと XCUITest へ寄せる**
+  - **inapp モードでも別 bundle(springboard・他アプリ)を開いたら読み書きごと XCUITest へ寄せる**
     (2026-08-06)。`HybridFallbackDriver.launch` は従来**必ず primary(in-app)** へ投げていたが、
     **in-app ブリッジは自分のプロセスの中しか見えない** —— `ft_launch com.apple.springboard` は
     「Launched」と成功を返したうえで、続く snapshot が**アプリ自身の古い木**を返していた
@@ -3279,7 +3277,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     寄せ先は `AppAttachDriver`(fallback)では駄目 —— あれは固定 bundle への attach 専用で
     `launch` が意図的に no-op。**セッションを張れる素の BridgeClient** を別に持たせる
     (`foreignApp`)。自分のアプリへ launch し直すと in-app 主へ戻る。
-    engine を hybrid に固定しても直らない問題なので、**エンジンの選択では解けない**
+    モードを inapp に固定しても直らない問題なので、**モードの選択では解けない**
   - **ホーム画面・システム UI は `ft_launch com.apple.springboard` で読む**(XCUITest 経路のみ)。
     セッションはアプリに閉じているので、未起動での `ft_snapshot` は 409、`ft_navigate home` 後は
     木の読みの前面確認(`requireForegroundApp`)の 422 になる。`BridgeRouter.handleLaunch` は
@@ -3415,7 +3413,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
   - **スクロール残像(ghost)は拒否せず、警告して撃つ**(`RefGuard.ghostWarning`)。
     Compose iOS は容器の外へ出た行をフルフレームで木に残し、`ios-xcuitest` はそれを座標で叩く
     (実測では下部タブへ遷移して "tap done" を返した。`ios-inapp` は要素起動なので当たる =
-    エンジンで割れる)。**応答に「何に当たったかもしれないか」を添え**、一覧の行にも
+    モードで割れる)。**応答に「何に当たったかもしれないか」を添え**、一覧の行にも
     `⚠️scroll-leftover` を出す(`MCPServer.ghostNote` / `ghostFlags`。先頭の注記だけでは、
     行から ref をコピーする動作に届かない)。
 
@@ -3447,7 +3445,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     | ④ 自分の祖先と子孫 | 自分を含む容器を数えない | 「自分より深いものだけ」に絞ると、残像に重なる下部タブ(**浅い**)を見落とす |
     | ⑤ **奥に描かれている相手**(`drawnAbove`) | 奥にある物は覆えない | Apple マップの `#MapsSearchBar` が中の `#userProfileButton` を覆う扱いになる(2026-08-07) |
     | ⑥ **矩形がぴったり同じ相手** | 同寸同位置は「上に載った物」ではなくラッパーか入れ替わり。本物の積み重なりは `stackedRefs` が別に見る | 出ていない `#SearchAutocompleteView` が出ている `#ResultsViewTable` を覆う扱いになる(同 (0,62 402x812)) |
-    | ⑦ **いちばん内側の入れ物より外の枠**(`enclosesAnInnerWrapper`。**z が無いエンジンだけ**) | 「自分を包むもっと小さい何か」ごと包む相手は外枠 | `#HomeView` が `#MapsSearchTextField` を覆う扱いになり、素の `ft_type` が毎回警告付きになる |
+    | ⑦ **いちばん内側の入れ物より外の枠**(`enclosesAnInnerWrapper`。**z が無いブリッジだけ**) | 「自分を包むもっと小さい何か」ごと包む相手は外枠 | `#HomeView` が `#MapsSearchTextField` を覆う扱いになり、素の `ft_type` が毎回警告付きになる |
 
     **⑤の「奥/手前」はブリッジの申告(`ElementInfo.z`)が最優先で、無ければツリー順へ落ちる**。
     ツリー順は描画順の代理として使ってきたが production では裏返る —— Google マップは
@@ -3507,8 +3505,8 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     利用者から見ると原因も打ち手も ghost と同じなので**印を2種類に割らない**。
     **例外はキーボード被覆**(ユーザー決定 2026-09-14。`MCPServer.keyboardRefusal`): 中心がソフト
     キーボードの下にある要素への ref 操作(tap / long_press / type / clear / double_tap・batch の1手目)は
-    **両エンジンとも断る**。ghost と違って結果が確実で副作用がある —— XCUITest はキーの上に指が落ちて
-    焦点の欄に文字が入り(実機 SE3・`#tab_about` で「o」)、in-app は 422 で断っていた = エンジンで
+    **両ブリッジとも断る**。ghost と違って結果が確実で副作用がある —— XCUITest はキーの上に指が落ちて
+    焦点の欄に文字が入り(実機 SE3・`#tab_about` で「o」)、in-app は 422 で断っていた = ブリッジで
     割れていた。判定は ref 形・DSL と同じ `KeyboardOcclusion`(chrome 除外済み)。**座標形は断らない**
     (キーを押す意図があり得る。`keyboardCoordinateWarning` で警告)。**DSL の tap は据え置き**(注記)
     誤検知ゲートの回し方は docs/verification.md(**自前 SUT だけでは足りない** ——
@@ -3558,7 +3556,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     候補行への ref タップが顔文字キーに化けて検索欄を汚し、Android は Gboard の
     レイアウト選択シート下の候補タップが IME の「QWERTY」選択に化けた —— どちらも無警告。
     だから**ブリッジが `SnapshotResponse.keyboardFrame` で実矩形を申告する**:
-    | エンジン | 取得元 | 罠 |
+    | ブリッジ | 取得元 | 罠 |
     |---|---|---|
     | iOS xcuitest | 走査中に見た `.keyboard` ノードの frame | — |
     | iOS in-app | `keyboardWillChangeFrame` 通知の最新値 | **TextEffects window の frame を使ってはいけない**(開いていても全画面 (0,0 402x874) が返り、画面上部の要素まで誤警告する。`UIInputSetHostView` のクラス名走査も iOS 27 で不発 — どちらも実測)。通知値が無ければ frame は申告しない(誤検知側に倒さない) |
@@ -3646,7 +3644,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     `ScrollGeometry` の呼び出し・マージン定数・容器解決・fail-fast は全部あちらに1本化されている。
     **直に `driver.swipe(_:intent:path:)` を叩いてはいけない**: in-app ブリッジは Compose/Flutter で
     領域指定つきスクロールを 501 で拒否する設計で、その 501→XCUITest フォールバックは
-    `StepExecutor.swipeWithFallback` にしか無い(直叩きだと in-app 単独エンジンで 501 のまま終わる)。
+    `StepExecutor.swipeWithFallback` にしか無い(直叩きだと in-app ブリッジ単独で 501 のまま終わる)。
     **`direction` は指の向きのまま渡す**(action `"scroll"` は指の向きとして読む。逆写像は不要)。
     - **`scroll` アクションは `scrollFrameRect` を見ていなかった**(2026-08-12 に発見・修正)。
       `flick`/`scrollTo` は rect を先に見るのに `scroll` だけが locator しか見ず、木を撮る条件も
@@ -3688,7 +3686,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
   - **`ft_navigate back` は「画面が変わった」と断言しない**(2026-08-06)。iOS の back は端の swipe で、
     自前ナビの画面(`#btn_back` を持つ SwiftUI 等)では**1px も動かない**(E2E-iOS で2回とも不変)。
     アプリの外へ出ることもあるので、両方を注記に書く。
-  - **エンジン切替の案内には「アプリが起動し直る」まで書く**(`iosEngineHint` 末尾。2026-08-06。
+  - **モード切替の案内には「アプリが起動し直る」まで書く**(`iosModeHint` 末尾。2026-08-06。
     2026-08-08 に苦情を受けて1文へ圧縮したが、この事実は残した)。
     dylib は起動時にしか差し込めないので、in-app ブリッジの初回起動はアプリを再起動する。
     書かないと、案内に従った瞬間に探索中の画面が消え、**ホーム画面へ同じ座標のジェスチャが撃たれる**
@@ -3721,7 +3719,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     ネイティブの `scrollView`/`table`/`collectionView` 自体は直前の版58/57の免除で
     identifier 無しでも残るようになったため、②は現在では主にブリッジがそもそもスクロール容器と
     認識しない相手(web ページの入れ子 `overflow-x` 等)で起きる):
-    ①**エンジンが申告できない**(Compose/Flutter の自前描画容器)/
+    ①**ブリッジが申告できない**(Compose/Flutter の自前描画容器)/
     ②**容器がスナップショットに載っていない**。認識されない容器は `BridgeRouter.isEligible` の
     `default` 分岐、in-app は `.other` へ写るので、**identifier が空なら除外**される
     (Android も resource-id が無い容器は同じ)。**`scrollFrame:` は名前を要求するので、
@@ -3866,7 +3864,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     (`snapshotBody(foldsSelectorTables:)`。事実 = ×N は残す)。操作の応答では**操作できる要素を含む群だけ**を並べる
     (`NoteCatalog.Input.actionResponse`。レイアウト容器だけの群は撃つ相手にならない)。満額は `ft_snapshot` だけ = セレクタを書くために読む口。
     **ベンチ(`Scripts/mcp-bench.sh`)での手数の確認は未実施**(計測4回続けて全エージェントが冗長と指摘した量の削減)。
-    **初出だけ満額の注記(`once` / `onceNonEmpty`)の鍵はデバイス(engineKey)ごと**(`MCPServer.noteScope`)——
+    **初出だけ満額の注記(`once` / `onceNonEmpty`)の鍵はデバイス(sessionKey)ごと**(`MCPServer.noteScope`)——
     1つのサーバを2つのエージェントが別のデバイスで共有すると、2人目は初出を見ていないのに「初出の注記を見よ」と言われた。
     **ft_launch / ft_clear_app_data でそのデバイスの鍵を忘れる**(`resetOnceNotes`)—— サーバはプロセスの寿命で鍵を持つので、
     前の呼び手が初出を見ていると次の呼び手は最初の操作から短縮形を受け取った。表の定型フッター(「Tap these by ref…」)も初出だけ
@@ -3907,7 +3905,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
   - この追従によって、**マップ系ジェスチャの MCP と実行の食い違いが消えた**(2026-08-04)。
     `profile` 付きなら iOS の Compose でもダブルタップが、Flutter でもピンチが効く。
     `profile` 無しは XCUITest 経路のままなのでこの2つが効かず、応答テキストに切り分けを添える
-    (`MCPServer.iosEngineHint`)。表と実測は docs/commands.md
+    (`MCPServer.iosModeHint`)。表と実測は docs/commands.md
 - **XCUITest ランナーは「操作の失敗」でプロセスごと落ちる**(Xcode 27 beta のツールチェーン不具合。
   2026-07-28 にクラッシュレポートで確定)。XCUI の失敗は `_XCUIFailWithError` が issue を記録するが、
   ブリッジのハンドラは **main queue 上 = テストメソッドのスタックの外**で動く
@@ -3946,7 +3944,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
   次のステップの snapshot で ref が振り直されて復帰する(StepExecutor は各アクションの前に必ず
   snapshot するので、実際の損失は最大1ステップ)。ref を使わない操作(snapshot/screenshot/swipe/
   座標指定 tap/press/drag/home/appSwitcher)だけ 1 回再試行する。
-  in-app/hybrid 経路には入れない(InAppDriver の 409 は意味が違う)
+  inapp モードの経路には入れない(InAppDriver の 409 は意味が違う)
 - **`.型[n]` の n は「現在画面に見えている同型要素のツリー順」**。圧縮スナップショットは画面外要素を
   含まないため、序数は**スクロール位置と画面クロム(戻るボタン・下部タブ)に依存する**。
   レイアウト変更で黙ってずれるので、序数セレクタは実スナップショットで採取してから書く
@@ -4083,14 +4081,14 @@ targeting = bundletool にしか決められない。feature module を足した
   が受け付けるのは前者だけ。Identifier を書いても解決はする)。Android 実機の `serial` は
   `adb devices` の左列(WiFi 接続なら `192.168.1.23:5555` 形式)
 - 拡張のデバイスピッカー(「+既存から選択」)が接続中の実機を出すので、手書きしなくてよい
-- **iOS 実機も in-app / hybrid に対応する**(開発署名のアプリのみ。ユーザー決定 2026-10-22)。供給が、注入する dylib を
+- **iOS 実機も inapp モードに対応する**(開発署名のアプリのみ。ユーザー決定 2026-10-22)。供給が、注入する dylib を
   アプリと同じチームの証明書で署名(`InAppCodeSign`。leaf 証明書の SHA-1 で `codesign`)→ `devicectl` でアプリの
   データコンテナへ置き → `DYLD_INSERT_LIBRARIES` 付きで `devicectl process launch` → iproxy のトンネル(XCUITest 実機と同じ
-  `IOSDeviceTransport`)で到達する。**開発署名(get-task-allow)でないアプリは注入できないので、供給が engine を
+  `IOSDeviceTransport`)で到達する。**開発署名(get-task-allow)でないアプリは注入できないので、供給がモードを
   `xcuitest` へ黙って縮退する**(`BridgeProvisioner`。`InAppCodeSign.inspect`)。サンドボックスのシナリオは codesign も iproxy も
   起こせないので、**署名・配置・トンネルは供給(親)でだけ**行い、シナリオの起こし直しは署名済み dylib の再コピー + `devicectl`
   起動だけにする(`clearAppData` = 実機では再インストール = データコンテナごと消えるため、起こし直しのたびに再コピーする)。
-  hybrid の実機は in-app と XCUITest の2本のトンネルを同じデバイスに張る(`IOSDeviceTransport.establish` の `keepPeerPorts` で
+  inapp モードの実機は in-app ブリッジと XCUITest ブリッジの2本のトンネルを同じデバイスに張る(`IOSDeviceTransport.establish` の `keepPeerPorts` で
   相方のトンネルを消さない)。実機の in-app ブリッジは `FT_BIND_ALL=1` で全インターフェースに bind しトークンを要求する
   (XCUITest 実機と同じ fail-closed)。**ディスパッチした実機**では、運ばれるアプリが発行側の証明書で署名されていて
   ランナー機に鍵が無いことがある。**発行側がステージングのときに同じ証明書で device 用 dylib に署名し、アプリの隣
@@ -4348,11 +4346,11 @@ attach したままの XCUITest セッションは、ランナーに問い合わ
 §interop WebView)。時間閾値にしないのは、短いギャップでも確率的に落ちる実測があり安全な
 境界を引けないため。false は `FT_PRE_ACTION_PING=0` として注入される(`FTCore.RunEnvironment`
 が唯一の定義元 —— ProfileRunner / ApiRunCommand の profile 有無2経路 / Fleetest.swift の
-profile 無し経路と、fleetest-mcp の resolveProfileTarget から呼ばれる)。**効くのは hybrid の
+profile 無し経路と、fleetest-mcp の resolveProfileTarget から呼ばれる)。**効くのは inapp モードの
 domInterop 経路だけ**(委譲モード・xcuitest
-エンジンは毎ステップ ランナーが働くので元から出ない)。コストは該当画面のイベント1回につき
+モードは毎ステップ ランナーが働くので元から出ない)。コストは該当画面のイベント1回につき
 約 +0.4 秒で、スイート全体では並列に隠れて差が出ない(25周比較 88.9s vs 90.0s)。
-UI は実行プロファイル設定の iOS セクション(inapp エンジン ON のときだけ表示)。
+UI は実行プロファイル設定の iOS セクション(iOS のモードが inapp のときだけ表示)。
 
 `record`(既定 true。`--profile` を使わない実行だけは false)が true のとき、各ワーカー(デバイス)で run 全体を録画し続けつつ
 (iOS: `simctl io recordVideo` の .mov / Android: `screenrecord` の 180 秒セグメント群)、
@@ -4482,7 +4480,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
    BridgeLauncher(xctestrun FT_PORT 注入)で起動・waitUntilReady。シミュレータの新規作成はしない
    (同名複数の曖昧時は UDID 明記を推奨)。Android は AndroidDeviceCatalog で avd 照合。
    コールド起動は「プランニング(ポート採番、直列)→ 共有ビルド(dylib/xctestrun、直列)→
-   起動(デバイス単位で並列。hybrid の 2 ブリッジはデバイス内直列)」(performance-tuning §3.2)。
+   起動(デバイス単位で並列。inapp モードの 2 ブリッジはデバイス内直列)」(performance-tuning §3.2)。
    **run は終了時にブリッジを停止しない**(常駐を残すのが仕様。次の run が再利用する)
 4. **自動インストール**: `appPath` あり+`autoInstall`(**未指定の既定は appPath/appPathPhysical の有無**。
    `false` 明示で opt-out)→ オーケストレータ投入前に各ワーカーへ並行 install
@@ -4925,16 +4923,16 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     `testRunActive` の間 false)
   - **run 開始時の home は in-app ブリッジを持つデバイスには撃たない**(実測 2026-09-09。
     `ProfileWorkerFactory.homeOnStartPlan`): 発端は「`RunWorker.driver` が in-app ブリッジ宛で
-    `/home` のルートが無く、hybrid でも 18 台すべてが 0/N = homeOnStart が一度も効いていなかった」
+    `/home` のルートが無く、inapp モードでも 18 台すべてが 0/N = homeOnStart が一度も効いていなかった」
     (黒画面の予防措置。2026-08-11 の実測が根拠)。XCUITest ブリッジ側へ回して**効くようにしたら
     退行した** —— home はアプリを背面へ送り、in-app ブリッジは**そのアプリの中に居る**ので
     無応答になる。供給が壊れたブリッジと見て停止・張り直しに入り、**3機で13台がワーカーから脱落**
-    (結果は緑のままだが手元の run が 50s → 136s)。よって engine=inapp/hybrid は対象外にし、
-    撃てるデバイス(xcuitest 単独・Android)だけ `systemUIClient` 経由で XCUITest ブリッジへ回す。
-    **判定は engine で行う**(hybrid は xcuiPort も持つので、xcuiPort の有無で決めると同じ穴に落ちる)。
+    (結果は緑のままだが手元の run が 50s → 136s)。よって inapp モードは対象外にし、
+    撃てるデバイス(xcuitest モード・Android)だけ `systemUIClient` 経由で XCUITest ブリッジへ回す。
+    **判定はモードで行う**(inapp モードは xcuiPort も持つので、xcuiPort の有無で決めると同じ穴に落ちる)。
     宛先の決定自体は `systemUIClient` の1箇所で、残存アラートの警告(`warnOnResidualSystemAlerts`)と共有。
-    **hybrid で黒画面の予防を復活させるなら「home → アプリを再前面化」が要る**(未検証。
-    現状は既定エンジンで予防が効かないままだが、2026-08-11 以降その実害の報告は無い)
+    **inapp モードで黒画面の予防を復活させるなら「home → アプリを再前面化」が要る**(未検証。
+    現状は既定の inapp モードで予防が効かないままだが、2026-08-11 以降その実害の報告は無い)
   - **一括起動/停止の最中はブリッジ無応答を数えない**(実害 2026-09-09。
     `monitorBridgeWatchdog`): 供給中のデバイス(10 秒後に ready)へ「booted が5回連続したためブリッジ
     無応答とみなします」を出していた。修復は既存の門で止まっていたので実害は誤検知の警告だけだが、
@@ -5391,7 +5389,7 @@ run → monitor 方向の `RunLease`(§12 の「監視と実行の協調」)は�
 - `launch` 前に `simctl get_app_container <udid> <bundleID>` で導入確認し、未導入は launch を
   呼ばず即時エラーにする(ランナーは生存)。システムアプリも判定可(実測)。確認済み
   bundleID はインスタンス内キャッシュ
-- 配線: xcuitest エンジンのシナリオ実行時、`DriverConnection.udid` が届く場合のみ
+- 配線: xcuitest モードのシナリオ実行時、`DriverConnection.udid` が届く場合のみ
   `ScenarioRunnerMain` が BridgeClient をラップ。udid 供給元は ProfileWorkerFactory / MCPServer
 - 教訓: 当初「2ランナー競合」を凍結の主犯と推定したが、本番構成の通し run で監視中シムに
   第2ランナーが共存しても凍結しないことを確認。主犯は「未導入 app の launch」
@@ -5404,7 +5402,7 @@ run → monitor 方向の `RunLease`(§12 の「監視と実行の協調」)は�
 
 **(a) 宛先の本人確認**: `XCUIBridgeResolver.resolve` が返した宛先は `FTCore.BridgeIdentityCheck`
 (F8b・2026-09-15。run 側の `RunOrchestrator.bridgeUnreachable` 再プローブと同じ判定)で `--udid` と
-突き合わせる(hybrid の in-app 側は別ポート = 別ブリッジなので `composeDriver` がそちらも別に
+突き合わせる(inapp モードの in-app ブリッジ側は別ポート = 別ブリッジなので `composeDriver` がそちらも別に
 確認する)。以前ライブ操作にはこの確認が無く、実害が出た(実地 2026-09-22): `api live serve
 --udid <デバイスA>` を `--port` なしで起こすと既定 8123 に居た**別のデバイスのブリッジ**を掴み、
 `actionResult.app` が別のデバイスで動いていたアプリを返した(操作もそちらへ飛んだ)。さらに
@@ -5435,7 +5433,7 @@ run → monitor 方向の `RunLease`(§12 の「監視と実行の協調」)は�
   プロセス。読めない相手を根拠に宛先を変えない。畳んだままだと、別のデバイスのブリッジが居るポートを宛先に採り、その後の自動起動が
   そこへ自分のブリッジを立てて**占有者の生きたランナーを残骸として殺す**
   (実地 2026-09-23: 既定ポート 8123 で実機2台が殺し合った。maintainer-notes §46.1/§46.3)。
-  `--port` 明示の宛先は従来どおり素通し(利用者の指定を勝手に変えない)で、hybrid の in-app 側
+  `--port` 明示の宛先は従来どおり素通し(利用者の指定を勝手に変えない)で、inapp モードの in-app ブリッジ側
   (`composeDriver`)も素通し —— in-app は背面へ回ると答えないので、ここで断ると通常の遷移で
   serve が開けなくなる
 - `checkAndRestartIfStale`(§12.2 の自己修復と同系統だが、ライブ操作の宛先だけを見る)も
@@ -5450,9 +5448,9 @@ run → monitor 方向の `RunLease`(§12 の「監視と実行の協調」)は�
 `{"cmd":"launch","bundle":"no.such.app.live"}` で**そのコマンドが30秒刺さり、
 "A single command stalled for over 30s — force-quitting (command watchdog)" で serve が落ち、
 再起動時に健全なランナーまで掃除して起動し直しになった**(実地 2026-09-22。`XCUIApplication` は
-実在しない bundleID で返ってこない)。素通ししてよいのは Android と in-app エンジン(ランナーが
+実在しない bundleID で返ってこない)。素通ししてよいのは Android と in-app ブリッジ(ランナーが
 死なない経路)だけで、`com.apple.springboard` は門の外 —— §13.2/MCP と同じ切り分け
-(`InstalledAppCheck.launchGuard`)。own app(hybrid で in-app が既に繋がっているアプリ)への
+(`InstalledAppCheck.launchGuard`)。own app(inapp モードで in-app ブリッジが既に繋がっているアプリ)への
 launch/activate はライブ操作側で門より前に素通しする(in-app は XCUITest を経由しないので
 未導入検査そのものが要らない)。
 
@@ -5703,7 +5701,7 @@ CoreSimulator.framework を直接叩き、`SimulatorCatalog.devices()` が直叩
 - セレクタ欠落(Xcode 版差)は列挙ごと nil → simctl へ(部分的な混在結果を返さない)。
   等価性は UDID/booted 集合の完全一致を live テストで担保
   (Tests/FTBridgeClientTests/SimulatorCatalogCoreSimTests.swift、FT_LIVE_SIM=1)
-- ステップ実行(tap ~490ms)は XCUITest エンジン内部コストでこの施策の対象外。
+- ステップ実行(tap ~490ms)は XCUITest ブリッジ内部コストでこの施策の対象外。
   HID 注入バイパスは評価済み不採用(backboardd クラッシュ)・再提案しない
 
 **適用範囲は列挙だけではない**(2026-08-02 拡張)。シナリオ毎に1回走る simctl 往復2つも
@@ -5727,9 +5725,9 @@ CoreSimulator.framework を直接叩き、`SimulatorCatalog.devices()` が直叩
 
 ## 木はどこから来るか(WebView / ブラウザの一覧)
 
-**軸は2つ**(対象 × エンジン)。ここが唯一の一覧で、以下の節はその詳細。
+**軸は2つ**(対象 × ブリッジ)。ここが唯一の一覧で、以下の節はその詳細。
 
-| 対象 | エンジン | 木の出どころ | 殺しスイッチ |
+| 対象 | ブリッジ | 木の出どころ | 殺しスイッチ |
 |---|---|---|---|
 | 自作アプリの WebView | Android の a11y ブリッジ | **DOM**(CDP。`webView` ノードがある画面だけ) | `FT_WEBVIEW_DOM=off` |
 | 自作アプリの WebView | iOS **in-app** | **DOM**(`InAppWebViewDOM`) | `FT_WEBVIEW_DOM=off` |
@@ -5740,7 +5738,7 @@ CoreSimulator.framework を直接叩き、`SimulatorCatalog.devices()` が直叩
 `FT_BROWSER_DOM` = ブラウザ本体(OS 共通)。**1つに束ねない** —— 束ねると
 「ブラウザだけ止めて A/B」が取れない。
 
-**iOS in-app が DOM なのは別の事情**: あちらは in-app エンジンから WKWebView の a11y ツリーが
+**iOS in-app が DOM なのは別の事情**: あちらは in-app ブリッジから WKWebView の a11y ツリーが
 そもそも見えない(別プロセス提供)。
 
 **Android の自作アプリが DOM なのは版差**(2026-08-15。詳細は次節「Android の自作アプリも

@@ -21,14 +21,14 @@ final class PlanBridgeTests: XCTestCase {
 
     private func plan(running: [UInt16: BridgeProvisioner.RunningBridge],
                       sim: SimDeviceInfo,
-                      starting: [String: [UInt16]] = [:]) throws -> BridgeProvisioner.EnginePlan {
+                      starting: [String: [UInt16]] = [:]) throws -> BridgeProvisioner.BridgePlan {
         let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130,
                                             // この Mac で生きているブリッジ(lsof)に結果を左右させない
                                             portHeldByAnotherDevice: { _, _ in false })
         var claimed: Set<UInt16> = []
         var used = Set(running.keys)
         return try provisioner.planBridge(
-            engine: "xcuitest", preferred: nil, name: sim.name, sim: sim, bundleID: nil,
+            bridge: "xcuitest", preferred: nil, name: sim.name, sim: sim, bundleID: nil,
             appIsCurrent: [:], preinstallAppPath: nil, running: running, starting: starting,
             claimed: &claimed, usedPorts: &used)
     }
@@ -39,7 +39,7 @@ final class PlanBridgeTests: XCTestCase {
     func testAdoptsStartingRunnerInsteadOfLaunchingSecond() throws {
         let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
         let running: [UInt16: BridgeProvisioner.RunningBridge] = [
-            8123: .init(udid: "UDID-OTHER", name: "iPhone 17 Pro", engine: "xcuitest",
+            8123: .init(udid: "UDID-OTHER", name: "iPhone 17 Pro", bridge: "xcuitest",
                         protocolVersion: BridgeAPI.bridgeProtocolVersion, sessionBundleID: nil),
         ]
         guard case .adopt(let port) = try plan(running: running, sim: sim,
@@ -60,7 +60,7 @@ final class PlanBridgeTests: XCTestCase {
         let phone = SimDeviceInfo(udid: "00008130-0018", name: "iPhone wave(実機)",
                                   os: "iOS 26.6", booted: true, physical: true)
         let running: [UInt16: BridgeProvisioner.RunningBridge] = [
-            8143: .init(udid: "00008130-0018", name: "iPhone", engine: "xcuitest",
+            8143: .init(udid: "00008130-0018", name: "iPhone", bridge: "xcuitest",
                         protocolVersion: BridgeAPI.bridgeProtocolVersion, sessionBundleID: nil),
         ]
         guard case .reuse(let port) = try plan(running: running, sim: phone) else {
@@ -75,7 +75,7 @@ final class PlanBridgeTests: XCTestCase {
         let phone = SimDeviceInfo(udid: "00008130-0018", name: "iPhone wave(実機)",
                                   os: "iOS 26.6", booted: true, physical: true)
         let running: [UInt16: BridgeProvisioner.RunningBridge] = [
-            8143: .init(udid: nil, name: "iPhone", engine: "xcuitest",
+            8143: .init(udid: nil, name: "iPhone", bridge: "xcuitest",
                         protocolVersion: BridgeAPI.bridgeProtocolVersion, sessionBundleID: nil),
         ]
         guard case .launch = try plan(running: running, sim: phone) else {
@@ -87,7 +87,7 @@ final class PlanBridgeTests: XCTestCase {
     func testReuseWinsOverAdopt() throws {
         let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
         let running: [UInt16: BridgeProvisioner.RunningBridge] = [
-            8125: .init(udid: "UDID-A", name: "iPhone 17 Pro", engine: "xcuitest",
+            8125: .init(udid: "UDID-A", name: "iPhone 17 Pro", bridge: "xcuitest",
                         protocolVersion: BridgeAPI.bridgeProtocolVersion, sessionBundleID: nil),
         ]
         guard case .reuse(let port) = try plan(running: running, sim: sim,
@@ -109,7 +109,7 @@ final class PlanBridgeTests: XCTestCase {
     func testReusesNilUdidBridgeByName() throws {
         let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
         let running: [UInt16: BridgeProvisioner.RunningBridge] = [
-            8125: .init(udid: nil, name: "iPhone 17 Pro", engine: "xcuitest",
+            8125: .init(udid: nil, name: "iPhone 17 Pro", bridge: "xcuitest",
                         protocolVersion: BridgeAPI.bridgeProtocolVersion, sessionBundleID: nil),
         ]
         guard case .reuse(let port) = try plan(running: running, sim: sim) else {
@@ -122,7 +122,7 @@ final class PlanBridgeTests: XCTestCase {
     func testDoesNotReuseNilUdidWithDifferentName() throws {
         let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
         let running: [UInt16: BridgeProvisioner.RunningBridge] = [
-            8125: .init(udid: nil, name: "iPad Pro", engine: "xcuitest",
+            8125: .init(udid: nil, name: "iPad Pro", bridge: "xcuitest",
                         protocolVersion: BridgeAPI.bridgeProtocolVersion, sessionBundleID: nil),
         ]
         guard case .launch = try plan(running: running, sim: sim) else {
@@ -134,7 +134,7 @@ final class PlanBridgeTests: XCTestCase {
     func testReusesByUdidWhenPresent() throws {
         let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
         let running: [UInt16: BridgeProvisioner.RunningBridge] = [
-            8127: .init(udid: "UDID-A", name: "iPhone 17 Pro", engine: "xcuitest",
+            8127: .init(udid: "UDID-A", name: "iPhone 17 Pro", bridge: "xcuitest",
                         protocolVersion: BridgeAPI.bridgeProtocolVersion, sessionBundleID: nil),
         ]
         guard case .reuse(let port) = try plan(running: running, sim: sim) else {
@@ -145,14 +145,14 @@ final class PlanBridgeTests: XCTestCase {
 
     private func planInApp(bundleID: String,
                            running: [UInt16: BridgeProvisioner.RunningBridge],
-                           sim: SimDeviceInfo) throws -> BridgeProvisioner.EnginePlan {
+                           sim: SimDeviceInfo) throws -> BridgeProvisioner.BridgePlan {
         let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130,
                                             // この Mac で生きているブリッジ(lsof)に結果を左右させない
                                             portHeldByAnotherDevice: { _, _ in false })
         var claimed: Set<UInt16> = []
         var used = Set(running.keys)
         return try provisioner.planBridge(
-            engine: "inapp", preferred: nil, name: sim.name, sim: sim, bundleID: bundleID,
+            bridge: "inapp", preferred: nil, name: sim.name, sim: sim, bundleID: bundleID,
             appIsCurrent: [:], preinstallAppPath: nil, running: running,
             claimed: &claimed, usedPorts: &used)
     }
@@ -161,7 +161,7 @@ final class PlanBridgeTests: XCTestCase {
     func testInAppReusesOnlyMatchingBundleID() throws {
         let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
         let running: [UInt16: BridgeProvisioner.RunningBridge] = [
-            8125: .init(udid: "UDID-A", name: "iPhone 17 Pro", engine: "inapp",
+            8125: .init(udid: "UDID-A", name: "iPhone 17 Pro", bridge: "inapp",
                         protocolVersion: BridgeAPI.bridgeProtocolVersion,
                         sessionBundleID: "com.example.appA"),
         ]
@@ -178,7 +178,7 @@ final class PlanBridgeTests: XCTestCase {
     func testInAppDoesNotReuseForeignBundleID() throws {
         let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
         let running: [UInt16: BridgeProvisioner.RunningBridge] = [
-            8125: .init(udid: "UDID-A", name: "iPhone 17 Pro", engine: "inapp",
+            8125: .init(udid: "UDID-A", name: "iPhone 17 Pro", bridge: "inapp",
                         protocolVersion: BridgeAPI.bridgeProtocolVersion,
                         sessionBundleID: "com.example.appA"),
         ]
@@ -194,7 +194,7 @@ final class PlanBridgeTests: XCTestCase {
     func testInAppDoesNotReuseUnknownBundleID() throws {
         let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
         let running: [UInt16: BridgeProvisioner.RunningBridge] = [
-            8125: .init(udid: "UDID-A", name: "iPhone 17 Pro", engine: "inapp",
+            8125: .init(udid: "UDID-A", name: "iPhone 17 Pro", bridge: "inapp",
                         protocolVersion: BridgeAPI.bridgeProtocolVersion,
                         sessionBundleID: nil),
         ]
@@ -211,7 +211,7 @@ final class PlanBridgeTests: XCTestCase {
     func testInAppDoesNotReuseStaleProtocolVersion() throws {
         let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
         let running: [UInt16: BridgeProvisioner.RunningBridge] = [
-            8125: .init(udid: "UDID-A", name: "iPhone 17 Pro", engine: "inapp",
+            8125: .init(udid: "UDID-A", name: "iPhone 17 Pro", bridge: "inapp",
                         protocolVersion: BridgeAPI.bridgeProtocolVersion - 1,
                         sessionBundleID: "com.example.appA"),
         ]
@@ -227,7 +227,7 @@ final class PlanBridgeTests: XCTestCase {
     func testInAppDoesNotReuseBridgeWithoutProtocolVersion() throws {
         let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
         let running: [UInt16: BridgeProvisioner.RunningBridge] = [
-            8125: .init(udid: "UDID-A", name: "iPhone 17 Pro", engine: "inapp",
+            8125: .init(udid: "UDID-A", name: "iPhone 17 Pro", bridge: "inapp",
                         protocolVersion: nil,
                         sessionBundleID: "com.example.appA"),
         ]

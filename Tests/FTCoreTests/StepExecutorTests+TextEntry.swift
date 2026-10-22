@@ -37,13 +37,13 @@ extension StepExecutorTests {
     }
 
     /// **システムダイアログの形**: iOS の権限ダイアログは SpringBoard が別プロセスで
-    /// 描くので、**アプリ側の木には1件も現れない**。hybrid ではこのとき fallbackDriver
+    /// 描くので、**アプリ側の木には1件も現れない**。inapp モードではこのとき fallbackDriver
     /// (SystemUIDriver = springboard 参照)だけが持っているので、`tap("許可")` は
     /// フォールバック経由で解決して**そちらのドライバで撃つ**必要がある。
     ///
     /// 既存の fallback テストは「primary にも何かある」形(substring vs exact)しか見ておらず、
     /// **primary が空**というこの形は未カバーだった。docs/commands.md §システムダイアログ(iOS)
-    /// が「hybrid なら普通に書ける」と約束している経路の砦
+    /// が「inapp モードなら普通に書ける」と約束している経路の砦
     func testTapResolvesViaFallbackWhenPrimaryTreeHasNothing() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
@@ -969,7 +969,7 @@ extension StepExecutorTests {
     /// **422 も 409 と同じ扱い**にすること。XCUITest ランナーは同じ事情(フォーカス欄が無い/
     /// 消し切れない)を 409 では返せない — 409 は SessionRecoveryDriver がセッション消失と
     /// 断定して activate を撃つため 422 に分けてある(BridgeRouter.handleClear)。
-    /// ここを 409 だけに戻すと、hybrid の in-app→XCUITest の再試行が丸ごと不発になる
+    /// ここを 409 だけに戻すと、inapp モードの in-app→XCUITest の再試行が丸ごと不発になる
     func testClearInput422FallsBackToTypeDriverLike409() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,

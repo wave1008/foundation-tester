@@ -13,8 +13,8 @@ import FTCore
 final class BridgeDiscoveryTests: XCTestCase {
 
     private func found(_ port: UInt16, _ device: String = "iPhone 17 Pro",
-                       _ engine: String = "xcuitest") -> BridgeDiscovery.Found {
-        BridgeDiscovery.Found(port: port, device: device, engine: engine)
+                       _ bridge: String = "xcuitest") -> BridgeDiscovery.Found {
+        BridgeDiscovery.Found(port: port, device: device, bridge: bridge)
     }
 
     /// 既定ポートが生きていれば探索結果に関わらずそれを使う(従来挙動を変えない)
@@ -123,7 +123,7 @@ final class BridgeDiscoveryTests: XCTestCase {
 
     private func physicalStatus(udid: String?) -> StatusResponse {
         var status = StatusResponse(ready: true, device: "iPhone", osVersion: "27.0", sessionBundleID: nil)
-        status.engine = "xcuitest"
+        status.bridge = "xcuitest"
         status.udid = udid
         return status
     }
@@ -133,10 +133,10 @@ final class BridgeDiscoveryTests: XCTestCase {
         BridgeDeviceRecord.persist(udid: se3, port: 8123, repoRoot: root)
         let status = BridgeDiscovery.statusForIdentityCheck(physicalStatus(udid: nil), port: 8123, repoRoot: root)
         XCTAssertEqual(status.udid, se3, "申告が無ければ記録で補う")
-        let expected = BridgeIdentityCheck.Expected(port: 8123, udid: wave, physical: true, engine: "xcuitest")
+        let expected = BridgeIdentityCheck.Expected(port: 8123, udid: wave, physical: true, bridge: "xcuitest")
         XCTAssertFalse(BridgeIdentityCheck.matches(expected: expected, status: status),
                        "記録が別の実機なら、そのブリッジを自分のものとして掴まない")
-        let own = BridgeIdentityCheck.Expected(port: 8123, udid: se3, physical: true, engine: "xcuitest")
+        let own = BridgeIdentityCheck.Expected(port: 8123, udid: se3, physical: true, bridge: "xcuitest")
         XCTAssertTrue(BridgeIdentityCheck.matches(expected: own, status: status), "記録が自分なら一致")
     }
 
@@ -269,7 +269,7 @@ final class BridgeDiscoveryTests: XCTestCase {
 
     /// 答えた1本と**同じ端末の** in-app(背面のアプリ)だけが黙っているなら採る。別の端末・持ち主不明の in-app は数える
     func testSilentInAppOfTheSameDeviceDoesNotBlockAdoption() {
-        let answered = BridgeDiscovery.Found(port: 8124, device: "iPhone 17 Pro", engine: "xcuitest", udid: "UD-1")
+        let answered = BridgeDiscovery.Found(port: 8124, device: "iPhone 17 Pro", bridge: "xcuitest", udid: "UD-1")
         let ownInApp = BridgeDiscovery.Silent(port: 8132, udid: "UD-1", isInApp: true)
         XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: false,
                                               found: [answered], silent: [ownInApp]), .adopt(answered))

@@ -11,7 +11,7 @@ extension StepExecutor {
     func executeDirectSwipe(step: FlowStep, phase: inout PhaseAccumulator) async throws -> StepOutcome {
         let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
         // **未指定でも撮る**: キーボード表示中かどうかは snapshot でしか
-        // 分からない。キーボードが無ければ path は nil のまま = エンジン既定(1バイトも
+        // 分からない。キーボードが無ければ path は nil のまま = ブリッジ既定(1バイトも
         // 変わらない)。**path を付けるのはキーボードがあるときだけ** —— in-app の
         // contentOffset 経路はキーボードに塞がれないが、座標つきは Compose/Flutter で
         // 501 を返すため、swipeWithFallback が XCUITest の実ジェスチャへ回す
@@ -34,7 +34,7 @@ extension StepExecutor {
     }
 
     // Device-level, no locator. Per policy this does NOT fall back to typeDriver on failure —
-    // rotation uses whichever engine this connection already runs. The driver throws (never
+    // rotation uses whichever bridge this connection already uses. The driver throws (never
     // returns a mismatched orientation) if it didn't settle, so no post-hoc mismatch check needed.
     func executeDirectRotateTo(step: FlowStep, phase: inout PhaseAccumulator) async throws -> StepOutcome {
         guard let raw = step.direction, let orientation = FTOrientation(rawValue: raw) else {
@@ -304,7 +304,7 @@ extension StepExecutor {
                     try await Task.sleep(for: .milliseconds(Int(intervalSeconds * 1000)))
                     phase.waitMs += Self.ms(clock.now - waitStart)
                 }
-                // in-app の drag は自前描画だけ(それ以外は 501)ため、hybrid では
+                // in-app の drag は自前描画だけ(それ以外は 501)ため、inapp モードでは
                 // typeDriver(XCUITest)へ回す(swipePointToPoint と同じ理由)
                 if try await dragWithFallback(path: path, durationSeconds: durationSeconds,
                                               phase: &phase) {
@@ -357,8 +357,8 @@ extension StepExecutor {
                 try await driver.tap(x: x, y: y)
             }
         } catch {
-            // in-app は座標ジェスチャを持たない(501)。hybrid では XCUITest へ回す
-            guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
+            // in-app は座標ジェスチャを持たない(501)。inapp モードでは XCUITest へ回す
+            guard DriverError.isBridgeIncapable(error), let td = typeDriver else { throw error }
             if hold > 0 {
                 try await td.press(x: x, y: y, duration: hold)
             } else {
@@ -376,7 +376,7 @@ extension StepExecutor {
     }
 
     /// 座標どうしのドラッグ(DSL の `swipePointToPoint` / ft_batch)。**撃つのは `dragWithFallback` だけ**
-    /// (in-app の drag は UIKit/SwiftUI で 501。直に `driver.drag` を呼ぶと hybrid で XCUITest へ回らない)。
+    /// (in-app の drag は UIKit/SwiftUI で 501。直に `driver.drag` を呼ぶと inapp モードで XCUITest へ回らない)。
     /// 押してから動かすまでは 0.05 秒固定(長押しから始まる並べ替えは `gesture` の `.hold` で書く)
     func executeDirectPointToPoint(step: FlowStep, phase: inout PhaseAccumulator) async throws -> StepOutcome {
         guard let x = step.x, let y = step.y, let toX = step.toX, let toY = step.toY else {
@@ -489,7 +489,7 @@ extension StepExecutor {
             }
             // ロケータ有り type(case "type")と同じ判定(keyboardFrameBeforeType の doc)。
             // 「打った後」はここでは読まない —— 次のロケータ操作が解決のために撮る最初の
-            // 木で比べる(エンジンに依存しない)
+            // 木で比べる(ブリッジに依存しない)
             if !step.skipsSettle {
                 keyboardFrameBeforeType = keyboardBefore
                 pendingTypeKeyboardCheck = true
@@ -560,11 +560,11 @@ extension StepExecutor {
         return StepOutcome(status: .passed)
     }
 
-    /// **iOS の hideKeyboard はキーボードの上の空きを叩く**(エンジンに依らない = 座標のタップだけ。ユーザー決定)。
+    /// **iOS の hideKeyboard はキーボードの上の空きを叩く**(ブリッジに依らない = 座標のタップだけ。ユーザー決定)。
     /// iOS には閉じる共通の手段が無い(`KeyboardDismissPoint` の doc)。叩く点はキーボードの上を下から上へ走査した空き
     /// (`KeyboardDismissPoint.candidates`。押せる部品が木に無い点)で、**木に載らないもの(キーボード・ステータスバー・
     /// トースト等の別のウィンドウ)の上でないとブリッジの当たり判定で確かめた点**(`AppDriver.tapProbe` = in-app だけが答える。
-    /// 答えないエンジンは木だけで決め、木に載る最も上の要素より上は叩かない)。見つからなければ待って撮り直す(トーストが消えれば空きが出る)。
+    /// 答えないブリッジは木だけで決め、木に載る最も上の要素より上は叩かない)。見つからなければ待って撮り直す(トーストが消えれば空きが出る)。
     /// 上限 = 検証の既定の待ち。叩いても閉じない・叩ける点が無いときは **Enter を送る**(ユーザー決定。欄の確定操作が走るので
     /// 注記に出す)。それでも閉じなければ失敗。**黙って成功にしない**: 叩いた点と、キーボード以外で画面が変わったかを注記に出す。
     /// キーボードが出ていなければ何もしない(Android と同じく冪等)
@@ -653,12 +653,12 @@ extension StepExecutor {
                 let answer = await driver.tapProbe(x: candidate.x, y: candidate.y)
                 phase.actionMs += Self.ms(clock.now - start)
                 guard let answer else {
-                    // 答えられないエンジン(XCUITest だけ)は木だけで決める。別のウィンドウは木の overlayWindowFrames で
+                    // 答えられないブリッジ(XCUITest)は木だけで決める。別のウィンドウは木の overlayWindowFrames で
                     // 除いてある。木に載らないステータスバーは、木に載る最も上の要素より上を叩かないことで避ける
                     if let contentTop = Self.topmostElementY(before), candidate.y >= contentTop {
                         point = candidate; unconfirmed = true; break searching
                     }
-                    lastReason = "this engine cannot check a spot for a status bar or another window, and every"
+                    lastReason = "this bridge cannot check a spot for a status bar or another window, and every"
                         + " empty spot is above the topmost element in the tree"
                     continue
                 }
@@ -679,7 +679,7 @@ extension StepExecutor {
             let after = try await awaitKeyboardClosed(within: Self.keyboardCloseAfterTapWaitSeconds, phase: &phase)
             if !KeyboardWait.isShown(after) {
                 var notes = ["closed the keyboard by tapping \(place)"
-                    + (unconfirmed ? " (this engine cannot check for a status bar or another window there; chosen from"
+                    + (unconfirmed ? " (this bridge cannot check for a status bar or another window there; chosen from"
                         + " the tree only)" : "")]
                 let vanished = Self.contentAbove(keyboard, in: before).subtracting(Self.contents(of: after))
                 if !vanished.isEmpty {
@@ -741,7 +741,7 @@ extension StepExecutor {
     }
 
     // clearInput もロケータ無しならフォーカス中欄へ作用する(type(ref: nil) と同じくロケータ解決を
-    // 挟まない)。対象なし(409)またはこのエンジンでは未対応(isEngineIncapable)なら
+    // 挟まない)。対象なし(409)またはこのブリッジでは未対応(isBridgeIncapable)なら
     // typeDriver(xcuitest)へフォールバックする
     func executeDirectUnfocusedClearInput(phase: inout PhaseAccumulator) async throws -> StepOutcome {
         switch try await performClearInputFocused(phase: &phase) {

@@ -343,7 +343,7 @@ extension StepExecutor {
     /// 署名の不変化を2回重ねる必要はない。
     /// 効くのは iOS xcuitest の WebView で、**端に着いた後に捨てのスワイプを2回撃っていた**
     /// (1スワイプ約2.5秒 = 実測 scrollToTop 中央値 12.1s の主成分。docs/performance-tuning.md §8)。
-    /// 供給の無い画面(ネイティブ・旧ブリッジ・hybrid の WebViewDelegatingDriver)は
+    /// 供給の無い画面(ネイティブ・旧ブリッジ・inapp モードの WebViewDelegatingDriver)は
     /// `offscreen` が nil なので 2 のまま
     static func unchangedRoundsForEdge(snapshot: SnapshotResponse,
                                        remainingJump: Double?) -> Int {
@@ -565,7 +565,7 @@ extension StepExecutor {
             // **1.38 倍の超過**(いちばん取りこぼす SUT で無効になる)。
             //
             // **効くのは `scrollFrame` を書いた経路だけ**。刻みを縮める唯一の口は `spanScale` →
-            // `scrollPath` で、あちらは領域未指定なら nil を返してエンジン既定に任せるため。
+            // `scrollPath` で、あちらは領域未指定なら nil を返してブリッジ既定に任せるため。
             // 既定経路の飛び越しをホスト側で塞ぐには座標スワイプを常用するしかなく、それは
             // 2度撤回済み(docs/performance-tuning.md §3.19)。**ここを既定経路へ広げないこと**
             let vertical = direction == .up || direction == .down
@@ -828,7 +828,7 @@ extension StepExecutor {
                                   .flatMap({ ScrollGeometry.intersection($0, snapshot.screen) })
                         else { return result }
                         // **端に着いたのに見つからない = 途中で飛び越した可能性**。
-                        // 既定経路(scrollFrame 未指定)は刻みがエンジン任せで縮められないので、
+                        // 既定経路(scrollFrame 未指定)は刻みがブリッジ任せで縮められないので、
                         // ここでだけ推測した容器で細刻みの逆走査を掛ける
                         // (通常の送りには触らない = 2度撤回した「暗黙の座標化」にならない)
                         if let recovered = try await reverseSweep(step: step, container: container,

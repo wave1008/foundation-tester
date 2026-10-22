@@ -13,14 +13,14 @@ import FTCore
 public final class SystemUIDriver: AppDriver {
     private let client: BridgeClient
 
-    /// 主ドライバが**このブリッジのセッションでアプリを駆動しているか**(engine=xcuitest = true)。
+    /// 主ドライバが**このブリッジのセッションでアプリを駆動しているか**(xcuitest モード = true)。
     ///
     /// true のときだけ版 79 の `/systemui/*`(セッションと ref を触らない)を使う。
-    /// **hybrid では false のまま = 旧経路**: あちらの主ドライバは in-app で別プロセスなので
+    /// **inapp モードでは false のまま = 旧経路**: あちらの主ドライバは in-app で別プロセスなので
     /// `/session springboard` の巻き添えが無く、**変える理由が無い**。困っていたのは
     /// 共有している xcuitest だけなので、影響範囲をそこに閉じる。
     ///
-    /// **ここに因果を書かないこと**(失敗の実例): 一度は「hybrid へ寄せたら `notExist` が
+    /// **ここに因果を書かないこと**(失敗の実例): 一度は「inapp モードへ寄せたら `notExist` が
     /// 0.30s → 0.07s に縮み、その 0.25s が担っていた暗黙の待ちが消えて横カルーセルが 3/3 で
     /// 落ちた」と書いた。**誤り** —— 後の 2×2 で、赤は経路ではなく **FM の生死**に完全追随すると
     /// 分かった(FM 死亡 7/7 赤 / 生存 8/8 緑。旧経路でも FM が死ねば落ちる)。
@@ -50,16 +50,16 @@ public final class SystemUIDriver: AppDriver {
     /// **張り直しは必ずこちらに置く** —— snapshot() を素通し側にすると片方だけ張り直しを飛ばす
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         // 版 79 以降・**共有しているときだけ**: セッションを触らない専用の口。
-        // engine=xcuitest はこのブリッジを主ドライバと共有しているので、旧経路
+        // xcuitest モードはこのブリッジを主ドライバと共有しているので、旧経路
         // (`/session springboard`)を撃つとアプリのセッションと refFrames が巻き添えになり、
-        // 次のステップが SpringBoard の木を読む。hybrid で使わない理由は init の doc
+        // 次のステップが SpringBoard の木を読む。inapp モードで使わない理由は init の doc
         if sharesPrimarySession, let scoped = try await client.systemUISnapshot() {
             usedScopedSnapshot = true
             scopedFrames = Dictionary(scoped.elements.map { ($0.ref, $0.frame) },
                                       uniquingKeysWith: { first, _ in first })
             return scoped
         }
-        // hybrid(共有していない)と旧ランナー(版 < 79)。前者は巻き添えが無いので
+        // inapp モード(共有していない)と旧ランナー(版 < 79)。前者は巻き添えが無いので
         // この経路で正しく、後者は新しい口が 404 で無い
         usedScopedSnapshot = false
         scopedFrames = [:]

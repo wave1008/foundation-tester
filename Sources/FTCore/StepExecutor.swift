@@ -273,15 +273,15 @@ public final class StepExecutor {
     /// 解決を試す(アプリ上に載ったシステム UI=別プロセスのダイアログ等を XCUITest で拾う)。
     /// 解決に使った driver でそのまま act するので ref 名前空間の混同はない。
     public let fallbackDriver: AppDriver?
-    /// 主ドライバの絵にキーボード・システムアラートが写らない(hybrid の in-app)。画像判定の絵の撮り分け
-    /// (`JudgmentCapture` / `judgmentScreenshot`)に使う。立てるのは ScenarioRunnerMain の hybrid だけ
+    /// 主ドライバの絵にキーボード・システムアラートが写らない(inapp モードの in-app ブリッジ)。画像判定の絵の撮り分け
+    /// (`JudgmentCapture` / `judgmentScreenshot`)に使う。立てるのは ScenarioRunnerMain の inapp モードだけ
     /// (xcuitest 単独の fallbackDriver は主と同じランナー = 同じ絵なので立てない)
     public let primaryCaptureOmitsSystemUI: Bool
     /// このフェーズで SpringBoard に聞いた「アラートが前面にあるか」。nil = まだ聞いていない
     /// (`armUnregisteredSystemAlertProbe` が戻す)。画像判定の絵を XCUITest で撮るかを決める
     var judgmentAlertCovering: Bool?
     /// システム許可アラートの登録台帳(DSL の `iosAlertHandler` が登録する)。
-    /// 空 = 監視しない。**fallbackDriver がある(hybrid)ときだけ効く**。
+    /// 空 = 監視しない。**fallbackDriver がある(inapp モード)ときだけ効く**。
     /// 登録の形・発火で外れる規則は `SystemAlertRule` / `SystemAlertWatchlist` の doc
     public var systemAlertWatchlist = SystemAlertWatchlist()
     /// 現在のシナリオが動かしているアプリの表示名(`FTDriveCore.appDisplayName` から同期)。
@@ -398,7 +398,7 @@ public final class StepExecutor {
             + " as a scenario failure"
     }
 
-    /// hybrid 用: type アクションを XCUITest(アプリ attach)で実行する代替ドライバ。inapp が
+    /// inapp モード用: type アクションを XCUITest(アプリ attach)で実行する代替ドライバ。inapp が
     /// UIKit 非依存アプリ(Compose 等)で type 不能(409)なときの経路。fallbackDriver(springboard
     /// 参照・システム UI 用)とは別物。
     public let typeDriver: AppDriver?
@@ -412,7 +412,7 @@ public final class StepExecutor {
     /// バウンス由来の非決定性で scrollTo 直後のタップが flake した(実害)。
     /// type 用の preferTypeDriver(廃止済み・常に false)とは別物。
     public var typeDriverGestures: Set<String>
-    /// swipe が「このエンジンでは不可」を1回でも受けたら true。以降は直接 typeDriver へ
+    /// swipe が「このブリッジでは不可」を1回でも受けたら true。以降は直接 typeDriver へ
     /// (scrollTo は最大 maxSwipes 回 swipe するため、毎回往復させないため)。**path の有無と press で分ける**:
     /// path 付き(scrollFrame 指定)は in-app が必ず 501 を返すので、共有すると1回撃っただけで path 無しの
     /// swipe まで XCUITest の実スワイプ化し、バウンス由来の flake を持ち込む(dragFallbackLatched と同じ理由)
@@ -470,7 +470,7 @@ public final class StepExecutor {
     /// cachedScreenshot が画面全体の絵(fallbackDriver)か。撮り分けが変わったら使い回さない
     private var cachedShotWholeScreen = false
     /// [occlusion-guard] StaleFrameDetector の前回観測(凍結フレーム検知用)。cachedScreenshot と
-    /// 同じくエンジン1本につき1系列(StepExecutor はエンジンごとに1インスタンス)。
+    /// 同じくブリッジ1本につき1系列(StepExecutor はブリッジごとに1インスタンス)。
     /// **cache 供給(同一 Data 使い回し)のときは更新しない** —— guardScreenshot 参照
     var lastGuardFrameRecord: StaleFrameDetector.Record?
     /// occlusion-guard が古いと判定した絵のハッシュ(同じ絵のままなら次のステップでも判定しない。
@@ -1239,12 +1239,12 @@ public final class StepExecutor {
     /// 焦点救済の両方が、成功した type の直後にこれを立てる。
     ///
     /// **「打った後」の観測は読み返し(`verifyTypedText`)に頼らない** —— 読み返しが走るのは
-    /// `AppDriver.verifiesTypedText == false`(in-app エンジン)のときだけで、実機(xcuitest
-    /// エンジン)は `verifiesTypedText == true` なので読み返し自体を通らない
+    /// `AppDriver.verifiesTypedText == false`(in-app ブリッジ)のときだけで、実機(xcuitest
+    /// ブリッジ)は `verifiesTypedText == true` なので読み返し自体を通らない
     /// (CLAUDE.md「type の読み返しの有無はドライバの能力」)。
-    /// 実測したバグは iPhone 13 実機(xcuitest エンジン)で起きており、読み返しの木に頼る実装は
+    /// 実測したバグは iPhone 13 実機(XCUITest ブリッジ)で起きており、読み返しの木に頼る実装は
     /// **この経路を1度も検知できない**。**「打った後」は次のステップが解決のために
-    /// どのみち撮る最初の `freshSnapshot` に譲る**ことで、読み返しの有無・エンジンに依存しない
+    /// どのみち撮る最初の `freshSnapshot` に譲る**ことで、読み返しの有無・ブリッジに依存しない
     /// (StepExecutor+Actions.swift の消費側 doc 参照)。
     /// **nextResolveBypassesCache と同じ「1回で消費」規律**。立っていても、その1枚で
     /// キーボードが動いていなければ**追加コストはゼロ**(比較だけ)——動いていたときだけ

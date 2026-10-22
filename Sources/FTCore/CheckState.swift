@@ -1,6 +1,6 @@
 // チェック状態(checkIsON / checkIsOFF / セレクタの `checked=`)の唯一の判定元。
 // ワイヤの `checked` は true のときだけ送られる(省略 = オフ / 状態を持たない要素の区別が無い)ので、
-// value に載っている状態を読んで「オフ」を確定させる。規則と実測(iOS 27・両エンジン同値):
+// value に載っている状態を読んで「オフ」を確定させる。規則と実測(iOS 27・両ブリッジ同値):
 //   - Flutter の Checkbox/Switch・SwiftUI Toggle・RN の role=switch・WebKit の checkbox: 型 switch + value "1"/"0"
 //     (WebKit の indeterminate は "2")。Flutter の indeterminate は engine が "0" を返す = オフと区別できない
 //   - RN の role=checkbox/radio: value "checkbox, checked" 等(OSS の RN は翻訳表が空 = 英語固定)

@@ -247,7 +247,7 @@ A physical device connected to a runner machine works with the same steps. **Do 
 - To use an iPhone connected over Wi-Fi, the runner machine and the device must be on the same subnet, and the access
   point's client isolation (privacy separator) must be off. What matters is the runner machine's LAN, not your Mac.
 - Install `brew install libimobiledevice` on runner machines that use physical devices too.
-- The bridge used by in-app / hybrid is signed with the app's certificate by the Mac that sends out the test, and
+- The bridge used by inapp mode is signed with the app's certificate by the Mac that sends out the test, and
   sent along with it. It works on in-app even if the runner machine's keychain does not hold the app's signing key
   (step 3 above is still needed to build the XCUITest bridge).
 
@@ -258,7 +258,7 @@ A physical device connected to a runner machine works with the same steps. **Do 
 | Adding photos and videos (`addMedia`) | Not possible. Run on a Simulator, or put the file on the device by hand | Works |
 | Clearing app data (`clearAppData`) | Done by reinstalling the app. Granted permissions are cleared too. Needs `appPathPhysical` | Works |
 | Recording | A flip-book of screens taken around each operation (about 50 ms per capture) | Records normally |
-| Engine | in-app / hybrid work when the app is development-signed (built and installed from Xcode). fleetest signs the injected bridge with the app's own certificate. An app that cannot use them (TestFlight / App Store builds) runs on XCUITest, and the `⚠️ … ran on xcuitest instead of hybrid — <reason>` line at the end of the run says so | — |
+| Mode | inapp mode works when the app is development-signed (built and installed from Xcode). fleetest signs the injected bridge with the app's own certificate. An app that cannot use them (TestFlight / App Store builds) runs in xcuitest mode, and the `⚠️ … ran in xcuitest mode instead of inapp mode — <reason>` line at the end of the run says so | — |
 | Device settings | Set Auto-Lock to Never | Set the screen lock to None. Settings fleetest changes stay |
 | System alerts with no button to press | Can remain (it cannot restart SpringBoard as on a Simulator) | — |
 | Reading elements inside Safari | Turn on Settings → Safari → Advanced → Web Inspector on the device | — |

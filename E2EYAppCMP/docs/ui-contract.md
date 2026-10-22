@@ -134,7 +134,7 @@ AppFlowy(flutter_slidable)・Signal / Element-X(スワイプで返信)。
 - その下に返信用の行 `#reply_row_1` … `#reply_row_3` = `返信行 1` …: **左から右へ閾値(行幅の約 25%)を
   越えて離す**と、行は元の位置へ戻り `reply=reply_row_2`(消えない・ボタンも出ない)
 - **罠**: 払う距離で結果が変わる(ボタンを出す / 即削除)。ボタンは払うまで木に居ない(または幅 0)。
-  in-app は慣性を持たないので、エンジンで結果が割れうる
+  in-app ブリッジは慣性を持たないので、モードで結果が割れうる
 - 実装の例: iOS `.swipeActions(edge:allowsFullSwipe:)` / Flutter `flutter_slidable` /
   Compose `AnchoredDraggable`(定番コンポーネント無し = 自前)/ RN gesture-handler の `Swipeable` /
   Android `ItemTouchHelper` か自前の reveal レイアウト。返信は各フレームワークのドラッグ検出の自前実装

@@ -2,7 +2,7 @@
 // アプリのクラッシュ検出(ScenarioRunRecord.appCrash)。検出した箇所からだけ渡す —— 失敗文言の
 // 検索や自由文の後解析はしない(docs/results-json.md「アプリのクラッシュ」参照)。
 // 検出箇所:
-//   iOS(in-app エンジン)= InAppDriver.crashAnnotated / InAppLauncher.crashAnnotated が
+//   iOS(in-app ブリッジ)= InAppDriver.crashAnnotated / InAppLauncher.crashAnnotated が
 //     SimulatorCrashReport.findRecent で見つけた直近の .ips
 //   Android = ScenarioRunnerMain の appProcessEvidence 経由で AndroidAppProcessEvidenceQuery が
 //     crash バッファの FATAL EXCEPTION か Fatal signal(ネイティブ)を、シナリオの開始以降に見つけた

@@ -136,7 +136,7 @@
   ],
   "containerInference": true,
   "heal": true,
-  "iosInappEngine": true,
+  "iosMode": "inapp",
   "recoverCpuFallbackToGpu": true,
   "screenLooksLike": true,
   "fmTextVisibilityCheck": true,

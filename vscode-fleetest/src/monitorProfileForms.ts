@@ -53,7 +53,7 @@ export function buildRunProfileTemplate(appNames: readonly string[]): string {
   template.ocrTextVisibilityCheck = true;
   template.preferCheckStateClassifier = true;
   template.screenLooksLike = true;
-  template.iosInappEngine = true;
+  // iosMode は書かない(未指定 = inapp。レスポンス計測の run では解決側が xcuitest に倒す)
   template.updateWebView = true;   // 既定 ON(WebView の版差でシナリオが端末ごとに落ちるため)
   template.wipeDataOnBloat = true;
   // reportDir は書かない(未指定 = 既定の reports。フォームは placeholder で既定を見せる)
@@ -161,7 +161,8 @@ export interface RunProfileFormFields {
    * a11y より優先するか(**既定 true**。false なら a11y が状態を報告しない要素にだけ使う)。
    * Swift 側は RunProfileDocument.preferCheckStateClassifier */
   readonly preferCheckStateClassifier: boolean;
-  readonly iosInappEngine: boolean;
+  /** iOS のモード。省略 = "inapp"(in-app ブリッジ + XCUITest ブリッジ)。"xcuitest" = XCUITest ブリッジだけ */
+  readonly iosMode: string;
   /// **既定 true**。domInterop の委譲イベント直前にランナーへ1回問い合わせてから撃つ
   /// (attach セッションの静かなイベント欠落の防御。Swift 側は iosPreActionPing → FT_PRE_ACTION_PING)
   readonly iosPreActionPing: boolean;
@@ -223,7 +224,8 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     typeof source.preferCheckStateClassifier === "boolean" ? source.preferCheckStateClassifier : true;
   const screenLooksLike = typeof source.screenLooksLike === "boolean" ? source.screenLooksLike : true;
   const containerInference = typeof source.containerInference === "boolean" ? source.containerInference : true;
-  const iosInappEngine = typeof source.iosInappEngine === "boolean" ? source.iosInappEngine : true;
+  // inapp / xcuitest 以外の文字列もそのまま持つ(黙って "inapp" へ書き換えない。CLI が値を名指しで断る)
+  const iosMode = typeof source.iosMode === "string" && source.iosMode.length > 0 ? source.iosMode : "inapp";
   const iosPreActionPing = typeof source.iosPreActionPing === "boolean" ? source.iosPreActionPing : true;
   const homeOnStart = typeof source.homeOnStart === "boolean" ? source.homeOnStart : true;
   const playProtectBypass = typeof source.playProtectBypass === "boolean" ? source.playProtectBypass : true;
@@ -294,7 +296,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     containerInference,
     ocrTextVisibilityCheck,
     preferCheckStateClassifier,
-    iosInappEngine,
+    iosMode,
     iosPreActionPing,
     homeOnStart,
     playProtectBypass,
@@ -360,7 +362,12 @@ export function updateRunProfileInObject(
   result.containerInference = fields.containerInference;
   result.ocrTextVisibilityCheck = fields.ocrTextVisibilityCheck;  // 同上(既定 true 側。containerInference と同じ理由で常に書く)
   result.preferCheckStateClassifier = fields.preferCheckStateClassifier;  // 同上(既定 true 側)
-  result.iosInappEngine = fields.iosInappEngine;
+  // inapp は書かない(未指定 = inapp)。明示すると、レスポンス計測の run で解決側の既定(xcuitest)が効かず断られる
+  if (fields.iosMode === "inapp") {
+    delete result.iosMode;
+  } else {
+    result.iosMode = fields.iosMode;
+  }
   result.updateWebView = fields.updateWebView;
   result.wipeDataOnBloat = fields.wipeDataOnBloat;
   // 既定 true 側なので containerInference と同じく常に書く(false を落とすと既定へ戻ってしまう)
@@ -396,6 +403,15 @@ export function updateRunProfileInObject(
     return { ok: false, error: t("monitor.runProfile.scenarioTimeoutInvalid") };
   } else {
     result.scenarioTimeout = Number(scenarioTimeoutTrimmed);
+  }
+
+  // 計測モードは下の4つの明示の true を断る(Sources/FTCore/ResponseMeasurementPolicy.validateSettings)。既定の true を
+  // 常に書く上の処理のままだと GUI で計測をオンにした途端に断られるので、true だけ落とす(未指定 = 計測が切る)。
+  // 明示の false は残す(落とすと計測を切った後に既定の true へ戻る)
+  if (fields.responseMeasurement) {
+    for (const key of ["fmTextVisibilityCheck", "ocrTextVisibilityCheck", "screenLooksLike", "record"] as const) {
+      if (fields[key]) delete result[key];
+    }
   }
 
   // 計測モードを切ったときに responseRepeat だけ残すと Swift が起動を断るので、キーごと落とす

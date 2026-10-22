@@ -60,17 +60,17 @@ extension StepExecutorTests {
 
     /// フォールバック判定は 501 と「ルート不明の 404」だけ。409(一時的競合)と
     /// ref 不明の 404 を含めると、前面不在や古い ref を隠して別画面を操作しかねない
-    func testIsEngineIncapableClassification() {
-        XCTAssertTrue(DriverError.isEngineIncapable(
-            DriverError.badResponse(status: 501, body: "in-app エンジンでは press が効きません")))
-        XCTAssertTrue(DriverError.isEngineIncapable(
+    func testIsBridgeIncapableClassification() {
+        XCTAssertTrue(DriverError.isBridgeIncapable(
+            DriverError.badResponse(status: 501, body: "in-app ブリッジでは press が効きません")))
+        XCTAssertTrue(DriverError.isBridgeIncapable(
             DriverError.badResponse(status: 404, body: "not found: POST /drag")))
-        XCTAssertFalse(DriverError.isEngineIncapable(
+        XCTAssertFalse(DriverError.isBridgeIncapable(
             DriverError.badResponse(status: 404, body: "参照番号 [3] は未知です")))
-        XCTAssertFalse(DriverError.isEngineIncapable(
+        XCTAssertFalse(DriverError.isBridgeIncapable(
             DriverError.badResponse(status: 409, body: "キーウィンドウがありません")))
-        XCTAssertFalse(DriverError.isEngineIncapable(DriverError.bridgeUnreachable(
-            context: DriverErrorContext(engine: .iosXCUITest, physicalDevice: false), detail: "timeout")))
+        XCTAssertFalse(DriverError.isBridgeIncapable(DriverError.bridgeUnreachable(
+            context: DriverErrorContext(bridge: .iosXCUITest, physicalDevice: false), detail: "timeout")))
     }
 
     /// 画面下端の a11y 空白帯(タブ frame の下〜画面下端)では空打ちしない。
@@ -890,7 +890,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(name: "primary", log: CallLog(),
                                     snapshotElements: [[element(ref: 1, id: "btn")]])
         primary.swipeError = DriverError.bridgeUnreachable(
-            context: DriverErrorContext(engine: .iosXCUITest, physicalDevice: false),
+            context: DriverErrorContext(bridge: .iosXCUITest, physicalDevice: false),
             detail: "connection reset")
         let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "swipe", direction: "up")

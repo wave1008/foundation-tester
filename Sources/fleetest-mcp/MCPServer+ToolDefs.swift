@@ -414,7 +414,7 @@ extension MCPServer {
         ], scope: .none),
         tool("ft_double_tap", "Double-tap an element (ref) or a point (x,y); two ft_tap calls miss the OS "
             + "double-tap window. MCP drives iOS through XCUITest only, where Compose apps never receive the "
-            + "double tap — a scenario on the default (hybrid) engine delivers it. " + coordinateCaveat, [
+            + "double tap — a scenario in the default inapp mode delivers it. " + coordinateCaveat, [
             "ref": refProperty, "x": pointXProperty, "y": pointYProperty,
         ], extra: afterActionProperties()),
         tool("ft_drag", "Drag between points — for diagonal pans, and to expand a bottom sheet (drag its "

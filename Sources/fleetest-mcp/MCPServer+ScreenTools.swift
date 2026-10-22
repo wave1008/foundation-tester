@@ -15,13 +15,13 @@ extension MCPServer {
         // 全行の木を返し、宣言が嘘になった(計測のエージェントが指摘)
         let (args, inheritedNote) = inheritingSnapshotFilters(args)
         let snapshotDriver = try await driver(args)
-        let previousRead = lastSnapshots[Self.engineKey(args)]
+        let previousRead = lastSnapshots[Self.sessionKey(args)]
         var snapshot: SnapshotResponse
         do {
             snapshot = try await freshSnapshot(snapshotDriver, args: args)
         } catch {
             // ホーム画面/システム UI を読もうとして詰まった形なら、読む方法まで返す
-            let hint = Self.springboardHint(error, engine: engines[Self.engineKey(args)])
+            let hint = Self.springboardHint(error, bridge: bridges[Self.sessionKey(args)])
             guard !hint.isEmpty else { throw error }
             throw MCPError(error.localizedDescription + hint)
         }
@@ -87,9 +87,9 @@ extension MCPServer {
             try await d.tap(ref: nativeRef(target.ref, args: args))
             recordInteraction(action: "tap", resolvedRef: target.ref, args: args)
             // 次の ref なし ft_type の救済材料(verifiedRef が撮り直した木 = 叩く前の木から引く)
-            let treeBeforeTap = lastSnapshots[Self.engineKey(args)]?.elements
-            lastTapTargets[Self.engineKey(args)] = treeBeforeTap?.first { $0.ref == target.ref }
-            focusedBeforeLastTaps[Self.engineKey(args)] = treeBeforeTap?.first { $0.focused == true }
+            let treeBeforeTap = lastSnapshots[Self.sessionKey(args)]?.elements
+            lastTapTargets[Self.sessionKey(args)] = treeBeforeTap?.first { $0.ref == target.ref }
+            focusedBeforeLastTaps[Self.sessionKey(args)] = treeBeforeTap?.first { $0.focused == true }
             return text("tap [\(ref)] done.\(target.note)"
                 // ブリッジの /tap が返す note(例:
                 // 「activate 不発 → 合成タッチ」— BridgeClient.tap(ref:) の lastActionNote)を
@@ -104,7 +104,7 @@ extension MCPServer {
         if let x = try Self.doubleArgument(args, "x"), let y = try Self.doubleArgument(args, "y") {
             if let offscreen = Self.offscreenCoordinateError(
                 x: x, y: y, screen: await coordinateScreen(d, args: args),
-                engine: engines[Self.engineKey(args)]) { throw offscreen }
+                bridge: bridges[Self.sessionKey(args)]) { throw offscreen }
             let frontWarning = await coordinateFrontAppWarning(d, args: args)
             // **座標でシステムアラートを押すのは正規の操作**(systemAlertGate の doc)。アラートはアプリの木の外なので、
             // 押す前に出ていたなら snapshotAfter は操作前の木と比べない(閉じてもアプリの木は変わらないのが正常)。
@@ -115,7 +115,7 @@ extension MCPServer {
             }
             try await d.tap(x: x, y: y)
             recordInteraction(action: "tap", resolvedRef: nil, args: args, coordinate: (x, y))
-            lastTapTargets[Self.engineKey(args)] = nil
+            lastTapTargets[Self.sessionKey(args)] = nil
             return text("tap (\(x), \(y)) done" + keyboardCoordinateWarning(x: x, y: y, args: args)
                 + frontWarning
                 + once("coordinateReproductionNote",
@@ -150,7 +150,7 @@ extension MCPServer {
             let verified = try await verifiedRef(ref, driver: typeDriver, args: args)
             targetRef = verified.ref
             note = verified.note
-            priorElement = lastSnapshots[Self.engineKey(args)]?
+            priorElement = lastSnapshots[Self.sessionKey(args)]?
                 .elements.first { $0.ref == verified.ref }
             // **「入っている値」の判定は DSL と同じ**。素の `value` を見ていたので、
             // `placeholder` と同値の空欄(iOS 全般 / Android の CMP)でも MCP だけが
@@ -164,9 +164,9 @@ extension MCPServer {
             // 撃つ(nonInputTypeTargetNote が non-nil)。**そうでない非入力欄(入力欄が0個・
             // 2個以上)は撃つ前に拒否する** —— 警告のまま撃つと、送信ボタンを押してしまった
             // 後で読み返しが失敗し(「検索窓が本物の入力欄へ焦点を渡す形かも」という誤誘導)、
-            // in-app エンジンでは焦点のある**別の**欄へ入って黙って成功扱いになる。
+            // in-app ブリッジでは焦点のある**別の**欄へ入って黙って成功扱いになる。
             // 対象そのものが分かっているのだから、ここで一度に断る
-            if let priorElement, let elements = lastSnapshots[Self.engineKey(args)]?.elements {
+            if let priorElement, let elements = lastSnapshots[Self.sessionKey(args)]?.elements {
                 switch TapTargetGeometry.typeTargetVerdict(priorElement, in: elements) {
                 case .textInput: break
                 case .containerWithOneField(let warn):
@@ -209,7 +209,7 @@ extension MCPServer {
             guard result.succeeded else {
                 return try? await typeDriver.snapshot(bypassingCache: typeDriver.supportsCacheBypass)
             }
-            return lastSnapshots[Self.engineKey(args)]
+            return lastSnapshots[Self.sessionKey(args)]
         }
         // **検証の読み直し(verificationSnapshot)が新しい世代を採る前に、ref の解決と再現セレクタを済ませる**:
         // 後で nativeRef / reproductionNote を呼ぶと新世代の base / 木で引くので、別の番号を撃ち、注記も消える
@@ -225,7 +225,7 @@ extension MCPServer {
             // あることは警告に出す**(typedIntoNote の「どこへ入ったか」と対で読める)
             var rescuedNativeRef: Int?
             if targetRef == nil, !content.contains("\n"),
-               let tapped = lastTapTargets[Self.engineKey(args)],
+               let tapped = lastTapTargets[Self.sessionKey(args)],
                let fresh = try? await typeDriver.snapshot(bypassingCache: typeDriver.supportsCacheBypass),
                InputFocusRescue.focusIsElsewhere(from: tapped, in: fresh.elements) {
                 let focused = fresh.elements.first { $0.focused == true }
@@ -237,7 +237,7 @@ extension MCPServer {
                         + ", so the text was sent to the input field inside it,"
                         + " \(RefGuard.describe(field)))"
                 } else if let focused, !InputFocusRescue.focusWasAlreadyThere(
-                              before: focusedBeforeLastTaps[Self.engineKey(args)], after: focused) {
+                              before: focusedBeforeLastTaps[Self.sessionKey(args)], after: focused) {
                     // 焦点は叩いた操作が動かした先(検索ボタンが開いた検索欄など)= 意図どおり。警告しない
                     // (入った先は下の typedIntoNote が言う。実測: 「目的地を入力」→ 検索欄で誤った警告が出ていた)
                 } else {
@@ -249,13 +249,13 @@ extension MCPServer {
             }
             // targetRef はセッション ref。ブリッジへ渡す直前にだけ native へ戻す
             let resolvedTypeRef = rescuedNativeRef ?? nativeTargetRef
-            let keyboardBeforeType = lastSnapshots[Self.engineKey(args)]
+            let keyboardBeforeType = lastSnapshots[Self.sessionKey(args)]
             do {
                 try await typeDriver.type(ref: resolvedTypeRef, text: content)
                 // XCUITest ランナーが打ち直した事実(OKResponse.note)を返答に載せる
                 note += Self.driverFallbackNote(typeDriver)
                 // 出現待ちは次の ref 操作の撮り直しで払う(verifiedRef。DSL の pendingTypeKeyboardCheck と同じ = 読みを足さない)
-                pendingTypeKeyboardChecks[Self.engineKey(args)] = PendingTypeKeyboardCheck(
+                pendingTypeKeyboardChecks[Self.sessionKey(args)] = PendingTypeKeyboardCheck(
                     before: keyboardBeforeType, typedNewline: content.hasSuffix("\n"))
             } catch {
                 // **ref なしで撃った失敗だけ**、前面の SpringBoard アラートを名指しする
@@ -356,11 +356,11 @@ extension MCPServer {
             let verified = try await verifiedRef(ref, driver: clearDriver, args: args)
             clearRef = verified.ref
             clearNote = verified.note
-            clearTarget = lastSnapshots[Self.engineKey(args)]?
+            clearTarget = lastSnapshots[Self.sessionKey(args)]?
                 .elements.first { $0.ref == verified.ref }
             // ft_type と同じ門(そちらの doc 参照)。容器(内側に入力欄がちょうど1つ)は
             // 警告のうえで撃つが、それ以外の非入力欄は撃つ前に拒否する
-            if let clearTarget, let elements = lastSnapshots[Self.engineKey(args)]?.elements {
+            if let clearTarget, let elements = lastSnapshots[Self.sessionKey(args)]?.elements {
                 switch TapTargetGeometry.typeTargetVerdict(clearTarget, in: elements) {
                 case .textInput: break
                 case .containerWithOneField(let warn): clearNote += " (warning: \(warn))"
@@ -392,7 +392,7 @@ extension MCPServer {
         if args["snapshotAfter"] as? Bool == true {
             let result = await snapshotAfterBodyWithStatus(args, outsideTheAppTree: false)
             afterBody = result.text
-            if result.succeeded { verification = lastSnapshots[Self.engineKey(args)] }
+            if result.succeeded { verification = lastSnapshots[Self.sessionKey(args)] }
         }
         if verification == nil {
             verification = try? await clearDriver.snapshot(bypassingCache: clearDriver.supportsCacheBypass)
@@ -415,7 +415,7 @@ extension MCPServer {
         var staleNote: [[String: Any]] = []
         // 木の取得に失敗したら判定せず、記録も汚さない(前回の記録を残す)
         if let after = try? await freshSnapshot(screenshotDriver, args: args) {
-            let key = Self.engineKey(args)
+            let key = Self.sessionKey(args)
             let (record, isStale) = StaleFrameDetector.judge(
                 png: png, elements: after.elements, previous: lastScreenshots[key])
             if isStale {
@@ -460,7 +460,7 @@ extension MCPServer {
         var refNote = ""
         if let ref = try Self.intArgument(args, "ref") {
             let target = try await verifiedRef(ref, driver: d, args: args)
-            guard let snapshot = lastSnapshots[Self.engineKey(args)],
+            guard let snapshot = lastSnapshots[Self.sessionKey(args)],
                   let found = snapshot.elements.first(where: { $0.ref == target.ref }) else {
                 throw MCPError("[\(ref)] is not on the current screen. Take a fresh ft_snapshot")
             }

@@ -306,9 +306,11 @@ pass/fail では守れない。§4.14 と同じ)。
 `node --test` はファイル単位の子プロセスの終了を待つ。2026-08-17 に**10本中1本の漏れで
 `npm test` が終わらなくなった**(個々のテストは1〜2秒で、遅いテストは1つも無かった)。
 
-二重に塞いである: `jsdomTeardown.test.mjs` がソース走査で落とし(**コメント中の
+塞いでいるのは `jsdomTeardown.test.mjs` のソース走査(**コメント中の
 `window.close()` を実装と数えない** —— 規律はコメントで説明されているので素の一致だと
-素通しする)、`npm test` は `--test-force-exit` を付けてある。
+素通しする)。**`--test-force-exit` は使わない**: 子はテストが終わった時点で `process.exit` し、パイプへの非同期の書き込みが
+捨てられる = 報告が毎回違う位置で欠ける(`monitorModel.profileForms` を単独で回すと 104 件中 75〜104 件。終了コードは正しいが、
+落ちたテストの名前が出ないことがある)。2026-10-23 に外した時点で、フラグ無しの全体は 37 秒で全ファイルが終わった。
 
 **同型**: `argumentHelpLiteral.test.mjs` —— `ArgumentHelp` は文字列リテラルからしか作れないので
 `help: "…" + "…"` はコンパイルが通らない(4回踏んだ)。
@@ -333,11 +335,11 @@ Android は versionCode の引き下げインストールを拒否するので�
 
 → 規則: スナップショット/型写像と操作合成を触ったら SUT を絞らず全部回す
 
-### 4.5 回さなかったエンジンは、緑の E2E からは見えない
+### 4.5 回さなかったモードは、緑の E2E からは見えない
 
-in-app / xcuitest 両方のスナップショット生成を変えた回の E2E **254 本が全部 engine=xcuitest**
+in-app / xcuitest 両方のスナップショット生成を変えた回の E2E **254 本が全部 mode=xcuitest**
 で、in-app 側は1度も動かないまま緑になった。いまは `BridgeSourceSet` の digest を
-「そのエンジンの実行が全部成功したときだけ」記録し、食い違いを警告する(落とさない)。
+「そのモードの実行が全部成功したときだけ」記録し、食い違いを警告する(落とさない)。
 
 ### 4.5.1 「フル E2E」は iOS を in-app で回すので、慣性のある経路の退行を見逃す(2026-08-28)
 
@@ -564,7 +566,7 @@ dry-run との対比で「実機の前に落とす」等と書いていた 20 �
 |---|---|---|
 | ① FTCore の責務が広い(137 ファイル・約 3.1 万行)。FTDomain / FTExecution / FTProfiles / FTRemote / FTReporting / FTRecording へ | **FTRemote だけ分離**(採用) | `Remote*.swift` + `HostOccupancy` は FTCore から一方向にしか依存されていない(唯一の逆依存 = `LocalConfig.remoteHosts` の型 `RemoteHostEntry` は FTCore に残した)。利用側は fleetest CLI だけなので、分離すると受け手のシナリオ実行バイナリ(FTScenarioRunner)から ssh/転送のコードが落ちる。**他の分割は保留** —— `RunOrchestrator` / `RunRecord` / `RunProfile` / `StepExecutor` は相互参照しており、切ると循環を public 化で解く作業になる。CLAUDE.md の分割方針は「1ファイル ≈2,000 行・1タスクで 1〜2 ファイル」で、**モジュール数は目的ではない** |
 | ② 実行オーケストレーションが分散(ProfileRunner / FleetRunner / RemoteRunDispatcher / RunOrchestrator / FTScenarioRunner / MCP) | 見送り(既知) | execute 段は既に `RunOrchestrator`(FTCore)1箇所、ワーカー構築も `ProfileWorkerFactory` 1箇所。残る二重は `fleetest run` と `fleetest api run` の入口2実装で、`RunCommandFlagParityTests` が差分を等号で固定している(CLAUDE.md「版と契約の同期」)。FleetRunner の子プロセス方式と RemoteRunDispatcher の ssh は設計上別物(理由は各ファイル冒頭)。1つのユースケース層へ畳むのは run 制御の改修で、**緑の run では実行されない経路を含む**ので、着手するなら陽性対照を先に揃える |
-| ③ `AppDriver` の能力差を型で(DriverCapabilities / プロトコル分割) | 不採用 | 501 は「このエンジンでは原理的に不可 → typeDriver(XCUITest)へ回す」というホストの分岐契約そのもの(design.md §4.3)。hybrid は**実行時に 501 を受けて回す**のが正で、計画段階で能力を検証するとフォールバックの前提が崩れる。既定実装が黙って返る罠は `AppDriverDefaultDispatchTests` が塞ぐ。ホスト側で分岐が要る能力だけフラグにしてある(`verifiesTypedText` / `supportsCacheBypass`) |
+| ③ `AppDriver` の能力差を型で(DriverCapabilities / プロトコル分割) | 不採用 | 501 は「このブリッジでは原理的に不可 → typeDriver(XCUITest)へ回す」というホストの分岐契約そのもの(design.md §4.3)。inapp モードは**実行時に 501 を受けて回す**のが正で、計画段階で能力を検証するとフォールバックの前提が崩れる。既定実装が黙って返る罠は `AppDriverDefaultDispatchTests` が塞ぐ。ホスト側で分岐が要る能力だけフラグにしてある(`verifiesTypedText` / `supportsCacheBypass`) |
 | ④ Package.swift がワークスペースを兼ねる → 各テストプロジェクトを外部パッケージへ一本化 | 既に実装済み | 受け手は 2026-07-20 から外部パッケージ構成が既定(design.md §15)。ルートの `fleetest-scenarios-*` は保守者の SUT で、**`swift test` が 5 SUT のシナリオを型検査する砦**なので外へ出さない |
 | ⑤ Swift 6 系のコンパイラ警告 | 機械的な分だけ修正・残りは下の台帳 | 全ファイル再コンパイルで実数 88 件(端末表示は1件が2行に出るので `grep -c warning:` は倍を数える)。修正した 31 件は挙動に触れない型(冗長 `public`・不要 `try`・未使用値・Codable の `let kind`) |
 
@@ -786,7 +788,7 @@ Y も一緒に消える壊れ方があると、そこだけ穴になる。
 **掘って分かった同型3つ**(どれも「黙って効かない/黙って落ちる」型):
 
 - **`profileOnlyBoolKeys` の8キーは2種類の混在だった。** 原理的に devices 一覧が要るもの
-  (`iosInappEngine` 等4つ)と、**材料は揃っているのに配線が無かっただけ**のもの
+  (`iosMode` 等4つ)と、**材料は揃っているのに配線が無かっただけ**のもの
   (`record` 系・`homeOnStart`)。後者は配線したら動いた。**「デバイス依存だから」という
   説明が実態と食い違ったまま定数名になっていた**ので、名前もコメントも直した
 - **`run-file` は3つ目の実装だった。** `arguments.append("--heal")` で**文字列の引数列を
@@ -939,7 +941,7 @@ en ロケールの端末が「単」を中国語フォントで描くと、補�
 - **別デバイスで緑**(F8b): 奪った port にシミュレータの in-app ブリッジ(同じ bundle ID)が立ち、
   実機レーンのクライアントはそのまま撃ち続け、1 シナリオがシミュレータ上で PASS した。露呈したのは
   システム UI 探りへの 409 だけ。→ シナリオ実行プロセスの事前確認とホスト側の再プローブの両方が
-  `BridgeIdentityCheck`(udid / engine)を通し、別のデバイスなら `BridgeProbeOutcome.hijacked` = 接続不能扱い。
+  `BridgeIdentityCheck`(udid / bridge)を通し、別のデバイスなら `BridgeProbeOutcome.hijacked` = 接続不能扱い。
   **bundle ID が同じなら見分けられない**ので、同一性は /status の申告で確かめる。
 - **ステージ先の衝突**(F6): 同じプロジェクトの別アプリプロファイルが同名 .app を
   `workspace/apps/<basename>` へ上書きし合い、実機の run がシミュレータ build を install した(0xe8008014)。
@@ -1163,7 +1165,7 @@ spawner(= 親だけが読み手)を足した。**陽性対照**: 同じ形で親
 116〜134pt 押し上げられている**最中**に次の `tap` が木を掴み、押し上げ前の座標を撃っていた
 (iPhone 13 を LAN = 往復 48ms で回すと E2E-iOS の WebView S0010 が **8 回中 4 回**赤。USB の SE3 は全緑)。
 直しは「type の直前の `keyboardFrame` を控え、**次のロケータ操作がどのみち撮る 1 枚**と比べて、
-動いていたときだけ `settledSignature` で収束を待つ」。**エンジンに依存させないことが肝**で、最初の実装は
+動いていたときだけ `settledSignature` で収束を待つ」。**ブリッジに依存させないことが肝**で、最初の実装は
 読み返し(`verifyTypedText`)の木を「打った後」にしていたため、**読み返しが走らない xcuitest = 実機の経路で
 1 度も発火しなかった**(= 実測したバグを直せていなかった)。陽性対照: 同じ 8 周で **8/8 緑**・
 `tap "送信"` の snapshot 所要が 586ms → 1568ms(整定の 2 枚ぶん)= 待ちが実際に入っている。
@@ -1177,8 +1179,8 @@ spawner(= 親だけが読み手)を足した。**陽性対照**: 同じ形で親
 「xcuitest のプロファイルを使え」と出ていた)。
 
 - **`DriverError` が構成を知らなかった**: `bridgeUnreachable` / `bridgeConnectionRefused` の説明文は固定で、
-  Android の実機にも「inapp/hybrid はシミュレータ専用 —— xcuitest を使え」、xcuitest の接続拒否にも
-  「アプリが落ちた可能性が最も高い」と書いていた。`DriverErrorContext`(engine + 実機か)を**必須の同伴データ**に
+  Android の実機にも「inapp モードはシミュレータ専用 —— xcuitest モードを使え」、xcuitest の接続拒否にも
+  「アプリが落ちた可能性が最も高い」と書いていた。`DriverErrorContext`(ブリッジ + 実機か)を**必須の同伴データ**に
   して、構成ごとに起こりうる原因だけを並べる。**既定値を置かない**ので、新しい経路が文脈を渡し忘れると
   コンパイルで止まる。
 - **同じ文が入れ子で二重**: `AndroidDriver` が完成した説明文(`errorDescription`)を次の `detail` へ渡していた。
@@ -1538,7 +1540,7 @@ E2E が E2E-iOS の1 SUT にしか無かった(見本の無い SUT では分類�
 見本は状態の両側を採る / `prefer:` のような「どちらの経路が判定したか」は合否に出ないので、経路を
 合否に出す witness(a11y と画像が食い違う要素)を単体テストで作る。
 
-**追記(2026-09-19 負荷テスト P7): ①は XCUITest エンジンでも起きる。直さずに既知の制約とした**(ユーザー決定)。
+**追記(2026-09-19 負荷テスト P7): ①は xcuitest モードでも起きる。直さずに既知の制約とした**(ユーザー決定)。
 上の「XCUITest では起きない」は誤りだった。E2E-CMP 20 の S0020(タブ切り替え直後の `findImage("[Checkbox]")`)が
 CMP × xcuitest で決定的に赤(4 機で「nearest 0.779 / 28 compared」まで同一)。同じ画面で待つ `existImage` は緑。
 v117 の規律をそのまま XCUITest ランナーへ移した版を作って測ったが効かなかった: XCUITest の古い絵は
@@ -1930,7 +1932,7 @@ run ボードも供給フェーズの run を `phase: "preparing"` で正しく�
   (`RunnerAccessibilityHealth`)が run の経路にしか無かった**。10 分でランナーが自壊し、以後その
   セッションは `connectionLostHint` を返すだけで**誰も `bridge up` を打たないので戻らない**。
   ①接続拒否を受けたら `BridgeProvisioner.provision` で**1回だけ**起動し直して撃ち直す
-  (失敗した engineKey はセッション中に再挑戦しない)②呼び出しの所要が
+  (失敗した sessionKey はセッション中に再挑戦しない)②呼び出しの所要が
   `RunnerAccessibilityHealth.shouldRecheck` の閾値を跨いだときだけ run と同じ `recheckRunner` で
   測り直す(空振りは既存の `RunnerRestartFutility` が止める)。
   **起動し直したことは結果本文の先頭に載せる** —— stderr だけだと JSON-RPC しか読まない呼び手に
@@ -1988,7 +1990,7 @@ run ボードも供給フェーズの run を `phase: "preparing"` で正しく�
 不在 = connect が即 拒否。`BridgeDiscovery.probeStatus` が `answered / timedOut / transportFailed /
 notBound` の4値を返し、`MCPServer.bridgeWedgedOnUDIDMessage` と `bridgeWedgedHint` が
 「転送だけ残っている」事実 + 典型原因(画面ロック・USB/ネットワーク圏外)+ 完成した `bridge up`
-コマンドを出す。**in-app/hybrid には wedged の文言を出さない**(あちらは `bridge up` で起動する物では
+コマンドを出す。**inapp モードには wedged の文言を出さない**(あちらは `bridge up` で起動する物では
 なく、前面から外れただけのことが多い)。
 
 **`bridgeOwnerAlive`(欠陥④)では捕まらない** —— このとき `.pid` が指す `xcodebuild` は生きたまま
@@ -2068,7 +2070,7 @@ notBound` の4値を返し、`MCPServer.bridgeWedgedOnUDIDMessage` と `bridgeWe
 ### 45.1 直した4件
 
 - **HYB-1(呼び手で成否が変わる)**: テキスト入力系の 409 を、DSL は XCUITest へ回すのに
-  `HybridFallbackDriver` は回さなかった —— 同じ hybrid 構成の同じ操作が、シナリオなら通り
+  `HybridFallbackDriver` は回さなかった —— 同じ inapp モードの同じ操作が、シナリオなら通り
   `ft_type`(`pressEnter`)/ `ft_clear_input` では落ちる。判定を
   `DriverError.isTextInputFallback` / `isClearInputFallback` として FTCore へ出し、両方が呼ぶ。
   **`withFallback` の既定は変えない** —— あれは tap/swipe/hideKeyboard を含む 14 操作と共有で、
@@ -2261,7 +2263,7 @@ Android → iOS 実機へ切り替えると Android の画面が残った。iOS 
 
 ### 47.2 実機のブリッジは udid を名乗らない → 既定ポートの別の実機を「自分」と読んだ
 
-`/status` の udid が nil のとき `BridgeIdentityCheck` は「エンジン一致 = 一致」に倒れ、8123 に居た
+`/status` の udid が nil のとき `BridgeIdentityCheck` は「ブリッジ一致 = 一致」に倒れ、8123 に居た
 iPhone SE3 のブリッジを iPhone wave のものとして掴んだ(返った画面は 750×1334 = SE3)。
 `bridge status` が udid を出せるのは台帳 `.device` から読むためで、本人確認だけがこの補完を
 通していなかった。直し: `BridgeDiscovery.statusForIdentityCheck`(申告が無いときだけ記録で補う)を
@@ -2482,7 +2484,7 @@ XCUITest の `/doubletap` を独立した2タッチに変えた回(v127)。探�
 
 以前の docs は「XCTest の `doubleTap()` は2打の間隔が 0ms なので Compose が2打目を捨てる」と書いていたが、
 **推測で、誤りだった**。独立した2タッチ(接触 0.05〜0.08 秒・2回目は 0.1 / 0.25 秒後)にしても CMP は
-`double=0`(シミュレータの ios-xcuitest・hybrid の XCUITest 回し・実機 SE3 の全部)。in-app の合成タッチだけが届く。
+`double=0`(シミュレータの ios-xcuitest・inapp モードの XCUITest 回し・実機 SE3 の全部)。in-app の合成タッチだけが届く。
 **XCUITest 側の打ち方を調整して Compose を通そうとしない**(間隔は効かない)。実機の Compose アプリには
 ダブルタップの手段が無い → 利用者向け docs は拡大の確認を `pinchOut` へ誘導している。
 
@@ -2498,7 +2500,7 @@ XCUITest の `/doubletap` を独立した2タッチに変えた回(v127)。探�
 
 置き方を持っていたのは ホストの `PinchRegion.closingTouchPoints`・XCUITest ランナー・Android・in-app の4箇所。
 iOS では `PinchRegion.area` が横長の細い領域を渡す(長辺に指を置く前提)のに、in-app は**短辺の 90%** まで
-開く規則だったので、hybrid の Flutter で `pinchOut()`(対象なし)がほとんど開かず `zoom=-` のままだった。
+開く規則だったので、inapp モードの Flutter で `pinchOut()`(対象なし)がほとんど開かず `zoom=-` のままだった。
 E2E-Flutter はピンチを `android {}` に閉じていたので隠れていた(探りで初めて出た)。
 直し: 置き方は `PinchGesture`(iOS / Android の規則を OS ごとに1つ)、**ブリッジは `PinchRequest.fingers` を
 再生するだけ**。規則を OS で分けたのは意図(Android は領域の短辺から幅を決める = 狭い領域を渡さない)で、
@@ -2550,7 +2552,7 @@ iPhone 13(M1Ultra)の2台で同時に出た。ロック解除では直らない�
 M1Ultra の sim06 を `remote exec` 越し)+ CLI ファズ + 周回の合間の `api run`・中断・実機 run。
 直近の新機能(多点ジェスチャ・`@FTCommand`・実機の暗い画面・watchdog のリモート分界)も当てた。
 
-**新規の型は3つ**(51.1・51.4・51.8)。残りは既知の型の再発(括弧内)。**持ち主(同一性)の型が4件**(51.2・51.9・51.10・51.11)で最多 —— 「ポートはデバイスの同一性ではない」に加えて「udid はエンジンの同一性ではない」「台帳の機械名は操作する機械ではない」が今回の新しい言い方
+**新規の型は3つ**(51.1・51.4・51.8)。残りは既知の型の再発(括弧内)。**持ち主(同一性)の型が4件**(51.2・51.9・51.10・51.11)で最多 —— 「ポートはデバイスの同一性ではない」に加えて「udid はブリッジの同一性ではない」「台帳の機械名は操作する機械ではない」が今回の新しい言い方
 
 ### 51.1 桁外れの座標で Android のドライバが trap してプロセスごと落ちた
 ライブ操作の `{"cmd":"drag","fromX":1e308,…}` で serve が `Double value cannot be converted to Int32` で死んだ。
@@ -2562,12 +2564,12 @@ MCP は画面外の座標を先に断るので落ちない(= §45 の「MCP に�
 座標の tap なので、毎クリック木を読むと負荷下で命令ごとに数秒足す。控えで外れたときだけ撮り直して確かめる
 (回転で広がった画面を古い控えで断らない)
 
-### 51.2 hybrid の予備ポートが別のデバイス・別のエンジンへ移っても使い続けた(§46 持ち主の型)
-MCP とライブ操作は hybrid(in-app + XCUITest の予備)を組んだ後、キャッシュ命中では主(in-app)の udid しか
+### 51.2 inapp モードの予備ポートが別のデバイス・別のブリッジへ移っても使い続けた(§46 持ち主の型)
+MCP とライブ操作は inapp モードの構成(in-app + XCUITest の予備)を組んだ後、キャッシュ命中では主(in-app)の udid しか
 確かめていなかった。フリートの起動し直しで予備ポートが in-app ブリッジに化け、`/gesture`・`/drag` が 404
 (= in-app に来た証拠)。別のデバイスなら home/drag を黙って別のデバイスへ撃つ。直し: `HybridFallbackIdentity.drifted`
 を MCP(キャッシュ命中)とライブ操作(`frame` 以外の命令ごと)が共有。**`BridgeIdentityCheck.verdict` は udid が
-両側にあるとエンジンを見ない**ので、同じデバイスの in-app に化けた形は `hybridFallbackDrift` でエンジンを先に見る
+両側にあるとブリッジを見ない**ので、同じデバイスの in-app に化けた形は `hybridFallbackDrift` でブリッジを先に見る
 
 ### 51.3 `api run` だけ供給前の lease の前倒しが無かった(run と api run の2実装)
 2026-09-20 に `fleetest run` だけ直していた。`api run` の供給中(ブリッジ起動)に `api stop-device` が門を
@@ -2609,12 +2611,12 @@ XCUITest ランナーの `/type` は ref があるときだけ読み返してい
 他の機械のものなら `.foreign` で断り、`fleetest remote exec <machine> -- api … --device-machine local` を示す
 (start-device / stop-device --name / restart-devices)。**この Mac で意味を持つ値は `local` だけ**
 
-### 51.10 主ポートが同じデバイスの別エンジンに化けても使い続けた(51.2 と同じ根・主ポート側)
+### 51.10 主ポートが同じデバイスの別ブリッジに化けても使い続けた(51.2 と同じ根・主ポート側)
 MCP の `ft_terminate` が in-app ブリッジの 501(`/terminate is not supported in-app`)を返した = XCUITest として
 掴んだ主ポートが、起動し直しで同じデバイスの in-app ブリッジになっていた。`deviceIdentityChanged` は udid しか比べず、
-ref を使う呼び出しでしか撃たない。直し: キャッシュ命中のたびに主ポートのエンジンも確かめ、変わっていたら
-ref を使う呼び出しは断り(`ft_snapshot` を撮り直せ)、それ以外は黙って作り直す。ライブ操作の in-app 単独構成は
-期待エンジンを `inapp` にする(一律 `xcuitest` だと健全なデバイスを毎回「変わった」と読む)
+ref を使う呼び出しでしか撃たない。直し: キャッシュ命中のたびに主ポートのブリッジも確かめ、変わっていたら
+ref を使う呼び出しは断り(`ft_snapshot` を撮り直せ)、それ以外は黙って作り直す。ライブ操作で XCUITest ブリッジが見つからず in-app ブリッジ単独になる構成は
+期待ブリッジを `inapp` にする(一律 `xcuitest` だと健全なデバイスを毎回「変わった」と読む)
 
 ### 51.11 run の供給が、MCP で駆動中の実機ランナーを「起動しきれない」と誤って止めた(持ち主 + 不明を確定に畳む)
 E2E の run(その実機を含まないプロファイル)が `sweepStuckStartingRunners` で、1時間近く稼働していた実機 SE3 の
@@ -3106,7 +3108,7 @@ fleetest-mcp 1 本・udid / serial を毎回添える)+ 取り合いの run(フ�
 
 ### 60.1 `ft_logs` が `udid` を捨て、駆動中の実機を実機と分からない
 複数台を駆動する呼び手は全ツールに `udid` を添える。`ft_logs` だけは udid を宣言していなかったので(入口の畳み込みが
-ブリッジを走査し、死んだ後に落ちるため)、「未知の引数」として捨てていた。その結果 engineKey が `direct:ios:0:` になり、
+ブリッジを走査し、死んだ後に落ちるため)、「未知の引数」として捨てていた。その結果 sessionKey が `direct:ios:0:` になり、
 駆動中のセッション(鍵はポート入り)の `connectedPorts` を引けず、実機でもシミュレータの待ち(4.2 秒)を払って
 「クラッシュ無し」と答えた。**ランナーを殺した直後(このツールの出番)にそのまま再現した**。アプリの記憶
 (`launchedBundleIDs`)も同じ鍵なので、2 台で別のアプリを起動していれば「このセッションでは何も起動していない」と断る。
@@ -3346,7 +3348,7 @@ tapping …` の後に `Synthesize event`)。負荷テストでは sim-10 で通
 **422** を返す(控えないと「何も起きていないのに 200」)。**false を返すと既定のハンドラへ落ちる**(`RunnerInterruptionGuardScanTests`)。
 実地: ref タップ・座標タップ・スワイプが 422 で返り、アラートも権限も変わらず、読み取り(snapshot・/systemalert)は通る。
 **払うもの**: 遮られた操作1回に約 7 秒(XCTest が諦めるまで。縮める口は無い)。失敗経路でだけ払う。
-ブリッジ版 139 → 140。in-app エンジンのタップは XCTest を通らないので対象外(背面へ届く件は `_disabled/94` の既知の制約のまま)。
+ブリッジ版 139 → 140。in-app ブリッジのタップは XCTest を通らないので対象外(背面へ届く件は `_disabled/94` の既知の制約のまま)。
 
 ### 64.6 ツールの不具合ではなかったもの(記録のみ)
 - run 親の SIGKILL: 次の run が 4 機すべてのロックを回収・リモートに子の run の取り残し無し・手元の子は 10 秒以内に終了
@@ -3519,7 +3521,7 @@ E2EX-CMP android を各 10 周、ImeTracker の onRequestShow→onShown 計 140 
 待ち切った印を控え、以降のロケータ操作の木でキーボードが出ていたら `keyboard-appeared-late`(上限不足の事例を数える。
 次の type かキーボードの観測で消える)
 
-### 66.5 負荷テスト後の xcuitest エンジンの E2E(`--ios-xcuitest --local`)
+### 66.5 負荷テスト後の xcuitest モードの E2E(`--ios-xcuitest --local`)
 E2E-iOS 54・E2E-Flutter 45 は全緑。E2E-RN の赤は全部 sim-08 で、**負荷テストの MCP ファズが横向きにしたまま残した**
 (run 冒頭の `warnOnNonPortraitIOS` が警告)+ 写真の権限アラートが残っていた —— 縦に戻してアラートを閉じると 46 本全緑。
 E2E-CMP は 56 本中 4〜8 本が赤のまま。中身は**テキストの可視性検証の OCR 段の反転**([notRendered]・observed="")と
@@ -3675,7 +3677,7 @@ SUT・シナリオの誤りを3巡潰し、残りをツールで直して、原�
   UIAlertController のボタン(UIView・合成タッチが効く)まで XCUITest へ回り、ランナーが「アラートが手前」で断った
   (E2E-iOS 7本・E2EX-iOS 4本が赤)。v146 で **UIView でない SwiftUI の a11y ノードだけ**に限った
   (`AppUIFramework.rejectsSyntheticTap(nodeIsView:)`)。RN・Compose・Flutter・UIKit は合成タッチが効くので従来どおり
-- **XCUITest へ回すタップは対象アプリへ揃えてから撃つ**: hybrid の予備(`AppAttachDriver`)は前のプロファイルのアプリに
+- **XCUITest へ回すタップは対象アプリへ揃えてから撃つ**: inapp モードの予備(`AppAttachDriver`)は前のプロファイルのアプリに
   向いたまま再利用されることがあり、座標タップを直に撃つとランナーが「対象アプリが動いていない」(503)で断った。
   木を撮る段で向け直すので、回すタップは長押しと同じく XCUITest の木で引き直して ref で押す。`AppAttachDriver.tap(x:y:)` だけ
   `ensureAttached` が抜けていた(他の ref 無しの操作は持っていた)
@@ -3684,7 +3686,7 @@ SUT・シナリオの誤りを3巡潰し、残りをツールで直して、原�
 - **文中リンクを押す DSL** `tap(要素, linkText:)`(Espresso の `openLinkWithText` に名前を倣う): 位置は木の子孫 → OCR の順で決める
   (Flutter・RN はリンクが子ノード。Compose・View の ClickableSpan・SwiftUI の AttributedString は木に出ない)。
   - **OCR で決めた点は1つのノードの中の点** —— in-app の座標タップは「点を含むノードを activate」するので段落の activate
-    (= 押した位置と無関係なリンク)に化ける。hybrid では XCUITest の本物のタッチで撃つ
+    (= 押した位置と無関係なリンク)に化ける。inapp モードでは XCUITest の本物のタッチで撃つ
   - **遅い Emulator では画面の切り替えの途中の白い絵を撮る**(M1Ultra の CMP の Android で「OCR read no text」。同じ画面の
     失敗時の絵・同じ画像の M1Ultra の OCR では読めた)→ 1文字も読めない絵は 0.5 秒おきに最大3回撮り直す。
     **文字が読めたのに語が無いなら撮り直さない**(撮り直しても変わらない)。OCR が返らない形(Android View で 120 秒の
@@ -3874,7 +3876,7 @@ setup / teardown スクリプト(`ft_start_run` の確認で受ける)・`Packag
 
 ## 72. 残ったシステムアラートを各シナリオの前にボタンを押さずに消す(2026-10-06)
 
-**発端**: XCUITest エンジンの E2E で `iosAlertHandler` が発火せず写真の許可アラートが -07 に残り、同じレーンの
+**発端**: xcuitest モードの E2E で `iosAlertHandler` が発火せず写真の許可アラートが -07 に残り、同じレーンの
 後続シナリオが 16 回「a system alert is in front of the app」で落ちてレーンの復帰も使い切った。
 **決定(ユーザー)**: 各シナリオの開始時に消す。最初は**ボタンを押さずに**(SpringBoard の起こし直し)としたが、
 起こし直しは約 20 秒かかるため、**3段の使い分け**に改めた: ①何も決めないボタン(キャンセル・閉じる・1つだけの
@@ -3897,7 +3899,7 @@ OK)を押す ②権限のダイアログは拒否側を押して、権限が拒�
   `present:false` のときだけ成功、それ以外は理由付きの失敗
 - 実機は起こし直せない・プロファイルの無い run はブリッジを作り直せないので警告だけ
 
-**`iosAlertHandler` が XCUITest エンジンで発火しなかった原因は未調査**(in-app のフル E2E では同じシナリオが緑)。
+**`iosAlertHandler` が xcuitest モードで発火しなかった原因は未調査**(inapp モードのフル E2E では同じシナリオが緑)。
 
 ## 73. 10/7 の3時間負荷テスト(2026-10-07 04:01〜07:02)
 
@@ -3911,9 +3913,9 @@ fleetest 系のクラッシュ 0・手元で run が同時に2本走った瞬間
   run 中の sim-01 へ、その後 sim-10 宛の操作が **少なくとも 50 分 sim-09 のランナーへ ok:true で**届き続けた(sim-09 の serve も同じ
   ランナーを叩くので `Error getting main window` が多発)。run の sim-01 のレーンも 8131 を奪われ `kAXErrorAPIDisabled`
   (XCUITest の応答)で赤
-- **原因**: 自分のブリッジが無いときの空きポートは**予約ではない**のに、placeholder の期待エンジンが nil で、
+- **原因**: 自分のブリッジが無いときの空きポートは**予約ではない**のに、placeholder の期待ブリッジが nil で、
   毎コマンドの本人確認(`HybridFallbackIdentity.drifted`)がまるごと飛んでいた
-- **直し**: 期待エンジンを `"xcuitest"` にする/別のデバイスと判明して断ったら `makeLiveDriver` で解決し直し、自分の
+- **直し**: 期待ブリッジを `"xcuitest"` にする/別のデバイスと判明して断ったら `makeLiveDriver` で解決し直し、自分の
   ブリッジへ乗り換えるか別の空きポートへ自動起動を回す(観測は差し替え後のドライバで撃つ。文言は「ポート N へ切り替えた・
   撃ち直せ」= `reroutedMessage`)。`LivePlaceholderIdentityScanTests`。陽性対照: serve が選んだポートへ別の udid を名乗る
   偽ブリッジを後から立て、タップは届かず(偽ブリッジが受けたのは `GET /status` だけ)8135 へ移って自動起動した
@@ -3962,7 +3964,7 @@ JSON-RPC 2.0 どおり -32700(読めない)/ -32600(オブジェクトでない)
 
 ## 74. E2EX の XCUITest で決まって赤だった 13 本を潰して出た知見(2026-10-07〜08)
 
-`Scripts/e2ex.sh --ios-xcuitest` で既定エンジン(in-app)では緑なのに決まって赤だった 13 本を 1 本まで減らした
+`Scripts/e2ex.sh --ios-xcuitest` で既定の inapp モードでは緑なのに決まって赤だった 13 本を 1 本まで減らした
 (残りは CMP の `90_不具合の回帰` S0020 = 未修正と明記した証人)。ブリッジ iOS v150 → v157。数値は M1Ultra / この Mac の
 Simulator(iPhone 17 Pro・iOS 27.0・Xcode 27)での実測。
 
@@ -4118,7 +4120,7 @@ E2EY は既定で赤 10 本・XCUITest で赤 13 本)。負荷テストは実機
 
 ### 76.1 赤の多くは SUT の誤りだった(ツールは正しく「タップが効いていない」と言っていた)
 - SwiftUI の `.plain` の Button は文字の部分しか押せない(`.contentShape(Rectangle())` が要る)。XCUITest は行の中心 = 余白を押す。
-  in-app は activate なので届き、エンジンで割れて見えていた
+  in-app は activate なので届き、ブリッジで割れて見えていた
 - UIKit のチャットの浮いたボタンが inputAccessoryView の下に潜っていた(下端をキーボードの通知でしか上げない作り)→ keyboardLayoutGuide
 - E2EY-Flutter の隠れるバーは、Stack がクリップするのはレイアウトのはみ出しだけで、AnimatedSlide のずれは描画の段なので固定領域の
   上に描かれていた → ClipRect。「セマンティクスが元の位置のまま」として `@Draft` にしていた S0020 の正体もこれ
@@ -4993,7 +4995,7 @@ emulator-5568 = ライブ操作・実機 3 台(SE3・Pixel 4a・Pixel 3a)= MCP�
   `RunRecorder.markLastFailed` で失敗へ書き換え(`--failed` も)②in-app の確認の home(501 → 設定アプリ)で SUT が背面に回り、in-app の撮影が
   止まって確認が成立せず背面のまま後続へ → iOS は OS 側の撮影に揃え、確認の後に SUT を前面へ戻す ③home もフォールバックも撃てなくても
   凍結と確定しうる → nudge が撃てたかを終了コードで返し、撃てなければ判定しない ④録画へ合否を渡すのが確認より前 → 区間の終わりは確認の前・
-  合否は確認の後 ⑤MCP の起動し直しの失敗を畳む前の engineKey(port を省いた iOS は全部同じ鍵)で覚え、1 台の失敗で別の Simulator まで止めた →
+  合否は確認の後 ⑤MCP の起動し直しの失敗を畳む前の sessionKey(port を省いた iOS は全部同じ鍵)で覚え、1 台の失敗で別の Simulator まで止めた →
   udid ごと ⑥起動し直した呼び出しが失敗すると注記が無く、次の成功へ持ち越された → 注記は call() の中だけで持ち、成功・失敗の両方へ ⑦SIGTERM の後に
   別のシグナルで止まった run も ft_stop_run の仕業と言った → 送った事実だけを並べ、終わった原因はシグナルのまま
 - **Codex の再レビュー(2 件)を反映**: ①記録は失敗へ直しても、先に流れた scenarioFinished(passed:true)で Test Explorer は合格のまま
@@ -5156,8 +5158,8 @@ worktree の run がそれらの端末を「別のワークスペースのブリ
   「0/1」→「0/3」と増えて見え、誤解を招く
 - **壊した・直した記録**: ①通知の後片付けは「自分が登録したときだけ外す」(`RunSupplyProgress.releaseOnChange(owner:)`)——
   委譲の最初の版は `close()` で無条件に nil にしていて、入口の書き手の defer が引き継いだ `RunProgressState` の通知を消す
-  (混在 run で後から合流する iOS の段階が止まる。レビューで見つけた・未出荷)②同じ Simulator の2つ目のブリッジ(hybrid の
-  in-app)で計画時点の `sim.booted` を見て、起動済みの端末に「起動中」を立て直した(デバイスで実測)→ 起動を扱った udid を
+  (混在 run で後から合流する iOS の段階が止まる。レビューで見つけた・未出荷)②同じ Simulator の2つ目のブリッジ(inapp モードの
+  in-app ブリッジ)で計画時点の `sim.booted` を見て、起動済みの端末に「起動中」を立て直した(デバイスで実測)→ 起動を扱った udid を
   `bootHandled` で控える ③「ブリッジを起動中」を起動の前(executeBridge の冒頭)に立てていた → 起動済み・実機のときだけ
 - **残る窓(既知・自己修復)**: `RunProgressState` の最初の書き込みと通知の引き継ぎの間に準備中の書き手の通知が走ると、
   `"preparing"`/total 0 が一度 `"running"` を上書きする。次の flush(最初のシナリオの開始)で直る。引き継ぎを先にすると
@@ -5259,7 +5261,7 @@ worktree の run がそれらの端末を「別のワークスペースのブリ
   - 初期化の前提は全部満たしたときだけ(`wipeBlock`): シミュレータ・他のセッションのリースが無い・この供給の後でアプリが入れ直される
     (`BridgeProvisioner(mayEraseSimulatorForRecovery:)` を true にするのは `ProfileSupplyLanes.ios`・ワーカー復帰・凍結回復の張り直し = 直後に `installIfNeeded` を通す呼び手だけ、かつ
     `preinstallAppPath` = autoInstall が有効)。満たさないときは理由と `fleetest api wipe-device --platform ios --udid <udid>` を 1 行出す。
-    hybrid の in-app は計画時に「アプリは最新」と読んでいるので、初期化した udid は入れ直す(`erasedSimulators`)
+    inapp モードの in-app ブリッジは計画時に「アプリは最新」と読んでいるので、初期化した udid は入れ直す(`erasedSimulators`)
   - ロケール(`SimulatorLocalePreservation` / 読み書き)は FTBridgeClient へ移し、手動の Wipe Data(`DeviceWiper`)と供給の初期化が同じ実装を通る
 - 以前「iOS の自動 Wipe は見送り」(ディスク肥大の対策)と決めたが、これは別の契機(階段を登り切っても直らなかったデバイスだけ・次の run の供給で 1 回)で、ユーザーの指示で入れた
 - **教訓: 効果を測れなかった回復を成功に数えない**。「測れなかった」は「直った」でも「直らなかった」でもなく、回復の判定は積極的に直ったと測れた回だけを成功とする。

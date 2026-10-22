@@ -114,7 +114,7 @@ final class MCPProductionAppShapesTests: XCTestCase {
         XCTAssertEqual(hit?.identifier, "recycler_view")
     }
 
-    /// **z を申告しないエンジン(iOS)では ref 順のまま**。片方だけ nil の木でも大小を比べない
+    /// **z を申告しないブリッジ(iOS)では ref 順のまま**。片方だけ nil の木でも大小を比べない
     func testPaintOrderFallsBackToTreeOrderWhenTheBridgeDoesNotReportIt() {
         let behind = element(5, "a", depth: 2, 0, 0, 10, 10)
         let front = element(9, "b", depth: 2, 0, 0, 10, 10)

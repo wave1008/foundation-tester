@@ -1,6 +1,6 @@
-// engineKey ごとのセッション状態(1台ぶんの記憶)。**保存先はこの型1つだけ**。
+// sessionKey ごとのセッション状態(1台ぶんの記憶)。**保存先はこの型1つだけ**。
 // MCPServer の `drivers` / `lastSnapshots` 等は `sessions` の1欄を見る窓(`SessionMap` / `SessionFlags`)で、
-// それ自体は何も持たない。**engineKey ごとの記憶を足すときはここへ欄を足す** ——
+// それ自体は何も持たない。**sessionKey ごとの記憶を足すときはここへ欄を足す** ——
 // 並列の `[String: …]` / `Set<String>` を MCPServer に戻すと、`forgetDeviceState` の消し忘れが
 // 再び起き得る(束ねる前に `backgroundedByNavigate` / `webPageCeilingLatched` が実際に漏れていた)。
 // `DeviceStateInvalidationTests` が並列宣言の再混入を走査で落とす。
@@ -13,9 +13,9 @@ import FTCore
 
 struct DeviceSession {
     var driver: AppDriver?
-    /// 「実際に主となったエンジン」。iosEngineHint がこれで助言を出し分ける
-    /// (引数からは決まらない: profile 無しでも in-app を掴めば hybrid)
-    var engine: String?
+    /// 「実際に主となったブリッジ」。iosModeHint がこれで助言を出し分ける
+    /// (引数からは決まらない: profile 無しでも in-app を掴めば inapp モード)
+    var bridge: String?
     /// **直前にエージェントへ返した木**。ref を撃つ直前に撮り直して同じ要素を引き直すための起点
     /// (RefGuard 参照)。**ref はスナップショットごとに振り直される**ので、番号ではなく要素の同一性で照合する
     var lastSnapshot: SnapshotResponse?
@@ -146,7 +146,7 @@ struct DeviceSession {
     /// —— 表示用の文と機械判定を同じ文字列に相乗りさせると、表記を整えるたびに判定が壊れる。
     /// タイムアウト時にそのポートがまだ生きているかを確かめる `connectionLostHint` が使う
     var connectedPort: UInt16?
-    /// hybrid(in-app + XCUITest)キャッシュ命中の XCUITest フォールバックポート。
+    /// inapp モード(in-app + XCUITest)キャッシュ命中の XCUITest フォールバックポート。
     /// **`connectedPort` とは別枠**(あちらは主(in-app)のポート): `HybridFallbackDriver` の
     /// fallback は home/drag/座標 press/gesture 等をこちらへ回すので、起動し直しで別デバイスへ
     /// 移っていないかは主の udid だけでは検知できない(maintainer-notes §51.2。hybridFallbackDrifted 参照)
@@ -167,7 +167,7 @@ struct DeviceSession {
     /// 撃ち続けない。MCPServer+BridgeRecovery.swift 参照)
     var bridgeRecoveryFailed = false
     /// **udid の畳み込みで「Simulator に何も待ち受けていない」と分かり、ランナーを起動し直そうとして失敗した udid**
-    /// (`MCPServer.rebuildMissingSimulatorBridge`)。この欄を持つ鍵は畳む前の engineKey(port を省いた iOS の呼び出しは全部
+    /// (`MCPServer.rebuildMissingSimulatorBridge`)。この欄を持つ鍵は畳む前の sessionKey(port を省いた iOS の呼び出しは全部
     /// `direct:ios:0:` になる)なので、**udid ごとに覚える**(1 台の失敗で別の Simulator の回復まで止めない)。
     /// 失敗のときだけ入れる(成功したら次にまた消えたときは再挑戦してよい)
     var simulatorBridgeRebuildFailedUDIDs: Set<String> = []
@@ -175,7 +175,7 @@ struct DeviceSession {
     var versionSkew: String?
 }
 
-/// `sessions` の1欄を「engineKey → 値」の辞書として見る窓。書き込みは `sessions` へ直接届く
+/// `sessions` の1欄を「sessionKey → 値」の辞書として見る窓。書き込みは `sessions` へ直接届く
 /// (`nonmutating set`。窓自体は何も持たないので、返された窓を保存しても古くならない)
 /// `DeviceSession.uiFrameworkHint` の中身(判定したアプリと組)
 struct UIFrameworkHint {
@@ -220,7 +220,7 @@ struct SessionMap<Value> {
     }
 }
 
-/// `sessions` の Bool 欄を「立っている engineKey の集合」として見る窓(`Set<String>` と同じ呼び方)
+/// `sessions` の Bool 欄を「立っている sessionKey の集合」として見る窓(`Set<String>` と同じ呼び方)
 struct SessionFlags {
     let server: MCPServer
     let path: WritableKeyPath<DeviceSession, Bool>

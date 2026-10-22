@@ -377,7 +377,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         if let osVersion = spec.osVersion { object["osVersion"] = osVersion }
         if let udid = spec.udid { object["udid"] = udid }
         if let port = spec.port { object["port"] = Int(port) }
-        if let engine = spec.engine { object["engine"] = engine }
+        if let mode = spec.mode { object["mode"] = mode }
         if let avd = spec.avd { object["avd"] = avd }
         if let serial = spec.serial { object["serial"] = serial }
         if let model = spec.model { object["model"] = model }

@@ -116,7 +116,7 @@ struct ApiStartDeviceCommand: AsyncParsableCommand {
 
 /// `start-device --udid` の spec 合成。**接続中の実機だけ**を受ける —— 繋がっていない端末で
 /// ブリッジを起こそうとすると xcodebuild が数分かけて失敗するので、その手前で落とす。
-/// engine は xcuitest 固定(`fleetest bridge up --physical` と同じ。実機に in-app 注入は無い)。
+/// mode は xcuitest 固定(`fleetest bridge up --physical` と同じ。実機に in-app 注入は無い)。
 /// 到達性の判定は `IOSPhysicalDeviceCatalog.confirmedConnected` に委ねる(判定は1箇所)。
 /// probe を渡さなければ実際の devicectl 問い合わせを使う —— それ以外に I/O は持たない
 enum ApiDeviceUpDirectSpec {
@@ -146,7 +146,7 @@ enum ApiDeviceUpDirectSpec {
                                                              transport: device.transport)
         }
         return DeviceSpec(name: device.name, kind: .physical, osVersion: "iOS \(ApiInstalledDevicesCommand.normalizeOS(device.os))", udid: device.udid,
-                          engine: "xcuitest")
+                          mode: "xcuitest")
     }
 }
 

@@ -97,7 +97,7 @@ const RUN_PROFILE_DATA = {
     screenLooksLike: true,
     ocrTextVisibilityCheck: true,
     preferCheckStateClassifier: true,
-    iosInappEngine: true,
+    iosMode: "inapp",
     iosPreActionPing: true,
     homeOnStart: true,
     playProtectBypass: true,

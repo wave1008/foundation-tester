@@ -89,7 +89,7 @@ const RUN_FIELDS = {
   containerInference: true,
   ocrTextVisibilityCheck: true,
   preferCheckStateClassifier: true,
-  iosInappEngine: true,
+  iosMode: "inapp",
   iosPreActionPing: true,
   homeOnStart: true,
   playProtectBypass: true,

@@ -1,5 +1,5 @@
 // 2026-08-12 のコードレビュー由来の修正:
-//   A. セッションデバイス記憶を dispatch 入口(call())で畳む(driver cache/engineKey/ref 世代の
+//   A. セッションデバイス記憶を dispatch 入口(call())で畳む(driver cache/sessionKey/ref 世代の
 //      不整合を解消)+ fold の4欠陥(udid を注入しない・記憶の再記録ドリフト・serial 明示への
 //      誤注入・platform 省略時の Android 記憶の無視)
 //   B. forgetConnection の Android 分岐(androidConnectionLostHint 経由。probe で serial の
@@ -334,7 +334,7 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
     }
 
     func testBridgeBusyHintDoesNotClaimTheRunnerExited() {
-        let hint = MCPServer.bridgeBusyHint(connection: "port 8124", engine: "xcuitest", mayHaveTakenEffect: false)
+        let hint = MCPServer.bridgeBusyHint(connection: "port 8124", bridge: "xcuitest", mayHaveTakenEffect: false)
         XCTAssertTrue(hint.contains("port 8124"), hint)
         XCTAssertTrue(hint.contains("still bound"), hint)
         XCTAssertFalse(hint.contains("exited"), hint)
@@ -344,35 +344,32 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
     /// 撃ち直すと二重に打つ)。観測だけのツールは撃ち直してよい
     func testBridgeBusyHintDoesNotTellDeviceDrivingToolsToRetry() {
         let typing = MCPServer.bridgeBusyHint(
-            connection: "port 8124", engine: "xcuitest",
+            connection: "port 8124", bridge: "xcuitest",
             mayHaveTakenEffect: MCPServer.mayHaveTakenEffect(tool: "ft_type"))
         XCTAssertFalse(typing.contains("Retry the call"), typing)
         XCTAssertTrue(typing.contains("ft_snapshot"), typing)
         let reading = MCPServer.bridgeBusyHint(
-            connection: "port 8124", engine: "xcuitest",
+            connection: "port 8124", bridge: "xcuitest",
             mayHaveTakenEffect: MCPServer.mayHaveTakenEffect(tool: "ft_snapshot"))
         XCTAssertTrue(reading.contains("Retry the call"), reading)
         XCTAssertTrue(MCPServer.mayHaveTakenEffect(tool: "ft_clear_app_data"))
         XCTAssertTrue(MCPServer.mayHaveTakenEffect(tool: "ft_no_such_tool"))
     }
 
-    /// engine が nil(判定できない)でも xcuitest 相当の busy 文言のまま(誤誘導しない側の既定)
-    func testBridgeBusyHintDefaultsToXCUITestWordingWhenEngineIsUnknown() {
-        let hint = MCPServer.bridgeBusyHint(connection: "port 8124", engine: nil, mayHaveTakenEffect: false)
+    /// bridge が nil(判定できない)でも xcuitest 相当の busy 文言のまま(誤誘導しない側の既定)
+    func testBridgeBusyHintDefaultsToXCUITestWordingWhenBridgeIsUnknown() {
+        let hint = MCPServer.bridgeBusyHint(connection: "port 8124", bridge: nil, mayHaveTakenEffect: false)
         XCTAssertTrue(hint.contains("still bound"), hint)
     }
 
     /// **C: suspend された in-app ブリッジへ「busy・リトライせよ」と言わない**。
-    /// in-app/hybrid はエンジンが分かればそちらの文言(前面に戻すか xcuitest ポートを使う)に切り替わる
-    func testBridgeBusyHintSwitchesToInAppWordingWhenEngineIsInApp() {
-        let hint = MCPServer.bridgeBusyHint(connection: "port 8125", engine: "inapp", mayHaveTakenEffect: false)
+    /// in-app ブリッジと分かればそちらの文言(前面に戻すか xcuitest ポートを使う)に切り替わる
+    func testBridgeBusyHintSwitchesToInAppWordingWhenBridgeIsInApp() {
+        let hint = MCPServer.bridgeBusyHint(connection: "port 8125", bridge: "inapp", mayHaveTakenEffect: false)
         XCTAssertTrue(hint.contains("port 8125"), hint)
         XCTAssertTrue(hint.contains("foreground"), hint)
         XCTAssertTrue(hint.contains("ft_launch"), hint)
         XCTAssertFalse(hint.contains("still bound"), hint)
-
-        let hybridHint = MCPServer.bridgeBusyHint(connection: "port 8125", engine: "hybrid", mayHaveTakenEffect: false)
-        XCTAssertTrue(hybridHint.contains("foreground"), hybridHint)
     }
 
     // MARK: - B: Android の記憶(lastExplicitAndroidSerial)の清掃経路

@@ -107,7 +107,7 @@ const RUN_PROFILE_FIELDS = {
   containerInference: true,
   ocrTextVisibilityCheck: true,
   preferCheckStateClassifier: true,
-  iosInappEngine: true,
+  iosMode: "inapp",
   homeOnStart: true,
   enableAnimations: false,
   responseMeasurement: false,
@@ -150,4 +150,38 @@ test("開始/終了スクリプトは入力欄を持たず、雛形を作るボ�
   assert.equal(posted[0].type, "runProfileHookScaffold");
   assert.equal(posted[0].profile, "android-1");
   assert.equal(posted[0].workspace, "../shared-ws");
+});
+
+test("iosMode に inapp / xcuitest 以外が書かれていたら、その値を選んだまま見せる(黙って inapp に書き換えない)", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview(PROFILE_INFO);
+  const select = window.document.getElementById("run-profile-ios-mode");
+  const inappOptions = window.document.getElementById("run-profile-inapp-options");
+
+  sendToWebview({ type: "runProfileData", profile: "android-1", ok: true, error: null,
+                  fields: { ...RUN_PROFILE_FIELDS, iosMode: "hybrid" } });
+  assert.equal(select.value, "hybrid");
+  assert.equal(select.querySelectorAll("option[data-unknown]").length, 1);
+  assert.match(select.selectedOptions[0].textContent, /hybrid/);
+  assert.equal(inappOptions.style.display, "none", "inapp モードの補助欄は inapp のときだけ");
+
+  // 別のプロファイルへ切り替えたら不明な値の選択肢は残さない。補助欄は読み込んだ値で決まる
+  sendToWebview({ type: "runProfileData", profile: "android-1", ok: true, error: null, fields: RUN_PROFILE_FIELDS });
+  assert.equal(select.value, "inapp");
+  assert.equal(select.querySelectorAll("option[data-unknown]").length, 0);
+  assert.equal(inappOptions.style.display, "");
+});
+
+test("不明な値を表示中に選び直したら、その選択肢は消える", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview(PROFILE_INFO);
+  const select = window.document.getElementById("run-profile-ios-mode");
+  sendToWebview({ type: "runProfileData", profile: "android-1", ok: true, error: null,
+                  fields: { ...RUN_PROFILE_FIELDS, iosMode: "hybrid" } });
+  select.value = "xcuitest";
+  select.dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.equal(select.querySelectorAll("option[data-unknown]").length, 0);
+  assert.equal(select.value, "xcuitest");
 });

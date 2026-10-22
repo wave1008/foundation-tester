@@ -111,8 +111,8 @@ export const exploreHealStrings = {
     en: "Recovery actions run on this device mid-run",
   },
   "exploreHeal.dashboard.colAppCrashesTitle": {
-    ja: "このデバイスのシナリオで、テスト対象アプリのクラッシュを検出した数(iOS は in-app エンジンのときだけ検出)",
-    en: "Scenarios on this device where an app crash was detected (on iOS, detected only with the in-app engine)",
+    ja: "このデバイスのシナリオで、テスト対象アプリのクラッシュを検出した数(iOS は in-app ブリッジ経由のときだけ検出)",
+    en: "Scenarios on this device where an app crash was detected (on iOS, detected only through the in-app bridge)",
   },
   "exploreHeal.dashboard.colLastEventTitle": {
     ja: "左の出来事のうち最も新しい時刻",

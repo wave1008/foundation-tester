@@ -1,8 +1,8 @@
 // ref の操作の前にシステムアラートを確かめて断る(`MCPServer.systemAlertGate`):
 // ①SpringBoard の許可アラートはアプリの木を変えずに湧くので、覆いの探針を木の指紋で使い回しても
 //   アラートだけは毎回聞く(使い回すと、権限を要求するボタンを叩いた後の操作で黙る)
-// ②断る。どちらのエンジンでも操作は届き(in-app は背面のアプリが反応・XCUITest は XCTest がアラートの
-//   ボタンを押す)、起きることをエンジンごとに言う ③SpringBoard に attach している間は断らない
+// ②断る。どちらのブリッジでも操作は届き(in-app は背面のアプリが反応・XCUITest は XCTest がアラートの
+//   ボタンを押す)、起きることをブリッジごとに言う ③SpringBoard に attach している間は断らない
 // ④ref を座標へ畳む double_tap / drag / pinch(`verifiedElement`)も同じ門(§19 A4)
 // ⑤照会そのものが失敗したら断らずに撃つが、確かめていないことを注記に残す(P2 の MCP 側)
 
@@ -59,7 +59,7 @@ final class SystemAlertTapRefusalTests: XCTestCase {
 
     /// **XCUITest**: XCTest がアラートのボタンを押しうることを理由に言う
     func testXCUITestRefusalSaysXCTestCanPressAnAlertButton() async throws {
-        server.engines[MCPServer.engineKey([:])] = "xcuitest"
+        server.bridges[MCPServer.sessionKey([:])] = "xcuitest"
         driver.scriptedSystemAlert = Self.photosAlert
         _ = try await server.call(tool: "ft_snapshot", args: [:])
         let text = await refusal() ?? "not refused"
@@ -89,7 +89,7 @@ final class SystemAlertTapRefusalTests: XCTestCase {
     /// **ref を座標へ畳む3ツール**(`verifiedElement` 経由)も断る。以前はここだけ門の外で、
     /// XCTest が「許可しない」を押して done と返していた(実機 SE3)
     func testDoubleTapDragAndPinchByRefAreRefusedToo() async throws {
-        server.engines[MCPServer.engineKey([:])] = "xcuitest"
+        server.bridges[MCPServer.sessionKey([:])] = "xcuitest"
         driver.scriptedSystemAlert = Self.photosAlert
         _ = try await server.call(tool: "ft_snapshot", args: [:])
         for (tool, args) in [("ft_double_tap", ["ref": 1] as [String: Any]),

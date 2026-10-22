@@ -25,7 +25,7 @@ final class PaintOrderTests: XCTestCase {
         XCTAssertFalse(PaintOrder.drawnAbove(chrome, sheet))
     }
 
-    /// z を申告しないエンジン(iOS)では従来どおりツリー順
+    /// z を申告しないブリッジ(iOS)では従来どおりツリー順
     func testFallsBackToTreeOrderWithoutZ() {
         let behind = element(5, "a", 0, 0, 10, 10)
         let front = element(9, "b", 0, 0, 10, 10)

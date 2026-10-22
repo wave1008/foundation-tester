@@ -38,7 +38,7 @@ enum DeviceInventory {
 
         struct Bridge: Equatable {
             let port: UInt16
-            let engine: String?
+            let kind: String?
         }
     }
 
@@ -186,7 +186,7 @@ enum DeviceInventory {
             parts.append((row.platform == "ios" ? "udid " : "serial ") + identifier)
         }
         if !row.bridges.isEmpty {
-            // **1端末に複数エンジンが同時に立つのが常態**(in-app + XCUITest)。1行に畳んで
+            // **1端末に複数ブリッジが同時に立つのが常態**(in-app + XCUITest)。1行に畳んで
             // 両方出す — 片方しか出さないと「動いているのにもう一方が見えない」になる
             parts.append("bridge " + row.bridges.map(bridgeLabel).joined(separator: ", "))
         } else if row.running, row.platform == "ios" {
@@ -205,9 +205,9 @@ enum DeviceInventory {
         return "- \(row.name) (\(parts.joined(separator: ", ")))"
     }
 
-    /// エンジンが分かるときだけ括弧で添える(分からないときに書かない = 嘘を書かない)
+    /// ブリッジが分かるときだけ括弧で添える(分からないときに書かない = 嘘を書かない)
     private static func bridgeLabel(_ bridge: Row.Bridge) -> String {
-        "port \(bridge.port)" + (bridge.engine.map { " (\($0))" } ?? "")
+        "port \(bridge.port)" + (bridge.kind.map { " (\($0))" } ?? "")
     }
 
     /// 受け付ける platform。**devicesText の門番**(private) —— `abbreviated` クロージャ経由の
@@ -433,7 +433,7 @@ enum DeviceInventory {
         }
         func rows(_ grouped: [String: [BridgeDiscovery.Found]]) -> [String: [Row.Bridge]] {
             grouped.mapValues { entries in
-                entries.sorted { $0.port < $1.port }.map { Row.Bridge(port: $0.port, engine: $0.engine) }
+                entries.sorted { $0.port < $1.port }.map { Row.Bridge(port: $0.port, kind: $0.bridge) }
             }
         }
         return LiveBridges(byName: rows(byName), byUDID: rows(byUDID))

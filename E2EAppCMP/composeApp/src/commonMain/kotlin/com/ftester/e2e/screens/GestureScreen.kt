@@ -30,7 +30,7 @@ import com.ftester.e2e.ui.TaggedText
 import kotlin.math.abs
 
 // ブリッジの swipe は要素を狙わず画面を払う: iOS は XCUITest の XCUIApplication.swipeUp() 等で
-// アプリ frame 全体を払う(in-app エンジンは座標スワイプを持たず、動かせるスクロールビューが
+// アプリ frame 全体を払う(in-app ブリッジは座標スワイプを持たず、動かせるスクロールビューが
 // 無ければ 501 を返して XCUITest へ回る)。
 //   Android(BridgeRouter.handleSwipe) 縦 0.3h↔0.7h / 横 0.2w↔0.8w(y=0.5h)
 // よって #pad_swipe は**コンテンツ領域いっぱい**に敷き、その上に操作要素を重ねる構成にする。

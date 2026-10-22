@@ -572,7 +572,7 @@ final class MCPBatchTests: XCTestCase {
     /// **宣言は操作として数えない**(画面を変えないので、古い ref の注記の「このセッションの操作が原因」を誤らせない)
     func testDeclarationDoesNotCountAsASessionAction() async throws {
         _ = try await server.call(tool: "ft_batch", args: steps("irregularHandler 'お知らせ' dismiss: '閉じる'"))
-        XCTAssertEqual(server.sessionActionCounts[MCPServer.engineKey([:])] ?? 0, 0)
+        XCTAssertEqual(server.sessionActionCounts[MCPServer.sessionKey([:])] ?? 0, 0)
     }
 
     /// **宣言は呼び出しを跨がない**: 前の呼び出しで宣言しても、次の呼び出しでは閉じない

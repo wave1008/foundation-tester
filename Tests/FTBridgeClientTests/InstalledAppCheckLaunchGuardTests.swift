@@ -12,29 +12,29 @@ final class InstalledAppCheckLaunchGuardTests: XCTestCase {
     func testInstalledAlwaysAllows() {
         XCTAssertEqual(
             InstalledAppCheck.launchGuard(
-                verdict: .installed, isAndroid: false, engine: "xcuitest", bundleID: bundleID),
+                verdict: .installed, isAndroid: false, bridge: "xcuitest", bundleID: bundleID),
             .allow)
     }
 
-    func testNotInstalledRefusesRegardlessOfEngine() {
+    func testNotInstalledRefusesRegardlessOfBridge() {
         XCTAssertEqual(
             InstalledAppCheck.launchGuard(
-                verdict: .notInstalled, isAndroid: false, engine: "xcuitest", bundleID: bundleID),
+                verdict: .notInstalled, isAndroid: false, bridge: "xcuitest", bundleID: bundleID),
             .refuse(.notInstalled))
         XCTAssertEqual(
             InstalledAppCheck.launchGuard(
-                verdict: .notInstalled, isAndroid: true, engine: nil, bundleID: bundleID),
+                verdict: .notInstalled, isAndroid: true, bridge: nil, bundleID: bundleID),
             .refuse(.notInstalled))
     }
 
-    /// unknown × xcuitest/hybrid/エンジン不明は断つ(XCUIApplication.launch() を経由しうる危険側)
-    func testUnknownRefusesOnXCUITestLikeEngines() {
-        for engine in ["xcuitest", "hybrid", nil] {
+    /// unknown × xcuitest/ブリッジ不明は断つ(XCUIApplication.launch() を経由しうる危険側)
+    func testUnknownRefusesOnXCUITestLikeBridges() {
+        for bridge in ["xcuitest", nil] {
             XCTAssertEqual(
                 InstalledAppCheck.launchGuard(
-                    verdict: .unknown("adb"), isAndroid: false, engine: engine, bundleID: bundleID),
+                    verdict: .unknown("adb"), isAndroid: false, bridge: bridge, bundleID: bundleID),
                 .refuse(.unknown("adb")),
-                "engine: \(String(describing: engine))")
+                "bridge: \(String(describing: bridge))")
         }
     }
 
@@ -42,12 +42,12 @@ final class InstalledAppCheckLaunchGuardTests: XCTestCase {
     func testUnknownAllowsOnInAppOrAndroid() {
         XCTAssertEqual(
             InstalledAppCheck.launchGuard(
-                verdict: .unknown("simctl unavailable"), isAndroid: false, engine: "inapp",
+                verdict: .unknown("simctl unavailable"), isAndroid: false, bridge: "inapp",
                 bundleID: bundleID),
             .allow)
         XCTAssertEqual(
             InstalledAppCheck.launchGuard(
-                verdict: .unknown("adb"), isAndroid: true, engine: "xcuitest", bundleID: bundleID),
+                verdict: .unknown("adb"), isAndroid: true, bridge: "xcuitest", bundleID: bundleID),
             .allow)
     }
 
@@ -55,7 +55,7 @@ final class InstalledAppCheckLaunchGuardTests: XCTestCase {
     func testSpringboardBypassesTheGate() {
         XCTAssertEqual(
             InstalledAppCheck.launchGuard(
-                verdict: .notInstalled, isAndroid: false, engine: "xcuitest",
+                verdict: .notInstalled, isAndroid: false, bridge: "xcuitest",
                 bundleID: "com.apple.springboard"),
             .allow)
     }

@@ -3,7 +3,7 @@
 // BridgeClient.clearAppData throws 501 ("clearAppData is simulator-only on iOS — devicectl has
 // no equivalent; reinstall the app instead") on a physical device, and MCP used to let that 501
 // surface as-is. Since a reinstall needs a package path, and MCP already remembers the last
-// ft_install packagePath per engineKey (installedPackagePaths), it can do the reinstall itself
+// ft_install packagePath per sessionKey (installedPackagePaths), it can do the reinstall itself
 // instead of handing the caller a dead end.
 
 import XCTest
@@ -13,7 +13,7 @@ import FTCore
 final class MCPClearAppDataPhysicalTests: XCTestCase {
     private var driver: FakeDriver!
     private var server: MCPServer!
-    private let key = MCPServer.engineKey([:])
+    private let key = MCPServer.sessionKey([:])
     private var tmpDir: URL!
     /// **reinstallSource は実在確認をする**(件2の修正)ので、再インストール元は実物を置く。
     /// 固定名だと並列実行で衝突するため、テストごとの一時ディレクトリに作る

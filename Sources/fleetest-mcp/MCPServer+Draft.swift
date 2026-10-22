@@ -162,13 +162,13 @@ extension MCPServer {
         return latest
     }
 
-    /// `interactions.record` の唯一の通し口: 記録と同時に、この engineKey へ
+    /// `interactions.record` の唯一の通し口: 記録と同時に、この sessionKey へ
     /// このセッションが何かを撃った回数(`sessionActionCounts`)も刻む。**素の
     /// `interactions.record` を直に呼ばない** —— そちらへ戻すと、その手だけ
     /// `screenChangedUnderRefNote` の出自判定から抜け、木の変化を誤って外部要因のせいにする
     func recordAction(_ entry: InteractionLog.Entry, args: [String: Any]) {
-        sessionActionCounts[Self.engineKey(args), default: 0] += 1
-        lastActionCallIDs[Self.engineKey(args)] = Self.currentCallID
+        sessionActionCounts[Self.sessionKey(args), default: 0] += 1
+        lastActionCallIDs[Self.sessionKey(args)] = Self.currentCallID
         interactions.record(entry)
     }
 
@@ -179,10 +179,10 @@ extension MCPServer {
                            scale: Double? = nil,
                            replace: Bool = false) {
         // tap → type の間に別の操作が入ったら「叩いた欄へ入れる」意図ではない(DSL と同じ規律)
-        if action != "tap", action != "type" { lastTapTargets[Self.engineKey(args)] = nil }
+        if action != "tap", action != "type" { lastTapTargets[Self.sessionKey(args)] = nil }
         // type の後のキーボードの出現待ち(pendingTypeKeyboardCheck)は、間に別の操作を挟んだら捨てる —— 打つ前の木が古くなり、
         // Android では「出ていない → 出るはず」と読んで、閉じた後の ref 操作でも上限(1.5 秒)まで待つ
-        if action != "type" { pendingTypeKeyboardChecks[Self.engineKey(args)] = nil }
+        if action != "type" { pendingTypeKeyboardChecks[Self.sessionKey(args)] = nil }
         var selector: String?
         var durability: Durability = .stable
         var described = "\(action)"
@@ -196,7 +196,7 @@ extension MCPServer {
         if let resolvedRef,
            let snapshot = Self.namingSnapshot(
                ref: resolvedRef, generation: generationSnapshot(containing: resolvedRef, args: args),
-               latest: lastSnapshots[Self.engineKey(args)]),
+               latest: lastSnapshots[Self.sessionKey(args)]),
            let element = snapshot.elements.first(where: { $0.ref == resolvedRef }) {
             let graded = Self.SelectorNaming(snapshot).graded(for: element, in: snapshot)
             selector = graded?.selector

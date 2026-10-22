@@ -90,7 +90,7 @@ Shirates has no equivalent for these:
 | `@Draft("reason")` | marks a scenario as work-in-progress; excluded from bulk runs like `@Deleted`, but can still be run by exact ID |
 | `group("name") { }` | prefixes a run of steps with a label in the report; doesn't change execution or failure handling |
 | Typed selectors (`Sel`) | `tap(.id("login_btn").or(.text("Log In")))` — the same locators as strings, but typo'd names become compile errors |
-| `#id` also matches `placeholder` | if no element's identifier matches, `#id` falls back to matching the `placeholder` value (input fields are addressed differently depending on the platform/engine) |
+| `#id` also matches `placeholder` | if no element's identifier matches, `#id` falls back to matching the `placeholder` value (input fields are addressed differently depending on the platform/mode) |
 | `\|\|` in a selector | a union of candidates — `tap` lands on the first one found, so `"#id\|\|Label"` reads as "prefer the id, fall back to the label" |
 
 ### Link

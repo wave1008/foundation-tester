@@ -12,19 +12,19 @@
 #
 # 使い方:
 #   Scripts/e2e.sh                 # 全 SUT・全プロファイル(鮮度を見て必要なら SUT を再ビルド)。
-#                                   # **iOS は in-app エンジン** = 利用者の既定(hybrid)の経路
+#                                   # **iOS は inapp モード** = 利用者の既定の経路
 #   Scripts/e2e.sh --cmp           # SUT を絞る(--ios-native / --android-native / --flutter / --rn も同様。併記可)
 #   Scripts/e2e.sh --ios           # OS を絞る(--android も同様)
-#   Scripts/e2e.sh --ios-xcuitest  # **iOS だけ**を XCUITest エンジン(ios-xcuitest プロファイル)で回す。
-#                                   # **既定は in-app** —— 利用者の既定エンジンは hybrid
+#   Scripts/e2e.sh --ios-xcuitest  # **iOS だけ**を xcuitest モード(ios-xcuitest プロファイル)で回す。
+#                                   # **既定は in-app** —— 利用者の既定モードは inapp
 #                                   # (in-app 優先)なので、既定スイートが見るのはそちらの経路。
 #                                   # XCUITest ブリッジ(ランナー・スナップショット・型写像)を
 #                                   # 触ったらこれを追加で回す。
-#                                   # **Android は回さない** —— Android にエンジンの選択肢は無く
-#                                   # (iosInappEngine は iOS 専用)、既定スイートと1バイトも違わない実行を
+#                                   # **Android は回さない** —— Android にモードの選択肢は無く
+#                                   # (iosMode は iOS 専用)、既定スイートと1バイトも違わない実行を
 #                                   # もう一度回すことになる(2026-08-11 実測で 244 秒の純粋な重複)。
 #                                   # Android だけ回したいときは --android
-#   Scripts/e2e.sh --ios-inapp     # **iOS だけ**を in-app エンジン(= 既定と同じ)で回す
+#   Scripts/e2e.sh --ios-inapp     # **iOS だけ**を inapp モード(= 既定と同じ)で回す
 #   Scripts/e2e.sh --rebuild       # SUT を必ず再ビルドしてから実行
 #   Scripts/e2e.sh --performance   # 性能計測モード(各 run へ --performance を渡す)。**この機械の
 #                                   # モニターを自動で pause し、終了時(失敗・Ctrl-C 込み)に resume する**
@@ -46,7 +46,7 @@
 #                                   # (自分が古い/分岐しているときは触らない。理由は下の align_runners)
 #   Scripts/e2e.sh --no-negative   # 最後の陽性対照スイート(Scripts/e2e-negative.sh)を回さない。
 #                                   # **既定では回す**(--ios-xcuitest / --performance のときは回さない =
-#                                   # 対照はエンジンを表で決めている・時間の比較を乱す)。数分かかる
+#                                   # 対照はモードを表で決めている・時間の比較を乱す)。数分かかる
 #   Scripts/e2e.sh --record        # 各プロファイルの一時コピー(<名前>-record-tmp.json。実行後に削除)に
 #                                   # record:true を付けて実行し、録画パイプラインの整合を
 #                                   # Scripts/check-recordings.py で検証する(元のプロファイルは書き換えない)
@@ -74,10 +74,10 @@ ALIGN=0
 LOCAL_ONLY=0
 # 性能計測モード(各 run へ --performance を渡す。fleetest 側が run 開始前にレーンを揃える)
 PERFORMANCE=0
-# エンジンを明示した(--ios-inapp / --ios-xcuitest)= iOS のエンジン検証が目的。Android は回さない
-IOS_ENGINE_ONLY=0
+# モードを明示した(--ios-inapp / --ios-xcuitest)= iOS のモード検証が目的。Android は回さない
+IOS_MODE_ONLY=0
 SUTS=""
-# iOS の実行プロファイル。**既定は in-app**(利用者の既定エンジン hybrid = in-app 優先に合わせる)。
+# iOS の実行プロファイル。**既定は in-app**(利用者の既定モード inapp に合わせる)。
 # --ios-xcuitest で XCUITest 側へ切り替える(E2E-Android には iOS プロファイルが無い)
 IOS_PROFILE="ios-inapp"
 # 陽性対照(期待赤)スイート。緑の run では通らない検知・門・クラッシュの記録を最後に確かめる
@@ -92,8 +92,8 @@ for arg in "$@"; do
     --rebuild) FORCE_REBUILD=1 ;;
     --ios) RUN_ANDROID=0 ;;
     --android) RUN_IOS=0 ;;
-    --ios-inapp) IOS_PROFILE="ios-inapp"; IOS_ENGINE_ONLY=1 ;;
-    --ios-xcuitest) IOS_PROFILE="ios-xcuitest"; IOS_ENGINE_ONLY=1 ;;
+    --ios-inapp) IOS_PROFILE="ios-inapp"; IOS_MODE_ONLY=1 ;;
+    --ios-xcuitest) IOS_PROFILE="ios-xcuitest"; IOS_MODE_ONLY=1 ;;
     --record) RECORD=1 ;;
     --align) ALIGN=1 ;;
     --local) LOCAL_ONLY=1 ;;
@@ -106,13 +106,13 @@ for arg in "$@"; do
 done
 [ -n "$SUTS" ] || SUTS="cmp ios-native android-native flutter rn"
 
-# **エンジンの指定は iOS だけを回す**。Android にエンジンの選択肢は無い(iosInappEngine は iOS 専用)ので、
-# エンジンを明示した実行で Android まで回すと既定スイートと同一の実行を二度払うだけになる
+# **モードの指定は iOS だけを回す**。Android にモードの選択肢は無い(iosMode は iOS 専用)ので、
+# モードを明示した実行で Android まで回すと既定スイートと同一の実行を二度払うだけになる
 # (2026-08-11 実測 244 秒)。Android だけ回したいときは --android
-if [ "$IOS_ENGINE_ONLY" = 1 ] && [ "$RUN_IOS" = 1 ]; then
+if [ "$IOS_MODE_ONLY" = 1 ] && [ "$RUN_IOS" = 1 ]; then
   RUN_ANDROID=0
 fi
-if [ "$IOS_ENGINE_ONLY" = 1 ] && [ "$RUN_IOS" = 0 ]; then
+if [ "$IOS_MODE_ONLY" = 1 ] && [ "$RUN_IOS" = 0 ]; then
   echo "❌ --ios-inapp / --ios-xcuitest と --android は併記できません(前者は iOS だけを回します)" >&2
   exit 2
 fi
@@ -153,26 +153,26 @@ fi
 # needs_rebuild / record_sdk(SUT を作り直すかの判定。ソースの mtime と外部 SDK の版)
 . "$ROOT/Scripts/sut-rebuild.sh"
 
-# **回さなかった側のエンジン**の入力が、最後にそれを全部通した状態から動いていないか。
-# 1回の実行が見るのは iOS の2エンジンのうち片方だけなので、放っておくともう片方は
+# **回さなかった側のモード**の入力が、最後にそれを全部通した状態から動いていないか。
+# 1回の実行が見るのは iOS の2モードのうち片方だけなので、放っておくともう片方は
 # 何回変えても1度も動かないまま緑になる(2026-08-09 に実際に起きた: スナップショット生成を
-# in-app/xcuitest 両方変えた回の E2E 254 本が全部 engine=xcuitest だった)。
+# in-app/xcuitest 両方変えた回の E2E 254 本が全部 mode=xcuitest だった)。
 # **警告だけで落とさない** —— 検知は警告から始める、が本リポジトリの方針。
 # 一覧の定義元は Sources/FTCore/BridgeSourceSet.swift(ここに二重に書かない)
-engine_digest() { "$FLEETEST" api bridge-sources --bridge "$1" --digest 2>/dev/null; }
-engine_marker() { echo "$ROOT/.fleetest/$1-e2e-verified"; }
-# このスイートが回す iOS エンジンと、回さない側
-RUN_ENGINE=inapp; SKIP_ENGINE=xcuitest
+bridge_digest() { "$FLEETEST" api bridge-sources --bridge "$1" --digest 2>/dev/null; }
+mode_marker() { echo "$ROOT/.fleetest/$1-e2e-verified"; }
+# このスイートが回す iOS モードと、回さない側
+RUN_MODE=inapp; SKIP_MODE=xcuitest
 # **`[ … ] && { … }` の形にしない**(偽のとき終了ステータス 1 を残す。末尾の exit の項も参照)
-if [ "$IOS_PROFILE" = "ios-xcuitest" ]; then RUN_ENGINE=xcuitest; SKIP_ENGINE=inapp; fi
-ENGINE_STALE=""
+if [ "$IOS_PROFILE" = "ios-xcuitest" ]; then RUN_MODE=xcuitest; SKIP_MODE=inapp; fi
+MODE_STALE=""
 if [ "$RUN_IOS" = 1 ]; then
-  CURRENT_DIGEST="$(engine_digest "$SKIP_ENGINE")"
-  if [ -n "$CURRENT_DIGEST" ] && [ "$CURRENT_DIGEST" != "$(cat "$(engine_marker "$SKIP_ENGINE")" 2>/dev/null)" ]; then
-    ENGINE_STALE=1
-    echo "⚠️ $SKIP_ENGINE ブリッジの入力が、最後にそれを通した状態から変わっています。"
-    echo "   この実行は iOS を $RUN_ENGINE でしか回さないので、$SKIP_ENGINE 経路は検証されません。"
-    echo "   → Scripts/e2e.sh --ios-$SKIP_ENGINE を回してください(1 SUT だけでも可)"
+  CURRENT_DIGEST="$(bridge_digest "$SKIP_MODE")"
+  if [ -n "$CURRENT_DIGEST" ] && [ "$CURRENT_DIGEST" != "$(cat "$(mode_marker "$SKIP_MODE")" 2>/dev/null)" ]; then
+    MODE_STALE=1
+    echo "⚠️ $SKIP_MODE ブリッジの入力が、最後にそれを通した状態から変わっています。"
+    echo "   この実行は iOS を $RUN_MODE でしか回さないので、$SKIP_MODE 経路は検証されません。"
+    echo "   → Scripts/e2e.sh --ios-$SKIP_MODE を回してください(1 SUT だけでも可)"
   fi
 fi
 
@@ -334,7 +334,7 @@ run_profile() {  # $1 = プロジェクト名, $2 = プロファイル名
   fi
 }
 
-# in-app エンジンだけの証人(@Draft = 通常の実行には入らない)を名指しで回す。
+# inapp ブリッジだけの証人(@Draft = 通常の実行には入らない)を名指しで回す。
 # XCUITest では既知の制約で赤になるので、in-app のときだけ
 # (同期相手: TestProjects/E2E-CMP/scenarios/23_絵の追いつき_inapp.swift)
 run_inapp_witness() {  # $1 = プロジェクト名, $2 = シナリオ ID
@@ -450,7 +450,7 @@ if [ "$PLANNED_SORTED" != "$RAN_SORTED" ]; then
   echo "   ran:     $(printf '%s' "$RAN_SORTED" | tr '\n' '/')"
 fi
 
-# 陽性対照は本体と別に数える: 印(engine_marker)は「ブリッジの入力が緑の E2E を通った」記録なので
+# 陽性対照は本体と別に数える: 印(mode_marker)は「ブリッジの入力が緑の E2E を通った」記録なので
 # 本体の FAILED だけで決める。exit には両方を載せる
 NEG_FAILED=0
 if [ "$NEGATIVE" = 1 ] && [ "$PERFORMANCE" = 0 ] && [ "$IOS_PROFILE" != "ios-xcuitest" ]; then
@@ -484,16 +484,16 @@ fi
 # **通した状態を覚えるのは全部成功したときだけ** —— 失敗したまま印を更新すると、
 # 次回から「検証済み」と言い張る装置になる
 if [ "$FAILED" = 0 ] && [ "$RUN_IOS" = 1 ]; then
-  MARKER="$(engine_marker "$RUN_ENGINE")"
+  MARKER="$(mode_marker "$RUN_MODE")"
   mkdir -p "$(dirname "$MARKER")"
-  engine_digest "$RUN_ENGINE" > "$MARKER"
-  echo "→ $RUN_ENGINE 経路を検証済みとして記録しました($MARKER)"
+  bridge_digest "$RUN_MODE" > "$MARKER"
+  echo "→ $RUN_MODE 経路を検証済みとして記録しました($MARKER)"
 fi
 # 最後にもう一度言う: 冒頭の1行は数分のログに流されて読まれない。
 # **`[ … ] && echo` の形にしない** —— 偽のとき終了ステータス 1 を残すので、
 # 直後の `exit "$FAILED"` を誰かが消した瞬間に「成功したのに失敗扱い」へ化ける
-if [ -n "$ENGINE_STALE" ]; then
-  echo "⚠️ $SKIP_ENGINE 経路は未検証のままです(Scripts/e2e.sh --ios-$SKIP_ENGINE)"
+if [ -n "$MODE_STALE" ]; then
+  echo "⚠️ $SKIP_MODE 経路は未検証のままです(Scripts/e2e.sh --ios-$SKIP_MODE)"
 fi
 
 # :-0 = この塊は vscode-fleetest/test/inappE2EGate.test.mjs が set -u で切り出して実行する

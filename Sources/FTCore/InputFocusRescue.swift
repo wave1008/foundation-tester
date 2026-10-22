@@ -11,7 +11,7 @@
 //
 // 判定はここ1箇所(`StepExecutor` が転送する)。**焦点が立っているかは木から読む**
 // (`ElementInfo.focused` は iOS xcuitest=`hasKeyboardFocus` / iOS in-app=`isFirstResponder` /
-// Android=`isFocused` の3エンジンとも申告する)。
+// Android=`isFocused` の3ブリッジとも申告する)。
 
 import Foundation
 

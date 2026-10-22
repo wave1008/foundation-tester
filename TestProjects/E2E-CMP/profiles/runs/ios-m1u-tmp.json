@@ -370,7 +370,7 @@
     }
   ],
   "heal": true,
-  "iosInappEngine": true,
+  "iosMode": "inapp",
   "scenarioTimeout": 900,
   "fmTextVisibilityCheck": true,
   "wipeDataOnBloat": true

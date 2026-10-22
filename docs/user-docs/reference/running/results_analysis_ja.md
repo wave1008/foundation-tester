@@ -97,7 +97,7 @@ results/runs/<YYYY-MM>/<runID>/
 | そのステップで何が起きていたか | `failedSteps[].notes`(`interruption-dismissed` 等) |
 | ステップに到達すらしなかったか | `failedSteps` が空 —— `errorLogs` / `skipKind` を見る |
 | run 中にデバイスが飛んだか | `run.json` の `workerAnomalies` |
-| iOS のどのエンジンで走ったか | シナリオごとは `engine`(`inapp` / `hybrid` / `xcuitest`)。デバイスごとは `run.json` の `workerEngines` —— 頼んだエンジン(`requested`)・実際のエンジン(`effective`)と、違ったときの理由(`reason`。例: 実機のアプリに in-app のブリッジを注入できず XCUITest で走った)。hybrid で XCUITest に回した手順は、手順の説明の末尾に `(fell back to XCUITest)` が付きます(`timeline[].description`・実行ログ。`steps.passedViaFallback` はセレクタの代替候補で解決した手順の数で、別のものです) |
+| iOS のどのモードで走ったか | シナリオごとは `mode`(`inapp` / `xcuitest`)。デバイスごとは `run.json` の `workerModes` —— 頼んだモード(`requested`)・実際のモード(`effective`)と、違ったときの理由(`reason`。例: 実機のアプリに in-app のブリッジを注入できず xcuitest モードで走った)。inapp モードで XCUITest ブリッジに回した手順は、手順の説明の末尾に `(fell back to XCUITest)` が付きます(`timeline[].description`・実行ログ。`steps.passedViaFallback` はセレクタの代替候補で解決した手順の数で、別のものです) |
 | 1 台だけ遅かったか | `run.json` の `slowWorkers`(そのデバイスの画面取得の中央値が他のデバイスの 10 倍以上かつ 1 秒以上、または中央値は正常でも画面取得の 5 回以上(2 割以上)が 2 秒を超え、他のデバイスではほとんど起きていない。**警告だけで除外はしない**・デバイスが 1 台の run には出ない) |
 
 `failureKind` の値: `selector-syntax`(デバイスに触れる前の検証で落とした)、`not-found`

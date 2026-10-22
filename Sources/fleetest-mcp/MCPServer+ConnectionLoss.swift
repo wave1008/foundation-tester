@@ -21,7 +21,7 @@ extension MCPServer {
     func connectionLostHint(_ error: Error, args: [String: Any], tool: String) async -> String {
         // 差し替えドライバ(テスト)では走査しない = 実ポートを叩かない
         guard makeDriver == nil else { return "" }
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         guard let connection = connections[key] else { return "" }
         if connectedPorts[key] != nil {
             return await iosConnectionLostHint(error, key: key, connection: connection,
@@ -76,15 +76,15 @@ extension MCPServer {
                 // 早期に切れる。実機なら iproxy だけ残った形)はここでもう一段 probe して分ける
                 // (BridgeDiscovery.transportFailureFraction のコメント参照)。生きた xcodebuild の
                 // pid が残っていても wedged は起こる(実機実測。ownerAlive では捕まらない)
-                let engine = Self.resolvedEngine(known: engines[key], port: port, repoRoot: repoRoot)
+                let bridge = Self.resolvedBridge(known: bridges[key], port: port, repoRoot: repoRoot)
                 let probe = await BridgeDiscovery.probeStatus(port: port, repoRoot: repoRoot)
-                // **in-app/hybrid には wedged の文言を出さない** —— あちらは `bridge up` で
+                // **in-app ブリッジには wedged の文言を出さない** —— あちらは `bridge up` で
                 // 起動し直す物ではなく(注入は launch で起きる)、前面から外れただけのことが多い。
-                // その分岐は `bridgeBusyHint` が engine で持っている
-                if probe == .transportFailed, engine != "inapp", engine != "hybrid" {
+                // その分岐は `bridgeBusyHint` が bridge で持っている
+                if probe == .transportFailed, bridge != "inapp" {
                     return Self.bridgeWedgedHint(connection: connection)
                 }
-                return Self.bridgeBusyHint(connection: connection, engine: engine,
+                return Self.bridgeBusyHint(connection: connection, bridge: bridge,
                                            mayHaveTakenEffect: mayHaveTakenEffect)
             case .stillUnclear:
                 return ""
@@ -104,13 +104,13 @@ extension MCPServer {
         // `forgetDeviceState` 経由で `udids[key]` も消すようになったので、後から読むと
         // 常に nil = 「同じ機のブリッジを先に挙げる」案内が**黙って死んでいた**
         let udid = udids[key].flatMap { $0 }
-        // **エンジンも忘れる前に引く**(in-app と XCUITest で死に方と戻し方が違う。bridgeBusyHint と同じ契約)
-        let engine = connectedPorts[key].flatMap {
-            Self.resolvedEngine(known: engines[key], port: $0, repoRoot: try? RepoRoot.find())
+        // **ブリッジの種類も忘れる前に引く**(in-app と XCUITest で死に方と戻し方が違う。bridgeBusyHint と同じ契約)
+        let bridge = connectedPorts[key].flatMap {
+            Self.resolvedBridge(known: bridges[key], port: $0, repoRoot: try? RepoRoot.find())
         }
         forgetConnection(key)
         return Self.connectionLostMessage(connection: connection, running: running,
-            sameDevice: Self.deviceName(forUDID: udid, in: running), engine: engine)
+            sameDevice: Self.deviceName(forUDID: udid, in: running), bridge: bridge)
     }
 
     /// Android(serial 経由のブリッジ)の死活。**iOS のような安価な「待受しているか」判定が無い**
@@ -179,10 +179,10 @@ extension MCPServer {
         return ProcessLiveness.isAlive(pid)
     }
 
-    /// engine が nil(最初の呼び出しから失敗し driver 未解決)なら `resolvedEngine` で
+    /// bridge が nil(最初の呼び出しから失敗し driver 未解決)なら `resolvedBridge` で
     /// ディスクの台帳から引き直してから渡す —— 固着した in-app ブリッジは最初の呼び出しから
     /// 失敗するので、素通しすると必ず XCUITest 向けの文面(実害: 永遠に的外れな「Retry」)が出る
-    static func resolvedEngine(known: String?, port: UInt16, repoRoot: URL?) -> String? {
+    static func resolvedBridge(known: String?, port: UInt16, repoRoot: URL?) -> String? {
         if let known { return known }
         guard let repoRoot else { return nil }
         let inappPath = InAppBridgeState.url(
@@ -192,16 +192,16 @@ extension MCPServer {
 
     /// bound(誰かが listen している)なポートへ「exited」と言わないための正直な文言。
     /// **forgetConnection も呼ばない**呼び手側の判断とセットで使う(iosConnectionLostHint 参照)。
-    /// **エンジンで文面を出し分ける**: in-app/hybrid ブリッジは対象アプリが
+    /// **ブリッジで文面を出し分ける**: in-app ブリッジは対象アプリが
     /// 前面のときしか応答しない(kernel が handshake を返すので isBound は true のまま)ので、
     /// XCUITest 向けの「busy・リトライせよ」は永遠に的外れな助言になる。
-    /// **engine が不明なら呼び手が `resolvedEngine` でディスクの台帳を見てから渡す契約**
-    /// (この関数自身はディスクを見ない)。**MCP の iOS は常に XCUITest なので、in-app / hybrid の分岐には今は到達しない**
+    /// **bridge が不明なら呼び手が `resolvedBridge` でディスクの台帳を見てから渡す契約**
+    /// (この関数自身はディスクを見ない)。**MCP の iOS は常に XCUITest なので、in-app ブリッジの分岐には今は到達しない**
     /// (判定は残す = 台帳から in-app と分かった相手に XCUITest 向けの「リトライせよ」を言わない砦は、仕様が戻っても要る)
     /// **操作のツールに「Retry the call」と言わない**: タイムアウトは応答が来なかっただけで、要求は
     /// ランナーに届いて実行済みのことがある(ft_type が実際に打たれていた)。撃ち直すと二重に打つ・二重に押す
-    static func bridgeBusyHint(connection: String, engine: String?, mayHaveTakenEffect: Bool) -> String {
-        guard engine == "inapp" || engine == "hybrid" else {
+    static func bridgeBusyHint(connection: String, bridge: String?, mayHaveTakenEffect: Bool) -> String {
+        guard bridge == "inapp" else {
             let busy = "\nThe XCUITest runner behind \(connection) did not answer in time, but the"
                 + " port is still bound — likely busy (a long-running operation, such as waiting"
                 + " for the screen to settle, can block the bridge for tens of seconds); the"
@@ -226,7 +226,7 @@ extension MCPServer {
     /// LISTEN しているが `/status` への接続が早期に(タイムアウトよりはるかに早く)切れたときの
     /// 文言(純粋関数)。`bridgeBusyHint` とは事実が違う(タイムアウト上限まで無応答を保持して
     /// いない)ので「busy」とは言わず、消えたブリッジと転送だけが残っている事実 + 出口
-    /// (bridge up)を言う。**engine を問わない** —— in-app/hybrid の応答無し(前面から外れた
+    /// (bridge up)を言う。**bridge を問わない** —— in-app ブリッジの応答無し(前面から外れた
     /// suspend)とは判定軸が別(`BridgeDiscovery.StatusProbe.transportFailed` は経過時間だけで決まる)
     static func bridgeWedgedHint(connection: String) -> String {
         "\nThe bridge behind \(connection) is not answering, and the connection failed almost"
@@ -276,9 +276,9 @@ extension MCPServer {
         forgetDeviceState(key)
     }
 
-    /// engineKey に紐づく状態を**全部**捨てる。
+    /// sessionKey に紐づく状態を**全部**捨てる。
     ///
-    /// **なぜ「ドライバだけ」では足りないか**: engineKey は `direct:ios:<port>:<serial>` で、
+    /// **なぜ「ドライバだけ」では足りないか**: sessionKey は `direct:ios:<port>:<serial>` で、
     /// iOS のポートは**同じセッション中に動く**(監視が別ポートで起動し直す。実測: -03 が
     /// 8128→8126、-07 が 8136→8147)。つまり**一度死んだポートが後で別のシミュレータに
     /// 再利用され得る**。`forgetConnection` が drivers/connections/connectedPorts しか
@@ -292,7 +292,7 @@ extension MCPServer {
     /// 同じ base が新しい世代へ再配布され、セッション内で ref が一意という保証が壊れる ——
     /// 世代管理そのものが防いでいる「番号は同じだが別要素」を、後始末の側から作ってしまう。
     ///
-    /// **網羅は構造で担保する**: engineKey ごとの記憶は全部 `DeviceSession` の欄なので、
+    /// **網羅は構造で担保する**: sessionKey ごとの記憶は全部 `DeviceSession` の欄なので、
     /// セッションを丸ごと捨てれば漏れようが無い。並列の `[String: …]` / `Set<String>` を
     /// MCPServer に戻すと網羅が再び人の注意力頼みになる(`DeviceStateInvalidationTests` が落とす)
     func forgetDeviceState(_ key: String) {
@@ -303,14 +303,14 @@ extension MCPServer {
     /// 「今この端末で使えるポート」だけだった。残りは件数へ畳む(runningBridgesSummary)
     static let connectionLostShownCap = 3
 
-    /// `engine` は呼び手が resolvedEngine で解いて渡す(既定値を置かない = 渡し忘れをコンパイルで止める)。
-    /// in-app/hybrid のブリッジは対象アプリの中に居るので、XCUITest のランナーとは死に方も戻し方も違う
+    /// `bridge` は呼び手が resolvedBridge で解いて渡す(既定値を置かない = 渡し忘れをコンパイルで止める)。
+    /// in-app ブリッジは対象アプリの中に居るので、XCUITest のランナーとは死に方も戻し方も違う
     static func connectionLostMessage(connection: String, running: [BridgeDiscovery.Found],
-                                      sameDevice: String? = nil, engine: String?) -> String {
+                                      sameDevice: String? = nil, bridge: String?) -> String {
         let now = running.isEmpty
             ? "no iOS bridge is running now"
             : "running bridges now: \(Self.runningBridgesSummary(running, sameDevice: sameDevice))"
-        if engine == "inapp" || engine == "hybrid" {
+        if bridge == "inapp" {
             return "\nThe in-app bridge behind \(connection) stopped answering — it lives inside the app"
                 + " under test, so the app exiting (a crash, ft_terminate, or being replaced in the"
                 + " foreground) takes it with it. \(now). ft_launch your app again to bring it back."

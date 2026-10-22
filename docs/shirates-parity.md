@@ -65,7 +65,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `scanElements` / `*InScanResults` | — | ➖ **画面全体の棚卸しはシナリオの仕事ではない**(2026-08-21 判定)。要素一覧は `fleetest api snapshot` と MCP の `ft_snapshot` にあり、そちらは**書く前に調べる**側の道具。シナリオ内で全要素を走査して条件分岐すると、木の揺れがそのまま実行の揺れになる |
 | `tapAppIcon` | `tapAppIcon(name?)` | ✅ 2026-08-03 **`auto` 相当のみ**(`tapAppIconMethod`・マクロ機構は持たない)。名前省略はプロファイルの `appName`(Shirates の `appIconName` 既定=プロファイル、と同義。親が解決して子へ渡す) |
 | `tap(x, y)`(座標) | `tap(x:y:holdSeconds:)` | 🟡 2026-08-16 実装。**承認済み差分**: 座標は `Int` ではなく `Double`(fleetest の座標コマンドは全部 `Double`。`swipePointToPoint` と揃える)/ `repeat:` `safeMode:` は持たない(Shirates は tap を swipe で合成するための引数だが、fleetest はドライバに座標タップの口がある)。単位は iOS = pt / Android = px |
-| — | `hold(sel, holdSeconds: 3) { }` | 🟢 2026-09-29 **押している間だけ**出る部品(ツールチップ等)の確認用。`tap(holdSeconds:)` は1ステップの中で押して離すため、離した後にしか検証が走らずこの種の部品を確認できない。ブリッジが `holdSeconds` 秒後に自分の時計で指を離し(応答はそれを待たない)、ブロックの中身は指が下がっている間に走る。入れ子は不可・対象が解決できなければブロックは実行しない・iOS in-app エンジンはこの押下を持たないので hybrid では XCUITest 側へ回す(`tap` の長押しと同じフォールバック) |
+| — | `hold(sel, holdSeconds: 3) { }` | 🟢 2026-09-29 **押している間だけ**出る部品(ツールチップ等)の確認用。`tap(holdSeconds:)` は1ステップの中で押して離すため、離した後にしか検証が走らずこの種の部品を確認できない。ブリッジが `holdSeconds` 秒後に自分の時計で指を離し(応答はそれを待たない)、ブロックの中身は指が下がっている間に走る。入れ子は不可・対象が解決できなければブロックは実行しない・iOS の in-app ブリッジはこの押下を持たないので inapp モードでは XCUITest ブリッジへ回す(`tap` の長押しと同じフォールバック) |
 | `tapCenterOfScreen` / `tapTopOfScreen` / `tapCenterOf` / `tapOffset` / `tapDefault` | — | ⏳ **足す**(基準②)。`tap(x:y:)` の上に組めるものばかり(前2つは画面基準、後3つは要素基準)だが、**生成側が座標を自前で計算する**のは脆い。**足す条件**: 座標計算をシナリオに書いた例が出たとき |
 | `tapSoftwareKey` | — | ➖ キーボード要素を snapshot から除外しているため tap できない |
 | `widget` | セレクタの型語彙 `.widget` | 🟡 |
@@ -110,8 +110,8 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | — | `scrollTo(sel, direction:maxSwipes:)` | 🟢 |
 | — | `swipeBy(sel?, dxRatio:dyRatio:)` | 🟢 2026-08-04 **斜めを含む相対ドラッグ**(マップのパン)。Shirates は縦横 4 方向しか持たない |
 | — | `doubleTap(sel?)` | 🟢 2026-08-04 ブリッジ側の1操作(往復するとダブルタップ判定時間を超える) |
-| — | `pinchOut(sel?, scale:)` / `pinchIn(sel?, scale:)` | 🟢 2026-08-04 2本指ズーム。**Shirates(Classic) にピンチ系は無い**ので名前の準拠先も無い。対象指定は Android=座標合成 / iOS=XCUITest は identifier・in-app は座標。**指の座標は host 側 `FTCore.PinchGesture` の1箇所が決め、XCUITest は非公開 API で再生する**(2026-09-24)ので、ピンチは全フレームワークとも両エンジンで動く。Compose のダブルタップだけがエンジンで割れる(hybrid なら成立・xcuitest では不成立。docs/commands.md の表) |
-| — | `gesture(sel?) { FTFinger(...) }` | 🟢 2026-09-24 指ごとの時刻つき経路を**1本の連続タッチ**として再生する(区切りで離れない。`pinchOut`/`pinchIn`/`doubleTap`/`swipeBy` で表せない動き用)。**Shirates(Classic) に対応物は無い**。iOS は既定の hybrid でも常に XCUITest 経由(in-app に経路が無い)・**座標ピンチと同じ非公開 API でフォールバック無し**(使えない Xcode では 422) |
+| — | `pinchOut(sel?, scale:)` / `pinchIn(sel?, scale:)` | 🟢 2026-08-04 2本指ズーム。**Shirates(Classic) にピンチ系は無い**ので名前の準拠先も無い。対象指定は Android=座標合成 / iOS=XCUITest は identifier・in-app は座標。**指の座標は host 側 `FTCore.PinchGesture` の1箇所が決め、XCUITest は非公開 API で再生する**(2026-09-24)ので、ピンチは全フレームワークとも両モードで動く。Compose のダブルタップだけがモードで割れる(inapp モードなら成立・xcuitest モードでは不成立。docs/commands.md の表) |
+| — | `gesture(sel?) { FTFinger(...) }` | 🟢 2026-09-24 指ごとの時刻つき経路を**1本の連続タッチ**として再生する(区切りで離れない。`pinchOut`/`pinchIn`/`doubleTap`/`swipeBy` で表せない動き用)。**Shirates(Classic) に対応物は無い**。iOS は既定の inapp モードでも常に XCUITest ブリッジ経由(in-app ブリッジに経路が無い)・**座標ピンチと同じ非公開 API でフォールバック無し**(使えない Xcode では 422) |
 
 ## 存在・画面の検証
 
@@ -283,14 +283,14 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 ## OS で挙動が割れるもの(利用者に見える差)
 
-**代表例で、網羅ではない**。OS・エンジン・端末の種別で割れる全件は docs/commands.md の各コマンドの説明にある。
+**代表例で、網羅ではない**。OS・モード・端末の種別で割れる全件は docs/commands.md の各コマンドの説明にある。
 
 | コマンド | 差 |
 |---|---|
 | `hideKeyboard()` | Android・iOS とも対応(冪等)。iOS は木から「何もない点」を選んでタップし(撃つ前に in-app ブリッジの `/tapprobe` で確認)、閉じなければ Enter を送って注記する。詳細は docs/commands.md・docs/design.md「キーボードの観測と `hideKeyboard`」 |
 | `back()` | iOS は**スワイプバック対応のナビ**(NavigationStack 等)を持つ画面でのみ戻れる。独自ナビのアプリではアプリ内の戻るボタンを `tap` する。Android はキーボードが開いていると1回目がキーボードを閉じるのに消費される(OS 仕様) |
 | `keyboardIsShown` / `keyboardIsNotShown` | 取得元が OS で違う(iOS xcuitest = AX ツリーの `.keyboard` / iOS in-app = `UITextEffectsWindow` の可視判定 / Android = ホストが `dumpsys` の `InputMethod` window を見る)。**IME が別プロセスの window でアプリの a11y ツリーに出ない**ため |
-| `clearInput(sel)` | **Flutter の iOS は in-app エンジンでは消せず XCUITest 経由**になる(自動フォールバック。1〜2秒)。engine への editing state 配送は3回実測して不採用(design.md) |
+| `clearInput(sel)` | **Flutter の iOS は in-app ブリッジでは消せず XCUITest ブリッジ経由**になる(自動フォールバック。1〜2秒)。Flutter engine への editing state 配送は3回実測して不採用(design.md) |
 | `tapAppIcon` | 見つからないときの探索方法が OS で違う: Android はドロワーを開いて `flickCenterToTop` で最大8回スクロール探索、iOS は `flickRightToLeft` で最大5ページ送り(2回連続で画面が変化しなければ打ち切り) |
 
 ## スクロールの指定は `scroll:` だけ(ユーザー決定 2026-09-19)

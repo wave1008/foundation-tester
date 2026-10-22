@@ -1,4 +1,4 @@
-// udid だけを渡した呼び出しは MCP がその回のポートへ解決して engineKey に載せる(injectingPort)ので、
+// udid だけを渡した呼び出しは MCP がその回のポートへ解決して sessionKey に載せる(injectingPort)ので、
 // 別宛先の拒否文は「このポートを指した」と言い切らず、udid がそこへ解決されたと言い添える
 // (2026-10-03 負荷テスト: sim-08 の in-app と xcuitest を udid だけで行き来して 33 回出た)
 

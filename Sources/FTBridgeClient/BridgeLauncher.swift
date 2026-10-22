@@ -327,7 +327,7 @@ public struct BridgeLauncher: Sendable {
     /// 「動画で撮る・成功したら捨てる」だが、**ブリッジは終わらない UI テスト**なので「成功したら」が
     /// 永久に来ず、止めるときもテストは完了しない —— 誰も読まない動画がシミュレータ内
     /// (testmanagerd の tmp/Attachments)に溜まり続けた(実測 870 GB)。動画は画面全体を撮るので、
-    /// in-app エンジンで操作している間も伸びる。fleetest の録画機能はこれとは別経路
+    /// in-app ブリッジで操作している間も伸びる。fleetest の録画機能はこれとは別経路
     /// (`simctl io recordVideo`)で、この設定の影響を受けない
     static let captureSettings: [String: String] = [
         "PreferredScreenCaptureFormat": "screenshots",

@@ -222,7 +222,7 @@ enum CoordinatePinch {
     static func holdWithoutWaiting(at point: CGPoint, seconds: TimeInterval,
                                    orientation: UIInterfaceOrientation, display: DisplayRouting.Target?) throws {
         guard let classes, let synthesizer else {
-            // **422(501 ではない)**: 501 はホストが「このエンジンでは不可」= XCUITest へフォールバックと読むので、
+            // **422(501 ではない)**: 501 はホストが「このブリッジでは不可」= XCUITest へフォールバックと読むので、
             // XCUITest 自身が返すとフォールバック先が自分になる(docs/design.md §4.3)
             throw BridgeError(422, "this Xcode has no coordinate gesture support"
                 + " (XCPointerEventPath / XCSynthesizedEventRecord are gone)")
@@ -242,7 +242,7 @@ enum CoordinatePinch {
     private static func send(fingers: [[(point: CGPoint, offset: TimeInterval)]], name: String,
                              orientation: UIInterfaceOrientation, display: DisplayRouting.Target?, systemUI: Bool) throws {
         guard let classes, let synthesizer else {
-            // **422(501 ではない)**: 501 はホストが「このエンジンでは不可」= XCUITest へフォールバックと読むので、
+            // **422(501 ではない)**: 501 はホストが「このブリッジでは不可」= XCUITest へフォールバックと読むので、
             // XCUITest 自身が返すとフォールバック先が自分になる(docs/design.md §4.3)
             throw BridgeError(422, "this Xcode has no coordinate gesture support"
                 + " (XCPointerEventPath / XCSynthesizedEventRecord are gone)")

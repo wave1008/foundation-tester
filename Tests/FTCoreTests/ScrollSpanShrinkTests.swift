@@ -6,7 +6,7 @@
 // リストの可視高は 492pt = 1.38 倍の超過(いちばん取りこぼす SUT でガードが無効だった)。
 //
 // **効くのは `scrollFrame` を書いた経路だけ**(刻みを縮める口が `scrollPath` しかないため)。
-// 未指定の経路はエンジン既定に委ねる = ここを広げると2度撤回した暗黙の座標化になる。
+// 未指定の経路はブリッジ既定に委ねる = ここを広げると2度撤回した暗黙の座標化になる。
 
 import XCTest
 @testable import FTCore
@@ -117,7 +117,7 @@ final class ScrollSpanShrinkTests: XCTestCase {
                        "容器に収まっているのに刻みを縮めてはいけない")
     }
 
-    /// **`scrollFrame` 未指定なら path を送らない**(= エンジン既定の刻みに委ねる)。
+    /// **`scrollFrame` 未指定なら path を送らない**(= ブリッジ既定の刻みに委ねる)。
     /// ここが nil でなくなったら、2度撤回した「暗黙の座標化」が復活している
     func testUnspecifiedScrollFrameSendsNoPath() async throws {
         let driver = PathRecordingDriver(elements: [Self.frame(anchorY: 600),
@@ -134,9 +134,9 @@ final class ScrollSpanShrinkTests: XCTestCase {
 
     // MARK: - キーボード表示中の viewport クリップ(action "scroll"・scrollFrame 未指定)
     //
-    // **バグ実測(iPhone 13・XCUITest エンジン)**: `scrollDown`/`scrollUp`(action "scroll")は
+    // **バグ実測(iPhone 13・XCUITest ブリッジ)**: `scrollDown`/`scrollUp`(action "scroll")は
     // scrollFrame が無いと1周目の snapshot を撮らず(latest が常に nil)path ごと nil になり、
-    // エンジン既定の swipeUp() がキーボードの上を撃っていた(始点は画面全体の固定比率で
+    // ブリッジ既定の swipeUp() がキーボードの上を撃っていた(始点は画面全体の固定比率で
     // 作られるため常にキー面に乗る = 中身がほぼ動かない)。修正後は scrollFrame 未指定でも
     // 毎回 snapshot を撮り、キーボードが立っていれば screen 全体を容器として座標を作る
     // (StepExecutor+ScrollFrame.swift の scrollContainer/scrollPath 参照)。
@@ -180,7 +180,7 @@ final class ScrollSpanShrinkTests: XCTestCase {
 
     // MARK: - キーボード表示中の viewport クリップ(素の action "swipe")
     //
-    // scroll と同じ穴が素の swipe にもあった: `swipe(.up)` の始点はエンジン既定の固定比率で
+    // scroll と同じ穴が素の swipe にもあった: `swipe(.up)` の始点はブリッジ既定の固定比率で
     // 作られるため、キーボードの上を撃つと中身がほぼ動かない。executeAction の "swipe" 分岐が
     // 振る前に1回 snapshot を撮り、キーボードが立っていれば scrollPath で削った座標を送る
 
@@ -197,7 +197,7 @@ final class ScrollSpanShrinkTests: XCTestCase {
         XCTAssertGreaterThan(path.fromY, path.toY, "上スワイプは始点が終点より下のはず: \(path)")
     }
 
-    /// キーボードが無ければ従来どおり座標を送らない(エンジン既定に委ねる。1バイトも変わらない)
+    /// キーボードが無ければ従来どおり座標を送らない(ブリッジ既定に委ねる。1バイトも変わらない)
     func testSwipeActionSendsNoPathWithoutKeyboard() async throws {
         let driver = PathRecordingDriver(elements: [Self.frame(anchorY: 400)])
         let step = FlowStep(action: "swipe", direction: "up")

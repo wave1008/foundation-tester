@@ -85,7 +85,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | Flutter(iOS) | SnackBar の文言が「頻繁に更新される」特性だけのノードで、型が Other・id 無しのため木から落ちていた(中のボタンだけ出る) | ラベルを持つライブリージョンを `staticText` として出す(in-app・XCUITest とも) | `LiveRegionText.isLabelOnlyLiveRegion` |
 | RN(iOS・in-app) | `Pressable` は既定でアクセシビリティ要素になり、名前も id も無いと木に出ない。その中の id つきの View(`pointerEvents="none"` の欄)まで消えていた(XCUITest の木には出る) | 木に出さなかったアクセシビリティ要素は葉にせず、中を辿る | `InAppSnapshot.collect` |
 | iOS(XCUITest) | キーウィンドウにしない別 UIWindow(アプリ内メッセージ・上部バナー)は、中身は木に載るが窓の枠が載らない。窓の背景がタップを受け止める帯を木から言えず、バナーの下の要素への tap が done のまま外れた | 本体の窓より手前の窓の枠を `overlayWindowFrames` で申告し(キーボードの窓は除く)、中身に `inOverlayWindow` を付ける(Android と同じ契約。判定は `OverlayWindowOcclusion` の警告)。**キーボードの窓が出ている間は申告しない**(形が状態で変わり目印で拾い切れない = 見逃す側)。**in-app は申告しない**(タップは要素の activate で手前の窓に吸われない) | `BridgeRouter.overlayWindows` |
-| UIKit / SwiftUI(iOS in-app) | 検索欄(`UISearchBar` の中身)が in-app だけ `textField` になり、`.SearchField` がエンジンで当たり外れした | 検索の trait か `UISearchTextField` なら `searchField`(XCUITest と同じ) | `InAppSnapshot.elementType` |
+| UIKit / SwiftUI(iOS in-app) | 検索欄(`UISearchBar` の中身)が in-app だけ `textField` になり、`.SearchField` がブリッジで当たり外れした | 検索の trait か `UISearchTextField` なら `searchField`(XCUITest と同じ) | `InAppSnapshot.elementType` |
 | Compose(iOS) | 容器の外の行(ghost)を、ラベル無しで木に残す | 見切れの判定を容器基準にし、画面端に積もった行の山は遮蔽物扱いしない | `clippingContainer` / `OcclusionSuspicion` |
 
 ### 1.4 揃っていない木の違い(B)
@@ -101,7 +101,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | React Native(iOS in-app) | Modal の中身と背景の木が同居して見える(XCUITest は Modal だけ) | ダイアログ内は背景と衝突しない `#id` で指す |
 | UIKit / SwiftUI(iOS in-app) | スクロール容器を `other`(+ スクロールの印)で出す(XCUITest は `scrollView` / `table` / `collectionView`)。ピッカーのドラムを `pickerWheel` で出さない(調整の trait で `slider` になる) | 容器・ドラムは型セレクタでなく `#id` かラベルで指す |
 | Flutter | ダイアログは Navigator のオーバーレイ = 普通の木なので、見出しにも `#id` が付く(SwiftUI は付かない) | 見出しは SUT ごとに id / ラベルを選ぶ |
-| CMP(iOS)・Flutter(iOS)・RN(iOS / Android) | 入力欄の `text` が値ではなく**プレースホルダ**を返す(空欄で `"単一行"`。RN は入力後も)。他は空欄で空・入力後は nil。**`value` は全 SUT で値を返し、空欄は空**(2026-10-02 実測・5 SUT × 両 OS × 両エンジン) | 入力欄の値は `value*` で見る(空欄は `valueIsEmpty`)。入力欄に `text*` を当てない。witness は全 SUT の `24_空欄と否定形の検証.swift` |
+| CMP(iOS)・Flutter(iOS)・RN(iOS / Android) | 入力欄の `text` が値ではなく**プレースホルダ**を返す(空欄で `"単一行"`。RN は入力後も)。他は空欄で空・入力後は nil。**`value` は全 SUT で値を返し、空欄は空**(2026-10-02 実測・5 SUT × 両 OS × 両モード) | 入力欄の値は `value*` で見る(空欄は `valueIsEmpty`)。入力欄に `text*` を当てない。witness は全 SUT の `24_空欄と否定形の検証.swift` |
 
 ---
 
@@ -164,7 +164,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
   端を確定できず maxSwipes まで送る。v115 で実際に踏んだ)
 
 **揃っていない点(B)**:
-- 1回の送りで進む距離はエンジン・フレームワークで違う(Compose / Flutter の in-app は1ページ、XCUITest は慣性つき
+- 1回の送りで進む距離はブリッジ・フレームワークで違う(Compose / Flutter の in-app ブリッジは1ページ、XCUITest ブリッジは慣性つき
   約1.1画面、Android はフリング)。**1回で届く距離を前提にシナリオを書かない**(`scrollTo` / `withScroll*` の探索で届かせる)
 - Compose の in-app は、**容器そのもの**(scroll 印の要素)は scroll を断り、受理するのは内側の要素(ツールは容器を
   根に内側を走査する。C)
@@ -175,7 +175,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 |---|---|---|---|
 | Compose | 別ウィンドウにある本物の受け口(`IntermediateTextInputUIView`)を探して `insertText` | `insertText("\n")` が IME アクションになる(完全一致の `"\n"` だけ) | 全範囲を空に置換 → 残れば deleteBackward |
 | UIKit / SwiftUI / RN | `insertText` | `textFieldShouldReturn:` + EditingDidEndOnExit を再現(SwiftUI の `onSubmit` もこの経路) | 置換後に EditingChanged と通知を補う |
-| Flutter | `insertText` | engine の私有 API(`flutterTextInputView:performAction:withClient:`)へ配送。欠けていれば 409 | **in-app では非対応** → XCUITest へ |
+| Flutter | `insertText` | Flutter engine の私有 API(`flutterTextInputView:performAction:withClient:`)へ配送。欠けていれば 409 | **in-app では非対応** → XCUITest へ |
 
 - **入力欄でない対象(ボタン等)への `type` / `clearInput` は、フレームワークを問わず撃つ前に失敗させる**(ドライバは打つ・
   消す前に対象をタップするので、撃つと押してしまう。`StepExecutor.nonTextInputPreflightRefusal`。入力欄をちょうど1つ包む容器と、
@@ -202,14 +202,14 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | ジェスチャ目的の `swipe` | XCUITest へ(AX の scroll に流すと、パッドの上でもスクロール可能な親が受理して空振りする) | XCUITest へ | C |
 | 座標ドラッグ(`swipeBy` / `swipeElementToElement` / `swipePointToPoint`・探索の寄せ・空打ち) | **Compose・Flutter は in-app の `/drag`**(実時間 60Hz で move を処理させ、終点の後に1刻み待って同じ点で離す = 位置も離す瞬間の速度も届く)。XCUITest の合成では Compose の行が払った距離どおりに動かないことがあった(E2EY-CMP の行払いが負荷下で 24 回中 11 回 Actions で止まった → in-app で 24/24。撃った要求は赤緑で同一。仕組みは推測 = 最後の移動が離す操作と同着になり Compose の drag() が捨てる)。終点で止めてから離す案は速度で決まる部品(Flutter のパッド・Compose の `SwipeToDismissBox`)を壊したので不採用。SwiftUI・UIKit・RN は 501 → XCUITest | Android は注入器が終点の MOVE を UP の前に撃つ | B |
 | `gesture`(多点・時刻つき経路) | XCUITest へ(in-app にこの経路自体が無い) | XCUITest へ | A(フレームワークを問わず同じ結果。座標ピンチと同じ非公開 API でフォールバック無し = 使えない Xcode では 422) |
-| `hideKeyboard`(iOS) | 背景タップで閉じるのは Compose(E2E-CMP で実測)。SwiftUI(E2E-iOS)と Flutter は背景タップでは閉じず、続けて送る Enter で閉じる。React Native は自前 SUT では背景タップでも Enter でも閉じなかった。sut-ec-mobile の Compose の住所フォームは背景タップで閉じず Enter で閉じる(iOS Simulator で実測) | 背景タップと Enter の順で試す(経路は全フレームワーク共通・エンジン非依存。どれも閉じなければ失敗) | B |
+| `hideKeyboard`(iOS) | 背景タップで閉じるのは Compose(E2E-CMP で実測)。SwiftUI(E2E-iOS)と Flutter は背景タップでは閉じず、続けて送る Enter で閉じる。React Native は自前 SUT では背景タップでも Enter でも閉じなかった。sut-ec-mobile の Compose の住所フォームは背景タップで閉じず Enter で閉じる(iOS Simulator で実測) | 背景タップと Enter の順で試す(経路は全フレームワーク共通・モード非依存。どれも閉じなければ失敗) | B |
 | 戻る | Compose / Flutter には BackButton が無い → エッジスワイプ | 戻るボタンがあれば押す | C |
 
 ---
 
 ### 2.6 チェック状態(`checkIsON` / `checkIsOFF` / `checked=`)
 
-iOS は実装ごとに状態の出し方が違う(2026-09-18 実測・両エンジン同値)。**A. 揃えている** ——
+iOS は実装ごとに状態の出し方が違う(2026-09-18 実測・両モード同値)。**A. 揃えている** ——
 `FTCore.CheckStateReading` が全部を読み、オン / オフ / indeterminate / 不明に畳む。
 
 | 実装(iOS) | オン | オフ |
@@ -269,13 +269,13 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 | Compose・Flutter(iOS Simulator) | アプリのプロセスの描画が壊れ、起動し直すまで戻らない(木は正常)。**一色**(白・黒)になるのは Compose・Flutter、**図形だけで文字が一つも無い**形は Compose でだけ観測 | B | 通った検証が画素で文字を確認していない区間の終わりで「描画崩壊の検査」を1回撃ち、見つかったら失敗にする(iOS Simulator のみ・docs/design.md「描画崩壊の検査」) |
 | Flutter(iOS) | 慣性が 800ms でも収束しない | C | XCUITest ランナーの整定予算を固定(待ち切らない) |
 | Compose・Flutter(iOS・in-app) | 画面を切り替えた直後、a11y の木は新しい画面なのに絵(自前の Metal 描画)が追いつかない。CMP は起動後の初回訪問でタップが返ってから 0.27〜0.45 秒のあいだ**切り替え前の絵**をバイト同一で返す(2回目の訪問・SwiftUI では起きない) | A | 操作の直前に低解像度の画素と木の指紋を控え、**木が変わったのに画素が操作前のままの間だけ**待ってから撮る(`InAppRenderCatchUp`・v117)。遷移の完了は待たない。操作1回あたり約 12ms、待つのは追いついていない回だけ(初回訪問で約 0.3〜0.4 秒) |
-| Compose(iOS・XCUITest エンジン) | 上と同じ遅れが XCUITest のスクリーンショットでも起きる。タブを切り替えた直後の 0.3 秒以上、**切り替え前の画面**が返る(木は新しい画面)。ただし絵はバイト同一ではなく、押したタブの強調が載っている | B | **既知の制約**。待たずに1回だけ見る `findImage` / `findImages`(既定 `waitSeconds` 0)は別の画面を切って「無い」と答える。待つ `existImage` と、`waitSeconds` を渡した `findImage` は通る。in-app の v117 を移しても直らない(押した強調で画素が変わるので「画素が操作前のまま」の判定が発火しない)ので入れていない。fleetest 自身の E2E は、待つ版を E2E-CMP 20 S0020 に、待たない版(in-app の証人)を 23 に分け、後者は `Scripts/e2e.sh` が in-app のときだけ回す |
+| Compose(iOS・xcuitest モード) | 上と同じ遅れが XCUITest のスクリーンショットでも起きる。タブを切り替えた直後の 0.3 秒以上、**切り替え前の画面**が返る(木は新しい画面)。ただし絵はバイト同一ではなく、押したタブの強調が載っている | B | **既知の制約**。待たずに1回だけ見る `findImage` / `findImages`(既定 `waitSeconds` 0)は別の画面を切って「無い」と答える。待つ `existImage` と、`waitSeconds` を渡した `findImage` は通る。in-app の v117 を移しても直らない(押した強調で画素が変わるので「画素が操作前のまま」の判定が発火しない)ので入れていない。fleetest 自身の E2E は、待つ版を E2E-CMP 20 S0020 に、待たない版(in-app の証人)を 23 に分け、後者は `Scripts/e2e.sh` が in-app のときだけ回す |
 | Flutter / Compose / SwiftUI / RN | 起動直後の白い画面(blank)の長さが描画の重さに比例する(誤った再起動は Flutter 10・Compose 3・SwiftUI/RN 0) | C | blank の判定窓を約10秒にする |
 | React Native | JS が listener を登録する前に届いた warm な URL を捨てる | A | `launchApp(url:)` は最初の画面が描かれてから URL を配送する |
 | Flutter(Android 12 の実機) | 入力欄の外を叩いて IME が閉じ始めると、dumpsys は即「非表示」なのに a11y の木は**約 5.4 秒**キーボードを申告し続け、下端のタブバーを `isVisibleToUser = false` で落とす(`refresh` しても同じ。Pixel 3a で実測・Pixel 4a の Android 13 は 0.32 秒) | A | `hideKeyboard` の後、次のロケータ操作の最初の解決で木がキーボードを申告していれば消えるまで待ってから整定を見る(`pendingHideKeyboardWait`。上限 5 秒 = `FlowStep.defaultWaitSeconds`(実測の 5.4 秒は IME が閉じ始めた時刻から。hideKeyboard の時点では残り約 4.7 秒)。Android だけ・消えていれば費用ゼロ) |
 | Android(全般・OS で割れる) | `type` は焦点を要求して文字を書き込むとすぐ返り、ソフトキーボードの表示を待たない(表示要求から表示完了まで中央値 0.2 秒・最大 0.89 秒)。次の解決の木にまだ無いと、後で出てダイアログが動き古い座標を撃つ。iOS の `type` は出現まで返らないので起きない | A | Android だけ、打つ前も次の木にもキーボードが無く改行で終わらない `type` の後、次のロケータ操作の解決の前に最大 1.5 秒(`KeyboardWait.appearSeconds`)、出現を待ってから整定を見る。出なければ注記 `keyboard-not-shown-after-type`・以降の木で出たら `keyboard-appeared-late` |
 | Flutter(Android) | 起動直後の数百 ms はタップを取りこぼす。タップ直後は入力接続が未確立 | B | SUT のシナリオは起動直後・タップ直後に `exist` を1往復挟む |
-| iOS(全フレームワーク・in-app / hybrid) | `waitForSettle` の画素の撮影。in-app のスクリーンショットはアプリ自身の描画しか写さず(キーボード・システムアラート・他プロセスが無い)、アプリのプロセスの中で撮り続けるとメインスレッドを塞ぐ | C | hybrid(既定)でも撮影は常に XCUITest ランナー(判定はブリッジの中で完結し、画像はホストへ出ない)。木の段は次のステップを解決するドライバ(hybrid なら in-app の木)。`engine: "inapp"` だけで XCUITest ランナーを持たないデバイスは、hybrid か xcuitest への切り替えを案内して失敗する。Android は instrumentation ブリッジの中で撮る |
+| iOS(全フレームワーク・inapp モード) | `waitForSettle` の画素の撮影。in-app のスクリーンショットはアプリ自身の描画しか写さず(キーボード・システムアラート・他プロセスが無い)、アプリのプロセスの中で撮り続けるとメインスレッドを塞ぐ | C | inapp モード(既定)でも撮影は常に XCUITest ランナー(判定はブリッジの中で完結し、画像はホストへ出ない)。木の段は次のステップを解決するドライバ(inapp モードなら in-app ブリッジの木)。Android は instrumentation ブリッジの中で撮る |
 | Compose Multiplatform(iOS) ほか(`waitForSettle`) | 慣性の終わりの描画間隔の最大がフレームワークで違う(iOS の Compose は 1px ずつの這いで 650ms・SwiftUI 368ms・Android は負荷時 385ms)。窓が短いと這いの途中で「止まった」と誤る | A | `quietSeconds` の既定を分ける: iOS の Compose(とフレームワーク不明)= 0.8 秒・それ以外の iOS と Android = 0.5 秒(実測の最大 × 約 1.2。`WaitForSettleDefaults`)。実測は docs/performance-tuning.md §3.34 |
 
 ---
@@ -335,21 +335,21 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 
 | 症状 → 直し方 | 起きた構成 |
 |---|---|
-| M3 SearchBar(iOS)で `type` が入力を重複(`apapapapap`)→ 値が1文字も動かなければ OCR で画面を見る(コンパイルを待つ・キリル同形異字を `OCRHomoglyphs` で畳む)・追送は1回まで | iOS hybrid |
-| HorizontalPager の `scrollToLeftEdge` が端の手前で止まる → 端の署名に id とラベル(**送っている容器の中だけ**。容器の外の表示は送りの副作用で変わる = `edgeContentRegion`) | 全エンジン |
+| M3 SearchBar(iOS)で `type` が入力を重複(`apapapapap`)→ 値が1文字も動かなければ OCR で画面を見る(コンパイルを待つ・キリル同形異字を `OCRHomoglyphs` で畳む)・追送は1回まで | iOS inapp モード |
+| HorizontalPager の `scrollToLeftEdge` が端の手前で止まる → 端の署名に id とラベル(**送っている容器の中だけ**。容器の外の表示は送りの副作用で変わる = `edgeContentRegion`) | 全モード |
 | 上端で状態が行き来する一覧(RefreshIndicator)で上限まで送る → **一度見た署名へ戻ったら進んでいない**(ドライバが動いたと申告した直後は数えない) | Flutter iOS |
-| in-app の `tap(x:y:)` が Popup の外側に届かないのに緑 → 自前描画(か不明)で要素の無い点は XCUITest | iOS hybrid |
+| in-app の `tap(x:y:)` が Popup の外側に届かないのに緑 → 自前描画(か不明)で要素の無い点は XCUITest | iOS inapp モード |
 | `swipeBy` の始点が Android の戻るの帯 → 帯の幅を SystemUI の dump から読んで経路を寄せる / 比率 >0.9 は注記 | Android |
 | 画面の最下端から始まる座標ドラッグ(`swipeElementToElement` / `swipePointToPoint` / `swipeBy`)が Android のホーム操作に取られアプリが離脱する → 下端のジェスチャ帯(dump の `mBottomGestureHeight`。Pixel 9 の Emulator・ジェスチャーナビで 84px = 32dp を実測。読めなければ 48dp × 密度 = 3 ボタンの高さを上限とした見積り)の中なら始点を帯の上へ寄せて注記(`ScrollGeometry.clearingBottomGestureBand`)。`gesture` の多点は寄せない | Android |
 | 横の探索の scrollFrame が画面に半分未満しか見えず(縦の一覧の中の横の一覧が下端で切れる)払いが画面の縁に乗って数枚しか進まない → 探索の前に外側の縦の容器を送って枠を窓へ入れる(`ScrollGeometry.bringIntoView`・上限2回) | iOS(E2EY-iOS)・Flutter |
 | `scrollToTop` の確認の払いが更新を撃つ → Android ブリッジ(v74)の `scrollActions` で送らずに端を確定。**容器は画面中央を含む最小のもの**(入れ子の SwipeRefreshLayout で効かなかった) | Android |
-| スクロール探索が、末尾で続きを読み込む一覧を途中で打ち切る → 探索の打ち切りにも `edgeClaimGraceAfterMove` | 全エンジン |
+| スクロール探索が、末尾で続きを読み込む一覧を途中で打ち切る → 探索の打ち切りにも `edgeClaimGraceAfterMove` | 全モード |
 | フォーカスを取らない別ウィンドウ(ExposedDropdown・Spinner の候補)の中身が木に無い → Android ブリッジ(v75)が同じアプリの手前の窓の中身を足す(`inOverlayWindow`。覆いの判定から除外) | Android |
 | 横の探索(ページャ)で見つけた直後にページが前へ戻り、対象が消える → 探索後の空打ち(自前描画の容器が吸う1タッチの肩代わり)を**探索の軸と直交する向き**へ抜く(`StepExecutor.emptyDragEnd`。横へ抜くとページャがページ送りとして受けていた) | iOS(Compose・Flutter) |
 | RN の PagerView(`UIPageViewController`)を in-app で送れず探索が「何も動かない」で打ち切る → 指の下が `UIPageViewController` のスクロールビューなら 501 で XCUITest へ回す(v133) | iOS in-app |
 | XCUITest の探索が見つけた直後の tap が Compose の全幅の行(ListItem)で吸われて遷移せず、緑のまま次で赤 → ①フリングの尾(1pt/周で 1 秒以上這う)を止まったとみなす(`SettleMotion.restThresholdPt` = 2pt。1 点比較の減速判定は撮る間隔のぶれで「増加」に見えて打ち切っていたので 2 点ずつの和で比べる)②横に抜けられない全幅の行の空打ちは画面の中心へ寄る向きに縦へ抜く(`StepExecutor.emptyDragEnd`。インセットの行は従来どおり横) | iOS(Compose・Flutter) |
 | Wipe Data の直後・作りたての AVD で、最初のテキスト入力に Gboard の「入力レイアウトの選択」シートが出てキーボードと画面の下半分を覆う(1度出たら次からは出ない = Wipe した台の最初の1本だけ赤)→ ブリッジがアプリを起動する前に、自前の空の画面でキーボードを出して閉じておく(v80 `ImeOnboarding.primeOnce`・言語ごとに1回。Gboard の IME ウィンドウに Button が2つ同じ行に並ぶ形だけ・左を押す。**入力の経路では閉じない** = 待つ間に欄が動いて Flutter で欄を見失う) | Android |
-| 貼り付く見出し(操作不能のテキストの帯)に潜った行を押すと見出しに当たる → 撃つ前に送って外す対象を「容器の縁に揃った名前つきの帯」へ広げる(`TapTargetGeometry.isPinnedTextBand`。名前の無い暗幕・縁から浮いたラベルは従来どおり外さない) | 全エンジン |
+| 貼り付く見出し(操作不能のテキストの帯)に潜った行を押すと見出しに当たる → 撃つ前に送って外す対象を「容器の縁に揃った名前つきの帯」へ広げる(`TapTargetGeometry.isPinnedTextBand`。名前の無い暗幕・縁から浮いたラベルは従来どおり外さない) | 全モード |
 | Flutter の iOS でオーバーレイを出した画面の a11y の矩形が 1/画面倍率に縮み、タップが全部ずれる → in-app ブリッジが「FlutterView ÷ 倍率」を申告するセマンティクスの容器を見つけ、その下を実の枠へ写す(`FTCore.AXFrameRescale`・v132。PlatformView の中身は実の枠なので掛けない) | iOS in-app |
 | 上端へ戻す最後の1本のドラッグが、端を越えた余りで入れ子の親(SwipeRefreshLayout・RefreshControl)を引っ張り更新を走らせる → 端送りは a11y のスクロール操作で送る(ブリッジ v78 `POST /scrollAction`。軸の合う最小の容器・軸が分からなければ従来のドラッグ・送れない向きなら「もう端」) | Android |
 | 反転したリスト(RN の `inverted`・transform で上下反転した UITableView のチャット)を in-app で送れず、最新の位置で「もう端」と判定して探索が1回も送らない → contentOffset 経路が容器の座標の反転を見て指の向きを裏返す(`FTSwipeDirection.inContentSpace`・v144。E2EY の反転チャット) | iOS in-app(UIKit 系) |
@@ -366,7 +366,7 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 **残っている制約(`@Draft` の理由と対応)**: **E2EY**: RN の collapsible-tab-view でタブを替えた直後、iOS では行がヘッダの裏に居る(in-app の木に覆っている物が出ないので名指しも回避もできない。XCUITest の木には `#Toolbar` として出る)/ iOS で半分開いた gorhom のシートが一覧の上からの払いで伸びない(XCUITest の本物の払いでも同じ・見出しからなら伸びる。木にグラバーが出ないので伸ばす場所を決められない。Android は直した)/ SwiftUI で不透明度 0 にして隠した FAB・バーは XCUITest の木に残る(`.accessibilityHidden` を付けても残った。in-app は外す)ので、XCUITest では隠れた後の `notExist` が赤 / SwiftUI のシートが半分以上開いている間は、iOS が背面をアクセシビリティから外すので XCUITest の木に背面が出ない(in-app は読める)(以上 E2EY の `@Draft`)/ Flutter の iOS で scrollToTop が引っ張って更新になる/ Android の一部の欄で
 ACTION_SET_TEXT が拒まれる / Android のツールチップ・一部のオートコンプリートの候補が木に出ない / Flutter iOS の
 スナックバーが見つからない(FM が止まった Mac で観測。帰属未確定)。
-**XCUITest エンジンだけで赤(既定の in-app は緑・`Scripts/e2ex.sh --ios-xcuitest`)**: 決まって赤のものは 2026-10-08 に 13 → 1(CMP の 90_不具合の回帰 S0020 = 上端の確かめの1本が引っ張って更新になる。未修正と明記した証人)。
+**xcuitest モードだけで赤(既定の in-app は緑・`Scripts/e2ex.sh --ios-xcuitest`)**: 決まって赤のものは 2026-10-08 に 13 → 1(CMP の 90_不具合の回帰 S0020 = 上端の確かめの1本が引っ張って更新になる。未修正と明記した証人)。
 断続的に赤: CMP の sticky(13 回中 1 回・原因未特定。docs/open-issues.md)/ Flutter の dialogs S0020(4 回中 1 回・欄の焦点が立つ前の打鍵)。
 この日に直したもの: CMP の refresh S0010(端の署名で固有 id の文字表示のラベルを比べない)/ Flutter の tooltip・menu(XCUITest の
 縮んだ木の補正・木の取得の 2 秒の待ちの解消)/ RN の sticky(貼り付く見出しの下の行を撃つ前に送る)・date(英語ロケールのセレクタ)/

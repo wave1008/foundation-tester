@@ -1,5 +1,5 @@
 // 起動待ちの失敗文(BridgeClient.readinessDetail)は一次情報だけを運ぶ。
-// 2026-09-18: in-app の launch 失敗が `bridgeConnectionRefused(context: FTCore.DriverErrorContext(engine: …iosXCUITest …` と
+// 2026-09-18: in-app の launch 失敗が `bridgeConnectionRefused(context: FTCore.DriverErrorContext(bridge: …iosXCUITest …` と
 // 列挙値のダンプを利用者へ出していた(しかも in-app なのに XCUITest と名乗る)
 
 import XCTest
@@ -7,7 +7,7 @@ import FTCore
 @testable import FTBridgeClient
 
 final class ReadinessDetailTests: XCTestCase {
-    private let context = DriverErrorContext(engine: .iosXCUITest, physicalDevice: false)
+    private let context = DriverErrorContext(bridge: .iosXCUITest, physicalDevice: false)
 
     func testRefusedCarriesOnlyThePrimaryDetail() {
         let text = BridgeClient.readinessDetail(

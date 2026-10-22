@@ -1,6 +1,6 @@
 // WKWebView の中身を DOM から読む in-app 経路。
 //
-// **なぜ必要か**: in-app エンジンは WKWebView の a11y ツリーを見られない(Web コンテンツの AX は
+// **なぜ必要か**: in-app ブリッジは WKWebView の a11y ツリーを見られない(Web コンテンツの AX は
 // WebContent プロセスが提供する)。従来はこの画面だけ XCUITest へ委譲していたが、委譲中は
 // 1 手 378ms(in-app は 3ms)で約120倍の劣化が乗る。同じプロセスに居る利点を使い、
 // evaluateJavaScript 1往復で DOM を読む。
@@ -31,7 +31,7 @@ enum InAppWebViewDOM {
 
     /// 読めなかった理由。**nil を返して黙らないため**にある ——
     /// 呼び出し側(mergeWebViewDOM)は「中身が無い WebView」と「中身を読めなかった WebView」を
-    /// 区別できず、`iosInappEngine` には委譲先の XCUITest が居ないので、黙ると Web の要素が
+    /// 区別できず、XCUITest ブリッジが無いときは委譲先の XCUITest が居ないので、黙ると Web の要素が
     /// 丸ごと消えた木を「これが全部」として返すことになる(E2E-CMP の WebView シナリオが
     /// 並列負荷で約 39% 落ちていた原因。2026-08-30 に results DB から特定)。
     /// **rawValue は注記として永続化される** —— 一度出したものは変えない。

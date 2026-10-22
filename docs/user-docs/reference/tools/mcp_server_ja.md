@@ -69,11 +69,11 @@ cwd(受け手パッケージ)とは別物です。
 | `ft_clear_input` | 入力欄を空にする |
 | `ft_clear_app_data` | アプリのデータと権限をリセットする(iOS 実機は `ft_install` のパスか `packagePath:` で uninstall + install に振り替える) |
 | `ft_dsl_commands` | DSL コマンドの索引(名前と署名)。書く前に存在確認できる |
-| `ft_double_tap` / `ft_pinch` / `ft_drag` | ダブルタップ・ピンチ・任意方向のドラッグ。MCP の iOS は常に XCUITest なので、Compose の iOS アプリのダブルタップは MCP からは届きません(シナリオで in-app / hybrid のプロファイルを使えば成立します)。拡大が目的なら `ft_pinch` を使う([ジェスチャ](../commands/gestures_ja.md)) |
+| `ft_double_tap` / `ft_pinch` / `ft_drag` | ダブルタップ・ピンチ・任意方向のドラッグ。MCP の iOS は常に XCUITest なので、Compose の iOS アプリのダブルタップは MCP からは届きません(シナリオを inapp モードで回せば成立します)。拡大が目的なら `ft_pinch` を使う([ジェスチャ](../commands/gestures_ja.md)) |
 | `ft_gesture` | 指ごとの時刻つき経路を1本の連続タッチとして再生する(区切りで指を離さない)—— パターンロック・長押しからのドラッグ・独自の複数指ジェスチャ用。絶対座標のみ・ref/セレクタ形は無い |
 | `ft_screenshot` | 視覚確認用のスクリーンショット画像 |
 | `ft_capture_element` | 要素を画像分類器の見本として保存し、学習の点検結果を返す(`checkIsON` / `imageIs` の見本。[imageIs](../commands/image_assertion_ja.md)) |
-| `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(自動ビルド込み。コンパイルエラーはそのまま返る)。`id` にクラス名を渡すと `fleetest run` と同じく `@Deleted`/`@Draft` 以外の全本を順に流す。`profile:` は `port`/`serial`/`platform`/`udid` と併用できない。**`fleetest run` と違い、プロファイルの setup/teardown スクリプト・run 開始時の home・`results/` への記録は行わない**。また **iOS では常に XCUITest エンジンで走る**(`fleetest run` はプロファイルのエンジン = 既定 hybrid)ので、Compose Multiplatform のダブルタップのようにエンジンで結果が割れるステップは本番と違いうる(応答にもそう出る)(フルの run は CLI で)。アプリを入れるのは、`autoInstall` のアプリを持つ `profile:` を iOS で指定したときだけ(ワークスペースへコピーし、入っている版が古ければインストールする)。それ以外は `ft_install` で入れておく。**失敗は isError で返り**、失敗したステップ・失敗した瞬間の要素一覧とスクリーンショット(最初に落ちた1本だけ)・レポートパスが載る。**既定では FM と Vision を使わずに動く**(テキストの可視性検証なし・`screenLooksLike` のステップは飛ばす・`checkIsON` は木だけで読む)。使うときは `fmAndVision: true`。`heal`(指紋照合の上書き。既定はプロファイルの値、無ければ false)を渡せる。`scripts/compose.yaml` のサービスは起こさない(先に `ft_services` で上げておく) |
+| `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(自動ビルド込み。コンパイルエラーはそのまま返る)。`id` にクラス名を渡すと `fleetest run` と同じく `@Deleted`/`@Draft` 以外の全本を順に流す。`profile:` は `port`/`serial`/`platform`/`udid` と併用できない。**`fleetest run` と違い、プロファイルの setup/teardown スクリプト・run 開始時の home・`results/` への記録は行わない**。また **iOS では常に XCUITest ブリッジで走る**(`fleetest run` はプロファイルのモード = 既定 inapp)ので、Compose Multiplatform のダブルタップのようにモードで結果が割れるステップは本番と違いうる(応答にもそう出る)(フルの run は CLI で)。アプリを入れるのは、`autoInstall` のアプリを持つ `profile:` を iOS で指定したときだけ(ワークスペースへコピーし、入っている版が古ければインストールする)。それ以外は `ft_install` で入れておく。**失敗は isError で返り**、失敗したステップ・失敗した瞬間の要素一覧とスクリーンショット(最初に落ちた1本だけ)・レポートパスが載る。**既定では FM と Vision を使わずに動く**(テキストの可視性検証なし・`screenLooksLike` のステップは飛ばす・`checkIsON` は木だけで読む)。使うときは `fmAndVision: true`。`heal`(指紋照合の上書き。既定はプロファイルの値、無ければ false)を渡せる。`scripts/compose.yaml` のサービスは起こさない(先に `ft_services` で上げておく) |
 | `ft_start_run` / `ft_run_status` / `ft_stop_run` | `fleetest run --profile` と同じ本番の実行。`ft_start_run` は裏で始めてすぐ返り(`profile` 必須・`scenario` / `folder` は配列・`failed`・`broadcast`・その回だけ別の機械へ送る `runner` = 登録済みの機械名か `local`)、`ft_run_status` が進み具合と結果(runID・合否・失敗したシナリオのレポート・ログの末尾)を返す。止めるのは `ft_stop_run`(SIGTERM)。結果の履歴(`results/`)・録画・セットアップ/後始末のスクリプトまで含む。MCP サーバの中で動くので、シェルのサンドボックスの中のエージェント(Codex の既定など)からも使える。同時に動かせるのはこのサーバから1本。**この Mac で別の run が走っていると既定ではすぐ終わる**(1台の Mac で同時に走る run は1本)—— 並んで待たせるときは `waitLockSeconds`(待つ上限の秒数。`fleetest run --wait-lock` と同じ)を渡す。待っている間も `ft_stop_run` で止められる。**`ft_run_scenario` と同じく、`fmAndVision: true` を渡さなければ FM と Vision を使わずに動く**(プロファイルの4つのスイッチを `--set` で切る) |
 | `ft_services` | `scripts/compose.yaml` が宣言するサービスを、探索・ライブ操作のために起動・停止・確認する(`fleetest services up` / `down` / `status` と同じ)。`action`: `up` / `down` / `status`・`profile`(`up` / `down` で必須)・`project`・`physical`・`androidSerials`(文字列の配列)。`ft_start_run` と同じく承認を求める(下記)。詳細は[アプリが依存するサービス](../writing/services_ja.md) |
 | `ft_results` | 結果の履歴。`fleetest results <query>` と同じ文面(JSON は無い)。`query` は必須で `list` / `summary` / `flaky` / `trend`(`scenario` 必須) / `devices` / `slow` / `insights` / `log`(1 run のシナリオごとの実行ログ。`runId`・既定 `latest`)。任意: `since`(既定 `90d`・`log` では使わない)・`scenario`・`limit`(`list` / `slow`)・`minRuns`(`flaky`)。ファイルを読むだけなので、シェルのサンドボックスの中のエージェント(Codex の既定など)からも使える |
@@ -95,12 +95,12 @@ iOS のシステムアラート(位置情報の許可など)は `ft_tap alertBut
 SpringBoard で閉じた後は `ft_launch bundleId: <app> resume: true` で、
 終了せずにアプリへ戻れます。
 
-## iOS のエンジン選択
+## iOS のモード選択
 
-**MCP の iOS は常に XCUITest エンジンで動きます。** エンジンを選ぶ必要はありません。デバイスは `udid` で指定し、
+**MCP の iOS は常に XCUITest ブリッジで動きます。** モードを選ぶ必要はありません。デバイスは `udid` で指定し、
 `port` は渡さずにおけば、サーバがそのデバイスの XCUITest ブリッジを使います。
 
-- `profile` を渡しても、iOS は XCUITest で動きます(プロファイルが in-app / hybrid でも、MCP では使いません)。
+- `profile` を渡しても、iOS は XCUITest で動きます(プロファイルの `iosMode` は MCP では使いません)。
   デバイスの選び方はプロファイルに従います。
 - in-app ブリッジのポートに繋いだ場合も、同じデバイスの XCUITest ブリッジへ自動で切り替えます。
   XCUITest ブリッジを用意できないときは、in-app には落とさずエラーで知らせます。

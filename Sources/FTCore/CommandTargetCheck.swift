@@ -6,30 +6,26 @@ import Foundation
 
 public enum CommandTargetCheck {
 
-    /// 照合に使うデバイスの事実。`engine` は `ProfileResolver.resolve` の後の値(iOS は必ず埋まる)
+    /// 照合に使うデバイスの事実
     public struct Device: Sendable, Equatable {
         public let name: String
         public let platform: String
-        public let engine: String?
         public let physical: Bool
 
-        public init(name: String, platform: String, engine: String?, physical: Bool) {
+        public init(name: String, platform: String, physical: Bool) {
             self.name = name
             self.platform = platform
-            self.engine = engine
             self.physical = physical
         }
 
         public init(_ device: ResolvedDevice) {
-            self.init(name: device.name, platform: device.platform, engine: device.spec.engine,
-                      physical: device.spec.isPhysical)
+            self.init(name: device.name, platform: device.platform, physical: device.spec.isPhysical)
         }
 
         /// このデバイスが当てはまる実行先
         public var targets: Set<CommandUnsupportedTarget> {
             guard platform == "ios" else { return [] }
             var result: Set<CommandUnsupportedTarget> = []
-            if engine == "inapp" { result.insert(.iosInAppEngine) }
             if physical { result.insert(.iosPhysical) }
             return result
         }

@@ -63,10 +63,11 @@ fleetest run --profile <name> --set responseMeasurement=true --set responseRepea
     利用者が感じる時間を表さないためです。
   - テキストの可視性検証(`fmTextVisibilityCheck`・`ocrTextVisibilityCheck`)・`screenLooksLike`・録画(`record`)・
     ホスト負荷による減速を止めます。
+  - iOS は xcuitest モードで走ります(計測は XCUITest ブリッジにあるため。run の間 `iosMode` の既定が `xcuitest` になります)。
   - デバイスモニターの観測・配信を、run の間だけ止めます(run の終わりに戻します。自分で期限なしの `fleetest monitor pause` をしている場合は
     そのままにします。`--for` で期限付きにしている場合は run の間だけ期限なしに置き換え、終わりにまだ期限前なら元の停止に戻します)。
 - 次の指定と一緒には使えません(名前付きのエラーで止まります): `enableAnimations: false`、`fmTextVisibilityCheck` /
-  `ocrTextVisibilityCheck` / `screenLooksLike` / `record` を `true`、`--broadcast`・`--fleet`・`--split`。
+  `ocrTextVisibilityCheck` / `screenLooksLike` / `record` を `true`、`iosMode` かデバイスの `mode` を `inapp`、`--broadcast`・`--fleet`・`--split`。
 
 計測モードでは、操作の前に毎回「アプリの描画が止まる」のを待つので(最長 10 秒)、通常の実行より時間がかかります。
 

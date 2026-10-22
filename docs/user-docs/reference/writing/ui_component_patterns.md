@@ -8,8 +8,8 @@ agent (AI assistant) writing scenarios** — if the app's screen has one of thes
 matching section before writing.
 
 - Verified on: Compose Multiplatform 1.12.1 (≈ Material3 1.4), Flutter 3.47.7, React Native 0.87.1 (New
-  Architecture / Fabric), Android Views + Material Components, and SwiftUI. iOS 27 Simulator (hybrid
-  engine / XCUITest engine) and Android 15 Emulator
+  Architecture / Fabric), Android Views + Material Components, and SwiftUI. iOS 27 Simulator (inapp
+  mode / xcuitest mode) and Android 15 Emulator
 - Every behaviour here reproduces with the verification apps bundled with fleetest
   (`E2EXAppCMP/`, `E2EXAppFlutter/`, `E2EXAppRN/`, `E2EXAppAndroid/`, `E2EXAppIOS/`) and their
   scenarios (`TestProjects/E2EX-{CMP,Flutter,RN,Android,iOS}/scenarios/`), read them as worked
@@ -57,10 +57,10 @@ scenario cannot fix this on its own (it depends on the target app's implementati
 
 **Current limitation**: **On Flutter's iOS**, once an overlay (a `Tooltip`, a dialog, etc.) has been
 shown on a screen, **that screen's a11y rects are reported at 1/screen-scale (1/3 on an iPhone) until
-the next screen transition** (Flutter's own report). **The default iOS engine (in-app) corrects this
-automatically**, so nothing changes in how you write scenarios. Only **the XCUITest engine**
-(`iosInappEngine: false`) cannot correct it, and taps land in the wrong spot. Workaround (XCUITest
-engine only): after showing an overlay on a screen, move to another screen and come back before the
+the next screen transition** (Flutter's own report). **The default iOS mode (inapp) corrects this
+automatically**, so nothing changes in how you write scenarios. Only **xcuitest mode**
+(`iosMode: "xcuitest"`) cannot correct it, and taps land in the wrong spot. Workaround (xcuitest
+mode only): after showing an overlay on a screen, move to another screen and come back before the
 next action.
 
 ### An icon-only button is labelled by its accessibility label
@@ -85,7 +85,7 @@ withScrollRight(scrollFrame: "#pager_main") {
 }
 ```
 
-The iOS in-app engine cannot page RN's `react-native-pager-view` (a `UIPageViewController` inside) by
+The iOS in-app bridge cannot page RN's `react-native-pager-view` (a `UIPageViewController` inside) by
 itself, so it switches to a real XCUITest swipe for that area only (note `fell back to XCUITest`).
 Nothing changes in how you write it.
 
@@ -121,7 +121,7 @@ android { tap("Back") }       // Android View: target by label (no id)
 |---|---|
 | CMP | `HorizontalPager`. Same as above |
 | Flutter | `PageView`. Same as above |
-| RN | `react-native-pager-view`. Same as above (on the iOS in-app engine, only the paging switches to a real XCUITest swipe) |
+| RN | `react-native-pager-view`. Same as above (with the iOS in-app bridge, only the paging switches to a real XCUITest swipe) |
 | Android View | `ViewPager2`. Same as above |
 | SwiftUI (iOS) | `TabView(.page)`. Same as above (the verification app is native, so it is not subject to the in-app limitation) |
 
@@ -263,9 +263,9 @@ tap("OK")
       FTFinger(x: 0.5, y: 0.3).move(x: 0.5, y: 0.85, durationSeconds: 1.0).hold(seconds: 0.3)
   }
   ```
-- With **the iOS XCUITest engine** (`iosInappEngine: false`), `scrollToTop()` at the top of the list
+- With **iOS xcuitest mode** (`iosMode: "xcuitest"`), `scrollToTop()` at the top of the list
   **runs one extra refresh** (the swipe that confirms the edge becomes a pull, because XCUITest does
-  not tell whether a container can still scroll). It does not happen with the default iOS engine
+  not tell whether a container can still scroll). It does not happen with the default iOS mode
 - **On Flutter's iOS, `scrollToTop()` back to the top can also trigger a refresh** (under investigation)
 - Same workaround for both: in scenarios that verify the refresh count, do not read the count
   **after** `scrollToTop()` (verify the count before it)
@@ -437,8 +437,8 @@ Pressing a row shows an echo, and the echo stays in the tree at a fixed position
 collapsing, on every framework.
 
 **Current limitation**: with RN's `react-native-collapsible-tab-view`, **right after switching tabs the first rows of the list can
-sit behind the header on iOS**. The in-app engine's tree does not show what covers them, so fleetest cannot scroll them out
-from under it (on the XCUITest engine the failure message names `#Toolbar`). Tap a row that is visible below the header
+sit behind the header on iOS**. The in-app bridge's tree does not show what covers them, so fleetest cannot scroll them out
+from under it (in xcuitest mode the failure message names `#Toolbar`). Tap a row that is visible below the header
 
 ## Sticky header
 
@@ -583,7 +583,7 @@ select("#txt_focus_echo").textIs("focus=second")
 - **Android refuses `ACTION_SET_TEXT` on some fields** (observed on Material's `SearchView` and some
   Flutter fields). There is no workaround; `type` types normally via regular keystrokes anyway (only
   the bulk, a11y-driven write is refused, not ordinary `type` keystrokes)
-- **On React Native's iOS (in-app engine), a suggestion shown right below the field may not be tappable** (under
+- **On React Native's iOS (inapp mode), a suggestion shown right below the field may not be tappable** (under
   investigation). The keyboard stays up after `pressEnter()`, so the suggestion stays hidden beneath it. Workaround:
   lay the screen out so suggestions are not covered by the keyboard, or check the committed value through the app's own echo
 

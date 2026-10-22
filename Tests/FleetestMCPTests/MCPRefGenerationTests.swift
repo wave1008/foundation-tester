@@ -157,7 +157,7 @@ final class MCPRefGenerationTests: XCTestCase {
 
     /// **本命**: 2台を触ったセッションで、機A の ref を機B へ撃っても当たらないこと。
     ///
-    /// base を engineKey ごとに 0 から始めていたため、**両機の ref 番号が衝突**していた。
+    /// base を sessionKey ごとに 0 から始めていたため、**両機の ref 番号が衝突**していた。
     /// 実機実測(E2EAppCMP・iOS 2台): 機A の ref 10 は `#row_30`、機B の ref 10 は
     /// `#btn_item_1`。機A の木を見て採った `ft_tap ref: 10` を port だけ機B にして撃つと、
     /// **警告も拒否も無く成功して**機B のボタンを叩き、状態が変わった
@@ -187,14 +187,14 @@ final class MCPRefGenerationTests: XCTestCase {
     }
 
     /// **上のテストが見ていなかった形**(2026-08-14・実機+仮想デバイス混在の監査で実機再現)。
-    /// あちらは2台目も MCP で撮っているので「この engineKey に世代がある」が成り立ち、
+    /// あちらは2台目も MCP で撮っているので「この sessionKey に世代がある」が成り立ち、
     /// 素通しの分岐に入らなかった。**撮っていない宛先へ撃つ**とその分岐に落ちて、
     /// MCP の番号がそのままブリッジへ渡り、ブリッジ自前の 1..N で解決されて別要素に当たる。
     ///
     /// 実機実測(E2E-iOS・iPhone wave): profile: で撮った木の ref は 70..93 なのに、
     /// 同じ機を `port:8143 ref:10` で撃つと `tap [10] done`(警告ゼロ)で
     /// ブリッジの #10 = `#btn_input_submit` を実際に押し、`submitted=-` → `submitted=physical`
-    /// になった。**engineKey は指し方込み**(`profile:…` / `direct:ios:<port>:`)なので、
+    /// になった。**sessionKey は指し方込み**(`profile:…` / `direct:ios:<port>:`)なので、
     /// 同じ1台でも指し方を変えるだけでこの穴に入る
     func testARefIsNotForwardedRawToATargetThatWasNeverSnapshotted() async throws {
         driver.snapshotResponse = screen([element(ref: 1, id: "row_30", label: "行 30")])

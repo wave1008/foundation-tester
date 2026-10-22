@@ -600,7 +600,7 @@ final class MCPVersionGateTests: XCTestCase {
     }
 
     /// 食い違いの失敗文は**その udid の全ポート**を挙げる(1本だけ名指しすると、読み手が
-    /// 「その port へ変えれば直る」と誤読して別エンジンのブリッジへ移ってしまう)
+    /// 「その port へ変えれば直る」と誤読して別種のブリッジへ移ってしまう)
     func testUDIDPortMismatchListsAllPorts() throws {
         XCTAssertThrowsError(try MCPServer.reconcilePort(9999, udid: "U1", udidPorts: [8128, 8126])) {
             XCTAssertTrue($0.localizedDescription.contains("8128, 8126"), $0.localizedDescription)
@@ -641,7 +641,7 @@ final class MCPVersionGateTests: XCTestCase {
         let withBridge = DeviceInventory.Row(name: "iPhone 17 Pro", platform: "ios",
                                              identifier: "UDID-1", running: true, physical: false,
                                              registered: false,
-                                             bridges: [DeviceInventory.Row.Bridge(port: 8123, engine: nil)])
+                                             bridges: [DeviceInventory.Row.Bridge(port: 8123, kind: nil)])
         XCTAssertTrue(DeviceInventory.line(withBridge).contains("bridge port 8123"))
         XCTAssertFalse(DeviceInventory.line(withBridge).contains("no bridge"))
     }

@@ -683,9 +683,12 @@ function renderRunProfileSection(): string {
           </div>
           <div class="run-profile-section-group platform-ios">
             <div class="run-profile-section-title">${t("panels.runProfile.iosSectionTitle")}</div>
-            <div class="modal-row profile-checkbox-row">
-              <input type="checkbox" id="run-profile-ios-inapp-engine">
-              <label for="run-profile-ios-inapp-engine">${t("panels.runProfile.inappEngineLabel")}</label>
+            <div class="modal-row">
+              <label for="run-profile-ios-mode">${t("panels.runProfile.iosModeLabel")}</label>
+              <select id="run-profile-ios-mode">
+                <option value="inapp">${t("panels.runProfile.iosModeInapp")}</option>
+                <option value="xcuitest">${t("panels.runProfile.iosModeXcuitest")}</option>
+              </select>
             </div>
             <div id="run-profile-inapp-options" style="display: none;">
               <div class="modal-row profile-checkbox-row">

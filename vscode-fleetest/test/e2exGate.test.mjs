@@ -1,6 +1,6 @@
 // Scripts/e2ex.sh の「E2EX を最後に全部通したときからブリッジの入力が動いていないか」の印と警告を検証する。
 // 仕組みは Scripts/e2e.sh と同じ(inappE2EGate.test.mjs)だが、2点が違うのでここで固定する:
-// ①印は `.fleetest/<engine>-e2ex-verified`(E2E の印と混ぜない)
+// ①印は `.fleetest/<mode>-e2ex-verified`(E2E の印と混ぜない)
 // ②警告は in-app の印にだけ出す(XCUITest は既知の赤 13 本で全部成功しない = 警告が鳴りっぱなしになる)
 
 import { test } from 'node:test'
@@ -20,7 +20,7 @@ function runGate({ profile, failed, markers = {}, digest }) {
   for (const [name, body] of Object.entries(markers)) {
     writeFileSync(join(dir, '.fleetest', name), body)
   }
-  const detectStart = source.indexOf('engine_digest()')
+  const detectStart = source.indexOf('bridge_digest()')
   const detectEnd = source.indexOf('\n# needs_rebuild / record_sdk', detectStart)
   const detect = source.slice(detectStart, detectEnd)
   const recordStart = source.indexOf('# **印を更新するのは全部成功したときだけ**')
@@ -33,7 +33,7 @@ function runGate({ profile, failed, markers = {}, digest }) {
     'RUN_IOS=1',
     `IOS_PROFILE=${JSON.stringify(profile)}`,
     `FAILED=${failed}`,
-    detect.replace(/^engine_digest\(\).*$/m, `engine_digest() { echo ${JSON.stringify(digest)}; }`),
+    detect.replace(/^bridge_digest\(\).*$/m, `bridge_digest() { echo ${JSON.stringify(digest)}; }`),
     record,
   ].join('\n')
   const out = execFileSync('bash', ['-c', harness], { encoding: 'utf8' })
@@ -69,7 +69,7 @@ test('E2E の印(-e2e-verified)は E2EX の印として数えない', () => {
   assert.match(out, /inapp ブリッジの入力が/)
 })
 
-test('全部成功したら回したエンジンの E2EX の印を書く', () => {
+test('全部成功したら回したモードの E2EX の印を書く', () => {
   const { out, readMarker } = runGate({ profile: 'ios-inapp', failed: 0, digest: 'abc' })
   assert.equal(readMarker('inapp-e2ex-verified'), 'abc')
   assert.equal(readMarker('inapp-e2e-verified'), null, 'E2E の印を書いてはいけない')

@@ -536,7 +536,7 @@ extension MCPServer {
                                         args: [String: Any]) async throws
         -> (step: FlowStep, summary: String, note: String) {
         let (resolvedRef, refNote) = try await verifiedRef(pending.ref, driver: driver, args: args)
-        guard let snapshot = lastSnapshots[Self.engineKey(args)],
+        guard let snapshot = lastSnapshots[Self.sessionKey(args)],
               let element = snapshot.elements.first(where: { $0.ref == resolvedRef }) else {
             // verifiedRef が撮り直した木に無いことは実際には起きない(見つからなければ .gone で
             // 既に throw している)が、将来ここが緩んでも黙って落ちないよう明示する
@@ -654,7 +654,7 @@ extension MCPServer {
         // **手が動く前の起点**(settle-lite の beforeAction と同じ役目)。ループ中は recordSnapshot
         // を呼ばない(呼ぶのは失敗時の throw 直前と成功時の末尾だけ)ので、ここで捕まえておけば
         // 上書きより先に取れる
-        let beforeBatch = lastSnapshots[Self.engineKey(args)]
+        let beforeBatch = lastSnapshots[Self.sessionKey(args)]
         let (isAndroid, uiFrameworkHint) = await resolveExecutorHints(batchDriver, args: args)
         let executor = StepExecutor(driver: batchDriver, releasesScrollTouch: !isAndroid,
                                     isAndroid: isAndroid, tunables: RunTunables(), uiFramework: uiFrameworkHint)
@@ -805,7 +805,7 @@ extension MCPServer {
         }
         let (unchangedNote, final) = try await Self.batchUnchangedNote(
             beforeBatch: beforeBatch, final: try await freshSnapshot(batchDriver, args: args),
-            stepCount: plans.count, engine: engines[Self.engineKey(args)],
+            stepCount: plans.count, bridge: bridges[Self.sessionKey(args)],
             probeSystemAlert: { try? await batchDriver.systemAlert() }) {
             // settle-lite と同じ待ち(snapshotAfterBodyWithStatus 参照。新しい定数は置かない)
             try await Task.sleep(nanoseconds: UInt64(max(0, self.settleWaitSeconds) * 1_000_000_000))
@@ -878,10 +878,10 @@ extension MCPServer {
     /// `beforeBatch` が nil(起点を知らない)なら比較対象が無いので何もしない。
     /// **木がほぼ空の画面には `unrepresentedScreenCaveat` を添える**(監査。
     /// MCPServer+Snapshot.swift 参照) —— 空の木は必ず「変化なし」に一致するため
-    /// `engine` は iOS のシステムダイアログの案内を出すかの判定にだけ使う
-    /// (`systemDialogHint` 参照。既定 nil = engine 不明として出す側)。`probeSystemAlert` は詰まったときだけ呼ぶ
+    /// `bridge` は iOS のシステムダイアログの案内を出すかの判定にだけ使う
+    /// (`systemDialogHint` 参照。既定 nil = bridge 不明として出す側)。`probeSystemAlert` は詰まったときだけ呼ぶ
     static func batchUnchangedNote(beforeBatch: SnapshotResponse?, final: SnapshotResponse,
-                                   stepCount: Int, engine: String? = nil,
+                                   stepCount: Int, bridge: String? = nil,
                                    probeSystemAlert: () async -> SystemAlertProbeResponse? = { nil },
                                    reread: () async throws -> SnapshotResponse) async rethrows
         -> (note: String, snapshot: SnapshotResponse) {
@@ -894,7 +894,7 @@ extension MCPServer {
                 + " also be legitimate: the screen was already at the target state, or the steps"
                 + " went somewhere and came back."
                 + Self.unrepresentedScreenCaveat(rereadSnapshot)
-                + (await Self.systemDialogHint(engine: engine, probe: probeSystemAlert())) + "\n", rereadSnapshot)
+                + (await Self.systemDialogHint(bridge: bridge, probe: probeSystemAlert())) + "\n", rereadSnapshot)
         }
         return ("note: the tree looked unchanged right after the last step, so it was re-read once"
             + " after a short wait — the tree below is the re-read, not the tree right after the"

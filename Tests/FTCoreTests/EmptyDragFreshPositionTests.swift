@@ -1,4 +1,4 @@
-// 木が動きに遅れるエンジン(XCUITest)では、探索の終わりの空打ちを押す直前に木を1枚撮り直し、その座標で押す(待たない)。
+// 木が動きに遅れるブリッジ(XCUITest)では、探索の終わりの空打ちを押す直前に木を1枚撮り直し、その座標で押す(待たない)。
 // 見つけた木は慣性の途中で、押すまでに一覧が止まっていると古い座標は隣の行の上になり、隣のクリックが成立する
 // (E2EX-CMP / Flutter のホームの最下段で隣の画面へ移った)。止まるのを待つ形は試して取り消した(maintainer-notes §74.10)
 
@@ -82,8 +82,8 @@ final class EmptyDragFreshPositionTests: XCTestCase {
         XCTAssertEqual(ys.first ?? 0, 528, accuracy: 1, "撮り直した位置(500 + 56/2)で押す")
     }
 
-    /// 対照: 遅れないエンジンは見つけた木の位置で押す(従来どおり)
-    func testNonLaggingEngineKeepsTheFoundPosition() async {
+    /// 対照: 遅れないブリッジは見つけた木の位置で押す(従来どおり)
+    func testNonLaggingBridgeKeepsTheFoundPosition() async {
         let ys = await emptyDragY(lags: false, afterY: 500)
         XCTAssertEqual(ys.first ?? 0, 628, accuracy: 1)
     }

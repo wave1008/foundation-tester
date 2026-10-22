@@ -1,7 +1,7 @@
-// hybrid で「in-app が原理的に不可な操作だけを XCUITest へ回す」振り分けを固定する。
+// inapp モードで「in-app ブリッジが原理的に不可な操作だけを XCUITest ブリッジへ回す」振り分けを固定する。
 //
 // ここが緩むと2種類の事故になる:
-//   - 回さなすぎ: MCP の ft_* が in-app エンジンで素の 501 を返す(2026-07-28 に live/MCP を
+//   - 回さなすぎ: MCP の ft_* が in-app ブリッジで素の 501 を返す(2026-07-28 に live/MCP を
 //     xcuitest 固定にした理由そのもの)
 //   - 回しすぎ: **ref を渡してしまい別要素を操作する**(ref はブリッジごとに別名前空間)
 
@@ -170,9 +170,9 @@ final class HybridFallbackDriverTests: XCTestCase {
     private var driver: HybridFallbackDriver!
 
     private static let notCapable = DriverError.badResponse(
-        status: 501, body: "cannot run on the in-app engine")
+        status: 501, body: "cannot run on the in-app bridge")
     /// 一時的競合。**tap/swipe/hideKeyboard 等(既定の判定)はフォールバックしてはいけない**
-    /// (理由は DriverError.isEngineIncapable)が、pressEnter/type(ref:nil)/clearInput(ref:nil)
+    /// (理由は DriverError.isBridgeIncapable)が、pressEnter/type(ref:nil)/clearInput(ref:nil)
     /// は回してよい(DriverError.isTextInputFallback)
     private static let conflict = DriverError.badResponse(status: 409, body: "no key window")
     /// clearInput 専用の追加ステータス。XCUITest ランナー自身が同じ一時的競合を表すときの
@@ -189,7 +189,7 @@ final class HybridFallbackDriverTests: XCTestCase {
     }
 
     /// 座標・identifier で完結する操作は 501 で回す
-    func testCoordinateGesturesFallBackWhenTheEngineCannot() async throws {
+    func testCoordinateGesturesFallBackWhenTheBridgeCannot() async throws {
         primary.errors = ["doubleTap": Self.notCapable, "pinch": Self.notCapable,
                           "drag": Self.notCapable, "home": Self.notCapable,
                           "gesture": Self.notCapable]
@@ -383,9 +383,9 @@ final class HybridFallbackDriverTests: XCTestCase {
                       "fallback が回した回転を fallback に戻させること: \(log.entries)")
     }
 
-    /// 501(そのエンジンでは不可)は無視して**残りの全員に撃つ**。primary が 501 でも
+    /// 501(そのブリッジでは不可)は無視して**残りの全員に撃つ**。primary が 501 でも
     /// fallback/foreignApp へ届く
-    func testRestoreIgnoresEngineIncapableAndStillReachesEveryOtherDriver() async throws {
+    func testRestoreIgnoresBridgeIncapableAndStillReachesEveryOtherDriver() async throws {
         let foreign = RecordingDriver(name: "foreign", log: log)
         driver = HybridFallbackDriver(primary: primary, fallback: fallback,
                                       primaryBundleID: "com.example.app", foreignApp: foreign)
@@ -441,7 +441,7 @@ final class HybridFallbackDriverTests: XCTestCase {
     }
 
     // MARK: - 入力系(pressEnter/type/clearInput の ref なし)は 409 でも回す
-    // **DSL 側(StepExecutor+Actions)と同じ判定を通す**: 片方だけが回ると、同じ hybrid 構成の
+    // **DSL 側(StepExecutor+Actions)と同じ判定を通す**: 片方だけが回ると、同じ inapp モードの構成の
     // 同じ操作がシナリオでは通り MCP/ライブ操作では落ちる
 
     /// pressEnter / type(ref: nil) / clearInput(ref: nil) は 409(一時的競合)でも回す

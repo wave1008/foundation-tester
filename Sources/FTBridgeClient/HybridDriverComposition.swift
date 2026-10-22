@@ -1,8 +1,8 @@
 // in-app と XCUITest を組み合わせたドライバの**組み立て方を1箇所に置く**。
 //
-// 呼び手は**ライブ操作**(`ApiLiveCommand`)だけ。StepExecutor を通らない直接の操作口で、実行(hybrid)と
+// 呼び手は**ライブ操作**(`ApiLiveCommand`)だけ。StepExecutor を通らない直接の操作口で、実行(inapp モード)と
 // 同じ形でなければならない —— 合成を別に書くと、層が抜けても緑のまま通る。
-// **MCP(ft_*)はここを通らない**(MCP の iOS は常に XCUITest = ユーザー決定。`MCPEngineFollowingTests` が固定)。
+// **MCP(ft_*)はここを通らない**(MCP の iOS は常に XCUITest = ユーザー決定。`MCPBridgeFollowingTests` が固定)。
 //
 // **シナリオ実行はここを通らない**(意図的): あちらは StepExecutor が「501 なら typeDriver へ」の
 // 判断を持っているので、HybridFallbackDriver を被せず WebViewDelegatingDriver だけを使う。

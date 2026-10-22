@@ -3,7 +3,7 @@ import XCTest
 
 /// ライブ操作の「自動起動待ち(placeholder)」でも毎コマンドの本人確認を飛ばさないことを、ソース走査で縛る。
 /// 空きポートの採番は予約ではないので、自動起動を待つ間に run・別の serve が同じポートを取ると、
-/// 期待エンジンが nil の placeholder は確認を経ずに操作を撃ち、**別のデバイスを操作する**
+/// 期待ブリッジが nil の placeholder は確認を経ずに操作を撃ち、**別のデバイスを操作する**
 /// (負荷テストで実測: sim-10 の操作が run 中の sim-01 → sim-09 へ届き続けた)。
 final class LivePlaceholderIdentityScanTests: XCTestCase {
     private func source() throws -> String {
@@ -13,8 +13,8 @@ final class LivePlaceholderIdentityScanTests: XCTestCase {
         return try String(contentsOf: url, encoding: .utf8)
     }
 
-    /// `return (placeholder, …)` の4つ目(期待エンジン)が nil でないこと
-    func testPlaceholderReturnCarriesAnExpectedEngine() throws {
+    /// `return (placeholder, …)` の4つ目(期待ブリッジ)が nil でないこと
+    func testPlaceholderReturnCarriesAnExpectedBridge() throws {
         let text = try source()
         let pattern = #"return \(placeholder,[^)]*\)"#
         let regex = try NSRegularExpression(pattern: pattern)
@@ -26,7 +26,7 @@ final class LivePlaceholderIdentityScanTests: XCTestCase {
                 .map { $0.trimmingCharacters(in: .whitespaces) }
             XCTAssertEqual(fields.count, 4, "想定外の形: \(tuple)")
             XCTAssertNotEqual(fields.last, "nil", """
-                placeholder の期待エンジンが nil — run() の毎コマンドの本人確認が飛び、自動起動を待つ間に \
+                placeholder の期待ブリッジが nil — run() の毎コマンドの本人確認が飛び、自動起動を待つ間に \
                 同じポートへ立った別のデバイスのブリッジへ操作が届く: \(tuple)
                 """)
         }

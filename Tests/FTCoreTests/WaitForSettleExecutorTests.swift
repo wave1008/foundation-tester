@@ -100,9 +100,9 @@ final class WaitForSettleExecutorTests: XCTestCase {
         XCTAssertEqual(driver.waitForSettleRequests.first?.request.region, listFrame)
     }
 
-    /// iOS は常に XCUITest 側で撮る。hybrid で in-app(driver)へ先に送ると、画面全体を撮れず主スレッドも塞ぐ。
+    /// iOS は常に XCUITest 側で撮る。inapp モードで in-app(driver)へ先に送ると、画面全体を撮れず主スレッドも塞ぐ。
     /// 段2の木は driver から取る(次のステップのロケータを解決するほう)
-    func testHybridCapturesWithTheTypeDriverAndReadsTheTreeFromTheDriver() async throws {
+    func testInappModeCapturesWithTheTypeDriverAndReadsTheTreeFromTheDriver() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[element(1, id: "list", frame: listFrame)]])
@@ -117,15 +117,15 @@ final class WaitForSettleExecutorTests: XCTestCase {
         XCTAssertEqual(xcuitest.snapshotCallCount, 0)
     }
 
-    // MARK: - 画面全体を撮れないエンジン
+    // MARK: - 画面全体を撮れないブリッジ
 
-    func testInAppOnlyFailsWithTheSwitchEngineMessageBeforeReadingTheTree() async {
+    func testInAppBridgeAloneFailsWithTheNoXCUITestMessageBeforeReadingTheTree() async {
         let driver = steady()
         driver.waitForSettleError = DriverError.badResponse(status: 501, body: "no")
         let outcome = await makeExecutor(driver).execute(FlowStep(action: "waitForSettle", timeout: 5))
         let text = message(outcome.status) ?? ""
         XCTAssertTrue(text.contains("whole-screen capture"), text)
-        XCTAssertTrue(text.contains("hybrid or xcuitest"), text)
+        XCTAssertTrue(text.contains("no XCUITest bridge is attached"), text)
         XCTAssertEqual(driver.snapshotCallCount, 0, "段1で落ちたら木は読まない")
     }
 
@@ -141,11 +141,11 @@ final class WaitForSettleExecutorTests: XCTestCase {
         let primary = steady()
         let xcuitest = steady()
         xcuitest.waitForSettleError = DriverError.badResponse(status: 501, body: "no")
-        let hybridOutcome = await makeExecutor(primary, typeDriver: xcuitest)
+        let inappOutcome = await makeExecutor(primary, typeDriver: xcuitest)
             .execute(FlowStep(action: "waitForSettle", timeout: 5))
-        let hybridText = message(hybridOutcome.status) ?? ""
-        XCTAssertTrue(hybridText.contains("501"), hybridText)
-        XCTAssertFalse(hybridText.contains("hybrid"), hybridText)
+        let inappText = message(inappOutcome.status) ?? ""
+        XCTAssertTrue(inappText.contains("501"), inappText)
+        XCTAssertFalse(inappText.contains("hybrid"), inappText)
     }
 
     // MARK: - 結末(段1)
@@ -290,7 +290,7 @@ final class WaitForSettleExecutorTests: XCTestCase {
         XCTAssertEqual(ios.bypassedSnapshotCount, 0)
     }
 
-    /// 木が動きに遅れるエンジン(XCUITest)は読みの間隔を `laggingTreeSettlePeriodMs`(350ms)以上に保つ。
+    /// 木が動きに遅れるブリッジ(XCUITest)は読みの間隔を `laggingTreeSettlePeriodMs`(350ms)以上に保つ。
     /// 下限だけ測る(負荷で長くなるのは正しい)
     func testStageTwoKeepsTheLaggingTreePeriod() async {
         let driver = steady()

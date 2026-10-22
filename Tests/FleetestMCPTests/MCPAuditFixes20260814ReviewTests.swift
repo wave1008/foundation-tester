@@ -150,8 +150,8 @@ final class MCPAuditFixes20260814ReviewTests: XCTestCase {
     /// 修正後は両方が port 昇順で出ること
     func testIOSRowShowsBothAnUDIDDeclaringBridgeAndALegacyNameOnlyBridgeOnTheSameDevice() {
         let device = SimDeviceInfo(udid: "SIM-9", name: "iPhone 17 Pro", os: "iOS 26.0", booted: true)
-        let modernBridge = DeviceInventory.Row.Bridge(port: 8144, engine: "inapp")
-        let legacyBridge = DeviceInventory.Row.Bridge(port: 8140, engine: "xcuitest")
+        let modernBridge = DeviceInventory.Row.Bridge(port: 8144, kind: "inapp")
+        let legacyBridge = DeviceInventory.Row.Bridge(port: 8140, kind: "xcuitest")
         let live = DeviceInventory.LiveBridges(
             byName: ["iPhone 17 Pro": [modernBridge, legacyBridge]],
             byUDID: ["SIM-9": [modernBridge]])
@@ -167,7 +167,7 @@ final class MCPAuditFixes20260814ReviewTests: XCTestCase {
     /// ここで2本に見えてしまう)
     func testIOSRowDoesNotDuplicateABridgeThatMatchesBothUDIDAndName() {
         let device = SimDeviceInfo(udid: "SIM-9", name: "iPhone 17 Pro", os: "iOS 26.0", booted: true)
-        let bridge = DeviceInventory.Row.Bridge(port: 8144, engine: "xcuitest")
+        let bridge = DeviceInventory.Row.Bridge(port: 8144, kind: "xcuitest")
         let live = DeviceInventory.LiveBridges(
             byName: ["iPhone 17 Pro": [bridge]], byUDID: ["SIM-9": [bridge]])
         let row = DeviceInventory.iosRow(

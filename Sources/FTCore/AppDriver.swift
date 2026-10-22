@@ -293,7 +293,7 @@ extension DriverError: StepFailureKindProviding {
     }
 }
 
-/// この失敗が起きた構成(プラットフォーム込みのエンジン・実機か)。`DriverError.bridgeUnreachable`/
+/// この失敗が起きた構成(プラットフォーム込みのブリッジ・実機か)。`DriverError.bridgeUnreachable`/
 /// `.bridgeConnectionRefused` の必須の同伴データにする(**既定値を置かない** —— 新しい throw
 /// サイトが文脈を渡し忘れたらコンパイルで止める。`OverlayWindowOcclusion` と同じ規律)。
 ///
@@ -301,33 +301,33 @@ extension DriverError: StepFailureKindProviding {
 /// 自分の宛先が3つのどれかを知らない**(BridgeClient.send 参照)。in-app は `InAppDriver`、
 /// Android は `AndroidDriver.withBridge` が、境界で正しい context へ付け替えて再 throw する。
 public struct DriverErrorContext: Sendable, Equatable {
-    public enum Engine: Sendable, Equatable {
+    public enum Bridge: Sendable, Equatable {
         case iosInApp
         case iosXCUITest
         case android
     }
-    public let engine: Engine
+    public let bridge: Bridge
     public let physicalDevice: Bool
-    public init(engine: Engine, physicalDevice: Bool) {
-        self.engine = engine
+    public init(bridge: Bridge, physicalDevice: Bool) {
+        self.bridge = bridge
         self.physicalDevice = physicalDevice
     }
 }
 
 /// `DriverError.errorDescription` の文言組み立て(純粋関数。`DriverErrorMessageTests` が
 /// 構成ごとの文面を等号固定する)。**構成ごとに、その構成で実際に起こりうる原因だけを並べる**
-/// —— 負荷テストで、Android の一時的な adb 断に iOS inapp/hybrid 向けの案内
+/// —— 負荷テストで、Android の一時的な adb 断に iOS inapp モード向けの案内
 /// (「シミュレータ専用」)が付き、iOS xcuitest ランナーを外から殺した接続拒否で
 /// 「アプリが落ちた」が第一容疑にされていた(xcuitest はアプリと別プロセスなので的外れ)
 public enum DriverErrorMessage {
     public static func unreachable(context: DriverErrorContext, detail: String) -> String {
         let base = "Cannot reach the driver (not running, or slow to respond)."
         let hint: String
-        switch context.engine {
+        switch context.bridge {
         case .iosInApp:
             // in-app は常にシミュレータ上で走る(InAppDriver.context 参照)ので、この文言の
             // 読み手の構成では「実機では不可」の案内は起こりえない
-            hint = " In hybrid/mixed runs the backgrounded app can be suspended, so TCP is accepted"
+            hint = " In inapp mode the backgrounded app can be suspended, so TCP is accepted"
                 + " but no HTTP response comes back. Check: fleetest bridge up."
         case .iosXCUITest:
             hint = " Check: fleetest bridge up."
@@ -340,7 +340,7 @@ public enum DriverErrorMessage {
     public static func connectionRefused(context: DriverErrorContext, detail: String) -> String {
         let base = "Connection to the driver was refused (nothing listening on the port)."
         let suspect: String
-        switch context.engine {
+        switch context.bridge {
         case .iosInApp:
             suspect = " If this happened mid-run, the app under test most likely exited or crashed"
                 + " (on iOS inapp the bridge lives inside the app, so it becomes unreachable the"
@@ -358,7 +358,7 @@ public enum DriverErrorMessage {
             suspect = " If this happened mid-run, the Android bridge (a separate instrumentation"
                 + " process) most likely stopped — it does not live inside the app under test."
         }
-        let checkHint = context.engine == .android
+        let checkHint = context.bridge == .android
             ? " If the app has not been started yet, check: adb devices."
             : " If the app has not been started yet, check: fleetest bridge up."
         return "\(base)\(suspect)\(checkHint) Detail: \(detail)"
@@ -408,14 +408,14 @@ public enum DriverError: Error, LocalizedError {
         }
     }
 
-    /// 「このエンジンでは原理的に実行できない」応答か = XCUITest へ回してよいか。
+    /// 「このブリッジでは原理的に実行できない」応答か = XCUITest へ回してよいか。
     /// **501 と「ルート不明の 404」だけ**。
     /// - 409 は含めない: キーウィンドウ不在・セッション消失といった一時的競合にも使われ、
     ///   フォールバック判定に使うと「アプリが前面に無い」状況を隠して別画面を操作しかねない
     /// - 404 は in-app では ref 不明(スナップショット取り直しが要る本物の失敗)にも使われるため、
     ///   ルート不明を表す本文前置でだけ拾う(両ブリッジとも "not found: METHOD PATH" 書式。
     ///   InAppBridge.handle / Runner の BridgeRouter.handle と同期が必要)
-    public static func isEngineIncapable(_ error: Error) -> Bool {
+    public static func isBridgeIncapable(_ error: Error) -> Bool {
         guard let driverError = error as? DriverError,
               case .badResponse(let status, let body) = driverError else { return false }
         return status == 501 || (status == 404 && body.hasPrefix("not found:"))
@@ -424,7 +424,7 @@ public enum DriverError: Error, LocalizedError {
     /// ブリッジが「アクティブウィンドウの a11y 根が無い」と申告した応答か。
     /// **status と宣言した本文接頭辞で見る**(自由文の一致ではない。接頭辞は
     /// AndroidRunner/src/com/example/ftbridge/BridgeRouter.java の NO_ACTIVE_WINDOW_ROOT と同期
-    /// = AndroidBridgeErrorPrefix.noActiveWindowRoot)。**`isEngineIncapable` の「404 は
+    /// = AndroidBridgeErrorPrefix.noActiveWindowRoot)。**`isBridgeIncapable` の「404 は
     /// "not found:" 前置でだけ拾う」と同じ立場** —— 422 は他の一時的競合にも使われるため
     public static func isNoReadableWindow(_ error: Error) -> Bool {
         guard let driverError = error as? DriverError,
@@ -435,8 +435,8 @@ public enum DriverError: Error, LocalizedError {
     /// 入力系(pressEnter・type(ref: nil))が一時的競合で失敗したか = 別ドライバ(XCUITest)へ
     /// 回してよいか。**409 だけ**(in-app が非 UIKit 入力欄(Compose/Flutter 等)で first responder を
     /// 張れない兆候。type は要素個別のフォーカス有無に依存する一時的競合であって、
-    /// isEngineIncapable が表す「このエンジンでは原理的に無理」とは事情が違う ——
-    /// hideKeyboard が 409 でなく isEngineIncapable で判定する理由もこの区別から来る)
+    /// isBridgeIncapable が表す「このブリッジでは原理的に無理」とは事情が違う ——
+    /// hideKeyboard が 409 でなく isBridgeIncapable で判定する理由もこの区別から来る)
     public static func isTextInputFallback(_ error: Error) -> Bool {
         guard let driverError = error as? DriverError,
               case .badResponse(let status, _) = driverError else { return false }
@@ -446,11 +446,11 @@ public enum DriverError: Error, LocalizedError {
     /// clearInput(ref なし)のフォールバック判定: 409(isTextInputFallback と同じ、in-app の対象なし/
     /// フォーカス無しという一時的競合)、422(XCUITest ランナー側で同じ事情を表す status。
     /// **あちらは 409 を使えない** —— SessionRecoveryDriver が 409 をセッション消失と断定するため。
-    /// BridgeRouter.handleClear 参照)、または isEngineIncapable(このエンジンでは未対応)。
+    /// BridgeRouter.handleClear 参照)、または isBridgeIncapable(このブリッジでは未対応)。
     /// **isTextInputFallback とは別関数にする** —— 対象 status の集合が type/pressEnter と違うので、
     /// 1つに畳むと呼び出し側が clearInput 専用の 422 を type にも誤って許してしまいかねない
     public static func isClearInputFallback(_ error: Error) -> Bool {
-        if isEngineIncapable(error) { return true }
+        if isBridgeIncapable(error) { return true }
         guard let driverError = error as? DriverError,
               case .badResponse(let status, _) = driverError else { return false }
         return status == 409 || status == 422

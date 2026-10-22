@@ -267,7 +267,7 @@ extension StepExecutor {
     private func unfrozenScreenshot(phase: inout PhaseAccumulator) async throws -> Data? {
         let clock = ContinuousClock()
         var start = clock.now
-        // 画面全体の FM 判定は1回で数秒かかるので、hybrid では常に画面全体の絵(JudgmentCapture)
+        // 画面全体の FM 判定は1回で数秒かかるので、inapp モードでは常に画面全体の絵(JudgmentCapture)
         var screenshot = try await judgmentScreenshot(keyboardShown: false, alwaysWholeScreen: true, phase: &phase)
         phase.actionMs += Self.ms(clock.now - start)
         guard BlankFrameDetector.isUniformBlank(pngData: screenshot) else { return screenshot }

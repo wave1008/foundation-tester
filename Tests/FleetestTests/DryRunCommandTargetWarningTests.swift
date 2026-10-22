@@ -26,14 +26,14 @@ final class DryRunCommandTargetWarningTests: XCTestCase {
     }
 
     func testDevicesSharingAStepAndReasonAreOneLine() {
-        let step = CommandTargetCheck.Step(command: "home", file: "/p/scenarios/A.swift", line: 4)
+        let step = CommandTargetCheck.Step(command: "fold", file: "/p/scenarios/A.swift", line: 4)
         let lines = DryRunTargetWarnings.lines(scenarioID: "A.s1", findings: [
-            .init(step: step, device: "sim-1", target: .iosInAppEngine),
-            .init(step: step, device: "sim-2", target: .iosInAppEngine),
+            .init(step: step, device: "iPhone 13", target: .iosPhysical),
+            .init(step: step, device: "SE3", target: .iosPhysical),
         ])
         XCTAssertEqual(lines, [
-            "⚠️ A.s1: home at A.swift:4 cannot run on devices \"sim-1\", \"sim-2\" — its engine is inapp,"
-                + " which cannot hand this command to XCUITest (use hybrid or xcuitest for that device)",
+            "⚠️ A.s1: fold at A.swift:4 cannot run on devices \"iPhone 13\", \"SE3\" — it is a physical iPhone,"
+                + " which this command cannot drive",
         ])
         let physical = DryRunTargetWarnings.lines(scenarioID: "A.s1", findings: [
             .init(step: CommandTargetCheck.Step(command: "addMedia", file: nil, line: nil),

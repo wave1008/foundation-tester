@@ -22,7 +22,7 @@ for how `--profile` selects one.
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `app` | string | — | Name of the `apps/<name>.json` profile to use. The run profile inherits that app profile's `platform` (target OS); `devices` of other OSes are ignored at run time ([profiles.md](./profiles.md)) |
-| `devices` | array | — | Device entities to run (iOS/Android can mix in the same list). Each entry: `platform` (`"ios"`/`"android"`, required), `machine` (the machine it lives on — `"local"` for this Mac, or a name registered with `fleetest remote machines add`), `name` (required; unique together with `machine`; for an iOS Simulator this is the Simulator's own name), `enabled` (`false` keeps it listed but does not run it; default = run it), plus the device's own body keys (`osVersion`/`udid`/`avd`/`serial`/`kind`/`port`/`engine`/`model` — see [profiles.md](./profiles.md)) |
+| `devices` | array | — | Device entities to run (iOS/Android can mix in the same list). Each entry: `platform` (`"ios"`/`"android"`, required), `machine` (the machine it lives on — `"local"` for this Mac, or a name registered with `fleetest remote machines add`), `name` (required; unique together with `machine`; for an iOS Simulator this is the Simulator's own name), `enabled` (`false` keeps it listed but does not run it; default = run it), plus the device's own body keys (`osVersion`/`udid`/`avd`/`serial`/`kind`/`port`/`mode`/`model` — see [profiles.md](./profiles.md)) |
 | `heal` | bool | `true` for `--profile` runs, `false` for a plain `fleetest run` | Allow selector self-healing (fingerprint matching; see [self_healing.md](../running/self_healing.md)). Independent of the FM- and OCR-based toggles below — self-healing does not use FM |
 | `fmTextVisibilityCheck` | bool | `true` | Use FM (Foundation Models, experimental — see [environments.md](../../overview/environments.md)) for text visibility check. See [Text visibility check](../testclass/text_visibility_check.md). FM is called only when this or `screenLooksLike` is `true` |
 | `screenLooksLike` | bool | `true` | Enable `screenLooksLike` (FM visual verification, experimental — see [environments.md](../../overview/environments.md)). When `false`, those steps are skipped rather than failing |
@@ -31,16 +31,16 @@ for how `--profile` selects one.
 | `reportDir` | string | `"reports"` | Where to write Markdown reports (relative to the project root) |
 | `defaultTimeout` | number (seconds) | `5` | Default timeout for DSL commands that take `waitSeconds:` |
 | `scenarioTimeout` | int (seconds) | `600` | Host-side wall-clock timeout per scenario (watchdog). Distinct from `defaultTimeout`, which only bounds individual command waits. `@Test(scenarioTimeout:)` on a scenario overrides it for that scenario (even when shorter) Separately, a scenario whose output stops for longer than twice `commandTimeout` is stopped there (a slow scenario that keeps making progress is not). Also editable as "Scenario time limit (seconds)" under "Test execution" in the run profile on the monitor's Profiles tab |
-| `iosInappEngine` | bool | `true` | `true` → iOS devices run the hybrid engine (in-app primary, XCUITest fallback); `false` → XCUITest only. A device's own `engine` in its `devices[]` entry takes precedence if set. No effect on Android |
+| `iosMode` | string | `"inapp"` | `"inapp"` → iOS devices run in inapp mode (in-app bridge primary, XCUITest bridge as the fallback); `"xcuitest"` → XCUITest bridge only. Any other value is an error. A `responseMeasurement` run defaults to `"xcuitest"` instead (the measurement lives in the XCUITest bridge). A device's own `mode` in its `devices[]` entry takes precedence if set. No effect on Android |
 | `wipeDataOnBloat` | bool | `true` | At run start, wipe an Android AVD's data if the wipe-affected files (userdata/cache/snapshots) exceed `wipeDataThresholdGB`. When installing the app fails because the device is out of storage, that device also gets a Wipe Data and the install is tried once more (with `false` the device is not wiped and drops out of the run) |
 | `wipeDataThresholdGB` | number (GB) | `8` | Threshold for `wipeDataOnBloat` |
 | `updateWebView` | bool | `true` | Reconcile the on-device WebView version at the start of a run, so the same scenario does not behave differently across devices with different WebView builds |
 | `recoverCpuFallbackToGpu` | bool | `false` | At run start, restart any Android Emulator that has fallen back to CPU rendering (swiftshader) in GPU mode instead |
 | `locale` | string | `"ja_JP"` | Locale applied to an Android Emulator on boot. No effect on iOS |
-| `iosPreActionPing` | bool | `true` | On interop WebView screens (WebViews embedded by Compose/Flutter etc.), query the runner once right before each tap/type. An attached XCUITest session that has sat idle can report success while failing to deliver the coordinate event. Costs ~0.4s per event on those screens only (reads and other screens are unaffected). Only takes effect with the hybrid engine |
+| `iosPreActionPing` | bool | `true` | On interop WebView screens (WebViews embedded by Compose/Flutter etc.), query the runner once right before each tap/type. An attached XCUITest session that has sat idle can report success while failing to deliver the coordinate event. Costs ~0.4s per event on those screens only (reads and other screens are unaffected). Only takes effect in inapp mode |
 | `containerInference` | bool | `true` | Enable geometry-based corrections that infer scroll containers (edge clamping, off-screen tap correction, etc.). Unrelated to FM |
 | `enableAnimations` | bool | `false` | Keep the app's animations instead of disabling them for the run |
-| `responseMeasurement` | bool | `false` | Response measurement mode for **one Android or iOS physical device**. The run must use exactly one enabled device (after narrowing with `--device`), and it must be `kind: physical`, otherwise the run is refused. The run keeps the app's animations (`enableAnimations` is forced on), turns off `fmTextVisibilityCheck`, `ocrTextVisibilityCheck`, `screenLooksLike`, `record` and host-load pacing, and holds the device monitor until the run ends. Setting `enableAnimations: false`, or any of the FM/OCR/`record` keys to `true`, together with it is an error. Cannot be combined with `--broadcast`, `--fleet` or `--split`. See [Response measurement](../running/response_measurement.md) |
+| `responseMeasurement` | bool | `false` | Response measurement mode for **one Android or iOS physical device**. The run must use exactly one enabled device (after narrowing with `--device`), and it must be `kind: physical`, otherwise the run is refused. The run keeps the app's animations (`enableAnimations` is forced on), runs iOS in xcuitest mode, turns off `fmTextVisibilityCheck`, `ocrTextVisibilityCheck`, `screenLooksLike`, `record` and host-load pacing, and holds the device monitor until the run ends. Setting `enableAnimations: false`, `iosMode` (or a device's `mode`) to `inapp`, or any of the FM/OCR/`record` keys to `true`, together with it is an error. Cannot be combined with `--broadcast`, `--fleet` or `--split`. See [Response measurement](../running/response_measurement.md) |
 | `responseRepeat` | int | `5` | Only with `responseMeasurement: true` (specifying it without is an error). How many times each scenario runs back to back on the device, `1` to `50`. Every iteration is measured; the result files are named `<id>`, `<id>~2`, `<id>~3`, … |
 | `homeOnStart` | bool | `true` for `--profile` runs, `false` for a plain `fleetest run` | Press Home once on every device at run start (works around devices staying black after a mass launch) |
 | `playProtectBypass` | bool | `true` | Skips the Play Protect prompt ("Send app for a security check?") on Android `adb install` by turning "Verify apps over USB" off for the install and restoring it afterwards (the app is never sent to Google). `false` is the kill switch: the tool leaves the device setting alone, and a release-signed APK stays blocked on the device's own dialog (the tool never answers it) |
@@ -63,19 +63,19 @@ defaults `heal` to ON**, while a plain `fleetest run` (no profile) defaults it t
 run without editing the profile file — e.g. `--set heal=false`, `--set fmTextVisibilityCheck=false`,
 `--set reportDir=/tmp/out`, `--set defaultTimeout=8` (the value must match the
 key's type shown above; repeatable). It works with or without `--profile` — except the keys that need a run
-profile's device list or supply pipeline (`iosInappEngine`, `updateWebView`, `wipeDataOnBloat`,
+profile's device list or supply pipeline (`iosMode`, `updateWebView`, `wipeDataOnBloat`,
 `recoverCpuFallbackToGpu`, `app`, `locale`, `wipeDataThresholdGB`, `responseMeasurement`, `responseRepeat`), which require
 `--profile`. `devices` and `remoteControl` are a list and an object and cannot be expressed as
 `<key>=<value>`; edit the profile JSON for those. `record` needs either `--profile` or `--port` given more than once (a single connection has no recording session to attach to). `reportDir` cannot be combined with `--report-dir` (same field, two ways to set it). The run profile key `app` names an app **profile**, unrelated to `fleetest run`'s `--app-id` flag. An unknown key or a value of the wrong type passed to `--set` is an error
 (an unknown key inside the profile JSON only prints a warning and is ignored).
 
-## iOS engine
+## iOS mode
 
-The effective iOS engine is `hybrid` (in-app primary, XCUITest fallback) by default —
-`iosInappEngine: false` switches a run to XCUITest only. A physical iOS device uses the same
-engines **when the app is development-signed** (get-task-allow; the tool signs the injected bridge
+The effective iOS mode is `inapp` (a hybrid of the in-app bridge as primary and the XCUITest bridge as the fallback) by default —
+`iosMode: "xcuitest"` switches a run to the XCUITest bridge only. A physical iOS device uses inapp mode
+**when the app is development-signed** (get-task-allow; the tool signs the injected bridge
 with the app's own team). An app that is not development-signed (TestFlight / App Store) falls back
-to XCUITest automatically. When you dispatch to a runner Mac, the Mac you dispatch from signs the bridge
+to xcuitest mode automatically. When you dispatch to a runner Mac, the Mac you dispatch from signs the bridge
 with the app's certificate and sends it along, so the runner does not need the signing key.
 
 ### Link

@@ -19,7 +19,7 @@ final class MCPGuidanceTests: XCTestCase {
     /// 読み方(springboard)まで返す
     func testSessionMissingSuggestsSpringboard() {
         let hint = MCPServer.springboardHint(
-            DriverError.badResponse(status: 409, body: "no session"), engine: "xcuitest")
+            DriverError.badResponse(status: 409, body: "no session"), bridge: "xcuitest")
         XCTAssertTrue(hint.contains("com.apple.springboard"), hint)
     }
 
@@ -27,17 +27,17 @@ final class MCPGuidanceTests: XCTestCase {
     func testAccessibilityServerNotFoundSuggestsSpringboard() {
         let hint = MCPServer.springboardHint(
             DriverError.badResponse(status: 500, body: "Error kAXErrorServerNotFound"),
-            engine: "xcuitest")
+            bridge: "xcuitest")
         XCTAssertTrue(hint.contains("com.apple.springboard"), hint)
     }
 
-    /// **in-app/hybrid には出さない**: in-app ブリッジは注入先アプリ専用で springboard を掴めず、
+    /// **inapp モードの in-app ブリッジには出さない**: in-app ブリッジは注入先アプリ専用で springboard を掴めず、
     /// 案内どおりにやると 409 が増えるだけになる
-    func testInAppEngineGetsNoSpringboardHint() {
-        for engine in ["inapp", "hybrid", "android"] {
+    func testInAppBridgeGetsNoSpringboardHint() {
+        for bridge in ["inapp", "android"] {
             XCTAssertEqual(MCPServer.springboardHint(
-                DriverError.badResponse(status: 409, body: "no session"), engine: engine), "",
-                "engine=\(engine) に springboard を案内してはいけない")
+                DriverError.badResponse(status: 409, body: "no session"), bridge: bridge), "",
+                "bridge=\(bridge) に springboard を案内してはいけない")
         }
     }
 
@@ -84,9 +84,9 @@ final class MCPGuidanceTests: XCTestCase {
     /// 「操作しても木が変わらない」ときに、**SpringBoard のダイアログはこの木に出ない**ことと
     /// 読む口を出す。評価者はここで詰まり、座標でダイアログを叩いていた
     func testUnchangedTreeMentionsTheSystemDialogEscapeHatch() {
-        for engine in [nil, "xcuitest"] {
-            let hint = MCPServer.systemDialogHint(engine: engine, probe: nil)
-            XCTAssertTrue(hint.contains("com.apple.springboard"), "engine=\(engine ?? "nil"): \(hint)")
+        for bridge in [nil, "xcuitest"] {
+            let hint = MCPServer.systemDialogHint(bridge: bridge, probe: nil)
+            XCTAssertTrue(hint.contains("com.apple.springboard"), "bridge=\(bridge ?? "nil"): \(hint)")
             XCTAssertTrue(hint.contains("SpringBoard"), hint)
         }
     }
@@ -94,18 +94,18 @@ final class MCPGuidanceTests: XCTestCase {
     /// **springboardHint と同じゲート**: in-app は注入先アプリしか見えないので springboard を
     /// 掴めず、Android は木のセッションごと移るので switchedAppNote が捕まえる
     func testSystemDialogHintIsIOSXCUITestOnly() {
-        for engine in ["inapp", "hybrid", "android"] {
-            XCTAssertEqual(MCPServer.systemDialogHint(engine: engine, probe: nil), "",
-                           "engine=\(engine) にシステムダイアログの案内を出してはいけない")
+        for bridge in ["inapp", "android"] {
+            XCTAssertEqual(MCPServer.systemDialogHint(bridge: bridge, probe: nil), "",
+                           "bridge=\(bridge) にシステムダイアログの案内を出してはいけない")
         }
     }
 
     /// 聞いた答えで出し分ける: 「無い」と答えたのに SpringBoard のダイアログを疑わせない。在るなら名指しする
     func testSystemDialogHintFollowsTheProbeAnswer() {
-        let none = MCPServer.systemDialogHint(engine: "xcuitest", probe: SystemAlertProbeResponse(present: false))
+        let none = MCPServer.systemDialogHint(bridge: "xcuitest", probe: SystemAlertProbeResponse(present: false))
         XCTAssertFalse(none.contains("If a system dialog is up"), none)
         XCTAssertTrue(none.contains("No system alert is in front"), none)
-        let up = MCPServer.systemDialogHint(engine: "xcuitest",
+        let up = MCPServer.systemDialogHint(bridge: "xcuitest",
                                             probe: SystemAlertProbeResponse(present: true, title: "Allow Location?"))
         XCTAssertTrue(up.contains("Allow Location?") && up.contains("com.apple.springboard"), up)
     }
@@ -113,13 +113,13 @@ final class MCPGuidanceTests: XCTestCase {
     /// 関係ない失敗(404・ネットワーク)に足さない = 誤誘導しない
     func testUnrelatedFailuresGetNoHint() {
         XCTAssertEqual(MCPServer.springboardHint(
-            DriverError.badResponse(status: 404, body: "unknown ref"), engine: "xcuitest"), "")
+            DriverError.badResponse(status: 404, body: "unknown ref"), bridge: "xcuitest"), "")
         XCTAssertEqual(MCPServer.springboardHint(
             DriverError.bridgeUnreachable(
-                context: DriverErrorContext(engine: .iosXCUITest, physicalDevice: false),
-                detail: "refused"), engine: "xcuitest"), "")
+                context: DriverErrorContext(bridge: .iosXCUITest, physicalDevice: false),
+                detail: "refused"), bridge: "xcuitest"), "")
         XCTAssertEqual(MCPServer.springboardHint(
-            DriverError.badResponse(status: 500, body: "something else"), engine: "xcuitest"), "")
+            DriverError.badResponse(status: 500, body: "something else"), bridge: "xcuitest"), "")
     }
 
     // MARK: - Android の a11y 根が読めない(422)
@@ -147,22 +147,22 @@ final class MCPGuidanceTests: XCTestCase {
 
     /// home した直後に「この後 snapshot は読めない」と先に言う(踏んでから調べさせない)
     func testNavigateHomeAnnouncesTheReadPath() {
-        let note = MCPServer.backgroundingNavigationNote(target: "home", engine: "xcuitest")
+        let note = MCPServer.backgroundingNavigationNote(target: "home", bridge: "xcuitest")
         XCTAssertTrue(note.contains("com.apple.springboard"), note)
-        XCTAssertEqual(MCPServer.backgroundingNavigationNote(target: "back", engine: "xcuitest"), "")
-        XCTAssertEqual(MCPServer.backgroundingNavigationNote(target: "home", engine: "inapp"), "")
+        XCTAssertEqual(MCPServer.backgroundingNavigationNote(target: "back", bridge: "xcuitest"), "")
+        XCTAssertEqual(MCPServer.backgroundingNavigationNote(target: "home", bridge: "inapp"), "")
     }
 
     /// **appSwitcher の後は木が前のアプリのままなのに、これまで注記がゼロだった**(実機 iPhone 13
     /// の探索で発見)。home と同じ穴なので同じ関数で塞ぐ —— セッションはアプリを指したままで、
     /// ft_snapshot も ft_tap もそのアプリの木で応答してしまう
     func testNavigateAppSwitcherAnnouncesTheStaleTree() {
-        let note = MCPServer.backgroundingNavigationNote(target: "appSwitcher", engine: "xcuitest")
+        let note = MCPServer.backgroundingNavigationNote(target: "appSwitcher", bridge: "xcuitest")
         XCTAssertTrue(note.contains("ft_screenshot"), note)
         XCTAssertTrue(note.contains("ft_launch"), note)
-        XCTAssertEqual(MCPServer.backgroundingNavigationNote(target: "appSwitcher", engine: "inapp"), "",
-                       "in-app は注入先アプリしか見えず、この注記は xcuitest/engine 不明限定")
-        XCTAssertEqual(MCPServer.backgroundingNavigationNote(target: "back", engine: "xcuitest"), "")
+        XCTAssertEqual(MCPServer.backgroundingNavigationNote(target: "appSwitcher", bridge: "inapp"), "",
+                       "in-app は注入先アプリしか見えず、この注記は xcuitest/bridge 不明限定")
+        XCTAssertEqual(MCPServer.backgroundingNavigationNote(target: "back", bridge: "xcuitest"), "")
     }
 
     // MARK: - 未インストール(#3)
@@ -177,10 +177,10 @@ final class MCPGuidanceTests: XCTestCase {
 
     /// 「Could not connect」だけでは何が起きたか分からない。**今どこに何が居るか**と
     /// 復帰手順まで返す(ランナー死の筆頭原因は同一シミュレータの2本目)
-    /// in-app/hybrid のブリッジが消えたときは、XCUITest のランナーと言わず ft_launch で戻すと言う
+    /// inapp モードの in-app ブリッジが消えたときは、XCUITest のランナーと言わず ft_launch で戻すと言う
     /// (in-app は `bridge up` で起こす物ではなく、アプリの起動で注入される)
     func testConnectionLostForAnInAppBridgeDoesNotTalkAboutTheXCUITestRunner() {
-        let message = MCPServer.connectionLostMessage(connection: "port 8123", running: [], engine: "inapp")
+        let message = MCPServer.connectionLostMessage(connection: "port 8123", running: [], bridge: "inapp")
         XCTAssertFalse(message.contains("XCUITest runner"), message)
         XCTAssertTrue(message.contains("in-app bridge"), message)
         XCTAssertTrue(message.contains("ft_launch"), message)
@@ -189,8 +189,8 @@ final class MCPGuidanceTests: XCTestCase {
     func testConnectionLostNamesTheCauseAndTheSurvivors() {
         let message = MCPServer.connectionLostMessage(
             connection: "port 8124",
-            running: [BridgeDiscovery.Found(port: 8130, device: "iPhone 17 Pro", engine: "xcuitest")],
-            engine: "xcuitest")
+            running: [BridgeDiscovery.Found(port: 8130, device: "iPhone 17 Pro", bridge: "xcuitest")],
+            bridge: "xcuitest")
         XCTAssertTrue(message.contains("port 8124"), message)
         XCTAssertTrue(message.contains("8130"), message)
         XCTAssertTrue(message.contains("bridge up"), message)
@@ -198,7 +198,7 @@ final class MCPGuidanceTests: XCTestCase {
     }
 
     func testConnectionLostWithNothingRunning() {
-        let message = MCPServer.connectionLostMessage(connection: "port 8123", running: [], engine: "xcuitest")
+        let message = MCPServer.connectionLostMessage(connection: "port 8123", running: [], bridge: "xcuitest")
         XCTAssertTrue(message.contains("no iOS bridge is running now"), message)
     }
 
@@ -395,12 +395,12 @@ final class MCPGuidanceTests: XCTestCase {
     /// 「画面が変わった」と断言しない。iOS の back は端の swipe なので、自前ナビの画面では
     /// 1px も動かない(E2E-iOS のセレクタ画面で2回とも不変を実測)
     func testBackDoesNotClaimTheScreenChanged() {
-        let note = MCPServer.backNoOpNote(target: "back", engine: "xcuitest")
+        let note = MCPServer.backNoOpNote(target: "back", bridge: "xcuitest")
         XCTAssertTrue(note.contains("edge swipe"), note)
         XCTAssertTrue(note.contains("leaves the app"), note)
         // Android には端 swipe の話が無い(無関係な助言は誤誘導になる)
-        XCTAssertFalse(MCPServer.backNoOpNote(target: "back", engine: "android").contains("edge swipe"))
-        XCTAssertEqual(MCPServer.backNoOpNote(target: "home", engine: "xcuitest"), "")
+        XCTAssertFalse(MCPServer.backNoOpNote(target: "back", bridge: "android").contains("edge swipe"))
+        XCTAssertEqual(MCPServer.backNoOpNote(target: "home", bridge: "xcuitest"), "")
     }
 
     // MARK: - 古いブリッジに繋がっている(2026-08-06 に実際に踏んだ)
@@ -456,66 +456,66 @@ final class MCPGuidanceTests: XCTestCase {
 
     /// **in-app へ切り替える手を勧めない**(MCP の iOS は常に XCUITest = profile を渡しても変わらないので、
     /// 従っても何も起きない助言になる)。確かめる場はシナリオだと言う
-    func testEngineHintPointsAtScenarioRunsInsteadOfSwitchingEngines() {
+    func testModeHintPointsAtScenarioRunsInsteadOfSwitchingModes() {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() },
                                recordSnapshot: { _, _, _ in })
-        server.engines[MCPServer.engineKey([:])] = "xcuitest"
-        let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: .compose,
+        server.bridges[MCPServer.sessionKey([:])] = "xcuitest"
+        let hint = server.iosModeHint("Compose Multiplatform", frameworkKey: .compose,
                                         "double tap", args: [:])
         XCTAssertTrue(hint.contains("verify the gesture there"), hint)
-        XCTAssertFalse(hint.contains("in-app/hybrid run profile"), "profile で in-app が立つと言っている: \(hint)")
+        XCTAssertFalse(hint.contains("run profile"), "profile で in-app が立つと言っている: \(hint)")
     }
 
     /// **フレームワークが判明していて食い違うなら黙る**(§19.3 M9): この助言は `framework`
     /// 1つに固有の欠陥で、判明した uikit アプリへ Compose 専用の助言を出すのは誤誘導になる
-    func testEngineHintDropsWhenTheKnownFrameworkDoesNotMatch() {
+    func testModeHintDropsWhenTheKnownFrameworkDoesNotMatch() {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() },
                                recordSnapshot: { _, _, _ in })
-        let key = MCPServer.engineKey([:])
-        server.engines[key] = "xcuitest"
+        let key = MCPServer.sessionKey([:])
+        server.bridges[key] = "xcuitest"
         server.uiFrameworkHints[key] = UIFrameworkHint(bundleID: "com.example.app", framework: .uikit)
-        let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: .compose,
+        let hint = server.iosModeHint("Compose Multiplatform", frameworkKey: .compose,
                                         "double tap", args: [:])
         XCTAssertEqual(hint, "", "uikit と判明しているのに Compose 専用の助言を出した: \(hint)")
     }
 
     /// フレームワークが判明していて一致するなら、断定形のまま出す(「もしそうなら」で弱めない)
-    func testEngineHintIsUnconditionalWhenTheKnownFrameworkMatches() {
+    func testModeHintIsUnconditionalWhenTheKnownFrameworkMatches() {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() },
                                recordSnapshot: { _, _, _ in })
-        let key = MCPServer.engineKey([:])
-        server.engines[key] = "xcuitest"
+        let key = MCPServer.sessionKey([:])
+        server.bridges[key] = "xcuitest"
         server.uiFrameworkHints[key] = UIFrameworkHint(bundleID: "com.example.app", framework: .compose)
-        let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: .compose,
+        let hint = server.iosModeHint("Compose Multiplatform", frameworkKey: .compose,
                                         "double tap", args: [:])
         XCTAssertTrue(hint.contains("Compose Multiplatform apps do not receive double tap"), hint)
         XCTAssertFalse(hint.contains("this is a"), "判明しているのに断定を弱めた: \(hint)")
     }
 
     /// フレームワーク不明のときは、断定を弱めた「もしこのフレームワークなら」の形で残す
-    func testEngineHintIsConditionalWhenTheFrameworkIsUnknown() {
+    func testModeHintIsConditionalWhenTheFrameworkIsUnknown() {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() },
                                recordSnapshot: { _, _, _ in })
-        let key = MCPServer.engineKey([:])
-        server.engines[key] = "xcuitest"
-        let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: .compose,
+        let key = MCPServer.sessionKey([:])
+        server.bridges[key] = "xcuitest"
+        let hint = server.iosModeHint("Compose Multiplatform", frameworkKey: .compose,
                                         "double tap", args: [:])
         XCTAssertTrue(hint.contains("this is a Compose Multiplatform app"), hint)
     }
 
-    /// **エンジンの助言を出すのは XCUITest で実際に届かないジェスチャだけ**(docs/commands.md の表 =
+    /// **モードの助言を出すのは XCUITest で実際に届かないジェスチャだけ**(docs/commands.md の表 =
     /// 今は Compose のダブルタップ1つ)。届くジェスチャに出すと、効いた操作のたびに「アプリを
     /// 起動し直して試せ」と誤誘導する(Flutter のピンチにこの形で出ていた)
-    func testEngineHintIsOnlyGivenForGesturesThatXCUITestCannotDeliver() throws {
+    func testModeHintIsOnlyGivenForGesturesThatXCUITestCannotDeliver() throws {
         let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .appendingPathComponent("../../Sources/fleetest-mcp").standardizedFileURL
         var calls: [String] = []
         for name in try FileManager.default.contentsOfDirectory(atPath: dir.path) where name.hasSuffix(".swift") {
             let text = try String(contentsOf: dir.appendingPathComponent(name), encoding: .utf8)
-            for line in text.split(separator: "\n") where line.contains("iosEngineHint(\"") {
+            for line in text.split(separator: "\n") where line.contains("iosModeHint(\"") {
                 calls.append(line.trimmingCharacters(in: .whitespaces))
             }
         }
-        XCTAssertEqual(calls, [#"+ iosEngineHint("Compose Multiplatform", frameworkKey: .compose, "double tap", args: args)"#])
+        XCTAssertEqual(calls, [#"+ iosModeHint("Compose Multiplatform", frameworkKey: .compose, "double tap", args: args)"#])
     }
 }

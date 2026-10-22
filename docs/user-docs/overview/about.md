@@ -31,16 +31,16 @@ Results are stable, runs are fast, and there are no charges.
 
 Fleetest implements its own custom drivers for both iOS and Android and optimizes them. It does not depend on existing general-purpose drivers, which leaves it free to make its own improvements.
 
-## Hybrid engine for the iOS Simulator
+## inapp mode for the iOS Simulator
 
-The hybrid engine, designed for the iOS Simulator, is one of Fleetest's distinctive mechanisms. It automatically switches between a fast in-app engine and a general-purpose XCUITest engine.
+The inapp mode, designed for the iOS Simulator, is one of Fleetest's distinctive mechanisms. It is a hybrid configuration that automatically switches between a fast in-app bridge and a general-purpose XCUITest bridge.
 
-- **In-app engine**
+- **In-app bridge**
   - Injected into the process of the app under test when the app launches. With no cross-process round trip, it runs fast.
-- **XCUITest engine**
-  - Handles operations outside the app under test. Operations the in-app engine cannot perform are routed here.
+- **XCUITest bridge**
+  - Handles operations outside the app under test. Operations the in-app bridge cannot perform are routed here.
 
-| Example operation | Engine used |
+| Example operation | Bridge used |
 |---|---|
 | Reading the screen, text entry, taps | in-app |
 | Reading and tapping OS system alerts | XCUITest |

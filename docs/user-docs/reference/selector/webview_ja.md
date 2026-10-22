@@ -9,9 +9,9 @@
 ## `#id` が使えるかは読み取り経路で決まる
 
 HTML の `id` 属性を `#id` として使えるかどうかは、木の読み取り方法によって決まります。
-DOM を直接読める経路(iOS の既定エンジン、Android の WebView・ブラウザ)や、a11y が id を
-出す構成(Android WebView 150 以降)では使えます。**iOS の `xcuitest` エンジンでは出ません**
-—— WebKit が HTML の `id` を a11y へ渡さないためです。iOS の既定エンジン(hybrid)は WebView
+DOM を直接読める経路(iOS の inapp モード、Android の WebView・ブラウザ)や、a11y が id を
+出す構成(Android WebView 150 以降)では使えます。**iOS の xcuitest モードでは出ません**
+—— WebKit が HTML の `id` を a11y へ渡さないためです。iOS の既定の inapp モードは WebView
 の中身の読み取り・委譲を自動で行うため、シナリオ側で特別な書き分けは不要です。
 
 ## リンクは2要素で出る

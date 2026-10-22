@@ -18,8 +18,8 @@ how far you can trust it: **AI-friendliness, stability, security and privacy**. 
 - **Synchronizing with the screen is automatic.**
   Instead of "tap, then wait 3 seconds just in case", fleetest moves on as soon as it sees that the screen
   has stopped moving. You do not need to write or tune waiting times in your tests, and no time is wasted waiting.
-- **On iOS Simulators, the in-app engine, which runs fast inside the app, is used alongside to boost speed.**
-  The hybrid engine switches between the XCUITest engine and the in-app engine automatically to optimize
+- **On iOS Simulators, the in-app bridge, which runs fast inside the app, is used alongside to boost speed.**
+  The inapp mode switches between the XCUITest bridge and the in-app bridge automatically to optimize
   performance ([What is fleetest?](about.md)).
 
 ## Parallel test runs on a fleet

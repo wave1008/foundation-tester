@@ -1,7 +1,7 @@
 // run 開始時に SpringBoard を触る操作(home / 残存アラートの警告)がどのブリッジへ行くかの選別。
 //
 // **実害 2026-09-09**: `RunWorker.driver` は in-app ブリッジ宛の BridgeClient で、in-app には
-// `/home` のルートが無い。hybrid でもそれを撃っていたため homeOnStart が 18 台すべてで 0/N=不発
+// `/home` のルートが無い。inapp モードでもそれを撃っていたため homeOnStart が 18 台すべてで 0/N=不発
 // だった(しかも「inapp 固定のデバイスだけができない」と誤って説明していた)。宛先の決定は
 // `ProfileWorkerFactory.systemUIClient` の1箇所に寄せてある。
 
@@ -16,20 +16,20 @@ final class SystemUIClientSelectionTests: XCTestCase {
 
     /// **in-app ブリッジを持つデバイスには撃たない**(実測 2026-09-09): home でアプリが背面に回ると
     /// in-app ブリッジが無応答になり、供給が壊れたブリッジと見て張り直す(3機で13台が脱落)。
-    /// hybrid は xcuiPort も持つので、**xcuiPort の有無で判定してはいけない**。
-    func testHybridAndInappAreSkippedEvenWhenTheyHaveAnXcuitestBridge() {
-        let hybrid = worker(platform: "ios",
-                            connection: DriverConnection(platform: "ios", port: 8131, engine: "hybrid",
+    /// inapp モードは xcuiPort も持つので、**xcuiPort の有無で判定してはいけない**。
+    func testInappModeIsSkippedWithOrWithoutXcuitestBridge() {
+        let inappWithXcuitest = worker(platform: "ios",
+                            connection: DriverConnection(platform: "ios", port: 8131, mode: "inapp",
                                                          udid: "U1", xcuiPort: 8123))
         let inapp = worker(platform: "ios",
-                           connection: DriverConnection(platform: "ios", port: 8132, engine: "inapp",
+                           connection: DriverConnection(platform: "ios", port: 8132, mode: "inapp",
                                                         udid: "U2"))
-        let plan = ProfileWorkerFactory.homeOnStartPlan([hybrid, inapp])
+        let plan = ProfileWorkerFactory.homeOnStartPlan([inappWithXcuitest, inapp])
         XCTAssertTrue(plan.targets.isEmpty)
         XCTAssertEqual(plan.skipped.count, 2)
     }
 
-    /// xcuitest 単独の iOS と Android は撃つ(engine を宣言しないデバイスも従来どおり対象)
+    /// xcuitest 単独の iOS と Android は撃つ(mode を宣言しないデバイスも従来どおり対象)
     func testXcuitestAndAndroidStayTargets() {
         let xcuitest = worker(platform: "ios",
                               connection: DriverConnection(platform: "ios", port: 8123, udid: "U1"))
@@ -70,11 +70,11 @@ final class SystemUIClientSelectionTests: XCTestCase {
         RunWorker(label: "w", platform: platform, driver: NullDriver(), connection: connection)
     }
 
-    /// hybrid(既定の iosInappEngine=true)は in-app と XCUITest の両方を持つ。**XCUITest 側へ行く**
-    func testHybridGoesToTheXcuitestBridgeNotTheInappOne() {
+    /// inapp モード(既定の iosMode)は in-app と XCUITest の両方を持つ。**XCUITest 側へ行く**
+    func testInappModeGoesToTheXcuitestBridgeNotTheInappOne() {
         let client = ProfileWorkerFactory.systemUIClient(for: worker(
             platform: "ios",
-            connection: DriverConnection(platform: "ios", port: 8131, engine: "hybrid",
+            connection: DriverConnection(platform: "ios", port: 8131, mode: "inapp",
                                          udid: "UDID-1", xcuiPort: 8123)))
         XCTAssertEqual(client?.port, 8123, "in-app ブリッジ(8131)には /home のルートが無い")
     }
@@ -91,7 +91,7 @@ final class SystemUIClientSelectionTests: XCTestCase {
     func testInappOnlyHasNoSystemUIClient() {
         let client = ProfileWorkerFactory.systemUIClient(for: worker(
             platform: "ios",
-            connection: DriverConnection(platform: "ios", port: 8131, engine: "inapp",
+            connection: DriverConnection(platform: "ios", port: 8131, mode: "inapp",
                                          udid: "UDID-1")))
         XCTAssertNil(client)
     }

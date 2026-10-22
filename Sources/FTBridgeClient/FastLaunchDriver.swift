@@ -1,4 +1,4 @@
-// xcuitest エンジンの launch を高速化する AppDriver ラッパー(既定で装着。FT_NO_FAST_LAUNCH=1 で
+// xcuitest モードの launch を高速化する AppDriver ラッパー(既定で装着。FT_NO_FAST_LAUNCH=1 で
 // 従来の XCUIApplication.launch() に戻せる)。
 // XCUIApplication.launch()(実測 約4.6s)の代わりに CoreSimulator 直叩き(利用不能なら simctl)の
 // terminate+launch でアプリを再起動し、ランナーへは activate(プロキシ接続+前面化+整定 約1.1s)を

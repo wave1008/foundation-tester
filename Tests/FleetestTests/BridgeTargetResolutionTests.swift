@@ -26,7 +26,7 @@ final class BridgeTargetErrorTests: XCTestCase {
     }
 
     func testUnansweredMatchesBridgeDiscoveryMessage() {
-        let found = [BridgeDiscovery.Found(port: 8124, device: "iPhone 17", engine: "xcuitest")]
+        let found = [BridgeDiscovery.Found(port: 8124, device: "iPhone 17", bridge: "xcuitest")]
         let silent = [BridgeDiscovery.Silent(port: 8128)]
         let error = BridgeTargetError.unanswered(preferred: 8123, found: found, silent: silent)
         XCTAssertEqual(error.message(.mcp),
@@ -35,8 +35,8 @@ final class BridgeTargetErrorTests: XCTestCase {
 
     func testAmbiguousMatchesBridgeDiscoveryMessage() {
         let found = [
-            BridgeDiscovery.Found(port: 8124, device: "iPhone 17", engine: "xcuitest"),
-            BridgeDiscovery.Found(port: 8130, device: "iPad Pro", engine: "inapp"),
+            BridgeDiscovery.Found(port: 8124, device: "iPhone 17", bridge: "xcuitest"),
+            BridgeDiscovery.Found(port: 8130, device: "iPad Pro", bridge: "inapp"),
         ]
         let error = BridgeTargetError.ambiguous(preferred: 8123, found: found)
         XCTAssertEqual(error.message(.cliRun),
@@ -79,8 +79,8 @@ final class AndroidTargetErrorTests: XCTestCase {
 final class TargetArgumentNamesMessageTests: XCTestCase {
 
     private let found = [
-        BridgeDiscovery.Found(port: 8124, device: "iPhone 17", engine: "xcuitest"),
-        BridgeDiscovery.Found(port: 8130, device: "iPad Pro", engine: "inapp"),
+        BridgeDiscovery.Found(port: 8124, device: "iPhone 17", bridge: "xcuitest"),
+        BridgeDiscovery.Found(port: 8130, device: "iPad Pro", bridge: "inapp"),
     ]
     private let devices = [
         AndroidSerialResolver.Device(serial: "emulator-5554", avd: nil),

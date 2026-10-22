@@ -67,7 +67,7 @@ final class ClearInputFailureRecordingTests: XCTestCase {
                                recordSnapshot: { _, _, _ in })
         driver.snapshotResponse = before
         _ = try await server.call(tool: "ft_snapshot", args: [:])
-        let key = MCPServer.engineKey([:])
+        let key = MCPServer.sessionKey([:])
         XCTAssertEqual(server.sessionActionCounts[key] ?? 0, 0)
 
         driver.failing = ["clearInput"]
@@ -83,7 +83,7 @@ final class ClearInputFailureRecordingTests: XCTestCase {
                                recordSnapshot: { _, _, _ in })
         driver.snapshotResponse = before
         _ = try await server.call(tool: "ft_snapshot", args: [:])
-        let key = MCPServer.engineKey([:])
+        let key = MCPServer.sessionKey([:])
 
         driver.failing = ["clearInput"]
         _ = try? await server.call(tool: "ft_clear_input", args: [:])

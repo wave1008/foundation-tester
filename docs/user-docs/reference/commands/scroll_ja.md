@@ -55,13 +55,13 @@ scrollTo("#row_40", scrollFrame: "#list_rows")
 |---|---|---|
 | `stopped at the limit of N (may not have reached the edge yet)` | `maxSwipes` で打ち切った = 端に着いたとは限らない | **する**。`maxSwipes` を増やすか、そもそも端に着けない画面かを疑う |
 | `the screen did not settle (poll limit)` | スワイプ後に画面の動きが止まらなかった(慣性が長い等)。操作自体は送られている | 通常は不要。同じ箇所で毎回出るなら、静止前の座標でタップして flake る余地があるので調べる価値がある |
-| `fell back to XCUITest` | in-app エンジンで実行できず XCUITest で行った | 通常は不要。多発するなら実行プロファイルのエンジン選択を見直す |
+| `fell back to XCUITest` | in-app ブリッジで実行できず XCUITest で行った | 通常は不要。多発するなら実行プロファイルの `iosMode`を見直す |
 
 ## 端送りの速さ
 
-`scrollToBottom` 等は「1回送る → 画面の動きが止まったか見る」の繰り返しです。Android と、iOS の XCUITest エンジン・
+`scrollToBottom` 等は「1回送る → 画面の動きが止まったか見る」の繰り返しです。Android と、iOS の xcuitest モード・
 Compose / Flutter では1回の送りが約1ページぶんなので、長い画面では `maxSwipes` を上げてください
-(既定の `maxSwipes: 50` では届かない文書もあります)。iOS の in-app エンジンの UIKit / SwiftUI・WebView と Android の WebView は
+(既定の `maxSwipes: 50` では届かない文書もあります)。iOS の in-app ブリッジの UIKit / SwiftUI・WebView と Android の WebView は
 端へ一度に寄せるので、文書の長さに依存しません。`flick*` を並べて速くしようとするのは代用になりません ——
 flick は端に着いたかどうかを判定しないため([flick](./flick_ja.md) 参照)。
 

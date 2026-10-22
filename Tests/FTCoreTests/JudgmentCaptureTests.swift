@@ -1,5 +1,5 @@
 // 画像判定の絵の撮り分け(FTCore.JudgmentCapture と StepExecutor.judgmentScreenshot)。
-// hybrid の in-app の絵にはキーボードもシステムアラートも写らないので、覆いがあると分かっているときだけ
+// inapp モードの in-app ブリッジの絵にはキーボードもシステムアラートも写らないので、覆いがあると分かっているときだけ
 // 画面全体の絵(fallbackDriver = XCUITest)で撮る。
 
 @testable import FTCore
@@ -118,18 +118,18 @@ final class JudgmentCaptureTests: XCTestCase {
         }
     }
 
-    /// 印を立てるのは hybrid の分岐(fallbackDriver = SystemUIDriver を組む所)だけで、FTDriveCore へ渡す
-    func testScenarioRunnerSetsTheFlagOnlyForHybrid() throws {
+    /// 印を立てるのは inapp モードの分岐(fallbackDriver = SystemUIDriver を組む所)だけで、FTDriveCore へ渡す
+    func testScenarioRunnerSetsTheFlagOnlyForInappMode() throws {
         let source = try String(contentsOf: Self.repoRoot.appendingPathComponent(
             "Sources/FTScenarioRunner/ScenarioRunnerMain.swift"), encoding: .utf8)
         XCTAssertEqual(source.components(separatedBy: "primaryCaptureOmitsSystemUI = true").count - 1, 1)
-        guard let hybrid = source.range(of: "if engine == \"hybrid\", let xcuiPort {"),
+        guard let inapp = source.range(of: "let inapp = InAppDriver("),
               let set = source.range(of: "primaryCaptureOmitsSystemUI = true") else {
-            return XCTFail("hybrid の分岐か印が見つからない")
+            return XCTFail("inapp モードの分岐か印が見つからない")
         }
-        let between = source[hybrid.upperBound..<set.lowerBound]
-        XCTAssertTrue(between.contains("fallbackDriver = SystemUIDriver("), "印が hybrid の fallbackDriver と別の所にある")
-        XCTAssertFalse(between.contains("} else"), "印が hybrid の分岐の外にある")
+        let between = source[inapp.upperBound..<set.lowerBound]
+        XCTAssertTrue(between.contains("fallbackDriver = SystemUIDriver("), "印が inapp モードの fallbackDriver と別の所にある")
+        XCTAssertFalse(between.contains("} else"), "印が inapp モードの分岐の外にある")
         XCTAssertTrue(source.contains("primaryCaptureOmitsSystemUI: primaryCaptureOmitsSystemUI,"), "FTDriveCore へ渡していない")
     }
 }

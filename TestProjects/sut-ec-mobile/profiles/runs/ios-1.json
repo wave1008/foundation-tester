@@ -138,7 +138,7 @@
     }
   ],
   "heal": true,
-  "iosInappEngine": true,
+  "iosMode": "inapp",
   "record": true,
   "wipeDataOnBloat": true
 }

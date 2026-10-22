@@ -1,7 +1,7 @@
 // `ft_type` / `ft_clear_input` の ref が入力欄でなく(`TypeReadback.isTextInput`)、かつ内側に
 // ちょうど1つの入力欄を持つ容器でもない(`TapTargetGeometry.nonInputTypeTargetNote` が nil =
 // 0個か2個以上)なら**撃つ前に拒否する**。撃つと、送信ボタンの ref なら押された**後**で読み返しが
-// 失敗し(空のまま送信される)、in-app エンジンなら焦点のある別の欄へ入って成功扱いになる。
+// 失敗し(空のまま送信される)、in-app ブリッジなら焦点のある別の欄へ入って成功扱いになる。
 // 容器(内側に入力欄が1つ)は警告のうえで撃つ。
 
 import XCTest

@@ -1,7 +1,7 @@
 // 3つのブリッジが未知のルートに返す 404 の本文("not found: METHOD PATH")と、
-// `DriverError.isEngineIncapable` が見る接頭辞 "not found:" の同期。
+// `DriverError.isBridgeIncapable` が見る接頭辞 "not found:" の同期。
 // 404 は in-app では ref 不明(撮り直しが要る本物の失敗)にも使うので、ホストはこの接頭辞でだけ
-// 「このエンジンにはそのルートが無い = フォールバックしてよい」と読む。どれかのブリッジで文言を変えると、
+// 「このブリッジにはそのルートが無い = フォールバックしてよい」と読む。どれかのブリッジで文言を変えると、
 // ルート不明が素の失敗になってフォールバックが黙って効かなくなる(テストは他に無く緑のまま通っていた)。
 
 import XCTest
@@ -34,10 +34,10 @@ final class RouteNotFoundPrefixSyncTests: XCTestCase {
     }
 
     /// ホストの判定がその本文を「ルートが無い」と読み、ref 不明の 404 は読まないこと
-    func testHostReadsTheRouteNotFoundBodyAsEngineIncapable() {
-        XCTAssertTrue(DriverError.isEngineIncapable(
+    func testHostReadsTheRouteNotFoundBodyAsBridgeIncapable() {
+        XCTAssertTrue(DriverError.isBridgeIncapable(
             DriverError.badResponse(status: 404, body: "not found: POST /drag")))
-        XCTAssertFalse(DriverError.isEngineIncapable(
+        XCTAssertFalse(DriverError.isBridgeIncapable(
             DriverError.badResponse(status: 404, body: "unknown reference number 3")))
     }
 }

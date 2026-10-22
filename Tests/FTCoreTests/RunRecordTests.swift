@@ -250,7 +250,7 @@ final class RunRecordTests: XCTestCase {
 
     func testFailedScenarioCollectsStepsScenesAndFailures() throws {
         var builder = ScenarioRecordBuilder(
-            scenarioID: "Foo.bar", platform: "ios", title: "Foo bar", worker: "ios:iPhone 16", engine: nil)
+            scenarioID: "Foo.bar", platform: "ios", title: "Foo bar", worker: "ios:iPhone 16", mode: nil)
 
         var started = ScenarioEvent(kind: "sceneStarted")
         started.scene = 1
@@ -322,7 +322,7 @@ final class RunRecordTests: XCTestCase {
 
     func testPassedScenarioHasNilFailureFields() {
         var builder = ScenarioRecordBuilder(
-            scenarioID: "Foo.baz", platform: "android", title: nil, worker: nil, engine: nil)
+            scenarioID: "Foo.baz", platform: "android", title: nil, worker: nil, mode: nil)
 
         var started = ScenarioEvent(kind: "sceneStarted")
         started.scene = 1
@@ -350,7 +350,7 @@ final class RunRecordTests: XCTestCase {
     /// 一番知りたい状態の記録が1件も残らない(実測: 89,025 記録すべてで空だった)
     func testPassedScenarioKeepsItsFixSuggestions() throws {
         var builder = ScenarioRecordBuilder(
-            scenarioID: "Foo.heal", platform: "ios", title: nil, worker: nil, engine: nil)
+            scenarioID: "Foo.heal", platform: "ios", title: nil, worker: nil, mode: nil)
         builder.consume(stepEvent(index: 0, scene: 1, status: "healed", durationMs: 10))
         var suggestion = ScenarioEvent(kind: "fixSuggestion")
         suggestion.scene = 1
@@ -373,7 +373,7 @@ final class RunRecordTests: XCTestCase {
 
     func testReportPathKeptAsIsWhenPrefixMismatches() {
         var builder = ScenarioRecordBuilder(
-            scenarioID: "Foo.qux", platform: "ios", title: nil, worker: nil, engine: nil)
+            scenarioID: "Foo.qux", platform: "ios", title: nil, worker: nil, mode: nil)
         var finished = ScenarioEvent(kind: "scenarioFinished")
         finished.reportPath = "/elsewhere/reports/foo.json"
         builder.consume(finished)
@@ -387,7 +387,7 @@ final class RunRecordTests: XCTestCase {
 
     func testFailedStepCarriesAtFromScenarioEvent() throws {
         var builder = ScenarioRecordBuilder(
-            scenarioID: "Foo.at", platform: "ios", title: nil, worker: nil, engine: nil)
+            scenarioID: "Foo.at", platform: "ios", title: nil, worker: nil, mode: nil)
         builder.consume(stepEvent(index: 0, scene: 1, status: "failed", description: "exist #foo",
                                   detail: "見つかりません", at: "2026-07-23T12:34:56.789Z"))
 
@@ -401,7 +401,7 @@ final class RunRecordTests: XCTestCase {
 
     func testTimelineCollectsAllStepsInArrivalOrderRegardlessOfStatus() throws {
         var builder = ScenarioRecordBuilder(
-            scenarioID: "Foo.timeline", platform: "ios", title: nil, worker: nil, engine: nil)
+            scenarioID: "Foo.timeline", platform: "ios", title: nil, worker: nil, mode: nil)
 
         var started = ScenarioEvent(kind: "sceneStarted")
         started.scene = 1
@@ -450,7 +450,7 @@ final class RunRecordTests: XCTestCase {
 
     func testTimelineNilWhenNoSteps() {
         var builder = ScenarioRecordBuilder(
-            scenarioID: "Foo.notimeline", platform: "ios", title: nil, worker: nil, engine: nil)
+            scenarioID: "Foo.notimeline", platform: "ios", title: nil, worker: nil, mode: nil)
         var finished = ScenarioEvent(kind: "scenarioFinished")
         finished.passed = true
         builder.consume(finished)
@@ -466,7 +466,7 @@ final class RunRecordTests: XCTestCase {
     /// 未計測のステップと欄そのものが無い旧レコードはキーごと省略される(0 と混ぜない)
     func testTimelineCarriesDurationBreakdownWhenMeasured() throws {
         var builder = ScenarioRecordBuilder(
-            scenarioID: "Foo.breakdown", platform: "ios", title: nil, worker: nil, engine: nil)
+            scenarioID: "Foo.breakdown", platform: "ios", title: nil, worker: nil, mode: nil)
 
         builder.consume(stepEvent(index: 1, scene: 1, status: "passed", description: "tap \"#btn\"",
                                   durationMs: 104_000, snapshotMs: 90_000, actionMs: 12_000, waitMs: 2_000))
@@ -499,7 +499,7 @@ final class RunRecordTests: XCTestCase {
     /// inconclusive(verify にアサーション0個等)は failed に数えず、専用カウンタへ積む
     func testInconclusiveStepsAreCountedSeparatelyFromFailures() {
         var builder = ScenarioRecordBuilder(
-            scenarioID: "Foo.inconclusive", platform: "ios", title: nil, worker: nil, engine: nil)
+            scenarioID: "Foo.inconclusive", platform: "ios", title: nil, worker: nil, mode: nil)
 
         builder.consume(stepEvent(index: 0, scene: 1, status: "passed", durationMs: 10))
         builder.consume(stepEvent(index: 1, scene: 1, status: "inconclusive",
@@ -527,7 +527,7 @@ final class RunRecordTests: XCTestCase {
     /// 数に入らないことを確かめる
     func testGuardedCountsOnlyStepsThatEnteredOcclusionFlip() {
         var builder = ScenarioRecordBuilder(
-            scenarioID: "Foo.guard", platform: "ios", title: nil, worker: nil, engine: nil)
+            scenarioID: "Foo.guard", platform: "ios", title: nil, worker: nil, mode: nil)
         // exist が occlusionFlip に入り可視と判定された(素通りではない)ケース
         builder.consume(stepEvent(index: 0, scene: 1, status: "passed", guarded: true))
         // tap 等のアクションは occlusionFlip を通らない = guarded は立たない
@@ -550,7 +550,7 @@ final class RunRecordTests: XCTestCase {
     /// 「観測なし」と「観測したが0件」を記録の階層をまたいで混ぜないため
     func testGuardFieldsAreOmittedEntirelyWhenTheGuardNeverRan() {
         var builder = ScenarioRecordBuilder(
-            scenarioID: "Foo.noguard", platform: "ios", title: nil, worker: nil, engine: nil)
+            scenarioID: "Foo.noguard", platform: "ios", title: nil, worker: nil, mode: nil)
         builder.consume(stepEvent(index: 0, scene: 1, status: "passed", guarded: false))
         builder.consume(stepEvent(index: 1, scene: 1, status: "passed", guarded: nil))
 
@@ -567,7 +567,7 @@ final class RunRecordTests: XCTestCase {
     /// それぞれ別カウンタへ積む(FM が判定を返せなかった/絵が古かった=素通りの内訳)
     func testGuardSkippedAndStaleFrameAreCountedFromNotes() {
         var builder = ScenarioRecordBuilder(
-            scenarioID: "Foo.guardskip", platform: "ios", title: nil, worker: nil, engine: nil)
+            scenarioID: "Foo.guardskip", platform: "ios", title: nil, worker: nil, mode: nil)
         builder.consume(stepEvent(index: 0, scene: 1, status: "passed", guarded: true))
         builder.consume(stepEvent(index: 1, scene: 1, status: "passed",
                                   notes: [StepNote.visibilityGuardSkipped.rawValue], guarded: true))
@@ -586,7 +586,7 @@ final class RunRecordTests: XCTestCase {
     /// ガードが1度も走らなかったシナリオでは3欄とも nil のまま(0を書かない)
     func testGuardCountsAreNilWhenGuardNeverRan() {
         var builder = ScenarioRecordBuilder(
-            scenarioID: "Foo.noguard", platform: "ios", title: nil, worker: nil, engine: nil)
+            scenarioID: "Foo.noguard", platform: "ios", title: nil, worker: nil, mode: nil)
         builder.consume(stepEvent(index: 0, scene: 1, status: "passed"))
 
         let record = builder.build(
@@ -852,9 +852,9 @@ final class RunRecordTests: XCTestCase {
         defer { cleanup() }
         recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false,
                         fmSettings: testFMSettings,
-                        setOverrides: ["scenarioTimeout": "3", "iosInappEngine": "false"], servicesWarnings: [], responseMeasurement: nil)
+                        setOverrides: ["scenarioTimeout": "3", "iosMode": "xcuitest"], servicesWarnings: [], responseMeasurement: nil)
         let meta = try readMeta(recorder)
-        XCTAssertEqual(meta.setOverrides, ["scenarioTimeout": "3", "iosInappEngine": "false"])
+        XCTAssertEqual(meta.setOverrides, ["scenarioTimeout": "3", "iosMode": "xcuitest"])
     }
 
     /// 空辞書は「上書き無し」と区別する意味が無いので nil に畳む(記録上は同じ形に揃える)
@@ -911,7 +911,7 @@ final class RunRecordTests: XCTestCase {
 
     func testSceneWithoutAnyDurationEventsIsNil() {
         var builder = ScenarioRecordBuilder(
-            scenarioID: "Foo.quux", platform: "ios", title: nil, worker: nil, engine: nil)
+            scenarioID: "Foo.quux", platform: "ios", title: nil, worker: nil, mode: nil)
         var sceneFinished = ScenarioEvent(kind: "sceneFinished")
         sceneFinished.scene = 1
         sceneFinished.passed = true
@@ -928,7 +928,7 @@ final class RunRecordTests: XCTestCase {
 extension RunRecordTests {
     /// sceneFinished の skipped が結果 JSON の scene 記録へ載る。false/欠落はキーごと省略(古い記録と同形)
     func testSceneFinishedのskippedは結果JSONへ載りfalseは省略される() throws {
-        var builder = ScenarioRecordBuilder(scenarioID: "Foo.bar", platform: "ios", title: nil, worker: nil, engine: nil)
+        var builder = ScenarioRecordBuilder(scenarioID: "Foo.bar", platform: "ios", title: nil, worker: nil, mode: nil)
         var skipped = ScenarioEvent(kind: "sceneFinished")
         skipped.scene = 1
         skipped.passed = true

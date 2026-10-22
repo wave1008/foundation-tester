@@ -430,7 +430,7 @@ public enum SnapshotRenderer {
         case .indeterminate: parts.append("indeterminate")
         default: break
         }
-        // `scrollFrame:` に指定できる容器の印。**true のときだけ**出す(申告できないエンジンが
+        // `scrollFrame:` に指定できる容器の印。**true のときだけ**出す(申告できないブリッジが
         // あるので「印が無い = スクロールしない」ではない。ElementInfo.scrollable 参照)
         if e.scrollable == true {
             parts.append("scroll")

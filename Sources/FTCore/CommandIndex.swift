@@ -41,10 +41,8 @@ public struct DSLCommandInfo: Sendable, Encodable {
 /// コマンドが原理的に動かない実行先。dry-run がプロファイルのデバイスと照合する(`CommandTargetCheck`)。
 /// **コマンド名だけで決まるものしか載せない** —— 引数で決まるもの(`tap(holdSeconds:)`・`appIs` / `launchApp` の
 /// 他のアプリ)とアプリの UI フレームワークで決まるもの(`doubleTap` / `pinch*` の UIKit・`clearInput` の Flutter 等)は
-/// dry-run から見えないので載せない(docs/commands.md §`engine: inapp` 単独で失敗するコマンド)
+/// dry-run から見えないので載せない
 public enum CommandUnsupportedTarget: String, Sendable, Encodable, CaseIterable, Comparable {
-    /// iOS の `engine: inapp` 単独(XCUITest へ回せない。`InAppDriver` の 501)
-    case iosInAppEngine = "ios-inapp"
     /// iOS の実機
     case iosPhysical = "ios-physical"
 
@@ -54,23 +52,11 @@ public enum CommandUnsupportedTarget: String, Sendable, Encodable, CaseIterable,
 public enum DSLCommandIndex {
 
     /// コマンド名 → 動かない実行先。**`CommandTargetCheckTests` が表の全行を索引の名前と突き合わせる**。
-    /// iOS in-app: アプリの外(SpringBoard・ハードウェア)・座標のドラッグ/押し続け・複数指の再生・XCUITest での撮影は
-    /// in-app の経路に無い(`InAppDriver.inappOnly` / `waitForSettle` の 501)。iOS 実機: 開閉は Simulator の
-    /// ヒンジイベントだけ(`CommandsFold`)・写真ライブラリへ送る口が無い(`BridgeClient` の addMedia)
+    /// iOS 実機: 開閉は Simulator のヒンジイベントだけ(`CommandsFold`)・写真ライブラリへ送る口が無い(`BridgeClient` の addMedia)
     public static let unsupportedTargets: [String: Set<CommandUnsupportedTarget>] = [
-        "home": [.iosInAppEngine],
-        "back": [.iosInAppEngine],
-        "appSwitcher": [.iosInAppEngine],
-        "tapAppIcon": [.iosInAppEngine],
-        "fold": [.iosInAppEngine, .iosPhysical],
-        "unfold": [.iosInAppEngine, .iosPhysical],
-        "hinge": [.iosInAppEngine, .iosPhysical],
-        "swipePointToPoint": [.iosInAppEngine],
-        "swipeBy": [.iosInAppEngine],
-        "swipeElementToElement": [.iosInAppEngine],
-        "hold": [.iosInAppEngine],
-        "gesture": [.iosInAppEngine],
-        "waitForSettle": [.iosInAppEngine],
+        "fold": [.iosPhysical],
+        "unfold": [.iosPhysical],
+        "hinge": [.iosPhysical],
         "addMedia": [.iosPhysical],
     ]
 
@@ -112,8 +98,7 @@ public enum DSLCommandIndex {
                   + " Both fields use selector syntax: || alternatives (ja/en devices) and *"
                   + " for the match mode (bare = exact, *x* = contains)."
                   + " Titles embed the app name, so alert: is written *x* in practice"
-                  + " (alert: \"*トラッキング*||*track your activity*\", button: \"許可||Allow\")."
-                  + " hybrid engine only."),
+                  + " (alert: \"*トラッキング*||*track your activity*\", button: \"許可||Allow\")."),
         .init("suppressHandler", "structure", "suppressHandler { }",
               "Runs the block without closing declared interruptions, so the scenario can"
                   + " check or operate the modal itself. It does not stop the app from showing one."),
@@ -157,8 +142,8 @@ public enum DSLCommandIndex {
                 + "holdSeconds after it went down (the response does not wait for that); if the block "
                 + "runs longer than holdSeconds, the finger is already up for the rest of it (noted: "
                 + "hold-ended-before-block). Holds cannot be nested. If the target cannot be resolved "
-                + "the block does not run. On iOS with the in-app engine the press runs on the "
-                + "XCUITest engine instead (same fallback as tap's long press)."),
+                + "the block does not run. On iOS in inapp mode the press runs through the "
+                + "XCUITest bridge instead (same fallback as tap's long press)."),
         .init("select", "operation", "select(selector, requireVisible:, waitSeconds:, scroll:, maxSwipes:)",
               "Grabs an element without touching the device. Returns an empty element instead of failing."),
         .init("findImage", "operation",
@@ -252,7 +237,7 @@ public enum DSLCommandIndex {
                   + "stay unchanged (default by UI framework: 0.8s for Compose Multiplatform on iOS, 0.5s otherwise). Gives up after "
                   + "waitSeconds (default 15, max 60): fails, or with throwsException: false returns false and "
                   + "goes on. Returns true when settled. An unresolvable selector always fails. "
-                  + "iOS captures through XCUITest, so the in-app-only engine cannot run it."),
+                  + "iOS captures through the XCUITest bridge."),
 
         // MARK: scroll
         .init("scrollTo", "scroll",

@@ -1,9 +1,9 @@
 // 宛先ごとの記憶が混ざらないこと。
 //
-// `driver(_:)` は udid を**解決したポート**でドライバを引くのに、`engineKey` は生の引数しか
+// `driver(_:)` は udid を**解決したポート**でドライバを引くのに、`sessionKey` は生の引数しか
 // 見ていなかったため、udid で指した機はすべて `port=nil` の同じキーへ落ちていた。
 // そのキーで引かれるのは lastSnapshots / launchedBundleIDs / uiFrameworkHints /
-// connections / pendingWarnings / udids / engines の7つ。
+// connections / pendingWarnings / udids / bridges の7つ。
 //
 // 実測した3症状(すべて同じ根):
 //   - ft_status(udid) が `@ port …` を出さない(connections が引けない)
@@ -17,7 +17,7 @@ import XCTest
 import FTCore
 @testable import fleetest_mcp
 
-final class MCPEngineKeyTests: XCTestCase {
+final class MCPSessionKeyTests: XCTestCase {
 
     // MARK: - 畳み込みそのもの
 
@@ -37,9 +37,9 @@ final class MCPEngineKeyTests: XCTestCase {
     // MARK: - 混ざらないこと(これが壊れていた)
 
     func testTwoDevicesTargetedByUDIDGetDifferentKeys() {
-        let a = MCPServer.engineKey(MCPServer.injectingPort(
+        let a = MCPServer.sessionKey(MCPServer.injectingPort(
             ["platform": "ios", "udid": "AAA"], port: 8123))
-        let b = MCPServer.engineKey(MCPServer.injectingPort(
+        let b = MCPServer.sessionKey(MCPServer.injectingPort(
             ["platform": "ios", "udid": "BBB"], port: 8124))
         XCTAssertNotEqual(a, b, "udid で指した2台が同じキーに落ちている(記憶が混ざる)")
     }
@@ -47,16 +47,16 @@ final class MCPEngineKeyTests: XCTestCase {
     /// **同じ機なら port でも udid でも同じキー**。ここが割れると、port で撮った木を
     /// udid のタップが見失う(逆も同じ)
     func testSameDeviceIsOneKeyWhicheverWayItIsAddressed() {
-        let byPort = MCPServer.engineKey(["platform": "ios", "port": 8123])
-        let byUDID = MCPServer.engineKey(MCPServer.injectingPort(
+        let byPort = MCPServer.sessionKey(["platform": "ios", "port": 8123])
+        let byUDID = MCPServer.sessionKey(MCPServer.injectingPort(
             ["platform": "ios", "udid": "AAA"], port: 8123))
         XCTAssertEqual(byPort, byUDID)
     }
 
     /// Android は serial で分かれたまま(畳み込みが別プラットフォームを巻き込まないこと)
     func testAndroidSerialsStayDistinct() {
-        let a = MCPServer.engineKey(["platform": "android", "serial": "emulator-5554"])
-        let b = MCPServer.engineKey(["platform": "android", "serial": "emulator-5556"])
+        let a = MCPServer.sessionKey(["platform": "android", "serial": "emulator-5554"])
+        let b = MCPServer.sessionKey(["platform": "android", "serial": "emulator-5556"])
         XCTAssertNotEqual(a, b)
     }
 

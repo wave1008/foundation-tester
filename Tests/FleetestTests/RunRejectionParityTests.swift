@@ -54,9 +54,9 @@ final class RunRejectionParityTests: XCTestCase {
 
         // --set(実行プロファイルの上書き)
         .init(label: "set profile-only key without profile",
-              arguments: ["--set", "iosInappEngine=false"], rejected: true),
+              arguments: ["--set", "iosMode=xcuitest"], rejected: true),
         .init(label: "set profile-only key with profile",
-              arguments: ["--profile", "p", "--set", "iosInappEngine=false"], rejected: false),
+              arguments: ["--profile", "p", "--set", "iosMode=xcuitest"], rejected: false),
         .init(label: "set record without profile", arguments: ["--set", "record=true"], rejected: true),
         .init(label: "set unknown key", arguments: ["--set", "nosuchkey=1"], rejected: true),
         .init(label: "set without '='", arguments: ["--set", "noequals"], rejected: true),
@@ -71,7 +71,7 @@ final class RunRejectionParityTests: XCTestCase {
         // 理由に拒否しない(run はもとから通していた。api run 側の検査に `--dry-run` の除外が
         // 無かったのが割れの原因。)
         .init(label: "dry-run set profile-only key without profile",
-              arguments: ["--dry-run", "--set", "iosInappEngine=false"], rejected: false),
+              arguments: ["--dry-run", "--set", "iosMode=xcuitest"], rejected: false),
         .init(label: "dry-run set record without profile",
               arguments: ["--dry-run", "--set", "record=true"], rejected: false),
 

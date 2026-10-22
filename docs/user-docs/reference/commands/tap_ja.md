@@ -10,7 +10,7 @@
 |---|---|
 | `tap(sel, holdSeconds: 0, maxGestureSeconds:containerInference:linkText:settle:waitSeconds:scroll:maxSwipes:)` | セレクタにマッチする最初の要素をタップします。`holdSeconds` を 0 より大きくすると長押しになります(既定 0 = 通常タップ。上限は既定 10 秒で、`maxGestureSeconds:` を渡すとこの1回だけ最大 60 秒まで上げられます)。タップ前に対象が操作可能になるまで待ちます(後述)。タップした要素を返すので、検証をそのままチェーンできます(`tap("#btn_ok").textIs("OK")`)。 |
 | `tap(sel, linkText: "文字列")` | セレクタで解決した要素の**中で** `linkText` が描かれている位置をタップします。段落の中の文中リンクのように、Compose Multiplatform・Android の View(`ClickableSpan`)・SwiftUI(`AttributedString` のリンク)ではアクセシビリティの木にノードとして出ないものを押すためのものです。位置は、まず木(`linkText` に label か value が一致する子孫。Flutter・React Native はリンクがノードとして出ます)、無ければ要素の画素を OCR で読んで決めます。どちらでも見つからなければステップは失敗し、OCR が読めた行を添えます。要素の中心へ黙って落とすことはありません。どちらで決めたか(`tree` / `ocr`)はステップの注記に残ります。2行に折り返したリンクは OCR では見つかりません。`linkText:` を省くと要素の中心をタップします。 |
-| `tap(x: Double, y: Double, holdSeconds: 0, maxGestureSeconds:, settle:)` | 座標を直接タップします。座標は snapshot の `screen` と同じ座標系です(iOS = pt / Android = px。dp ではありません)。セレクタで指せるならそちらを優先してください。iOS の in-app エンジンでは、画面外の点は失敗になります。ソフトキーボードの上の点は、既定の hybrid では XCUITest で撃つのでキーが押されます(`engine: inapp` だけを指定したときは失敗します)。キーボードの下を押したいときは、先に `pressEnter` か `hideKeyboard` でキーボードを閉じてください。スクロール容器で切れて見えていない要素は、frame が点を含んでも activate せず、その点に実際に見えている物へタッチを送ります(注記 `… is clipped by its scroll container here (not drawn), so it was not activated; sent a touch to what is on screen at that point` が付きます)。 |
+| `tap(x: Double, y: Double, holdSeconds: 0, maxGestureSeconds:, settle:)` | 座標を直接タップします。座標は snapshot の `screen` と同じ座標系です(iOS = pt / Android = px。dp ではありません)。セレクタで指せるならそちらを優先してください。iOS の inapp モードでは、画面外の点は失敗になります。ソフトキーボードの上の点は、XCUITest ブリッジで撃つのでキーが押されます。キーボードの下を押したいときは、先に `pressEnter` か `hideKeyboard` でキーボードを閉じてください。スクロール容器で切れて見えていない要素は、frame が点を含んでも activate せず、その点に実際に見えている物へタッチを送ります(注記 `… is clipped by its scroll container here (not drawn), so it was not activated; sent a touch to what is on screen at that point` が付きます)。 |
 | `tap(sel, scroll: .noScroll)` | `withScrollDown { }` ブロックの中でも、この1コマンドだけスクロールせずにタップします。 |
 | `tapAppIcon(name?)` | ホーム画面のアプリアイコンをタップします。名前省略時はアプリプロファイルの `appName` が使われます。 |
 
@@ -40,12 +40,12 @@ tap(x: 120, y: 640)                    // セレクタで指せないときだ�
   `#id` が入力欄の中身ではなく容器側に解決するとき、タップだけではフォーカスが入力欄へ
   移らないことがありますが、その場合は `type` が容器内の唯一の入力欄を名指しして入れ直します。
   詳細は [type](./type_ja.md) 参照。
-- **iOS の in-app エンジン:「本物のタッチは別の物に当たる」の注記。** in-app エンジンは要素を直接操作する
+- **iOS の in-app ブリッジ:「本物のタッチは別の物に当たる」の注記。** in-app ブリッジは要素を直接操作する
   (アクセシビリティの既定動作か、要素の窓へ直接送るタッチ)ので、本物の指では押せない要素にも届くことが
   あります(例: キーボードの上の入力バーの下に潜ったボタン)。要素の枠の中心で本物のタッチが別の view に
   当たるときは、ステップは緑のまま `in-app operated the element directly, but a real touch at the centre of its
   frame lands on another view (<view> at (x, y))` の注記が付きます(機械可読は `inapp-tap-outside-hit-area`)。
-  撃ち直しも失敗もしません。枠の中心を押す XCUITest エンジンでは、同じタップが赤になることがあります。
+  撃ち直しも失敗もしません。枠の中心を押す XCUITest ブリッジでは、同じタップが赤になることがあります。
   判定できないとき(全部を1枚の view に描く Flutter など)は何も言いません。文字の部分しか押せない SwiftUI の
   `.plain` のボタンには、代わりに別の注記 `in-app activated the element at its activation point, which is not the
   centre of its frame that a coordinate tap presses (activation point (x, y), centre (x, y))` が付きます(機械可読は

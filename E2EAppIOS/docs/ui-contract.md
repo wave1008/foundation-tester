@@ -82,7 +82,7 @@ return が発火しないため、in-app ブリッジは **UIKit が Return で�
 `InAppBridge/Sources/InAppInput.m` の `FTPressEnterOnComposeFirstResponder`)。
 この SUT の `Coordinator` は `textFieldShouldReturn:` で `onSubmit` を呼ぶので `#txt_ime_action` が進む。
 
-**xcuitest フォールバックには頼れない**(2026-07-28 実測): hybrid で 409 を返すと
+**xcuitest フォールバックには頼れない**(2026-07-28 実測): inapp モードで 409 を返すと
 `typeText("\n")` へ回るが、フォーカスを立てたのは in-app の合成タッチなので **XCUITest からは
 keyboard focus を持つ要素として見えず無言 no-op になる**。だから in-app 側で完結させている。
 

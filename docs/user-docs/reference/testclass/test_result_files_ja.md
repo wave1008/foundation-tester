@@ -10,7 +10,7 @@ run(成否問わず)は何種類かの出力を残します。このページは
 `TestProjects/<プロジェクト>/reports/scenario-*.md` —— シナリオ実行ごとに、成否を問わず
 出力されます。コードと同じ `scene → condition/action/expectation → ステップ` の階層に加え、
 失敗時点の失敗メッセージと要素一覧、失敗時点のスクリーンショット(あれば)、自己修復が働いたときの
-セレクタ修正提案を含みます。iOS(hybrid・xcuitest エンジン)の失敗時のスクリーンショットは画面全体を
+セレクタ修正提案を含みます。iOS(inapp・xcuitest モード)の失敗時のスクリーンショットは画面全体を
 撮るので、権限の要求などの OS のアラートは、アプリの要素一覧に載らなくても写ります。
 
 ## 結果 JSON
@@ -18,9 +18,9 @@ run(成否問わず)は何種類かの出力を残します。このページは
 `results/runs/<YYYY-MM>/<runID>/` に機械可読な記録が入ります。run 全体は `run.json`、
 シナリオ1本ごとは `scenarios/<シナリオID>.json` です。CI のゲート判定・ダッシュボード・
 スクリプトによるトリアージはここを情報源にします。欄の読み方は[結果の分析](../running/results_analysis_ja.md)にあります。
-iOS では、どのエンジン(`inapp` / `hybrid` / `xcuitest`)で走ったかもここに残ります(シナリオごとの `engine`・
-デバイスごとの `run.json` の `workerEngines`)。コンソールでは各シナリオの見出しの末尾と、run の終わりの
-`🔧 Engines:` の行に出ます。頼んだエンジンで走れなかったデバイスは `⚠️ … ran on xcuitest instead of hybrid — <理由>` と言います。
+iOS では、どのモード(`inapp` / `xcuitest`)で走ったかもここに残ります(シナリオごとの `mode`・
+デバイスごとの `run.json` の `workerModes`)。コンソールでは各シナリオの見出しの末尾と、run の終わりの
+`🔧 Modes:` の行に出ます。頼んだモードで走れなかったデバイスは `⚠️ … ran in xcuitest mode instead of inapp mode — <理由>` と言います。
 
 run ディレクトリ(`results/runs/<YYYY-MM>/<runID>/`)の直下には、ほかに次が入ります。
 

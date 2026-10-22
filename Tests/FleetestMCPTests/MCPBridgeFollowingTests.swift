@@ -1,11 +1,11 @@
-// **MCP の iOS は、実行プロファイルのエンジンに関わらず XCUITest で組む**ことを固定する(ユーザー決定)。
+// **MCP の iOS は、実行プロファイルの iOS のモードに関わらず XCUITest で組む**ことを固定する(ユーザー決定)。
 //
-// 以前はプロファイルの in-app / hybrid に追従していたが、in-app の合成タッチは注入される前提で作られていない
-// アプリ(Apple マップの経路カード等)で効かないまま ok を返し、別アプリ・システムアラートの扱いでもエンジンを
-// 意識させた。ここが静かに in-app / hybrid へ戻ると、その形が再び起きる。
+// 以前はプロファイルの inapp モードに追従していたが、in-app の合成タッチは注入される前提で作られていない
+// アプリ(Apple マップの経路カード等)で効かないまま ok を返し、別アプリ・システムアラートの扱いでもブリッジの違いを
+// 意識させた。ここが静かに inapp モードへ戻ると、その形が再び起きる。
 //
 // **実ブリッジに触らない**: iosDriver / ExploreDriverResolver は XCUIBridgeResolver でブリッジを探し、無ければ
-// 起動まで試みる(ユニットテストから手元のデバイスを動かしうる)。組み立てに in-app / hybrid を作る行が無いことを
+// 起動まで試みる(ユニットテストから手元のデバイスを動かしうる)。組み立てに inapp モードの構成を作る行が無いことを
 // ソースで確かめ、判定は純粋関数で確かめる。
 
 import XCTest
@@ -13,7 +13,7 @@ import FTCore
 import FTBridgeClient
 @testable import fleetest_mcp
 
-final class MCPEngineFollowingTests: XCTestCase {
+final class MCPBridgeFollowingTests: XCTestCase {
 
     private static let repoRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -29,21 +29,21 @@ final class MCPEngineFollowingTests: XCTestCase {
             .joined(separator: "\n")
     }
 
-    /// **MCP の iOS の組み立てに in-app / hybrid を作る行が無い**(profile 経路の iosDriver と、直接ポート経路の
-    /// ExploreDriverResolver の両方)。変異: どちらかに InAppDriver / hybrid の合成を戻すと落ちる
-    func testNoInAppOrHybridIsComposedForMCP() throws {
+    /// **MCP の iOS の組み立てに inapp モードの構成を作る行が無い**(profile 経路の iosDriver と、直接ポート経路の
+    /// ExploreDriverResolver の両方)。変異: どちらかに InAppDriver / ハイブリッド構成の合成を戻すと落ちる
+    func testNoInappModeCompositionForMCP() throws {
         for path in ["Sources/fleetest-mcp/MCPServer+Driver.swift", "Sources/FTBridgeClient/ExploreDriverResolver.swift"] {
             let source = try code(path)
             for forbidden in ["InAppDriver(", "HybridFallbackDriver(", "HybridDriverComposition."] {
-                XCTAssertFalse(source.contains(forbidden), "\(path) が \(forbidden) で in-app / hybrid を組んでいる")
+                XCTAssertFalse(source.contains(forbidden), "\(path) が \(forbidden) で inapp モードの構成を組んでいる")
             }
         }
     }
 
-    /// **profile 経路は XCUITest で供給する**(プロファイルが in-app / hybrid でも、使わない注入付きの起動を走らせない)
-    func testProfileProvisioningForcesTheXCUITestEngine() throws {
+    /// **profile 経路は XCUITest で供給する**(プロファイルが inapp モードでも、使わない注入付きの起動を走らせない)
+    func testProfileProvisioningForcesTheXCUITestMode() throws {
         let source = try code("Sources/fleetest-mcp/MCPServer+Dispatch.swift")
-        XCTAssertTrue(source.contains("spec.engine = \"xcuitest\""), "profile 経路が XCUITest で供給していない")
+        XCTAssertTrue(source.contains("spec.mode = \"xcuitest\""), "profile 経路が XCUITest で供給していない")
         XCTAssertTrue(source.contains("devices: [(device.name, spec)]"), "差し替えた spec を供給へ渡していない")
     }
 

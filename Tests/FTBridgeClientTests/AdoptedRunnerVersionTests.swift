@@ -10,7 +10,7 @@ final class AdoptedRunnerVersionTests: XCTestCase {
 
     private func status(version: Int?) -> StatusResponse {
         StatusResponse(ready: true, device: "sim", osVersion: "-", sessionBundleID: nil,
-                       engine: "xcuitest", protocolVersion: version)
+                       bridge: "xcuitest", protocolVersion: version)
     }
 
     func testOnlyTheCurrentVersionIsKept() {

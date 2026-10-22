@@ -93,10 +93,9 @@ waitForSettle(_ selector: String? = nil, quietSeconds: Double? = nil,
   (止まったと確かめる時間が残っていなかった)と出ます。止まらない物が
   原因で失敗するなら、それを含まない `selector` を渡すか、`quietSeconds` / `waitSeconds` を調整してください。
 - **判定はブリッジの中で完結し、画像はホストへ出ません。**
-  - iOS は、既定の `hybrid` エンジンでも画素の撮影は常に XCUITest ランナーで行います。in-app エンジンが見えるのは
+  - iOS は、既定の inapp モードでも画素の撮影は常に XCUITest ランナーで行います。in-app ブリッジが見えるのは
     アプリ自身の描画だけ(キーボード・システムアラート・他のプロセスは写らない)で、アプリの中で撮り続けるとメイン
-    スレッドを塞ぐためです。木の段は次のステップを解決するドライバで行います(`hybrid` なら in-app の木)。
-    `engine: "inapp"` だけで XCUITest ランナーを持たないデバイスは、`hybrid` か `xcuitest` への切り替えを案内して失敗します。
+    スレッドを塞ぐためです。木の段は次のステップを解決するドライバで行います(inapp モードなら in-app の木)。
   - Android は、instrumentation の中で動くブリッジが撮影します。
 - MCP の `ft_batch` も `waitForSettle` を同じ引数で受けます。
 

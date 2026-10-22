@@ -10,7 +10,7 @@ final class RunnerMidRunRecheckTests: XCTestCase {
 
     // MARK: - 対象レーンの選別
 
-    /// 素の xcuitest レーン(engine は nil で来る)は主ポートがランナー
+    /// 素の xcuitest レーン(mode は nil で来る)は主ポートがランナー
     func testPlainXCUITestSimulatorLaneIsTargeted() {
         let connection = DriverConnection(platform: "ios", port: 8124, udid: "SIM-1")
         let target = RunnerMidRunRecheck.target(of: connection)
@@ -18,20 +18,20 @@ final class RunnerMidRunRecheckTests: XCTestCase {
         XCTAssertEqual(target?.port, 8124)
     }
 
-    func testExplicitXCUITestEngineIsTargeted() {
-        let connection = DriverConnection(platform: "ios", port: 8130, engine: "xcuitest", udid: "SIM-2")
+    func testExplicitXCUITestModeIsTargeted() {
+        let connection = DriverConnection(platform: "ios", port: 8130, mode: "xcuitest", udid: "SIM-2")
         XCTAssertEqual(RunnerMidRunRecheck.target(of: connection)?.port, 8130)
     }
 
-    /// hybrid はランナーを起動し直すと同じデバイスの in-app ブリッジも消えるので対象外
-    func testHybridLaneIsNotTargeted() {
-        let connection = DriverConnection(platform: "ios", port: 8135, engine: "hybrid",
+    /// inapp モードはランナーを起動し直すと同じデバイスの in-app ブリッジも消えるので対象外
+    func testInappModeLaneIsNotTargeted() {
+        let connection = DriverConnection(platform: "ios", port: 8135, mode: "inapp",
                                           udid: "SIM-3", xcuiPort: 8136)
         XCTAssertNil(RunnerMidRunRecheck.target(of: connection))
     }
 
     func testInAppLaneIsNotTargeted() {
-        let connection = DriverConnection(platform: "ios", port: 8137, engine: "inapp", udid: "SIM-4")
+        let connection = DriverConnection(platform: "ios", port: 8137, mode: "inapp", udid: "SIM-4")
         XCTAssertNil(RunnerMidRunRecheck.target(of: connection))
     }
 

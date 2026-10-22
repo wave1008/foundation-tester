@@ -61,47 +61,24 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 - **注意**: 次のステップは**まだ動いている最中の画面**を見ることがある(位置がずれうる)。慣性のあるスクロールの直後にタップする、のような使い方は避ける
 - **仕組み**: ホストが該当ステップの実行中、ブリッジへの HTTP リクエストに `X-FT-Settle: 0` ヘッダを付ける(`BridgeAPI.settleHeader`)。`FlowStep.settle` → `StepExecutor.execute` が TaskLocal `SettleOverride.skip` に載せる。ブリッジの版は iOS `bridgeProtocolVersion` 165・Android `VERSION_CODE` 89。設計は docs/design.md
 
-### `engine: inapp` 単独で失敗するコマンド(iOS)
-
-既定の **hybrid** は、in-app エンジンにできない操作を XCUITest へ自動で回す。**`engine: inapp` を単独で指定したデバイス**には回し先が無いので、
-次のコマンドはそのステップで失敗する(この文書の「XCUITest へ自動フォールバック」は、どれも hybrid での話)。
-`--profile` を付けた dry-run は、**コマンドの名前だけで決まるもの**(下の表のアプリの外・座標のドラッグ/押し続け・`gesture`・`waitForSettle` の行。`tap(holdSeconds:)` / `tap(x:y:holdSeconds:)` を除く)を
-警告する(⚠️ の行・合否は変えない。表は `DSLCommandIndex.unsupportedTargets`・照合は `FTCore.CommandTargetCheck`。iOS 実機の
-`fold` 系・`addMedia` も同じ表)。引数やアプリの UI フレームワークで決まる行は dry-run から見えないので、デバイス実行の途中で初めて分かる
-(docs/user-docs/reference/running/dry_run_ja.md)。
-
-| 失敗するもの | 理由 |
-|---|---|
-| `home` / `back` / `appSwitcher` / `tapAppIcon` / `fold` / `unfold` / `hinge` | アプリの外(SpringBoard・ハードウェア)を操作する。in-app はアプリの中しか触れない |
-| `swipePointToPoint` / `swipeBy` / `swipeElementToElement` / `tap(holdSeconds:)` / `tap(x:y:holdSeconds:)` / `hold` | 座標のドラッグ・押し続けを in-app は持たない |
-| `gesture` | in-app にこの経路が無い |
-| `doubleTap` / `pinchOut` / `pinchIn`(UIKit / SwiftUI / RN のアプリ) | 合成タッチを UIGestureRecognizer が受理しない(Compose / Flutter は in-app で動く) |
-| `swipe`(Compose / Flutter のアプリは常に。他は指の下にスクロールビューが無いとき) | ジェスチャ目的の払いは in-app では送れない(Compose / Flutter は AX の scroll に流すと別の容器が受けるので、hybrid でも XCUITest へ回している) |
-| `flick*` / `scroll*`(送れる容器が無いとき・React Native の PagerView) | in-app の送り(`contentOffset` / AX の scroll)を受ける容器が無い |
-| `clearInput` / `pressEnter`(Flutter のアプリ) | 入力欄の受け口に届かない |
-| `waitForSettle` | 画面の撮影を XCUITest ランナーで行う |
-| `appIs(他のアプリ)` | in-app は自分のアプリが前面かどうかしか答えられない(hybrid は XCUITest のランナーに聞くので答えられる) |
-| `launchApp(他のアプリ)` / `restartApp(他のアプリ)`(**hybrid でも**) | in-app は注入したアプリしか駆動できない。断って失敗する(422)。別のアプリの手順は、そのアプリを対象にする別の実行プロファイル(別フォルダ)のシナリオに置く(注入先と違うシナリオは丸ごと XCUITest で動く) |
-| SpringBoard のダイアログを指すセレクタ・`iosAlertHandler` | アプリのプロセスしか見えない(下の §システムダイアログ) |
-
 ## 操作
 
 | コマンド | 説明 |
 |---|---|
 | `tap(sel, holdSeconds: 0, maxGestureSeconds:containerInference:linkText:settle:waitSeconds:scroll:maxSwipes:)` | タップ。**`linkText:` を渡すと、解決した要素の中でその文字列が描かれている位置を押す**(文中リンク。CMP・Android View の `ClickableSpan`・SwiftUI の `AttributedString` リンクは木にノードが出ない)。位置は ①木(要素の子孫で label/value が一致するもの。Flutter・RN・UITextView のリンク)②OCR(`RegionText.locateLink`。要素の画素を `RecognizeTextRequest` で読み、候補の文字列内の `linkText` の範囲を `boundingBox(for:)` で矩形にして中心を押す。拡大段は `upscaleLadder`)の順で、**見つからなければ失敗**(OCR が読めた行を添える。要素の中心へ落とさない)。押すのは座標タップの既存経路で、決め方は注記 `link text "…" located by tree|ocr`。`ft_batch` の `tap` も `linkText:` を受ける(セレクタ形だけ。座標形と併記は拒否)。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ)。**秒数の上限は既定 10 秒・`maxGestureSeconds:` でこの1コマンドだけ最大 60 秒まで上書きできる**(ユーザー決定 2026-09-24。方針の判定はホスト側 = StepExecutor / MCP・ライブ操作の入口。ランナーと Android の注入層は 60 秒を絶対上限として最後に断る — 桁外れの秒数を素通しすると、シミュレータの testmanagerd が合成列を作り続けて肥大化するため)。**対象がまだ無効なら操作可能になるまで待ってから撃つ**(下記)。**下端のタブバー等に潜っているだけなら、撃つ前に容器を1回送って外す**(下記「縁の帯に潜った対象」)。`containerInference:` は下記「容器の推測に依存する補正」参照 |
-| `hold(sel, holdSeconds: 3, maxGestureSeconds:settle:waitSeconds:scroll:maxSwipes:) { }` | **押している間だけ**出る部品(ツールチップ等)の確認用。`tap(holdSeconds:)` は1ステップの中で押して離すので、離した後にしか検証が走らずこの種の部品を確認できない。**指を離すのはブリッジ**(`holdSeconds` 秒後に自分の時計で。応答はそれを待たない)なので、ブロックの中身は指が下がっている間に走る。ブロックが `holdSeconds` より長く掛かったら、それ以降は指が上がった状態でブロックの残りが進む(失敗にはしない・注記 `hold-ended-before-block`)。**入れ子にはできない**(前の hold が離れる前に次の hold を送ると失敗する)。**指を置く前に OCR の暖機を済ませる**(ブロックの最初の可視性検証が暖機を待つと、その間に指が離れる)。対象が解決できなければブロックは実行しない。**iOS の in-app エンジンはこの押下を持たない**ので、hybrid ではこの1操作だけ XCUITest 側で行う(`tap` の長押しと同じフォールバック) |
+| `hold(sel, holdSeconds: 3, maxGestureSeconds:settle:waitSeconds:scroll:maxSwipes:) { }` | **押している間だけ**出る部品(ツールチップ等)の確認用。`tap(holdSeconds:)` は1ステップの中で押して離すので、離した後にしか検証が走らずこの種の部品を確認できない。**指を離すのはブリッジ**(`holdSeconds` 秒後に自分の時計で。応答はそれを待たない)なので、ブロックの中身は指が下がっている間に走る。ブロックが `holdSeconds` より長く掛かったら、それ以降は指が上がった状態でブロックの残りが進む(失敗にはしない・注記 `hold-ended-before-block`)。**入れ子にはできない**(前の hold が離れる前に次の hold を送ると失敗する)。**指を置く前に OCR の暖機を済ませる**(ブロックの最初の可視性検証が暖機を待つと、その間に指が離れる)。対象が解決できなければブロックは実行しない。**iOS の in-app ブリッジはこの押下を持たない**ので、inapp モードではこの1操作だけ XCUITest ブリッジで行う(`tap` の長押しと同じフォールバック) |
 | `select(sel, requireVisible:waitSeconds:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**掴めなければ失敗させず空要素を返す** — 「見つからない」も「見つかったが見えない(覆われ・見切れ)」も同じ形で返るので、呼び出し側は `.isEmpty` で分岐する(`exist` はどちらも失敗へ反転するので意味が違う)。**在ることを保証したいなら `exist`**。`requireVisible: false` で可視性照合自体を外す |
 | `lastElement` | **直前に掴んだ要素**(引数なし。Shirates(Classic) の `TestDriver.lastElement` 相当)。要素を1つに定めて解決したコマンド(`select` / `exist` / `tap` / `type` / `waitForDisplay` / テキスト・値の検証など)が通るたびに差し替わる。差し替えないのは**要素を1つに定めない** `notExist` / `countIs` と、**セレクタを取らない** `swipe` / `launchApp` 等。**値は掴んだ時点の凍結値**で、掴んだ後にスクロールやタップを挟むと古い値を読む(下記「掴んだ要素の値を読む」)。**scene を跨ぐと空**・**掴めなかったコマンドは空で上書き**・**一度も掴んでいなければ空+警告**。**セレクタで1要素を掴む操作(`tap` / `type(sel, …)` / `clearInput(sel)` / `doubleTap(sel)` / `swipeBy(sel, …)` / `pinchOut(sel)` / `pinchIn(sel)` / `gesture(sel)` / `swipeElementToElement` / `scrollTo`)は掴んだ要素を返す**ので、`tap("#btn_ok").textIs("OK")` と直接チェーンできる(`exist` / `select` と同じ。暗黙の `lastElement` に頼らず対象がソースに見える) |
 | `type("文字列", replace: false, settle:)` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う)。改行の扱いは下記。**引数はテキストであってセレクタではない** — `type("#email")` のようにセレクタらしい1語(`#` + 識別子・`\|\|` や `>>` を含む)を渡すと実行前に失敗する(黙って `#email` と打ち込んで後段の検証で落ちると原因から遠いため)。その文字列を本当に入力したいなら2引数形 `type("#field", "#email")` を使う。`replace: true` で撃つ前に `clearInput` 相当のクリアをしてから入力する(セレクタ解決が1回で済む)。**入った値を読み返して直す**(`type(sel, …)` と同じ規則。iOS の XCUITest はランナーが焦点の欄を直前の木と突き合わせて読み返す = 改行の有無に関わらない・ブリッジ v212〜。突き合わせが曖昧・非入力欄・secure 欄は一発撃ち。打鍵は遅れて届くだけでなく失われる = RN の検索欄で 240 回中 23 回欠けたまま返っていた)。**Android はソフトキーボードが出るまで最大 1.5 秒待ってから次の操作を解決する**(`type` はキーボードの表示を待たずに返るため。出なければ注記 `keyboard-not-shown-after-type`) |
 | `type(sel, "文字列", replace:settle:waitSeconds:scroll:maxSwipes:)` | 要素を指定して入力。日本語もそのまま入る(IME 切替なし)。改行の扱いは下記。`replace: true` で撃つ前にクリアしてから入力する(下記 `clearInput` 参照)。クリアの後は画面を読み直して同じ入力欄を見つけ直してから打ち、**見つけ直せなければ打たずに失敗する**(失敗文 `could not be found on the screen afterwards`。別の欄へ打たないため)。**入った値を読み返して直す**: 末尾の欠落は追送・二重入力は削除・**中央の1文字が落ちた形(`hello123`→`hllo123`)は消してから全文を打ち直す**(ブリッジ v104。注記 `type-retyped` / XCUITest ランナーは `driverFallback` に "retyped the whole text …")。**打ち直しは1回まで** —— 打ち直しても同じ形で欠けるなら(英字を捨てる数字欄など)アプリ側の加工なので検証を諦めて受理する(注記 `type-retype-abandoned`。値は `textIs` で別途確かめる)。**値が1文字も動かないときは先に画面を OCR で見る** —— 打った文字が欄に描かれていれば値が入力を映さない欄(M3 SearchBar の iOS)として撃ち直さずに受理(注記 `type-readback-unchanged`)、描かれていなければ追送。**追送は1回まで**で、追送しても値が動かなければ失敗(重ねると入力が重複しうる) |
 | `pressEnter(settle:)` | フォーカス中の入力へ Enter/IME アクション(検索・実行・改行)を発火(Shirates(Classic) 準拠) |
-| `hideKeyboard(settle:)` | ソフトキーボードを閉じる。出ていないときは何もせず成功する(冪等)。**Android** は出ているときだけ戻るキーを撃つ。**iOS**(エンジン非依存)は木を読み、キーボードの上の領域を下から上・左から右へ走査して**何もない点**(どの要素にも載らない点、または画面幅の操作できない容器だけに載る点。文字・画像の葉や操作可能・入力の型の要素の上、`overlayWindowFrames` の上には置かない)を探してタップする。撃つ前に in-app ブリッジの `POST /tapprobe`(ブリッジ版 195)で、その点がキーボード・ステータスバー・キーでない window(トースト等)の上でないことを確かめる。答えられないエンジン(XCUITest)は木だけで決め、木の最上端の要素より上は撃たない(ステータスバーを避けるため)。点が見つからなければステップの制限時間まで待って探し直す(トーストが消えることがある)。撃った後は最大 1.5 秒キーボードが閉じるのを待つ。閉じれば成功で、注記に撃った点を書く(撃った後にキーボードより上の要素が消えていれば、何も発火させていないか確かめる旨も添える。要素の比較は id があれば id で)。**撃っても閉じない(または点が無い)ときは Enter を送る**(ユーザー決定)。注記には、Enter が欄のリターンキーの動作(検索・送信・次の欄)も発火させることを書く。それでも出ていれば失敗。フレームワーク別の結果は docs/framework-differences.md §2.5。**次のロケータ操作は、画面の木からキーボードが消えるまで待ってから要素を解決する**(Android のみ。上限 5 秒 = 検証の既定の待ちと同じ `FlowStep.defaultWaitSeconds`。消えなければそのまま進む。Android 12 の端末では閉じた後も木がキーボードを数秒申告し続け、下端の要素が木に戻らない) |
+| `hideKeyboard(settle:)` | ソフトキーボードを閉じる。出ていないときは何もせず成功する(冪等)。**Android** は出ているときだけ戻るキーを撃つ。**iOS**(モード非依存)は木を読み、キーボードの上の領域を下から上・左から右へ走査して**何もない点**(どの要素にも載らない点、または画面幅の操作できない容器だけに載る点。文字・画像の葉や操作可能・入力の型の要素の上、`overlayWindowFrames` の上には置かない)を探してタップする。撃つ前に in-app ブリッジの `POST /tapprobe`(ブリッジ版 195)で、その点がキーボード・ステータスバー・キーでない window(トースト等)の上でないことを確かめる。答えられないブリッジ(XCUITest)は木だけで決め、木の最上端の要素より上は撃たない(ステータスバーを避けるため)。点が見つからなければステップの制限時間まで待って探し直す(トーストが消えることがある)。撃った後は最大 1.5 秒キーボードが閉じるのを待つ。閉じれば成功で、注記に撃った点を書く(撃った後にキーボードより上の要素が消えていれば、何も発火させていないか確かめる旨も添える。要素の比較は id があれば id で)。**撃っても閉じない(または点が無い)ときは Enter を送る**(ユーザー決定)。注記には、Enter が欄のリターンキーの動作(検索・送信・次の欄)も発火させることを書く。それでも出ていれば失敗。フレームワーク別の結果は docs/framework-differences.md §2.5。**次のロケータ操作は、画面の木からキーボードが消えるまで待ってから要素を解決する**(Android のみ。上限 5 秒 = 検証の既定の待ちと同じ `FlowStep.defaultWaitSeconds`。消えなければそのまま進む。Android 12 の端末では閉じた後も木がキーボードを数秒申告し続け、下端の要素が木に戻らない) |
 | ソフトキーボードの下の対象への `tap` / `type` / `clearInput`(セレクタ指定) | 対象の中心がソフトキーボードの下にあるとき、まず従来どおり**容器をスクロールして持ち上げる**。それでも覆われていれば、**副作用のない手段だけ**でキーボードを閉じる(iOS = `hideKeyboard` の何もない点のタップ。Enter へのフォールバックは無し / Android = 戻るキー)→ 木を読み直して対象を解決し直してから操作する。注記に「キーボードを閉じた(対象が下にあった)」旨が付く。**副作用なしに閉じられない**ときは何も触らずステップを失敗にする(文言に、リターンキーで閉じられるが欄の動作も発火するため自動では押さないこと、意図するならステップの前に `pressEnter()` を呼ぶことを書く。ユーザー決定: ここでは Enter を自動で押さない)。閉じた後に対象が消えた・まだ覆われているときも失敗。**Android**: キーボードが出ている間に対象が見つからないとき(窓がキーボードの上まで縮み、下の要素が木に無い。枠を申告せず `keyboardShown` だけの場合もある)は、通常の待ちの後に戻るキーでキーボードを閉じて**1回だけ**解決し直す(注記「対象がキーボードの出ている間は画面に無かった」)。長押し(`holdSeconds` > 0 のタップ)は従来どおり注記だけ |
 | `clearInput(settle:)` | フォーカス中の入力欄を空にする。**消す前の木に焦点のある欄が無いと、消えたかを読み返せない**ので成功のまま注記 `clear-input-unverified` を付ける(in-app は Compose の焦点を申告しない・背の低い端末ではキーボードで欄自身が木から消える)。値は `textIs` で別途確かめる。ロケータ無しの `type(…, replace: true)` も同じ |
 | `element.type("文字列", replace:settle:waitSeconds:)` | 掴んだ要素へ入力(`let e = select("#login_id"); e.type("alice")`)。**入力するだけなら `type(sel, "文字列")` を書く**(`select` / `tap` を前に置くとステップが1つ増えるだけ。AI の生成もこちらを優先させる = スキルの雛形・索引の説明文)。**掴んだときのセレクタから引き直して `type(sel, "文字列")` と同じ経路を通す**ので、記録・失敗の文言・読み返し・`account()` の伏せ字化まで同一(`scroll:` は持たない = 文脈の `withScroll*` には従う)。掴めなかった空の要素からは `type(sel, …)` と同じく解決の失敗。**findImage / findImages で掴んだ要素は入力せずに失敗**(書けるセレクタを持たない。`tap()` で焦点を立ててから `type("文字列")`) |
-| `clearInput(sel, settle:waitSeconds:scroll:maxSwipes:)` | 要素を指定して入力欄を空にする。**ボタン等の入力欄でない要素は消す前に失敗する**(UI フレームワークを問わず Compose・Flutter でも断る。条件は要素の型(button / switch / toggle / link / slider / stepper / segmentedControl / checkBox / menuItem)だけ。内側に入力欄がちょうど1つある容器は従来どおり撃つ(注記付き)。`type(sel, …)` も同じ = 打つ前にタップするので送信ボタン等を押してしまうため)(`type` は追記なので、書き換えるならまず `clearInput`。セレクタ解決を1回で済ませたいだけなら `type(sel, "文字列", replace: true)` で1コマンドに畳める)。**Flutter の iOS は in-app エンジンでは消せず XCUITest 経由になる**(自動フォールバック。1〜2秒かかる)。**空白だけの内容は a11y の値に載らない**(iOS の Compose で実測)ので、XCUITest ランナーは「空に見える」欄にも短い削除バーストを送り、`type` の読み返しは空白だけの差を検証不能として再送しない(2026-08-31。**末尾・途中の空白の欠落も検出できない**ので、空白が意味を持つ値は `textIs` で別途確かめる) |
+| `clearInput(sel, settle:waitSeconds:scroll:maxSwipes:)` | 要素を指定して入力欄を空にする。**ボタン等の入力欄でない要素は消す前に失敗する**(UI フレームワークを問わず Compose・Flutter でも断る。条件は要素の型(button / switch / toggle / link / slider / stepper / segmentedControl / checkBox / menuItem)だけ。内側に入力欄がちょうど1つある容器は従来どおり撃つ(注記付き)。`type(sel, …)` も同じ = 打つ前にタップするので送信ボタン等を押してしまうため)(`type` は追記なので、書き換えるならまず `clearInput`。セレクタ解決を1回で済ませたいだけなら `type(sel, "文字列", replace: true)` で1コマンドに畳める)。**Flutter の iOS は in-app ブリッジでは消せず XCUITest ブリッジ経由になる**(自動フォールバック。1〜2秒かかる)。**空白だけの内容は a11y の値に載らない**(iOS の Compose で実測)ので、XCUITest ランナーは「空に見える」欄にも短い削除バーストを送り、`type` の読み返しは空白だけの差を検証不能として再送しない(2026-08-31。**末尾・途中の空白の欠落も検出できない**ので、空白が意味を持つ値は `textIs` で別途確かめる) |
 | `swipe(.up / .down / .left / .right, settle:)` | 画面全体をスワイプ(**指の動き**)。iOS の XCUITest では縦向きは `XCUIApplication.swipeUp()` 等、**横向きは点→点のドラッグに合成する**(実機の横向きでは `swipeUp()` 系が1pt も動かないため。2026-08-31 実測)。**撃つ前に木の静止を待つ**(キーボードを避ける枠を静止した木から取る。flick と同じ・注記 `settled-before-gesture`) |
-| `tap(x:y:holdSeconds: 0, maxGestureSeconds:, settle:)` | **座標を直接タップ**(Shirates 準拠)。座標は snapshot の `screen` と同じ座標系で、**iOS = pt / Android = px**(dp ではない)。`holdSeconds` を 0 より大きくすると長押し(秒数の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き)。**セレクタで指せるならそちらを使う** —— 座標はレイアウトが動いた瞬間に別の物を叩く。要るのは「アプリが要素を1つも公開しない画面」で、実測では操作可能要素の 9.3% が書けるセレクタを持たない。**`ft_batch` でも書ける**(`tap x: 120 y: 640`)。ただし**セレクタと併記はできない** —— どちらを撃ったか読み手に分からなくなるため拒否する。**in-app エンジンは見えない物を撃たない**: 画面外の点は失敗にする。ソフトキーボードの上の点は、in-app はキーを押せないので hybrid では XCUITest で撃つ(キーが押される。`engine: inapp` 単独では失敗)。キーボードの下を押したいなら `pressEnter` か `hideKeyboard` で閉じてから。スクロール容器で切れて描かれていない要素は frame が点を含んでも activate せず、その点に実際に見えている物へ撃つ |
+| `tap(x:y:holdSeconds: 0, maxGestureSeconds:, settle:)` | **座標を直接タップ**(Shirates 準拠)。座標は snapshot の `screen` と同じ座標系で、**iOS = pt / Android = px**(dp ではない)。`holdSeconds` を 0 より大きくすると長押し(秒数の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き)。**セレクタで指せるならそちらを使う** —— 座標はレイアウトが動いた瞬間に別の物を叩く。要るのは「アプリが要素を1つも公開しない画面」で、実測では操作可能要素の 9.3% が書けるセレクタを持たない。**`ft_batch` でも書ける**(`tap x: 120 y: 640`)。ただし**セレクタと併記はできない** —— どちらを撃ったか読み手に分からなくなるため拒否する。**in-app ブリッジは見えない物を撃たない**: 画面外の点は失敗にする。ソフトキーボードの上の点は、in-app ブリッジはキーを押せないので inapp モードでは XCUITest ブリッジで撃つ(キーが押される)。キーボードの下を押したいなら `pressEnter` か `hideKeyboard` で閉じてから。スクロール容器で切れて描かれていない要素は frame が点を含んでも activate せず、その点に実際に見えている物へ撃つ |
 | `swipePointToPoint(startX:startY:endX:endY:durationSeconds: 1.5, maxGestureSeconds:, settle:)` | 2点間ドラッグ(座標は snapshot の screen と同じ座標系。iOS = pt / Android = px)。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き。**`ft_batch` でも書ける**(`swipePointToPoint startX: 200 startY: 550 endX: 200 endY: 250`)。MCP の `ft_drag` の下書きもこの行になる |
 | `swipeElementToElement(開始sel, 終点sel, durationSeconds: 1.5, maxGestureSeconds:, settle:, waitSeconds:)` | 要素間のドラッグ(スライダー・並べ替え・部分領域のドラッグ用)。**終点はヒール対象外**(始点だけがヒール・フォールバック連鎖を持つ)。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き。**押してから動かすまでは 0.05 秒固定**(長押しから始まる並べ替えは起動しない) —— それが要る画面は下記「`gesture`」で `.hold(seconds:)` してから `.move` を書く |
 | `swipeBy(sel?, dxRatio:dyRatio:durationSeconds: 1.5, maxGestureSeconds:, settle:, waitSeconds:)` | 対象の中心から**比率**で指を動かす(**斜め可**。両方を非 0 にすると対角)。比率は対象の幅・高さに対する割合で、符号は指の向き。**片側 0.9 が上限**(指が対象の枠の中に収まる範囲。超えた指定は 0.9 に丸めて注記 `swipe-by-ratio-capped`。対象より遠くへ払うのは `swipeElementToElement` / `swipePointToPoint`)。セレクタ省略 = 画面全体。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
@@ -136,7 +113,7 @@ gesture { for dot in dots { … } }     // ブロック内はループ・分岐�
 - **上限**: 1〜5本・1本あたり最大625点・全体の秒数は既定10秒(`maxGestureSeconds:` で最大60秒まで上書き。
   他のジェスチャ系コマンドと同じ規則)。0本の指・画面外の点・秒数が0以下・秒数超過はデバイスに触れずステップを失敗させる
 - `waitSeconds:` は他のコマンドと同じく対象の出現を待つ
-- **iOS は常に XCUITest 経由**(既定の hybrid エンジンでも)。in-app エンジンにはこの経路が無いため
+- **iOS は常に XCUITest ブリッジ経由**(既定の inapp モードでも)。in-app ブリッジにはこの経路が無いため
   ——座標ピンチと同じ非公開 API(`XCPointerEventPath`)を使う。この API を持たない Xcode では
   フォールバック先が無く、ステップは 422 で失敗する
 
@@ -161,7 +138,7 @@ gesture { for dot in dots { … } }     // ブロック内はループ・分岐�
 
 ### iOS in-app の「本物のタッチは別の物に当たる」注記(`inapp-tap-outside-hit-area`)
 
-in-app エンジンの `tap` は要素を**直接**撃つ(`accessibilityActivate`、効かなければ**要素の窓へ直接送る**
+in-app ブリッジの `tap` は要素を**直接**撃つ(`accessibilityActivate`、効かなければ**要素の窓へ直接送る**
 合成タッチ)。どちらも手前の窓・重なった view を素通りするので、**本物の指では押せない要素にも届く** ——
 アプリの押せる範囲の不具合が in-app では緑、XCUITest(枠の中心を座標で押す)では赤になる。
 
@@ -245,7 +222,7 @@ Android の入力欄は**容器**(Material の `TextInputLayout`)と**中身**(`
 = **どちらになるかはフィールドが決める**。Android も末尾の改行は Enter として送る。
 **確定アクションを撃つ意図なら `pressEnter()` を使う**(意図が読み手に伝わる。
 `type("腕時計\n")` は「改行を入れたいのか送信したいのか」がコードから読めない)。
-エンジン(in-app / XCUITest)によって結果が変わることはない(docs/design.md)。**ただし `engine: inapp` を単独で指定したときは例外**: XCUITest へ回せないので in-app の入力で打ち、末尾の `\n` だけを Return として扱い、文中の `\n` はフレームワークによって改行になったり握り潰されたりする。
+モード(inapp / xcuitest)によって結果が変わることはない(docs/design.md)。
 **Return キーを撃てなかったときは失敗する**(文字は入っている。Flutter で returnKey が
 action を持たない欄など)—— 黙って「全部入った」にはしない。その場合は `pressEnter()` を分けて書く。
 
@@ -264,8 +241,8 @@ action を持たない欄など)—— 黙って「全部入った」にはし�
   画面全体のピンチだと下の指が検索カードに乗り、**縮小が地図のパンに化けた**(拡大は指が中央から
   開くので効く、という非対称があった)。そこで**両方の指が同じものに載る位置**を選んで撃つ。
   置けなければ半径を狭め、それでも駄目なら従来どおり画面全体で撃つ
-- **iOS は Compose のダブルタップだけエンジンで成否が分かれる**(hybrid = in-app なら成立・`ios-xcuitest` では不成立。2026-09-24 に4 SUT で実測。
-  ピンチは全フレームワークとも両エンジンで動く)。Android は全て問題ない:
+- **iOS は Compose のダブルタップだけモードで成否が分かれる**(inapp モードなら成立・`ios-xcuitest` では不成立。2026-09-24 に4 SUT で実測。
+  ピンチは全フレームワークとも両モードで動く)。Android は全て問題ない:
 
   | iOS | SwiftUI / UIKit | Compose Multiplatform | Flutter | React Native |
   |---|---|---|---|---|
@@ -274,15 +251,15 @@ action を持たない欄など)—— 黙って「全部入った」にはし�
   | `pinchOut` / `pinchIn` | ✅ XCUITest | ✅ | ✅ | ✅ |
   | `gesture` | ✅ XCUITest | ✅ XCUITest | ✅ XCUITest | ✅ XCUITest |
 
-  「in-app のみ」= **`xcuitest` 単独プロファイルと実機では効かない**(実機の in-app は未対応のため
-  XCUITest しか経路が無い)。**MCP の iOS は常に XCUITest なので、MCP からは in-app / hybrid の挙動は試せない**。理由は注入側の性質で、どちらも実測(2026-09-24)で確定している:
+  「in-app のみ」= **xcuitest モードと、開発署名でない実機では効かない**(どちらも
+  XCUITest ブリッジしか経路が無い)。**MCP の iOS は常に XCUITest なので、MCP からは inapp モードの挙動は試せない**。理由は注入側の性質で、どちらも実測(2026-09-24)で確定している:
   - **XCUITest ランナーの `/doubletap` は非公開 API で2回の独立したタッチ(0.08秒ずつ・
     2回目は0.25秒後)を送る**(XCTest の `doubleTap()` は1回のタッチに tapCount=2 が乗るだけで、
     RN の PanResponder には1タップにしか見えず Compose も2打目を捨てていた)。この形に変えた
     結果、Flutter はカウントし、RN は届くようになった(E2E-RN は JS の PanResponder が JS スレッドの時計で判定するので
     間欠的に取りこぼす = 8 回中 3 回。ネイティブの認識器を使うアプリには当てはまらない)。**Compose だけは間隔を 0.1秒・0.25秒のどちらで撃っても
     ダブルタップとして一度も数えない**(XCTest 合成の2タッチそのものを認識器が受理しない)。
-    in-app は独自に2タップを合成して送るので、Compose でも hybrid なら発火する
+    in-app は独自に2タップを合成して送るので、Compose でも inapp モードなら発火する
   - **ピンチも同じ非公開 API でホストが決めた座標をそのまま送るようになった**(前段落)。
     以前あった「指の間隔を約 8px しか開かない」制約は無くなり、CMP・Flutter・RN とも対象指定・
     対象未指定のピンチが `ios-xcuitest` プロファイルで動く
@@ -298,8 +275,8 @@ action を持たない欄など)—— 黙って「全部入った」にはし�
 |---|---|
 | `scrollTo(sel, direction: .down, containerInference:, settle:, maxSwipes: 8)` | 要素が見つかるまでスクロール(見つかったら成功。タップはしない)。`containerInference:` は下記「容器の推測に依存する補正」参照 |
 | `scrollDown(repeat: 1, settle:)` / `scrollUp` / `scrollRight` / `scrollLeft` | 1 画面ぶんスクロール(`repeat:` 回繰り返す)。**最初の1本の前に木の静止を待つ**(`scrollFrame:` の枠を静止した木から取る。遷移の直後に古い枠を払わないため。flick と同じ・注記 `settled-before-gesture`) |
-| `scrollFrame:` / `startMarginRatio:` / `endMarginRatio:`(`scroll*` / `scrollToBottom` 等 / `scrollTo` の引数。`withScroll*` は `scrollFrame:` のみ取る) | **スクロールさせたい領域**をセレクタ式で指定する(Shirates 準拠)。例: `scrollTo("#row_40", scrollFrame: "#list_rows")`。**どれが容器かは MCP の `ft_snapshot` が行末に出す `scroll` 印**で分かる(2つ以上あるときは先頭でも名指しする。ただし**印が無い = スクロールしない、ではない** —— Compose / Flutter は xcuitest エンジンでは申告できない(in-app は版57から申告できる。**MCP の iOS は常に XCUITest なので、Compose / Flutter のアプリでは MCP からは印が出ない**))。**省略時は画面中央基準の全画面スワイプ**(マージン指定も無視)。**iOS の in-app エンジンも同じく画面中央の下にあるスクロール容器だけを動かす**(画面の別の場所にあるカルーセル等は動かさない = XCUITest・Android と同じ結果)。**例外はソフトキーボードが出ている間だけ**: 全画面の固定比率で始点を作るとキーボード面に乗って何も動かないので(iPhone 13 実測: 始点 y=633 に対しキーボード上端 y=509)、`scrollTo` / `scroll*` / `scrollTo*Edge` はキーボードを除いた残りの画面を対象に始点・終点を作る(キーボードが無ければ従来どおり)。素の `swipe(.up)` / MCP の `ft_swipe` も同じ(キーボードが出ていれば残りの画面で振る)。`withScrollDown(scrollFrame:) { }` に渡すとブロック内の探索が継承する。**Compose / Flutter の in-app エンジンは、指定した要素がスクロール容器(`ft_snapshot` の `scroll` 印。枠が一致する容器)のときだけ in-app で送る**(1回 = 1ページ。刻み幅は選べない)。**容器でない要素(固定ヘッダ等)を指定したときはXCUITest へ自動フォールバックする**(そのぶん遅い)。**スクロールできない領域を指定すると、スワイプは成功するが何も動かない** —— 気付けるようにステップへ注記が付く(`the specified scrollFrame is not scrollable` / margin で動かせる幅が潰れた場合は `resolved but leaves nothing to move`)。**半分開いたボトムシート(指定した容器が画面下端に接し、上端が画面の上 1/4 より下 = `SheetGeometry`)の中で、下へ送る探索が1度も動かずに止まったら、その容器の中で1回だけ容器の高さぶん速く払ってシートを広げてから探し直す**(探索の短く遅い送りはシートの伸び縮みに使われて戻ることがある。E2EY-CMP / E2EX-iOS の XCUITest。注記 `the sheet was expanded by a drag inside the scrollFrame first`。`StepExecutor.sheetExpandDrag`)。**画面に1件も無い scrollFrame を指定すると、スワイプを1本も送らずに失敗する**(2026-08-08。`scrollTo` の探索だけでなく `scroll*` / `scrollTo*Edge` 系 / `flick*` / `withScroll*` 配下の探索も同じ。**`select` 系だけは例外**で、掴めなければ空要素を返す契約が優先し skipped になる。以前は黙って全画面スワイプへ退化し、カード上のボタンを発火させる実害があった。探索中に容器が木から消えた場合も失敗になる)。**Compose(CMP)で領域指定が必須だった制限は 2026-08-03 に解消**(容器の外に出る ghost 要素を掴んでいた。docs/verification.md「Compose の探索直後タップ」)|
-| `scrollToBottom(settle:, maxSwipes: 50)` / `scrollToTop` / `scrollToRightEdge` / `scrollToLeftEdge` | 端まで送る(**画面が変化しなくなるまで**。maxSwipes は暴走を止める上限で、上限で打ち切ったときはステップに注記が付く)。**iOS の in-app エンジンは1回で端まで寄せる** —— 下記「端送りの速さはエンジンで決まる」 |
+| `scrollFrame:` / `startMarginRatio:` / `endMarginRatio:`(`scroll*` / `scrollToBottom` 等 / `scrollTo` の引数。`withScroll*` は `scrollFrame:` のみ取る) | **スクロールさせたい領域**をセレクタ式で指定する(Shirates 準拠)。例: `scrollTo("#row_40", scrollFrame: "#list_rows")`。**どれが容器かは MCP の `ft_snapshot` が行末に出す `scroll` 印**で分かる(2つ以上あるときは先頭でも名指しする。ただし**印が無い = スクロールしない、ではない** —— Compose / Flutter は xcuitest モードでは申告できない(in-app は版57から申告できる。**MCP の iOS は常に XCUITest なので、Compose / Flutter のアプリでは MCP からは印が出ない**))。**省略時は画面中央基準の全画面スワイプ**(マージン指定も無視)。**iOS の in-app ブリッジも同じく画面中央の下にあるスクロール容器だけを動かす**(画面の別の場所にあるカルーセル等は動かさない = XCUITest・Android と同じ結果)。**例外はソフトキーボードが出ている間だけ**: 全画面の固定比率で始点を作るとキーボード面に乗って何も動かないので(iPhone 13 実測: 始点 y=633 に対しキーボード上端 y=509)、`scrollTo` / `scroll*` / `scrollTo*Edge` はキーボードを除いた残りの画面を対象に始点・終点を作る(キーボードが無ければ従来どおり)。素の `swipe(.up)` / MCP の `ft_swipe` も同じ(キーボードが出ていれば残りの画面で振る)。`withScrollDown(scrollFrame:) { }` に渡すとブロック内の探索が継承する。**Compose / Flutter の in-app ブリッジは、指定した要素がスクロール容器(`ft_snapshot` の `scroll` 印。枠が一致する容器)のときだけ in-app で送る**(1回 = 1ページ。刻み幅は選べない)。**容器でない要素(固定ヘッダ等)を指定したときはXCUITest へ自動フォールバックする**(そのぶん遅い)。**スクロールできない領域を指定すると、スワイプは成功するが何も動かない** —— 気付けるようにステップへ注記が付く(`the specified scrollFrame is not scrollable` / margin で動かせる幅が潰れた場合は `resolved but leaves nothing to move`)。**半分開いたボトムシート(指定した容器が画面下端に接し、上端が画面の上 1/4 より下 = `SheetGeometry`)の中で、下へ送る探索が1度も動かずに止まったら、その容器の中で1回だけ容器の高さぶん速く払ってシートを広げてから探し直す**(探索の短く遅い送りはシートの伸び縮みに使われて戻ることがある。E2EY-CMP / E2EX-iOS の XCUITest。注記 `the sheet was expanded by a drag inside the scrollFrame first`。`StepExecutor.sheetExpandDrag`)。**画面に1件も無い scrollFrame を指定すると、スワイプを1本も送らずに失敗する**(2026-08-08。`scrollTo` の探索だけでなく `scroll*` / `scrollTo*Edge` 系 / `flick*` / `withScroll*` 配下の探索も同じ。**`select` 系だけは例外**で、掴めなければ空要素を返す契約が優先し skipped になる。以前は黙って全画面スワイプへ退化し、カード上のボタンを発火させる実害があった。探索中に容器が木から消えた場合も失敗になる)。**Compose(CMP)で領域指定が必須だった制限は 2026-08-03 に解消**(容器の外に出る ghost 要素を掴んでいた。docs/verification.md「Compose の探索直後タップ」)|
+| `scrollToBottom(settle:, maxSwipes: 50)` / `scrollToTop` / `scrollToRightEdge` / `scrollToLeftEdge` | 端まで送る(**画面が変化しなくなるまで**。maxSwipes は暴走を止める上限で、上限で打ち切ったときはステップに注記が付く)。**iOS の in-app ブリッジは1回で端まで寄せる** —— 下記「端送りの速さはブリッジで決まる」 |
 | `withScrollDown { … }` / `withScrollUp` / `withScrollRight` / `withScrollLeft` | ブロック内の `tap` / `type` / `clearInput` / `select` / `exist` / `notExist` / `hold` / `findImage` / `existImage` を**すべてスクロール探索**にする(明示の `scroll:` があればそちらが優先)。**`notExist` は意味が変わる** — 探索中に見つかった時点で失敗になる |
 | `withoutScroll { … }` | 外側の `withScroll*` を打ち消し、ブロック内は現在画面だけで解決する |
 | `withoutContainerInference { … }` | ブロック内のすべてのコマンドで、容器の推測に依存する補正を止める(下記) |
@@ -325,20 +302,20 @@ action を持たない欄など)—— 黙って「全部入った」にはし�
 |---|---|---|
 | `stopped at the limit of N (may not have reached the edge yet)` | `maxSwipes` で打ち切った = 端に着いたとは限らない | **する**。`maxSwipes` を増やすか、そもそも端に着けない画面かを疑う |
 | `the screen did not settle (poll limit)` | スワイプ後 600ms 待っても画面の動きが止まらなかった(慣性が長い等)。操作自体は送られている | 通常は不要。**同じ箇所で毎回出るなら**、静止前の座標でタップして flake る余地があるので調べる価値がある |
-| `fell back to XCUITest` | in-app エンジンで実行できずフォールバックした(1回あたり数百 ms 遅い) | 通常は不要。多発するなら実行プロファイルのエンジン選択を見直す |
+| `fell back to XCUITest` | in-app ブリッジで実行できず XCUITest ブリッジへフォールバックした(1回あたり数百 ms 遅い) | 通常は不要。多発するなら実行プロファイルの iOS のモード(`iosMode`)を見直す |
 
-### 端送りの速さはエンジンで決まる
+### 端送りの速さはブリッジで決まる
 
 `scrollToBottom` 等は「1本振る → 木を読んで動きが止まったか見る」の繰り返しで、
 **1ページ進むごとの往復**が所要になる。長文(利用規約・長い規程)ではここがページ数に比例する。
-**1ページで進む量と、そもそも往復が要るかはエンジンで違う**:
+**1ページで進む量と、そもそも往復が要るかはブリッジで違う**:
 
-| エンジン | 1回の送り | 長文の所要 |
+| ブリッジ | 1回の送り | 長文の所要 |
 |---|---|---|
 | iOS in-app(UIKit/SwiftUI・WebView) | **端まで一度に寄せる**(`contentOffset` を直接動かす経路で、ジェスチャも慣性も無いため刻む理由が無い) | **文書の長さに依存しない**(実測: 40 行リストの `scrollToTop` が 2.0s → 0.8s) |
 | Android の WebView | **CDP でページを一発で飛ばす**(スワイプを撃たない。使えなければジェスチャへ落ちる) | **文書の長さに依存しない**(実測: 6.1s → 2.3s。残りはスクロールではなく端の判定) |
 | iOS in-app(Compose / Flutter) | 1回 = 1ページ(UIAccessibility の scroll。刻み幅を選べない API) | ページ数に比例 |
-| iOS xcuitest | 実スワイプ(velocity 1500 のフリング。約 1.1 画面) | ページ数に比例 |
+| iOS XCUITest ブリッジ | 実スワイプ(velocity 1500 のフリング。約 1.1 画面) | ページ数に比例 |
 | Android(ネイティブ) | 実スワイプ(中央→端の強いストローク。約 1.2 画面) | ページ数に比例。**`maxSwipes` の既定 50 で届かない文書もある**(その場合は上限打ち切りの注記が出る) |
 
 **端と確定するのは、画面が最後に動いてから 1.0 秒経った後**(`StepExecutor.edgeClaimGraceAfterMove`)。
@@ -348,7 +325,7 @@ action を持たない欄など)—— 黙って「全部入った」にはし�
 `contentOffset` を動かしたら `atEdge: false` を返す(v116。飛ぶたびにセルが同じ座標に並ぶと、木の署名では
 動いたと読めない)。**Compose / Flutter の AX の scroll は返さない**(Compose は端でも受理する)。
 
-実ジェスチャのエンジンで長文を送るときは `maxSwipes` を上げる。**`flick*` を並べて速くしようとしない** ——
+実ジェスチャのブリッジで長文を送るときは `maxSwipes` を上げる。**`flick*` を並べて速くしようとしない** ——
 flick は**ジェスチャそのものが目的**のコマンドで端の判定を持たない(着いたかどうかは自分で確かめることになる)。
 
 ```swift
@@ -459,13 +436,13 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 | `exist(sel, requireVisible:waitSeconds:scroll:maxSwipes:)` | 存在検証。テキストの可視性検証を有効にした run(実行プロファイル `fmTextVisibilityCheck`(FM の段)か `ocrTextVisibilityCheck`(OCR の段)が true)では**実際に見えていること**も確認する(幾何 → OCR / FM の視覚照合。§共通の引数 `requireVisible`)。戻り値にチェーン可(後述) |
 | `waitForDisplay(sel, waitSeconds: 15)` | 要素が表示されるまで待つ(**スクロールしない**)。戻り値は `FTElement`(`exist` と同様チェーン可)。見つからなければ失敗しシナリオ中断。**判定は `exist` と同じ可視性込み**(コマンド名 displayed の意味に沿わせている)で、**`exist` の `requireVisible: false` に当たる逃げ道は無い** — 覆われ検出を外したいなら `exist(sel, requireVisible: false, waitSeconds: 15)` を使う |
 | `waitForClose(sel, waitSeconds: 15)` | 要素が消えるまで待つ(**スクロールしない**)。`sel` は省略不可(Shirates の直前セレクタ再利用の省略形は無い。`lastElement` はあるが、待ち対象がソース上で読めなくなるため引数は必須のまま) |
-| `waitForSettle(sel?, quietSeconds:, throwsException: true, waitSeconds: 15)` | **画面(`sel` を渡せばその要素の枠)の画素が `quietSeconds` のあいだ1つも変わらなくなる**まで待ち、続けてアクセシビリティの木が追いつくまで待ってから返る。戻り値は `Bool`(`@discardableResult`。`if` の条件に使える)。`findImage` / `imageIs` / OCR を使うテキストの可視性検証・画素単位の操作・レポート用のスクリーンショットの**直前**に、スクロールやフリックの慣性が完全に止まるのを待つために使う。**明示したときだけ待つ** —— 通常の操作はこの待ちをしない。範囲は常に各辺 10% を除いて比べる。引数・失敗文言・エンジンごとの経路は下記「`waitForSettle`」 |
+| `waitForSettle(sel?, quietSeconds:, throwsException: true, waitSeconds: 15)` | **画面(`sel` を渡せばその要素の枠)の画素が `quietSeconds` のあいだ1つも変わらなくなる**まで待ち、続けてアクセシビリティの木が追いつくまで待ってから返る。戻り値は `Bool`(`@discardableResult`。`if` の条件に使える)。`findImage` / `imageIs` / OCR を使うテキストの可視性検証・画素単位の操作・レポート用のスクリーンショットの**直前**に、スクロールやフリックの慣性が完全に止まるのを待つために使う。**明示したときだけ待つ** —— 通常の操作はこの待ちをしない。範囲は常に各辺 10% を除いて比べる。引数・失敗文言・モード・ブリッジごとの経路は下記「`waitForSettle`」 |
 | `notExist(sel, waitSeconds:scroll:maxSwipes:)` | **消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じた確認に。`scroll:` 指定時は**その方向へスクロールしながら探し、見つかった時点で不在検証を失敗させる**(`exist(scroll:)` の裏返し。見つからなければ従来どおり現在のビューポートでの消滅待ちに進む) |
 | `countIs(sel, 個数, waitSeconds:)` | 候補の個数。**ツリー上の件数**で可視性は見ない。`\|\|` は和集合の総数(重複は 1 度だけ)。**ラベルで数えるときは型で絞る**(`.button&&項目` — ボタンと内側のラベルは別要素として両方載るため) |
 | `enabledIsTrue()` / `enabledIsFalse()` | 有効/無効の検証(タイムアウトまで状態変化を待つ)。**対象は直前に掴んだ要素**(`select("#btn").enabledIsTrue()`)。**初回の判定は選んだ時点の状態**で、`select` が「見えない」と判定して空要素を返した要素(文字を描かない骨組みの行等)でも同じ(`StepOutcome.notVisibleSelection`。文字の値は読ませない) |
 | `checkIsON(prefer:)` / `checkIsOFF(prefer:)` | チェック状態の検証。**対象は直前に掴んだ要素**。**`prefer:`(`.classifier` / `.accessibility`。省略 = 実行プロファイルの `preferCheckStateClassifier`)は状態を読む先の優先を1コマンドだけ上書きする**(`FlowStep.preferCheckStateClassifier`。意味はプロファイルのキーと同じ = `.accessibility` でも a11y が状態を報告しない要素は分類器へ落ちる。指定は記録の説明に `(prefer: …)` と出る。witness は全 SUT の `21_チェック状態の判定元.swift`)。状態の読み方は `CheckStateReading`(selected trait・スイッチの value "1"/"0"・RN の `checkbox, checked` 等。docs/design.md)。**状態を報告しない要素**(SwiftUI の Button で自作したチェックボックス等)の `checkIsON` は「reports no check state」で失敗し(見本はあるのに分類器を使えなかった = 学習・読み込み・対照の失敗のときは、見本を置く案内の代わりに「CheckStateClassifier could not judge it from its image」とその理由を前に出す = `StepExecutor.checkStateFailure`)、`checkIsOFF` は通して run 終了時に警告する。indeterminate(一部だけ選択)はどちらでも失敗。オンしか報告しない実装(Compose iOS の Checkbox 等)は、同じシナリオで一度オンを見た要素なら報告の欠落をオフと読む。**プロジェクトの `vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]` に見本画像があれば、要素の画像を分類器(Shirates Vision の移植)で判定する**(実行プロファイルの `preferCheckStateClassifier` = 既定 true で a11y より優先・false なら a11y が状態を報告しない要素だけ。判定した回は注記 `check-state-classified`。`[INDETERMINATE]` の見本を置けば indeterminate も判定する。**分類器の判定で落ちたステップは、判定に使ったスクリーンショット全体をレポートのそのステップ行に添える**(`StepOutcome.evidenceImage`。`imageIs` も同じ)。**スクショのアプリの領域が一色なら分類しない**(黒でも白でも。a11y だけで判定・注記 `check-state-classifier-failed`・待ちの次の周回で撮り直す。黒い切り出しを ON の要素でも [OFF]・確信度 1.00 と答えた実測)。**推論のたびにラベルの違う見本2枚(対照)も掛け、どちらかを取り違えたら答えを使わない**(`VisionClassifier.Model.classify` → `ClassifyError.controlMismatch`。checkIsON/OFF は a11y だけで判定して注記 `check-state-classifier-failed`・`imageIs` は理由を添えて失敗。壊れた Vision / Core ML はエラーを返さず全部に同じラベルを確信度 1.00 で答える = 2026-09-19 負荷テストで ON の crop を [OFF] と 7 回。所要は 1 回 4.7ms → 15ms)。**Android は `isChecked` と `isSelected` の両方を見る**(2026-08-07) — タブや選択行は `isChecked` を立てず `isSelected` だけで選択状態を出すため、以前はこの種の要素で永久に通らなかった |
 | `imageIs(label)` | 要素の**画像**のラベル検証(Shirates Vision の移植)。**対象は直前に掴んだ要素**。要素の枠で切ったスクリーンショットを DefaultClassifier(プロジェクトの `vision/classifiers/DefaultClassifier/` 以下の見本画像で学習。ラベル = 親フォルダの相対パスを `_` でつないだもの)に掛け、1位のラベルの最後の `[` 以降が `label` を含めば通る。見本が無い・`label` を含むラベルの見本が無いときは待たずに失敗。失敗文言に分類されたラベルと確信度が出る |
-| `keyboardIsShown(waitSeconds:)` / `keyboardIsNotShown(waitSeconds:)` | ソフトキーボードの表示/非表示の検証。開閉はアニメーションを伴うためタイムアウトまでポーリングする。**「非表示」を確定できるのは iOS in-app と Android だけ** — iOS の xcuitest エンジンは「キーボードを見た/不明」しか言えないため、`keyboardIsNotShown` は失敗する(キーボードが見えていれば「keyboard is still shown」、見ていなければ「cannot determine the keyboard state」。不明を非表示と読んで嘘の成功にしない設計) |
+| `keyboardIsShown(waitSeconds:)` / `keyboardIsNotShown(waitSeconds:)` | ソフトキーボードの表示/非表示の検証。開閉はアニメーションを伴うためタイムアウトまでポーリングする。**「非表示」を確定できるのは iOS の in-app ブリッジと Android だけ** — iOS の XCUITest ブリッジは「キーボードを見た/不明」しか言えないため、`keyboardIsNotShown` は失敗する(キーボードが見えていれば「keyboard is still shown」、見ていなければ「cannot determine the keyboard state」。不明を非表示と読んで嘘の成功にしない設計) |
 | `screenLooksLike("画面の説明文")` | FM による**見た目の**画面検証(スクリーンショットと説明文の照合)。**アサーションには数えない**(これしか無い `expectation` / `verify` / シナリオには「アサーションが無い」警告が出る。落ちたときの中断は他の検証と同じ)。実行プロファイルで `screenLooksLike:false` の場合はスキップ(素通り)。**スクショがステータスバー以外真っ黒なら判定せずに見送る**(注記 `blank-screenshot`。FM は黒い絵を必ず「一致しない」と読む。凍結の根拠にはしない = 回復は撃たない。撮り直しだけが黒なら 1 枚目の不一致を返す) |
 | `appIs(id, waitSeconds: 15)` | フォアグラウンドのアプリが `id`(iOS=bundle ID / Android=package 名)と一致することの検証。**ニックネーム機構は無く ID を直接書く**(Shirates 準拠だが引数の意味だけ異なる)。`waitSeconds` までポーリング。**Android は失敗時に actual の package 名をメッセージへ含める**(iOS は前面 bundle ID を取得する手段が無いため含まれない) |
 
@@ -473,11 +450,10 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 > **macOS 27+ が必要**。macOS 26 では自動でスキップ/素通りになる(現在の可否は `fleetest doctor`)。
 > テキストの可視性検証の**幾何の段(中心が画面外の一致を可視と呼ばない)は FM 無しでも効く**。
 
-> **画像判定の絵の撮り方(iOS の hybrid)**: テキストの可視性検証・`findImage` / `existImage` / `imageIs`・`checkIsON` / `checkIsOFF` の
+> **画像判定の絵の撮り方(iOS の inapp モード)**: テキストの可視性検証・`findImage` / `existImage` / `imageIs`・`checkIsON` / `checkIsOFF` の
 > 分類器は、ふだん in-app の絵(キーボードとシステムアラートが写らない)で判定し、**判定に使う木がキーボードを申告しているとき**と
 > **そのフェーズで最初に SpringBoard に聞いた時点でアラートが前面にあったとき**(フェーズごとに1回・約 73ms。触る操作の照会の答えも使う)
-> だけ XCUITest で画面全体を撮る。`screenLooksLike` / `screenIs` は常に画面全体。xcuitest 単独・Android は今までどおりそのエンジンの絵、
-> `engine: inapp` 単独は撮り直す先が無いので in-app の絵のまま。判定は `FTCore.JudgmentCapture`・撮るのは `StepExecutor.judgmentScreenshot`。
+> だけ XCUITest で画面全体を撮る。`screenLooksLike` / `screenIs` は常に画面全体。xcuitest モード・Android は今までどおりそのブリッジの絵。判定は `FTCore.JudgmentCapture`・撮るのは `StepExecutor.judgmentScreenshot`。
 > 見逃すもの(通知バナー等の他の覆い・フェーズの途中で出たアラート)は docs/user-docs/reference/testclass/text_visibility_check_ja.md の「制限」
 
 FMの画像推論の一部の中断は、元の20秒の期限に十分な残り時間があれば同じ入力で1回だけ再試行する。
@@ -535,10 +511,9 @@ waitForSettle(_ selector: String? = nil, quietSeconds: Double? = nil,
   どちらの段で何秒変わり続けたかが分かれば、止まらない物を範囲から外す(`selector` を絞る)か `quietSeconds` / `waitSeconds` を調整する
 - **判定はブリッジの中で完結し、画像はホストへ出さない**。`POST /waitForSettle` に `{region?, quietMs, timeoutMs}` を送り、
   `{settled, elapsedMs, frames, lastChangeRegion?}` が返る(ブリッジの版は iOS `bridgeProtocolVersion` 174・Android `VERSION_CODE` 100)。経路:
-  - **iOS は hybrid(既定エンジン)でも、撮影は常に XCUITest ランナー**。in-app のスクリーンショットはアプリ自身の描画しか写さず
+  - **iOS は inapp モード(既定)でも、撮影は常に XCUITest ランナー**。in-app のスクリーンショットはアプリ自身の描画しか写さず
     (キーボード・システムアラート・他プロセスが無い)、アプリの中で撮り続けるとメインスレッドを塞ぐため。木の同期だけは次のステップを
-    解決するドライバで行う(hybrid なら in-app の木)。`engine: "inapp"` だけで XCUITest ランナーを持たないデバイスは、
-    hybrid か xcuitest への切り替えを案内して失敗する
+    解決するドライバで行う(inapp モードなら in-app ブリッジの木)。
   - **Android は instrumentation ブリッジの中で撮る**。実機は続けて撮り、エミュレータは 50ms・変化している間は 50→100ms・
     窓の中ほどと終わり(エミュレータのスクリーンショットはホストの CPU を使うため)
 - `ft_batch` も `waitForSettle` を同じ引数で受ける。他ツールの `waitForAnimationToEnd` は `UnavailableCommands` が受け止め、
@@ -744,7 +719,7 @@ let 合計 = httpRequest("https://api.example.com/total").text   // API から�
 `#x` は **identifier で1件も引けなかったときだけ** placeholder が `x` の要素を引きます
 (2026-08-15)。入力欄は**指す手段が経路で割れる**ためです —— HTML の id は
 XCUITest が読む a11y には出ませんが placeholder は出ますし、Android は WebView の版で
-id と placeholder が入れ替わります。同じ欄が実行エンジンや OS 版で指せたり指せなかったり
+id と placeholder が入れ替わります。同じ欄が実行モードや OS 版で指せたり指せなかったり
 するのを、シナリオ側ではなくセレクタ側で吸収します。
 
 ```swift
@@ -812,22 +787,22 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 
 | コマンド | 説明 |
 |---|---|
-| `launchApp(bundleID?, url:?)` | 起動(省略時は**この run の既定アプリ** = 実行プロファイル → アプリプロファイルの `<platform>.app`。)。**iOS の hybrid / inapp で、シナリオの途中にこのシナリオのアプリ以外を起動すると失敗する**(in-app は注入したアプリしか駆動できない。別のアプリの手順は、そのアプリを対象にする別の実行プロファイルのシナリオへ)。**起動済みでも前面化ではなく、常にプロセスを終了してから起動し直す**(Android はブリッジが force-stop+起動、iOS は terminate 込み launch。エントリー画面から始まる)。`url:` を渡すと起動直後にその URL を配送する(配送の詳細・制約は `openURL` を参照)。**配送は最初の画面が描かれてから**(利用者が触れる要素が木に載るまで既定の待ち時間だけ待つ。React Native は JS が listener を登録するまで warm な URL を捨てるので、ブリッジが答えた直後に撃つと届かない。載らないまま配送したときは注記 `launch-url-before-interactive-ui`)。**起動の後の最初のロケータ操作は、解決の前に1回だけ配置の静止を待つ**(`StepExecutor.pendingLaunchSettle`。最初の1枚の後で全体が動く画面 = RN の safe area が後から効く形で、ずれる前の座標がすぐ上のボタンに当たった実測。静止した画面なら約 130ms。待っている間に動いた回は注記 `settled-after-launch`) |
-| `openURL(url)` | 起動済みのアプリへ URL(ディープリンク)を配送し、今の画面の上に遷移を積む(**アプリを再起動しない** = warm 配送。`launchApp(url:)` は逆に先にプロセスを再起動してから配送する)。配送はホスト側の外部コマンドで行う(ブリッジは経由しない): iOS シミュレータ = `simctl openurl` / iOS 実機 = `devicectl device process openURL` / Android = `adb shell am start -W -a android.intent.action.VIEW -d '<url>' <package>`。**カスタムスキーム前提** —— Universal Links/App Links(`https://`)は AASA/assetlinks.json の取得状態に左右され、シミュレータでは Safari に流れることがある。未起動のアプリに撃つと OS がアプリを起動して開くが、想定用途ではない。**iOS の in-app エンジンでは未起動のまま撃つと dylib が注入されずブリッジが死ぬ**ため、ドライバがブリッジ無応答を検知して注入起動してから配送し直す(利用者が意識する必要はないが、**cold start 検証そのものは in-app エンジンでは表現できない**)。iOS シミュレータでは配送直後に SpringBoard が出す初回の確認アラート(「"<表示名>"で開きますか?」。以後は端末+アプリの組で同意が永続する)を xcuitest/hybrid エンジンでは自動了承するが、**in-app エンジン単独では SpringBoard を見られないため自動了承できない**(初回は手動でアラートを閉じるか、事前に一度 xcuitest/hybrid で同意を済ませておく)。遷移は非同期なので直後の検証は通常どおりポーリングで待つ |
+| `launchApp(bundleID?, url:?)` | 起動(省略時は**この run の既定アプリ** = 実行プロファイル → アプリプロファイルの `<platform>.app`。)。**iOS の inapp モードで、シナリオの途中にこのシナリオのアプリ以外を起動すると失敗する**(in-app は注入したアプリしか駆動できない。別のアプリの手順は、そのアプリを対象にする別の実行プロファイルのシナリオへ)。**起動済みでも前面化ではなく、常にプロセスを終了してから起動し直す**(Android はブリッジが force-stop+起動、iOS は terminate 込み launch。エントリー画面から始まる)。`url:` を渡すと起動直後にその URL を配送する(配送の詳細・制約は `openURL` を参照)。**配送は最初の画面が描かれてから**(利用者が触れる要素が木に載るまで既定の待ち時間だけ待つ。React Native は JS が listener を登録するまで warm な URL を捨てるので、ブリッジが答えた直後に撃つと届かない。載らないまま配送したときは注記 `launch-url-before-interactive-ui`)。**起動の後の最初のロケータ操作は、解決の前に1回だけ配置の静止を待つ**(`StepExecutor.pendingLaunchSettle`。最初の1枚の後で全体が動く画面 = RN の safe area が後から効く形で、ずれる前の座標がすぐ上のボタンに当たった実測。静止した画面なら約 130ms。待っている間に動いた回は注記 `settled-after-launch`) |
+| `openURL(url)` | 起動済みのアプリへ URL(ディープリンク)を配送し、今の画面の上に遷移を積む(**アプリを再起動しない** = warm 配送。`launchApp(url:)` は逆に先にプロセスを再起動してから配送する)。配送はホスト側の外部コマンドで行う(ブリッジは経由しない): iOS シミュレータ = `simctl openurl` / iOS 実機 = `devicectl device process openURL` / Android = `adb shell am start -W -a android.intent.action.VIEW -d '<url>' <package>`。**カスタムスキーム前提** —— Universal Links/App Links(`https://`)は AASA/assetlinks.json の取得状態に左右され、シミュレータでは Safari に流れることがある。未起動のアプリに撃つと OS がアプリを起動して開くが、想定用途ではない。**iOS の in-app ブリッジでは未起動のまま撃つと dylib が注入されずブリッジが死ぬ**ため、ドライバがブリッジ無応答を検知して注入起動してから配送し直す(利用者が意識する必要はないが、**cold start 検証そのものは in-app ブリッジでは表現できない**)。iOS シミュレータでは配送直後に SpringBoard が出す初回の確認アラート(「"<表示名>"で開きますか?」。以後は端末+アプリの組で同意が永続する)を自動了承する(XCUITest ブリッジが SpringBoard を見られるため)。XCUITest ブリッジが無いとき(in-app ブリッジ単独)は SpringBoard を見られないため自動了承できない(初回は手動でアラートを閉じる)。遷移は非同期なので直後の検証は通常どおりポーリングで待つ |
 | `restartApp(bundleID?)` | 終了してから起動(プロセス内状態のリセットに)。省略時の既定アプリは `launchApp()` と同じ解決 |
 | `terminateApp()` | 終了 |
-| `installApp(path?)` | アプリをインストール(iOS: `.app` / Android: `.apk` または `.apks`。`.apks` は bundletool が要る)。**実行はオーケストレータ(親プロセス)が行う**。パス省略時はアプリプロファイルの `<platform>.appPath` を親が解決する(明示引数 > プロファイル)。プロファイルにも `appPath` が無ければ明示エラー。Android で別の鍵の署名の同名パッケージが入っていて(`INSTALL_FAILED_UPDATE_INCOMPATIBLE`)入れ直すのは Emulator か debuggable ビルドのときだけ(アンインストールでデータが消えるため。物理端末のストア版・判別できないときは消さずに失敗し `adb uninstall` を案内。入れ直したことは1行の通知になり、run ではステップの `⚠️` ログ行(`installApp()`)とワーカーのログ行(自動インストール)・`ft_install` では応答の本文・`fleetest install` では stderr に出る。ライブ操作の install は応答に載せる口が無く stderr のみ。`ft_*` の自動インストール(プロファイルの autoInstall)は iOS だけの経路なのでこの通知は出ない)。iOS の in-app/hybrid エンジンでは simctl install で常駐ブリッジが道連れに終了するが、直後の `launchApp()` が再注入し直すので、続けて `launchApp()` を呼べば問題ない。オーケストレータ無しの単独実行(`fleetest-scenarios run` を直接叩く等)では従来どおり明示引数が必須(省略時は明示エラー) |
+| `installApp(path?)` | アプリをインストール(iOS: `.app` / Android: `.apk` または `.apks`。`.apks` は bundletool が要る)。**実行はオーケストレータ(親プロセス)が行う**。パス省略時はアプリプロファイルの `<platform>.appPath` を親が解決する(明示引数 > プロファイル)。プロファイルにも `appPath` が無ければ明示エラー。Android で別の鍵の署名の同名パッケージが入っていて(`INSTALL_FAILED_UPDATE_INCOMPATIBLE`)入れ直すのは Emulator か debuggable ビルドのときだけ(アンインストールでデータが消えるため。物理端末のストア版・判別できないときは消さずに失敗し `adb uninstall` を案内。入れ直したことは1行の通知になり、run ではステップの `⚠️` ログ行(`installApp()`)とワーカーのログ行(自動インストール)・`ft_install` では応答の本文・`fleetest install` では stderr に出る。ライブ操作の install は応答に載せる口が無く stderr のみ。`ft_*` の自動インストール(プロファイルの autoInstall)は iOS だけの経路なのでこの通知は出ない)。iOS の inapp モードでは simctl install で常駐ブリッジが道連れに終了するが、直後の `launchApp()` が再注入し直すので、続けて `launchApp()` を呼べば問題ない。オーケストレータ無しの単独実行(`fleetest-scenarios run` を直接叩く等)では従来どおり明示引数が必須(省略時は明示エラー) |
 | `removeApp(id?)` | アプリをアンインストール。省略時は起動中アプリの既定 bundleID/package(`launchApp()` 引数なしと同じ解決)。**入れ直しても権限は戻らない**(iOS シミュレータ実測): 削除→再インストールしても TCC(位置情報等)の許可が残り、許可ダイアログは**再び出ない**。実機の挙動とは違うので「入れ直せば初回状態」を前提にしたシナリオは書けない —— 権限から戻したいなら `clearAppData()`。**自分自身の SUT を消すと、以降のシナリオ実行と in-app ブリッジが壊れる**ので、テスト対象アプリに対して呼ぶのは慎重に |
 | `clearAppData(bundleID?)` | アプリは残しデータだけ消す(再インストール不要)。初回起動・オンボーディング・権限ダイアログの再現に使う。**権限(iOS の TCC / Android の実行時権限)も未許可へ戻す**ので、権限ダイアログが再び出る。**iOS の実機ではアプリを入れ直して消す**(データだけ消す手段が無いため。注記 `reinstalled-to-clear-data`。入れ直す元にアプリプロファイルの `appPathPhysical` が要り、入れ直せないときはアンインストールせずに失敗する)。Android は `pm clear` 相当。**NSUserDefaults / SharedPreferences は消える**(iOS は cfprefsd の入れ直しまで行う)。**キーチェーン(iOS)/ Keystore(Android)に置いた値は消えない** — オンボーディング判定をそこに置いているアプリは初回起動が再現しない |
 | `home()` | ホーム画面へ |
 | `back(settle:)` | 前の画面へ戻る(Android = 戻るキー / iOS = **ナビゲーションバーの戻るボタン、無ければ左端エッジスワイプ**)。**Android はキーボードが開いていると1回目がキーボードを閉じるのに消費される**(OS 仕様)。**iOS で確実に戻れるのはシステムのナビゲーションバーを持つ画面だけ** —— UIKit/SwiftUI は戻るボタン(`BackButton`)を押すので決定的。持たない画面(Compose/Flutter の独自ナビ)はエッジスワイプに落ち、**interactive pop に対応していなければ戻れない**(そのときはアプリ内の戻るボタンを `tap` する)。エッジスワイプは成立しないと同じタッチが下の要素へ渡るので、**戻れない画面で撃たない** |
 | `appSwitcher()` | アプリスイッチャーを開く。**ホームボタンの iPhone(SE 等。画面の寸法がホームボタン機の4種のどれかで判定・`BridgeAPI.isHomeButtonPhoneScreen`)では撃たず、そのシナリオを「対象外(skipped)」で記録する**(失敗ではない)。スイッチャーはハードのダブルプレスで XCUITest から送れない(ブリッジは設計上 422)。理由は `appSwitcher is not available on a home-button iPhone (the switcher is a hardware double-press XCUITest cannot send)`。この step 以降は skipped・結果 JSON は `skipKind: notApplicable` + `skipReason`(`passed: true`)・JUnit は `<skipped>`・レポートの Result は skipped。Android は対象外(従来どおり) |
-| `rotateTo(.portrait / .landscape, settle:)` | 画面を回す。向きは **`.portrait` / `.landscape` の2つだけ**。**契約は「アプリの UI がその向きになること」**で、デバイスがどう傾いているかではない —— テストが観測できる frame と画面サイズは iOS / Android とも、Compose / SwiftUI / View-XML / Flutter / React Native のどれでもアプリ座標系で返るので、跨いで同じ意味を持つのはここまで(左右の区別は観測できないので語彙に置かない)。回した後は**向きが実際に変わるまで待ってから返る**(要求直後は古い向きが読める)。**回転を使ったシナリオは終了時に元の向きへ自動で戻る**(Android は自動回転の設定も戻す)。**アプリが横向きを許可していないと回らない**(iOS は Info.plist の `UISupportedInterfaceOrientations`、Android は `screenOrientation`)。Android は前面の宣言(縦専用・ランチャーの nosensor 等)がその向きを禁じていれば待たずに失敗し、理由に宣言を名指す。宣言が回れるときは画面が追いつくまで待つ(上限 20 秒。負荷下の emulator は 5 秒を超えて回り切ることがある)。iOS はその接続が使っているエンジンで回し、Android はホスト側の adb(`user_rotation`)で回すので実機でも効く。**Android は自動回転を切る**(切らないと角度が保持されない。実測)。MCP の `ft_rotate` も、`.portrait` へ戻したときだけ同じ復元を行う(横向きのまま探索を終えると自動回転は OFF のまま残る。接続が切れて作り直された場合は控えが失われ戻せない) |
-| `fold(waitSeconds:)` | 折りたたみ端末を**外側の画面**へ畳み、デバイスが切り替わったと報告するまで待つ(上限 `waitSeconds`・省略時は実行の既定タイムアウト `tunables.defaultTimeout`)。切り替わらなければ失敗する。**対応**: iOS = iPhone Duo の **Simulator**(Xcode 27.2 以降。XCUITest ブリッジ経由なのでエンジンは `xcuitest` か `hybrid`。`inapp` 単独は不可)/ Android = ヒンジセンサー付き AVD の **Emulator**(Pixel 9 Pro Fold 等)。**iOS の実機は開閉を送れず状態も読めないので対象外(skipped)**(理由は `fold / unfold / hinge cannot drive a physical iPhone (fold it by hand); they run on the iPhone Duo simulator`)。**Android の折りたたみの実機は非対応**(手で畳む)で、その旨の文言で失敗する(折りたためない Android の実機は下の対象外の扱い)。**折りたためないデバイスでは撃たず、そのシナリオを「対象外(skipped)」で記録する**(失敗ではない。`appSwitcher()` と同じ扱い・`skipKind: notApplicable`)。理由は `fold / unfold / hinge need a foldable device (the iPhone Duo simulator or a foldable Android Emulator)`。**折りたたみ状態はシナリオ終了時に自動で元へ戻る**(`rotateTo` の向きと同じ)。iOS の仕組み: Simulator を畳む公開 API は無く、Xcode の DeviceHub と同じ非公開のヒンジイベントを送る。将来の Xcode が受け付けなくなる可能性があるが、切り替わりを確かめるので**黙って通ることはなく、fold / unfold が失敗として表に出る**。MCP は `ft_fold` Android の折りたたみ機は閉じるとアプリの上にロック画面(上にスワイプで続行)が出るので、`fold` はそれを外してから次へ進む(シナリオ前の画面ロック解除と同じ `AndroidPhysicalDevice.wakeIfAsleep`) |
+| `rotateTo(.portrait / .landscape, settle:)` | 画面を回す。向きは **`.portrait` / `.landscape` の2つだけ**。**契約は「アプリの UI がその向きになること」**で、デバイスがどう傾いているかではない —— テストが観測できる frame と画面サイズは iOS / Android とも、Compose / SwiftUI / View-XML / Flutter / React Native のどれでもアプリ座標系で返るので、跨いで同じ意味を持つのはここまで(左右の区別は観測できないので語彙に置かない)。回した後は**向きが実際に変わるまで待ってから返る**(要求直後は古い向きが読める)。**回転を使ったシナリオは終了時に元の向きへ自動で戻る**(Android は自動回転の設定も戻す)。**アプリが横向きを許可していないと回らない**(iOS は Info.plist の `UISupportedInterfaceOrientations`、Android は `screenOrientation`)。Android は前面の宣言(縦専用・ランチャーの nosensor 等)がその向きを禁じていれば待たずに失敗し、理由に宣言を名指す。宣言が回れるときは画面が追いつくまで待つ(上限 20 秒。負荷下の emulator は 5 秒を超えて回り切ることがある)。iOS はその接続が使っているブリッジで回し、Android はホスト側の adb(`user_rotation`)で回すので実機でも効く。**Android は自動回転を切る**(切らないと角度が保持されない。実測)。MCP の `ft_rotate` も、`.portrait` へ戻したときだけ同じ復元を行う(横向きのまま探索を終えると自動回転は OFF のまま残る。接続が切れて作り直された場合は控えが失われ戻せない) |
+| `fold(waitSeconds:)` | 折りたたみ端末を**外側の画面**へ畳み、デバイスが切り替わったと報告するまで待つ(上限 `waitSeconds`・省略時は実行の既定タイムアウト `tunables.defaultTimeout`)。切り替わらなければ失敗する。**対応**: iOS = iPhone Duo の **Simulator**(Xcode 27.2 以降。XCUITest ブリッジ経由。`iosMode` は `inapp` でも `xcuitest` でも使える)/ Android = ヒンジセンサー付き AVD の **Emulator**(Pixel 9 Pro Fold 等)。**iOS の実機は開閉を送れず状態も読めないので対象外(skipped)**(理由は `fold / unfold / hinge cannot drive a physical iPhone (fold it by hand); they run on the iPhone Duo simulator`)。**Android の折りたたみの実機は非対応**(手で畳む)で、その旨の文言で失敗する(折りたためない Android の実機は下の対象外の扱い)。**折りたためないデバイスでは撃たず、そのシナリオを「対象外(skipped)」で記録する**(失敗ではない。`appSwitcher()` と同じ扱い・`skipKind: notApplicable`)。理由は `fold / unfold / hinge need a foldable device (the iPhone Duo simulator or a foldable Android Emulator)`。**折りたたみ状態はシナリオ終了時に自動で元へ戻る**(`rotateTo` の向きと同じ)。iOS の仕組み: Simulator を畳む公開 API は無く、Xcode の DeviceHub と同じ非公開のヒンジイベントを送る。将来の Xcode が受け付けなくなる可能性があるが、切り替わりを確かめるので**黙って通ることはなく、fold / unfold が失敗として表に出る**。MCP は `ft_fold` Android の折りたたみ機は閉じるとアプリの上にロック画面(上にスワイプで続行)が出るので、`fold` はそれを外してから次へ進む(シナリオ前の画面ロック解除と同じ `AndroidPhysicalDevice.wakeIfAsleep`) |
 | `unfold(waitSeconds:)` | 折りたたみ端末を**内側の(大きい)画面**へ開き、切り替わるまで待つ。対応・対象外の扱い・自動復元・失敗の規則は `fold` と同じ |
 | `hinge(_ degrees)` | ヒンジ角を 0(閉じる)〜180(全開)で設定する。半開きのブック姿勢は約 130。**どちらの画面が出るかは確かめない**(`fold` / `unfold` は確かめる)。iPhone Duo の Simulator は切り替わりが**直前の状態に依存**する(実測: 開く方向は 120° と 150° の間・閉じる方向は 20° と 10° の間で切り替わる)。折りたたみ Android の Emulator は姿勢が角度の範囲で決まる(Pixel 9 Pro Fold の AVD: 0〜30 が閉じ・30〜150 が半開き・150〜180 が開き)。対応・対象外の扱い・自動復元は `fold` と同じ。MCP は `ft_fold`(状態 "fold"/"unfold" か角度) |
 | `tapAppIcon(name?)` | ホーム画面のアプリアイコンをタップ(Shirates の `auto` 相当のみ。`tapAppIconMethod` 等のマクロ機構は無い)。**名前省略時はアプリプロファイルの、その OS の `appName`**(`ios.appName` / `android.appName`。親がワーカーの OS で解決して渡す。無ければ明示エラー。ラベルとの完全一致で探すので、`appName` はアイコンの下に出る名前そのものにする —— iOS は `appPath` の表示名と食い違うとプロファイル解決で警告)。手順: `home()`(iOS はもう1回)→ 現在画面で探索 → 見つからなければ Android はドロワーを開いて `flickCenterToTop` で最大8回スクロール探索、iOS は `flickRightToLeft` で最大5ページ送り(2回連続不変化でも打ち切り)。最後まで見つからなければ失敗(`"App icon not found.(name)"`)。**撃つ前に、目的のアイコンの枠が連続2枚の木で同じになるまで読み直す**(動いている最中のドロワー/ページはタップを飲む。待ちの上限は `screenWaitTimeout`)。**撃った後、対象アプリ(名前省略 = プロファイルの `appName`)なら前面になるまで `screenWaitTimeout` まで待ち、ならなければ失敗**(`tapAppIcon "name": tapped the icon at (x,y) but <bundleID> did not come to the foreground within Ns`。**撃ち直さない**)。iOS 実機は前面判定が甘く、検知が弱まるだけ。別アプリの名前を渡したときは前面を問えないので固定 1.5 秒の整定待ち **ホーム画面の木が表示中の画面と一致しないときは撃たない**(iPhone Duo の Simulator × Xcode 27.2 RC で内側の画面の場面が木に混ざる = docs/open-issues.md): 内蔵画面が2枚の Simulator では木の画面の大きさを表示中の画面(`devicectl`)と照合して違えば `the home screen tree reports a … screen but the shown display is …` で、アイコンの中心が画面の外なら `screenWaitTimeout` まで読み直して直らなければ `the home screen reports the icon outside the screen …` で失敗する |
-| `screenshot(filename?)` | 現在の画面を撮り、レポートのこのステップ直後に埋め込む。**iOS の hybrid / xcuitest では XCUITest で画面全体を撮る**(キーボード・システムアラートも写る。in-app 単独と Android はそのエンジンの絵)。ファイル名省略時はステップ連番(`.png`)。**ファイル名はラベル無し**(`screenshot("a.png")`。他の1引数コマンドと同じ形。`screenshot(filename:)` は置いていない = コンパイルエラーが書き方を指す)。Shirates の `force`/`onChangedOnly`/`withXmlSource` は無い。**Android の WebView 画面**は端末のキャプチャに中身が写らないことがあり、その場合だけ CDP から撮ったページ画像を合成する(下記) |
+| `screenshot(filename?)` | 現在の画面を撮り、レポートのこのステップ直後に埋め込む。**iOS では XCUITest ブリッジで画面全体を撮る**(キーボード・システムアラートも写る。Android はそのブリッジの絵)。ファイル名省略時はステップ連番(`.png`)。**ファイル名はラベル無し**(`screenshot("a.png")`。他の1引数コマンドと同じ形。`screenshot(filename:)` は置いていない = コンパイルエラーが書き方を指す)。Shirates の `force`/`onChangedOnly`/`withXmlSource` は無い。**Android の WebView 画面**は端末のキャプチャに中身が写らないことがあり、その場合だけ CDP から撮ったページ画像を合成する(下記) |
 
 ## 待機・分岐・反復
 
@@ -1115,14 +1090,13 @@ XCTest の割り込み監視を通らないので、ランナーが撃つ直前�
 XCTest の既定の割り込みハンドラ(ボタンを押して撃ち直す。「許可」も押す)は止めてある
 (`Runner/FleetestRunnerUITests/InterruptionGuard.swift`)。
 
-| エンジン | 書き方 |
+| モード | 書き方 |
 |---|---|
-| **hybrid**(実行プロファイルの既定) | **普通に書ける** —— `tap("許可")` のように、アプリ側で解決できないセレクタはホストが SpringBoard 参照セッションへ照会して掴む(`exist` / `textIs` / `ifCanSelect` / `repeatWhileCanSelect` も同じ。**`ifCanSelect` 系は 2026-08-19 まで照会していなかった** = 出るか不定のダイアログを書けなかった)。**既定では自動で閉じないので、出る画面では明示的に書くこと** |
-| **xcuitest 単独** | hybrid と同じく書ける(ランナーが SpringBoard 参照のドライバも持つ。実機はこの構成) |
-| **inapp 単独** | 掴めない(注入先アプリのプロセスしか見えない)。ダイアログを操作するシナリオは hybrid か xcuitest で回す |
+| **inapp**(実行プロファイルの既定) | **普通に書ける** —— `tap("許可")` のように、アプリ側で解決できないセレクタはホストが SpringBoard 参照セッションへ照会して掴む(`exist` / `textIs` / `ifCanSelect` / `repeatWhileCanSelect` も同じ。**`ifCanSelect` 系は 2026-08-19 まで照会していなかった** = 出るか不定のダイアログを書けなかった)。**既定では自動で閉じないので、出る画面では明示的に書くこと** |
+| **xcuitest** | inapp と同じく書ける(ランナーが SpringBoard 参照のドライバも持つ。実機はこの構成) |
 
 ```swift
-// 位置情報の許可が出る画面(hybrid)
+// 位置情報の許可が出る画面(inapp モード)
 tap("#request_location")
 ifCanSelect("Appの使用中は許可", waitSeconds: 3) {
     tap("Appの使用中は許可")     // 出なければ何もしない(同意済みの2回目以降)
@@ -1191,7 +1165,7 @@ ifCanSelect("#btnAgree||同意する") { tap("#btnAgree||同意する") }
 並びもラベルもロケールと OS 版で変わる。推測して取り違えると、症状は
 「意図しない権限のまま run が緑で進む」= 沈黙になる。だから押してよいラベルは書かれた分だけとし、
 一覧に無いボタンには触らない(bare の指定は完全一致なので、`"許可"` の指定が「許可しない」を押すことはない)。
-**自動拒否も同じ仕組み**で、並べるラベルを拒否側にするだけ。`engine=hybrid` / `xcuitest` で効く(`inapp` 単独では効かない)。
+**自動拒否も同じ仕組み**で、並べるラベルを拒否側にするだけ。`iosMode` が `inapp` / `xcuitest` のどちらでも効く。
 
 **押したら run ログに残る**(何を押したかまで出す)。権限は後に響く状態なので、自動で
 変えておいて痕跡が無いのは沈黙になる —— **対象アプリと無関係のアラート**(別アプリの許可要求が
@@ -1210,7 +1184,7 @@ ifCanSelect("#btnAgree||同意する") { tap("#btnAgree||同意する") }
 ```
 ❌ 6. [action] tap "#btn_freeze_3s"
    system UI is covering the app (“FT E2E iOS”に写真ライブラリへのアクセスを許可しますか?).
-   The in-app engine could still reach the app, but a person could not, so the step was not
+   The in-app bridge could still reach the app, but a person could not, so the step was not
    performed. None of the registered iosAlertHandler entries
    (*写真ライブラリ*→Appの使用中は許可) matched a button on it.
    Buttons on this alert: "写真を選択" / "フルアクセスを許可" / "許可しない".
@@ -1248,7 +1222,7 @@ in-app の木は自プロセスしか見えないのでレポートにも痕跡�
 (注記 `waited-for-system-ui`)。
 
 **判定は XCUITest ランナーに聞く**(`GET /systemalert`)ので、**ランナーが居る構成が要る**
-(`engine=hybrid` / `xcuitest`)。`engine=inapp` 単独は判定を持たない = 従来どおり通る。
+(`iosMode` が `inapp` / `xcuitest` のどちらでも)。
 費用は1往復あたり約 73ms(アラート無しのとき。実測 2026-08-21)で、払うのは
 **操作の直前**と**検証が緑になったとき**の各1回。ポーリングの周回ごとには払わず、
 **検証が失敗したときは聞かない**(既に止まるので往復を足す価値がない)。

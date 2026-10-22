@@ -421,7 +421,7 @@
   "containerInference": true,
   "heal": true,
   "homeOnStart": true,
-  "iosInappEngine": false,
+  "iosMode": "xcuitest",
   "record": true,
   "recoverCpuFallbackToGpu": true,
   "screenLooksLike": true,

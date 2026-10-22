@@ -1,5 +1,5 @@
 // 座標コマンド(`tap(x:y:)` / `swipePointToPoint`)は FlowStep を組んで StepExecutor を通す。
-// ドライバを直に叩く形へ戻ると、システム UI の門・直前の操作記録のリセット・hybrid の drag フォールバック
+// ドライバを直に叩く形へ戻ると、システム UI の門・直前の操作記録のリセット・inapp モードの drag フォールバック
 // (dragWithFallback)が座標経路だけ効かなくなる(ft_batch の `tap x: y:` とも挙動が割れる)
 
 import XCTest

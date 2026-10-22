@@ -177,7 +177,7 @@ struct ApiLiveServe: AsyncParsableCommand {
             }
         }
 
-        var (driver, port, ownAppBundleID, primaryEngine) = try await makeLiveDriver()
+        var (driver, port, ownAppBundleID, primaryBridge) = try await makeLiveDriver()
         // var: 別のデバイスにポートを取られたとき、解決し直した新しいポートの起動器へ差し替える(下の .refuse)
         var starter = makeAutoStarter(port: port)
         // **本人確認(下)も follower と同じ値を使う**(独立に導出すると判定用と実際の駆動用が
@@ -196,7 +196,7 @@ struct ApiLiveServe: AsyncParsableCommand {
             platform: driverOptions.resolvedPlatform, udid: udid,
             explicitAndroidSerial: driverOptions.serial, log: { logStderr($0) })
         deviceLease?.refresh(acting: false)
-        // serve は1プロセスが1台を見続けるので、MCP の engineKey 付き辞書と違い記録は1つで足りる
+        // serve は1プロセスが1台を見続けるので、MCP の sessionKey 付き辞書と違い記録は1つで足りる
         let staleFrameTracker = LiveStaleFrameTracker()
         let screenMemo = LiveScreenMemo()
         let runnerHealth = LiveRunnerHealthMemo()
@@ -250,31 +250,31 @@ struct ApiLiveServe: AsyncParsableCommand {
                 let endpoint = BridgeEndpoint.load(port: port, repoRoot: repoRoot)
                 driver = BridgeClient(endpoint: endpoint)
                 // **LiveBridgeAutoStarter は XCUITest しか起動しない**(旧ビルド再起動・接続拒否からの
-                // 起動、どちらも launchBridge が xcodebuild で起動する)ので、以後の期待エンジンも固定
-                primaryEngine = "xcuitest"
+                // 起動、どちらも launchBridge が xcodebuild で起動する)ので、以後の期待ブリッジも固定
+                primaryBridge = "xcuitest"
                 await runnerHealth.reset()
                 logStderr("switched the driver to \(endpoint.host):\(port) (announced by the runner)")
             }
-            // **port の本人確認(udid + エンジン)を毎コマンド撃つ**(maintainer-notes §51.2・§51.10 と同型の穴):
+            // **port の本人確認(udid + ブリッジ)を毎コマンド撃つ**(maintainer-notes §51.2・§51.10 と同型の穴):
             // makeLiveDriver は起動時に1回組むきりで、フリートが run のたびにブリッジを
-            // 起動し直すと port が別デバイス、あるいは**同じデバイスの別エンジン**へ移り得る ——
-            // hybrid なら home/appSwitcher/drag/座標 press/gesture/pinch(fallback 経由)が、
-            // 非 hybrid ならすべての呼び出しが黙って別物(別デバイス、または in-app ⇄ xcuitest で
-            // ref 体系・サポート操作が別)へ届く。primaryEngine(composeDriver が決める。
-            // hybrid/genuine xcuitest は "xcuitest"、in-app 単独は "inapp")を期待値にするので、
+            // 起動し直すと port が別デバイス、あるいは**同じデバイスの別ブリッジ**へ移り得る ——
+            // inapp モードなら home/appSwitcher/drag/座標 press/gesture/pinch(fallback 経由)が、
+            // xcuitest モードならすべての呼び出しが黙って別物(別デバイス、または in-app ⇄ xcuitest で
+            // ref 体系・サポート操作が別)へ届く。primaryBridge(composeDriver が決める。
+            // inapp/xcuitest モードは "xcuitest"、in-app ブリッジ単独は "inapp")を期待値にするので、
             // in-app 単独の構成を xcuitest 期待で誤検知しない。
             // **frame(自動更新)には掛けない**(継続的に飛ぶので絶え間ない probe になる。
             // ライブ操作は人の操作1つに1回なのでコマンドごとの probe は許容できる)。
             // 判定は MCP(fleetest-mcp)と同じ `FTBridgeClient.HybridFallbackIdentity`
             // (`FTCore.BridgeIdentityCheck`)の1箇所。**不明は「変わった」に倒さない**
-            // **`expectedEngine` という別名で unwrap する**(`if let primaryEngine` にすると、
-            // ブロック内の `primaryEngine` が外側の `var`(4行下の代入対象)を隠して
+            // **`expectedBridge` という別名で unwrap する**(`if let primaryBridge` にすると、
+            // ブロック内の `primaryBridge` が外側の `var`(4行下の代入対象)を隠して
             // 「let への代入」でコンパイルエラーになる)
             if command.cmd != "frame", driverOptions.resolvedPlatform == "ios", let udid,
-               let expectedEngine = primaryEngine,
+               let expectedBridge = primaryBridge,
                let repoRoot = try? RepoRoot.find() {
                 let drift = await HybridFallbackIdentity.drifted(
-                    port: port, expectedUDID: udid, expectedEngine: expectedEngine, repoRoot: repoRoot)
+                    port: port, expectedUDID: udid, expectedBridge: expectedBridge, repoRoot: repoRoot)
                 switch Self.liveDriftOutcome(drift: drift, port: port, expectedUDID: udid) {
                 case .unchanged:
                     break
@@ -290,11 +290,11 @@ struct ApiLiveServe: AsyncParsableCommand {
                     if resolution.endpoint.port == port,
                        let rebuilt = try? await composeDriver(
                            resolution: resolution, physical: physical, repoRoot: repoRoot) {
-                        (driver, port, ownAppBundleID, primaryEngine) = rebuilt
-                        logStderr("port \(port) no longer matched \(udid) (expected the \(expectedEngine)"
-                                  + " engine) — rebuilt the driver")
+                        (driver, port, ownAppBundleID, primaryBridge) = rebuilt
+                        logStderr("port \(port) no longer matched \(udid) (expected the \(expectedBridge)"
+                                  + " bridge) — rebuilt the driver")
                     } else {
-                        logStderr("port \(port) no longer matches \(udid) as the \(expectedEngine) engine, but a"
+                        logStderr("port \(port) no longer matches \(udid) as the \(expectedBridge) bridge, but a"
                                   + " fresh resolution could not be composed for it yet — continuing with the"
                                   + " previous driver")
                     }
@@ -311,7 +311,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                     var refusal = message
                     if let resolved = try? await makeLiveDriver(), resolved.1 != port {
                         refusal = Self.reroutedMessage(fromPort: port, toPort: resolved.1, expectedUDID: udid)
-                        (driver, port, ownAppBundleID, primaryEngine) = resolved
+                        (driver, port, ownAppBundleID, primaryBridge) = resolved
                         starter = makeAutoStarter(port: port)
                         await runnerHealth.reset()
                     }
@@ -334,7 +334,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                         runnerHealth: runnerHealth)
             ResidentProcessGuard.noteCommandEnd()
             await checkRunnerHealth(command: command, elapsed: Date().timeIntervalSince(commandStarted),
-                                    primaryEngine: primaryEngine, port: port,
+                                    primaryBridge: primaryBridge, port: port,
                                     autoStarts: starter != nil, memo: runnerHealth)
         }
         // stdin EOF / シグナルでループを抜けた。自分の印を残すと、使っていないデバイスを他プロセスが
@@ -351,8 +351,8 @@ struct ApiLiveServe: AsyncParsableCommand {
     ///
     /// in-app が居ない(指定ポートが XCUITest・Android)ときは単独で使う。
     /// 戻り値のポートは以後の自動起動・再起動が同じ宛先を見るために返す。3つ目の戻り値は
-    /// hybrid のとき in-app が住んでいる own app の bundleID(launchGuard が own app への
-    /// launch/activate を素通しするのに使う。hybrid でなければ nil)
+    /// inapp モードのとき in-app が住んでいる own app の bundleID(launchGuard が own app への
+    /// launch/activate を素通しするのに使う。inapp モードでなければ nil)
     ///
     /// **resolve が返した宛先は udid で本人確認する**(FTCore.BridgeIdentityCheck。実地 L1:
     /// 既定ポートに別デバイスの生きたブリッジが居るのを見逃し、操作を撃ち・版差を理由に止めて
@@ -365,9 +365,9 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// 空きポートを充てて「まだ居ない」の形(接続拒否)に落とし、自動起動
     /// (LiveBridgeAutoStarter)に委ねる。ここが無いと、自動起動が想定している
     /// まさにその場面(ブリッジ未着手のデバイスを既定ポートで開く)が塞がれる
-    /// **4つ目の戻り値**(maintainer-notes §51.10): `port` の期待エンジン(composeDriver 参照)。**Android と、
+    /// **4つ目の戻り値**(maintainer-notes §51.10): `port` の期待ブリッジ(composeDriver 参照)。**Android と、
     /// デバイスがまだ無いプレースホルダ(自動起動待ち)は nil** —— どちらも「今 probe してよい
-    /// エンジンの期待」が無い(Android は engine の概念が無く、プレースホルダは
+    /// ブリッジの期待」が無い(Android はブリッジ種別の概念が無く、プレースホルダは
     /// 何も応答しない = 自動起動の成功を「switched the driver」が拾ってから初めて分かる)。
     /// run() の毎コマンド確認は nil のときは何もしない
     private func makeLiveDriver() async throws -> (AppDriver, UInt16, String?, String?) {
@@ -377,8 +377,8 @@ struct ApiLiveServe: AsyncParsableCommand {
         let repoRoot = try? RepoRoot.find()
         // **autoStart:false**(= 走査までで止める)。serve は常駐で、拡張は応答が無いと
         // kill→respawn するため、起動時に build-for-testing(分単位)でブロックしてはいけない。
-        // hybrid は in-app と XCUITest を両方張るので走査だけで必ず見つかる。
-        // 見つからないのは engine=inapp 単独のときで、そのときは理由を stderr に出して素通しする
+        // inapp モードは in-app と XCUITest を両方張るので走査だけで必ず見つかる。
+        // 見つからないのは XCUITest ブリッジが無いときで、そのときは理由を stderr に出して素通しする
         let resolution = await XCUIBridgeResolver.resolve(
             preferred: driverOptions.resolvedPort, repoRoot: repoRoot, autoStart: false,
             logger: { message in
@@ -388,7 +388,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         guard let udid else {
             return try await composeDriver(resolution: resolution, physical: physical, repoRoot: repoRoot)
         }
-        // resolve は preferred ポートを疎通・engine だけで採る(別デバイスでも疎通すれば
+        // resolve は preferred ポートを疎通・ブリッジ種別だけで採る(別デバイスでも疎通すれば
         // そのまま返す)。ここで本人確認してから使う(以後の checkAndRestartIfStale も
         // この確認を経た宛先にしか触れない)
         let isInAppOnly = resolution.inApp?.endpoint.port == resolution.endpoint.port
@@ -501,7 +501,7 @@ struct ApiLiveServe: AsyncParsableCommand {
             throw DriverError.bridgeIdentityMismatch(mismatch)
         }
         let placeholder = BridgeClient(endpoint: BridgeEndpoint.load(port: freePort, repoRoot: repoRoot))
-        // 期待エンジンは nil にしない(= 毎コマンドの本人確認を飛ばさない)。予約ではないので、自動起動を
+        // 期待ブリッジは nil にしない(= 毎コマンドの本人確認を飛ばさない)。予約ではないので、自動起動を
         // 待つ間にこのポートへ別のデバイスのブリッジが立つと、nil のままでは操作がそのまま届く。
         // 立つのは LiveBridgeAutoStarter の XCUITest だけなので "xcuitest"。無応答の間は .none で素通し
         return (placeholder, freePort, nil, "xcuitest")
@@ -518,9 +518,9 @@ struct ApiLiveServe: AsyncParsableCommand {
     }
 
     /// resolve(または乗り換え後の resolve)の結果から実際に使うドライバを組み立てる。
-    /// hybrid の in-app 側(別ポート)はここで初めて本人確認する——xcuitest 側だけでは検分できない。
+    /// inapp モードの in-app 側(別ポート)はここで初めて本人確認する——xcuitest 側だけでは検分できない。
     /// **4つ目の戻り値**は、以後の毎コマンドの本人確認(run() の drift チェック・maintainer-notes §51.10)が
-    /// `port` へ probe を撃つときの期待エンジン —— hybrid/genuine xcuitest は `"xcuitest"`、
+    /// `port` へ probe を撃つときの期待ブリッジ —— inapp/xcuitest モードは `"xcuitest"`、
     /// XCUITest が見つからず in-app 単独に落ちたときだけ `"inapp"`(`port` がそのまま
     /// in-app ポートを指すため)。ここを固定にすると in-app 単独の構成を xcuitest 期待で
     /// probe してしまい、毎コマンド誤検知で作り直しを繰り返す
@@ -535,12 +535,12 @@ struct ApiLiveServe: AsyncParsableCommand {
               let repoRoot, let udid else {
             // **in-app 単独の判定は「inApp があり、かつそのポートが resolution.endpoint と同じ」
             // だけ**(makeLiveDriver の isInAppOnly と同じ式)。inApp はあるがポートが違う
-            // (hybrid になり得たのに repoRoot/udid が無くて諦めた)回は resolution.endpoint が
+            // (inapp モードになり得たのに repoRoot/udid が無くて諦めた)回は resolution.endpoint が
             // xcuitest 側なので、ここで inApp の有無だけで判定すると誤る
             let isInAppOnly = resolution.inApp.map { $0.endpoint.port == resolution.endpoint.port } ?? false
             return (xcui, resolution.endpoint.port, nil, isInAppOnly ? "inapp" : "xcuitest")
         }
-        // hybrid の in-app 側は別ポート(=別ブリッジ)なので、呼び出し元の確認はこちらを検分していない。
+        // inapp モードの in-app 側は別ポート(=別ブリッジ)なので、呼び出し元の確認はこちらを検分していない。
         // 無応答(.silent)は素通しする —— in-app は背面へ回ると答えないので、ここで断ると
         // 通常の遷移で serve が開けなくなる
         if case .mismatch(let detail) = await Self.portIdentity(
@@ -558,14 +558,14 @@ struct ApiLiveServe: AsyncParsableCommand {
         let driver = HybridDriverComposition.inAppFirst(
             inApp: inAppDriver, attach: attach, foreignApp: xcui, bundleID: inApp.bundleID)
         // 以後の自動起動・再起動が見るのは **XCUITest 側**(in-app は dylib 注入で起動し直せない)。
-        // fallback(xcuitest)側の期待エンジンは常に "xcuitest"(MCP の hybridFallbackPorts と同じ)
+        // fallback(xcuitest)側の期待ブリッジは常に "xcuitest"(MCP の hybridFallbackPorts と同じ)
         return (driver, resolution.endpoint.port, inApp.bundleID, "xcuitest")
     }
 
     /// 毎コマンドの本人確認(`HybridFallbackIdentity.drifted` の3値)から、この1コマンドを
-    /// どう扱うかを決める。**走査から切り離した純粋関数**(MCP の `primaryEngineOutcome` と同じ
+    /// どう扱うかを決める。**走査から切り離した純粋関数**(MCP の `primaryBridgeOutcome` と同じ
     /// 理由・テスト用): 実ブリッジ無しで「差し替える/断る/何もしない」の判定を固定できる。
-    /// `sameDeviceEngineChanged` は同じデバイスのブリッジがエンジンを変えただけなので差し替えて続ける。
+    /// `sameDeviceBridgeChanged` は同じデバイスのブリッジがブリッジ種別を変えただけなので差し替えて続ける。
     /// `differentDevice` は別の実体なので、同じポートへ作り直すと乗り換えたまま気付かず操作を
     /// 撃ち続ける —— 断る
     enum LiveDriftOutcome: Equatable {
@@ -577,7 +577,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     ) -> LiveDriftOutcome {
         switch drift {
         case .none: return .unchanged
-        case .sameDeviceEngineChanged: return .rebuild
+        case .sameDeviceBridgeChanged: return .rebuild
         case .differentDevice: return .refuse(differentDeviceMessage(port: port, expectedUDID: expectedUDID))
         }
     }
@@ -620,7 +620,7 @@ struct ApiLiveServe: AsyncParsableCommand {
             reported, port: endpoint.port, repoRoot: try? RepoRoot.find())
         let expected = BridgeIdentityCheck.Expected(
             port: endpoint.port, udid: requestedUDID, physical: physical,
-            engine: isInApp ? "inapp" : "xcuitest")
+            bridge: isInApp ? "inapp" : "xcuitest")
         // **対処は run のレーンと違う** —— ここで直すのは宛先の指定で、レーンの起動し直しではない
         if case .mismatch(let detail) = BridgeIdentityCheck.verdict(
             expected: expected, status: status,
@@ -690,9 +690,9 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// 門は run の測り直しと同じ値(劣化したランナーでは 1 問を含む操作は必ずこれを越え、健全な速い
     /// 操作では測らない)。frame(自動更新)は人の操作ではないので見ない。in-app 単独は XCUITest を持たない
     private func checkRunnerHealth(command: ApiLiveServeCommand, elapsed: TimeInterval,
-                                   primaryEngine: String?, port: UInt16, autoStarts: Bool,
+                                   primaryBridge: String?, port: UInt16, autoStarts: Bool,
                                    memo: LiveRunnerHealthMemo) async {
-        guard driverOptions.resolvedPlatform == "ios", primaryEngine == "xcuitest",
+        guard driverOptions.resolvedPlatform == "ios", primaryBridge == "xcuitest",
               command.cmd != "frame", await !memo.warned,
               let repoRoot = try? RepoRoot.find() else { return }
         let injected = RunnerAccessibilityHealth.injectedSlowPorts().contains(port)
@@ -803,7 +803,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         if SessionRecoveryDriver.isAccessibilityTemporarilyDown(error) {
             return message + Self.accessibilityOutageHint
         }
-        if case DriverError.bridgeUnreachable(let context, _) = error, context.engine == .iosXCUITest {
+        if case DriverError.bridgeUnreachable(let context, _) = error, context.bridge == .iosXCUITest {
             let probe = await BridgeDiscovery.probeStatus(port: port, repoRoot: try? RepoRoot.find())
             let starterIsIdle = await starter?.isIdle ?? true
             switch BridgeUnreachableGuidance.decide(
@@ -928,7 +928,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// launch/activate の前に確かめる(門は InstalledAppCheck.launchGuard の1箇所。MCP の
     /// ft_launch と同じ判定・文言だけ呼び手ごと)。未インストールのまま
     /// `XCUIApplication.launch()` を撃つとランナーが約60秒でハングして自壊する(実測 L2)。
-    /// own app(hybrid で in-app が既に繋がっているアプリ)への launch/activate は素通しする ——
+    /// own app(inapp モードで in-app が既に繋がっているアプリ)への launch/activate は素通しする ——
     /// in-app は XCUITest を経由せず、繋がっている時点でインストール済みが確定している
     /// iOS の hideKeyboard はライブ操作では撃たない(ユーザー決定)。iOS にはキーボードだけを閉じるキーが無く、DSL・MCP の
     /// hideKeyboard は「キーボードの上の空きを叩く(DSL はさらに Enter)」= 人が画面を見て自分でできる操作。ブリッジの 501 の
@@ -946,7 +946,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         let verdict = LaunchInstallVerdict.read(bundleID: bundle, driver: driver,
                                                 isAndroid: isAndroid, udid: udid)
         switch InstalledAppCheck.launchGuard(
-            verdict: verdict, isAndroid: isAndroid, engine: isAndroid ? nil : "xcuitest", bundleID: bundle) {
+            verdict: verdict, isAndroid: isAndroid, bridge: isAndroid ? nil : "xcuitest", bundleID: bundle) {
         case .allow:
             return
         case .refuse(.notInstalled):
@@ -1351,7 +1351,7 @@ struct ApiLiveServe: AsyncParsableCommand {
 
 /// emitObservation が撮る絵(PNG)と木を FTCore.StaleFrameDetector へ渡し、直前の記録と比べる
 /// (二つ目の判定は書かない。契約は StaleFrameDetector.swift のコメント参照)。serve は1プロセスが
-/// 1台を見続けるので、MCP の engineKey 付き辞書と違い記録は1つで足りる。
+/// 1台を見続けるので、MCP の sessionKey 付き辞書と違い記録は1つで足りる。
 /// **not private**(テストが `@testable import fleetest` で直接呼ぶため)
 actor LiveStaleFrameTracker {
     private var previous: StaleFrameDetector.Record? = nil

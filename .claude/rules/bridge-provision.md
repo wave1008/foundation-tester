@@ -78,7 +78,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **固まった転送**(ブリッジが消えて iproxy だけ残る)= connect は通るのに応答無しで即切れる /
   本当に busy = 上限まで保持 / 不在 = connect が即 拒否。**固まりには `bridge up` を勧める**
   (「2本目を起動させる」懸念は生きたブリッジがある前提なので成立しない)。
-  **in-app/hybrid には固まりの文言を出さない**(あちらは前面から外れただけのことが多い)。
+  **inapp モード(in-app ブリッジ)には固まりの文言を出さない**(あちらは前面から外れただけのことが多い)。
   **`.pid` の生死では捕まらない** —— xcodebuild は生きたまま待ち続ける → maintainer-notes §44.1。
   **所要時間だけで「消えた」と言わない** —— 塞がったシミュレータのランナーも backlog が溢れて即切れる
   (シミュレータに転送役は居ない)。ループバックで待受の実体が iproxy でなければ busy(`resolveTransportFailure`)
@@ -97,7 +97,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   `FTCore.BridgeIdentityCheck` で確かめる**(シナリオ実行プロセスの事前確認と、ホストの
   `bridgeUnreachable` 再プローブ = `BridgeProbeOutcome.hijacked`、**ライブ操作(`api live serve`)の
   宛先決定と `LiveBridgeAutoStarter.checkAndRestartIfStale`**。bundle ID が同じ別のデバイスは
-  /status の udid / engine でしか見分けられない)。**ライブ操作は `--udid` の明示/既定で扱いを分ける** ——
+  /status の udid / bridge でしか見分けられない)。**ライブ操作は `--udid` の明示/既定で扱いを分ける** ——
   `--port` を明示されたら不一致は断る / **既定ポートへのフォールバックなら断らずにその udid の
   ポートを探し、無ければ空きポートへ向けて自動起動に委ねる**(拡張は port が分かるときだけ
   `--port` を渡すので、**ブリッジのまだ無いデバイスを開く場面**で既定 8123 に居る別のデバイスを掴んでいた。

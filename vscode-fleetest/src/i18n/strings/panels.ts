@@ -146,9 +146,14 @@ export const panelsStrings = {
     en: "Prefer visual verification by CheckStateClassifier when judging check states",
   },
   "panels.runProfile.iosSectionTitle": { ja: "iOS", en: "iOS" },
-  "panels.runProfile.inappEngineLabel": {
-    ja: "Simulatorで高速なinappエンジンを使用する",
-    en: "Use the fast in-app engine on Simulator",
+  "panels.runProfile.iosModeLabel": { ja: "iOS のモード", en: "iOS mode" },
+  "panels.runProfile.iosModeInapp": {
+    ja: "inapp(in-app ブリッジ + XCUITest ブリッジ)",
+    en: "inapp (in-app bridge + XCUITest bridge)",
+  },
+  "panels.runProfile.iosModeXcuitest": {
+    ja: "xcuitest(XCUITest ブリッジだけ)",
+    en: "xcuitest (XCUITest bridge only)",
   },
   "panels.runProfile.iosPreActionPingLabel": {
     ja: "WebView画面は直前の接続確認(ランナーへの問い合わせ)を行い安定性を向上させる",

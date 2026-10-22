@@ -403,7 +403,7 @@
   "containerInference": true,
   "heal": true,
   "homeOnStart": true,
-  "iosInappEngine": true,
+  "iosMode": "inapp",
   "iosPreActionPing": true,
   "ocrTextVisibilityCheck": true,
   "playProtectBypass": true,

@@ -1,5 +1,5 @@
 // MCPServer+Driver.swift
-// ドライバ解決(エンジン・ポート/シリアル・版ズレゲート)と接続系の注記。本体は MCPServer.swift(instance 状態はそちらに置く)
+// ドライバ解決(ブリッジ・ポート/シリアル・版ズレゲート)と接続系の注記。本体は MCPServer.swift(instance 状態はそちらに置く)
 
 import Foundation
 import FTFoundationModels
@@ -36,7 +36,7 @@ extension MCPServer {
     /// 確認は 0.1 秒前後(run のシナリオごとの確認と同じ関数)
     func prepareAndroidDeviceIfNeeded(_ resolved: AppDriver, args: [String: Any]) async {
         guard resolved is AndroidDriver, makeDriver == nil else { return }
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         guard let serial = connectedAndroidSerials[key] else { return }
         // エミュレータも起こし直し後にロック画面のまま残るので、毎回の確認だけは撃つ。
         // 初回の prepareForRun(点灯・解除を最後まで待つ)は実機だけ
@@ -57,11 +57,11 @@ extension MCPServer {
     // 同じデバイスの XCUITest へ振り替える
     func resolveDriver(_ args: [String: Any]) async throws -> AppDriver {
         if let makeDriver {
-            // 差し替えドライバのエンジンは分からない。**助言が出る側(xcuitest)を既定**にする
-            // (テストは engines を先に埋めて別のエンジンを名乗れる)
-            let key = Self.engineKey(args)
-            if engines[key] == nil {
-                engines[key] = (args["platform"] as? String) == "android" ? "android" : "xcuitest"
+            // 差し替えドライバのブリッジは分からない。**助言が出る側(xcuitest)を既定**にする
+            // (テストは bridges を先に埋めて別のブリッジを名乗れる)
+            let key = Self.sessionKey(args)
+            if bridges[key] == nil {
+                bridges[key] = (args["platform"] as? String) == "android" ? "android" : "xcuitest"
             }
             let driver = try await makeDriver(args)
             // **差し替え経路でもゲートを通せるようにする**(G): 素通しにすると拒否そのものが
@@ -81,17 +81,17 @@ extension MCPServer {
             // 「profile を使う利用者にだけ穴が残る」形になる
             if let cached = drivers[key] {
                 if let moved = await deviceIdentityChanged(key, args: args) { throw MCPError(moved) }
-                // **maintainer-notes §51.10**: エンジン(xcuitest/inapp/hybrid)が同じ機のまま入れ替わっていないかも
+                // **maintainer-notes §51.10**: モード(xcuitest/inapp)が同じ機のまま入れ替わっていないかも
                 // 確かめる(udid だけでは捕まらない・ref を使わない呼び出しでも効かせる)。
                 // 食い違っていれば `.refuse`(記憶に依る呼び出し)か `.rebuildSilently`
                 // (依らない呼び出し。下の生成へそのまま落ちる)のどちらか
-                switch await primaryEngineCheck(key, args: args) {
+                switch await primaryBridgeCheck(key, args: args) {
                 case .refuse(let message):
                     throw MCPError(message)
                 case .rebuildSilently:
                     break
                 case .unchanged:
-                    // **hybrid の fallback(XCUITest)ポートも本人確認する**(maintainer-notes §51.2): 主(in-app)の udid が
+                    // **inapp モードの fallback(XCUITest)ポートも本人確認する**(maintainer-notes §51.2): 主(in-app)の udid が
                     // 変わっていなくても、`HybridFallbackDriver` の fallback は別ポートを握ったままで
                     // 起動し直しにより別の機へ移り得る。fallback には ref が乗らないので(primary と違い)
                     // 捨てるべきセッション記憶が無い —— キャッシュだけ落として下の生成へ通す
@@ -140,7 +140,7 @@ extension MCPServer {
                 created = try AndroidDriver(serial: serial)
             }
             drivers[key] = created
-            engines[key] = {
+            bridges[key] = {
                 if case .ios = target { "xcuitest" }   // MCP の iOS は常に XCUITest(iosDriver)
                 else { "android" }
             }()
@@ -174,7 +174,7 @@ extension MCPServer {
             if case .android(let serial, _) = target {
                 connectedAndroidSerials[key] = serial
             }
-            // profile 経由なら対象 bundleID が分かるので、engine を問わず静的に判定して覚える
+            // profile 経由なら対象 bundleID が分かるので、bridge を問わず静的に判定して覚える
             // (DSL と同じ AppUIFrameworkQuery。静的に決まらなければ resolveExecutorHints が
             // in-app の自己申告まで問う)。実機は appPathPhysical(.app / .ipa)か台帳で答える
             if case .ios(let provisioned, let iosApp) = target, let bundleID = iosApp?.bundleID,
@@ -216,7 +216,7 @@ extension MCPServer {
             // —— 供給の判断とホストの期待がズレた回に、黙って旧ブリッジを操作させない
             try await enforceVersion(driver: created, key: key, args: args)
             // **プロファイルの autoInstall は MCP でも効かせる**: 供給がアプリを先に入れるのは in-app のときだけで、
-            // MCP は XCUITest で供給する(resolveProfileTarget)ので、ここで入れないと hybrid / in-app のプロファイルで
+            // MCP は XCUITest で供給する(resolveProfileTarget)ので、ここで入れないと inapp モード / in-app のプロファイルで
             // 「入っていない」と ft_launch が断る。**入っていないときだけ**入れる(入れ直しは動いているアプリを
             // 終了させる = 探索中の画面を失う。差分の入れ直しは run の installIfNeeded の役目)
             if case .ios(let provisioned, let iosApp) = target, let iosApp, iosApp.autoInstall,
@@ -229,7 +229,7 @@ extension MCPServer {
             return created
         }
 
-        // **engineKey と同じ解決を使う**(Self.platformName): ここに2つ目の既定を書くと、
+        // **sessionKey と同じ解決を使う**(Self.platformName): ここに2つ目の既定を書くと、
         // 「どのドライバを作るか」と「どの鍵で覚えるか」が食い違う。実際 serial だけの
         // 呼び出しは、記憶側が Android と読むのにドライバは iOS を作っていた
         let platform = Self.platformName(args)
@@ -239,7 +239,7 @@ extension MCPServer {
                                       serial: args["serial"] as? String)
         if let cached = drivers[key] {
             // **キャッシュ命中のドライバが、まだ同じ機を指しているかを確かめる**。
-            // engineKey は `direct:ios:<port>:` で、**port は機の同一性ではない** ——
+            // sessionKey は `direct:ios:<port>:` で、**port は機の同一性ではない** ——
             // ブリッジを起動し直すと同じ port が別のシミュレータのものになる。実機で再現:
             // 8123 で機A の木を採った後、`bridge down --port 8123` → `bridge up --device 機B
             // --port 8123` としてから**同じセッション**で古い ref を撃つと、
@@ -250,15 +250,15 @@ extension MCPServer {
             if let moved = await deviceIdentityChanged(key, args: args) {
                 throw MCPError(moved)
             }
-            // **maintainer-notes §51.10**(profile 経路の同じ確認と理由は同じ): エンジンが同じ機のまま入れ替わって
+            // **maintainer-notes §51.10**(profile 経路の同じ確認と理由は同じ): ブリッジが同じ機のまま入れ替わって
             // いないかも確かめる(Android のキーは connectedPorts が無いので即 .unchanged)
-            switch await primaryEngineCheck(key, args: args) {
+            switch await primaryBridgeCheck(key, args: args) {
             case .refuse(let message):
                 throw MCPError(message)
             case .rebuildSilently:
                 break
             case .unchanged:
-                // **hybrid の fallback(XCUITest)ポートも本人確認する**(maintainer-notes §51.2。profile 経路の
+                // **inapp モードの fallback(XCUITest)ポートも本人確認する**(maintainer-notes §51.2。profile 経路の
                 // 同じ確認と理由は同じ)。fallback には ref が乗らないのでキャッシュだけ落とし、
                 // 下の生成へ通す(セッション記憶は主の udid が変わっていないので保つ)
                 if await hybridFallbackDrifted(key) {
@@ -304,15 +304,15 @@ extension MCPServer {
                                            nowUDID: resolved.udid ?? ""))
             }
             created = resolved.driver
-            engines[key] = resolved.engine
+            bridges[key] = resolved.bridge
             udids[key] = resolved.udid
-            hybridFallbackPorts[key] = nil   // MCP の iOS は XCUITest だけ(hybrid の予備ポートは無い)
+            hybridFallbackPorts[key] = nil   // MCP の iOS は XCUITest だけ(inapp モードの予備ポートは無い)
             // **宛先は port だけでなく udid まで書く**(実アプリ監査): ブリッジは
             // 落ちても monitor が別ポートで起動し直すので、**同じセッション中にポートが動く**
             // (実測: -03 が 8128→8126、-07 が 8136→8147)。port だけを覚えて使い回す読み手は、
             // その port が今どの機かを確かめる手段が無かった
             // **繋いだ先も記憶する宛先も実際のポート**(in-app から XCUITest へ振り替えたときはそちら)。
-            // 照合(primaryEngineDrift・deviceIdentityChanged)・表示・接続断の片付け(forgetConnection)が同じ相手を見る。
+            // 照合(primaryBridgeDrift・deviceIdentityChanged)・表示・接続断の片付け(forgetConnection)が同じ相手を見る。
             // 呼び手のポートを覚えると、同じ端末のポートが名指しの記憶に2つ並び、宛先を書かない呼び出しが
             // 「2台を触った」で断られる(実地で踏んだ: port 8123 の後に udid → 8137)
             connections[key] = Self.connectionLabel(port: resolved.port, udid: resolved.udid)
@@ -331,7 +331,7 @@ extension MCPServer {
             let explicitSerial = args["serial"] as? String
             let serial = try Self.resolveAndroidSerial(explicit: explicitSerial)
             created = try AndroidDriver(serial: serial)
-            engines[key] = "android"
+            bridges[key] = "android"
             connections[key] = "serial \(serial)"
             connectedAndroidSerials[key] = serial
             rememberResolvedTarget(platform: "android", args: args,
@@ -570,7 +570,7 @@ extension MCPServer {
         ).status(timeout: Self.explicitPortIdentityProbeTimeoutSeconds) else { return .unknown }
         let status = BridgeDiscovery.statusForIdentityCheck(reported, port: port, repoRoot: repoRoot)
         guard let statusUDID = status.udid else { return .unknown }
-        let expected = BridgeIdentityCheck.Expected(port: port, udid: udid, physical: false, engine: nil)
+        let expected = BridgeIdentityCheck.Expected(port: port, udid: udid, physical: false, bridge: nil)
         return BridgeIdentityCheck.matches(expected: expected, status: status)
             ? .confirmedMatch : .confirmedMismatch(actualUDID: statusUDID)
     }
@@ -854,7 +854,7 @@ extension MCPServer {
                 + " — it is another device's bridge, or a bridge that stopped answering"
                 + " (an in-app bridge suspends when its app leaves the foreground)."
                 + " Answering bridge(s) on that udid:"
-                + " port \(list). Pass only udid — the server picks the bridge and engine itself")
+                + " port \(list). Pass only udid — the server picks the bridge itself")
         }
         return port
     }
@@ -992,7 +992,7 @@ extension MCPServer {
     /// ユーザー決定)。in-app のポートを採っても ExploreDriverResolver が同じデバイスの XCUITest へ振り替えるが、
     /// 先に XCUITest を採れば振り替えの走査(XCUIBridgeResolver)を払わずに済む
     static func explorationOrder(_ found: [BridgeDiscovery.Found]) -> [UInt16] {
-        found.filter { $0.engine != "inapp" }.map(\.port) + found.filter { $0.engine == "inapp" }.map(\.port)
+        found.filter { $0.bridge != "inapp" }.map(\.port) + found.filter { $0.bridge == "inapp" }.map(\.port)
     }
 
     /// **iOS の明示ターゲット述語**。args に有効な udid(非空文字列)または port(Int)があるか。
@@ -1022,7 +1022,7 @@ extension MCPServer {
               argsGaveIOSTarget(args) || argsGaveAndroidTarget(args) else { return nil }
         return "profile \"\(profile)\" picks its own device (the same one ft_run_scenario would use), so it"
             + " cannot be combined with udid/port/serial — the call would drive the profile's device, not"
-            + " the one you named. Drop profile to drive the named device (the engine then follows the"
+            + " the one you named. Drop profile to drive the named device (the bridge then follows the"
             + " bridge running on it), or drop udid/port/serial to use the profile's device"
     }
 
@@ -1051,7 +1051,7 @@ extension MCPServer {
 
     /// **fold が注入した呼び出しかどうかの目印**。foldInRememberedDevice が
     /// 省略呼び出しへ port/serial を差し込むとき一緒に立てる —— スキーマ検証後にしか付かず、
-    /// engineKey(platform/port/serial/profile しか見ない)にも影響せず、ブリッジへ渡る辞書にも
+    /// sessionKey(platform/port/serial/profile しか見ない)にも影響せず、ブリッジへ渡る辞書にも
     /// 漏れない(ドライバの各メソッドは args から個別の値を取り出すだけで、辞書ごとは渡さない)。
     /// **記憶の記録可否だけに使う** —— recordsIOSMemory/recordsAndroidMemory 参照
     static let deviceFromMemoryKey = "_deviceFromMemory"
@@ -1112,7 +1112,7 @@ extension MCPServer {
     /// 記憶を使わない呼び出しまで詰まらせる。
     /// **udid を採れないとき(実機・旧ブリッジ)は何もしない** —— 「分からない」を「変わった」と
     /// 読むと毎回記憶が飛ぶ(`keyChangedDevice` と同じ規律)。
-    /// Android は engineKey に serial(= 機そのもの)が入っているので、この穴が構造的に無い
+    /// Android は sessionKey に serial(= 機そのもの)が入っているので、この穴が構造的に無い
     /// **問い合わせは掴んでいるドライバ越しにやらない**(実装2回目で踏んだ):
     /// 実運用のドライバは `SessionRecoveryDriver` に包まれており、**起動し直した直後のブリッジは
     /// まだセッションを持たない**ので `status()` が 409 で落ちる。`try?` で握ると
@@ -1145,9 +1145,9 @@ extension MCPServer {
         return Self.movedDeviceRefusal(port: port, previousUDID: moved, nowUDID: now)
     }
 
-    /// **主ポートのエンジンが変わっていないか(maintainer-notes §51.10)**: `deviceIdentityChanged` は
+    /// **主ポートのブリッジが変わっていないか(maintainer-notes §51.10)**: `deviceIdentityChanged` は
     /// udid しか見ず、しかも `usesRememberedDeviceState` で ref を使う呼び出しにしか効かない —— 同じ
-    /// udid のまま run のたびのブリッジの起動し直しでエンジンが xcuitest ⇄ inapp/hybrid に入れ替わった形を
+    /// udid のまま run のたびのブリッジの起動し直しでモードが xcuitest ⇄ inapp に入れ替わった形を
     /// 見逃す。**実測**: xcuitest でキャッシュ済みのドライバの port が in-app ブリッジへ化け、ref を
     /// 使わない `ft_terminate`(`usesRememberedDeviceState` のゲートを通らない)が
     /// 「in-app では未サポート」の 501 を返した(in-app には /terminate が無い)。逆向き
@@ -1156,61 +1156,61 @@ extension MCPServer {
     /// (`usesRememberedDeviceState` を流用しない理由も同じ: ref を使わない呼び出しでこそ実際に踏んだ)。
     /// **iOS のキャッシュ命中では毎回確かめる**(`hybridFallbackDrifted` と同じコストの考え方 ——
     /// 1回の loopback probe)。判定は同じ `FTBridgeClient.HybridFallbackIdentity` の1箇所
-    func primaryEngineDrift(_ key: String) async -> BridgeIdentityCheck.HybridFallbackDrift {
+    func primaryBridgeDrift(_ key: String) async -> BridgeIdentityCheck.HybridFallbackDrift {
         guard let port = connectedPorts[key], let expectedUDID = udids[key] ?? nil,
-              let engine = engines[key] else { return .none }
-        let expectedEngine = engine == "xcuitest" ? "xcuitest" : "inapp"
+              let bridge = bridges[key] else { return .none }
+        let expectedBridge = bridge == "xcuitest" ? "xcuitest" : "inapp"
         return await HybridFallbackIdentity.drifted(
-            port: port, expectedUDID: expectedUDID, expectedEngine: expectedEngine,
+            port: port, expectedUDID: expectedUDID, expectedBridge: expectedBridge,
             repoRoot: try? RepoRoot.find())
     }
 
-    /// `primaryEngineDrift` の結果を、この call をどう扱うかへ落とす。**旧エンジンの ref はどの道
+    /// `primaryBridgeDrift` の結果を、この call をどう扱うかへ落とす。**旧ブリッジの ref はどの道
     /// 無効**なので、`.none` 以外は必ず `forgetDeviceState`(fallback 専用の `hybridFallbackDrifted`
     /// と違い、こちらは primary = ref の起点そのもの)。
-    /// - `.sameDeviceEngineChanged`: **この呼び出し自身が記憶に依っているときだけ拒否**
+    /// - `.sameDeviceBridgeChanged`: **この呼び出し自身が記憶に依っているときだけ拒否**
     ///   (`usesRememberedDeviceState`)—— 依っていなければ、捨てた上でこの call 自身を新しい
     ///   ドライバで再解決させれば足りるので、利用者に「撮り直せ」と言う理由が無い
     ///   (`ft_terminate` はまさにこの形 = 黙って直った状態で続行してよい)
     /// - `.differentDevice`: **ref の有無を問わず必ず拒否**する。ここで黙って作り直すと、
     ///   ref を使わない呼び出し(`ft_tap x/y`・`ft_type` 等)が警告なしで別のデバイスへ効き続け、
     ///   以後のセッションがそのデバイスに固定される
-    enum PrimaryEngineCheck: Equatable {
+    enum PrimaryBridgeCheck: Equatable {
         case unchanged, rebuildSilently, refuse(String)
     }
 
-    /// `primaryEngineDrift`(I/O)が拾った事実から、この call をどう扱うかを決める
+    /// `primaryBridgeDrift`(I/O)が拾った事実から、この call をどう扱うかを決める
     /// **走査から切り離した純粋関数**(`keyChangedDevice`/`hybridFallbackDrift` と同じ理由・
     /// テスト用): 実ブリッジ無しで「記憶に依る呼び出しだけ拒否する」判定そのものを固定できる
-    static func primaryEngineOutcome(
+    static func primaryBridgeOutcome(
         drift: BridgeIdentityCheck.HybridFallbackDrift, usesRememberedDeviceState: Bool,
-        port: UInt16?, expectedEngine: String?, expectedUDID: String?, callerNamedUDID: Bool
-    ) -> PrimaryEngineCheck {
+        port: UInt16?, expectedBridge: String?, expectedUDID: String?, callerNamedUDID: Bool
+    ) -> PrimaryBridgeCheck {
         switch drift {
         case .none:
             return .unchanged
         case .differentDevice:
             // args の udid は呼び手の明示だけ(記憶の補完は port しか書かない)= 今そのポートに居るデバイスを
-            // 名指しした同意なので作り直してよい。明示が無ければ断り続ける(primaryEngineCheck が記憶を残す)
+            // 名指しした同意なので作り直してよい。明示が無ければ断り続ける(primaryBridgeCheck が記憶を残す)
             guard !callerNamedUDID else { return .rebuildSilently }
             return .refuse(differentDeviceRefusal(port: port, expectedUDID: expectedUDID))
-        case .sameDeviceEngineChanged:
+        case .sameDeviceBridgeChanged:
             guard usesRememberedDeviceState else { return .rebuildSilently }
-            return .refuse(engineChangedRefusal(port: port, expectedEngine: expectedEngine))
+            return .refuse(bridgeChangedRefusal(port: port, expectedBridge: expectedBridge))
         }
     }
 
-    /// `primaryEngineOutcome` の I/O 込みの入口。**`.unchanged` 以外は `forgetDeviceState`**
-    /// (旧エンジンの ref はどの道無効。`.rebuildSilently` でも捨てる — 呼び出し元はこの call を
+    /// `primaryBridgeOutcome` の I/O 込みの入口。**`.unchanged` 以外は `forgetDeviceState`**
+    /// (旧ブリッジの ref はどの道無効。`.rebuildSilently` でも捨てる — 呼び出し元はこの call を
     /// 下の生成で再解決させるだけで、拒否文を返す理由は無い)。
     /// **例外は別のデバイスを断ったとき**: 記憶(udid・キャッシュ)を捨てると次の同じ呼び出しが生成経路へ落ち、
     /// `keyChangedDevice` の previous が nil になって**黙って別のデバイスに固定される**。残して毎回断る
-    func primaryEngineCheck(_ key: String, args: [String: Any]) async -> PrimaryEngineCheck {
-        let drift = await primaryEngineDrift(key)
+    func primaryBridgeCheck(_ key: String, args: [String: Any]) async -> PrimaryBridgeCheck {
+        let drift = await primaryBridgeDrift(key)
         let callerNamedUDID = (args["udid"] as? String).map { !$0.isEmpty } ?? false
-        let outcome = Self.primaryEngineOutcome(
+        let outcome = Self.primaryBridgeOutcome(
             drift: drift, usesRememberedDeviceState: Self.usesRememberedDeviceState(args),
-            port: connectedPorts[key], expectedEngine: engines[key], expectedUDID: udids[key] ?? nil,
+            port: connectedPorts[key], expectedBridge: bridges[key], expectedUDID: udids[key] ?? nil,
             callerNamedUDID: callerNamedUDID)
         if case .unchanged = outcome { return outcome }
         if drift == .differentDevice, case .refuse = outcome { return outcome }
@@ -1218,23 +1218,23 @@ extension MCPServer {
         return outcome
     }
 
-    /// 同じ機のまま(udid は同じ)ブリッジのエンジンだけが変わっていたときに呼び出しを断る文。
+    /// 同じ機のまま(udid は同じ)ブリッジのモードだけが変わっていたときに呼び出しを断る文。
     /// **`movedDeviceRefusal` と文面を分ける** —— 「別の機だ」と早合点させない(繋ぎ直す先の
-    /// 機は無い。同じ機のブリッジが起動し直しでエンジンを変えただけ)
-    static func engineChangedRefusal(port: UInt16?, expectedEngine: String?) -> String {
+    /// 機は無い。同じ機のブリッジが起動し直しでモードを変えただけ)
+    static func bridgeChangedRefusal(port: UInt16?, expectedBridge: String?) -> String {
         let where_ = port.map { "port \($0)" } ?? "this bridge"
-        let engineLabel = expectedEngine.map { "the \($0) engine" } ?? "its previous engine"
-        return "\(where_) no longer answers as \(engineLabel) this session cached it for"
-            + " (the same device appears to have rebuilt its bridge with a different engine)"
-            + " — refusing this call because it relies on state remembered for the previous engine"
+        let bridgeLabel = expectedBridge.map { "the \($0) bridge" } ?? "its previous bridge"
+        return "\(where_) no longer answers as \(bridgeLabel) this session cached it for"
+            + " (the same device appears to have rebuilt its bridge as the other kind)"
+            + " — refusing this call because it relies on state remembered for the previous bridge"
             + " (a ref, or the launched app that ft_open_url defaults to; refs do not carry across"
-            + " engines). That state has been dropped. Take a fresh ft_snapshot and use the new refs."
+            + " bridges). That state has been dropped. Take a fresh ft_snapshot and use the new refs."
     }
 
     /// primary ポートが別の udid へ移っていたときに呼び出しを断る文。**`movedDeviceRefusal` と役割は
-    /// 同じ**(捨てたものを名指しする)が、ここは `primaryEngineOutcome` が持つ材料(実測の
+    /// 同じ**(捨てたものを名指しする)が、ここは `primaryBridgeOutcome` が持つ材料(実測の
     /// 「今の」udid は無く、期待していた udid だけ)に合わせて文面を作る。**ref の有無を問わず
-    /// 常にこの文を返す**(`sameDeviceEngineChanged` の `engineChangedRefusal` と違い、
+    /// 常にこの文を返す**(`sameDeviceBridgeChanged` の `bridgeChangedRefusal` と違い、
     /// `usesRememberedDeviceState` の分岐は無い)
     static func differentDeviceRefusal(port: UInt16?, expectedUDID: String?) -> String {
         let where_ = port.map { "port \($0)" } ?? "this bridge"
@@ -1245,7 +1245,7 @@ extension MCPServer {
             + " device is on which port now."
     }
 
-    /// **hybrid キャッシュ命中の fallback(XCUITest)ポートが別の機/別エンジンへ移っていないか**
+    /// **inapp モードのキャッシュ命中の fallback(XCUITest)ポートが別の機/別ブリッジへ移っていないか**
     /// (maintainer-notes §51.2): `deviceIdentityChanged` は主(in-app・`connectedPorts`/`udids`)しか
     /// 見ないので、`HybridFallbackDriver` の fallback が握る `hybridFallbackPorts[key]` は
     /// ノーチェックのまま残っていた。ブリッジは run のたびに起動し直され**同じポート番号が
@@ -1255,7 +1255,7 @@ extension MCPServer {
     ///
     /// **`usesRememberedDeviceState` のゲートは流用しない**: あちらは ref が指す要素が
     /// 別物になる形だけを守る規律で、fallback は ref を一切受けない(HybridFallbackDriver の
-    /// doc「ref を使う操作は回さない」)ので ref の有無では判定できない。hybrid のキャッシュ命中
+    /// doc「ref を使う操作は回さない」)ので ref の有無では判定できない。inapp モードのキャッシュ命中
     /// でだけ効くので、コストは Android・xcuitest 単独・inapp 単独の呼び出しには掛からない。
     ///
     /// **I/O・判定とも `FTBridgeClient.HybridFallbackIdentity`(`FTCore.BridgeIdentityCheck`)の
@@ -1283,7 +1283,7 @@ extension MCPServer {
             + " dropped. Take a fresh ft_snapshot and use the new refs."
     }
 
-    /// **同じ engineKey が別の機を指し始めたか**(非 nil = 前の udid。走査から切り離した純粋関数)。
+    /// **同じ sessionKey が別の機を指し始めたか**(非 nil = 前の udid。走査から切り離した純粋関数)。
     /// 判定は port ではなく **udid** —— キーに入っている port は再利用され得るが、udid は機そのもの。
     /// **どちらかが不明なら nil**(何もしない): 「分からない」を「変わった」と読むと、
     /// udid を採れない構成(xcuitest 以外・実機)で毎回記憶が飛ぶ
@@ -1421,15 +1421,15 @@ extension MCPServer {
         }
     }
 
-    /// profile 経由の iOS ドライバ。**実行プロファイルのエンジンに追従する**(XCUITest 固定に
+    /// profile 経由の iOS ドライバ。**実行プロファイルのモードに追従する**(XCUITest 固定に
     /// しない —— in-app が実装できない home/drag/座標 press は HybridFallbackDriver が埋める)。
-    /// エンジンを揃える理由は**探索と実行で見えるものを一致させる**こと: snapshot の内容も
-    /// ジェスチャの成否もエンジンで変わるので、揃えないと「MCP では動いたのにシナリオでは falls」
+    /// モードを揃える理由は**探索と実行で見えるものを一致させる**こと: snapshot の内容も
+    /// ジェスチャの成否もモードで変わるので、揃えないと「MCP では動いたのにシナリオでは falls」
     /// (およびその逆)が起きる。
     ///
     /// 合成は実行側(ScenarioRunnerMain)と同じ形:
     ///   in-app(注入) → WebView 画面だけ XCUITest へ委譲 → 不可な操作だけ XCUITest へ回す
-    /// **hybrid でないとき(inapp 単独・xcuitest・実機)は素の1本**にする
+    /// **inapp モードでないとき(inapp 単独・xcuitest・実機)は素の1本**にする
     /// **`probePort` は「同一性を確かめに行ってよい loopback のポート」**。
     /// `provisioned.port` を外から使ってはいけない —— xcuitest 分岐は `XCUIBridgeResolver` が
     /// **接続先を振り替える**ことがあり、実機は loopback ですらない。誤ったポートを
@@ -1439,7 +1439,7 @@ extension MCPServer {
     static func iosDriver(provisioned: ProvisionedIOSDevice) async throws
         -> (driver: AppDriver, probePort: UInt16?) {
         // **MCP の iOS は常に XCUITest**(ユーザー決定。in-app は使わない)。供給は resolveProfileTarget が
-        // engine を xcuitest に差し替えてから行う。resolve は接続先が in-app だったときの振り替えも担う
+        // bridge を xcuitest に差し替えてから行う。resolve は接続先が in-app だったときの振り替えも担う
         let resolution = await XCUIBridgeResolver.resolve(
             preferred: provisioned.xcuiPort ?? provisioned.port, repoRoot: try? RepoRoot.find(),
             logger: { Self.logStderr($0) })
@@ -1466,19 +1466,19 @@ extension MCPServer {
     /// (表と実測は docs/commands.md)、何も起きなかったときに原因が分からないと詰む。
     /// **Android には付けない**(この制限が無い。無関係な助言は誤誘導になる)。
     /// **MCP の iOS は常に XCUITest なので、in-app へ切り替える手は勧めない**(profile を渡しても XCUITest のまま =
-    /// 従っても何も変わらない助言になる)。確かめる場はシナリオ(実行の既定 hybrid はこのジェスチャを届ける)。
-    /// **1文に圧縮**: UIKit アプリでも xcuitest エンジンなら毎回この助言が出ており、長文の苦情があった。
+    /// 従っても何も変わらない助言になる)。確かめる場はシナリオ(実行の既定 inapp モードはこのジェスチャを届ける)。
+    /// **1文に圧縮**: UIKit アプリでも xcuitest モードなら毎回この助言が出ており、長文の苦情があった。
     /// **`frameworkKey` が判明していて一致しなければ黙る**(この助言は `framework` 1つに
     /// 固有の欠陥で、他のフレームワーク(判明した uikit や、もう一方の compose/flutter)には
     /// 効かない誤誘導になる)。**不明なら出すが「もしこのフレームワークなら」に弱める**
     /// (uiFrameworkHints は判定に成功した回しか埋まらないので、まだ問い合わせていない接続は不明側)
-    func iosEngineHint(_ framework: String, frameworkKey: AppUIFramework, _ gesture: String,
+    func iosModeHint(_ framework: String, frameworkKey: AppUIFramework, _ gesture: String,
                       args: [String: Any]) -> String {
-        guard engines[Self.engineKey(args)] == "xcuitest" else { return "" }
+        guard bridges[Self.sessionKey(args)] == "xcuitest" else { return "" }
         let advice = " MCP drives iOS through XCUITest only, so this is not something to retry here;"
-            + " a scenario run on the default (hybrid) engine delivers it — verify the gesture there."
+            + " a scenario run in the default inapp mode delivers it — verify the gesture there."
         // 起動したアプリが分かっていて判定と別のアプリなら、判定は不明として扱う
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         let hint = uiFrameworkHints[key].flatMap { hint in
             launchedBundleIDs[key].map { $0 == hint.bundleID } ?? true ? hint.framework : nil
         }
@@ -1487,10 +1487,10 @@ extension MCPServer {
             return ""
         case .some:
             return " If nothing changed on iOS: \(framework) apps do not receive \(gesture) on the"
-                + " XCUITest engine —" + advice
+                + " XCUITest bridge —" + advice
         case .none:
             return " If nothing changed on iOS and this is a \(framework) app: it would not receive"
-                + " \(gesture) on the XCUITest engine —" + advice
+                + " \(gesture) on the XCUITest bridge —" + advice
         }
     }
 
@@ -1505,7 +1505,7 @@ extension MCPServer {
     /// runtime のパスを返すので誤って弾かない(実測)。
     ///
     /// **判定そのものを返す**(Bool? ではない): 「確かめられない」ときに撃つか断つかは呼び出し側
-    /// (`launchGuardDecision`)がエンジン・OS を見て決める。ここで nil = 素通しへ潰すと、
+    /// (`launchGuardDecision`)がブリッジ・OS を見て決める。ここで nil = 素通しへ潰すと、
     /// in-app とそれ以外で扱いを変えられなくなる
     func installedVerdict(
         bundleID: String, driver: AppDriver, args: [String: Any]
@@ -1526,7 +1526,7 @@ extension MCPServer {
             // MCPServer+SessionTools.swift の ftListApps 参照): 実機の udid を simulatorInstallVerdict
             // へ渡すと、udid の形が同じシミュレータ名(既定は機種名なので実機と同名になりやすい)を
             // 誤って照会し、別デバイスの在否を答える。候補は3段(ft_list_apps と同じ優先順)
-            let key = Self.engineKey(args)
+            let key = Self.sessionKey(args)
             let candidateUDID = (args["udid"] as? String).flatMap { $0.isEmpty ? nil : $0 }
                 ?? udids[key].flatMap { $0 }
                 ?? connectedPorts[key].flatMap { port in
@@ -1572,10 +1572,10 @@ extension MCPServer {
     /// `InstalledAppCheck.launchGuard`(ライブ操作の launch/activate と共有する唯一の定義元)へ
     /// 委ね、ここは MCP 向けの文言(ft_install を指す等)を組むだけ
     static func launchGuardDecision(
-        verdict: InstalledAppCheck.InstallVerdict, isAndroid: Bool, engine: String?, bundleID: String
+        verdict: InstalledAppCheck.InstallVerdict, isAndroid: Bool, bridge: String?, bundleID: String
     ) -> String? {
         switch InstalledAppCheck.launchGuard(
-            verdict: verdict, isAndroid: isAndroid, engine: engine, bundleID: bundleID) {
+            verdict: verdict, isAndroid: isAndroid, bridge: bridge, bundleID: bundleID) {
         case .allow: return nil
         case .refuse(.notInstalled): return notInstalledMessage(bundleID: bundleID)
         case .refuse(.unknown(let reason)): return uncheckedLaunchRefusal(bundleID: bundleID, reason: reason)
@@ -1600,9 +1600,9 @@ extension MCPServer {
     /// handleLaunch が bundleID=com.apple.springboard を非破壊で特別扱いする)。
     /// 詰まる2つの応答 —— セッション不在の 409 と、背面アプリ照会の kAXErrorServerNotFound ——
     /// にだけ足す(フィードバック #6)。
-    /// **in-app/hybrid には付けない**: in-app ブリッジは注入先アプリ専用で springboard を掴めない
-    static func springboardHint(_ error: Error, engine: String?) -> String {
-        guard engine == nil || engine == "xcuitest" else { return "" }
+    /// **inapp モードには付けない**: in-app ブリッジは注入先アプリ専用で springboard を掴めない
+    static func springboardHint(_ error: Error, bridge: String?) -> String {
+        guard bridge == nil || bridge == "xcuitest" else { return "" }
         guard case DriverError.badResponse(let status, let body) = error,
               status == 409 || (status == 500 && body.contains("kAXErrorServerNotFound")) else {
             return ""
@@ -1611,7 +1611,7 @@ extension MCPServer {
             + " ft_launch bundleId: com.apple.springboard — it attaches to SpringBoard without"
             + " launching anything, and ft_snapshot then returns the home screen."
             + " ft_launch bundleId: <your app> resume: true to go back to it without losing its"
-            + " state (xcuitest engine only), or ft_launch bundleId: <your app> to relaunch it"
+            + " state (xcuitest bridge only), or ft_launch bundleId: <your app> to relaunch it"
             + " from scratch."
     }
 
@@ -1628,12 +1628,12 @@ extension MCPServer {
     ///
     /// 出す場所は「操作しても変わらなかった」と告げる3箇所(waitFor の identical 判定・
     /// settle-lite の再読み・ft_batch の still identical)だけ = **読み手が実際に詰まった瞬間**。
-    /// ゲートは `springboardHint` と同じ(engine 不明 or xcuitest。in-app は注入先アプリしか
+    /// ゲートは `springboardHint` と同じ(bridge 不明 or xcuitest。in-app は注入先アプリしか
     /// 見えないので springboard を掴めず、勧めても実行できない)
     /// `probe` は詰まった瞬間に `/systemalert` へ聞いた答え(nil = 聞けなかった)。**答えで出し分ける** ——
     /// 「無い」と答えたのに SpringBoard のダイアログを疑わせると、読み手は存在しないダイアログを探しに行く
-    static func systemDialogHint(engine: String?, probe: SystemAlertProbeResponse?) -> String {
-        guard engine == nil || engine == "xcuitest" else { return "" }
+    static func systemDialogHint(bridge: String?, probe: SystemAlertProbeResponse?) -> String {
+        guard bridge == nil || bridge == "xcuitest" else { return "" }
         if let probe {
             guard probe.present else {
                 return " No system alert is in front (checked just now), so this is not a SpringBoard"
@@ -1653,10 +1653,10 @@ extension MCPServer {
             + " operate it by ref there, then ft_launch your app again."
     }
 
-    /// 詰まった瞬間だけ `/systemalert` に聞いてから `systemDialogHint` を作る(ゲート外の engine では聞かない)
-    static func systemDialogHint(engine: String?, driver: AppDriver) async -> String {
-        guard engine == nil || engine == "xcuitest" else { return "" }
-        return systemDialogHint(engine: engine, probe: try? await driver.systemAlert())
+    /// 詰まった瞬間だけ `/systemalert` に聞いてから `systemDialogHint` を作る(ゲート外の bridge では聞かない)
+    static func systemDialogHint(bridge: String?, driver: AppDriver) async -> String {
+        guard bridge == nil || bridge == "xcuitest" else { return "" }
+        return systemDialogHint(bridge: bridge, probe: try? await driver.systemAlert())
     }
 
     /// home/appSwitcher 直後の XCUITest は「セッションはアプリのまま・画面は別」になり、次の
@@ -1667,9 +1667,9 @@ extension MCPServer {
     /// `/appstate` へ聞いて「今 前面か」を言う(実機の iPhone 13 では**その照会が
     /// 前面と答えて黙った**実測がある)。こちらは照会に頼らず「ツール自身が背面化させた」
     /// という事実だけで言うので、プラットフォームの答えが当てにならない機械でも必ず出る
-    static func backgroundingNavigationNote(target: String, engine: String?) -> String {
+    static func backgroundingNavigationNote(target: String, bridge: String?) -> String {
         guard target == "home" || target == "appSwitcher",
-              engine == nil || engine == "xcuitest" else { return "" }
+              bridge == nil || bridge == "xcuitest" else { return "" }
         if target == "appSwitcher" {
             return ". The App Switcher opened, but the session still points at the app, so"
                 + " ft_snapshot may keep returning the app's tree, and a tap by ref there could"
@@ -1684,9 +1684,9 @@ extension MCPServer {
     /// iOS は端の swipe(`XCUIApplication` の navigation gesture)なので、画面側が
     /// システムの戻るを実装していないと 1px も動かない。Android は最初の画面からの back で
     /// アプリが終了し、前面が別アプリになる(`switchedAppNote` が次の snapshot で捕まえる)
-    static func backNoOpNote(target: String, engine: String?) -> String {
+    static func backNoOpNote(target: String, bridge: String?) -> String {
         guard target == "back" else { return "" }
-        let iosNote = engine == "android" ? ""
+        let iosNote = bridge == "android" ? ""
             : " On iOS this is an edge swipe: screens with their own in-app back button"
                 + " (and no system navigation) do not move at all."
         return "." + iosNote
@@ -1698,8 +1698,8 @@ extension MCPServer {
     /// (in-app ブリッジはアプリのプロセス内に住み、suspend されると応答しない。
     /// 寄せ替えは HybridFallbackDriver が持つ)。XCUITest は外側のプロセスなので関係なく、
     /// back は前面のままなので関係ない。**MCP の iOS は常に XCUITest なので今は到達しない**(判定は残す)
-    static func backgroundedAppNote(target: String, engine: String?) -> String {
-        guard target != "back", engine == "inapp" || engine == "hybrid" else { return "" }
+    static func backgroundedAppNote(target: String, bridge: String?) -> String {
+        guard target != "back", bridge == "inapp" else { return "" }
         return ". The app is in the background now, so the tools run through the XCUITest bridge"
             + " (slower reads; ft_snapshot shows whatever is on screen now — the home screen /"
             + " app switcher — not the app) until you bring it back with ft_launch"
@@ -1852,7 +1852,7 @@ extension MCPServer {
     /// **`treeIsAppsOwn`**: 木の sessionBundleID がそのアプリのまま(XCUITest のセッションは背面化
     /// してもアプリに付いたままで、**アプリ自身の木**を返し続ける)なら「今の画面」とは言わない ——
     /// 実機 iPhone 13 では appSwitcher の直後に「the tree below is whatever is actually on screen」と
-    /// 言いながらアプリの木を返していた(§19.3 担当報告の再現)。hybrid の背面化読み(SpringBoard を
+    /// 言いながらアプリの木を返していた(§19.3 担当報告の再現)。inapp モードの背面化読み(SpringBoard を
     /// 参照 = sessionBundleID が springboard)のときだけ「今そこにあるもの」
     static func sentToBackgroundNote(_ sessionBundleID: String?, treeIsAppsOwn: Bool) -> String {
         let app = sessionBundleID.flatMap { $0 == "com.apple.springboard" ? nil : $0 } ?? "the app"
@@ -1977,10 +1977,10 @@ extension MCPServer {
         -> AndroidAppProcessEvidence? {
         guard driver is AndroidDriver, let launched, let session = snapshot.sessionBundleID,
               session != launched else { return nil }
-        let serial = (args["serial"] as? String) ?? connectedAndroidSerials[Self.engineKey(args)]
+        let serial = (args["serial"] as? String) ?? connectedAndroidSerials[Self.sessionKey(args)]
         guard let evidence = AndroidAppProcessEvidenceQuery.query(package: launched, serial: serial)
         else { return nil }
         return AndroidAppProcessEvidenceQuery.scoped(evidence, package: launched, serial: serial,
-                                                     since: launchTimestamps[Self.engineKey(args)])
+                                                     since: launchTimestamps[Self.sessionKey(args)])
     }
 }

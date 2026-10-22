@@ -63,10 +63,10 @@ final class ApiLiveConnectionHintWiringTests: XCTestCase {
         let start = try annotatedRange(code)
         guard let caseRange = code.range(
             of: "case DriverError.bridgeUnreachable(let context, _) = error,"
-                + " context.engine == .iosXCUITest",
+                + " context.bridge == .iosXCUITest",
             range: start.upperBound..<code.endIndex) else {
             return XCTFail("bridgeUnreachable のヒントは iOS xcuitest だけに絞ること"
-                + "(in-app/hybrid は前面から外れて応答しないだけのことが多く、Android には"
+                + "(in-app ブリッジは前面から外れて応答しないだけのことが多く、Android には"
                 + " BridgeDiscovery の判定材料[isBound]がそもそも合わない)")
         }
         guard let probeRange = code.range(
@@ -103,7 +103,7 @@ final class ApiLiveConnectionHintWiringTests: XCTestCase {
         let start = try annotatedRange(code)
         guard let caseRange = code.range(
             of: "case DriverError.bridgeUnreachable(let context, _) = error,"
-                + " context.engine == .iosXCUITest",
+                + " context.bridge == .iosXCUITest",
             range: start.upperBound..<code.endIndex) else {
             return XCTFail("bridgeUnreachable の分岐が見当たらない")
         }

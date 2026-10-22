@@ -134,10 +134,10 @@ extension StepExecutor {
     /// 指していれば座標は正しく作られ、スワイプは 200 を返し、**何も起きない**(端に達したのと
     /// 区別できないので署名では検出できない)= 黙った空振りになる。
     ///
-    /// **判定に使えるのは「true を見つけたとき」だけ**: `scrollable` を申告できないエンジン
+    /// **判定に使えるのは「true を見つけたとき」だけ**: `scrollable` を申告できないブリッジ
     /// (Compose/Flutter の in-app)では全要素が nil になるので、そこで警告すると誤報になる。
     /// だから**画面のどこかに scrollable=true が1つでもあるとき**にだけ判定する。
-    /// 戻り値は注記(nil = 問題なし・申告できないエンジン)
+    /// 戻り値は注記(nil = 問題なし・申告できないブリッジ)
     static func scrollFrameNote(_ frame: ElementInfo, in snapshot: SnapshotResponse) -> String? {
         guard snapshot.elements.contains(where: { $0.scrollable == true }) else { return nil }
         if frame.scrollable == true { return nil }
@@ -266,16 +266,16 @@ extension StepExecutor {
             }
             return element.frame
         }
-        // **未指定はエンジンの既定に任せる**(実装 → 撤回 → 条件を変えて再投入 → 再び撤回。
+        // **未指定はブリッジの既定に任せる**(実装 → 撤回 → 条件を変えて再投入 → 再び撤回。
         // **3度目は無い**)。2度目の撤回理由:
         //  - 狙いだった Compose の飛び越しには**効かない**。Compose の容器は xcuitest で
         //    `other` として出て `scrollable` を申告できず、そもそも対象に選べない
         //  - in-app では**到達距離が縮んで既定 maxSwipes(8)で届かなくなる**(実測:
         //    E2E-iOS/ios-inapp の `tap("#row_40")` が失敗)。in-app の 0.85 ページ送りは
-        //    エンジン既定として維持する、という決定にも反する
+        //    ブリッジ既定として維持する、という決定にも反する
         // 領域を絞りたい利用者は `scrollFrame` を書く(そこでは価値が出ている)
         //
-        // **例外: ソフトキーボードが立っているとき**。エンジン既定(`app.swipeUp()` 等)は
+        // **例外: ソフトキーボードが立っているとき**。ブリッジ既定(`app.swipeUp()` 等)は
         // 画面全体の固定比率で始点を作るため、キーボードの上を撃って何も動かない
         // (キーボードは常にタッチを飲む)。ここで screen を返すだけで、scrollPath 側の
         // viewport クリップ(ScrollGeometry.viewport)がキーボードを避けた始点を作るようになる。
@@ -302,7 +302,7 @@ extension StepExecutor {
         if let locator = step.scrollFrame {
             return LocatorResolver.match(locator, in: snapshot)
         }
-        // 未指定はエンジンが払う画面中央の下の容器。**入れ子(SwipeRefreshLayout の中の RecyclerView 等)は
+        // 未指定はブリッジが払う画面中央の下の容器。**入れ子(SwipeRefreshLayout の中の RecyclerView 等)は
         // 最小のもの**を採る(「ちょうど1つのときだけ」だと入れ子で常に nil になり、引っ張って更新の一覧で
         // 端の確認の送りが更新を撃っていた)。`edgeContentRegion` と同じ規則
         let screen = snapshot.screen

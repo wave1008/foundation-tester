@@ -143,7 +143,7 @@ enum InAppSettle {
 /// Compose / Flutter の iOS は、画面を切り替えると a11y の木(セマンティクス)が先に新しい画面になり、
 /// 絵はその後に描かれる。CMP の初回訪問では、タップが返ってから 0.27〜0.45 秒のあいだ
 /// `drawHierarchy` が切り替え前の絵をバイト同一で返した(2026-09-19 実測。2回目の訪問・SwiftUI・
-/// XCUITest エンジンでは起きない)。その絵で findImage / imageIs / 分類器 / occlusion-guard が判定すると、
+/// xcuitest モードでは起きない)。その絵で findImage / imageIs / 分類器 / occlusion-guard が判定すると、
 /// 木の枠で**別の画面の画素**を切り出す。
 ///
 /// 待つのは「木は変わったのに、画素がまだ操作前のまま」のときだけ。**遷移の完了は待たない**

@@ -130,9 +130,9 @@ final class MCPAuditFixes20260814ConnectionRecoveryTests: XCTestCase {
 
     // MARK: - 後始末: forgetDeviceState/forgetConnection が新しい記録も忘れること
 
-    /// `forgetDeviceState` は engineKey で引く記憶を全部捨てる契約(DeviceStateInvalidationTests
+    /// `forgetDeviceState` は sessionKey で引く記憶を全部捨てる契約(DeviceStateInvalidationTests
     /// 参照)。新設した `connectedAndroidSerials` を足し忘れていないかを直接確かめる
-    /// (`testNoEngineKeyedMemoLivesOutsideTheSession` の構造走査と、この具体的な instance
+    /// (`testNoBridgeKeyedMemoLivesOutsideTheSession` の構造走査と、この具体的な instance
     /// レベルの確認を両方持つ)
     func testForgetDeviceStatePurgesTheAndroidSerialRecord() {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() },

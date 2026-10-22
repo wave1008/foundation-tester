@@ -217,9 +217,9 @@ final class MCPOffscreenCoordinateGuardTests: XCTestCase {
 
     // MARK: - Android は iOS 専用の概念を名指ししない(§19.3 M5)
 
-    /// in-app ブリッジの hit-test の仕組みは iOS(inapp/hybrid)だけの実態。Android の拒否に
+    /// in-app ブリッジの hit-test の仕組みは iOS(inapp モード)だけの実態。Android の拒否に
     /// 混ざると、存在しない仕組みの説明になる
-    func testAndroidOffscreenTapDoesNotMentionTheInAppEngine() async throws {
+    func testAndroidOffscreenTapDoesNotMentionTheInAppBridge() async throws {
         _ = try await server.call(tool: "ft_snapshot", args: ["platform": "android"])
         do {
             _ = try await server.call(tool: "ft_tap",
@@ -228,7 +228,7 @@ final class MCPOffscreenCoordinateGuardTests: XCTestCase {
         } catch let error as MCPError {
             XCTAssertTrue(error.localizedDescription.contains("outside the screen"),
                           error.localizedDescription)
-            XCTAssertFalse(error.localizedDescription.contains("in-app engine"),
+            XCTAssertFalse(error.localizedDescription.contains("in-app bridge"),
                            "Android の応答に iOS 専用の概念が混ざった: \(error.localizedDescription)")
         }
     }

@@ -103,7 +103,7 @@ final class WaitForSettleWireTests: XCTestCase {
 
     /// in-app は 501 を投げ、ブリッジへは 1 本も撃たない(撃つと in-app ブリッジは未知のルートで 404 を返し、
     /// 画面全体を撮れない構成が「ブリッジの不具合」に見える)。「直して」転送すると、ホストが XCUITest へ回す
-    /// 経路(isEngineIncapable)が閉じる
+    /// 経路(isBridgeIncapable)が閉じる
     func testInAppDriverRefusesWithoutSendingARequest() async throws {
         let stub = try RecordingStubServer(body: Self.settled)
         defer { stub.stop() }
@@ -113,14 +113,14 @@ final class WaitForSettleWireTests: XCTestCase {
             _ = try await driver.waitForSettle(Self.request, timeoutSeconds: 10)
             XCTFail("in-app は全画面を撮れないので 501 で断るはず(応答が返った)")
         } catch {
-            XCTAssertTrue(DriverError.isEngineIncapable(error), "501 のはず: \(error)")
+            XCTAssertTrue(DriverError.isBridgeIncapable(error), "501 のはず: \(error)")
         }
         XCTAssertEqual(stub.paths, [], "in-app はブリッジへ転送してはいけない")
     }
 
     // MARK: - 包むドライバの経路
 
-    /// hybrid: in-app(primary)を試さず最初から XCUITest 側(fallback)へ。primary に本物のクライアントを
+    /// inapp モード: in-app(primary)を試さず最初から XCUITest 側(fallback)へ。primary に本物のクライアントを
     /// 置くので、primary を先に試す実装なら primary のスタブに届いてしまう。attach 側は ensureAttached を挟まない
     func testHybridFallbackSendsStraightToTheXCUITestSide() async throws {
         let primaryStub = try RecordingStubServer(body: Self.settled)

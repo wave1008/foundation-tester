@@ -66,7 +66,7 @@ final class MCPBackgroundedByNavigateTests: XCTestCase {
     func testSnapshotBodyWiresTheDecision() throws {
         let source = compact(try MCPServerSourceText.combined())
         XCTAssertTrue(source.contains(compact("isAndroid: driver is AndroidDriver)")), "snapshotBody が OS を渡していない")
-        XCTAssertTrue(source.contains(compact("if decision.appIsBack { backgroundedByNavigate.remove(Self.engineKey(args)) }")),
+        XCTAssertTrue(source.contains(compact("if decision.appIsBack { backgroundedByNavigate.remove(Self.sessionKey(args)) }")),
                       "snapshotBody が戻ったときに記録を消していない")
     }
 

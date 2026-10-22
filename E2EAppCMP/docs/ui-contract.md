@@ -37,7 +37,7 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
   (`InAppSnapshot.elementType` のテキスト入力 trait 判定)。**マスクの有無は iOS では型に出ない**。
   よって**入力欄は `#id` で指す**。`.textField` / `.secureTextField` が使えるのは Android だけ。
   以前は in-app だけ `other` を返していて、探索(MCP)と実行で型が食い違っていた。
-  **iOS の3エンジン間でも揃っている**: in-app は traits の `.toggleButton`(実測 0x20000000000001 =
+  **iOS の両ブリッジ間でも揃っている**: in-app は traits の `.toggleButton`(実測 0x20000000000001 =
   `.button` と併用。UIKit/SwiftUI/Compose 共通)で `switch` を出す。ここが抜けると in-app だけ
   `switch` が `button` になり、`:rightSwitch` が xcuitest とだけ食い違う(2026-07-27 に実害)。
 - **WebView 画面だけは別規約**(`link` / `webView` 型が出る)。§WebView 画面を参照。
@@ -273,7 +273,7 @@ Android は intent に package を明示するので影響しないが、**契�
 スワイプ方向は**指の移動方向**で判定する(上へ払う = `up`)。fleetest の `swipe(.up)` と一致させる。
 
 **レイアウトの制約(これを崩すと swipe 検証が落ちる)**: ブリッジの `swipe` は**要素を狙わず画面を払う** —
-iOS は XCUITest の `XCUIApplication.swipeUp()` 等でアプリ frame 全体を払う(in-app エンジンは座標
+iOS は XCUITest の `XCUIApplication.swipeUp()` 等でアプリ frame 全体を払う(in-app ブリッジは座標
 スワイプを持たず、動かせるスクロールビューが無ければ 501 で XCUITest へ回る)。
 Android(`BridgeRouter.handleSwipe`)は縦 0.3h↔0.7h・横 0.2w↔0.8w(y=0.5h)の固定座標。
 よって `#pad_swipe` はコンテンツ領域いっぱいに敷き、操作要素はその**上に重ねる**。
@@ -308,11 +308,11 @@ Android(`BridgeRouter.handleSwipe`)は縦 0.3h↔0.7h・横 0.2w↔0.8w(y=0.5h)�
 - 表示は**読み取り専用の Text**(パッドの上に重ねる)。`#btn_map_reset` は始点を塞がないよう
   ジェスチャ画面と同じ規律(幅 45% 以内・上下の端)に置く
 
-**iOS でエンジンにより成否が分かれるのは Compose のダブルタップだけ**(2026-09-24 実測。表と機構は
-docs/commands.md)。既定の hybrid(in-app)では増えるが、`ios-xcuitest` プロファイルでは
+**iOS でモードにより成否が分かれるのは Compose のダブルタップだけ**(2026-09-24 実測。表と機構は
+docs/commands.md)。既定の inapp モードでは増えるが、`ios-xcuitest` プロファイルでは
 `#txt_double_count` が増えない —— Compose は XCTest の合成タッチをダブルタップとして数えない
-(SUT 側の作りの問題ではないので直そうとしないこと)。E2E のシナリオは**両エンジンで走る**ため、
-E2E-CMP のこの scene は `android { }` に閉じてある。ピンチ(全 SUT)と Flutter のダブルタップは両エンジンで動く。
+(SUT 側の作りの問題ではないので直そうとしないこと)。E2E のシナリオは**両モードで走る**ため、
+E2E-CMP のこの scene は `android { }` に閉じてある。ピンチ(全 SUT)と Flutter のダブルタップは両モードで動く。
 E2E-RN のダブルタップも `android { }` —— この SUT は JS の PanResponder が `Date.now()` で判定するので、
 iOS では XCUITest の2タッチを間欠的に取りこぼす(2026-09-24 実測 8 回中 3 回。SUT の判定方式に固有)。
 

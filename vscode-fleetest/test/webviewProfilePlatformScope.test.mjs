@@ -120,7 +120,7 @@ function runProfileData(app, devices) {
       containerInference: true,
       ocrTextVisibilityCheck: true,
       preferCheckStateClassifier: true,
-      iosInappEngine: true,
+      iosMode: "inapp",
       iosPreActionPing: true,
       homeOnStart: true,
       playProtectBypass: true,
@@ -205,7 +205,7 @@ test("実行プロファイル: アプリが iOS なら iOS セクションと�
   send(profileInfo(PLATFORMS));
   send(runProfileData("ios-app", [IOS_SIM, ANDROID_EMU, ANDROID_OFF]));
 
-  assert.equal(isHiddenByScope(window, "run-profile-ios-inapp-engine"), false);
+  assert.equal(isHiddenByScope(window, "run-profile-ios-mode"), false);
   assert.equal(isHiddenByScope(window, "run-profile-update-webview"), true);
   assert.equal(isHiddenByScope(window, "run-profile-heal"), false, "OS に依らないセクションは出す");
   assert.deepEqual(deviceRowNames(window), ["iPhone 17"]);
@@ -243,7 +243,7 @@ test("実行プロファイル: ハイブリッドは両方を出し、警告は
   send(profileInfo(PLATFORMS));
   send(runProfileData("both-app", [IOS_SIM, ANDROID_EMU]));
 
-  assert.equal(isHiddenByScope(window, "run-profile-ios-inapp-engine"), false);
+  assert.equal(isHiddenByScope(window, "run-profile-ios-mode"), false);
   assert.equal(isHiddenByScope(window, "run-profile-update-webview"), false);
   assert.deepEqual(deviceRowNames(window), ["iPhone 17", "Pixel 9"]);
   assert.equal(window.document.getElementById("run-profile-devices-scope-warning").style.display, "none");
@@ -258,7 +258,7 @@ test("実行プロファイル: アプリを選び直すと、その対象 OS �
   app.value = "android-app";
   app.dispatchEvent(new window.Event("change", { bubbles: true }));
 
-  assert.equal(isHiddenByScope(window, "run-profile-ios-inapp-engine"), true);
+  assert.equal(isHiddenByScope(window, "run-profile-ios-mode"), true);
   assert.equal(isHiddenByScope(window, "run-profile-update-webview"), false);
   assert.deepEqual(deviceRowNames(window), ["Pixel 9"]);
   assert.match(window.document.getElementById("run-profile-devices-scope-warning").textContent, /iPhone 17/);

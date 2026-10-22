@@ -24,14 +24,14 @@ extension MCPServer {
         // **宛先とセッションの意味まで出す**: 「どこに繋がっているか」が見えないと、
         // 既定ポートの死・はぐれデバイスの誤掴み・ブリッジ再起動によるセッション消失が
         // どれも「応答はしているのに操作できない」に見える(フィードバック #2/#8)
-        let statusKey = Self.engineKey(args)
+        let statusKey = Self.sessionKey(args)
         // **同じシミュレータに in-app / XCUITest が同時に立つのが常態**(実アプリ
         // 監査: 10台に対し稼働ブリッジ17本)。どちらに繋がっているかで scrollable 検知・
         // キーボード遮蔽・型語彙・読み返しの有無が変わるので、宛先と一緒に出す。
-        // **走査は増やさない** — driver(args) が解決時に埋めた engines[key] を読むだけ
+        // **走査は増やさない** — driver(args) が解決時に埋めた bridges[key] を読むだけ
         // (android は platform で既に分かっているので冗長・出さない)
-        let engineSuffix = engines[statusKey].flatMap { $0 == "android" ? nil : " engine: \($0)" } ?? ""
-        let endpoint = connections[statusKey].map { " @ \($0)\(engineSuffix)" } ?? ""
+        let bridgeSuffix = bridges[statusKey].flatMap { $0 == "android" ? nil : " bridge: \($0)" } ?? ""
+        let endpoint = connections[statusKey].map { " @ \($0)\(bridgeSuffix)" } ?? ""
         let session = status.sessionBundleID
             ?? "none (no app attached — ft_launch <bundleId> first;"
                 + " a bridge restart clears the session)"
@@ -75,7 +75,7 @@ extension MCPServer {
                 includeSystem: includeSystem, filter: appsFilter))
         }
         let deviceName = try await appsDriver.status().device
-        let appsKey = Self.engineKey(args)
+        let appsKey = Self.sessionKey(args)
         // **実機判定をシミュレータへの素通し(bootedSimulatorUDID)より先にする**(欠陥①):
         // 実機の /status は device に機種名("iPhone")しか返さず SIMULATOR_UDID も持たないので、
         // bootedSimulatorUDID は udid の出所がどこであれ必ず throw する。候補 udid を先に
@@ -140,7 +140,7 @@ extension MCPServer {
         // port は明示引数かこのセッションが覚えている宛先(connectedPorts。driver() を経由した
         // 呼び出しで埋まる)から取る。**どちらも取れなければ nil = 実機でない証拠にはならない
         // ので待つ**(best-effort)
-        let logsPort = try Self.portArgument(args) ?? connectedPorts[Self.engineKey(args)]
+        let logsPort = try Self.portArgument(args) ?? connectedPorts[Self.sessionKey(args)]
         let repoRoot = try? RepoRoot.find()
         let logsPhysicalUDID = Self.platformName(args) == "ios"
             ? Self.logsPhysicalUDID(
@@ -165,7 +165,7 @@ extension MCPServer {
 
     func ftInstall(_ args: [String: Any]) async throws -> [[String: Any]] {
         let packagePath = try Self.requiredStringArgument(args, "packagePath")
-        let installKey = Self.engineKey(args)
+        let installKey = Self.sessionKey(args)
         let installNote = try await driver(args).install(packagePath: packagePath)
         // ft_clear_app_data が実機で uninstall+install に化けるときの再インストール元
         // (installedPackagePaths 参照)
@@ -184,7 +184,7 @@ extension MCPServer {
     func ftLaunch(_ args: [String: Any]) async throws -> [[String: Any]] {
         resetOnceNotes(forScope: noteScope)   // 新しい探索の始まり = 初出の注記を数え直す(resetOnceNotes の doc)
         let bundleID = try Self.requiredStringArgument(args, "bundleId")
-        let launchKey = Self.engineKey(args)
+        let launchKey = Self.sessionKey(args)
         let launchDriver = try await driver(args)
         let springBoardNote = await recheckXCUITestRunnerBeforeLaunch(args: args)
         let resumes = args["resume"] as? Bool == true
@@ -194,7 +194,7 @@ extension MCPServer {
         let installVerdict = await installedVerdict(bundleID: bundleID, driver: launchDriver, args: args)
         if let refusal = Self.launchGuardDecision(
             verdict: installVerdict, isAndroid: launchDriver is AndroidDriver,
-            engine: engines[launchKey], bundleID: bundleID) {
+            bridge: bridges[launchKey], bundleID: bundleID) {
             throw MCPError(refusal)
         }
         // 確かめられないまま撃つ経路(Android・in-app)は記録に残す
@@ -241,7 +241,7 @@ extension MCPServer {
         let openURLDriver = try await driver(args)
         let explicitBundleID = try Self.stringArgument(
             args, "bundleId", emptyHint: Self.attachedAppEmptyHint)
-        let openURLBundleID = explicitBundleID ?? launchedBundleIDs[Self.engineKey(args)]
+        let openURLBundleID = explicitBundleID ?? launchedBundleIDs[Self.sessionKey(args)]
         // installedVerdict は撃たない: simctl openurl/devicectl openURL・am start は OS の URL
         // ルーティングで、installedVerdict/launchGuardDecision が守っている
         // XCUIApplication.launch() のランナー死(ft_launch のコメント参照)とは経路が別
@@ -258,15 +258,15 @@ extension MCPServer {
         let wantsLandingWait = args["snapshotAfter"] as? Bool == true
             && args["waitFor"] == nil && args["waitForChange"] == nil
         if wantsLandingWait {
-            if lastSnapshots[Self.engineKey(args)] == nil {
+            if lastSnapshots[Self.sessionKey(args)] == nil {
                 _ = try? await freshSnapshot(openURLDriver, args: args)
             }
             openURLArgs["waitForChange"] = true
         }
-        let treeBeforeDelivery = lastSnapshots[Self.engineKey(args)]
+        let treeBeforeDelivery = lastSnapshots[Self.sessionKey(args)]
         try await openURLDriver.openURL(url, bundleID: openURLBundleID)
         // ディープリンクが未起動のアプリを新規に立ち上げることがある(systemAlertProbePending 参照)
-        systemAlertProbePending.insert(Self.engineKey(args))
+        systemAlertProbePending.insert(Self.sessionKey(args))
         var openStep = FlowStep(action: "openURL")
         openStep.text = url
         recordAction(InteractionLog.Entry(step: openStep, unresolved: nil,
@@ -287,7 +287,7 @@ extension MCPServer {
             + Self.openURLOtherAppCaveat(routedByScheme: !(openURLDriver is AndroidDriver),
                                          before: treeBeforeDelivery,
                                          after: args["snapshotAfter"] as? Bool == true
-                                            ? lastSnapshots[Self.engineKey(args)] : nil))
+                                            ? lastSnapshots[Self.sessionKey(args)] : nil))
     }
 
     /// **iOS の URL は OS が受け手を選ぶ**(Web の URL は Safari・他アプリのスキームはそのアプリ)。受け手が別のアプリなら
@@ -316,7 +316,7 @@ extension MCPServer {
         let bundleID = try Self.requiredStringArgument(args, "bundleId")
         let clearAppDataDriver = try await driver(args)
         let springBoardNote = await recheckXCUITestRunnerBeforeLaunch(args: args)
-        let clearAppDataKey = Self.engineKey(args)
+        let clearAppDataKey = Self.sessionKey(args)
         SlowCallWatchdog.mark("clearing the app's data")
         do {
             try await clearAppDataDriver.clearAppData(bundleID: bundleID)
@@ -367,7 +367,7 @@ extension MCPServer {
         // **ドライバの terminate() は名指しできない**(attach 中のアプリを止めるだけ)。明示の
         // bundleId が起動中のアプリと違えば断り、起動していないデバイスへの明示指定は「送った」まで
         // しか言わない(Android は currentPackage が無ければ何も撃たない)
-        let terminateKey = Self.engineKey(args)
+        let terminateKey = Self.sessionKey(args)
         let explicitBundleID = try Self.stringArgument(args, "bundleId", emptyHint: Self.attachedAppEmptyHint)
         guard let terminateBundleID = explicitBundleID ?? launchedBundleIDs[terminateKey]
         else {

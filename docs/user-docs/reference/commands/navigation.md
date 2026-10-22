@@ -66,7 +66,7 @@ hinge(130)              // half-open book posture
 - **`settle: false`** skips this command's post-action wait for the screen to settle (the next step may see a moving screen). See [tap](./tap.md) for details.
 
 - **`fold` / `unfold` / `hinge` need a foldable device.**
-  - iOS: the iPhone Duo **simulator** (Xcode 27.2+), sent through the XCUITest bridge, so the engine must be `xcuitest` or `hybrid` (pure `inapp` cannot).
+  - iOS: the iPhone Duo **simulator** (Xcode 27.2+), sent through the XCUITest bridge, which both iOS modes support.
   - Android: a foldable **Emulator** (an AVD with a hinge sensor, e.g. Pixel 9 Pro Fold).
   - A physical iPhone can neither be folded nor have its fold state read, so the scenario is recorded as skipped (not applicable), with the reason `fold / unfold / hinge cannot drive a physical iPhone (fold it by hand); they run on the iPhone Duo simulator`.
   - On a physical Android device, a non-foldable model gets the not-applicable treatment below; a foldable model is not supported (fold by hand) and the step fails with that message.

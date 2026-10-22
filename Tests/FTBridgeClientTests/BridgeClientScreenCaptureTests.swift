@@ -9,7 +9,7 @@ import XCTest
 final class BridgeClientScreenCaptureTests: XCTestCase {
     private func status(multiDisplay: Bool?, udid: String?) -> StatusResponse {
         StatusResponse(ready: true, device: "iPhone Duo", osVersion: "iOS 27.2", sessionBundleID: nil,
-                       engine: "xcuitest", udid: udid, multiDisplay: multiDisplay)
+                       bridge: "xcuitest", udid: udid, multiDisplay: multiDisplay)
     }
 
     func testSingleDisplayRunnerIsPhotographedAsBefore() {

@@ -45,10 +45,10 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
   **`ft_status` / `ft_snapshot` / `ft_tap` / `ft_type` / `ft_swipe` / `ft_launch` すべてに、
   後で `ft_run_scenario` へ渡すのと同じ `profile` を渡すこと**。
 - **マップ・キャンバス系の画面は `ft_pinch` / `ft_double_tap` / `ft_drag` で実際に試してから書く**。
-  このとき**`profile` を必ず渡す**(渡すと実行と同じデバイス・同じエンジンで動く)。渡さないと
-  iOS のエンジンは接続先ポートのブリッジ任せになり、XCUITest を掴んだときだけ
+  このとき**`profile` を必ず渡す**(渡すと実行と同じデバイス・同じモードで動く)。渡さないと
+  iOS のモードは接続先ポートのブリッジ任せになり、XCUITest を掴んだときだけ
   **Compose のダブルタップと Flutter のピンチが実行時と食い違う**(理由と実測は docs/commands.md)。
-  上の「探索と実行は同じデバイスで」がここでは「同じエンジンで」まで含む。
+  上の「探索と実行は同じデバイスで」がここでは「同じモードで」まで含む。
 - **人間チェックポイント(🧑)では停止**して、テストの意図・期待結果を確認する。何をテストしたいのかは
   エージェントが勝手に決めない。ただし確認は**推奨案を1つ出して短く承認を取る**形にする(多肢の重い
   設問で意思決定を丸投げしない。セレクタ・経路・後始末など既定で決められることは決めて進める)。
@@ -313,9 +313,8 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 - **`ifCanSelect` だけは既定で即時判定**(`waitSeconds:0`)。遷移直後に分岐条件を待ちたいときは
   先行 `wait` ではなく `ifCanSelect(sel, waitSeconds:)` を使う(解決できたら即進む)。
 - **`type` は Compose Multiplatform / Flutter 等(UIKit の入力欄を持たないアプリ)でもそのまま書いてよい**。
-  iOS の既定エンジン(hybrid)が Compose を自動判定し、type だけ XCUITest 実行に切り替える(tap/exist は
-  高速な inapp のまま)。409「フォーカスされた入力欄がありません」が出るのは engine=inapp 明示の
-  プロファイルだけ。Android は常に inapp で type 可。type の前の `tap(入力欄)` は両 OS 共通で入れておく
+  iOS の既定の inapp モードが Compose を自動判定し、type だけ XCUITest ブリッジ実行に切り替える(tap/exist は
+  高速な in-app ブリッジのまま)。Android は常に inapp で type 可。type の前の `tap(入力欄)` は両 OS 共通で入れておく
   (Android inapp のフォーカス確立に必要)。
 - **パスワード・アカウントをシナリオに直書きしない**。`account()` で受け取り、値は `dataset/accounts.json` に置く
   (本物のパスワードを git に入れたくないなら、🧑 にその Mac の `~/.config/fleetest/dataset/<proj>/accounts.json` へ
@@ -408,9 +407,9 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 - **launchApp が直前画面から再開する**アプリは、一覧/先頭画面へ正規化してから進める
   (`ifCanSelect("#詳細ビュー") { tap("#BackButton") }` 等)。
 - **WebView(Web コンテンツ)内は規約が違う**(スナップショットに `.webView` 型が出たらこの画面):
-  **`#id`(HTML の `id`)が使えるかは読み取り経路で決まる**。DOM を読める経路(iOS の既定エンジン /
+  **`#id`(HTML の `id`)が使えるかは読み取り経路で決まる**。DOM を読める経路(iOS の inapp モード /
   Android のアプリ内 WebView・ブラウザ)と、a11y が id を出す構成(Android WebView 150 以降)では
-  使える。**iOS の `engine: xcuitest` では出ない**(WebKit が HTML id を a11y へ渡さない)。
+  使える。**iOS の xcuitest モードでは出ない**(WebKit が HTML id を a11y へ渡さない)。
   id が使えない構成では表示テキスト・`aria-label`・型で指す。**リンクは `.link` と `.staticText` の
   2要素で重複して出る**ので `.link&&ラベル` と型で絞る。**入力欄は `#id||#placeholder の値` の
   2節で書く**のが確実(Android は WebView の版で id と placeholder が入れ替わるため)。

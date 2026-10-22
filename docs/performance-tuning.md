@@ -22,7 +22,7 @@ Android の 2.18s への内訳: 固定 sleep の静穏検知置換で 3.27s(−3
 iOS の残り時間は XCUITest 経路のコストが支配する。**その内訳を「snapshot 約250ms」とした旧説は
 2026-07-30 の外形計測で否定済み**(素の snapshot は 29〜118ms。実体は操作直後に掛けていた
 固定 350ms の整定待ちで、§3.8 で収束判定へ置換した)。iOS の高速化の本線は in-app 常駐ブリッジで、
-既に既定(hybrid)で動いている(§8 の 2〜4 は候補ではなく実装記録)。
+既に既定(inapp モード)で動いている(§8 の 2〜4 は候補ではなく実装記録)。
 
 ## ブラウザ DOM の snapshot が 9.5 秒だった(2026-08-14)
 
@@ -97,7 +97,7 @@ wait ほぼ 0ms = 固定 sleep の残骸なし):
 **内訳は `FT_EVENT_LOG_PATH` の `kind:"step"` で採れる**(launch の `actionMs`=外部起動呼び出し・
 `waitMs`=操作可能になるまでの待ち)。8レーン実負荷の実測(2026-08-01・E2E-CMP/40本):
 
-| エンジン | launch 中央 | actionMs(simctl) | waitMs | 内訳外 |
+| プロファイル | launch 中央 | actionMs(simctl) | waitMs | 内訳外 |
 |---|---:|---:|---:|---:|
 | ios-inapp | 3,563ms | 909ms | 2,379ms | 3ms |
 | ios-xcuitest(改善前) | 5,135ms | 788ms | 3,038ms | **1,515ms** |
@@ -124,7 +124,7 @@ E2E-Flutter 396.3→372.0s。全 466 本(既定+`--ios-inapp`)成功。
 (dlopen 13ms + `SimServiceContext` 327ms + deviceSet 44ms)が要り、以降の呼び出しは **0〜1ms**。
 **シナリオ1本=1プロセス**なので、そのプロセスで最初に CoreSimulator を触った呼び出しが必ず
 384ms を被る。xcuitest はインストール確認が先で launch が速くなる(205ms)、in-app は launch が
-最初なのでそこで払う(830ms)—— これが両エンジンの改善幅の差の理由。
+最初なのでそこで払う(830ms)—— これが両モードの改善幅の差の理由。
 
 - **暖機(起動直後にバックグラウンドで初期化)は不採用**。効果 30〜60ms で雑音と区別できず、
   引数解析前にプラットフォームを先読みする必要があり、Android のシナリオでは純粋な無駄になる
@@ -182,9 +182,9 @@ Demo 16 シナリオ(iOS 6+Android 10)を iOS/Android 同数のデバイスで A
    終わってから片付ける(`PreparedSupply.settle`。走っている iOS の準備の横で終了スクリプトやサービスの停止を走らせない)
 3. **コールド供給のデバイス間並列化**(`BridgeProvisioner.provision`): 「差分判定(並列)→
    プランニング=ポート採番(直列)→ 共有ビルド(直列)→ 起動(デバイス単位で並列)」に分離。
-   hybrid の 2 ブリッジは同一シミュレータへの simctl 競合を避けるためデバイス内では従来どおり直列。
+   inapp モードの 2 ブリッジは同一シミュレータへの simctl 競合を避けるためデバイス内では従来どおり直列。
    `installIfNeeded` の autoInstall 差分判定(iOS バンドル深比較 / Android md5。アプリサイズ比例)も
-   ワーカー単位で並列化。実測: 3 台 hybrid(=6 ブリッジ)の完全コールド(sim ブート+install 込み)
+   ワーカー単位で並列化。実測: 3 台 inapp モード(=6 ブリッジ)の完全コールド(sim ブート+install 込み)
    +ログイン系 3 シナリオ並列で **99s・3/3 passed**(旧直列はデバイス毎に足し算)
 
 効果の出所はあくまで固定費とコールド供給で、ウォームのシナリオ実行本編は不変:
@@ -664,7 +664,7 @@ XCUITest ランナーは「画面を変えうる操作(`/session` `/tap` `/type`
 積算で効く。`scroll` は最後の 1 回の後にも静止を待つよう変えた(従来は周回**間**だけで、
 `scroll()` → `tap()` が無防備だった)。
 
-検証: 各段とも全 4 SUT × 両エンジンの E2E で **273 シナリオ全成功・振り直し 0 件**。
+検証: 各段とも全 4 SUT × 両モードの E2E で **273 シナリオ全成功・振り直し 0 件**。
 ブリッジ変更なので `bridgeProtocolVersion` を 6 → 7 →(整定対象の変更で)8 へ。
 
 ### 3.9 Android の固定 sleep 800ms×4 をブリッジの静穏待ちへ(2026-07-30 実装)
@@ -688,7 +688,7 @@ APK 変更なので `AndroidRunner/build.sh` の `VERSION_CODE` と
 `AndroidBridge.swift` の `expectedBridgeVersionCode` を 18 → 19、`prebuilt/ftbridge.apk` を再ビルド。
 **ルート追加は `BridgeContractTests` が検出した**(期待値の更新は版数を上げた後に行う)。
 
-検証: 全 4 SUT × 両エンジンの E2E で 273 シナリオ全成功・振り直し 0 件。
+検証: 全 4 SUT × 両モードの E2E で 273 シナリオ全成功・振り直し 0 件。
 
 ### 3.10 in-app 整定の装飾レイヤ判定を遅延評価に(2026-07-30 実装)
 
@@ -809,7 +809,7 @@ uikit ホストの同シナリオ(元から DOM 経路)が 11.3s なので、ほ
 
 **結論: tap の 73〜91% は actionMs で、その中身は整定待ちではない。** snapshot は 8〜25% しかない。
 
-| エンジン | tap 平均 | 中央 | snapshot | action | 内訳(ブリッジ内) |
+| ブリッジ | tap 平均 | 中央 | snapshot | action | 内訳(ブリッジ内) |
 |---|---|---|---|---|---|
 | iOS xcuitest | 634ms | 537ms | 160ms | 463ms | 合成 363ms + **quiescence 29ms(7.5%)** + HTTP 約70ms |
 | iOS in-app | 250ms | 117ms | 42ms | 195ms | — |
@@ -966,7 +966,7 @@ SwiftUI 681/492 = **1.38 倍超過** / Compose 509/546 = 0.93 倍 / Flutter 963/
 `scrollFrame` を明示したときの座標経路(§3.18 の実測に基づく実装)を、**未指定のスクロールにも
 広げる**案。面積最大のスクロール容器(`ElementInfo.scrollable`)を暗黙の対象にし、慣性を消す
 速度(iOS v350)と大きめの刻み(スパン 0.8)で「刻み = 実移動量」にして**要素の飛び越しを
-構造的に無くす**狙いだった。実装して 4 SUT × 3 エンジンで実測し、**3つの理由で撤回した**。
+構造的に無くす**狙いだった。実装して 4 SUT × 3 ブリッジ(Android / XCUITest / in-app)で実測し、**3つの理由で撤回した**。
 
 - **iOS xcuitest には対象を特定できない画面がある**。E2E-iOS のセレクタ画面はスクロール容器に
   identifier が無く、snapshot のフィルタ(Other/ScrollView は identifier 付きのみ)で落ちるため
@@ -1002,12 +1002,12 @@ SwiftUI が 1 スワイプ 681pt に対し閾値 0.8×874=699pt で**素通り**
 **修正の実測は「差なし」= 現状の SUT では発火しない**(2026-08-05・同セッション A/B)。
 E2E-CMP `S0060/S0080/S0090` を fix 3 周 / base 3 周、E2E-iOS `S0060/S0090` を 2 周 / 2 周:
 スクロール系ステップの合計は**全シナリオで ±25ms 以内**(S0090 は 23.3s / 43.1s の規模)、
-26/26 緑。つまり**エンジン既定の速度で座標スワイプする限り、実移動量は容器の 0.8 倍に届かない**。
+26/26 緑。つまり**ブリッジ既定の速度で座標スワイプする限り、実移動量は容器の 0.8 倍に届かない**。
 → この修正は**コストゼロの保険**であって高速化でも遅延でもない。**「効かないから戻す」ではなく
 「発火条件を満たす SUT が現れたときに初めて効く」**と読むこと(単体テストが発火側を固定している)。
 
 **効くのは `scrollFrame` を書いた経路だけ**で、これは仕様上の限界である(バグではない):
-刻みを縮める唯一の口が `spanScale` → `scrollPath` で、あちらは領域未指定ならエンジン既定に委ねるため。
+刻みを縮める唯一の口が `spanScale` → `scrollPath` で、あちらは領域未指定ならブリッジ既定に委ねるため。
 **既定経路の飛び越しをホスト側で塞ぐには座標スワイプの常用が必要で、それがこの節の撤回対象**。
 既定経路をどうしても救うなら、刻みを縮めるのではなく**行き過ぎを検出して1回戻す**(座標化を
 復活させない唯一の道)。現状の失敗率は ios-xcuitest の `scrollTo` で 25/2,971 ≒ 0.8% と低く、
@@ -1021,13 +1021,13 @@ E2E-CMP `S0060/S0080/S0090` を fix 3 周 / base 3 周、E2E-iOS `S0060/S0090` �
   幅一致の行が丸ごと判定から漏れていた(`<=` が正しい)
 
 **2度目の撤回(2026-08-03)**: 条件を変えて再投入した —— 保守的な刻み(スパン 0.5・速度は
-エンジン既定のまま)で、**容器を特定できたときだけ**座標化する形。狙いは Compose の飛び越しを
+ブリッジ既定のまま)で、**容器を特定できたときだけ**座標化する形。狙いは Compose の飛び越しを
 塞ぐことだったが、**2つの理由で再び撤回した**:
 - **Compose には効かない**。Compose の容器は xcuitest で `other` として出るため
   `ElementInfo.scrollable` を申告できず、そもそも暗黙の対象に選べない(実測: `#list_rows` も
   `#carousel_tags` も申告なし)。Compose の回避策は**利用者が `scrollFrame` を書くこと**
 - **in-app で到達距離が縮む**。刻みが 0.85 ページ送り → スパン 0.5 になり、既定 `maxSwipes`(8)で
-  `#row_40` に届かなくなった。「未指定ならエンジン既定を尊重する」という決定にも反する
+  `#row_40` に届かなくなった。「未指定ならブリッジ既定を尊重する」という決定にも反する
 
 **再検討する条件**: (a) iOS xcuitest が identifier の無い容器も snapshot に載せられるようになる
 (= 要素集合が変わるので `.型[n]` の意味に影響する)か、(b) Android で 1 スワイプの実移動量を
@@ -1043,7 +1043,7 @@ WebView のヒント跳躍(`offscreenJump` / `dragGesture` / `hintDrag`)と、�
   「容器の何割か」で決まる**刻み**。同じ関数に押し込むと、どちらの意図も読めなくなる
 - **注入経路と較正が違う**: ヒントは `/drag` を使い、`min(max(|Δy|/2500, 0.3), 0.7)` という
   **較正済みのジェスチャ時間**を持つ(§6 の分析どおり `scrollToEdge` の支配項)。
-  `ScrollGeometry` は `/swipe` の座標で、速度はエンジン既定に任せる。混ぜると較正値が壊れる
+  `ScrollGeometry` は `/swipe` の座標で、速度はブリッジ既定に任せる。混ぜると較正値が壊れる
 
 **採ったのは1つだけ** —— **容器を画面と交差させる規則**(`ScrollGeometry.intersection`)を
 `dragGesture` でも使うようにした。従来は生の容器矩形を使っており、**画面からはみ出した容器では
@@ -1053,7 +1053,7 @@ WebView のヒント跳躍(`offscreenJump` / `dragGesture` / `hintDrag`)と、�
 ### 3.22 端送りは in-app では1回で寄せる(2026-08-19・**改善**)
 
 長文(利用規約のように「一番下まで送ってから同意」する画面)の `scrollToBottom` が遅い、が発端。
-調べると **iOS の in-app エンジンのスクロールはジェスチャではなく `UIScrollView.contentOffset` の
+調べると **iOS の in-app ブリッジのスクロールはジェスチャではなく `UIScrollView.contentOffset` の
 直接操作**(`InAppBridge.scroll` = ビューポートの 85% 固定)で、**慣性はそもそも存在しない**。
 端が目的なら刻む理由が無いので、`SwipeRequest.edge`(ホストは `intent == .edge` のときだけ立てる)
 で**コンテンツの端まで一度に寄せる**ようにした(bridgeProtocolVersion 70 → 71)。
@@ -1092,7 +1092,7 @@ WebView のヒント跳躍(`offscreenJump` / `dragGesture` / `hintDrag`)と、�
 | E2E-Android / android `scrollToBottom`(n=3) | 1,465ms | 1,474ms(+1%) |
 
 理由は**端の手前でバーストに入ると、端に着いた後のスワイプが最大 cap 本ぶん空振りする**こと。
-実ジェスチャのエンジンでは1本が読み1回と同じかそれ以上に高いので、節約と相殺する
+実ジェスチャのブリッジでは1本が読み1回と同じかそれ以上に高いので、節約と相殺する
 (iOS xcuitest は §3.18(d) の実測 2,970ms/本 と読み約 860ms から、**計算上も負け**)。
 
 **2026-08-20 に決着(再検討の条件が満たされ、結論は変わらなかった)**。受け手から
@@ -1312,7 +1312,7 @@ S0091(開いた直後の `scrollToRightEdge`)が `#tag_13` で止まった(3/3)�
 
 ### 3.30 findImage / findImages の所要(2026-09-19・**計測**)
 
-E2E-iOS の SUT・iPhone 17 Pro シミュレータ1台・モニター停止・1シナリオに各 10 回反復。両エンジン×2 run。
+E2E-iOS の SUT・iPhone 17 Pro シミュレータ1台・モニター停止・1シナリオに各 10 回反復。両モード×2 run。
 値は2回目以降の中央値(ms)。`snapshot` 欄は木 + **スクリーンショット**、`照合` 欄は切り出し + 特徴量(`actionMs`)。
 
 | 呼び出し(候補数) | in-app 全体 | xcuitest 全体 | snapshot 欄 | 照合 |
@@ -1328,7 +1328,7 @@ E2E-iOS の SUT・iPhone 17 Pro シミュレータ1台・モニター停止・1�
 ※ xcuitest の照合欄にはスワイプ(実ジェスチャ)が入る。
 
 読み方: **1回 ≈ スクリーンショット 約 110ms + 候補1件あたり 約 8ms**(特徴量の生成。候補数に比例)+ **縮退の門の白紙 1 枚 約 4ms**(照合1回につき。候補ごとではない。同日追加 = 上の表には含まれていない)。
-select との差のほとんどはスクリーンショットで、エンジンにほぼ依らない。プロセスで最初の1回だけ Vision の
+select との差のほとんどはスクリーンショットで、ブリッジにほぼ依らない。プロセスで最初の1回だけ Vision の
 読み込みで +60〜150ms(317 / 325ms)。テンプレートの特徴量はプロセス内で使い回すので2回目以降は払わない。
 **`waitSeconds` の既定は 0**(同日ユーザー決定。`FindImage.defaultWaitSeconds`)—— 実行プロファイルの defaultTimeout(5 秒)まで
 撮り直す既定だと、見つからないたびに 5 秒を払う。待つのは検証の側(`existImage`。既定は実行プロファイルの
@@ -1348,7 +1348,7 @@ defaultTimeout = `exist` と同じ)に任せる。**`existImage` が払うのは
 **自前描画(Compose / Flutter)の iOS in-app では、絵が木に追いつくのを待つ費用が別に乗る**(v117・`InAppRenderCatchUp`。
 経緯は docs/framework-differences.md §3): 操作1回あたり約 12ms(操作の直前に 0.25 倍の画素と木の指紋を控える。
 CMP のタップが 105〜118 → 118〜131ms)。待つのは**木が変わったのに画素が操作前のままの回だけ**で、
-CMP の起動後の初回訪問で約 0.3〜0.4 秒(実測 388ms)。2回目以降の訪問・SwiftUI / UIKit / RN・XCUITest エンジン・
+CMP の起動後の初回訪問で約 0.3〜0.4 秒(実測 388ms)。2回目以降の訪問・SwiftUI / UIKit / RN・xcuitest モード・
 Android は 0。操作の後にホストが木を読まずに撮る並び(`tap` → `screenshot()`)ではブリッジが自分で木を1回読む(実測 2ms)。
 
 **再検討の条件**: 候補が数十を超える画面で遅さが問題になったら、まず `aspectRatioTolerance` で候補を絞る。
@@ -1824,7 +1824,7 @@ FT_EVENT_LOG_PATH=/tmp/steps.ndjson fleetest run --project <P> --profile <p>
   `waitMs`=操作可能になるまでの待ち。**`durationMs - actionMs - waitMs`(内訳外)を必ず見る** ——
   計測していない区間がここに出る(実際これで `simctl terminate` の 1.5s と
   未インストール検査の 0.7s が見つかった。§3 の表)
-- 埋まらないエンジンは nil のまま(Android・`FT_NO_FAST_LAUNCH` 経路)。嘘の数字は出さない
+- 埋まらない経路は nil のまま(Android・`FT_NO_FAST_LAUNCH` 経路)。嘘の数字は出さない
 
 
 ```bash
@@ -1961,7 +1961,7 @@ fleetest results insights --project <name>     # 🟡 unsettledSteps の行を�
 | `PollBackoff` | Sources/FTCore/PollBackoff.swift | 100→200→400→800→上限1000ms | exist/textIs/ロケータ解決リトライの共通バックオフ。5s timeout での snapshot 回数は旧5回→新8回(許容済み) |
 | `defaultTimeout` | FTRuntime(runs プロファイルで上書き可) | 5s | 検証系の待ち上限。失敗するテストの所要を支配 |
 | `waitSeconds:`(tap/type/select) | DSL 引数(FTDSL/Commands.swift・select は CommandsVerify.swift) | nil | アクションのロケータ解決待ち上限秒。nil=従来の3回リトライ(計700ms)、**0=リトライなし(出るか不定の要素を見るときの空振り ~750ms→数十msに短縮する opt-in ノブ)**。遅れて出る要素を拾えなくなるので `ifCanSelect` / `select` の空振り短縮以外では基本使わない |
-| fallback 照会の間引き | StepExecutor+Assert.swift(executeAssert) | primary 2回目以降・偶数回ミスのみ | hybrid の SystemUIDriver 照会(springboard 再session+XCUITest snapshot=数百ms)の頻度。実在するシステムUI要素の検知遅れは最大バックオフ1段+1周期 |
+| fallback 照会の間引き | StepExecutor+Assert.swift(executeAssert) | primary 2回目以降・偶数回ミスのみ | inapp モードの SystemUIDriver 照会(springboard 再session+XCUITest snapshot=数百ms)の頻度。実在するシステムUI要素の検知遅れは最大バックオフ1段+1周期 |
 | LPT 投入順 | `fleetest.lptScheduling` / `--no-lpt` | ON | 過去実績の長い順に投入する(§3.7)。OFF でシナリオ ID 順。レーン数とシナリオ長のばらつきが無いと効かない |
 | LPT の実績の読む件数 | `fleetest.lptHistoryRuns` / `--lpt-history-runs` | 5 | **シナリオ1本あたり**読み込む実績の観測数(新しい方から。`RunResultsStore.scanRecords(maxObservationsPerScenario:)`。§3.7)。増やすと代表値は安定するが毎 run の読み込みファイルが増える。実測で 1 プロジェクト 3,500〜4,500 件の結果 JSON があるため全件走査はしない |
 | 操作直後の整定(Android) | ブリッジ `/settle`(QuietWaiter) | QUIET_MS=200ms | ブリッジを経由しない経路(activate/home/appSwitcher/pressEnter フォールバック)の整定(§3.9)。旧実装は固定 800ms。ブリッジ不達時のみ 800ms へフォールバック |
@@ -2067,7 +2067,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 - `UiAutomation.setOnAccessibilityEventListener` は**1 枠しかない**。QuietWaiter が
   使用中なので、別用途でリスナが必要になったら QuietWaiter 経由で多重化すること
 - 長時間ベンチ中の画面ロックに注意(GUI E2E 全般の既知問題)
-- **フォールバック検証の誤検知(緩和済み)**: hybrid でシステム UI を tap するとき、セレクタの
+- **フォールバック検証の誤検知(緩和済み)**: inapp モードでシステム UI を tap するとき、セレクタの
   label が in-app の要素 label の**部分文字列**だと primary(in-app)が `contains` で誤解決し得た。
   現在は tap アクション経路で **primary が部分一致(substring)止まりなら fallback を照会し、
   fallback に完全一致(exact)があれば fallback を優先**する(`StepExecutor` の resolveDetailed/
@@ -2075,10 +2075,10 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   **素の文字列は完全一致だけ**なので、この経路に入るのは `*語*` 等の部分一致を
   明示したときに限られる(判定は記法ではなく掴んだ要素。`LocatorResolver.quality`)。ただし `exist()` 等の
   アサーション経路は従来どおり(部分一致の存在確認は許容)なので、確証が要るときは
-  **同一シナリオを engine=inapp(フォールバック無)でも走らせ当該 tap が失敗することを確認**
+  **同一シナリオを XCUITest ブリッジを持たない in-app ブリッジ単独(フォールバック無)でも走らせ当該 tap が失敗することを確認**
   (negative control)。
-- **Compose アプリの type は hybrid で自動的に XCUITest 実行になる**(design.md §セレクタの
-  hybrid type 項)。1 回あたり activate+XCUITest snapshot+type で数秒かかり、inapp の
+- **Compose アプリの type は inapp モードで自動的に XCUITest 実行になる**(design.md §セレクタの
+  inapp モードの type 項)。1 回あたり activate+XCUITest snapshot+type で数秒かかり、inapp の
   tap(数百 ms)と桁が違う。type を含むシナリオの時間比較・回帰判定では type ステップ数を
   揃えるか除外して比べる(ネイティブ UIKit アプリの type は inapp のままなのでアプリ間比較も不可)。
 - **通知許可ダイアログのリセットは `simctl privacy` では効かない**(あれは TCC=写真/連絡先等)。
@@ -2181,7 +2181,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   ready になり、次回の実行で「稼働中ブリッジを再利用」して成功する(=1回おきに成功・失敗が
   交互になったらこのパターン)。恒常的に3台以上の iOS 並列を使うなら供給タイムアウト延長か
   供給の直列化を検討(§8)。※この実測は供給が直列だった時代のもの。2026-07-15 の並列供給化
-  (§3.2)後は無負荷コールドの 3 台 hybrid(6 ブリッジ)は成立を確認済みだが、負荷下の挙動は
+  (§3.2)後は無負荷コールドの 3 台 inapp モード(6 ブリッジ)は成立を確認済みだが、負荷下の挙動は
   未再計測(悪化しうる方向なので交互パターンを見たらまずここを疑う)
 
 - **iOS ブリッジのウェッジ(接続は受けるが無応答)の診断手順**: ① `curl -s -m 2 -o /dev/null -w "%{http_code}" http://localhost:<port>/status` で 000 なら無応答(200 が健全。ポートは 8123〜)。② run が固まって見えるときは `lsof -p <run pid> | grep ESTAB` — ブリッジポートへの ESTABLISHED が動かないのは無応答待ち。③ `sample <pid> 2` で全スレッドが workq/mach_msg でパーク+CPU 0% なら「返らない await」(死活確認系は withDeadline 必須。design.md §12.4)。復旧は `fleetest bridge down --port <N>` で該当だけ停止(次の供給が作り直す)。**このコマンドは自リポジトリの `.fleetest/` に記録があるブリッジしか止められない** — 別クローンが起動したものは「このリポジトリの管理下にありません」と出るので、起動元のクローンで止めるか `lsof -ti :<N>` のプロセスを止め、iOS は `xcrun simctl terminate <udid> com.example.ftrunner.uitests.xctrunner` まで行う。**残存ブリッジの一覧は `fleetest doctor`** が出す(版が古い/記録が無いものを報告。停止はしない)
@@ -2212,7 +2212,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 ## 8. 今後の改善候補(価値が出たら)
 
 **この節は候補と完了記録が混在している**。「iOS の XCUITest 税」の項(2〜4)は**実装済みの記録**で
-候補ではない(in-app 常駐ブリッジ・hybrid は既定で動いている)。候補として読むのは各行の
+候補ではない(in-app 常駐ブリッジ・inapp モードは既定で動いている)。候補として読むのは各行の
 ✅/❌/不採用の印が無いものだけ。
 
 - ✅ **SpringBoard の劣化を検知して起こし直す**(§3.36 で実装)。効果がどれだけ続くか(再劣化までの時間)は未計測 ——
@@ -2241,16 +2241,16 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   `SnapshotResponse.offscreen` を供給していた)。ランナーが Android と同じ契約で供給するように
   変更(bridgeProtocolVersion 46)。実測(WebView シナリオ・アイドル3周 A/B・全3 SUT):
   scrollTo −22〜31%・scrollToTop CMP/Flutter −16%(SwiftUI 中立)・シナリオ全体 34.1→30.4s(−11%)。
-  **hybrid には供給しない**(`WebViewDelegatingDriver` が落とす。contentOffset 短絡の方が速い)。
+  **inapp モードには供給しない**(`WebViewDelegatingDriver` が落とす。contentOffset 短絡の方が速い)。
   残る床は `scrollToEdge` の毎周 `settledSignature`(WebView は snapshot 1枚 300〜500ms かかり、
   端確定に最低2周 = 減速中に比較すると早すぎる端判定になる実害由来で単純には外せない)と
-  Web コンテンツの AX 活性化待ち(`exist` 3〜4s・エンジン差なし)。
+  Web コンテンツの AX 活性化待ち(`exist` 3〜4s・ブリッジ差なし)。
 - ✅ **`scrollToEdge` の端確定をヒントに任せる**(2026-08-05 実装。上の「再設計が要る」の答え):
   端は「署名が2回続けて不変」で判定していたが、**2回目は Android のフリング停止で1回空振りする
   形への保険**で、その代償として**端に着いてから捨てのスワイプを2回撃っていた**。
   `SnapshotResponse.offscreen` は「その方向にまだ内容があるか」の**肯定的な証拠**なので、
   ヒントを供給する画面(= WebView)でだけ**不変1回**に下げる(`StepExecutor.unchangedRoundsForEdge`)。
-  供給の無い画面(ネイティブ・旧ブリッジ・hybrid)は `offscreen` が nil なので従来どおり。
+  供給の無い画面(ネイティブ・旧ブリッジ・inapp モード)は `offscreen` が nil なので従来どおり。
   **同セッション A/B の実測**(E2E-CMP/ios-xcuitest・`WebViewの中身を操作できること.S0010` を
   交互ではなく連続で fix 5 周 / base 3 周):
 
@@ -2263,7 +2263,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   減った量は XCUITest のスワイプ1回ぶんと整合(1スワイプ約2.5秒のうち約1.6秒が quiescence)。
   **対照が動いていないこと**を同じ run から取っているのが判定の根拠(単独の壁時計では
   デバイス差・セッション鮮度に埋もれる)。
-- **AX 活性化待ち約3秒は iOS 側の床でエンジン差なし**(2026-08-05 に `results/runs` 全数で確認):
+- **AX 活性化待ち約3秒は iOS 側の床でブリッジ差なし**(2026-08-05 に `results/runs` 全数で確認):
   `exist "WebView 見出し"` の中央値は **ios-xcuitest 2.96s(n=448)/ ios-inapp 3.04s(n=283)/
   android 0.24s(n=174)**。DOM 経路(in-app)でも同じだけ掛かるので **AX ではなく WKWebView が
   初回に中身を出すまでの時間**。ホスト側に削り代は無い(強いて言えば `PollBackoff` が
@@ -2293,7 +2293,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 - ❓ **全操作(タップ・長押し・スワイプ・ドラッグ)で XCTest の待ちを既定で外し、整定を木の観察だけにする案は判定できていない**
   (2026-10-09・`iosFastInput` 既定 true の版で `e2e.sh --local --ios-xcuitest`): E2E-CMP が 38 本中 22 本赤になり止めたが、
   **同じ時期は環境が不調だった** —— 変更前の 10/8 11:25〜12:57 にも XCUITest・in-app の両方で 17〜22 本赤(in-app は XCTest の
-  待ちと無関係)、この日も赤のシナリオを1本だけ回すと両エンジンで緑、Simulator を起こし直して負荷の平均が 401 → 19 に落ちてから
+  待ちと無関係)、この日も赤のシナリオを1本だけ回すと両モードで緑、Simulator を起こし直して負荷の平均が 401 → 19 に落ちてから
   回すと 56/56 緑。**HEAD との対照も取っていない**ので、赤のうち変更が原因の分は分からない(当初「Compose は AX の木が遅れて
   追従するので木だけでは無理」と書いたが、確かめていない)。
   **測り直した(同日・Simulator を起こし直して負荷の平均 < 20・同じビルド a1927045 で `--set iosFastInput=true` だけを
@@ -2317,7 +2317,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   現在のマシンは M2 Ultra で、E2E は **iOS 6 レーンが日常**(2026-07-30 実測: 3 SUT × 6 レーン・
   稼働 92〜96%・91 シナリオ成功・振り直し 0 件)。台数の妥当性はマシンごとに §3.1 の手順
   (実行中の CPU idle を見る)で取り直すこと
-- **iOS の「XCUITest 税」と高速化エンジン**: 施策は 2 系統:
+- **iOS の「XCUITest 税」と高速化の仕組み**: 施策は 2 系統:
 
   **「税 = snapshot ~250ms」は旧説(2026-07-30 に外形計測で否定)**。ホスト側から HTTP 越しに
   測ると素の snapshot 取得は **29〜118ms**(要素 5〜22 個・M2 Ultra アイドル)で、支配項では
@@ -2353,7 +2353,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        (UIKeyInput 準拠・isFirstResponder)」が**別ウィンドウの別ビュー**で、従来の first responder
        捕捉が前者を拾って 409 になっていた。「insertText: に応答し かつ isFirstResponder のビュー」を
        最優先する探索に変更(InAppInput.m FTInsertTextIntoFirstResponder)し、type 実測 262〜299ms
-       (XCUITest attach 経路 1.0〜1.3s の約1/4)。hybrid の Compose 検出時 attach 優先
+       (XCUITest attach 経路 1.0〜1.3s の約1/4)。inapp モードの Compose 検出時 attach 優先
        (preferTypeDriver)は廃止し、409→attach フォールバックのみを安全網として残す。
        ログイン系シナリオ 18.9→15.3s(−19%)。
        **2026-07-28 追記**: `\n` を含む text だけは attach 経路(XCUITest)へ回す。改行の意味を
@@ -2438,25 +2438,25 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        (SwiftUI `.contextMenu`)を開き、メニュー項目を accessibilityActivate でタップする完全フローを
        実機確認済み。
      - screenshot: `drawHierarchy` → PNG、45ms。
-     - **ホスト統合(engine 選択+lifecycle)= 完成**: machine プロファイルのデバイスに
-       `engine`("xcuitest" 既定 / "inapp")を持たせ、`engine=inapp` のときサブプロセスが
+     - **ホスト統合(モード選択+lifecycle)= 完成**: machine プロファイルのデバイスに
+       `mode`("xcuitest" / "inapp")を持たせ、`mode=inapp` のときサブプロセスが
        `InAppDriver`(launch=simctl 再起動+dylib 注入、他は HTTP で `BridgeClient` へ委譲)を使う。
        provisioner は注入起動済みブリッジを /status スキャンで発見・再利用、不足分は
        `InAppLauncher`(注入起動)で起動。**ホスト実行系(`FTBridgeClient`/RunOrchestrator/
-       ScenarioHost)は engine フィールドを通すだけで概ね無改変**。
-       **engine=inapp の新規ブリッジ起動には注入対象アプリの bundleID が要る**(run プロファイルの
+       ScenarioHost)は mode フィールドを通すだけで概ね無改変**。
+       **mode=inapp の新規ブリッジ起動には注入対象アプリの bundleID が要る**(run プロファイルの
        apps.ios.app 経由でのみ得られる)。無い場合は XCUITest にフォールバックせず**明示エラー**
        (`inAppNeedsBundleID`。単一実装・フォールバックを作らない方針。device/live 等 bundleID を
-       渡さない経路は engine=inapp 非対応)。稼働中ブリッジ再利用時は launch しないので bundleID 不要。
+       渡さない経路は mode=inapp 非対応)。稼働中ブリッジ再利用時は launch しないので bundleID 不要。
      **実シナリオ実証(ログイン画面.S0010、実機)**:
      - 単発(warm・状態リセット無し): step 合計 ~11.0s(XCUITest)→ **~3.0s(3.7倍速)**。
      - **プロファイル経由 3 イテレーション: 全 passed=True**(以前は 2 回目以降ログイン済みで失敗)。
        各イテレーションの launch = `InAppDriver` の simctl 再起動+注入 **~2900ms**(fresh 状態確保。
        XCUITest の launch 4200〜5400ms より速い)。step 合計 ~6.2s(XCUITest ~11s の 1.6倍速)。
-       **XCUITest 経路(engine 既定)は回帰なし・FTCore 143 テスト全パス**。
+       **XCUITest 経路は回帰なし・FTCore 143 テスト全パス**。
      残り時間の内訳: launch(fresh 起動)2.9s + シナリオ自身の明示 wait(1s)+ 別プロセスの
      システム UI(パスワード保存シート「今はしない」)への optional タップ空振り(~750ms)。
-     エンジンの実操作(type/tap/exist)は合計 ~1.1s。
+     in-app ブリッジの実操作(type/tap/exist)は合計 ~1.1s。
      **AX id 忠実度=解決済み**: 当初 `.accessibilityIdentifier` を拾えず id 単独セレクタが
      解決不能だったが、原因は `as? UIAccessibilityIdentification` キャスト(SwiftUI の
      `AccessibilityNode`/`UIKitTextField` はセレクタに応答するがプロトコル準拠を宣言しない)。
@@ -2467,7 +2467,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
      空なら value=nil に修正(非空 SecureTextField は accessibilityValue のマスクを維持し実パスワードは
      晒さない)。(b) press → 実機確認済み(上記)。(c) 並列複数 in-app デバイス → シミュ1-inapp(8123)+
      シミュ2-inapp(8124)で 2 シナリオ並列全 passed(port/udid 配線が並列で正しい)。install 前注入起動の
-     順序は engine=inapp+autoInstall のとき注入起動が install より先に走る(現状はアプリ事前 install が
+     順序は mode=inapp+autoInstall のとき注入起動が install より先に走る(現状はアプリ事前 install が
      必要=エラーメッセージで案内)。
      なお XCUITest の quiescence 自体を私有 API で無効化する案(WDA 方式)は、
      代替の整定信号がプロセス外から得られないため 2 とセットでない限り採らない
@@ -2477,34 +2477,34 @@ window/transition/animator の `*_scale` はチューニングノブではなく
      タップが遷移の途中に当たって吸われる(開く操作から約 0.5 秒。木はその時点で最終位置を出すので木の整定では見張れない。
      E2EX-iOS の 42_固有部品 S0010 が 10-20 から決まって赤)。実費は静かな画面 2〜5ms・遷移の直後 147ms・アニメーション中
      最大 815ms・Apple マップ 2〜844ms(Simulator)。操作の後の待ちは飛ばしたまま。`QuiescenceWait.waitBeforeTouch`)
-  4. **cross-app ハイブリッド(in-app 主 + XCUITest フォールバック)**: `engine=hybrid` を指定すると in-app(主・高速)で駆動し、対象要素が
+  4. **cross-app ハイブリッド(in-app 主 + XCUITest フォールバック)**: `mode=inapp` を指定すると in-app(主・高速)で駆動し、対象要素が
      in-app snapshot に無いとき **XCUITest(システム UI)へ自動フォールバック**する。in-app は
      同一プロセスしか見えない(=速さの源泉と表裏)ので、既に前面にあるシステム UI(権限ダイアログ等)
      だけ XCUITest に委ねる。「XCUITest が in-app を起動」案とは別(あちらは launch 4200-5400ms と遅い)。
-     - **配線経路(同期が必要)**: `BridgeProvisioner`(hybrid は in-app + xcuitest の2ブリッジを起動、
+     - **配線経路(同期が必要)**: `BridgeProvisioner`(inapp モードは in-app + xcuitest の2ブリッジを起動、
        `ProvisionedIOSDevice.xcuiPort`)→ `DriverConnection.xcuiPort` → `ScenarioHost` が `--xcui-port`
        で伝搬 → `ScenarioRunnerMain` が `SystemUIDriver(port:)` を構築 → `StepExecutor.fallbackDriver`。
      - **フォールバック解決**(`StepExecutor.executeAction`/`executeAssert`): 主 driver(in-app)の
        poll(最大3回)で解決できないとき **fallbackDriver.snapshot() で1回だけ**解決を試し、当たれば
        以降の act をその driver で行う。**注意: フォールバックは snapshot 1回のみ(poll しない)**。
        遅延して出るダイアログはシナリオ側で `wait` を入れる(通知許可等は `.action` に `wait(2)`)。
-     - **ブリッジ発見**: `/status` に `engine`("inapp"/"xcuitest")を追加し、`scanRunningBridges` は
-       (UDID, engine) で照合(同一 UDID に2ブリッジが共存するため port→UDID だけでは reuse が非決定的)。
-       ハイブリッドデバイスは2ポート消費(8123-8154 で最大16台並列)。旧ブリッジは engine=nil→"xcuitest" 扱い。
+     - **ブリッジ発見**: `/status` に `bridge`("inapp"/"xcuitest")を追加し、`scanRunningBridges` は
+       (UDID, bridge) で照合(同一 UDID に2ブリッジが共存するため port→UDID だけでは reuse が非決定的)。
+       inapp モードのデバイスは2ポート消費(8123-8154 で最大16台並列)。旧ブリッジは bridge=nil→"xcuitest" 扱い。
      - **springboard 非破壊参照モード**(`BridgeRouter.handleLaunch`): bundleID=com.apple.springboard の
        とき `target.launch()` せず参照だけ張って snapshot/tap 可。**launch すると springboard がホームに
        飛びアラートを消す**ので不可。`SystemUIDriver.snapshot()` は毎回 springboard を再 session(refs を
        張り直す)が、tap/press は再 session しない(refs が消える)。
      - **実機 A/B 検証済み**: 通知許可ダイアログ(springboard 別プロセス、in-app 不可視)に対し
-       `tap("許可||Allow")` が **hybrid=passed(fallback label=Allow で解決)/ inapp=failed(ロケータ
+       `tap("許可||Allow")` が **inapp モード=passed(fallback label=Allow で解決)/ in-app ブリッジ単独=failed(ロケータ
        解決不可)**。同一アプリ・同一手順・唯一の差はフォールバック driver の有無 → フォールバック経路が
-       働いた確証。既存 `ログインテスト.S0010` も hybrid で全 passed(通常シナリオに非回帰)。
+       働いた確証。既存 `ログインテスト.S0010` も inapp モードで全 passed(通常シナリオに非回帰)。
        **アラート文言はロケール依存**(この個体は英語 "Allow"/"Don't Allow")。
      - **シナリオ単位の自動ルーティング**(ScenarioRunnerMain のドライバ構築): シナリオの対象アプリ
        (解決済みの既定アプリ。`FTCore.ScenarioAppResolution`)が in-app 注入先
        (in-app /status の sessionBundleID)と**異なる**とき、
-       hybrid はそのシナリオを**丸ごと XCUITest ブリッジで駆動**(iOS設定アプリ等のシナリオが既定 ON でも
-       動く)。engine=inapp(明示)は明示エラー。**この分岐が無いと別アプリの注入起動がポート衝突で
+       inapp モードはそのシナリオを**丸ごと XCUITest ブリッジで駆動**(iOS設定アプリ等のシナリオが既定 ON でも
+       動く)。XCUITest ブリッジを持たない in-app ブリッジ単独は明示エラー。**この分岐が無いと別アプリの注入起動がポート衝突で
        旧ブリッジの偽成功応答になり「裏のアプリを操作して失敗」する**(E2E で実際に発生)。
      - **suspend 時のルーティング(2026-07-15 修正。混在実行の必須対策)**: 上記ルーティングは in-app
        /status の応答に依存するが、**直前に別アプリ(system-UI)シナリオが走ると iOS が背面へ回った
@@ -2517,21 +2517,20 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        して破綻する**(この誤りで実際に回帰し、Preferences シナリオがハング → §design 8.8 の
        `waitUntilExit` 凍結で run 全体が固まった)。InAppDriver 経路は pre-flight `status()` を省略する
        (suspend でハングし、かつ冒頭 launchApp の注入 relaunch で bridge を必ず張り直すため不要)。
-       混在させないなら `iosInappEngine=false`(全 XCUITest)で回避もできる。
+       混在させないなら `iosMode: "xcuitest"`(全 XCUITest)で回避もできる。
      - **未達**: リッチなサービス所有シート(iOS27 写真限定ライブラリ=com.apple.PhotosViewService)は
-       app.snapshot() の1アプリツリーモデルでは掴めない。**推奨運用**: 単純アラートはハイブリッド、
+       app.snapshot() の1アプリツリーモデルでは掴めない。**推奨運用**: 単純アラートは inapp モード、
        リッチシートや確実性重視は `simctl privacy grant`/`defaults write` でダイアログを最初から出さない
        方が安価・確実。**シナリオ途中の deliberate フルアプリ切替(sampleapp 操作中に設定アプリへ遷移等)
        は対象外**(フォールバックは「アプリ前面のまま出るシステム UI」向け。シナリオ丸ごと別アプリは
        上記ルーティングで XCUITest が担う)。
-     - 使い方(推奨): **run プロファイルの `iosInappEngine`(既定 true=ON。GUI「高速なinappエンジンを
-       使用する(iOS)」チェックボックス)で選ぶ**。ON → iOS デバイスの実効エンジンを "hybrid"、OFF →
-       "xcuitest"(`ProfileResolver.resolve`)。`devices[]` のその device に `engine` を明示していれば
-       そちらが優先(上書きしない=pure "inapp" 固定などの逃げ道)。`engine=inapp` 同様 bundleID 必須
-       (新規 in-app 起動に要る。`inAppNeedsBundleID`)。**既定 ON なので engine 無指定の iOS デバイスは
-       ハイブリッドで走る**(従来 XCUITest だった `ios.json` 等も高速化。XCUITest に戻すには OFF)。
+     - 使い方(推奨): **run プロファイルの `iosMode`("inapp" 既定 / "xcuitest"。GUI の「iOS のモード」)で選ぶ**。
+       iOS デバイスの実効モードが決まる(`ProfileResolver.resolve`)。`devices[]` のその device に `mode` を
+       明示していればそちらが優先。inapp モードは bundleID 必須
+       (新規 in-app 起動に要る。`inAppNeedsBundleID`)。**既定が inapp なので mode 無指定の iOS デバイスは
+       inapp モードで走る**(従来 XCUITest だった `ios.json` 等も高速化。XCUITest ブリッジだけに戻すには `iosMode: "xcuitest"`)。
 - **シナリオ設計の見直し**: 上記 iPhone Air フレークのようなデバイス依存アサーションの排除は、
-  どんなエンジン改善より成功率に効く
+  どんな高速化より成功率に効く
 
 ## 実機 iOS の tap の内訳と起動時注入(2026-10-21 実測・iPhone SE3 / iOS 26.6.2)
 
@@ -2571,7 +2570,7 @@ A/B は端末の状態を揃えてから測る。
 `devicectl device process launch --environment-variables '{"DYLD_INSERT_LIBRARIES":"<コンテナの絶対パス>/tmp/<dylib>"}'`
 で起動すると、constructor が走ってマーカーを書いた(書いた pid = 動いているアプリの pid)。環境変数なしの起動では書かれない(陰性対照)。
 **アプリのビルドし直しも再署名も要らない**。コンテナの絶対パスは `device copy to --json-output` の `destination` から得られる。
-**本実装済み(2026-10-22・開発署名のアプリのみ)**: in-app / hybrid を実機でも選べる(
+**本実装済み(2026-10-22・開発署名のアプリのみ)**: inapp モードを実機でも選べる(
 docs/design.md の該当節)。署名は `InAppCodeSign`・配置と起動は `InAppLauncher` の physical 経路・到達は
 XCUITest 実機と同じ `IOSDeviceTransport`。プロセス内のタッチ合成も実機で効くことを SE3 で確認(タップ・ジェスチャ・型入力)。
 
@@ -2579,7 +2578,7 @@ XCUITest 実機と同じ `IOSDeviceTransport`。プロセス内のタッチ合�
 
 E2E の 07 S0060(scrollFrame 指定で #row_40 到達 + 行タップ3回)の実測:
 **CMP 25.5s / Flutter 38.6s / RN 56.2s(±0.2, n=3)/ SwiftUI 72.0s**。
-RN 固有ではなく xcuitest エンジン一般の構造で、内訳は「1周(スワイプ+整定+snapshot)≈2s ×
+RN 固有ではなく xcuitest モード一般の構造で、内訳は「1周(スワイプ+整定+snapshot)≈2s ×
 周回数」。周回数は 移動距離 ÷ 刻み(容器×マージン 0.2/0.2 ≈ 0.6 掛け)で決まる。
 
 較正候補(どちらもグローバルノブ = **全 SUT の実測を添えてからでないと回さない**):

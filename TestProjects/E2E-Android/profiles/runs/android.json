@@ -169,7 +169,7 @@
   "containerInference": true,
   "heal": true,
   "homeOnStart": true,
-  "iosInappEngine": true,
+  "iosMode": "inapp",
   "record": true,
   "screenLooksLike": true,
   "fmTextVisibilityCheck": true,

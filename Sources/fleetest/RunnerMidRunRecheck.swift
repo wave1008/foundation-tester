@@ -8,13 +8,13 @@ import Foundation
 
 enum RunnerMidRunRecheck {
     /// 測り直す対象のレーンか。**素の xcuitest レーン(シミュレータ)だけ**:
-    /// - hybrid / in-app は除く —— ランナーを起動し直すと対象アプリごと落ち、同じデバイスの in-app ブリッジも
+    /// - inapp モードは除く —— ランナーを起動し直すと対象アプリごと落ち、同じデバイスの in-app ブリッジも
     ///   消える。供給時は直後の in-app の再利用がそれに気付いて起動し直すが、run の途中には拾う者が居ない。
     ///   劣化の実測も xcuitest のレーンだけ(実測: 同じデバイスが in-app のフル E2E では 0 件)
     /// - 実機は除く —— 起動し直しがデバイスのトランスポート越しで遅く、run 中の劣化の観測も無い
     static func target(of connection: DriverConnection) -> (udid: String, port: UInt16)? {
         guard connection.platform == "ios", !connection.physical,
-              connection.engine == nil || connection.engine == "xcuitest",
+              connection.mode == nil || connection.mode == "xcuitest",
               let udid = connection.udid,
               let port = connection.xcuiPort ?? connection.port else { return nil }
         return (udid, port)

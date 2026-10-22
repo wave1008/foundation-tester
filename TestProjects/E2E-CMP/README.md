@@ -21,18 +21,18 @@ cd E2EAppCMP
 ## 実行
 
 ```sh
-fleetest run --project E2E-CMP --profile ios        # iPhone 17 Pro(iOS 27.0)・xcuitest エンジン(全件グリーンの基準)
-fleetest run --project E2E-CMP --profile ios-inapp  # 同じ端末を inapp エンジンで(エンジン差分の観測用)
+fleetest run --project E2E-CMP --profile ios        # iPhone 17 Pro(iOS 27.0)・xcuitest モード(全件グリーンの基準)
+fleetest run --project E2E-CMP --profile ios-inapp  # 同じ端末を inapp モードで(モード差分の観測用)
 fleetest run --project E2E-CMP --profile android    # Pixel 9(Android 15)-01
 ```
 
-### iOS のエンジン選択
+### iOS のモード選択
 
-**in-app エンジンは「時間・移動を伴うジェスチャ」を駆動できない**(tap/type は通るが swipe/press は無反応)。
+**in-app ブリッジは「時間・移動を伴うジェスチャ」を駆動できない**(tap/type は通るが swipe/press は無反応)。
 **これは Compose 固有ではない** — SwiftUI ネイティブでも同じことを 2026-07-23 に `TestProjects/E2E-iOS` で
-実測した(それまで Compose 固有だと誤って記述していた)。両エンジンで同一シナリオを回した実測:
+実測した(それまで Compose 固有だと誤って記述していた)。両ブリッジで同一シナリオを回した実測:
 
-| コマンド | inapp 単体 | xcuitest |
+| コマンド | in-app ブリッジ単体 | xcuitest |
 |---|---|---|
 | `tap` / `type` | ✅ | ✅ |
 | `press`(長押し) | ❌ 無反応(現在は常に 501) | ✅ |
@@ -44,15 +44,15 @@ fleetest run --project E2E-CMP --profile android    # Pixel 9(Android 15)-01
 (現在はその向きにスクロール余地があるビューだけを対象にし、無ければ 501)。
 (2) 合成タッチへ迂回してもジェスチャ認識器は drag/長押しを受理しない(Compose も SwiftUI も)。
 
-**ただし hybrid(`iosInappEngine: true`)では自動でフォールバックする**(2026-07-23)。
-hybrid は in-app と XCUITest の両ブリッジを張るので、ジェスチャだけ XCUITest 側へ回せばよい:
+**ただし inapp モード(`iosMode: "inapp"`)では自動でフォールバックする**(2026-07-23)。
+inapp モードは in-app と XCUITest の両ブリッジを張るので、ジェスチャだけ XCUITest 側へ回せばよい:
 
 - `/status` の `unsupportedActions` 申告(compose は `["swipe","press"]`、uikit は `["press"]`)を
   起動時プローブで見て、該当する操作は**最初から** XCUITest へ回す
-- 検出漏れ時は **501**(このエンジンでは未対応)を捕まえて切り替え、以降はラッチして往復を繰り返さない。
+- 検出漏れ時は **501**(この経路では未対応)を捕まえて切り替え、以降はラッチして往復を繰り返さない。
   409(キーウィンドウ不在等の一時的競合)では**切り替えない** — 切り替えると「アプリが前面に無い」
   状況を隠して別画面を操作しかねないため
-- どちらも効かない構成(engine=inapp 単独・XCUITest ブリッジ無し)でのみ 501 が表面化する
+- XCUITest ブリッジが無いときだけ 501 が表面化する
 - フォールバックしたステップはレポートに `(XCUITest へフォールバック)` と注記が付く
   (ロケータのフォールバックとは別扱いで、セレクタ更新の提案は出さない)
 

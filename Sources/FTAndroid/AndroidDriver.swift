@@ -99,7 +99,7 @@ public final class AndroidDriver: AppDriver {
         if let path = AdbLocator.adbPath() { return path }
         // static(serial 選定より前)。android の文言は physicalDevice で分岐しないのでここでは無害
         throw DriverError.bridgeUnreachable(
-            context: DriverErrorContext(engine: .android, physicalDevice: false),
+            context: DriverErrorContext(bridge: .android, physicalDevice: false),
             detail: "adb not found (set ANDROID_HOME)")
     }
 

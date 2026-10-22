@@ -37,7 +37,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   `CoordinateSynthAlertGateTests`)。**主画面への単純な tap もこの経路**(`XCUICoordinate.tap()` は API が無いときの縮退先)。**record の点は主画面の portrait の座標**(`interfaceOrientation` を渡しても回らない = 実測)—— 木の座標は送る口で `nativePoint(_:interface:)` が回す。呼び手は向きを `BridgeRouter.synthesisOrientation()`(アプリのインターフェースの向き。デバイスの向きとは左右が逆)で渡す。**`/gesture`
   (DSL の `gesture` / MCP の `ft_gesture`)も同じファイル・同じ非公開 API を使う** ——
   こちらは要素ピンチのような縮退先が無いので、この API が無い Xcode では **422**(501 ではない。
-  501 はホストに「このエンジンでは不可」= XCUITest へのフォールバック判定と読まれ、ランナー自身の
+  501 はホストに「この経路では不可」= XCUITest へのフォールバック判定と読まれ、ランナー自身の
   501 は `hideKeyboard` 専用)で断る
 - **主画面以外の画面(折りたたみの iPhone Duo の内側)へのタッチは `DisplayRouting` の1箇所で決める**
   (`Runner/.../DisplayRouting.swift`)。XCUICoordinate のタッチと `XCUIScreen.main` のスクショは主画面(Duo = 外側)にしか

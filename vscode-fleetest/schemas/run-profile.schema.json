@@ -49,7 +49,7 @@
           "kind": {
             "type": "string",
             "enum": ["virtual", "physical"],
-            "description": "デバイスの実体種別(省略時 virtual)。virtual = iOS シミュレータ / Android エミュレータ。physical = 実機(iOS は udid、Android は serial が必須。iOS 実機は engine=xcuitest 固定)。"
+            "description": "デバイスの実体種別(省略時 virtual)。virtual = iOS シミュレータ / Android エミュレータ。physical = 実機(iOS は udid、Android は serial が必須。iOS 実機の inapp モードは開発署名のときだけ。使えなければ xcuitest モードへ縮退)。"
           },
           "osVersion": {
             "type": "string",
@@ -65,10 +65,10 @@
             "minimum": 0,
             "maximum": 65535
           },
-          "engine": {
+          "mode": {
             "type": "string",
-            "enum": ["xcuitest", "inapp"],
-            "description": "iOS: 駆動エンジン。xcuitest(既定)= XCUITest ブリッジ / inapp = シミュレータのアプリに dylib 注入する in-app ブリッジ(実機不可・高速)。kind=physical では xcuitest 以外は検証エラー。"
+            "enum": ["inapp", "xcuitest"],
+            "description": "iOS: このデバイスのモード。inapp = in-app ブリッジと XCUITest ブリッジのハイブリッド構成 / xcuitest = XCUITest ブリッジだけ。inapp は開発署名の実機でも使える(使えなければ xcuitest モードへ縮退)。省略時は実行プロファイルの iosMode。"
           },
           "avd": {
             "type": "string",
@@ -125,10 +125,11 @@
       "description": "シナリオ単位の壁時計タイムアウト秒(ホスト側 watchdog。超過で子を強制終了し失敗扱い。省略時 600)。defaultTimeout(子内部の検証待ち)とは別物。",
       "minimum": 1
     },
-    "iosInappEngine": {
-      "type": "boolean",
-      "description": "iOS の高速な in-app エンジン(ハイブリッド)を使うか(既定 true=ON)。ON → iOS デバイスを hybrid(in-app 主+XCUITest フォールバック)、OFF → xcuitest で駆動する。devices[] の該当エントリで engine を明示している場合はそちらが優先。Android には影響しない。",
-      "default": true
+    "iosMode": {
+      "type": "string",
+      "enum": ["inapp", "xcuitest"],
+      "description": "iOS のモード。inapp(既定)= in-app ブリッジと XCUITest ブリッジのハイブリッド構成(撃てない操作だけ XCUITest ブリッジへ回す)/ xcuitest = XCUITest ブリッジだけ。devices[] で mode を明示したデバイスはそちらが優先。responseMeasurement の run では既定が xcuitest(計測は XCUITest ブリッジにあるため)。Android には影響しない。",
+      "default": "inapp"
     },
     "wipeDataOnBloat": {
       "type": "boolean",

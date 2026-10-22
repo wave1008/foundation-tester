@@ -134,7 +134,7 @@
     }
   ],
   "heal": true,
-  "iosInappEngine": false,
+  "iosMode": "xcuitest",
   "record": true,
   "recoverCpuFallbackToGpu": true,
   "wipeDataOnBloat": true

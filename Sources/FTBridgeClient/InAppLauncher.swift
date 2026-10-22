@@ -16,7 +16,7 @@ public struct InAppLauncher: Sendable {
     public let appBundle: String?
     /// USB(iproxy)で張るか。実機のみ参照(シミュレータはループバック共有)
     public let wired: Bool
-    /// hybrid の実機で、相方(xcuitest)のトンネルのポート。in-app の establish がこれを消さないように残す
+    /// inapp モードの実機で、相方(xcuitest)のトンネルのポート。in-app の establish がこれを消さないように残す
     public let keepPeerPort: UInt16?
 
     var stateDir: URL { repoRoot.appendingPathComponent(".fleetest") }
@@ -130,7 +130,7 @@ public struct InAppLauncher: Sendable {
         }
         // dylib 注入とブリッジポートの指定。**接頭辞なし**の名前で持つ(simctl 経路のときだけ
         // launchViaCoreSimOrSimctl が SIMCTL_CHILD_ を前置する。CoreSimulator 経路にこの接頭辞は無い
-        // ので剥がし忘れると dylib が注入されずブリッジが上がらない=in-app エンジンが丸ごと死ぬ)。
+        // ので剥がし忘れると dylib が注入されずブリッジが上がらない=in-app ブリッジが丸ごと死ぬ)。
         // DOM 経路の殺しスイッチはホスト側の環境変数で受けて注入先へ引き渡す
         // (dylib はアプリのプロセスで動くので、そこへ伝えないと効かない)
         var env = [

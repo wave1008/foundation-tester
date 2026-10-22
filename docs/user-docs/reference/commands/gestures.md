@@ -53,7 +53,7 @@ the start of the gesture until that finger touches down; default 0 — meant for
 It must be a finite value of 0 or more). An invalid spec (no fingers, an off-screen point,
 a non-positive duration, too long a gesture) fails the step without touching the device.
 
-**On iOS this command always runs through XCUITest, even under the default hybrid engine.** Use cases: pattern lock,
+**On iOS this command always runs through XCUITest, even in the default inapp mode.** Use cases: pattern lock,
 long-press-then-drag without lifting (e.g. reordering a list), a custom two-finger rotate,
 gestures needing 3+ fingers, drawing or signing.
 
@@ -74,7 +74,7 @@ before `holdSeconds` is up, `hold` waits for the release before returning. If th
 takes longer than `holdSeconds`, the finger is already up for the rest of it — this is noted but
 not treated as a failure. Holds cannot be nested (start a second one only after the first one's
 block has finished), and if the target cannot be resolved the block does not run at all. **On iOS
-with the default hybrid engine, the press always runs through XCUITest** (same as
+in the default inapp mode, the press always runs through the XCUITest bridge** (same as
 `tap`'s long press).
 
 ## Maps, image viewers, drawing canvases
@@ -83,7 +83,7 @@ For a map, image viewer, or drawing surface, operate it with these four commands
 pan (diagonal included), `pinchOut`/`pinchIn` to zoom, `doubleTap` to zoom in. Three things to
 keep in mind:
 
-- **The fingers of a pinch land at the same spot regardless of engine.** On iOS the two fingers
+- **The fingers of a pinch land at the same spot regardless of mode.** On iOS the two fingers
   sit side by side along the region's long side, 0.8 inside its edges; on Android they sit on the
   region's short side, 90% of it apart, centred. On an older Xcode a different method is used
   instead, and a note on the step says so.
@@ -93,19 +93,19 @@ keep in mind:
   into a pan of the map. fleetest therefore picks a spot where both fingers land on the same
   element, narrowing the span if it has to, and pinches the whole screen only when no such spot
   exists.
-- **On iOS, only double tap can fail to register, depending on the framework and the engine.**
-  The default hybrid engine (Simulator) runs every gesture on every framework. Android has no such
+- **On iOS, only double tap can fail to register, depending on the framework and the mode.**
+  The default inapp mode (Simulator) runs every gesture on every framework. Android has no such
   split — every gesture works everywhere:
 
   | iOS | SwiftUI / UIKit | Compose Multiplatform | Flutter | React Native |
   |---|---|---|---|---|
   | `swipeBy` (diagonal included) | ✅ | ✅ | ✅ | — |
-  | `doubleTap` | ✅ | ✅ **hybrid only** | ✅ | △ |
+  | `doubleTap` | ✅ | ✅ **inapp only** | ✅ | △ |
   | `pinchOut` / `pinchIn` | ✅ | ✅ | ✅ | ✅ |
   | `gesture` | ✅ | ✅ | ✅ | ✅ |
 
-  - **"hybrid only"**: works only with the default hybrid engine (Simulator). **With an
-    `xcuitest`-only profile (or a physical device whose app is not development-signed, which
+  - **"inapp only"**: works only in the default inapp mode (Simulator). **With a
+    profile set to `iosMode: "xcuitest"` (or a physical device whose app is not development-signed, which
     falls back to XCUITest), a Compose app does not recognize the double tap** (XCUITest cannot
     send a double tap Compose registers).
   - **"△"**: it arrives, but a screen that detects taps in JavaScript (PanResponder and a clock,
@@ -114,7 +114,7 @@ keep in mind:
   - For using this from MCP, see [MCP server](../tools/mcp_server.md).
 - **Where double tap does not register, check the zoom with `pinchOut` instead.** On a screen where
   double tap means "zoom in" (maps, photos), `pinchOut` produces the same zoom for you to verify.
-  Pinch works on every framework, Compose included, with either engine:
+  Pinch works on every framework, Compose included, in either mode:
 
   ```swift
   // instead of doubleTap("#map")
@@ -123,7 +123,7 @@ keep in mind:
   ```
 
   It is not a substitute when double tap does something other than zooming (a "like", for
-  example); check that on the Simulator (hybrid) or on Android.
+  example); check that on the Simulator (inapp mode) or on Android.
 - **The zoom scale you ask for is not always the scale you get.** Two fingers cannot move outside
   the region being pinched, so an extreme `scale` caps out at whatever that region's size allows.
   **Verify that zooming happened rather than the exact scale** — this holds up better across

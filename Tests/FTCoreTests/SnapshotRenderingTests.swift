@@ -17,7 +17,7 @@ final class SnapshotRenderingTests: XCTestCase {
         XCTAssertEqual(line, "[1] scrollView id=list_rows scroll (0,100 400x500)")
     }
 
-    /// 申告できないエンジンでは nil。**印が無い = スクロールしない、ではない**ので、
+    /// 申告できないブリッジでは nil。**印が無い = スクロールしない、ではない**ので、
     /// 何も足さない(推測の印を出すと読み手はそれを事実として使う)
     func testUndeclaredContainerGetsNoMark() {
         let line = SnapshotRenderer.renderElement(element(2, id: "list_rows", scrollable: nil))

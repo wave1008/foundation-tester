@@ -632,7 +632,7 @@ extension StepExecutor {
         if snapshot.webViewPath == WebViewPath.delegatedEmpty {
             noteCodesThisStep.insert(.webViewNotRendered)
         }
-        // **読めなかった木も同じ扱い**。委譲先が居ないデバイス(iosInappEngine)ではこちらしか立たない
+        // **読めなかった木も同じ扱い**。委譲先が居ないデバイス(XCUITest ブリッジが無いとき)ではこちらしか立たない
         if snapshot.webViewPath == WebViewPath.domUnread {
             noteCodesThisStep.insert(.webViewUnread)
         }
@@ -697,7 +697,7 @@ extension StepExecutor {
     static func webViewPathHint(_ snapshot: SnapshotResponse?) -> String {
         // **要素の形から推測しない**。Android は webView 型を出すが web フラグを持たないため、
         // 推測すると「XCUITest へ委譲」と名乗って Android のデバッグを誤誘導する(実害)。
-        // 申告が無いドライバ(Android・engine=xcuitest 単独・旧ブリッジ)では何も足さない
+        // 申告が無いドライバ(Android・xcuitest モード単独・旧ブリッジ)では何も足さない
         switch snapshot?.webViewPath {
         case WebViewPath.delegatedEmpty:
             return " (the WebView was delegated to XCUITest but produced no content before the wait"
@@ -907,7 +907,7 @@ extension StepExecutor {
                 lastOcclusion = nil   // #5: 直近は未発見 → 過去の occlusion 失敗を無効化(消失時に stale を返さない)
                 primaryMisses += 1
                 // fallback(SystemUIDriver)の snapshot は SpringBoard の木1枚ぶん(約185ms)。
-                // hybrid はさらに springboard の再 session が乗る(engine=xcuitest は
+                // inapp モードはさらに springboard の再 session が乗る(xcuitest モードは
                 // `/systemui/snapshot` なので乗らない)。primary(in-app ~0.05ms)ミス毎に払うと
                 // 通常のアプリ内要素待ちを支配するため間引く: 2・4・6…回目のミスでのみ照会。
                 // 実在するシステムUI要素の検知遅れは最大でバックオフ1段+1周期
@@ -1302,7 +1302,7 @@ extension StepExecutor {
                     passConfirmed = true
                     continue
                 }
-                // primary で不在 = pass だが、hybrid ではシステム UI(別プロセスのダイアログ)が
+                // primary で不在 = pass だが、inapp モードではシステム UI(別プロセスのダイアログ)が
                 // primary の snapshot に映らない。不在を確定する側でだけ fallbackDriver を1回照会する
                 // (pass 経路の固定費 1 回のみ。miss 毎に払う exists 側の間引きとは事情が逆)
                 if let fb = fallbackDriver {

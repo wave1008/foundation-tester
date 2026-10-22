@@ -126,7 +126,7 @@ extension StepExecutorTests {
     }
 
     /// in-app 相当(501)なら typeDriver へ回すこと。座標はそのまま渡る(ref を使わないので取り直し不要)
-    func testGestureFallsBackToTypeDriverWhenEngineIncapable() async throws {
+    func testGestureFallsBackToTypeDriverWhenBridgeIncapable() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         primary.gestureError = DriverError.badResponse(status: 501, body: "in-app では gesture が効きません")

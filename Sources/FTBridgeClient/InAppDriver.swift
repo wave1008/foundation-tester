@@ -99,13 +99,13 @@ public final class InAppDriver: AppDriver {
         guard let target = bundleID ?? lastBundleID else {
             throw DriverError.badResponse(status: 400,
                 body: "openURL needs a bundleID: none was given and no app has been launched yet on"
-                    + " this in-app engine, so there is nothing to relaunch into if the bridge is unreachable")
+                    + " this in-app bridge, so there is nothing to relaunch into if the bridge is unreachable")
         }
         // **再起動するのは「接続を拒否された」= プロセスが居ないときだけ**。無応答(タイムアウト)は
         // **サスペンド中の生存プロセス**でも起きる —— 背面に回った in-app アプリは TCP を受理して
         // 何も返さない(docs/verification.md)。そこを死と読むと、`home()` の後の openURL が
         // warm 配送のはずが毎回プロセス再起動になり、in-process の状態を黙って捨てる
-        // (同じシナリオが xcuitest エンジンとだけ挙動が食い違う)。サスペンドなら
+        // (同じシナリオが xcuitest モードとだけ挙動が食い違う)。サスペンドなら
         // simctl openurl 自体が前面化して配送するので、こちらから起こす必要はない
         do {
             _ = try await client.status(timeout: 3)
@@ -226,14 +226,14 @@ public final class InAppDriver: AppDriver {
     /// in-app には「対象アプリ全体」を掴む要素ピンチの縮退先が無い(XCUITest の
     /// `XCUIElement.pinch` はプロセス外の合成ジェスチャで、in-app の合成タッチは自プロセス内の
     /// 座標にしか撃てない)ので、**`frame` が無ければ 501 で断る**(指の置き方
-    /// `FTCore.PinchGesture.ios` は領域が要る)。hybrid では StepExecutor が XCUITest 側へ回す
+    /// `FTCore.PinchGesture.ios` は領域が要る)。inapp モードでは StepExecutor が XCUITest ブリッジへ回す
     public func pinch(frame: FTRect?, identifier: String?, scale: Double,
                       durationSeconds: Double) async throws {
         guard let frame else {
             throw DriverError.badResponse(status: 501,
-                body: "pinch needs a target area on the in-app engine (no whole-app element pinch to"
-                    + " fall back to). Switch the run profile to hybrid or xcuitest, or scope the pinch"
-                    + " to an element")
+                body: "pinch needs a target area on the in-app bridge (no whole-app element pinch to"
+                    + " fall back to, and no XCUITest bridge is attached to hand it to). Scope the pinch"
+                    + " to an element, or drive this device through its XCUITest bridge")
         }
         try await withCrashContext {
             try await client.pinch(request: PinchRequest(
@@ -248,16 +248,16 @@ public final class InAppDriver: AppDriver {
     public func restoreOrientationIfNeeded() async throws {
         try await withCrashContext { try await client.restoreOrientationIfNeeded() }
     }
-    // in-app では原理的に実行できない操作(自プロセス外・座標ジェスチャ)。hybrid では StepExecutor /
-    // FTDriveCore が XCUITest 側へ回すのでここへは来ない。engine=inapp 単独だけがここに到達するため、
-    // 既定実装の汎用メッセージではなく構成の直し方を示す(501 = このエンジンでは未対応)
+    // in-app では原理的に実行できない操作(自プロセス外・座標ジェスチャ)。inapp モードでは StepExecutor /
+    // FTDriveCore が XCUITest ブリッジへ回すのでここへは来ない。XCUITest ブリッジが無いとき(ライブ操作・MCP の縮退)
+    // だけがここに到達するため、既定実装の汎用メッセージではなく直し方を示す(501 = このブリッジでは未対応)
     public func home() async throws { throw Self.inappOnly("home") }
     public func setHingeAngle(degrees: Double) async throws { throw Self.inappOnly("fold / unfold / hinge") }
     public func back() async throws { throw Self.inappOnly("back") }
     public func openAppSwitcher() async throws { throw Self.inappOnly("appSwitcher") }
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {
-        // 自前描画だけ in-app が受ける(それ以外は 501 → hybrid は XCUITest へ)
+        // 自前描画だけ in-app が受ける(それ以外は 501 → inapp モードは XCUITest ブリッジへ)
         try await withCrashContext {
             try await client.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
                                   pressSeconds: pressSeconds, durationSeconds: durationSeconds)
@@ -273,24 +273,26 @@ public final class InAppDriver: AppDriver {
     /// プロセス内の撮影はメインスレッドを塞ぐ。501 = ホストが XCUITest 側へ回す合図
     public func waitForSettle(_ request: WaitForSettleRequest, timeoutSeconds: Double) async throws -> WaitForSettleResponse {
         throw DriverError.badResponse(status: 501,
-            body: "waitForSettle cannot run on the in-app engine (it only sees the app's own drawing:"
-                + " no keyboard, no system alerts). Switch the run profile to hybrid or xcuitest")
+            body: "waitForSettle cannot run on the in-app bridge (it only sees the app's own drawing:"
+                + " no keyboard, no system alerts), and no XCUITest bridge is attached to hand it to."
+                + " Drive this device through its XCUITest bridge")
     }
 
-    /// 注入先と違うアプリの launch / activate を断る文(422 = エンジンにできないではない = XCUITest へ黙って回さない)
+    /// 注入先と違うアプリの launch / activate を断る文(422 = ブリッジにできないではない = XCUITest へ黙って回さない)
     static func foreignLaunchRefusal(bundleID: String, own: String?) -> DriverError? {
         guard let own, bundleID != own else { return nil }
         return .badResponse(status: 422,
-                     body: "launching \(bundleID) is not supported in this scenario: the in-app engine is injected into"
+                     body: "launching \(bundleID) is not supported in this scenario: the in-app bridge is injected into"
                          + " \(own) and cannot drive another app. Put the steps on \(bundleID) in a separate scenario"
                          + " run with a run profile for that app")
     }
 
     private static func inappOnly(_ action: String) -> DriverError {
         .badResponse(status: 501,
-                     body: "\(action) cannot run on the in-app engine"
-                         + " (other apps and system UI cannot be driven from inside the app process). "
-                         + "Switch the run profile to hybrid or xcuitest")
+                     body: "\(action) cannot run on the in-app bridge"
+                         + " (other apps and system UI cannot be driven from inside the app process),"
+                         + " and no XCUITest bridge is attached to hand it to. "
+                         + "Drive this device through its XCUITest bridge")
     }
 
     public func screenshot() async throws -> Data { try await withCrashContext { try await client.screenshot() } }
@@ -329,7 +331,7 @@ public final class InAppDriver: AppDriver {
     /// 固定 false。**client(BridgeClient)は xcuitest 向けの context を既定に持つので、必ず
     /// `withCrashContext` で in-app へ付け替える**(DriverErrorContext の doc 参照。
     /// 付け替えないと Android と同じ理由で誤った構成の案内が付く)
-    private static let context = DriverErrorContext(engine: .iosInApp, physicalDevice: false)
+    private static let context = DriverErrorContext(bridge: .iosInApp, physicalDevice: false)
 
     /// クラッシュ検知時の注記。**.ips は落ちてから遅れて書かれる**(実測: ブリッジ切断の
     /// 約 2 秒後。TestProjects/E2E-iOS の 91_クラッシュ検知 で確認)。切断直後に1回だけ探すと
@@ -357,7 +359,7 @@ public final class InAppDriver: AppDriver {
         case false, nil:
             return detail + " / no recent crash report found"
                 + " (no .ips appeared within 4s — possibly killed by the OS, memory pressure or a voluntary exit. "
-                + "In hybrid/mixed runs the backgrounded app can be suspended or terminated)"
+                + "In inapp mode the backgrounded app can be suspended or terminated)"
         }
     }
 

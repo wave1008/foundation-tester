@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 212
+    public static let bridgeProtocolVersion = 213
 
     /// `ErrorResponse.reason` の値: ref が指していた要素が、撃つ時点でもう同じ場所に居ない(古い ref)。
     /// **何も撃たずに断った**ことを保証する(422)。ホストは新しい木から引き直して撃ち直してよい。
@@ -697,10 +697,9 @@ public struct StatusResponse: Codable, Sendable {
     public var device: String
     public var osVersion: String
     public var sessionBundleID: String?
-    /// 駆動エンジン種別("inapp" / "xcuitest")。同一シミュレータ(UDID)に複数ブリッジが
-    /// 共存するハイブリッド時、ホストがどのブリッジかを /status で区別するために使う。
-    /// 旧ブリッジは返さない → decodeIfPresent で nil 許容(=不明)。
-    public var engine: String?
+    /// ブリッジの種類("inapp" / "xcuitest")。inapp モードでは同一デバイス(UDID)に2本のブリッジが
+    /// 共存するので、ホストがどちらかを /status で区別するために使う。nil = 不明。
+    public var bridge: String?
     /// BridgeAPI.bridgeProtocolVersion。旧ブリッジは返さない → nil 許容(=旧版扱い)。
     public var protocolVersion: Int?
     /// このブリッジが載っているシミュレータの UDID(`SIMULATOR_UDID` 環境変数)。
@@ -758,7 +757,7 @@ public struct StatusResponse: Codable, Sendable {
     public var multiDisplay: Bool?
 
     public init(ready: Bool, device: String, osVersion: String, sessionBundleID: String?,
-                engine: String? = nil, protocolVersion: Int? = nil, applicationState: String? = nil,
+                bridge: String? = nil, protocolVersion: Int? = nil, applicationState: String? = nil,
                 uiFramework: String? = nil, displayIdleSeconds: Double? = nil,
                 bridgeVersionCode: Int? = nil,
                 quiescenceControlAvailable: Bool? = nil, unsupportedActions: [String]? = nil,
@@ -769,7 +768,7 @@ public struct StatusResponse: Codable, Sendable {
         self.device = device
         self.osVersion = osVersion
         self.sessionBundleID = sessionBundleID
-        self.engine = engine
+        self.bridge = bridge
         self.protocolVersion = protocolVersion
         self.applicationState = applicationState
         self.uiFramework = uiFramework
@@ -1145,7 +1144,7 @@ public struct TypeRequest: Codable {
 /// POST /clear(入力欄のクリア。DSL の clearInput)。3ブリッジ共通。
 /// ref あり = その要素へフォーカスを立ててからクリア(/type の ref 経路と同じ点解決)。
 /// ref なし = フォーカス中の入力欄をクリア。対象が無ければ 409(/type の 409 と同じ扱い)。
-/// **409 でフォールバックできるのは typeDriver を持つ iOS の hybrid だけ** ——
+/// **409 でフォールバックできるのは typeDriver を持つ iOS の inapp モードだけ** ——
 /// Android は ScenarioRunnerMain が typeDriver を渡さないので、409 はそのまま失敗になる
 public struct ClearRequest: Codable {
     public var ref: Int?
@@ -1341,7 +1340,7 @@ public enum FocusedElementMatch {
 /// scrollFrame 無しのスクロールで、指を置く点(画面中央)に触れうる要素だけを対象にする判定
 /// (in-app の自前描画の AX 走査が使う)。XCUITest / Android は画面中央を実際に払うので、in-app も
 /// 同じ容器だけを動かす —— 「余地のある最大の容器」や「木の順で最初に受理した要素」を動かすと、
-/// 同じシナリオが iOS の既定エンジンでだけ別の容器(画面下のカルーセル等)を動かした。
+/// 同じシナリオが iOS の既定ブリッジでだけ別の容器(画面下のカルーセル等)を動かした。
 public enum ScrollPointReach {
     /// 枠が点を含むか。**枠の大きさが 0 の要素は通す**(枠を申告しない入れ物。ここで刈ると
     /// その下の容器まで届かず、ふだんの縦スクロールまで XCUITest へ落ちる)
@@ -1364,7 +1363,7 @@ public enum ScrollPointReach {
 }
 
 /// `POST /waitForSettle`(DSL の waitForSettle。XCUITest ランナー v174〜・Android v100〜。**in-app は持たない** = 501。
-/// hybrid は最初から XCUITest 側へ送る)。ブリッジの中でスクリーンショットを撮り続け、比べる範囲の画素が `quietMs` の間
+/// inapp モードは最初から XCUITest 側へ送る)。ブリッジの中でスクリーンショットを撮り続け、比べる範囲の画素が `quietMs` の間
 /// 1 度も変わらなくなったら返す。**画像はホストへ出さない**(判定はブリッジの中で完結)。上限は最初の撮影から数える
 public struct WaitForSettleRequest: Codable, Sendable, Equatable {
     /// 比べる範囲(snapshot と同じ座標系 = iOS pt / Android px)。nil = 画面全体。
@@ -1425,18 +1424,18 @@ public struct SwipeRequest: Codable {
     /// **スクロール領域を指定したときの実座標**(snapshot の screen と同じ座標系)。
     /// ホストが `ScrollGeometry` で計算して送る。**nil = 全画面固定**(ブリッジ側の
     /// 軸別既定で計算する)。両 OS のブリッジがこれを読む —— 経路を分けると
-    /// 「どこをスクロールするか」の決定がエンジンごとに割れるため。
+    /// 「どこをスクロールするか」の決定がブリッジごとに割れるため。
     /// **in-app ブリッジは座標を撃たずに「対象と移動量」として読む**: 始点は必ず対象領域の
     /// 内側にある(ホストがマージンを内側に取る)ので動かすスクロールビュー/AX 要素の特定に使い、
     /// 始点と終点の差を contentOffset の移動量に使う。これで in-app でもマージンが効く
     public var path: FTSwipePath?
     /// **端まで送るのが目的**の swipe か(scrollToEdge が立てる。`scroll` と必ず同時に立つ)。
-    /// **contentOffset を直接動かすエンジンだけが読む** = in-app の UIKit/SwiftUI と WKScrollView。
+    /// **contentOffset を直接動かすブリッジだけが読む** = in-app の UIKit/SwiftUI と WKScrollView。
     /// あの経路にジェスチャは無く慣性も無いので「1回 = ビューポートの 85%」を刻む理由が無く、
     /// 長文(利用規約等)では**ページ数ぶんの往復**をホストに払わせていた。立っていれば
     /// コンテンツの端まで1回で寄せる。
     ///
-    /// 実ジェスチャを撃つエンジン(XCUITest・Android)は**読まない** —— あちらは指を動かす以上の
+    /// 実ジェスチャを撃つブリッジ(XCUITest・Android)は**読まない** —— あちらは指を動かす以上の
     /// ことはできないので、端の判定はホストのループが持つ(`velocity`/`fling` が
     /// 速さのノブ)。旧ブリッジは無視して従来どおりページ送りする(正しいが遅いまま)
     public var edge: Bool?
@@ -1581,7 +1580,7 @@ public struct OKResponse: Codable {
     /// activate 不発→合成タッチ)。throw にしない代わりに StepExecutor.driverFallback へ載せて可視化する。
     public var note: String?
     /// **端送り(`SwipeRequest.edge`)で「もう端に着いていた」**(= 動かせなかった)なら true、
-    /// **確かに動かした**なら false(v116〜。contentOffset を動かした経路だけ。AX の受理は端でも起きるので含めない)。位置を直接動かすエンジンだけが答えられる事実で、
+    /// **確かに動かした**なら false(v116〜。contentOffset を動かした経路だけ。AX の受理は端でも起きるので含めない)。位置を直接動かすブリッジだけが答えられる事実で、
     /// ホストは true で「署名が2回続けて不変」を待たずに切り上げ、false で「動いた」と数える
     /// (`AppDriver.reachedEdgeOnLastSwipe`)。旧ブリッジ・答えられない経路は nil = 従来どおりの判定
     public var atEdge: Bool?

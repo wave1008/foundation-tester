@@ -8,8 +8,8 @@ Compose Multiplatform の**固有部品**(共通契約の SUT に載らない Ma
 - `90_不具合の回帰.swift`: ここで見つけて直したツールの不具合の回帰テスト(S0020 の iOS XCUITest だけ未修正で赤)
 
 ```sh
-Scripts/e2ex.sh                 # iOS(in-app = 既定エンジン)と Android。SUT はソースが新しければ再ビルド
-Scripts/e2ex.sh --ios-xcuitest  # iOS だけを XCUITest エンジンで
+Scripts/e2ex.sh                 # iOS(inapp モード = 既定)と Android。SUT はソースが新しければ再ビルド
+Scripts/e2ex.sh --ios-xcuitest  # iOS だけを xcuitest モードで
 Scripts/e2ex.sh --rebuild       # SUT を必ず再ビルド
 ```
 

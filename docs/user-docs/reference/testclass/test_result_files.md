@@ -11,7 +11,7 @@ where to find them; see [Results analysis](../running/results_analysis.md) for d
 regardless of outcome. It has the same hierarchy as the code:
 `scene → condition/action/expectation → step`, plus the failure message and element list at the
 point of failure, a screenshot of the point of failure (if any), and fix suggestions for a broken
-selector when self-healing ran. On iOS (hybrid and xcuitest engines) the failure screenshot
+selector when self-healing ran. On iOS (inapp and xcuitest modes) the failure screenshot
 captures the whole screen, so an OS alert such as a permission request shows up in it even though
 it is not in the app's element list.
 
@@ -21,10 +21,10 @@ it is not in the app's element list.
 whole run and `scenarios/<scenarioID>.json` per scenario. This is the source used for CI
 gating, dashboards, and scripted triage. How to read the fields is in
 [Results analysis](../running/results_analysis.md).
-On iOS it also records which engine ran (`inapp` / `hybrid` / `xcuitest`): `engine` per scenario and
-`workerEngines` in `run.json` per device. On the console the engine follows each scenario's header, and the
-`🔧 Engines:` line at the end of the run lists it per device. A device that could not run on the engine asked
-for is called out as `⚠️ … ran on xcuitest instead of hybrid — <reason>`.
+On iOS it also records which mode ran (`inapp` / `xcuitest`): `mode` per scenario and
+`workerModes` in `run.json` per device. On the console the mode follows each scenario's header, and the
+`🔧 Modes:` line at the end of the run lists it per device. A device that could not run in the mode asked
+for is called out as `⚠️ … ran in xcuitest mode instead of inapp mode — <reason>`.
 
 The run directory (`results/runs/<YYYY-MM>/<runID>/`) also holds, directly under it:
 

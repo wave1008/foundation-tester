@@ -23,30 +23,30 @@ final class ForeignBridgeOwnershipPlanTests: XCTestCase {
         try? FileManager.default.removeItem(at: repoRoot)
     }
 
-    private func plan(engine: String, bundleID: String? = nil, digest: String? = nil,
+    private func plan(bridge: String, bundleID: String? = nil, digest: String? = nil,
                       running: [UInt16: BridgeProvisioner.RunningBridge],
                       foreign: [String: [BridgeOwnership.RunnerProcess]] = [:]) throws
-        -> BridgeProvisioner.EnginePlan {
+        -> BridgeProvisioner.BridgePlan {
         let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130,
                                             // この Mac で生きているブリッジ(lsof)に結果を左右させない
                                             portHeldByAnotherDevice: { _, _ in false })
         var claimed: Set<UInt16> = []
         var used = Set(running.keys)
         return try provisioner.planBridge(
-            engine: engine, preferred: nil, name: sim.name, sim: sim, bundleID: bundleID,
+            bridge: bridge, preferred: nil, name: sim.name, sim: sim, bundleID: bundleID,
             appIsCurrent: [:], preinstallAppPath: nil, running: running, starting: [:], foreign: foreign,
             inappSourceDigest: digest, claimed: &claimed, usedPorts: &used)
     }
 
     private func xcuitest(version: Int?, ownership: BridgeOwnership)
         -> [UInt16: BridgeProvisioner.RunningBridge] {
-        [8125: .init(udid: "UDID-A", name: sim.name, engine: "xcuitest", protocolVersion: version,
+        [8125: .init(udid: "UDID-A", name: sim.name, bridge: "xcuitest", protocolVersion: version,
                      sessionBundleID: nil, ownership: ownership)]
     }
 
     private func inapp(bundleID: String?, digest: String?, ownership: BridgeOwnership)
         -> [UInt16: BridgeProvisioner.RunningBridge] {
-        [8125: .init(udid: "UDID-A", name: sim.name, engine: "inapp",
+        [8125: .init(udid: "UDID-A", name: sim.name, bridge: "inapp",
                      protocolVersion: BridgeAPI.bridgeProtocolVersion, sessionBundleID: bundleID,
                      sourceDigest: digest, ownership: ownership)]
     }
@@ -55,12 +55,12 @@ final class ForeignBridgeOwnershipPlanTests: XCTestCase {
     func testAForeignRunnerThatIsNotAnsweringBlocksInsteadOfASecondRunner() throws {
         let busy = BridgeOwnership.RunnerProcess(udid: "UDID-A", port: 8129, ownerRepo: "/other-clone")
         guard case .blockedByForeign(let port, let owner, _) = try plan(
-            engine: "xcuitest", running: [:], foreign: ["UDID-A": [busy]]) else {
+            bridge: "xcuitest", running: [:], foreign: ["UDID-A": [busy]]) else {
             return XCTFail("答えない別のワークスペースのランナーの隣に起動しないはず")
         }
         XCTAssertEqual(port, 8129)
         XCTAssertEqual(owner, "/other-clone")
-        guard case .launch = try plan(engine: "xcuitest", running: [:],
+        guard case .launch = try plan(bridge: "xcuitest", running: [:],
                                       foreign: ["UDID-OTHER": [busy]]) else {
             return XCTFail("別の端末のランナーは関係ない")
         }
@@ -68,7 +68,7 @@ final class ForeignBridgeOwnershipPlanTests: XCTestCase {
 
     func testForeignCurrentXCUITestRunnerIsUsedAsIs() throws {
         guard case .reuseForeign(let port, let owner) = try plan(
-            engine: "xcuitest",
+            bridge: "xcuitest",
             running: xcuitest(version: BridgeAPI.bridgeProtocolVersion, ownership: other)) else {
             return XCTFail("別のワークスペースの同じ版のランナーは起動し直さずに使うはず")
         }
@@ -79,7 +79,7 @@ final class ForeignBridgeOwnershipPlanTests: XCTestCase {
     /// 陰性対照: 自分のランナーは従来どおり .reuse(ツールチェーン・劣化の判定を通る)
     func testOwnCurrentXCUITestRunnerKeepsTheUsualReuse() throws {
         guard case .reuse(let port) = try plan(
-            engine: "xcuitest",
+            bridge: "xcuitest",
             running: xcuitest(version: BridgeAPI.bridgeProtocolVersion, ownership: .own)) else {
             return XCTFail("自分のランナーは .reuse のはず")
         }
@@ -88,7 +88,7 @@ final class ForeignBridgeOwnershipPlanTests: XCTestCase {
 
     func testForeignStaleXCUITestRunnerIsNotStopped() throws {
         guard case .blockedByForeign(let port, let owner, _) = try plan(
-            engine: "xcuitest",
+            bridge: "xcuitest",
             running: xcuitest(version: BridgeAPI.bridgeProtocolVersion - 1, ownership: other)) else {
             return XCTFail("別のワークスペースの古いランナーは止めずに断るはず")
         }
@@ -100,7 +100,7 @@ final class ForeignBridgeOwnershipPlanTests: XCTestCase {
     func testOwnAndOrphanStaleRunnersAreStillReplaced() throws {
         for ownership in [BridgeOwnership.own, .orphan(owner: "/deleted-clone"), .unknown] {
             guard case .launch(_, _, let stopStalePort, _) = try plan(
-                engine: "xcuitest",
+                bridge: "xcuitest",
                 running: xcuitest(version: BridgeAPI.bridgeProtocolVersion - 1,
                                   ownership: ownership)) else {
                 return XCTFail("\(ownership): 古いランナーは止めて起動するはず")
@@ -113,7 +113,7 @@ final class ForeignBridgeOwnershipPlanTests: XCTestCase {
     /// 理由に止めない(注入先アプリと版が同じなら使う)
     func testForeignInAppBridgeOfTheSameAppIsUsedDespiteUnknownDigest() throws {
         guard case .reuseForeign(let port, _) = try plan(
-            engine: "inapp", bundleID: "com.example.app", digest: "mine",
+            bridge: "inapp", bundleID: "com.example.app", digest: "mine",
             running: inapp(bundleID: "com.example.app", digest: nil, ownership: other)) else {
             return XCTFail("別のワークスペースの同じアプリの in-app ブリッジは使うはず")
         }
@@ -123,7 +123,7 @@ final class ForeignBridgeOwnershipPlanTests: XCTestCase {
     /// 陰性対照: 自分の in-app ブリッジは従来どおり出所の不一致で止めて起動する
     func testOwnInAppBridgeWithAnotherDigestIsStillReplaced() throws {
         guard case .launch(_, _, let stopStalePort, _) = try plan(
-            engine: "inapp", bundleID: "com.example.app", digest: "mine",
+            bridge: "inapp", bundleID: "com.example.app", digest: "mine",
             running: inapp(bundleID: "com.example.app", digest: "older", ownership: .own)) else {
             return XCTFail("自分の出所違いの in-app ブリッジは止めて起動するはず")
         }
@@ -132,7 +132,7 @@ final class ForeignBridgeOwnershipPlanTests: XCTestCase {
 
     func testForeignInAppBridgeOfAnotherAppIsNotStopped() throws {
         guard case .blockedByForeign(let port, _, _) = try plan(
-            engine: "inapp", bundleID: "com.example.mine",
+            bridge: "inapp", bundleID: "com.example.mine",
             running: inapp(bundleID: "com.example.theirs", digest: nil, ownership: other)) else {
             return XCTFail("別のワークスペースの別アプリの in-app ブリッジは止めずに断るはず")
         }

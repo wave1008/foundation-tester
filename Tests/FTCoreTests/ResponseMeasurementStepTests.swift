@@ -148,7 +148,7 @@ final class ResponseMeasurementStepTests: XCTestCase {
     }
 
     func testTimelineCarriesCommandAndResponse() {
-        var builder = ScenarioRecordBuilder(scenarioID: "Foo.a", platform: "android", title: nil, worker: nil, engine: nil)
+        var builder = ScenarioRecordBuilder(scenarioID: "Foo.a", platform: "android", title: nil, worker: nil, mode: nil)
         var event = ScenarioEvent(kind: "step")
         event.index = 1
         event.description = "tap OK"
@@ -298,7 +298,7 @@ final class ResponseMeasurementStepTests: XCTestCase {
     }
 
     func testResponseReadyEventPatchesTheTimelineEntryByIndex() {
-        var builder = ScenarioRecordBuilder(scenarioID: "Foo.a", platform: "android", title: nil, worker: nil, engine: nil)
+        var builder = ScenarioRecordBuilder(scenarioID: "Foo.a", platform: "android", title: nil, worker: nil, mode: nil)
         for index in 1...3 {
             var step = ScenarioEvent(kind: "step")
             step.index = index

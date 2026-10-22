@@ -56,19 +56,19 @@ struct Launch: AsyncParsableCommand {
     /// 自壊する。照会先の udid はブリッジの `/status` から取る —— `/status` が読めない(ブリッジに
     /// 届かない)ときは門を通さず、到達できないことを `launch` 自身に言わせる(落とすランナーが無い)
     static func refuseIfNotInstalled(bundleID: String, driver: AppDriver, isAndroid: Bool) async throws {
-        var engine: String?
+        var bridge: String?
         let verdict: InstalledAppCheck.InstallVerdict
         if isAndroid {
             verdict = LaunchInstallVerdict.read(bundleID: bundleID, driver: driver, isAndroid: true, udid: nil)
         } else {
             guard let status = try? await driver.status() else { return }
-            engine = status.engine
+            bridge = status.bridge
             // 実機の /status は udid を返さない —— ポートの台帳から作った driver の udid で補う
             verdict = LaunchInstallVerdict.read(bundleID: bundleID, driver: driver, isAndroid: false,
                                                 udid: status.udid ?? (driver as? BridgeClient)?.physicalUDID)
         }
         switch InstalledAppCheck.launchGuard(
-            verdict: verdict, isAndroid: isAndroid, engine: engine, bundleID: bundleID) {
+            verdict: verdict, isAndroid: isAndroid, bridge: bridge, bundleID: bundleID) {
         case .allow:
             return
         case .refuse(.notInstalled):

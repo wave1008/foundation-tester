@@ -89,7 +89,7 @@ existImage("[Share Icon]", scroll: .down).tap()
 - When the app area of the screenshot is a single colour (all black or all white), the screenshot is treated as not captured
   and nothing is compared. The tool waits and takes it again (note `blank-screenshot-retaken`); the step fails if it is
   still a single colour.
-- With iOS's default engine (hybrid), the picture is captured the same way as for the text visibility check (the whole
+- In iOS's default mode (inapp), the picture is captured the same way as for the text visibility check (the whole
   screen only while the keyboard or a system alert is shown; see "Limitations" in
   [Text visibility check](../testclass/text_visibility_check.md)). A covered element is then compared as the picture of
   whatever covers it.

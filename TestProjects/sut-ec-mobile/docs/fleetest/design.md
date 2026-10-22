@@ -401,8 +401,8 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   **reap** し、直後の `waitUntilExit()` が終了通知を取りこぼして**永久ハング**する(SIGTERM を
   無視した子で実測: ワーカー全体が `waitUntilExit` で停止)。**生存確認は reap しない `kill(pid, 0)`**
   を使うこと(`process.isRunning` は使わない)。この凍結は 90s watchdog を超えるシナリオでのみ
-  顕在化する潜在バグで、hybrid の suspend 誤ルーティング(performance-tuning §6.4)が引き金だった。
-- **hybrid の in-app suspend**: system-UI シナリオと in-app シナリオを混在実行すると、背面の
+  顕在化する潜在バグで、inapp モードの suspend 誤ルーティング(performance-tuning §6.4)が引き金だった。
+- **inapp モードの in-app suspend**: system-UI シナリオと in-app シナリオを混在実行すると、背面の
   注入先アプリが iOS に suspend され in-app ブリッジが無応答になる。ドライバ選択は provision 時の
   注入先 bundleID で分岐する(詳細と対策は performance-tuning §6.4「suspend 時のルーティング」)。
 - **規模並列(20台級)は timeout flaky を生む**: 競合で画面ロードが遅れ、本来通る `exist` が既定
@@ -412,7 +412,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   17件中、実バグは陳腐化ラベル2系統のみで残りは flaky/ロケール/デバイス状態だった。2026-07-16)。
   空き機は fleet(モニター所有)に触れず別途起動: Android は空き AVD を `-port 5590 -no-window` で
   起動→`ft_run_scenario --serial`、iOS は空きシムを boot→一時 machine/run プロファイル
-  (`iosInappEngine:false`=xcuitest、fleet と衝突しない空きポートを device.port に明示)→`--profile`。
+  (`iosMode: "xcuitest"`、fleet と衝突しない空きポートを device.port に明示)→`--profile`。
 
 ## 9. 検証方法(E2E)
 
@@ -606,7 +606,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
    BridgeLauncher(xctestrun FT_PORT 注入)で起動・waitUntilReady。シミュレータの新規作成はしない
    (同名複数の曖昧時は UDID 明記を推奨)。Android は AndroidDeviceCatalog で avd 照合。
    コールド起動は「プランニング(ポート採番、直列)→ 共有ビルド(dylib/xctestrun、直列)→
-   起動(デバイス単位で並列。hybrid の 2 ブリッジはデバイス内直列)」(performance-tuning §3.2)
+   起動(デバイス単位で並列。inapp モードの 2 ブリッジはデバイス内直列)」(performance-tuning §3.2)
 4. **自動インストール**: `appPath` あり+`autoInstall`(既定 true)→ オーケストレータ投入前に
    各ワーカーへ並行 install(差分判定=installedIsCurrent も並列。失敗ワーカーは離脱、
    残ワーカーがキューを引き継ぐ)
@@ -873,7 +873,7 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
 - `launch` 前に `simctl get_app_container <udid> <bundleID>` で導入確認し、未導入は launch を
   呼ばず即時エラーにする(ランナーは生存)。システムアプリも判定可(実測)。確認済み
   bundleID はインスタンス内キャッシュ
-- 配線: xcuitest エンジンのシナリオ実行時、`DriverConnection.udid` が届く場合のみ
+- 配線: xcuitest モードのシナリオ実行時、`DriverConnection.udid` が届く場合のみ
   `ScenarioRunnerMain` が BridgeClient をラップ。udid 供給元は ProfileWorkerFactory / MCPServer
 - 教訓: 当初「2ランナー競合」を凍結の主犯と推定したが、本番構成の通し run で監視中シムに
   第2ランナーが共存しても凍結しないことを確認。主犯は「未導入 app の launch」

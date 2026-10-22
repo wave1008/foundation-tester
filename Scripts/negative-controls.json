@@ -20,7 +20,7 @@
     {
       "project": "E2E-iOS", "file": "97_入力欄でないrefへのtype.swift", "profile": "ios-inapp", "os": "ios",
       "class": "入力欄でないrefへのtype",
-      "guards": "欄に焦点を残したまま入力欄でない要素へ type しても、前の欄へ打たずに断る(hybrid の撃ち直し込み)",
+      "guards": "欄に焦点を残したまま入力欄でない要素へ type しても、前の欄へ打たずに断る(inapp モードの撃ち直し込み)",
       "scenarios": {
         "S0010": { "expect": "red", "command": "type", "detailContains": ["not a text field"] }
       }
@@ -62,7 +62,7 @@
     {
       "project": "E2E-iOS", "file": "91_クラッシュ検知.swift", "profile": "ios-inapp", "os": "ios",
       "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
-      "guards": "アプリのクラッシュを .ips 付きで記録する(in-app エンジン)",
+      "guards": "アプリのクラッシュを .ips 付きで記録する(inapp モード)",
       "scenarios": {
         "S0010": { "expect": "red", "command": "tap", "failureKind": "driver-unreachable",
                    "appCrash": "crashReport" }
@@ -71,7 +71,7 @@
     {
       "project": "E2E-CMP", "file": "91_クラッシュ検知.swift", "profile": "ios-inapp", "os": "ios",
       "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
-      "guards": "アプリのクラッシュを .ips 付きで記録する(in-app エンジン)",
+      "guards": "アプリのクラッシュを .ips 付きで記録する(inapp モード)",
       "scenarios": {
         "S0010": { "expect": "red", "command": "tap", "failureKind": "driver-unreachable",
                    "appCrash": "crashReport" }
@@ -80,7 +80,7 @@
     {
       "project": "E2E-Flutter", "file": "91_クラッシュ検知.swift", "profile": "ios-inapp", "os": "ios",
       "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
-      "guards": "アプリのクラッシュを .ips 付きで記録する(in-app エンジン・SIGSEGV)",
+      "guards": "アプリのクラッシュを .ips 付きで記録する(inapp モード・SIGSEGV)",
       "scenarios": {
         "S0010": { "expect": "red", "command": "tap", "failureKind": "driver-unreachable",
                    "appCrash": "crashReport" }
@@ -89,7 +89,7 @@
     {
       "project": "E2E-RN", "file": "91_クラッシュ検知.swift", "profile": "ios-inapp", "os": "ios",
       "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
-      "guards": "アプリのクラッシュを .ips 付きで記録する(in-app エンジン)",
+      "guards": "アプリのクラッシュを .ips 付きで記録する(inapp モード)",
       "scenarios": {
         "S0010": { "expect": "red", "command": "tap", "failureKind": "driver-unreachable",
                    "appCrash": "crashReport" }

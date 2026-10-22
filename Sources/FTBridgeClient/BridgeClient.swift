@@ -198,7 +198,7 @@ public final class BridgeClient: AppDriver, Sendable {
 
     /// 短いタイムアウトでの /status プローブ。バックグラウンドで iOS に suspend された in-app
     /// アプリは TCP 接続は受理するが応答しないため、既定 sessionTimeout(45s)では無限待ちになる。
-    /// 呼び出し側は無応答を「不明」として扱う(engine=inapp/hybrid の注入先判定を参照)。
+    /// 呼び出し側は無応答を「不明」として扱う(inapp モードの注入先判定を参照)。
     /// 確実に短時間で切るため config 側も短くした BridgeClient から呼ぶこと。
     public func status(timeout: TimeInterval) async throws -> StatusResponse {
         try await get("/status", timeout: timeout)
@@ -207,7 +207,7 @@ public final class BridgeClient: AppDriver, Sendable {
     /// アプリを残してデータだけ消す。**シミュレータ専用**(実機は同等の手段が devicectl に無い)。
     /// `simctl get_app_container … data` が指すコンテナの**中身**を消す(コンテナ自体は残す —
     /// ディレクトリごと消すと次回起動でアプリが作り直せず落ちる)。
-    /// **uninstall + install は使わない**: in-app エンジンでは dylib 注入ごと消え、
+    /// **uninstall + install は使わない**: in-app ブリッジでは dylib 注入ごと消え、
     /// 再インストールに appPath が要る(DSL からは持っていない)
     public func clearAppData(bundleID: String) async throws {
         // **デバイス名は終了より先に採る**: 終了するとブリッジが応答しなくなる経路がある
@@ -565,7 +565,7 @@ public final class BridgeClient: AppDriver, Sendable {
     /// 一度「開く」を押すと以後の openURL は無警告で配送される。そのため
     /// **(target, bundleID) ごとにプロセス内で1回だけ**試みる(OpenURLConsentAttemptCache)。
     /// 判定は springboard へ実際に attach できてから初めて「試行済み」にする ——
-    /// **先に記録すると in-app 接続の 409 が「試したことにされ」、hybrid で本来なら XCUITest 側
+    /// **先に記録すると in-app 接続の 409 が「試したことにされ」、inapp モードで本来なら XCUITest 側
     /// (springboard を見られる)がまだ試していないのに機会を失う**(このメソッドは in-app/xcuitest
     /// どちらの接続からも呼ばれ得る。WebViewDelegatingDriver.openURL 参照)。
     /// 確認アラートの出現待ち(合計約 1.2s)。**同意済みの端末では毎回この分を空振りする**ので、
@@ -1106,7 +1106,7 @@ public final class BridgeClient: AppDriver, Sendable {
     static let edgeSwipeVelocity = 1500.0
 
     /// 用途から velocity を決める。**探索では送らない**(既定速度のまま)。
-    /// 慣性を消す狙いで v350 を試したが、**エンジンを跨ぐと収束しなかった** ——
+    /// 慣性を消す狙いで v350 を試したが、**ブリッジを跨ぐと収束しなかった** ——
     /// iOS では刻み = 実移動量にできる一方、Android は速度ノブが無く(距離とストローク時間で
     /// 決まる)同じ設計にできない。実測は docs/performance-tuning.md §3.18
     static func velocity(for intent: FTSwipeIntent, path: FTSwipePath?) -> Double? {
@@ -1459,7 +1459,7 @@ public final class BridgeClient: AppDriver, Sendable {
             // 参照)なので、自分の宛先が in-app/Android に化けていることを知らない。
             // InAppDriver.withCrashContext / AndroidDriver.withBridge が境界で正しい
             // context へ付け替えて再 throw する(DriverErrorContext の doc 参照)
-            let context = DriverErrorContext(engine: .iosXCUITest, physicalDevice: physicalUDID != nil)
+            let context = DriverErrorContext(bridge: .iosXCUITest, physicalDevice: physicalUDID != nil)
             if DriverError.isDefiniteDeliveryFailure(error) {
                 throw DriverError.bridgeConnectionRefused(context: context, detail: detail)
             }

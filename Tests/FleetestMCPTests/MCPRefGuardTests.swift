@@ -602,13 +602,13 @@ final class MCPRefGuardTests: XCTestCase {
         } catch let error as MCPError {
             XCTAssertTrue(error.localizedDescription.contains("XCUITest tree does not show"),
                           error.localizedDescription)
-            XCTAssertFalse(error.localizedDescription.contains("in-app engine"),
+            XCTAssertFalse(error.localizedDescription.contains("in-app bridge"),
                            "MCP で選べない in-app を勧めている: \(error.localizedDescription)")
         }
     }
 
-    /// 同じ画面が Android(エンジンの選択肢が無い)なら、存在しない切り替え先を示唆しない
-    func testScrollAreaHintDoesNotMentionTheInAppEngineOnAndroid() async throws {
+    /// 同じ画面が Android(モードの選択肢が無い)なら、存在しない切り替え先を示唆しない
+    func testScrollAreaHintDoesNotMentionTheInAppModeOnAndroid() async throws {
         driver.snapshotResponse = screen([element(ref: 1, id: "missing_target", label: "無関係",
                                                   x: 16, y: 100)])
         do {
@@ -616,7 +616,7 @@ final class MCPRefGuardTests: XCTestCase {
                                       args: ["selector": "#no_such_row", "platform": "android"])
             XCTFail("見つからないセレクタは throw するはず")
         } catch let error as MCPError {
-            XCTAssertFalse(error.localizedDescription.contains("in-app engine"),
+            XCTAssertFalse(error.localizedDescription.contains("in-app bridge"),
                            "Android の応答に iOS 専用の概念が混ざった: \(error.localizedDescription)")
             XCTAssertFalse(error.localizedDescription.contains("Compose/Flutter"),
                            error.localizedDescription)

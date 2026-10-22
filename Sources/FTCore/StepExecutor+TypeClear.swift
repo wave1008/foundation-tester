@@ -17,7 +17,7 @@ extension StepExecutor {
         guard var resolved = LocatorResolver.resolveDetailed(step: step, in: snapshot) else { return (false, nil) }
         // **XCUITest へ回した打鍵も、キーボードの下・見切れた欄なら撃つ前に送る**(主経路と同じ liftCoveredTarget)。
         // XCUITest は欄を座標でタップしてから打つので、キーボードに当たると焦点が前の欄に残って打鍵が流れ込む
-        // (実測: hybrid で改行を含む type が XCUITest へ回り、キーボードの下の複数行の欄の代わりにパスワードの欄へ入った)。
+        // (実測: inapp モードで改行を含む type が XCUITest へ回り、キーボードの下の複数行の欄の代わりにパスワードの欄へ入った)。
         // 判断は XCUITest の木で行う(in-app の木はキーボードを申告しない)。送った後は XCUITest の木で引き当て直す
         var note: String?
         if let lifted = try await liftCoveredTarget(resolved.element, in: snapshot, step: step,
@@ -437,7 +437,7 @@ extension StepExecutor {
     static func nonTextInputFallbackRefusal(_ element: ElementInfo, in elements: [ElementInfo],
                                                      action: String) -> String {
         var message = "the target is a \(element.type), not a text field — \(action) cannot succeed on"
-            + " either engine. The tap that resolved this element may already have landed, so it was"
+            + " either bridge. The tap that resolved this element may already have landed, so it was"
             + " not retried via XCUITest (a retry could trigger the \(element.type) a second time)."
         if let note = TapTargetGeometry.nonInputTypeTargetNote(element, in: elements) {
             message += " " + note

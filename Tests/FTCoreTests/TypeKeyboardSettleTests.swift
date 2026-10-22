@@ -8,8 +8,8 @@
 // 別物 —— iOS in-app はキャッシュを持たないので、要るのは「1枚撮り直す」ではなく「収束を待つ」。
 //
 // **「打った後」の観測は読み返し(`verifyTypedText`)に頼らない**(2026-09-16 に設計変更)。
-// 読み返しが走るのは `AppDriver.verifiesTypedText == false`(in-app エンジン)のときだけだが、
-// 実測したバグは iPhone 13 実機(物理デバイス = xcuitest エンジン・`verifiesTypedText == true`)で
+// 読み返しが走るのは `AppDriver.verifiesTypedText == false`(in-app ブリッジ)のときだけだが、
+// 実測したバグは iPhone 13 実機(物理デバイス = xcuitest モード・`verifiesTypedText == true`)で
 // 起きており、読み返しの木に頼る旧実装ではこの経路が1度も発火しなかった。
 // 「打った後」は次のロケータ操作がどのみち撮る最初の `freshSnapshot` に譲ることで、
 // 読み返しの有無・ドライバの能力に依存しない判定にしてある。
@@ -59,8 +59,8 @@ final class TypeKeyboardSettleTests: XCTestCase {
     }
 
     // MARK: - 配線: type がキーボードを動かしたら、次の tap の解決だけ静止を待つ
-    // (エンジンを問わない。`verifiesTypedText == true` = xcuitest 相当のドライバで確かめる ——
-    // これが実機バグの再現エンジンそのもの)
+    // (モードを問わない。`verifiesTypedText == true` = xcuitest 相当のドライバで確かめる ——
+    // これが実機バグの再現ドライバそのもの)
 
     /// **実機バグの再現形**: 読み返しを持たないドライバ(xcuitest 相当)で type → tap を行い、
     /// 待っている間に木が実際に変わった(= 待たなければ古い座標を掴んでいた)回。
@@ -74,7 +74,7 @@ final class TypeKeyboardSettleTests: XCTestCase {
             [inputField(value: nil), sendButton(y: 480)], // #4 まだ動いている(#5 はこれを繰り返す)
         ])
         driver.keyboardFrames = [nil, FTRect(x: 0, y: 600, width: 400, height: 200)]
-        // **実機(iPhone 13)は xcuitest エンジン = 読み返しを持たない**。ここを true にしたまま
+        // **実機(iPhone 13)は xcuitest モード = 読み返しを持たない**。ここを true にしたまま
         // 発火することが、今回直した欠陥(読み返しに頼ると発火しない)の再発防止そのもの
         driver.verifiesTypedText = true
         let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())

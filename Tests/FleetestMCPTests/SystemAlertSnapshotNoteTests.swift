@@ -131,9 +131,9 @@ final class SystemAlertSnapshotNoteTests: XCTestCase {
 
 // MARK: - HybridFallbackDriver の配線ゲート
 
-/// **hybrid の systemAlert/systemUICovering は常に XCUITest 側(fallback)へ聞くこと**。
+/// **inapp モードの systemAlert/systemUICovering は常に XCUITest 側(fallback)へ聞くこと**。
 /// `active` に乗せると、通常時(delegating == false)は in-app(primary)側に落ち、
-/// InAppDriver は常に nil を返すので既定プロファイル(hybrid)では SpringBoard のアラートが
+/// InAppDriver は常に nil を返すので既定プロファイル(inapp モード)では SpringBoard のアラートが
 /// 一生見えなくなる(2026-08-31 実機 iPhone 13 で報告された欠陥そのもの)。
 /// コンパイラは「nil を返す型に委譲した」ことを止められないので、ソース走査で縛る。
 final class HybridFallbackDriverSystemAlertWiringTests: XCTestCase {

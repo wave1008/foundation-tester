@@ -55,7 +55,7 @@ final class DeviceInventoryTests: XCTestCase {
     func testLineIncludesAllFieldsWhenPresent() {
         let row = DeviceInventory.Row(name: "iPhone 17 Pro", platform: "ios", identifier: "ABCD-1234",
                                       running: true, physical: false, registered: true,
-                                      bridges: [DeviceInventory.Row.Bridge(port: 8123, engine: nil)])
+                                      bridges: [DeviceInventory.Row.Bridge(port: 8123, kind: nil)])
         let text = DeviceInventory.line(row)
         XCTAssertTrue(text.contains("iPhone 17 Pro"), text)
         XCTAssertTrue(text.contains("ios"), text)
@@ -93,7 +93,7 @@ final class DeviceInventoryTests: XCTestCase {
             spec: spec(name: "iPhone 17 Pro"),
             simDevices: [device], physicalDevices: [],
             liveBridges: DeviceInventory.LiveBridges(
-                byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8124, engine: nil)]],
+                byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8124, kind: nil)]],
                 byUDID: [:]))
         XCTAssertTrue(row.running)
         XCTAssertEqual(row.identifier, "SIM-1")
@@ -108,8 +108,8 @@ final class DeviceInventoryTests: XCTestCase {
     func testIOSRowUnionsUDIDMatchAndNameMatchWhenBothPresent() {
         let device = SimDeviceInfo(udid: "SIM-2", name: "iPhone 17 Pro", os: "iOS 26.0", booted: true)
         let live = DeviceInventory.LiveBridges(
-            byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 9999, engine: nil)]],
-            byUDID: ["SIM-2": [DeviceInventory.Row.Bridge(port: 8124, engine: nil)]])
+            byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 9999, kind: nil)]],
+            byUDID: ["SIM-2": [DeviceInventory.Row.Bridge(port: 8124, kind: nil)]])
         let row = DeviceInventory.iosRow(
             spec: spec(name: "iPhone 17 Pro"),
             simDevices: [device], physicalDevices: [], liveBridges: live)
@@ -154,7 +154,7 @@ final class DeviceInventoryTests: XCTestCase {
         let live = DeviceInventory.LiveBridges(
             byName: [:],  // status.device="iPhone" はプロファイル名 "iPhone wave" と一致しない
             byUDID: ["00008130-001819863E60001C":
-                [DeviceInventory.Row.Bridge(port: 8144, engine: "xcuitest")]])
+                [DeviceInventory.Row.Bridge(port: 8144, kind: "xcuitest")]])
         let row = DeviceInventory.iosRow(
             spec: spec(name: "iPhone wave", kind: .physical, udid: "00008130-001819863E60001C"),
             simDevices: [], physicalDevices: [connected], liveBridges: live)
@@ -205,7 +205,7 @@ final class DeviceInventoryTests: XCTestCase {
                                           connected: true, transport: "wired")
         let live = DeviceInventory.LiveBridges(
             byName: [:], byUDID: ["PHYS-9": [DeviceInventory.Row.Bridge(port: 8143,
-                                                                        engine: "xcuitest")]])
+                                                                        kind: "xcuitest")]])
         let rows = DeviceInventory.iosFallbackRows(simulators: [], physical: [phone], live: live)
         XCTAssertEqual(rows.first?.bridges.first?.port, 8143)
     }
@@ -236,10 +236,10 @@ final class DeviceInventoryTests: XCTestCase {
         let b = SimDeviceInfo(udid: "SIM-B", name: "iPhone 17 Pro", os: "iOS 27.0",
                               booted: true, physical: false)
         let live = DeviceInventory.LiveBridges(
-            byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8123, engine: "xcuitest"),
-                                       DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest")]],
-            byUDID: ["SIM-A": [DeviceInventory.Row.Bridge(port: 8123, engine: "xcuitest")],
-                     "SIM-B": [DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest")]])
+            byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8123, kind: "xcuitest"),
+                                       DeviceInventory.Row.Bridge(port: 8124, kind: "xcuitest")]],
+            byUDID: ["SIM-A": [DeviceInventory.Row.Bridge(port: 8123, kind: "xcuitest")],
+                     "SIM-B": [DeviceInventory.Row.Bridge(port: 8124, kind: "xcuitest")]])
 
         let rows = DeviceInventory.iosFallbackRows(simulators: [a, b], physical: [], live: live)
 
@@ -252,7 +252,7 @@ final class DeviceInventoryTests: XCTestCase {
         let only = SimDeviceInfo(udid: "SIM-A", name: "iPhone 17 Pro-01", os: "iOS 27.0",
                                  booted: true, physical: false)
         let live = DeviceInventory.LiveBridges(
-            byName: ["iPhone 17 Pro-01": [DeviceInventory.Row.Bridge(port: 8123, engine: nil)]],
+            byName: ["iPhone 17 Pro-01": [DeviceInventory.Row.Bridge(port: 8123, kind: nil)]],
             byUDID: [:])
 
         let rows = DeviceInventory.iosFallbackRows(simulators: [only], physical: [], live: live)
@@ -267,7 +267,7 @@ final class DeviceInventoryTests: XCTestCase {
         let b = SimDeviceInfo(udid: "SIM-B", name: "iPhone 17 Pro", os: "iOS 27.0",
                               booted: true, physical: false)
         let live = DeviceInventory.LiveBridges(
-            byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8123, engine: nil)]],
+            byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8123, kind: nil)]],
             byUDID: [:])
 
         let rows = DeviceInventory.iosFallbackRows(simulators: [a, b], physical: [], live: live)

@@ -1,4 +1,4 @@
-// 失敗時の証跡の絵は画面全体を撮れる XCUITest(hybrid の fallbackDriver)から撮る(FTRuntime.handleFailure)。
+// 失敗時の証跡の絵は画面全体を撮れる XCUITest(inapp モードの fallbackDriver)から撮る(FTRuntime.handleFailure)。
 // in-app の /screenshot はアプリの window しか描かないので、SpringBoard の権限アラートが出ていても写らず、
 // E2E-iOS 16 S0010 の赤で「アラートが出なかった」のか「出ていたのに見つけられなかった」のかを判別できなかった。
 

@@ -489,11 +489,11 @@ enum ProfileRunner {
         var timing = ScenarioTimingTracker()
         for await event in orchestrator.events {
             timing.record(event)
-            var engine: String?
+            var mode: String?
             if case .flowStarted(let worker, _, _, _) = event {
-                engine = WorkerEngineSummary.engine(forLabel: worker, in: recorder?.recordedWorkerEngines ?? [])
+                mode = WorkerModeSummary.mode(forLabel: worker, in: recorder?.recordedWorkerModes ?? [])
             }
-            let lines = RunLogFormatter.lines(for: event, engine: engine)
+            let lines = RunLogFormatter.lines(for: event, mode: mode)
             switch event {
             case .flowStarted(_, let url, let flowName, _):
                 names[url] = flowName
@@ -519,8 +519,8 @@ enum ProfileRunner {
         let scenarioTotalStr = timing.scenarioTotalSeconds.map { String(format: "%.1f", $0) } ?? "-"
         ConsoleOut.out("⏱ Total: \(String(format: "%.1f", totalSeconds))s / "
             + "test time: \(testStr)s / scenario sum: \(scenarioTotalStr)s")
-        // どのデバイスがどのエンジンで走ったか(縮退は理由つき。api run と同じ文言 = WorkerEngineSummary)
-        for line in WorkerEngineSummary.lines(recorder?.recordedWorkerEngines ?? []) { ConsoleOut.out(line) }
+        // どのデバイスがどのモードで走ったか(縮退は理由つき。api run と同じ文言 = WorkerModeSummary)
+        for line in WorkerModeSummary.lines(recorder?.recordedWorkerModes ?? []) { ConsoleOut.out(line) }
 
         // プラットフォーム別のレーン稼働。台数を増やす前にここを見る(遊休レーンがあるなら
         // 増やすのではなく配分を変える。docs/performance-tuning.md §3.6)

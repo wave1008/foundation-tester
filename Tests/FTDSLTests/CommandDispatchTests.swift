@@ -114,9 +114,9 @@ final class CommandDispatchTests: XCTestCase {
                     emit: emit)
     }
 
-    /// hybrid(typeDriver あり = primary が in-app)では home/appSwitcher を **最初から**
+    /// inapp モード(typeDriver あり = primary が in-app)では home/appSwitcher を **最初から**
     /// XCUITest 側へ出すこと。in-app は自プロセス外を触れず 501 になるため往復させない
-    func testHomeAndAppSwitcherGoToXCUITestOnHybrid() {
+    func testHomeAndAppSwitcherGoToXCUITestOnInappMode() {
         let primary = RecordingDriver()
         let xcui = RecordingDriver()
         let core = makeCore(driver: primary, typeDriver: xcui)
@@ -133,7 +133,7 @@ final class CommandDispatchTests: XCTestCase {
         }
 
         XCTAssertEqual([xcui.homeCount, xcui.appSwitcherCount], [1, 1],
-                       "hybrid では XCUITest 側へ直行すべき")
+                       "inapp モードでは XCUITest 側へ直行すべき")
         XCTAssertEqual([primary.homeCount, primary.appSwitcherCount], [0, 0],
                        "in-app 側は 501 になるだけなので撃ってはいけない")
     }
@@ -1455,10 +1455,10 @@ final class CommandDispatchTests: XCTestCase {
         XCTAssertTrue(reason.contains("no appName to resolve it from"), reason)
     }
 
-    /// hybrid では systemDriver(typeDriver=AppAttachDriver)ではなく fallbackDriver
+    /// inapp モードでは systemDriver(typeDriver=AppAttachDriver)ではなく fallbackDriver
     /// (SystemUIDriver 相当・springboard 参照)を使うこと。typeDriver は snapshot() のたび
     /// テスト対象アプリを再前面化してしまうため home 画面を見せられない(homeScreenDriver のコメント参照)
-    func testTapAppIconUsesFallbackDriverNotTypeDriverOnHybrid() {
+    func testTapAppIconUsesFallbackDriverNotTypeDriverOnInappMode() {
         let typeDriver = HomeScreenDriver()  // 呼ばれてはいけない
         let fallback = HomeScreenDriver()
         fallback.scriptedSnapshots = [iconSnapshot([iconElement(1, label: "Maps")])]

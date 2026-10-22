@@ -40,9 +40,6 @@ enum DryRunTargetWarnings {
 
     static func reason(_ target: CommandUnsupportedTarget) -> String {
         switch target {
-        case .iosInAppEngine:
-            return "its engine is inapp, which cannot hand this command to XCUITest"
-                + " (use hybrid or xcuitest for that device)"
         case .iosPhysical:
             return "it is a physical iPhone, which this command cannot drive"
         }

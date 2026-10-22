@@ -2,7 +2,7 @@
 // 画面上の「`scrollFrame:` に指定できる領域」を列挙する純ロジック。
 // **デバイスを必要としない**ので境界は単体テストで固定する(ScrollGeometry と同じ規律)。
 //
-// 判定に使えるのは **`scrollable == true` を見つけたときだけ**。申告できないエンジン
+// 判定に使えるのは **`scrollable == true` を見つけたときだけ**。申告できないブリッジ
 // (Compose/Flutter の **XCUITest**。in-app は版57から申告できる)では全要素が nil に
 // なるので、そこで「候補なし」と言うと嘘になる。
 // StepExecutor.scrollFrameNote と同じ規律 —— **1つも true が無い画面では黙る**。
@@ -58,7 +58,7 @@ public enum ScrollFrameCandidates {
 
     /// `ft_snapshot` の先頭に出す注記。**2つ以上あるときだけ**返す(1つしか無い画面で
     /// `scrollFrame:` を勧めると、iOS in-app では XCUITest フォールバックを払うだけになる)。
-    /// 申告できないエンジンでは候補が空になり、ここも nil = 黙る
+    /// 申告できないブリッジでは候補が空になり、ここも nil = 黙る
     public static func note(_ snapshot: SnapshotResponse) -> String? {
         let found = candidates(in: snapshot)
         guard found.count >= 2 else { return nil }

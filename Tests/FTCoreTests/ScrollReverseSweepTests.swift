@@ -9,7 +9,7 @@ import XCTest
 @testable import FTCore
 
 /// スクロール位置を持つ偽ドライバ。**path の有無で移動量が変わる**のが肝:
-///  - path なし(= エンジン既定・`scrollFrame` 未指定)は範囲を1回で走り切る
+///  - path なし(= ブリッジ既定・`scrollFrame` 未指定)は範囲を1回で走り切る
 ///  - path あり(= 容器基準の刻み)は path の長さだけ動く
 private final class JumpScreenDriver: AppDriver {
     static let containerY: Double = 357
@@ -21,7 +21,7 @@ private final class JumpScreenDriver: AppDriver {
 
     private(set) var offset: Double = 0
     private(set) var swipes = 0
-    /// 容器が `scrollable` を申告するか(申告できないエンジンを再現するため既定は false)
+    /// 容器が `scrollable` を申告するか(申告できないブリッジを再現するため既定は false)
     var declaresScrollable = false
 
     func status() async throws -> StatusResponse {
@@ -124,7 +124,7 @@ final class ScrollReverseSweepTests: XCTestCase {
         XCTAssertTrue(note.contains("specify scrollFrame: #list_jump"), "注記: \(note)")
     }
 
-    /// 申告できないエンジンでは**名指ししない**(推測した矩形は `scrollFrame:` に書けない)
+    /// 申告できないブリッジでは**名指ししない**(推測した矩形は `scrollFrame:` に書けない)
     func testReverseSweepStaysGenericWhenTheContainerCannotBeNamed() async throws {
         let driver = JumpScreenDriver()   // declaresScrollable = false
 

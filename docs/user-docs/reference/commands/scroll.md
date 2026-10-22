@@ -58,13 +58,13 @@ These are observations, not failures:
 |---|---|---|
 | `stopped at the limit of N (may not have reached the edge yet)` | Stopped at `maxSwipes` — not necessarily the actual edge | **Yes.** Raise `maxSwipes`, or check whether the screen even has an edge to reach. |
 | `the screen did not settle (poll limit)` | The screen was still moving after a swipe (long inertia, etc.). The swipe itself was still sent. | Usually not. If it appears at the same spot every run, a tap right after could land while the content is still moving — worth investigating. |
-| `fell back to XCUITest` | The in-app engine could not run this scroll, so XCUITest did it. | Usually not. If it happens a lot, reconsider the run profile's engine selection. |
+| `fell back to XCUITest` | The in-app bridge could not run this scroll, so XCUITest did it. | Usually not. If it happens a lot, reconsider the run profile's `iosMode`. |
 
 ## How fast an edge scroll runs
 
-`scrollToBottom` etc. repeat "scroll once, then check whether the screen stopped moving." On Android, and on iOS with the
-XCUITest engine or Compose / Flutter, one step covers about one page, so raise `maxSwipes` for long screens (the default
-`maxSwipes: 50` may not reach very long documents). iOS UIKit / SwiftUI and WebView with the in-app engine, and the Android WebView, jump straight to
+`scrollToBottom` etc. repeat "scroll once, then check whether the screen stopped moving." On Android, and on iOS in
+xcuitest mode or Compose / Flutter, one step covers about one page, so raise `maxSwipes` for long screens (the default
+`maxSwipes: 50` may not reach very long documents). iOS UIKit / SwiftUI and WebView with the in-app bridge, and the Android WebView, jump straight to
 the edge, so they do not depend on document length. Chaining several `flick*` calls to go faster is not a substitute —
 flick has no notion of having reached the edge; see [flick](./flick.md).
 

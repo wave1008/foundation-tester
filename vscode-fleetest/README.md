@@ -546,8 +546,8 @@ dry-run ではない run の終了時に、修復候補(同じ file・line・変
   **「ホーム」**(`{"cmd":"home"}`)・**「タスク切替」**(`{"cmd":"appSwitcher"}`)・
   **「拡大」「縮小」**(`{"cmd":"pinch","scale":2|0.5,...}`。画面全体のピンチ)ボタンがあります。
   未取得時はプレースホルダーが表示されます。
-  **iOS はエンジンで届かないジェスチャがあります**: Compose のダブルタップと Flutter のピンチは
-  XCUITest 経路では効きません(実行プロファイルが inapp/hybrid なら効く。docs/commands.md の表)。
+  **iOS はモードによって届かないジェスチャがあります**: Compose のダブルタップは
+  XCUITest 経路では効きません(実行プロファイルが inapp モードなら効く。docs/commands.md の表)。
 - **右: 操作パネル**: **「更新」**ボタン(snapshot 再取得)・**テキスト入力欄 + 「入力」**
   (`{"cmd":"type","text":..,"ref":..}`。要素一覧でタップした要素があれば `ref` を付けて送信し、
   未選択、または snapshot を再取得すると選択状態はクリアされてフォーカス中の要素に入力されます)・
@@ -935,7 +935,7 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
 |---|---|
 | `npm run compile` | `esbuild.mjs` で `src/extension.ts` を `dist/extension.js` にバンドルし、`tsc --noEmit` で型チェックする |
 | `npm run watch` | 上記のバンドルをウォッチモードで実行する |
-| `npm test` | `esbuild.mjs --tests` で `test/*.test.mjs` を `out-test/` にバンドルし、`node --test --test-force-exit out-test/*.test.mjs` で実行する(NDJSON パーサ・実行結果 reducer(並列実行ケース含む)・ログレーン変換・DAP アダプタ・デバイスモニター(タイル個別起動/停止含む)/ライブ操作/プロファイル/i18n の変換・検証のユニットテスト。E2E テストは `FLEETEST_E2E` 未設定時は自動的に skip される) |
+| `npm test` | `esbuild.mjs --tests` で `test/*.test.mjs` を `out-test/` にバンドルし、`node --test out-test/*.test.mjs` で実行する(NDJSON パーサ・実行結果 reducer(並列実行ケース含む)・ログレーン変換・DAP アダプタ・デバイスモニター(タイル個別起動/停止含む)/ライブ操作/プロファイル/i18n の変換・検証のユニットテスト。E2E テストは `FLEETEST_E2E` 未設定時は自動的に skip される) |
 | `npm run package` | `vsce package` で `.vsix` を生成する(marketplace 未公開/publisher 未検証の警告は無視してよい) |
 | `npm run install-local` | `scripts/install-local.sh` を実行する(`.vsix` のパッケージ化 → インストール → 到達確認まで一括で行う) |
 

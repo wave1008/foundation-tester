@@ -22,7 +22,7 @@
 | キー | 型 | 既定値 | 意味 |
 |---|---|---|---|
 | `app` | string | — | 使用する `apps/<name>.json` プロファイル名。そのアプリプロファイルの `platform`(対象 OS)を引き継ぎ、対象外の OS の `devices` は実行時に無視されます([profiles_ja.md](./profiles_ja.md)) |
-| `devices` | array | — | 実行するデバイスの実体(同じ配列に iOS/Android を混在可)。各要素: `platform`(`"ios"`/`"android"`、必須)、`machine`(そのデバイスが居るマシン。手元は `"local"`、`fleetest remote machines add` で登録した名前も書ける)、`name`(必須。`machine` と組み合わせて一意。iOS Simulator では Simulator 自身の名前)、`enabled`(`false` なら一覧に残すが走らせない。省略 = 走らせる)、そのデバイス自身の実体キー(`osVersion`/`udid`/`avd`/`serial`/`kind`/`port`/`engine`/`model`。詳細は [profiles_ja.md](./profiles_ja.md)) |
+| `devices` | array | — | 実行するデバイスの実体(同じ配列に iOS/Android を混在可)。各要素: `platform`(`"ios"`/`"android"`、必須)、`machine`(そのデバイスが居るマシン。手元は `"local"`、`fleetest remote machines add` で登録した名前も書ける)、`name`(必須。`machine` と組み合わせて一意。iOS Simulator では Simulator 自身の名前)、`enabled`(`false` なら一覧に残すが走らせない。省略 = 走らせる)、そのデバイス自身の実体キー(`osVersion`/`udid`/`avd`/`serial`/`kind`/`port`/`mode`/`model`。詳細は [profiles_ja.md](./profiles_ja.md)) |
 | `heal` | bool | `--profile` 実行は `true`・プロファイル無しの素の `fleetest run` は `false` | セレクタの自己修復(指紋照合方式)を許可する([self_healing_ja.md](../running/self_healing_ja.md)参照)。下記の FM・OCR 系のトグルとは独立(自己修復は FM を使わない) |
 | `fmTextVisibilityCheck` | bool | `true` | FM(Foundation Models。experimental — [environments_ja.md](../../overview/environments_ja.md))でテキストの可視性検証をする。詳細は[テキストの可視性検証](../testclass/text_visibility_check_ja.md)。FM が呼ばれるのは、これか `screenLooksLike` が `true` のときだけ |
 | `screenLooksLike` | bool | `true` | `screenLooksLike`(FM 視覚検証。experimental — [environments_ja.md](../../overview/environments_ja.md))を有効にする。`false` のときは該当ステップが失敗ではなく skip になる |
@@ -31,16 +31,16 @@
 | `reportDir` | string | `"reports"` | Markdown レポートの出力先(プロジェクトルート相対) |
 | `defaultTimeout` | number(秒) | `5` | `waitSeconds:` を取る DSL コマンドの既定タイムアウト |
 | `scenarioTimeout` | int(秒) | `600` | シナリオ単位のホスト側 watchdog(壁時計タイムアウト)。個々のコマンド待ちを縛る `defaultTimeout` とは別物。シナリオに `@Test(scenarioTimeout:)` を書くとそのシナリオだけこちらより優先される(短くする向きも効く)。別に、シナリオの出力が `commandTimeout` の 2 倍を超えて途切れたときもそこで打ち切る(遅いだけで進んでいるシナリオは止めない)。モニターのプロファイルタブ(実行プロファイルの「テスト実行」)の「シナリオの制限時間(秒)」でも設定できる |
-| `iosInappEngine` | bool | `true` | `true` → iOS デバイスは hybrid エンジン(in-app 主 + XCUITest フォールバック)で動く。`false` → XCUITest のみ。`devices[]` のその要素自身に `engine` を明示していればそちらが優先。Android には影響しない |
+| `iosMode` | string | `"inapp"` | `"inapp"` → iOS デバイスは inapp モード(in-app ブリッジ主 + XCUITest ブリッジをフォールバック)で動く。`"xcuitest"` → XCUITest ブリッジのみ。他の値はエラー。`responseMeasurement` の run では既定が `"xcuitest"` になる(計測は XCUITest ブリッジにあるため)。`devices[]` のその要素自身に `mode` を明示していればそちらが優先。Android には影響しない |
 | `wipeDataOnBloat` | bool | `true` | 実行開始時、Android AVD の wipe 対象ファイル(userdata/cache/snapshots)が `wipeDataThresholdGB` を超えていたら Wipe Data する。アプリのインストールが容量不足で失敗したときも、そのデバイスを Wipe Data して 1 回だけ入れ直す(`false` のときは Wipe せず、そのデバイスを実行から外す) |
 | `wipeDataThresholdGB` | number(GB) | `8` | `wipeDataOnBloat` のしきい値 |
 | `updateWebView` | bool | `true` | 実行開始時に端末上の WebView 版を揃える(同じシナリオが端末の WebView 版によって挙動が変わるのを防ぐ) |
 | `recoverCpuFallbackToGpu` | bool | `false` | 実行開始時、CPU 描画(swiftshader)へフォールバック済みの Android Emulator を GPU モードで起動し直す |
 | `locale` | string | `"ja_JP"` | Android Emulator のブート時に適用するロケール。iOS には影響しない |
-| `iosPreActionPing` | bool | `true` | interop WebView 画面(Compose/Flutter 等の埋め込み WebView)でタップ・入力の直前にランナーへ1回問い合わせてから撃つ。attach したままの XCUITest セッションは放置後の座標イベントを成功応答のまま届け損なうことがある。コストは該当画面のイベント1回につき約 +0.4 秒(読み取りと他の画面には掛からない)。hybrid エンジンのときだけ効く |
+| `iosPreActionPing` | bool | `true` | interop WebView 画面(Compose/Flutter 等の埋め込み WebView)でタップ・入力の直前にランナーへ1回問い合わせてから撃つ。attach したままの XCUITest セッションは放置後の座標イベントを成功応答のまま届け損なうことがある。コストは該当画面のイベント1回につき約 +0.4 秒(読み取りと他の画面には掛からない)。inapp モードのときだけ効く |
 | `containerInference` | bool | `true` | スクロール容器を幾何から推測する補正(端の見切れ・座標補正等)を有効にする。FM とは無関係 |
 | `enableAnimations` | bool | `false` | 実行のためにアプリのアニメーションを無効化せず残す |
-| `responseMeasurement` | bool | `false` | **Android か iOS の実機 1 台**を対象にしたレスポンス計測モード。使う有効なデバイス(`--device` で絞った後)が 1 台で、`kind: physical` でなければ run を断る。アプリのアニメーションを残し(`enableAnimations` を強制的に有効)、`fmTextVisibilityCheck`・`ocrTextVisibilityCheck`・`screenLooksLike`・`record`・ホスト負荷による減速を止め、run が終わるまでデバイスモニターを止める。`enableAnimations: false` や、FM・OCR・`record` のキーを `true` にした併用はエラー。`--broadcast`・`--fleet`・`--split` とは併用できない。[レスポンス計測](../running/response_measurement_ja.md)参照 |
+| `responseMeasurement` | bool | `false` | **Android か iOS の実機 1 台**を対象にしたレスポンス計測モード。使う有効なデバイス(`--device` で絞った後)が 1 台で、`kind: physical` でなければ run を断る。アプリのアニメーションを残し(`enableAnimations` を強制的に有効)、iOS は xcuitest モードで走らせ、`fmTextVisibilityCheck`・`ocrTextVisibilityCheck`・`screenLooksLike`・`record`・ホスト負荷による減速を止め、run が終わるまでデバイスモニターを止める。`enableAnimations: false` や、`iosMode`(またはデバイスの `mode`)を `inapp`、FM・OCR・`record` のキーを `true` にした併用はエラー。`--broadcast`・`--fleet`・`--split` とは併用できない。[レスポンス計測](../running/response_measurement_ja.md)参照 |
 | `responseRepeat` | int | `5` | `responseMeasurement: true` のときだけ指定できます(無しで指定するとエラー)。各シナリオをデバイス上で続けて回す回数で、`1` 〜 `50`。どの回も計測します。結果ファイルは `<id>`、`<id>~2`、`<id>~3`、… の名前で並びます |
 | `homeOnStart` | bool | `--profile` 実行は `true`・プロファイル無しの素の `fleetest run` は `false` | 実行開始時に各デバイスへ Home を1回撃つ(一斉起動直後に画面が黒いまま止まるのを防ぐ) |
 | `playProtectBypass` | bool | `true` | Android の `adb install` で Play Protect の照会(「アプリをセキュリティ確認のために送信しますか?」)を通さない。インストールの間だけ「USB 経由でアプリを確認」を切って元に戻す(アプリを Google へ送らない)。`false` はキルスイッチ: ツールは端末の設定に触らず、release 署名の APK は端末側のダイアログで止まったままになる(ツールはそのダイアログに答えない) |
@@ -63,19 +63,19 @@ ON**、プロファイルを使わない素の `fleetest run` は既定 OFF で�
 実行だけこの表のほぼどのキーも上書きできます(例: `--set heal=false`・
 `--set fmTextVisibilityCheck=false`・`--set reportDir=/tmp/out`・`--set defaultTimeout=8`。
 値は上表に示したキーの型と一致させる。複数回指定できる)。`--profile` の有無を問わず効きます —— 例外は実行
-プロファイルの devices 一覧・供給工程が要るキー(`iosInappEngine`・`updateWebView`・
+プロファイルの devices 一覧・供給工程が要るキー(`iosMode`・`updateWebView`・
 `wipeDataOnBloat`・`recoverCpuFallbackToGpu`・`app`・`locale`・
 `wipeDataThresholdGB`・`responseMeasurement`・`responseRepeat`)で、これらは `--profile` が必須です。`devices`/`remoteControl` は
 配列・オブジェクトなので `<キー>=<値>` の形では指定できません(この2つはプロファイル JSON を
 直接編集してください)。`record` は `--profile` か、`--port` を2回以上指定するかのどちらかが要ります(単一接続には録画セッションを付けるところが無いため)。`reportDir` は `--report-dir` と同時指定できません(同じ欄の二重指定になるため)。実行プロファイルのキー `app` はアプリ**プロファイル名**を指し、`fleetest run` の `--app-id` フラグとは別物です。`--set` に未知のキー・型の合わない値を渡すとエラーになります(プロファイル JSON の中の
 未知のキーは警告を出して無視されます)。
 
-## iOS エンジン
+## iOS のモード
 
-既定の実効エンジンは `hybrid`(in-app 主 + XCUITest フォールバック)です。`iosInappEngine: false`
-にすると XCUITest のみの実行に切り替わります。iOS の実機も、アプリが**開発署名(get-task-allow)**
-なら同じエンジンを使えます(注入するブリッジはアプリと同じチームの証明書でツールが署名します)。
-開発署名でないアプリ(TestFlight / App Store)は自動で XCUITest に縮退します。ランナー機へディスパッチするときは、
+既定の実効モードは `inapp`(in-app ブリッジ主 + XCUITest ブリッジをフォールバックにするハイブリッド構成)です。`iosMode: "xcuitest"`
+にすると XCUITest ブリッジのみの実行に切り替わります。iOS の実機も、アプリが**開発署名(get-task-allow)**
+なら inapp モードを使えます(注入するブリッジはアプリと同じチームの証明書でツールが署名します)。
+開発署名でないアプリ(TestFlight / App Store)は自動で xcuitest モードに縮退します。ランナー機へディスパッチするときは、
 ディスパッチする側の Mac がアプリの証明書でブリッジに署名して一緒に送るので、ランナー機に署名の鍵は要りません。
 
 ### Link

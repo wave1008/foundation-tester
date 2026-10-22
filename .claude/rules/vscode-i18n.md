@@ -19,7 +19,8 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   `npm install` が lock を書き換えてクローンが dirty になり、**次の更新が pull ガードで止まる**
   (`packageLockSync.test.mjs` が検出。既にズレたら `npm install --package-lock-only`)
 - **jsdom を使う webview テストは `t.after(() => window.close())` で必ず閉じる**
-  (`jsdomTeardown.test.mjs` がソース走査で落とし、`npm test` は `--test-force-exit` 付き)
+  (`jsdomTeardown.test.mjs` がソース走査で落とす。**`npm test` に `--test-force-exit` を戻さない** —— 子の結果がパイプに
+  書き切られる前に終わり、報告の件数と失敗の名前が毎回違う位置で欠ける)
   → maintainer-notes §4.3。**同型: `argumentHelpLiteral.test.mjs`**。
   **一般化: 「コンパイルで落ちる誤り」「テストが終わらない」型はソース走査で秒未満に落とす**
 - コントローラ分割は、必要なコールバックだけを束ねた狭い deps インターフェースをコンストラクタ注入し、サブコントローラ同士は直接参照しない(実例: monitorPanel.ts の MonitorPanelDeps)

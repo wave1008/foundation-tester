@@ -36,8 +36,8 @@ type("#note", "new content", replace: true)
 - `type` appends rather than overwrites, so clear the field first when you need to replace its
   contents. If you only want to save a selector resolution, `type(sel, "some text", replace: true)`
   folds the clear and the type into a single command. See [type](./type.md).
-- On the Flutter iOS build, the in-app engine cannot clear the field itself and automatically
-  falls back to the XCUITest engine for this one command (adds roughly one to two seconds).
+- On the Flutter iOS build, the in-app bridge cannot clear the field itself and automatically
+  falls back to the XCUITest bridge for this one command (adds roughly one to two seconds).
 - **`settle: false`** skips this command's post-action wait for the screen to settle (the next step may see a moving screen). See [tap](./tap.md) for details.
 
 ### Link

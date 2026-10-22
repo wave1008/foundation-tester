@@ -169,7 +169,7 @@ enum InAppSnapshot {
         // それ以外は accessibilityElements(あれば)を、無ければ subviews を辿る。
         // **木に出さなかった要素(名前も id も無い入れ物)は葉にしない**: RN の Pressable は既定で
         // isAccessibilityElement で、その中の id つきの View(pointerEvents="none" の欄)が丸ごと消えていた
-        // (XCUITest の木には出る = 型セレクタも id もエンジンで食い違う)
+        // (XCUITest の木には出る = 型セレクタも id もブリッジで食い違う)
         if let view = node as? UIView, view.isAccessibilityElement, included { return }
         let children = axChildren(node)
         let childClip = isScrollableContainer(node) == true
@@ -389,13 +389,13 @@ enum InAppSnapshot {
         if let tf = node as? UITextField {
             if tf.isSecureTextEntry { return .secureTextField }
             // 検索欄(UISearchBar の中身)は XCUITest が searchField と報告する。UITextField の判定を先に
-            // 置くと in-app だけ TextField になり、`.SearchField` がエンジンで当たり外れした
+            // 置くと in-app だけ TextField になり、`.SearchField` がブリッジで当たり外れした
             if tf is UISearchTextField || tf.accessibilityTraits.contains(.searchField) { return .searchField }
             return .textField
         }
         if node is UITextView { return .textView }
         // セルは trait を持たないため、クラスで判定しないと .other に落ちて `.Cell` セレクタが
-        // xcuitest エンジンとだけ食い違う(2026-07-23 に TestProjects/E2E-iOS で実測)。
+        // XCUITest ブリッジとだけ食い違う(2026-07-23 に TestProjects/E2E-iOS で実測)。
         // trait 判定より先に置く: セル内のボタン trait に引きずられて Button にしないため。
         if node is UITableViewCell || node is UICollectionViewCell { return .cell }
         let t = node.accessibilityTraits

@@ -69,7 +69,7 @@ final class HybridFallbackIdentityTests: XCTestCase {
     func testMatchingUDIDIsNotDrifted() async throws {
         let stub = try StatusStubServer(status: StatusResponse(
             ready: true, device: "iPhone 17 Pro-02", osVersion: "-", sessionBundleID: nil,
-            engine: "xcuitest", udid: "SIM-1"))
+            bridge: "xcuitest", udid: "SIM-1"))
         defer { stub.stop() }
 
         let drifted = await HybridFallbackIdentity.drifted(
@@ -82,7 +82,7 @@ final class HybridFallbackIdentityTests: XCTestCase {
     func testDifferentUDIDIsDrifted() async throws {
         let stub = try StatusStubServer(status: StatusResponse(
             ready: true, device: "iPhone 17 Pro-05", osVersion: "-", sessionBundleID: nil,
-            engine: "xcuitest", udid: "SIM-2"))
+            bridge: "xcuitest", udid: "SIM-2"))
         defer { stub.stop() }
 
         let drifted = await HybridFallbackIdentity.drifted(
@@ -93,10 +93,10 @@ final class HybridFallbackIdentityTests: XCTestCase {
 
     /// **maintainer-notes §51.2 の実測**: 起動し直しで fallback ポートが in-app ブリッジに化けた。
     /// udid を申告しないのは実機の xcuitest だけなので、これは差し替わり(differentDevice)
-    func testInAppEngineOnTheExpectedXCUITestPortIsDrifted() async throws {
+    func testInAppBridgeOnTheExpectedXCUITestPortIsDrifted() async throws {
         let stub = try StatusStubServer(status: StatusResponse(
             ready: true, device: "iPhone 17 Pro-05", osVersion: "-", sessionBundleID: "com.example.other",
-            engine: "inapp", udid: nil))
+            bridge: "inapp", udid: nil))
         defer { stub.stop() }
 
         let drifted = await HybridFallbackIdentity.drifted(
@@ -105,28 +105,28 @@ final class HybridFallbackIdentityTests: XCTestCase {
         XCTAssertEqual(drifted, .differentDevice)
     }
 
-    /// 同じ udid のまま engine だけ入れ替わった形は sameDeviceEngineChanged
-    func testSameUDIDDifferentEngineIsSameDeviceEngineChanged() async throws {
+    /// 同じ udid のまま bridge だけ入れ替わった形は sameDeviceBridgeChanged
+    func testSameUDIDDifferentBridgeIsSameDeviceBridgeChanged() async throws {
         let stub = try StatusStubServer(status: StatusResponse(
             ready: true, device: "iPhone 17 Pro-02", osVersion: "-", sessionBundleID: "com.example.app",
-            engine: "inapp", udid: "SIM-1"))
+            bridge: "inapp", udid: "SIM-1"))
         defer { stub.stop() }
 
         let drifted = await HybridFallbackIdentity.drifted(
             port: stub.port, expectedUDID: "SIM-1", repoRoot: nil)
 
-        XCTAssertEqual(drifted, .sameDeviceEngineChanged)
+        XCTAssertEqual(drifted, .sameDeviceBridgeChanged)
     }
 
-    /// ライブ操作が主(in-app)側を確かめるときの形: `expectedEngine: "inapp"` を渡す
-    func testExpectedEngineChecksTheInAppSideWhenPassed() async throws {
+    /// ライブ操作が主(in-app)側を確かめるときの形: `expectedBridge: "inapp"` を渡す
+    func testExpectedBridgeChecksTheInAppSideWhenPassed() async throws {
         let stub = try StatusStubServer(status: StatusResponse(
             ready: true, device: "iPhone 17 Pro-02", osVersion: "-", sessionBundleID: "com.example.app",
-            engine: "inapp", udid: "SIM-1"))
+            bridge: "inapp", udid: "SIM-1"))
         defer { stub.stop() }
 
         let drifted = await HybridFallbackIdentity.drifted(
-            port: stub.port, expectedUDID: "SIM-1", expectedEngine: "inapp", repoRoot: nil)
+            port: stub.port, expectedUDID: "SIM-1", expectedBridge: "inapp", repoRoot: nil)
 
         XCTAssertEqual(drifted, .none, "in-app を期待し in-app が答えたのに drifted と判定した")
     }

@@ -31,5 +31,5 @@
     }
   ],
   "heal": true,
-  "iosInappEngine": false
+  "iosMode": "xcuitest"
 }

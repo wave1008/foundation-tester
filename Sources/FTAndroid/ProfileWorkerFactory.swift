@@ -71,7 +71,7 @@ public enum ProfileWorkerFactory {
     /// **in-app ブリッジを持つデバイスには撃たない**(実測、3機18台)。`home` はアプリを背面へ
     /// 送るが、**in-app ブリッジはそのアプリの中に居る**ので背面に回った瞬間に無応答になる ——
     /// 供給が「壊れたブリッジ」と見て停止・張り直しに入り、3機で13台がワーカーから脱落した
-    /// (シナリオの結果は緑のままだが手元の run が 50s → 136s)。engine=inapp/hybrid は黙って飛ばす。
+    /// (シナリオの結果は緑のままだが手元の run が 50s → 136s)。inapp モードは黙って飛ばす。
     ///
     /// 撃てるデバイス(xcuitest 単独の iOS・Android)は `systemUIClient` 経由で XCUITest ブリッジへ回す
     /// —— `RunWorker.driver` は in-app ブリッジ宛のことがあり、in-app に `/home` のルートは無い。
@@ -108,16 +108,15 @@ public enum ProfileWorkerFactory {
     }
 
     /// `pressHomeOnStart` の対象と除外。**デバイス不要の純粋関数**(規則はここだけ・テストが直接叩く)。
-    /// 除外は「in-app ブリッジを持つデバイス」だけ —— 判定は engine で行い、xcuiPort の有無では**決めない**
-    /// (hybrid は両方のブリッジを持つので、xcuiPort があっても撃つとアプリが背面に落ちる)。
+    /// 除外は「in-app ブリッジを持つデバイス」だけ —— 判定は mode で行い、xcuiPort の有無では**決めない**
+    /// (inapp モードは両方のブリッジを持つので、xcuiPort があっても撃つとアプリが背面に落ちる)。
     static func homeOnStartPlan(
         _ workers: [RunWorker]
     ) -> (targets: [RunWorker], skipped: [RunWorker]) {
         var targets: [RunWorker] = []
         var skipped: [RunWorker] = []
         for worker in workers {
-            let engine = worker.connection.engine
-            if engine == "inapp" || engine == "hybrid" {
+            if worker.connection.mode == IOSMode.inapp {
                 skipped.append(worker)
             } else {
                 targets.append(worker)
@@ -211,14 +210,14 @@ public enum ProfileWorkerFactory {
     /// run 開始時点で画面に残っているアラートを**警告する**(ここでは閉じない。理由と背景は
     /// FTCore.ResidualSystemAlertTriage)。各シナリオの直前に残っていれば `clearResidualSystemAlert` が消す
     ///
-    /// **SpringBoard を見られる接続でしか判定できない**ので、engine=inapp 単独のデバイスは黙って飛ばす
+    /// **SpringBoard を見られる接続でしか判定できない**ので、XCUITest ブリッジを持たない接続は黙って飛ばす
     /// (in-app ブリッジは注入先アプリのプロセスしか見えない = 「アラートが無い」と誤って言える)。
     /// 固定費は iOS ワーカーあたり snapshot 1枚で、全台並行に撃つ。
     /// **失敗は握りつぶす** —— これは診断であって run を止める理由にはしない
     /// **アプリの外(SpringBoard)を触れる driver**。in-app ブリッジは注入先アプリしか見えず
-    /// `/home` のルートも持たないので、hybrid でも必ず XCUITest ブリッジ側へ回す
+    /// `/home` のルートも持たないので、inapp モードでも必ず XCUITest ブリッジ側へ回す
     /// (`RunWorker.driver` は in-app ブリッジ宛なので、そのまま使うと 0/N になる。実害:
-    /// homeOnStart が hybrid の全台で不発だったのに「inapp 固定のデバイスだけができない」と誤って説明していた)。
+    /// homeOnStart が inapp モードの全台で不発だったのに「in-app ブリッジだけのデバイスができない」と誤って説明していた)。
     /// iOS 以外・XCUITest ブリッジを持たないデバイスは nil(呼び手は黙って飛ばす)。
     /// 使い手は pressHomeOnStart と warnOnResidualSystemAlerts の2つ。
     static func systemUIClient(for worker: RunWorker) -> BridgeClient? {
@@ -232,8 +231,8 @@ public enum ProfileWorkerFactory {
             return BridgeClient(port: xcuiPort, host: host,
                                 physicalUDID: physicalUDID, simulatorUDID: simulatorUDID)
         }
-        let engine = worker.connection.engine
-        guard engine == nil || engine == "xcuitest", let port = worker.connection.port else {
+        let mode = worker.connection.mode
+        guard mode == nil || mode == IOSMode.xcuitest, let port = worker.connection.port else {
             return nil
         }
         return BridgeClient(port: port, host: host,
@@ -1030,17 +1029,17 @@ public enum ProfileWorkerFactory {
             logicalName: device.name)
     }
 
-    /// engine=inapp/hybrid のときサブプロセスは InAppDriver(+hybrid は SystemUIDriver フォールバック)を
+    /// inapp モードのときサブプロセスは InAppDriver(+ XCUITest ブリッジへの回し先)を
     /// 使う。suspend された in-app アプリは /status が無応答になるため、注入先アプリの bundleID を
-    /// 明示的に渡してサブプロセスの inapp/XCUITest ルーティングを確定させる(engine 有りのみ)。
+    /// 明示的に渡してサブプロセスの inapp/XCUITest ルーティングを確定させる(inapp モードのみ)。
     /// CLI(makeIOSWorker)と MCP(MCPServer.runScenario)のプロファイル経路で共有する。
     public static func iosConnection(device: ProvisionedIOSDevice,
                                      iosApp: ResolvedAppTarget?) -> DriverConnection {
-        let engine = (device.engine == "inapp" || device.engine == "hybrid") ? device.engine : nil
+        let mode = device.mode == IOSMode.inapp ? device.mode : nil
         return DriverConnection(platform: "ios", port: device.port,
-                                engine: engine, udid: device.udid,
+                                mode: mode, udid: device.udid,
                                 xcuiPort: device.xcuiPort,
-                                inappBundleID: engine != nil ? iosApp?.bundleID : nil,
+                                inappBundleID: mode != nil ? iosApp?.bundleID : nil,
                                 deviceName: device.name,
                                 physical: device.physical,
                                 host: device.physical ? device.host : nil)
@@ -1060,7 +1059,7 @@ public enum ProfileWorkerFactory {
                                  simulatorUDID: device.physical ? nil : device.udid),
             connection: iosConnection(device: device, iosApp: iosApp),
             logicalName: device.name,
-            requestedEngine: device.requestedEngine, engineFallbackReason: device.engineFallbackReason)
+            requestedMode: device.requestedMode, modeFallbackReason: device.modeFallbackReason)
     }
 
     /// logicalName の1台だけを再供給する。到達不能・供給失敗は nil(throw しない)。
@@ -1177,10 +1176,9 @@ public enum ProfileWorkerFactory {
         var candidates: [(index: Int, worker: RunWorker, app: ResolvedAppTarget, appPath: String)] = []
         var passthrough: [(index: Int, worker: RunWorker)] = []
         for (index, worker) in workers.enumerated() {
-            // inapp/hybrid の iOS はプロビジョニング時にインストール済み。ここで入れ直すと
+            // inapp モードの iOS はプロビジョニング時にインストール済み。ここで入れ直すと
             // 起動中の in-app ブリッジ(アプリ内常駐)が simctl install で終了してしまうため必ずスキップ
-            if worker.platform == "ios", let engine = worker.connection.engine,
-               engine == "inapp" || engine == "hybrid" {
+            if worker.platform == "ios", worker.connection.mode == IOSMode.inapp {
                 passthrough.append((index, worker))
                 continue
             }

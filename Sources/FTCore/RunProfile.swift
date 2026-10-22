@@ -127,9 +127,8 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     public var udid: String?
     /// iOS: ブリッジポートの固定(省略時は自動採番)
     public var port: UInt16?
-    /// iOS: 駆動エンジン。"xcuitest"(既定)= Runner/ の XCUITest ブリッジ、
-    /// "inapp" = シミュレータのアプリに dylib 注入する in-app ブリッジ(実機不可)
-    public var engine: String?
+    /// iOS: モード("inapp" / "xcuitest" = `IOSMode`)。省略時は実行プロファイルの iosMode
+    public var mode: String?
     /// Android: AVD(ID または表示名。起動中エミュレータとの照合で adb シリアルに解決)
     public var avd: String?
     /// Android 実機: adb シリアル(USB は "14141JEC204922"、WiFi は "192.168.1.23:5555")。
@@ -142,7 +141,7 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
 
     public init(name: String, machine: String? = nil, kind: DeviceKind? = nil,
                 osVersion: String? = nil,
-                udid: String? = nil, port: UInt16? = nil, engine: String? = nil,
+                udid: String? = nil, port: UInt16? = nil, mode: String? = nil,
                 avd: String? = nil, serial: String? = nil, model: String? = nil) {
         self.name = name
         self.machine = machine
@@ -150,7 +149,7 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
         self.osVersion = osVersion
         self.udid = udid
         self.port = port
-        self.engine = engine
+        self.mode = mode
         self.avd = avd
         self.serial = serial
         self.model = model
@@ -167,12 +166,12 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     }
 
     static let knownKeys: Set<String> = [
-        "name", "machine", "kind", "osVersion", "udid", "port", "engine", "avd",
+        "name", "machine", "kind", "osVersion", "udid", "port", "mode", "avd",
         "serial", "model",
     ]
 
     private enum CodingKeys: String, CodingKey {
-        case name, machine, kind, osVersion, udid, port, engine, avd, serial, model
+        case name, machine, kind, osVersion, udid, port, mode, avd, serial, model
     }
 
     public init(from decoder: Decoder) throws {
@@ -183,7 +182,7 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
         osVersion = try container.decodeIfPresent(String.self, forKey: .osVersion)
         udid = try container.decodeIfPresent(String.self, forKey: .udid)
         port = try container.decodeIfPresent(UInt16.self, forKey: .port)
-        engine = try container.decodeIfPresent(String.self, forKey: .engine)
+        mode = try container.decodeIfPresent(String.self, forKey: .mode)
         avd = try container.decodeIfPresent(String.self, forKey: .avd)
         serial = try container.decodeIfPresent(String.self, forKey: .serial)
         model = try container.decodeIfPresent(String.self, forKey: .model)
@@ -197,7 +196,7 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
         try container.encodeIfPresent(osVersion, forKey: .osVersion)
         try container.encodeIfPresent(udid, forKey: .udid)
         try container.encodeIfPresent(port, forKey: .port)
-        try container.encodeIfPresent(engine, forKey: .engine)
+        try container.encodeIfPresent(mode, forKey: .mode)
         try container.encodeIfPresent(avd, forKey: .avd)
         try container.encodeIfPresent(serial, forKey: .serial)
         try container.encodeIfPresent(model, forKey: .model)
@@ -390,11 +389,9 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// シナリオ単位の壁時計タイムアウト秒(ホスト側 watchdog。子には渡さない。省略時 600 = `ScenarioHost.defaultScenarioTimeout`)。
     /// defaultTimeout(子内部の検証待ち)とは別物
     public var scenarioTimeout: Int?
-    /// iOS の高速な in-app エンジン(ハイブリッド)を使うか(既定 true=ON)。
-    /// true → iOS デバイスの実効エンジンを "hybrid"(in-app 主+XCUITest フォールバック)、
-    /// false → "xcuitest" にする。devices[] のデバイスに engine を明示している場合は
-    /// そちらが優先(resolve 参照)。Android には影響しない。
-    public var iosInappEngine: Bool?
+    /// iOS のモード("inapp" / "xcuitest" = `IOSMode`。省略時 "inapp")。devices[] で mode を明示した
+    /// デバイスはそちらが優先(resolve 参照)。Android には影響しない。
+    public var iosMode: String?
     /// 実行開始時に Android AVD の肥大化(wipe 対象ファイル合計サイズ)を検査し超過分を
     /// Wipe Data するか(既定 true=ON)。同期相手: vscode-fleetest/schemas/run-profile.schema.json
     /// と src/monitorModel.ts の RunProfileFormFields
@@ -422,7 +419,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// attach したままの XCUITest セッションは放置後の座標イベントを 200 のまま届け損なう
     /// (実測 ~13% → 接続確認で 0/50。A/B は docs/verification.md §interop WebView)。false で
     /// FT_PRE_ACTION_PING=0 を注入し接続確認を止める(WebViewDelegatingDriver が受ける)。
-    /// 効くのは hybrid エンジンの domInterop 経路だけ(xcuitest エンジンには元から不要)
+    /// 効くのは inapp モードの domInterop 経路だけ(xcuitest モードには元から不要)
     public var iosPreActionPing: Bool?
     /// **容器の推測に依存する補正**を行うか(既定 true)。false にすると見切れ判定・掴み直し・
     /// 救済ドラッグ・見えている部分を撃つ座標補正・壊れた座標の候補除外が止まり、
@@ -481,7 +478,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 ocrTextVisibilityCheck: Bool? = nil,
                 preferCheckStateClassifier: Bool? = nil,
                 reportDir: String? = nil, defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
-                iosInappEngine: Bool? = nil,
+                iosMode: String? = nil,
                 wipeDataOnBloat: Bool? = nil, updateWebView: Bool? = nil,
                 wipeDataThresholdGB: Double? = nil,
                 recoverCpuFallbackToGpu: Bool? = nil,
@@ -502,7 +499,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.reportDir = reportDir
         self.defaultTimeout = defaultTimeout
         self.scenarioTimeout = scenarioTimeout
-        self.iosInappEngine = iosInappEngine
+        self.iosMode = iosMode
         self.wipeDataOnBloat = wipeDataOnBloat
         self.updateWebView = updateWebView
         self.wipeDataThresholdGB = wipeDataThresholdGB
@@ -527,7 +524,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "app", "devices", "heal", "fmTextVisibilityCheck", "screenLooksLike", "ocrTextVisibilityCheck",
         "preferCheckStateClassifier",
         "reportDir", "defaultTimeout", "scenarioTimeout",
-        "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
+        "iosMode", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
         "recoverCpuFallbackToGpu", "locale",
         "iosPreActionPing", "enableAnimations", "responseMeasurement", "responseRepeat", "homeOnStart",
         "playProtectBypass",
@@ -557,13 +554,13 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     fileprivate static let overridableKeyKinds: [String: ValueKind] = [
         "heal": .bool, "fmTextVisibilityCheck": .bool,
         "screenLooksLike": .bool, "ocrTextVisibilityCheck": .bool, "preferCheckStateClassifier": .bool,
-        "iosInappEngine": .bool, "iosPreActionPing": .bool,
+        "iosPreActionPing": .bool,
         "containerInference": .bool, "enableAnimations": .bool, "responseMeasurement": .bool, "homeOnStart": .bool,
         "playProtectBypass": .bool, "updateWebView": .bool, "wipeDataOnBloat": .bool,
         "recoverCpuFallbackToGpu": .bool, "record": .bool, "recordFailuresOnly": .bool,
         "recordFullResolution": .bool,
         "reportDir": .string, "defaultTimeout": .double, "scenarioTimeout": .int,
-        "recordBitrateKbps": .int, "responseRepeat": .int, "app": .string, "locale": .string,
+        "recordBitrateKbps": .int, "responseRepeat": .int, "app": .string, "locale": .string, "iosMode": .string,
         "wipeDataThresholdGB": .double,
     ]
 
@@ -571,7 +568,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     fileprivate static let arrayOrObjectKeys: Set<String> = ["devices", "remoteControl"]
 
     /// `fleetest run --set <key>=<value>` / `fleetest api run --set` が受け付けるキー全部
-    /// (Bool 19 + スカラー9。キー名はプロファイル JSON のキーそのもの ——
+    /// (Bool 18 + スカラー10。キー名はプロファイル JSON のキーそのもの ——
     /// kebab 変換をしない)。**`RunProfileDocument` の Bool/String/Int/Double 欄の全部から
     /// `devices`・`remoteControl`(配列・オブジェクトで `key=value` を持たない)を除いたもの**。
     /// この等号は `RunProfileSetOverrideKeysTests` が Mirror で固定する
@@ -592,7 +589,6 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
             case ("screenLooksLike", .bool(let v)): copy.screenLooksLike = v
             case ("ocrTextVisibilityCheck", .bool(let v)): copy.ocrTextVisibilityCheck = v
             case ("preferCheckStateClassifier", .bool(let v)): copy.preferCheckStateClassifier = v
-            case ("iosInappEngine", .bool(let v)): copy.iosInappEngine = v
             case ("iosPreActionPing", .bool(let v)): copy.iosPreActionPing = v
             case ("containerInference", .bool(let v)): copy.containerInference = v
             case ("enableAnimations", .bool(let v)): copy.enableAnimations = v
@@ -612,6 +608,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
             case ("responseRepeat", .int(let v)): copy.responseRepeat = v
             case ("app", .string(let v)): copy.app = v
             case ("locale", .string(let v)): copy.locale = v
+            case ("iosMode", .string(let v)): copy.iosMode = v
             case ("wipeDataThresholdGB", .double(let v)): copy.wipeDataThresholdGB = v
             default: break
             }
@@ -745,7 +742,7 @@ extension RunProfileDocument {
     /// 意味を持たない)。**`locale`/`wipeDataThresholdGB`** は Android の供給工程(wipe data)でしか
     /// 使わない(`wipeDataOnBloat` と同じ理由)
     public static let profileOnlyKeys: Set<String> = [
-        "iosInappEngine", "updateWebView", "wipeDataOnBloat", "recoverCpuFallbackToGpu",
+        "iosMode", "updateWebView", "wipeDataOnBloat", "recoverCpuFallbackToGpu",
         "app", "locale", "wipeDataThresholdGB",
         // 実機 1 台の検査が devices 一覧に依存する(ProfileResolver.resolve)
         "responseMeasurement", "responseRepeat",
@@ -1151,9 +1148,11 @@ public enum ProfileError: Error, LocalizedError {
     case missingBundleID(platform: String, appProfile: String)
     case invalidWipeDataThreshold(run: String)
     case invalidLocale(run: String)
+    /// iosMode / devices[].mode が `IOSMode.all` のどれでもない(device = nil は iosMode)
+    case invalidIOSMode(run: String, device: String?, value: String)
     /// kind=physical なのに同定に必要な識別子(iOS=udid / Android=serial)が無い
     case physicalDeviceMissingIdentifier(name: String, platform: String, run: String)
-    /// kind=physical に dylib 注入エンジンが指定された(実機は注入不可)
+    /// kind=physical に inapp モードが指定された(実機は注入不可)
     /// アプリプロファイルの platform が対象外にした結果、走らせるデバイスが 0 台
     case noDevicesForAppPlatform(run: String, app: String, scope: AppPlatformScope, ignored: Int)
     /// responseMeasurement なのに有効なデバイスが 1 台でない
@@ -1197,6 +1196,9 @@ public enum ProfileError: Error, LocalizedError {
             return "wipeDataThresholdGB in run profile \(run) must be a positive number (GB)"
         case .invalidLocale(let run):
             return "locale in run profile \(run) must look like ja_JP"
+        case .invalidIOSMode(let run, let device, let value):
+            let key = device.map { "mode of device \"\($0)\"" } ?? "iosMode"
+            return "\(key) in run profile \(run) is \"\(value)\" — use \"inapp\" or \"xcuitest\""
         case .physicalDeviceMissingIdentifier(let name, let platform, let run):
             let field = platform == "ios" ? "udid" : "serial"
             let how = platform == "ios"
@@ -1457,10 +1459,12 @@ public enum ProfileResolver {
             try ResponseMeasurementPolicy.validateRepeatScope(runDoc, run: runName)
         }
 
-        // 4. iOS 実効エンジン: 実行プロファイルの iosInappEngine(既定 true)で決める。
-        // true → "hybrid"(高速な in-app 主+XCUITest フォールバック)、false → "xcuitest"。
-        // ただしデバイスに engine を明示していればそちらが優先(上書きしない)。
-        let iosEngine = (runDoc.iosInappEngine ?? true) ? "hybrid" : "xcuitest"
+        // 4. iOS のモード: 実行プロファイルの iosMode(既定 inapp。レスポンス計測の run は xcuitest = 計測は XCUITest ランナーにしか無い)。
+        // デバイスに mode を明示していればそちらが優先(上書きしない)
+        if let value = runDoc.iosMode, !IOSMode.all.contains(value) {
+            throw ProfileError.invalidIOSMode(run: runName, device: nil, value: value)
+        }
+        let iosMode = runDoc.iosMode ?? (runDoc.responseMeasurement == true ? IOSMode.xcuitest : IOSMode.inapp)
         var devices: [ResolvedDevice] = []
         for entry in enabledEntries {
             // 実体の無い登録は走る前に言う(iOS は既定名へ落ちて別のデバイスで黙って走る)。
@@ -1474,20 +1478,23 @@ public enum ProfileResolver {
             }
             let device = ResolvedDevice(platform: entry.platform, spec: entry.spec)
             try validatePhysical(device, run: runName)
-            // 実機 iOS も通常と同じエンジン解決(明示 > iosInappEngine の既定)。
-            // 実機の in-app/hybrid は、アプリが開発署名でなければ供給が XCUITest へ黙って縮退する(BridgeProvisioner)
-            if device.platform == "ios", device.spec.engine == nil {
+            if let value = device.spec.mode, !IOSMode.all.contains(value) {
+                throw ProfileError.invalidIOSMode(run: runName, device: entry.name, value: value)
+            }
+            // 実機 iOS も同じ解決(明示 > iosMode の既定)。
+            // 実機の inapp モードは、アプリが開発署名でなければ供給が xcuitest モードへ黙って縮退する(BridgeProvisioner)
+            if device.platform == "ios", device.spec.mode == nil {
                 var spec = device.spec
-                spec.engine = iosEngine
+                spec.mode = iosMode
                 devices.append(ResolvedDevice(platform: "ios", spec: spec))
             } else {
-                // フラグを明示指定したのにデバイス側 engine が勝つ組み合わせは
-                // GUI のチェックボックスが「効かない」ように見えるため警告で知らせる
-                if device.platform == "ios", runDoc.iosInappEngine != nil,
-                   let explicit = device.spec.engine {
+                // プロファイルの iosMode を明示したのにデバイス側の mode が勝つ組み合わせは
+                // GUI の選択が「効かない」ように見えるため警告で知らせる
+                if device.platform == "ios", runDoc.iosMode != nil,
+                   let explicit = device.spec.mode {
                     warnings.append(
-                        "device \"\(entry.name)\" explicitly sets engine=\(explicit), "
-                        + "so the iosInappEngine setting does not apply to it")
+                        "device \"\(entry.name)\" explicitly sets mode=\(explicit), "
+                        + "so the iosMode setting does not apply to it")
                 }
                 devices.append(device)
             }
@@ -1613,7 +1620,7 @@ public enum ProfileResolver {
         // デバイスに依存しない実効設定(FM の子トグルからの合成含む)は `--profile` 無しの直接実行
         // (`fleetest run`/`fleetest api run` の profile-less パス)と1つの関数を共有する
         // (DeviceIndependentRunSettings.resolve)。ここでしか決まらないデバイス依存の欄
-        // (iosInappEngine 等。RunProfileDocument.profileOnlyKeys)だけ runDoc から直接読む
+        // (iosMode 等。RunProfileDocument.profileOnlyKeys)だけ runDoc から直接読む
         let settings = DeviceIndependentRunSettings.resolve(runDoc)
 
         return ResolvedProfile(
@@ -1660,8 +1667,8 @@ public enum ProfileResolver {
             throw ProfileError.physicalDeviceMissingIdentifier(
                 name: device.name, platform: device.platform, run: run)
         }
-        // 実機の in-app/hybrid は、アプリが開発署名でなければ供給が XCUITest へ黙って縮退する(ユーザー決定)。
-        // ここでは engine を拒否しない —— 縮退は供給時に注入可否を実機のアプリから判定する(BridgeProvisioner)
+        // 実機の inapp モードは、アプリが開発署名でなければ供給が xcuitest モードへ黙って縮退する(ユーザー決定)。
+        // ここでは mode を拒否しない —— 縮退は供給時に注入可否を実機のアプリから判定する(BridgeProvisioner)
     }
 
     /// locale 形式検証(trim 済み文字列を渡すこと): 言語[-地域/バリアント...](BCP47 風の緩い検査)
@@ -1782,7 +1789,7 @@ public enum ProfileResolver {
         if (identifier?.trimmingCharacters(in: .whitespaces) ?? "").isEmpty {
             errors.append("device \"\(spec.name)\" is kind=physical but has no \"\(field)\"")
         }
-        // 実機の in-app/hybrid はエディタでは許す(開発署名でなければ供給が XCUITest へ縮退する。BridgeProvisioner)
+        // 実機の inapp モードはエディタでは許す(開発署名でなければ供給が xcuitest モードへ縮退する。BridgeProvisioner)
         return errors
     }
 

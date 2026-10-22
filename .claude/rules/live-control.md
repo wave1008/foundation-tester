@@ -42,7 +42,7 @@ paths:
   - "Tests/FTCoreTests/BridgeTTLTests.swift"
   - "Tests/FTCoreTests/BridgeTokenTests.swift"
   - "Tests/FTCoreTests/BridgeTokenWiringTests.swift"
-  - "Tests/FleetestMCPTests/BridgeBusyHintEngineResolutionTests.swift"
+  - "Tests/FleetestMCPTests/BridgeBusyHintBridgeResolutionTests.swift"
   - "Tests/FleetestMCPTests/BridgeRecoveryDecisionTests.swift"
   - "Tests/FleetestMCPTests/BridgeRecoveryWiringTests.swift"
   - "Tests/FleetestMCPTests/BridgeWedgedTransportTests.swift"

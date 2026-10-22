@@ -25,8 +25,8 @@ final class ApiDeviceUpDirectTests: XCTestCase {
         XCTAssertEqual(spec.name, "iPhone SE3")
         XCTAssertEqual(spec.udid, "00008110-000260242EEB801E")
         XCTAssertTrue(spec.isPhysical)
-        // 実機に in-app 注入は無い(`fleetest bridge up --physical` と同じ engine)
-        XCTAssertEqual(spec.engine, "xcuitest")
+        // 実機に in-app 注入は無い(`fleetest bridge up --physical` と同じ構成)
+        XCTAssertEqual(spec.mode, "xcuitest")
     }
 
     /// **本当に届かない端末では起こさない** —— そのまま供給へ進むと xcodebuild が数分かけて

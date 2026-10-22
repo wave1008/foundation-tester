@@ -30,7 +30,7 @@ extension MCPServer {
             return adoptSnapshot(try await driver.snapshot(bypassingCache: driver.supportsCacheBypass),
                                  args: args)
         }
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         // ラッチ後は**最初から**天井で撮る(2枚払うのはラッチした1回だけ。DSL の
         // `retakenAtElementLimitCeiling` と同じ設計)
         if webPageCeilingLatched.contains(key) {
@@ -68,7 +68,7 @@ extension MCPServer {
     /// **明示指定 > ラッチ > 既定(nil)** —— `freshSnapshot` の優先順と同じにする
     func pollElementLimit(_ args: [String: Any]) throws -> Int? {
         if let requested = try Self.intArgument(args, "maxElements") { return requested }
-        return webPageCeilingLatched.contains(Self.engineKey(args))
+        return webPageCeilingLatched.contains(Self.sessionKey(args))
             ? BridgeAPI.maxSnapshotElementsCeiling : nil
     }
 
@@ -139,7 +139,7 @@ extension MCPServer {
     /// **最初の世代は base 0**(= ブリッジが返す生の ref とビット単位で同じ)なので、世代が1本の間は
     /// 応答がそのまま一致する。
     func adoptSnapshot(_ native: SnapshotResponse, args: [String: Any]) -> SnapshotResponse {
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         if var generations = refGenerations[key], let last = generations.last {
             let nativeIdentity = Set(native.elements.map { Self.identity($0, base: 0) })
             let lastIdentity = Set(last.snapshot.elements.map { Self.identity($0, base: last.base) })
@@ -174,7 +174,7 @@ extension MCPServer {
         }
         refGenerations[key] = generations
         let maxNativeRef = native.elements.map(\.ref).max() ?? -1
-        // **セッション共通の採番**(engineKey ごとではない。宣言のコメント参照)
+        // **セッション共通の採番**(sessionKey ごとではない。宣言のコメント参照)
         nextRefBase = base + maxNativeRef + 1
         lastSnapshots[key] = remapped
         return remapped
@@ -189,7 +189,7 @@ extension MCPServer {
     /// だけで世代が進むたびに全タップへ偽の「older snapshot」警告が付く
     func resolveSessionRef(_ ref: Int, args: [String: Any])
         -> (element: ElementInfo, isStale: Bool)? {
-        guard let generations = refGenerations[Self.engineKey(args)] else { return nil }
+        guard let generations = refGenerations[Self.sessionKey(args)] else { return nil }
         for (offset, generation) in generations.enumerated().reversed() {
             if let element = generation.snapshot.elements.first(where: { $0.ref == ref }) {
                 return (element, offset != generations.count - 1)
@@ -200,7 +200,7 @@ extension MCPServer {
 
     /// **ref を採った木と、今の木が同じアプリか**(「アプリ切替」の監査で実機再現)。
     ///
-    /// ref の世代は engineKey(= 機)ごとで、**アプリでは区切っていない**。同じ機で別アプリを
+    /// ref の世代は sessionKey(= 機)ごとで、**アプリでは区切っていない**。同じ機で別アプリを
     /// 起動すると、前のアプリで採った ref が次のアプリの木に対して再照合され、
     /// **`#id` が同じなら黙って当たる**。E2E の 5 SUT は `#id`・ラベルが共通契約なので
     /// これは机上の話ではない —— 実測(iOS・同一機)で `com.ftester.e2e` の `#nav_selector`
@@ -244,7 +244,7 @@ extension MCPServer {
     /// `isStale` のときは黙る —— あちらの注記が同じことを既に言っており、二重になる
     ///
     /// **`actedSinceTakenFrom`**: この ref を採った世代から、このセッションが
-    /// この engineKey へ何か(tap/type/swipe/…)を撃っていれば true。**「他プロセス/人が動かした」と
+    /// この sessionKey へ何か(tap/type/swipe/…)を撃っていれば true。**「他プロセス/人が動かした」と
     /// 誤って名指ししない** —— 実測(5/5): 直前の自分の ft_tap で遷移した画面に対して
     /// このセッションの ref を撃つと、木が変わった原因を持たない外部要因のせいにしていた
     ///
@@ -295,26 +295,26 @@ extension MCPServer {
         })
     }
 
-    /// この ref を持っている**別の** engineKey(= 別の宛先、または同じ機の別の指し方)。
+    /// この ref を持っている**別の** sessionKey(= 別の宛先、または同じ機の別の指し方)。
     /// 拒否するときに出自を名指しするために使う —— 「不明な番号」とだけ言うと、
     /// 呼び手は撃ち間違いだと読んで同じ番号を別の宛先へ撃ち直す
     func otherKeyHolding(_ ref: Int, args: [String: Any]) -> String? {
-        let current = Self.engineKey(args)
+        let current = Self.sessionKey(args)
         return refGenerations.first { key, generations in
             key != current
                 && generations.contains { $0.snapshot.elements.contains { $0.ref == ref } }
         }?.key
     }
 
-    /// 別の宛先(または別の指し方)で採った ref を撃たれたときの拒否文。engineKey をそのまま出す。
-    /// **`udid` を渡された呼び出しは engineKey の port を呼び手が書いていない**(MCP が udid を
+    /// 別の宛先(または別の指し方)で採った ref を撃たれたときの拒否文。sessionKey をそのまま出す。
+    /// **`udid` を渡された呼び出しは sessionKey の port を呼び手が書いていない**(MCP が udid を
     /// その回のポートへ解決して載せる = injectingPort)ので、そう言い添える —— 言わないと、udid しか
     /// 渡していない呼び手に「このポートを指した」と読ませ、同じ端末のどこが変わったのか分からない
     static func refFromAnotherTargetMessage(ref: Int, takenUnder: String,
                                             firedAt: String, udid: String?) -> String {
         let resolvedNote = udid.map {
             " (this call gave udid \($0), which resolved to that port this time — one device can"
-                + " answer on more than one bridge port: its in-app and xcuitest engines, or a bridge"
+                + " answer on more than one bridge port: its in-app and xcuitest bridges, or a bridge"
                 + " restarted on another port)"
         } ?? ""
         return "[\(ref)] was taken under a different target (\(takenUnder)), but this call addressed"
@@ -327,15 +327,15 @@ extension MCPServer {
     /// `ref` を含む世代の snapshot 全体(movedTogether の兄弟比較に使う「同じ世代の他の要素」用。
     /// resolveSessionRef と同じ探索だが、要素1件ではなく世代の全体が要る)
     func generationSnapshot(containing ref: Int, args: [String: Any]) -> SnapshotResponse? {
-        refGenerations[Self.engineKey(args)]?.reversed()
+        refGenerations[Self.sessionKey(args)]?.reversed()
             .first { $0.snapshot.elements.contains { $0.ref == ref } }?.snapshot
     }
 
     /// `generationSnapshot` と同じ世代の `actionCount`(この ref を採った時点で、このセッションが
-    /// この engineKey へ撃っていた操作の回数)。出自判定用 — 今の回数と比べて、
+    /// この sessionKey へ撃っていた操作の回数)。出自判定用 — 今の回数と比べて、
     /// 「このセッションがそれ以来何かを撃ったか」を言う
     func generationActionCount(containing ref: Int, args: [String: Any]) -> Int? {
-        refGenerations[Self.engineKey(args)]?.reversed()
+        refGenerations[Self.sessionKey(args)]?.reversed()
             .first { $0.snapshot.elements.contains { $0.ref == ref } }?.actionCount
     }
 
@@ -345,7 +345,7 @@ extension MCPServer {
     /// **読みを足さない**: 判定には verifiedRef がどうせ撮る木を使い、待つときだけ撮り直す。出なければそのまま返す
     func consumePendingTypeKeyboardCheck(_ fresh: SnapshotResponse, driver: AppDriver,
                                          args: [String: Any]) async throws -> SnapshotResponse {
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         guard let pending = pendingTypeKeyboardChecks[key] else { return fresh }
         pendingTypeKeyboardChecks[key] = nil
         guard KeyboardWait.shouldAwaitAppearance(
@@ -362,7 +362,7 @@ extension MCPServer {
 
     /// この ref の世代が、このセッションの操作と同じ呼び出しの中で操作の後に読んだ木か(snapshotAfter・waitFor の読み)
     func generationFollowsOwnAction(containing ref: Int, args: [String: Any]) -> Bool {
-        refGenerations[Self.engineKey(args)]?.reversed()
+        refGenerations[Self.sessionKey(args)]?.reversed()
             .first { $0.snapshot.elements.contains { $0.ref == ref } }?.followsOwnAction ?? false
     }
 
@@ -371,7 +371,7 @@ extension MCPServer {
     /// ref だけという規約(古い世代の ref を渡すと、その世代の base を引いても、ブリッジは
     /// とうにその番号を再利用しているので無効)。世代が無ければ素通し
     func nativeRef(_ sessionRef: Int, args: [String: Any]) -> Int {
-        guard let last = refGenerations[Self.engineKey(args)]?.last else { return sessionRef }
+        guard let last = refGenerations[Self.sessionKey(args)]?.last else { return sessionRef }
         return sessionRef - last.base
     }
 
@@ -397,27 +397,27 @@ extension MCPServer {
         var backgroundNote = await Self.backgroundedSessionNote(snapshot, driver: driver)
         // **照会が前面と答えても、こちらが送った事実は消えない**(実機で実際にそうなった。
         // `backgroundedByNavigate` の doc)。照会が既に言えているときは重ねない
-        if backgroundNote.isEmpty, backgroundedByNavigate.contains(Self.engineKey(args)) {
-            let decision = Self.navigatedAwayNote(launched: launchedBundleIDs[Self.engineKey(args)],
+        if backgroundNote.isEmpty, backgroundedByNavigate.contains(Self.sessionKey(args)) {
+            let decision = Self.navigatedAwayNote(launched: launchedBundleIDs[Self.sessionKey(args)],
                                                   treeSession: snapshot.sessionBundleID,
                                                   isAndroid: driver is AndroidDriver)
-            if decision.appIsBack { backgroundedByNavigate.remove(Self.engineKey(args)) }
+            if decision.appIsBack { backgroundedByNavigate.remove(Self.sessionKey(args)) }
             backgroundNote = decision.note
         }
         // **すり替わりを先頭に置く**: これが起きているとき、以下の一覧は丸ごと別アプリのもので、
         // ghost 注記も scrollFrame 候補も読む意味が無い
-        let switchedLaunched = launchedBundleIDs[Self.engineKey(args)]
+        let switchedLaunched = launchedBundleIDs[Self.sessionKey(args)]
         let switchedNote = Self.switchedAppNote(
             launched: switchedLaunched, snapshot: snapshot,
             processEvidence: androidProcessEvidenceForSwitch(
                 launched: switchedLaunched, snapshot: snapshot, driver: driver, args: args),
-            stoppedByTool: toolStoppedBundleIDs[Self.engineKey(args)])
+            stoppedByTool: toolStoppedBundleIDs[Self.sessionKey(args)])
         // **launch 系ツールの直後だけ・一度だけ** system alert を確かめる
         // (systemAlertProbePending 参照。DSL の noteAppLaunched と同じ設計)。
         // **先に鍵を消してから probe する** —— この呼び出し自体が非同期で待つため、
         // 消し忘れると再入(snapshotAfter 経由の二重呼び出し等)で二重に払う
         var alertNote = ""
-        let alertKey = Self.engineKey(args)
+        let alertKey = Self.sessionKey(args)
         if systemAlertProbePending.contains(alertKey) {
             systemAlertProbePending.remove(alertKey)
             let alert = await Self.systemAlertNote(driver: driver)
@@ -440,7 +440,7 @@ extension MCPServer {
         // NoteCoverageTests のソース走査が落ちる
         // **勝手に上限を上げたことは名乗る**(黙って出力量が3倍になると、読み手は
         // 自分の指定が効いていないと読む)。初回だけ満額 —— 以後は同じ device で常時なので
-        let ceilingNote = webPageCeilingLatched.contains(Self.engineKey(args))
+        let ceilingNote = webPageCeilingLatched.contains(Self.sessionKey(args))
             ? once("webPageCeilingRetake",
                    full: "note: this device showed a truncated web page, so snapshots for it are"
                        + " now taken at the \(BridgeAPI.maxSnapshotElementsCeiling)-element ceiling"
@@ -617,7 +617,7 @@ extension MCPServer {
     /// `ft_launch interactiveOnly: true snapshotAfter: true` の次の ft_tap が全行の木を返していた(実測: 計測の
     /// エージェント3人が同じ指摘)
     func inheritingSnapshotFilters(_ args: [String: Any]) -> (args: [String: Any], note: String) {
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         var effective = args
         var note = ""
         for filterKey in ["interactiveOnly", "expandBulk"] {
@@ -671,7 +671,7 @@ extension MCPServer {
         SlowCallWatchdog.mark("reading the screen after the action")
         do {
             let snapshotDriver = try await driver(args)
-            let key = Self.engineKey(args)
+            let key = Self.sessionKey(args)
             let beforeAction = outsideTheAppTree ? nil : lastSnapshots[key]
 
             let (effectiveArgs, inheritedNote) = inheritingSnapshotFilters(args)
@@ -691,7 +691,7 @@ extension MCPServer {
                 let unchangedSinceAction = !waited.found
                     && beforeAction.map { Self.looksUnchanged($0, snapshot) } == true
                 let dialogHint = unchangedSinceAction
-                    ? await Self.systemDialogHint(engine: engines[Self.engineKey(args)], driver: snapshotDriver) : ""
+                    ? await Self.systemDialogHint(bridge: bridges[Self.sessionKey(args)], driver: snapshotDriver) : ""
                 let explainMiss = waited.found ? false : firstTime("waitMissExplained")
                 waitNote = waited.found
                     ? Self.waitForAppearedNote(waitFor, in: snapshot,
@@ -732,7 +732,7 @@ extension MCPServer {
                     settleNote = "note: the tree still looked unchanged after a short re-read"
                         + " wait — the action may not have changed the screen."
                         + Self.unrepresentedScreenCaveat(reread)
-                        + (await Self.systemDialogHint(engine: engines[Self.engineKey(args)],
+                        + (await Self.systemDialogHint(bridge: bridges[Self.sessionKey(args)],
                                                        driver: snapshotDriver)) + "\n"
                 } else {
                     settleNote = "note: the tree looked unchanged right after the action, so it"
@@ -919,7 +919,7 @@ extension MCPServer {
     /// **アラートはここで聞かない**(`verifiedRef` / `verifiedElement` が毎回聞いて断る。`systemAlertGate` 参照)
     func memoizedScreenProbe(_ found: ElementInfo, fresh: SnapshotResponse,
                              driver: AppDriver, args: [String: Any]) async -> String {
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         // **要素も鍵に入れる**: 答えには要素ごとに変わるもの(`/hittable`・警告の中の名指し)が
         // 混ざる。木の指紋だけで使い回すと、同じ画面の別の要素へ前の要素の答えが返る(全面の覆いの警告が前の要素を
         // 名指しし、`/hittable` の答えも前の要素のものだった)
@@ -949,7 +949,7 @@ extension MCPServer {
     ///
     /// **呼び出し元が2つ**: `snapshotBody` は `systemAlertProbePending` が立っているときだけ
     /// (launch 直後の1回)、ref 操作の経路は `systemAlertGate` として毎回
-    /// (費用は MCP の ref 操作だけ)。答えられない(旧ブリッジ・Android。hybrid は XCUITest 側へ
+    /// (費用は MCP の ref 操作だけ)。答えられない(旧ブリッジ・Android。inapp モードは XCUITest ブリッジ側へ
     /// 聞く)/ 出ていないときは黙る
     static func systemAlertNote(driver: AppDriver) async -> String {
         guard let what = await frontSystemAlert(driver: driver) else { return "" }
@@ -961,13 +961,13 @@ extension MCPServer {
     /// **中心がソフトキーボードの下にある要素への ref 操作は断る**(ユーザー決定)。
     /// ghost・重なりは「拒否せず警告して撃つ」だが、キーボード被覆は**結果が確実で副作用がある**:
     /// XCUITest はキーの上に指が落ちて**焦点の欄に文字が入り**(実機 SE3・`#tab_about` で「o」)、
-    /// in-app は 422 で断る = エンジンで割れていた。判定は ref 形・DSL と同じ `KeyboardOcclusion`
+    /// in-app は 422 で断る = ブリッジで割れていた。判定は ref 形・DSL と同じ `KeyboardOcclusion`
     /// (chrome 自身とその部分木は除外済み)。**座標形は断らない**(キーを押す意図があり得る。
     /// `keyboardCoordinateWarning`)。DSL の tap は据え置き(注記のみ)
     static func keyboardRefusal(_ target: ElementInfo, keyboardOcclusion: KeyboardOcclusion) -> String? {
         guard let advisory = keyboardOcclusion.advisory(for: target) else { return nil }
         return "refusing to act on \(RefGuard.describe(target)): \(advisory). On XCUITest the finger"
-            + " would press a key and type into the focused field; the in-app engine rejects it (422)."
+            + " would press a key and type into the focused field; the in-app bridge rejects it (422)."
             + " Close the keyboard with ft_type pressEnter: true (iOS) / ft_navigate back (Android), or"
             + " ft_scroll_to the element, then take a fresh ft_snapshot"
     }
@@ -976,7 +976,7 @@ extension MCPServer {
     /// ft_long_press / ft_batch の1手目 = `verifiedRef`、ft_double_tap / ft_drag / ft_pinch = `verifiedElement`。
     /// **ref を座標に畳む経路も同じ門を通す** —— 畳んだ先は座標の操作だが、ref で指した以上アラートの
     /// 下のアプリの要素が狙いなので、座標形の「アラートそのものを叩く正当な操作」には当たらない)。警告にとどめないのは、
-    /// どちらのエンジンでも操作が届き、起きることが取り返しにくいため(実測):
+    /// どちらのブリッジでも操作が届き、起きることが取り返しにくいため(実測):
     /// in-app はアプリのプロセス内で activate / 合成タッチを撃つのでアラートを残したまま背面のアプリが反応し、
     /// XCUITest は XCTest 自身の割り込み処理がアラートのボタン(拒否側)を押してから通すので権限を黙って変える。
     /// **断らないもの**: 座標の操作(XCUITest ではアラートそのものに当たる正当な操作)・DSL(`SystemUIGate` の
@@ -994,7 +994,7 @@ extension MCPServer {
     static let performingActionPhase = "performing the action"
 
     static func systemAlertGate(_ target: ElementInfo, driver: AppDriver,
-                                engine: String?) async -> SystemAlertGate {
+                                bridge: String?) async -> SystemAlertGate {
         let probe: SystemAlertProbeResponse?
         SlowCallWatchdog.mark("probing for a system alert")
         do {
@@ -1008,12 +1008,12 @@ extension MCPServer {
         }
         guard let what = Self.describeFrontSystemAlert(probe) else { return .proceed(note: "") }
         let consequence: String
-        switch engine {   // MCP の iOS は常に XCUITest(in-app / hybrid の帰結は起きない)
+        switch bridge {   // MCP の iOS は常に XCUITest(in-app ブリッジの帰結は起きない)
         case "xcuitest":
             consequence = "XCTest would handle the alert on its own first and can press one of its"
                 + " buttons (observed: the deny button), silently changing the permission"
         default:
-            consequence = "what the tool would do to the alert depends on the engine"
+            consequence = "what the tool would do to the alert depends on the bridge"
         }
         return .refuse("refusing to act on \(RefGuard.describe(target)): \(what) is in front of the app,"
             + " so a finger would land on the alert — \(consequence). \(handleAlertFirst).")
@@ -1121,7 +1121,7 @@ extension MCPServer {
     /// 直近5世代より前の snapshot からコピーしてきた番号のどちらか。
     ///
     /// **世代の有無はセッション全体で見る**(実機+仮想デバイス混在の監査)。
-    /// 「この engineKey に世代が無いか」だけで判定すると、engineKey は**指し方**込み
+    /// 「この sessionKey に世代が無いか」だけで判定すると、sessionKey は**指し方**込み
     /// (`profile:<project>:<name>` / `direct:ios:<port>:`)なので、**同じ機を profile: で撮って
     /// port: で撃つ**だけで「世代なし」になり、番号がそのままブリッジへ渡ってしまう。
     /// ブリッジは自前の 1..N で解決するので**別の要素に当たって成功と報告する** ——
@@ -1147,7 +1147,7 @@ extension MCPServer {
         guard let resolved = sessionRef else {
             if let owner = otherKeyHolding(ref, args: args) {
                 throw MCPError(Self.refFromAnotherTargetMessage(
-                    ref: ref, takenUnder: owner, firedAt: Self.engineKey(args),
+                    ref: ref, takenUnder: owner, firedAt: Self.sessionKey(args),
                     udid: (args["udid"] as? String).flatMap { $0.isEmpty ? nil : $0 }))
             }
             throw MCPError("unknown ref [\(ref)] — it is not from any recent snapshot"
@@ -1175,10 +1175,10 @@ extension MCPServer {
         fresh = try await consumePendingTypeKeyboardCheck(fresh, driver: driver, args: args)
         if let message = Self.refFromAnotherAppMessage(
             ref: ref, takenFrom: takenFrom, fresh: fresh) { throw MCPError(message) }
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         var probeNote = ""
         if launchedBundleIDs[key] != "com.apple.springboard" {
-            switch await Self.systemAlertGate(target, driver: driver, engine: engines[key]) {
+            switch await Self.systemAlertGate(target, driver: driver, bridge: bridges[key]) {
             case .refuse(let refusal): throw MCPError(refusal)
             case .proceed(let note): probeNote = note
             }
@@ -1188,7 +1188,7 @@ extension MCPServer {
         SlowCallWatchdog.mark(Self.performingActionPhase)
         // **ref の出所についての注記はまとめて先頭に置く**(何に当たったかより前に言う)。
         // 2つは排他 —— screenChangedUnderRefNote は isStale のとき黙る
-        let actedSinceTakenFrom = (sessionActionCounts[Self.engineKey(args)] ?? 0)
+        let actedSinceTakenFrom = (sessionActionCounts[Self.sessionKey(args)] ?? 0)
             > (generationActionCount(containing: ref, args: args) ?? 0)
         let takenRightAfterOwnAction = generationFollowsOwnAction(containing: ref, args: args)
         let screenChangedNote = Self.screenChangedUnderRefNote(
@@ -1244,7 +1244,7 @@ extension MCPServer {
                 // SpringBoard に attach している間は「面がアプリを覆っている」系の注記を出さない
                 // —— その面(許可アラート等)のボタンを撃っている最中に「SpringBoard へ attach して
                 // 読め」と言うことになる(実機 iPhone 13 で実際に出た)
-                + (launchedBundleIDs[Self.engineKey(args)] == "com.apple.springboard" ? ""
+                + (launchedBundleIDs[Self.sessionKey(args)] == "com.apple.springboard" ? ""
                     : await memoizedScreenProbe(found, fresh: fresh, driver: driver, args: args))
             // **容器の縁にまたがる行**(DSL は内側へ寄せてから撃つ。MCP は ref を撃つだけなので警告する)。
             // 判定は DSL と共有(`TapTargetGeometry.straddlingContainerEdge`)
@@ -1408,8 +1408,8 @@ extension MCPServer {
     /// 実機かどうかは `.fleetest/bridge-<port>.device`)
     func resolveExecutorHints(_ driver: AppDriver, args: [String: Any]) async
         -> (isAndroid: Bool, uiFrameworkHint: AppUIFramework?) {
-        let key = Self.engineKey(args)
-        let isAndroid = engines[key] == "android" || driver is AndroidDriver
+        let key = Self.sessionKey(args)
+        let isAndroid = bridges[key] == "android" || driver is AndroidDriver
         guard !isAndroid else { return (true, nil) }
         let status = try? await driver.status()
         guard let bundleID = status?.sessionBundleID else { return (false, nil) }
@@ -1453,7 +1453,7 @@ extension MCPServer {
     /// **上限を切る**: セッションが長いほど画面の数だけ指紋が溜まるので、古いものから捨てる
     /// (救済が効かない画面は数個で、10 も覚えれば往復は止まる)
     func rememberFutileSheetRescue(_ snapshot: SnapshotResponse, args: [String: Any]) {
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         var keys = sheetRescueFutile[key] ?? []
         if keys.count >= Self.sheetRescueMemoryCap { keys.removeFirst() }
         keys.insert(Self.sheetRescueKey(snapshot))
@@ -1486,7 +1486,7 @@ extension MCPServer {
         // **曖昧さは「渡す前に見えていた画面」で判定する**: 探索後の木で数えると、リストが
         // 読み込み直しに入っている回に同名の容器が1つしか残らず黙ってしまう
         // (実測。Google マップは探索スワイプのたびに結果を組み直す)
-        let beforeScroll = lastSnapshots[Self.engineKey(args)]
+        let beforeScroll = lastSnapshots[Self.sessionKey(args)]
         let scrollFrameArg = try await resolveScrollFrameArg(args, driver: scrollDriver)
         var step = FlowStep(
             action: "scrollTo", locator: selector.primary,
@@ -1550,7 +1550,7 @@ extension MCPServer {
         // 1回目が「3回目も同じ」と結論した画面で ft_scroll_to を撃ち直すと全額を再び払っていた。
         // 鍵は木の指紋(sheetRescueKey)—— 画面が変われば指紋も変わるので、記憶は自然に失効する
         let rescueKey = Self.sheetRescueKey(after)
-        let rescueKnownFutile = sheetRescueFutile[Self.engineKey(args)]?.contains(rescueKey) == true
+        let rescueKnownFutile = sheetRescueFutile[Self.sessionKey(args)]?.contains(rescueKey) == true
         if StepExecutor.isSuccess(outcome.status) {
             // 成功。救済は要らない
         } else if outcome.notes.contains(.sheetCollapsed), rescueKnownFutile {
@@ -1813,12 +1813,12 @@ extension MCPServer {
         // **木を返す口はすべて名指しする**(掃討で漏れを見つけた)。上の再確認は
         // 「セレクタが居るか」しか見ないので、**別アプリに同じ id がある**と素通しする ——
         // E2E の 4 SUT は id・ラベルが共通契約なので、これは現に起こり得る形
-        let scrollToLaunched = launchedBundleIDs[Self.engineKey(args)]
+        let scrollToLaunched = launchedBundleIDs[Self.sessionKey(args)]
         let switched = Self.switchedAppNote(
             launched: scrollToLaunched, snapshot: after,
             processEvidence: androidProcessEvidenceForSwitch(
                 launched: scrollToLaunched, snapshot: after, driver: scrollDriver, args: args),
-            stoppedByTool: toolStoppedBundleIDs[Self.engineKey(args)])
+            stoppedByTool: toolStoppedBundleIDs[Self.sessionKey(args)])
         // scrollFrame を渡すべき当人なので、複数領域の注記もここに出す(欠陥⑪)
         let scrollAreaNote = args["scrollFrame"] == nil ? (ScrollFrameCandidates.note(after) ?? "")
             : Self.lineNote(Self.scrollAreaHint(Self.scrollFrameHintTree(args, before: beforeScroll, after: after),

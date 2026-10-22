@@ -64,7 +64,7 @@ final class BridgeProvisionerFailureLogTests: XCTestCase {
         XCTAssertTrue(text.contains(compact(
             "do { let sim = try SimulatorCatalog.resolve(spec: device.spec, in: catalog)")),
             "UDID の解決が do/catch の外にある —— 1台の解決失敗が provision 全体の throw になる")
-        let planning = try XCTUnwrap(text.range(of: compact("do { if engine == \"hybrid\" {")),
+        let planning = try XCTUnwrap(text.range(of: compact("do { if mode == IOSMode.inapp {")),
                                      "採番の do ブロックが見つからない")
         let planningCatch = try XCTUnwrap(text.range(
             of: compact("} catch { earlyFailures[index] = error continue }"),

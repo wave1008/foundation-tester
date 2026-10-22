@@ -82,7 +82,7 @@ function runProfileData(devices) {
     fields: {
       app: "", devices,
       heal: true, fmTextVisibilityCheck: true, screenLooksLike: true, ocrTextVisibilityCheck: true, preferCheckStateClassifier: true,
-      iosInappEngine: true, iosPreActionPing: true, homeOnStart: true,
+      iosMode: "inapp", iosPreActionPing: true, homeOnStart: true,
       playProtectBypass: true, enableAnimations: false, responseMeasurement: false, containerInference: true, updateWebView: true,
       wipeDataOnBloat: true, recoverCpuFallbackToGpu: false, record: false, recordFailuresOnly: false,
       recordBitrateKbps: "", recordFullResolution: false, wipeDataThresholdGB: "", scenarioTimeout: "", responseRepeat: "",

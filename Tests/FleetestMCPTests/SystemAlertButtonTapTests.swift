@@ -136,8 +136,8 @@ final class SystemAlertButtonTapTests: XCTestCase {
     /// udid だけの呼び出しは XCUITest のポートを先に採る(MCP の iOS は常に XCUITest)。走査の順に依らない
     func testUDIDOnlyCallsPreferTheXCUITestBridge() {
         let found = [
-            BridgeDiscovery.Found(port: 8137, device: "iPhone", engine: "xcuitest", udid: "U1"),
-            BridgeDiscovery.Found(port: 8136, device: "iPhone", engine: "inapp", udid: "U1"),
+            BridgeDiscovery.Found(port: 8137, device: "iPhone", bridge: "xcuitest", udid: "U1"),
+            BridgeDiscovery.Found(port: 8136, device: "iPhone", bridge: "inapp", udid: "U1"),
         ]
         XCTAssertEqual(MCPServer.explorationOrder(found), [8137, 8136])
         XCTAssertEqual(MCPServer.explorationOrder(Array(found.reversed())), [8137, 8136])

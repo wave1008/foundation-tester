@@ -1,9 +1,9 @@
 // profile を渡さない探索(MCP の ft_*)向けのドライバ組み立て。
 //
 // **MCP の iOS は常に XCUITest**(ユーザー決定)。接続先が in-app ブリッジでも、同じデバイスの XCUITest ブリッジへ
-// 振り替える(無ければ XCUIBridgeResolver が起動する)。in-app を主にした hybrid は組まない —— in-app の合成タッチは
+// 振り替える(無ければ XCUIBridgeResolver が起動する)。in-app を主にしたハイブリッド構成は組まない —— in-app の合成タッチは
 // 注入される前提で作られていないアプリ(Apple マップの経路カード等)で効かないまま ok を返し、別アプリ・システムアラートの
-// 扱いでもエンジンを意識させた。XCUITest を用意できなければ in-app へは落とさず断る。
+// 扱いでもブリッジを意識させた。XCUITest を用意できなければ in-app へは落とさず断る。
 
 import FTCore
 import Foundation
@@ -21,30 +21,30 @@ public enum ExploreDriverResolver {
     }
 
     /// - Parameters:
-    ///   - engine: 指定ポートの /status.engine(nil = 無応答・申告なし)
+    ///   - bridge: 指定ポートの /status.bridge(nil = 無応答・申告なし)
     ///   - xcuiPort: 同じデバイスの XCUITest ブリッジ(nil = 見つからず起動もできなかった)
-    public static func plan(preferred: UInt16, engine: String?, xcuiPort: UInt16?) -> Plan {
-        guard engine == "inapp" else { return .direct(port: preferred) }
+    public static func plan(preferred: UInt16, bridge: String?, xcuiPort: UInt16?) -> Plan {
+        guard bridge == "inapp" else { return .direct(port: preferred) }
         return xcuiPort.map { .rerouteToXCUI(port: $0) } ?? .noXCUITest(inAppPort: preferred)
     }
 
     public struct Resolved {
         public let driver: AppDriver
-        /// 実際に主となったエンジン。**呼び出し側の助言文がこれで変わる**
+        /// 実際に主となったブリッジ。**呼び出し側の助言文がこれで変わる**
         /// (xcuitest のときだけ「Compose のダブルタップは届かない」と言う)
-        public let engine: String
+        public let bridge: String
         /// 特定できたシミュレータの udid(MCP が xcuitest でもバンドルマーカー判定
         /// = AppBundleInspector を使えるように運ぶ)、実機なら `.device` 記録由来の UDID。
         /// どちらも特定できなければ nil
         public let udid: String?
         /// **実際に繋いだポート**(in-app から振り替えたときは XCUITest 側)。呼び手はこれを「繋いだ先」として覚える ——
-        /// 指定ポート(in-app)を覚えると、エンジンの照合がそちらへ問い合わせて毎回「エンジンが変わった」と読み、
+        /// 指定ポート(in-app)を覚えると、ブリッジの照合がそちらへ問い合わせて毎回「ブリッジが変わった」と読み、
         /// 呼び出しのたびにドライバを作り直す(実地で踏んだ)
         public let port: UInt16
 
-        public init(driver: AppDriver, engine: String, udid: String?, port: UInt16) {
+        public init(driver: AppDriver, bridge: String, udid: String?, port: UInt16) {
             self.driver = driver
-            self.engine = engine
+            self.bridge = bridge
             self.udid = udid
             self.port = port
         }
@@ -70,7 +70,7 @@ public enum ExploreDriverResolver {
                     .map { (udid: $0.udid, name: $0.name) })
             : nil
         let udid = (status?.device).flatMap(bootedSimulatorUDID) ?? suspended?.udid
-        guard status?.engine == "inapp" || suspended != nil else {
+        guard status?.bridge == "inapp" || suspended != nil else {
             // **実機は `/status.udid` を自己申告できない**(SIMULATOR_UDID が無い)ので、
             // 名前引きも当たらない実機はここまで `udid == nil` のまま。`.device` ファイルは
             // 実機の物理トランスポート確立時にしか書かれない(BridgeDeviceRecord 宣言)ので、
@@ -89,7 +89,7 @@ public enum ExploreDriverResolver {
             let client = BridgeClient(port: endpoint.port, host: endpoint.host, physicalUDID: physicalUDID)
             return Resolved(driver: SessionRecoveryDriver(
                 base: FastLaunchDriver.wrapping(client, simulatorUDID: physicalUDID == nil ? udid : nil)),
-                            engine: status?.engine ?? "xcuitest", udid: udid ?? physicalUDID, port: endpoint.port)
+                            bridge: status?.bridge ?? "xcuitest", udid: udid ?? physicalUDID, port: endpoint.port)
         }
         // in-app だった(または背面で止まった in-app)= 同じデバイスの XCUITest ブリッジへ振り替える(無ければ起動する)
         let resolution = if let suspended {
@@ -102,15 +102,15 @@ public enum ExploreDriverResolver {
         }
         // 用意できなかったときは指定ポート(= in-app 自身)が返る
         let xcuiPort: UInt16? = resolution.endpoint.port == preferred ? nil : resolution.endpoint.port
-        switch plan(preferred: preferred, engine: "inapp", xcuiPort: xcuiPort) {
+        switch plan(preferred: preferred, bridge: "inapp", xcuiPort: xcuiPort) {
         case .rerouteToXCUI(let port):
             logger("port \(preferred) is an in-app bridge — MCP drives iOS through XCUITest, so using the"
                 + " XCUITest bridge of the same device (port \(port))")
             // endpoint をそのまま渡す(host だけ渡すと usb トンネルの token を落とす)
             return Resolved(driver: SessionRecoveryDriver(
                 base: FastLaunchDriver.wrapping(BridgeClient(endpoint: resolution.endpoint), simulatorUDID: udid)),
-                            engine: "xcuitest", udid: udid, port: port)
-        case .noXCUITest, .direct:   // engine: "inapp" を渡しているので .direct は来ない
+                            bridge: "xcuitest", udid: udid, port: port)
+        case .noXCUITest, .direct:   // bridge: "inapp" を渡しているので .direct は来ない
             throw ExploreDriverResolverError.noXCUITestBridge(inAppPort: preferred)
         }
     }

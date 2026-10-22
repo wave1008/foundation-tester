@@ -42,7 +42,7 @@ const VALID_RUN_PROFILE_SAVE = {
     containerInference: true,
     ocrTextVisibilityCheck: true,
     preferCheckStateClassifier: true,
-    iosInappEngine: true,
+    iosMode: "inapp",
     iosPreActionPing: true,
     homeOnStart: true,
     enableAnimations: false,
@@ -103,7 +103,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields22�
         containerInference: false,
         ocrTextVisibilityCheck: false,
         preferCheckStateClassifier: false,
-        iosInappEngine: false,
+        iosMode: "xcuitest",
         iosPreActionPing: false,
         homeOnStart: true,
         enableAnimations: true,
@@ -164,63 +164,63 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 空文字・fields
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
-      fields: { ...VALID_RUN_PROFILE_SAVE.fields, heal: "false" }, // boolean でない
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, heal: "false" }, // 2値のどちらでもない
     }),
     false,
   );
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
-      fields: { ...VALID_RUN_PROFILE_SAVE.fields, fmTextVisibilityCheck: "true" }, // boolean でない
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, fmTextVisibilityCheck: "true" }, // 2値のどちらでもない
     }),
     false,
   );
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
-      fields: { ...VALID_RUN_PROFILE_SAVE.fields, screenLooksLike: "true" }, // boolean でない
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, screenLooksLike: "true" }, // 2値のどちらでもない
     }),
     false,
   );
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
-      fields: { ...VALID_RUN_PROFILE_SAVE.fields, containerInference: "true" }, // boolean でない
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, containerInference: "true" }, // 2値のどちらでもない
     }),
     false,
   );
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
-      fields: { ...VALID_RUN_PROFILE_SAVE.fields, iosInappEngine: "true" }, // boolean でない
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, iosMode: true }, // 文字列でない
     }),
     false,
   );
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
-      fields: { ...VALID_RUN_PROFILE_SAVE.fields, iosPreActionPing: "true" }, // boolean でない
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, iosPreActionPing: "true" }, // 2値のどちらでもない
     }),
     false,
   );
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
-      fields: { ...VALID_RUN_PROFILE_SAVE.fields, wipeDataOnBloat: "true" }, // boolean でない
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, wipeDataOnBloat: "true" }, // 2値のどちらでもない
     }),
     false,
   );
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
-      fields: { ...VALID_RUN_PROFILE_SAVE.fields, record: "true" }, // boolean でない
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, record: "true" }, // 2値のどちらでもない
     }),
     false,
   );
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
-      fields: { ...VALID_RUN_PROFILE_SAVE.fields, recordFailuresOnly: "true" }, // boolean でない
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, recordFailuresOnly: "true" }, // 2値のどちらでもない
     }),
     false,
   );
@@ -234,7 +234,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 空文字・fields
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
-      fields: { ...VALID_RUN_PROFILE_SAVE.fields, recordFullResolution: "true" }, // boolean でない
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, recordFullResolution: "true" }, // 2値のどちらでもない
     }),
     false,
   );
@@ -642,7 +642,7 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
     containerInference: false,
     ocrTextVisibilityCheck: false,
     preferCheckStateClassifier: false,
-    iosInappEngine: false,
+    iosMode: "xcuitest",
     iosPreActionPing: false,
     homeOnStart: true,
     playProtectBypass: false,
@@ -672,7 +672,7 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
     containerInference: false,
     ocrTextVisibilityCheck: false,
     preferCheckStateClassifier: false,
-    iosInappEngine: false,
+    iosMode: "xcuitest",
     iosPreActionPing: false,
     homeOnStart: true,
     playProtectBypass: false,
@@ -694,7 +694,7 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、heal/screenLooksLike/fmTextVisibilityCheck/containerInference=true、iosInappEngine=true、wipeDataOnBloat=true、wipeDataThresholdGB=''、record=true、recordFailuresOnly/recordFullResolution/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionPing=true)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、heal/screenLooksLike/fmTextVisibilityCheck/containerInference=true、iosMode=inapp、wipeDataOnBloat=true、wipeDataThresholdGB=''、record=true、recordFailuresOnly/recordFullResolution/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionPing=true)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
     app: "",
@@ -705,7 +705,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/reco
     containerInference: true,
     ocrTextVisibilityCheck: true,
     preferCheckStateClassifier: true,
-    iosInappEngine: true,
+    iosMode: "inapp",
     iosPreActionPing: true,
     homeOnStart: true,
     playProtectBypass: true,
@@ -737,7 +737,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     containerInference: "false",
     ocrTextVisibilityCheck: "true",
     preferCheckStateClassifier: "true",
-    iosInappEngine: "false",
+    iosMode: true,
     reportDir: false,
     wipeDataOnBloat: "false",
     wipeDataThresholdGB: {},
@@ -758,7 +758,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     containerInference: true,
     ocrTextVisibilityCheck: true,
     preferCheckStateClassifier: true,
-    iosInappEngine: true,
+    iosMode: "inapp",
     iosPreActionPing: true,
     homeOnStart: true,
     playProtectBypass: true,
@@ -1050,7 +1050,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   containerInference: true,
   ocrTextVisibilityCheck: true,
   preferCheckStateClassifier: true,
-  iosInappEngine: true,
+  iosMode: "inapp",
   iosPreActionPing: true,
   homeOnStart: true,
   enableAnimations: false,
@@ -1069,7 +1069,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   workspace: "",
 };
 
-test("updateRunProfileInObject: 基本更新(app/heal/fmTextVisibilityCheck/screenLooksLike/containerInference/iosInappEngine/wipeDataOnBloat/reportDir)", () => {
+test("updateRunProfileInObject: 基本更新(app/heal/fmTextVisibilityCheck/screenLooksLike/containerInference/iosMode/wipeDataOnBloat/reportDir)", () => {
   const result = updateRunProfileInObject({ app: "old", devices: [], heal: false, reportDir: "old" }, BASE_RUN_PROFILE_FIELDS);
   assert.equal(result.ok, true);
   assert.equal(result.object.app, "sampleapp");
@@ -1077,7 +1077,7 @@ test("updateRunProfileInObject: 基本更新(app/heal/fmTextVisibilityCheck/scre
   assert.equal(result.object.fmTextVisibilityCheck, true);
   assert.equal(result.object.screenLooksLike, true);
   assert.equal(result.object.containerInference, true);
-  assert.equal(result.object.iosInappEngine, true);
+  assert.equal(result.object.iosMode, undefined, "inapp は書かない(未指定 = inapp)");
   assert.equal(result.object.wipeDataOnBloat, true);
   assert.equal(result.object.wipeDataThresholdGB, 1);
   assert.equal(result.object.reportDir, "reports");
@@ -1562,4 +1562,45 @@ test("updateRunProfileInObject: responseRepeat は計測モードのときだけ
     assert.equal(result.ok, false, `responseRepeat=${invalid} は不正値としてエラーになるべき`);
     assert.match(result.error, /responseRepeat/);
   }
+});
+
+test("iosMode: inapp / xcuitest 以外の文字列は読み書きでそのまま残す(黙って inapp に書き換えない。CLI が名指しで断る)", () => {
+  const source = { app: "a", devices: [], iosMode: "hybrid" };
+  const parsed = parseRunProfileForForm(source);
+  assert.equal(parsed.iosMode, "hybrid");
+  const result = updateRunProfileInObject(source, parsed);
+  assert.equal(result.ok, true);
+  assert.equal(result.object.iosMode, "hybrid");
+  assert.equal(isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_SAVE,
+    fields: { ...VALID_RUN_PROFILE_SAVE.fields, iosMode: "hybrid" } }), true);
+  assert.equal(isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_SAVE,
+    fields: { ...VALID_RUN_PROFILE_SAVE.fields, iosMode: "" } }), false, "空文字は値ではない");
+});
+
+test("iosMode: inapp はキーを書かず(既存の明示も落とす)、xcuitest は書く。読み戻すと同じ値になる", () => {
+  const dropped = updateRunProfileInObject({ app: "a", devices: [], iosMode: "inapp" }, BASE_RUN_PROFILE_FIELDS);
+  assert.equal(dropped.ok, true);
+  assert.equal("iosMode" in dropped.object, false);
+  assert.equal(parseRunProfileForForm(dropped.object).iosMode, "inapp");
+  const xcui = updateRunProfileInObject({ app: "a", devices: [] }, { ...BASE_RUN_PROFILE_FIELDS, iosMode: "xcuitest" });
+  assert.equal(xcui.object.iosMode, "xcuitest");
+  assert.equal(parseRunProfileForForm(xcui.object).iosMode, "xcuitest");
+});
+
+test("responseMeasurement: 計測が断る4キーは既定の true を書かず、明示の false は残す", () => {
+  const source = { app: "a", devices: [], fmTextVisibilityCheck: true, record: false };
+  const result = updateRunProfileInObject(source, {
+    ...BASE_RUN_PROFILE_FIELDS, responseMeasurement: true,
+    fmTextVisibilityCheck: true, ocrTextVisibilityCheck: true, screenLooksLike: false, record: false,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.object.responseMeasurement, true);
+  for (const key of ["fmTextVisibilityCheck", "ocrTextVisibilityCheck"]) {
+    assert.equal(key in result.object, false, `${key} の true を書くと計測の run が断られる`);
+  }
+  assert.equal(result.object.screenLooksLike, false);
+  assert.equal(result.object.record, false);
+  // 計測を切った保存では従来どおり常に書く
+  const off = updateRunProfileInObject(source, { ...BASE_RUN_PROFILE_FIELDS, fmTextVisibilityCheck: true });
+  assert.equal(off.object.fmTextVisibilityCheck, true);
 });

@@ -4,7 +4,7 @@
 # 各 SUT の実機用プロファイルを --broadcast で流す = 同じシナリオを**全実機で1回ずつ**回し、機種の差
 # (画面の高さ・性能・ホームボタンの有無)をシナリオ単位で並べる。分配はしない。
 #
-#   E2E-iOS     ios-device      iPhone SE3(この Mac)+ iPhone 13(M1Ultra)。XCUITest エンジン(実機は in-app 不可)
+#   E2E-iOS     ios-device      iPhone SE3(この Mac)+ iPhone 13(M1Ultra)。xcuitest モード(実機は inapp モード不可)
 #   E2E-Android android-device  Pixel 4a + Pixel 3a(この Mac)
 #   E2E-CMP / E2E-Flutter / E2E-RN  ios-device + android-device  同上(iOS は各 SUT の dist/ios-device の実機用アプリ)
 # iPhone wave は個人の端末なので ios-device で無効のまま(有効にしない)。
@@ -21,8 +21,8 @@
 # 前提: 実機がつながっていてロックが解除されていること(iOS は「このコンピュータを信頼」・Developer Mode・
 # 証明書の信頼)。iPhone 13 は M1Ultra につながっているので、M1Ultra がこの clone と同じコミットでないと
 # 適合チェックで落ちる(揃えるのは Scripts/align.sh。ここでは揃えない = push を伴うので指示があるときだけ)。
-# 陽性対照(e2e-negative.sh)と、エンジンの検証済みの印(.fleetest/*-e2e-verified)には触らない
-# —— 実機のスイートは利用者の既定エンジン(hybrid)の経路を通らないので、その印の根拠にならない。
+# 陽性対照(e2e-negative.sh)と、モードの検証済みの印(.fleetest/*-e2e-verified)には触らない
+# —— 実機のスイートは利用者の既定(inapp モード)の経路を通らないので、その印の根拠にならない。
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

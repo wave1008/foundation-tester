@@ -681,7 +681,7 @@ extension StepExecutorTests {
     }
 
     /// timeout: 0 ではロケータ再試行を行わないが、driver フォールバックの
-    /// 1回照会(hybrid で解決するために必須)は timeout: 0 でも必ず行われる。
+    /// 1回照会(inapp モードで解決するために必須)は timeout: 0 でも必ず行われる。
     /// 操作コマンド(tap)で解決の往復回数だけを観測する
     func testZeroTimeoutSkipsRetryButQueriesFallbackOnce() async throws {
         let log = CallLog()

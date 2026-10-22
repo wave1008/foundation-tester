@@ -61,7 +61,7 @@ hinge(130)              // 半開きのブック姿勢
 - **`settle: false`** を渡すと、このコマンドの操作後の「画面が落ち着くまでの待ち」を省きます(次のステップは動いている最中の画面を見ることがあります)。詳細は [tap](./tap_ja.md) 参照。
 
 - **`fold` / `unfold` / `hinge` は折りたたみ端末が必要です。**
-  - iOS: iPhone Duo の **Simulator**(Xcode 27.2 以降)。XCUITest ブリッジ経由で送るので、エンジンは `xcuitest` か `hybrid` にします(`inapp` 単独は不可)。
+  - iOS: iPhone Duo の **Simulator**(Xcode 27.2 以降)。XCUITest ブリッジ経由で送るので、どちらの iOS モードでも使えます。
   - Android: 折りたたみの **Emulator**(ヒンジセンサー付きの AVD。Pixel 9 Pro Fold など)。
   - iOS の実機は開閉を送れず状態も読めないので、そのシナリオを対象外(skipped)として記録します(理由は `fold / unfold / hinge cannot drive a physical iPhone (fold it by hand); they run on the iPhone Duo simulator`)。
   - Android の実機は、折りたためない機種なら下の対象外の扱い、折りたたみの機種なら非対応(手で畳んでください)の文言でステップが失敗します。

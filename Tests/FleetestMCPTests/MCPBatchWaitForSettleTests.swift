@@ -1,5 +1,5 @@
 // ft_batch の waitForSettle: operation として受理され(DSLCommandIndex 由来の絞り込みを通る)、
-// 値域の違反はデバイスに触れる前に断り、画面全体を撮れないエンジンでは executor の文言で失敗する。
+// 値域の違反はデバイスに触れる前に断り、画面全体を撮れないブリッジでは executor の文言で失敗する。
 // 引数の写像・書き戻しは BatchLineParserTests が持つ。
 
 import XCTest
@@ -31,14 +31,14 @@ final class MCPBatchWaitForSettleTests: XCTestCase {
 
     /// 受理された(assertion / 未対応として断られていない)うえで、画面全体を撮れないドライバ(既定の 501)では
     /// executor の案内で失敗する
-    func testAnEngineThatCannotCaptureTheWholeScreenFailsWithTheSwitchEngineAdvice() async {
+    func testABridgeThatCannotCaptureTheWholeScreenFailsWithTheSwitchModeAdvice() async {
         do {
             _ = try await server.call(tool: "ft_batch", args: ["steps": "waitForSettle"])
             XCTFail("501 のドライバで waitForSettle が成功した")
         } catch {
             let message = error.localizedDescription
             XCTAssertTrue(message.contains("1. waitForSettle — FAILED"), message)
-            XCTAssertTrue(message.contains("hybrid or xcuitest"), message)
+            XCTAssertTrue(message.contains("no XCUITest bridge is attached"), message)
         }
     }
 }

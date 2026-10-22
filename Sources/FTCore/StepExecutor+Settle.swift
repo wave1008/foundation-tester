@@ -94,7 +94,7 @@ extension StepExecutor {
     /// **容器基準の細刻み**(容器の約半分)で戻りながら毎周解決を試す。
     ///
     /// **なぜ失敗が確定してからだけ掛けるか**: 既定経路(`scrollFrame` 未指定)は刻みが
-    /// エンジン任せで、1回の移動が容器を超えると要素がスワイプの合間に一度も木へ出ない。
+    /// ブリッジ任せで、1回の移動が容器を超えると要素がスワイプの合間に一度も木へ出ない。
     /// 通常の送りを容器基準に変える案は**2度実装して2度撤回**している(到達距離が縮んで
     /// 既定 maxSwipes で届かなくなる。docs/performance-tuning.md §3.19)。ここは
     /// **もう届かないと確定した後**なので、その撤回理由に触れない。
@@ -197,7 +197,7 @@ extension StepExecutor {
         // 対象は下端で見つかり**、ずらさないと空打ちが常に抑止される
         // (実測: CMP で scrollFrame 指定時に #row_40 が y=829 で見つかり、
         // 空打ちが飛ばされてタップが容器に吸われた。従来の全画面スワイプでは y=720)
-        // **木が動きに遅れるエンジン(XCUITest)は、押す直前に木を1枚だけ撮り直して座標を引き直す(待たない)**。
+        // **木が動きに遅れるブリッジ(XCUITest)は、押す直前に木を1枚だけ撮り直して座標を引き直す(待たない)**。
         // 見つけた木は慣性の途中に撮られている。押すまでに一覧が止まっていると、古い座標は隣の行の上で、全幅の行は
         // 縦に 4pt 抜くだけなので離す点も同じ行の中 = 隣の行のクリックが成立する(E2EX-CMP / Flutter のホームの最下段で
         // 隣の画面へ移った)。**止まるのを待ってはいけない** —— 慣性の途中の空打ちは指が触れて慣性を止める役も担っていて、
@@ -350,8 +350,8 @@ extension StepExecutor {
     /// キャッシュ迂回の snapshot は Android で約 +35ms 掛かる(ブリッジ直叩きで 5.1ms → 39.9ms)ので、
     /// 差し引かないと周期が 100ms → 140ms へ伸び、**スクロール系のステップが丸ごと遅くなる**
     /// (実測: scroll 系ステップ合計 +3.2s。差し引きで -2.0s 回収)。
-    /// **迂回しないエンジン(iOS)では引かない** —— 引くと周期が縮んで「早すぎる静止判定」に倒れる。
-    /// **木が動きに遅れて更新されるエンジン(`AppDriver.treeLagsBehindMotion` = XCUITest)は、周期を
+    /// **迂回しないブリッジ(iOS)では引かない** —— 引くと周期が縮んで「早すぎる静止判定」に倒れる。
+    /// **木が動きに遅れて更新されるブリッジ(`AppDriver.treeLagsBehindMotion` = XCUITest)は、周期を
     /// `laggingTreeSettlePeriodMs` 以上に保つ**(下の定数の doc)
     static func settleSleepMs(afterSnapshotMs: Int, bypassing: Bool, treeLags: Bool) -> Int {
         if treeLags { return max(Self.scrollSettleIntervalMs, Self.laggingTreeSettlePeriodMs - afterSnapshotMs) }
@@ -359,7 +359,7 @@ extension StepExecutor {
         return max(Self.scrollSettleMinSleepMs, Self.scrollSettleIntervalMs - afterSnapshotMs)
     }
 
-    /// 木が動きに遅れて更新されるエンジンの整定ポーリングの周期の下限(ms)。「連続2枚が同じ = 静止」は、
+    /// 木が動きに遅れて更新されるブリッジの整定ポーリングの周期の下限(ms)。「連続2枚が同じ = 静止」は、
     /// 2枚の間隔が**動いている最中の木の更新間隔**より長くないと成り立たない。実測(XCUITest・Simulator・
     /// 払った直後に 20〜40ms おきに取得): 慣性で動いている間の更新間隔は CMP 最大 134ms・RN 174ms・SwiftUI 125ms
     /// (Flutter・CMP は木が毎回変わるので、こちらは変位のしきい値で止まる)。その 2 倍。
@@ -429,7 +429,7 @@ extension StepExecutor {
     }
 
     /// 端の署名で id とラベルを比べる領域(`edgeSignature` の doc)。`scrollFrame` があればそれ、
-    /// 無ければエンジンが払う画面中央を含む最小のスクロール可能な要素。どちらも無ければ nil
+    /// 無ければブリッジが払う画面中央を含む最小のスクロール可能な要素。どちらも無ければ nil
     func edgeContentRegion(step: FlowStep, in snapshot: SnapshotResponse) -> FTRect? {
         let finger = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
         if let container = scrollContainer(step: step, in: snapshot,
@@ -598,7 +598,7 @@ extension StepExecutor {
     }
 
     /// スクロール探索直後の「空打ち」極小ドラッグ(呼ぶ条件は呼び出し側の判定を参照)。
-    /// **in-app の drag は自前描画(Compose・Flutter)だけ**(それ以外は 501)なので、hybrid では typeDriver=XCUITest へ
+    /// **in-app の drag は自前描画(Compose・Flutter)だけ**(それ以外は 501)なので、inapp モードでは typeDriver=XCUITest へ
     /// 回さないとこの対策が丸ごと不発になる(= Compose の容器がタッチを1回吸ったままになり、
     /// 直後の tap/press が空振りする)。空打ちは補助でありこれ自体の失敗はステップの失敗にしない
     /// (両経路とも失敗したら黙って進む = `try?` と同じ扱い)
@@ -608,13 +608,13 @@ extension StepExecutor {
     }
 
     /// **座標ドラッグの唯一の入口**(空打ち・見切れ回復の slowDrag・ヒント跳躍の hintDrag)。
-    /// in-app の drag は自前描画(Compose・Flutter)だけで、それ以外は 501 なので hybrid では typeDriver=XCUITest へ回す。
+    /// in-app の drag は自前描画(Compose・Flutter)だけで、それ以外は 501 なので inapp モードでは typeDriver=XCUITest へ回す。
     /// slowDrag / hintDrag が `driver.drag` を直に呼んで 501 を「失敗」として握りつぶすと、
-    /// **in-app 主の run(利用者の既定 hybrid)では見切れ回復のドラッグが一度も出なくなる**
+    /// **in-app 主の run(利用者の既定の inapp モード)では見切れ回復のドラッグが一度も出なくなる**
     /// (受け手の最小再現 R0020: 容器推定を直しても全画面スワイプに落ちて届かず not-found。
     /// MCP は HybridFallbackDriver が drag を転送するので同じ探索が通った)。
     /// 501 を見たら以後は latch して typeDriver から撃つ(emptyDrag と同じ規律)。
-    /// typeDriver が無いエンジン非対応はそのまま投げる(呼び手が「ドラッグできない」として扱う)
+    /// typeDriver が無いブリッジ非対応はそのまま投げる(呼び手が「ドラッグできない」として扱う)
     func dragWithFallback(fromX: Double, fromY: Double, toX: Double, toY: Double,
                           pressSeconds: Double, durationSeconds: Double) async throws {
         func drag(_ target: AppDriver) async throws {
@@ -628,7 +628,7 @@ extension StepExecutor {
         do {
             try await drag(driver)
         } catch {
-            guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
+            guard DriverError.isBridgeIncapable(error), let td = typeDriver else { throw error }
             dragFallbackLatched = true
             try await drag(td)
         }
@@ -655,11 +655,11 @@ extension StepExecutor {
             phase.actionMs += Self.ms(clock.now - start)
             return false
         } catch {
-            // 「このエンジンでは不可」(501 / ルート不明 404)だけ XCUITest へ回す。
-            // 409 を含めない理由は DriverError.isEngineIncapable 参照。
+            // 「このブリッジでは不可」(501 / ルート不明 404)だけ XCUITest へ回す。
+            // 409 を含めない理由は DriverError.isBridgeIncapable 参照。
             // **座標つきの swipe は in-app が 501 を返す**(in-app の swipe は座標を撃たず AX の scroll / contentOffset で
-            // 動かす = 領域の枠が無いと絞れない)ので、scrollFrame 指定時の hybrid はここで XCUITest へ落ちる
-            guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
+            // 動かす = 領域の枠が無いと絞れない)ので、scrollFrame 指定時の inapp モードはここで XCUITest へ落ちる
+            guard DriverError.isBridgeIncapable(error), let td = typeDriver else { throw error }
             let start = clock.now
             try await td.swipe(direction, intent: intent, path: path)
             phase.actionMs += Self.ms(clock.now - start)

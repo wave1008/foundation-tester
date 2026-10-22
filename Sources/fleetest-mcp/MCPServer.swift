@@ -25,10 +25,10 @@ struct FleetestMCP {
 
 final class MCPServer {
 
-    /// engineKey ごとの記憶の唯一の保存先(欄の意味は DeviceSession.swift)。下の窓はここを見るだけ
+    /// sessionKey ごとの記憶の唯一の保存先(欄の意味は DeviceSession.swift)。下の窓はここを見るだけ
     var sessions: [String: DeviceSession] = [:]
     var drivers: SessionMap<AppDriver> { SessionMap(server: self, path: \.driver) }
-    var engines: SessionMap<String> { SessionMap(server: self, path: \.engine) }
+    var bridges: SessionMap<String> { SessionMap(server: self, path: \.bridge) }
     var lastSnapshots: SessionMap<SnapshotResponse> { SessionMap(server: self, path: \.lastSnapshot) }
     var refGenerations: SessionMap<[(base: Int, snapshot: SnapshotResponse, actionCount: Int, followsOwnAction: Bool)]> { SessionMap(server: self, path: \.refGenerations) }
     var sessionActionCounts: SessionMap<Int> { SessionMap(server: self, path: \.sessionActionCount) }
@@ -76,9 +76,9 @@ final class MCPServer {
     let runJobs = MCPRunJobRegistry()
     /// 探索中の操作列(ft_draft_scenario の材料。InteractionLog 参照)
     var interactions = InteractionLog()
-    /// 次の新しい世代に割り当てる base。**セッションに1つ**(engineKey ごとではない)・**単調増加のみ**。
+    /// 次の新しい世代に割り当てる base。**セッションに1つ**(sessionKey ごとではない)・**単調増加のみ**。
     ///
-    /// **機ごとに持ってはいけない**(実機で踏んだ): engineKey ごとに 0 から始めると
+    /// **機ごとに持ってはいけない**(実機で踏んだ): sessionKey ごとに 0 から始めると
     /// **2台を触ったセッションで ref 番号が両機で衝突する**。実測(E2EAppCMP・iOS 2台)——
     /// 機A の ref 10 は `#row_30`、機B の ref 10 は `#btn_item_1` で、機A の木を見て採った
     /// `ft_tap ref: 10` を `port:` だけ機B にして撃つと、**警告も拒否も無く成功して**
@@ -96,10 +96,10 @@ final class MCPServer {
     /// `.fleetest/` へ書き散らす(実際に `mcp-emulator-5554.lease` が残った)。テストは一時フォルダを渡す
     var deviceLeaseStateDir: URL?
     /// **セッション(プロセス)を通じて1度だけ**満額で説明した注記の鍵。以後は短縮形にする
-    /// (`once` 参照)。engineKey を跨いで共有する — 説明の中身は接続先に依らず同じ文なので、
+    /// (`once` 参照)。sessionKey を跨いで共有する — 説明の中身は接続先に依らず同じ文なので、
     /// 機ごとに割ると同じ長文が機の数だけ繰り返される
     var explainedNotes: Set<String> = []
-    /// `once` 系の鍵の名前空間(= いま処理中の呼び出しの engineKey。宛先を取らないツールは空)。**1つのサーバを複数の
+    /// `once` 系の鍵の名前空間(= いま処理中の呼び出しの sessionKey。宛先を取らないツールは空)。**1つのサーバを複数の
     /// エージェントが別のデバイスで共有する**と、プロセス全体で1回の短縮形が「初出の注記を見よ」と言うのに、その読み手は
     /// 初出を見ていない(計測で2人とも指摘)。デバイスごとに数える
     var noteScope = ""

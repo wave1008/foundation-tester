@@ -127,7 +127,7 @@ public func terminateApp(file: StaticString = #filePath, line: UInt = #line) {
 
 /// アプリをインストールする。**実行はオーケストレータ(親プロセス)の仕事**: 子は
 /// installControl 経由で依頼を送るだけで、親が実行プロファイルの appPath 解決・実インストール・
-/// (iOS inapp/hybrid の)再注入注記までを担う。appPackageFile 省略時は親側でプロファイルの appPath を
+/// (iOS inapp モードの)再注入注記までを担う。appPackageFile 省略時は親側でプロファイルの appPath を
 /// 解決する。ホスト無しの単独実行(installControl が nil)では子が直接
 /// driver.install を呼び、パス解決は 明示引数 ?? --app-path(親が解決して渡した場合) ?? 明示エラー
 public func installApp(_ appPackageFile: String? = nil,
@@ -199,9 +199,9 @@ public func appIs(_ appID: String, waitSeconds: Double? = nil,
                   file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "appIs")
     let waitSeconds = waitSeconds ?? core.tunables.screenWaitTimeout
-    // **前面のアプリは XCUITest のランナーに聞く**(hybrid / xcuitest では `homeScreenDriver` = SpringBoard 参照のドライバ)。
-    // 主ドライバ(hybrid では in-app)は自分のアプリが前面かどうかしか答えられず、`appIs("com.apple.Preferences")` が
-    // 既定の hybrid で必ず赤になった。inapp 単独と Android は主ドライバに戻る(homeScreenDriver の既定)
+    // **前面のアプリは XCUITest のランナーに聞く**(inapp / xcuitest モードでは `homeScreenDriver` = SpringBoard 参照のドライバ)。
+    // 主ドライバ(inapp モードでは in-app ブリッジ)は自分のアプリが前面かどうかしか答えられず、`appIs("com.apple.Preferences")` が
+    // 既定の inapp モードで必ず赤になった。XCUITest ブリッジが無いときと Android は主ドライバに戻る(homeScreenDriver の既定)
     let driver = core.homeScreenDriver
     core.performCustom(description: "appIs \"\(appID)\"", command: "appIs", file: file, line: line,
                        isAssertion: true) {
@@ -249,7 +249,7 @@ public func home(file: StaticString = #filePath, line: UInt = #line) {
 public func back(settle: Bool = true, file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "back")
     let driver = core.systemDriver
-    // **木を読むのは systemDriver ではなく driver**: hybrid の systemDriver は typeDriver
+    // **木を読むのは systemDriver ではなく driver**: inapp モードの systemDriver は typeDriver
     // (AppAttachDriver)で、snapshot のたびに**テスト対象アプリを再前面化する**(このファイルの
     // homeScreenDriver の宣言参照)。前後で2回読むこの経路で使うと、観測のはずが画面を動かす。
     // 見たいのは「アプリの画面が back で変わったか」なので、対象アプリを映す driver が正しい。
@@ -293,7 +293,7 @@ public func appSwitcher(file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "appSwitcher")
     let driver = core.systemDriver
     if core.platform == "ios", !core.isDryRun, !core.scenarioAborted {
-        // 観測は systemDriver ではなく driver(back() と同じ理由: hybrid の systemDriver は snapshot で対象アプリを前面化する)
+        // 観測は systemDriver ではなく driver(back() と同じ理由: inapp モードの systemDriver は snapshot で対象アプリを前面化する)
         let observer = core.driver
         if let screen = FTSync.run({ try? await observer.snapshot().screen }) ?? nil,
            BridgeAPI.isHomeButtonPhoneScreen(width: screen.width, height: screen.height) {

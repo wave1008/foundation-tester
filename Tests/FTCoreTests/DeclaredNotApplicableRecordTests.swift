@@ -7,7 +7,7 @@ import XCTest
 final class DeclaredNotApplicableRecordTests: XCTestCase {
 
     private func record(reason: String?) -> ScenarioRunRecord {
-        var builder = ScenarioRecordBuilder(scenarioID: "T.S0010", platform: "ios", title: "t", worker: nil, engine: nil)
+        var builder = ScenarioRecordBuilder(scenarioID: "T.S0010", platform: "ios", title: "t", worker: nil, mode: nil)
         var step = ScenarioEvent(kind: "step")
         step.index = 1
         step.description = "appSwitcher"

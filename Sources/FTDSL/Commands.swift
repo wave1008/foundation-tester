@@ -99,7 +99,7 @@ public func irregularHandler(_ detect: Sel, dismiss: Sel? = nil,
 /// **出たら押してほしい OS のシステムアラート**(権限ダイアログ・ATT 等)を1枚ぶん予告する。
 /// `irregularHandler`(アプリ内メッセージ用)の OS アラート版 —— あちらはアプリの木に載る
 /// ものを閉じるが、**OS のアラートは別プロセス(SpringBoard)でアプリの木に載らない**ので、
-/// XCUITest ランナー経由の別の監視(SystemUIGate)が要る。engine=hybrid のときだけ効く。
+/// XCUITest ランナー経由の別の監視(SystemUIGate)が要る。inapp モードのときだけ効く。
 ///
 ///     iosAlertHandler(alert: "*写真ライブラリ*", button: "許可しない")
 ///     iosAlertHandler(alert: "*トラッキング*||*track your activity*",
@@ -291,7 +291,7 @@ func tapImpl(_ selector: FTSelector, holdSeconds: Double, maxGestureSeconds: Dou
 /// (注記 `hold-ended-before-block`。失敗にはしない)。**hold は入れ子にできない**
 /// (前の hold が離れる前に次の hold を送ると失敗する)。対象が解決できなければブロックは走らない
 /// (`select` と同じ書き方で ifCanSelect のような分岐は作れない —— hold は「押せる前提」のコマンド)。
-/// iOS の in-app エンジンは座標での押下を持たないため、hybrid ではこの押下だけ XCUITest 側で行う
+/// iOS の in-app ブリッジは座標での押下を持たないため、inapp モードではこの押下だけ XCUITest 側で行う
 /// (tap の長押しと同じフォールバック)
 @discardableResult
 public func hold(_ selector: String, holdSeconds: Double? = nil,
@@ -639,7 +639,7 @@ private func doubleTapImpl(_ selector: FTSelector, settle: Bool, waitSeconds: Do
 /// **iOS の XCUITest 経路では対象要素を identifier で引く**(座標指定の多点ジェスチャが無い)。
 /// identifier の無い要素を指定した場合はアプリ全体のピンチに落ち、注記が残る。
 /// Android と iOS の in-app は領域の中心で2本指を合成するので identifier に依らない。
-/// **フレームワークとエンジンで成否が分かれる**組み合わせがある(表は docs/commands.md)
+/// **フレームワークとブリッジで成否が分かれる**組み合わせがある(表は docs/commands.md)
 public func pinchOut(scale: Double = FlowStep.defaultPinchOutScale,
                      durationSeconds: Double? = nil,
                      maxGestureSeconds: Double? = nil,

@@ -210,16 +210,16 @@ private struct WeakDriveCore: @unchecked Sendable {
 
 public final class FTDriveCore {
     let driver: AppDriver
-    /// home / appSwitcher 用のドライバ。**in-app エンジンは自プロセス外を触れないので原理的に
-    /// 実行できない**(501)。hybrid では 501 の往復を作らず最初から XCUITest 側へ直行する
+    /// home / appSwitcher 用のドライバ。**in-app ブリッジは自プロセス外を触れないので原理的に
+    /// 実行できない**(501)。inapp モードでは 501 の往復を作らず最初から XCUITest 側へ直行する
     /// (XCUITest ブリッジの /home・/appswitcher はセッション不要)。
-    /// hybrid 以外(xcuitest / Android / inapp 単独)は primary のまま = 挙動不変
+    /// inapp モード以外(xcuitest モード / Android)は primary のまま = 挙動不変
     var systemDriver: AppDriver { executor.typeDriver ?? driver }
-    /// tapAppIcon 用。**systemDriver とは別**: hybrid の typeDriver(AppAttachDriver)は
+    /// tapAppIcon 用。**systemDriver とは別**: inapp モードの typeDriver(AppAttachDriver)は
     /// snapshot() のたびテスト対象アプリを再前面化する(springboard を見せない)ため使えない。
     /// 優先順: ①明示注入(xcuitest 単独。**セッションが対象アプリに縛られた通常ドライバは
     /// home() 後の snapshot が背面アプリ照会でハングする** — 実機で踏んだため springboard 参照を
-    /// 注入する)→ ② fallbackDriver(hybrid の SystemUIDriver)→ ③ systemDriver
+    /// 注入する)→ ② fallbackDriver(inapp モードの SystemUIDriver)→ ③ systemDriver
     /// (Android は再前面化しない。inapp 単独は home() が 501 で自然に失敗する)
     private let homeScreenDriverOverride: AppDriver?
     var homeScreenDriver: AppDriver {
@@ -227,7 +227,7 @@ public final class FTDriveCore {
     }
     /// true = homeScreenDriver が主ドライバと同じランナーのセッションを付け替える
     /// (xcuitest 単独。tapAppIcon が終わりにセッションを張り直す条件。
-    /// hybrid は主ドライバが in-app なので張り替えの影響を受けない)
+    /// inapp モードは主ドライバが in-app なので張り替えの影響を受けない)
     var homeScreenSharesRunnerSession: Bool { homeScreenDriverOverride != nil }
     public let platform: String
     /// 実機か。白フレーム=画面凍結の推定はエミュレータ固有の病理(GPU 合成バッファ固着)なので、
@@ -515,7 +515,7 @@ public final class FTDriveCore {
                 fingerprintCacheURL: URL? = nil,
                 selectorInventoryURL: URL? = nil,
                 fallbackDriver: AppDriver? = nil,
-                // 主ドライバの絵にキーボード・システムアラートが写らない(hybrid)。StepExecutor の doc
+                // 主ドライバの絵にキーボード・システムアラートが写らない(inapp モード)。StepExecutor の doc
                 primaryCaptureOmitsSystemUI: Bool = false,
                 typeDriver: AppDriver? = nil,
                 preferTypeDriver: Bool = false,
@@ -1476,7 +1476,7 @@ public final class FTDriveCore {
 
         executor.invalidateScreenshotCache()
         let driver = self.driver
-        // **画面全体を撮れる XCUITest を先に使う**(失敗時の証跡 `handleFailure` と同じ順)。hybrid の主ドライバ(in-app)の
+        // **画面全体を撮れる XCUITest を先に使う**(失敗時の証跡 `handleFailure` と同じ順)。inapp モードの主ドライバ(in-app)の
         // 絵はアプリ自身の window だけで、キーボードもシステムアラートも写らない = レポートの絵が実際の画面と違った。
         // 撮れなければ主ドライバへ落ちる。fallbackDriver が無い(Android・in-app 単独)なら主ドライバのまま。
         // 画像判定の絵は別の口で、覆いがあると分かっているときだけ画面全体を撮る(StepExecutor.judgmentScreenshot)
@@ -1618,7 +1618,7 @@ public final class FTDriveCore {
         }
         if foundWhilePolling { return result(true) }
         // **「無い」を確定する側で fallbackDriver を1回だけ照会する**。
-        // hybrid では SpringBoard のダイアログ(位置情報・通知の許可)が primary の snapshot に
+        // inapp モードでは SpringBoard のダイアログ(位置情報・通知の許可)が primary の snapshot に
         // 映らないので、ここを通さないと `ifCanSelect("許可")` が**原理的に成立しない** ——
         // tap(StepExecutor+Actions)と exist(同+Assert)は既に照会しているのに、
         // **docs が勧めていた ifCanSelect だけが唯一届かない書き方**だった(受け手報告)。
@@ -1806,11 +1806,11 @@ public final class FTDriveCore {
         // 画素をサンプルする BlankFrameDetector が唯一の判定手段。
         // これを外していたため、環境起因の全滅が「テストの失敗」として無警告で記録されていた
         let inferFrozenFromBlankFrame = !physical
-        // 証跡の絵は**画面全体**を撮れる XCUITest(hybrid の fallbackDriver = XCUIScreen)を先に使う。
+        // 証跡の絵は**画面全体**を撮れる XCUITest(inapp モードの fallbackDriver = XCUIScreen)を先に使う。
         // in-app の /screenshot はアプリ自身の window を描き直すだけなので、SpringBoard のアラート
         // (権限の要求等)が出ていても写らない = 「出なかった」のか「出ていたのに見つけられなかった」の
         // かを証跡から判別できない。撮れなければ主ドライバへ落ちる。fallbackDriver が無い
-        // (Android・in-app 単独)なら主ドライバのまま。engine=xcuitest の fallbackDriver は主と
+        // (Android・XCUITest ブリッジが無いとき)なら主ドライバのまま。xcuitest モードの fallbackDriver は主と
         // 同じランナーなので同じ絵になる
         let wholeScreen = executor.fallbackDriver
         let takeScreenshot: () async -> Data? = {

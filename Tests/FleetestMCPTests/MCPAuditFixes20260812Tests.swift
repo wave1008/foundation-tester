@@ -141,8 +141,8 @@ final class MCPAuditFixes20260812Tests: XCTestCase {
     /// 「未起動 / 遅い / suspend」の3択を並べるだけだった。走査してポートが消えていれば
     /// 死亡と言い切り、**生きていれば何も足さない**(遅い/suspend の可能性が残るため)
     func testBridgeVanishedOnlyWhenThePortIsGone() {
-        let others = [BridgeDiscovery.Found(port: 8125, device: "iPhone-01", engine: "inapp"),
-                      BridgeDiscovery.Found(port: 8130, device: "iPhone-04", engine: "inapp")]
+        let others = [BridgeDiscovery.Found(port: 8125, device: "iPhone-01", bridge: "inapp"),
+                      BridgeDiscovery.Found(port: 8130, device: "iPhone-04", bridge: "inapp")]
         XCTAssertTrue(MCPServer.bridgeVanished(port: 8127, running: others),
                       "走査に居ないポートは消えたと言い切ってよい")
         XCTAssertTrue(MCPServer.bridgeVanished(port: 8127, running: []),

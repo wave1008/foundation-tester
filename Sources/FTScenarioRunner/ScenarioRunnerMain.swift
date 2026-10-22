@@ -115,13 +115,13 @@ struct RunScenario: AsyncParsableCommand {
     @Option(help: "Android device serial (adb -s; defaults to the only connected device)")
     var serial: String?
 
-    @Option(help: "iOS engine: xcuitest (default) / inapp (dylib injection) / hybrid (in-app + XCUITest)")
-    var engine: String?
+    @Option(help: "iOS mode: xcuitest (default) / inapp (in-app bridge first, XCUITest bridge via --xcui-port for the rest)")
+    var mode: String?
 
-    @Option(help: "iOS: simulator UDID (used to relaunch for inapp/hybrid and for the xcuitest launch preflight)")
+    @Option(help: "iOS: simulator UDID (used to relaunch in inapp mode and for the xcuitest launch preflight)")
     var udid: String?
 
-    @Option(name: .customLong("xcui-port"), help: "iOS: port of the XCUITest bridge used as the hybrid fallback")
+    @Option(name: .customLong("xcui-port"), help: "iOS: port of the XCUITest bridge that takes what the in-app bridge cannot do in inapp mode")
     var xcuiPort: UInt16?
 
     @Option(name: .customLong("inapp-app"),
@@ -340,13 +340,15 @@ struct RunScenario: AsyncParsableCommand {
         }
 
         // ドライバ構築(Fleetest.swift の DriverOptions と同じパターン)。
-        // hybrid: primary=in-app、fallback=XCUITest ブリッジ(springboard 参照)を StepExecutor へ。
+        // inapp モード: primary=in-app ブリッジ、fallback=XCUITest ブリッジ(springboard 参照)を StepExecutor へ。
         let driver: AppDriver
+        // 事前確認(下の F8b)で突き合わせるポート。inapp モードの別アプリの分岐は XCUITest ブリッジ(xcuiPort)を駆る
+        var preflightPort = port
         var fallbackDriver: AppDriver?
-        // hybrid だけ true(主ドライバ = in-app の絵にキーボード・システムアラートが写らない)
+        // inapp モードだけ true(主ドライバ = in-app の絵にキーボード・システムアラートが写らない)
         var primaryCaptureOmitsSystemUI = false
         // tapAppIcon 用(FTDriveCore.homeScreenDriver の①)。xcuitest 単独でだけ明示注入する
-        // (hybrid は fallbackDriver が同役を担う。Android は主ドライバで足りる)
+        // (inapp モードは fallbackDriver が同役を担う。Android は主ドライバで足りる)
         var homeScreenDriver: AppDriver?
         // typeDriver は常に渡す(409 安全網)。preferTypeDriver は probe の uiFramework 検出時のみ
         // (probe 不達なら false のまま=安全網頼み)。
@@ -368,11 +370,15 @@ struct RunScenario: AsyncParsableCommand {
         } else {
             switch runPlatform {
             case "ios":
-                if engine == "inapp" || engine == "hybrid" {
+                if mode == IOSMode.inapp {
+                    guard let xcuiPort else {
+                        throw ValidationError("--mode inapp needs --xcui-port (the XCUITest bridge that takes"
+                            + " the operations the in-app bridge cannot do)")
+                    }
                     // in-app は注入先アプリのプロセスしか駆動できない。シナリオの対象アプリが
                     // 注入先(/status の sessionBundleID)と異なる場合、別アプリを注入起動すると
                     // ポート衝突で旧ブリッジが偽成功応答し「裏のアプリを操作して失敗」する。
-                    // hybrid はそのシナリオを丸ごと XCUITest ブリッジで駆動、inapp は明示エラー。
+                    // そのシナリオは丸ごと XCUITest ブリッジで駆動する。
                     //
                     // suspend 対策: 直前が別アプリ(system-UI)のシナリオだと注入先アプリは
                     // バックグラウンドで iOS に suspend され、in-app ブリッジは TCP を受理するが
@@ -397,18 +403,11 @@ struct RunScenario: AsyncParsableCommand {
                     }.framework
                     let injected = probeStatus?.sessionBundleID ?? inappApp
                     if let injected, injected != appBundleID {
-                        guard engine == "hybrid", let xcuiPort else {
-                            throw ValidationError(
-                                "scenario \(scenarioID) targets \(appBundleID), which differs from the app the "
-                                + "in-app bridge is injected into (\(injected)), so it cannot run with engine=inapp. "
-                                + "On a device without an explicit engine (run-profile iosInappEngine defaults "
-                                + "to hybrid) it is driven automatically via XCUITest"
-                                + " (iosInappEngine does not apply to devices that explicitly set engine=inapp)")
-                        }
+                        preflightPort = xcuiPort
                         let client = BridgeClient(port: xcuiPort, host: bridgeHost ?? BridgeEndpoint.loopbackHost,
                                                   physicalUDID: physical ? udid : nil,
                                                   simulatorUDID: physical ? nil : udid)
-                        // **この分岐は XCUITest ランナーだけを駆る**(in-app は入らない)ので、xcuitest エンジンの
+                        // **この分岐は XCUITest ランナーだけを駆る**(in-app は入らない)ので、xcuitest モードの
                         // 主ドライバと同じく SessionRecoveryDriver で包む(ランナーの起動し直しの 409 から戻る・
                         // a11y の一時停止の読み直し)。MCP の同じ経路(foreignApp)も包んでいる
                         driver = SessionRecoveryDriver(
@@ -420,36 +419,32 @@ struct RunScenario: AsyncParsableCommand {
                         // 済ませているので、ここ(サンドボックスの中)は appBundle/wired 不要(署名は親でだけ = InAppLauncher)
                         let inapp = InAppDriver(repoRoot: repoRoot, udid: udid ?? "booted", port: port,
                                                 ownBundleID: appBundleID, physical: physical)
-                        if engine == "hybrid", let xcuiPort {
-                            let xcuiHost = bridgeHost ?? BridgeEndpoint.loopbackHost
-                            fallbackDriver = SystemUIDriver(port: xcuiPort, host: xcuiHost,
-                                                            physicalUDID: physical ? udid : nil)
-                            primaryCaptureOmitsSystemUI = true
-                            let attach = AppAttachDriver(port: xcuiPort, host: xcuiHost,
-                                                         bundleID: appBundleID,
-                                                         physicalUDID: physical ? udid : nil)
-                            typeDriver = attach
-                            // WebView 画面だけドライバごと XCUITest へ委譲する(in-app は WKWebView の
-                            // 中身を原理的に採れない)。attach は typeDriver と**同じインスタンス**を
-                            // 使う: activate/attached 状態を1本にしないと余計な activate が挟まる
-                            driver = WebViewDelegatingDriver(primary: inapp, delegated: attach)
-                            // Compose も inapp で type 可能
-                            // (IntermediateTextInputUIView への insertText。InAppInput.m 参照。
-                            // 実測 266ms vs attach 1.0〜1.3s)。**attach は優先しない** ——
-                            // 失敗時 409 → typeDriver フォールバック(StepExecutor)だけを安全網とする
-                            preferTypeDriver = false
-                            // 「どの操作が不可か」はブリッジの申告に従う(ホストに
-                            // 「compose なら swipe 不可」という知識を持たせない)。
-                            // 申告が無い(旧ブリッジ・probe 不達)なら false のまま
-                            // = StepExecutor の事後 501 キャッチに委ねる
-                            // 申告されたアクション**だけ**を typeDriver へ回す(一括 Bool にしない。
-                            // uikit の press 申告で swipe まで XCUITest 化させない — StepExecutor の
-                            // typeDriverGestures のコメント参照)
-                            typeDriverGestures = Set(probeStatus?.unsupportedActions ?? [])
-                                .intersection(["swipe", "press"])
-                        } else {
-                            driver = inapp
-                        }
+                        let xcuiHost = bridgeHost ?? BridgeEndpoint.loopbackHost
+                        fallbackDriver = SystemUIDriver(port: xcuiPort, host: xcuiHost,
+                                                        physicalUDID: physical ? udid : nil)
+                        primaryCaptureOmitsSystemUI = true
+                        let attach = AppAttachDriver(port: xcuiPort, host: xcuiHost,
+                                                     bundleID: appBundleID,
+                                                     physicalUDID: physical ? udid : nil)
+                        typeDriver = attach
+                        // WebView 画面だけドライバごと XCUITest へ委譲する(in-app は WKWebView の
+                        // 中身を原理的に採れない)。attach は typeDriver と**同じインスタンス**を
+                        // 使う: activate/attached 状態を1本にしないと余計な activate が挟まる
+                        driver = WebViewDelegatingDriver(primary: inapp, delegated: attach)
+                        // Compose も inapp で type 可能
+                        // (IntermediateTextInputUIView への insertText。InAppInput.m 参照。
+                        // 実測 266ms vs attach 1.0〜1.3s)。**attach は優先しない** ——
+                        // 失敗時 409 → typeDriver フォールバック(StepExecutor)だけを安全網とする
+                        preferTypeDriver = false
+                        // 「どの操作が不可か」はブリッジの申告に従う(ホストに
+                        // 「compose なら swipe 不可」という知識を持たせない)。
+                        // 申告が無い(旧ブリッジ・probe 不達)なら false のまま
+                        // = StepExecutor の事後 501 キャッチに委ねる
+                        // 申告されたアクション**だけ**を typeDriver へ回す(一括 Bool にしない。
+                        // uikit の press 申告で swipe まで XCUITest 化させない — StepExecutor の
+                        // typeDriverGestures のコメント参照)
+                        typeDriverGestures = Set(probeStatus?.unsupportedActions ?? [])
+                            .intersection(["swipe", "press"])
                     }
                 } else {
                     // **physicalUDID を渡す**: これが無いとドライバは /status のデバイス名から
@@ -463,11 +458,11 @@ struct RunScenario: AsyncParsableCommand {
                     // launch は既定で simctl 化(FastLaunchDriver。実測 -14〜19%)。
                     // FT_NO_FAST_LAUNCH=1 で素の XCUIApplication.launch() に戻せる。
                     // preflight(未インストール検査)は fast launch の外側に置く。
-                    // **実機は両方とも simctl 依存なので必ず外す**(engine=xcuitest なら実機で動く、と
+                    // **実機は両方とも simctl 依存なので必ず外す**(xcuitest モードなら実機で動く、と
                     // 誤認しやすい罠。素の XCUIApplication.launch() 経路に落とす)
                     let inner = FastLaunchDriver.wrapping(client, simulatorUDID: physical ? nil : udid)
                     // SessionRecoveryDriver は最外側(回復時の activate に LaunchPreflightDriver の
-                    // 未インストール検査を効かせるため)。in-app/hybrid 経路には入れない
+                    // 未インストール検査を効かせるため)。inapp モードの経路には入れない
                     // (InAppDriver は別プロトコルで 409 の意味が違う)。
                     let preflighted: AppDriver = physical
                         ? inner
@@ -515,11 +510,13 @@ struct RunScenario: AsyncParsableCommand {
                 // F8b: 接続不能だけでなく「別デバイスに繋がっていないか」も確かめる —— 供給が
                 // このポートを別デバイスのブリッジへ差し替えても、そちらも /status には正しく
                 // 応答するため疎通確認だけでは見逃す(ホスト側 RunOrchestrator.bridgeUnreachable も
-                // 同じ理由で見逃す。BridgeIdentityCheck の doc 参照)。Android には engine/udid の
+                // 同じ理由で見逃す。BridgeIdentityCheck の doc 参照)。Android には bridge/udid の
                 // 自己申告が無く判定材料が原理的に無いため iOS のみ
+                // ここに来る iOS のドライバは XCUITest ブリッジだけ(in-app ブリッジは上の条件で外れる)。
+                // mode を渡すと inapp モードの別アプリの分岐で、udid を名乗らない実機が「別のブリッジ」と誤判定される
                 if runPlatform == "ios" {
                     let expected = BridgeIdentityCheck.Expected(
-                        port: port, udid: udid, physical: physical, engine: engine,
+                        port: preflightPort, udid: udid, physical: physical, bridge: IOSMode.xcuitest,
                         deviceName: deviceName)
                     if case .mismatch(let detail) = BridgeIdentityCheck.verdict(
                         expected: expected, status: preflightStatus,

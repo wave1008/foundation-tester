@@ -2,8 +2,8 @@ import Foundation
 
 /// RunEvent → 表示行の共通整形(CLI の出力と呼び出し側の実行レーン表示が共用)
 public enum RunLogFormatter {
-    /// `engine` = シナリオを走らせたデバイスの実効エンジン(分かる呼び手だけが渡す。見出しの末尾に付く)
-    public static func lines(for event: RunEvent, engine: String? = nil) -> [String] {
+    /// `mode` = シナリオを走らせたデバイスの実効モード(分かる呼び手だけが渡す。見出しの末尾に付く)
+    public static func lines(for event: RunEvent, mode: String? = nil) -> [String] {
         switch event {
         case .runStarted, .workerReady, .runFinished, .flowStartedAt, .flowEndedAt:
             return []
@@ -21,7 +21,7 @@ public enum RunLogFormatter {
             // (元の物理デバイスのまま・ポートだけ新しいケースがある)
             return ["  🔁 Re-queued because of \(reason) (\(attempt)/\(limit))"]
         case .flowStarted(let worker, _, let flowName, let isDirty):
-            var lines = ["▶ \(flowName) [\(worker)\(engine.map { " \($0)" } ?? "")]"]
+            var lines = ["▶ \(flowName) [\(worker)\(mode.map { " \($0)" } ?? "")]"]
             if isDirty { lines.append("  ⚠️ This flow is dirty (needs review)") }
             return lines
         case .step(_, _, let result):

@@ -581,7 +581,8 @@ XCTest の `measure(metrics:)`(**基準値をデバイスごとに持ち**、前
   run の終了と中断(SIGINT 等)のときに記録を必ず止める・書き出した後に `.trace` を消すか容量の上限を置く・既存の保持容量の掃除
   (`.claude/rules/results-retention.md`)への接続、を製品化の条件にする
 - 計測モードの経路は**リクエスト単位で適用して戻す**(例外のときも戻す)。計測の後の通常の操作へ待ち方が漏れないことを回帰で確かめる
-- in-app エンジンは実機で使えないので対象外(xcuitest だけ)
+- 計測は XCUITest ランナーにしか無い(in-app ブリッジは対象外)。計測の run は iOS を xcuitest モードで走らせる
+  (`iosMode` の既定が xcuitest に変わる。`iosMode` / デバイスの `mode` に `inapp` を明示すると断る)
 
 ### 8.6 段階
 

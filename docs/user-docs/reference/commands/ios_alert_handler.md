@@ -9,7 +9,7 @@ to press on it.
 
 | function | description |
 |---|---|
-| `iosAlertHandler(alert:, button:)` | Registers one upcoming system alert. `alert:` (which alert, matched against its title) is required. Both `alert:` and `button:` use selector matching syntax (`\|\|` for alternatives, `*` for the match mode). Registers are consumed on press: register again for a second alert. `hybrid` engine only. |
+| `iosAlertHandler(alert:, button:)` | Registers one upcoming system alert. `alert:` (which alert, matched against its title) is required. Both `alert:` and `button:` use selector matching syntax (`\|\|` for alternatives, `*` for the match mode). Registers are consumed on press: register again for a second alert. |
 
 ## Example
 
@@ -27,11 +27,10 @@ Permission prompts, "Open in …?", and similar system alerts are drawn by Sprin
 separate process — they never appear in the app's own accessibility tree, so
 [`irregularHandler`](./irregular_handler.md) cannot see or close them.
 
-| engine | how to handle alerts |
+| mode | how to handle alerts |
 |---|---|
-| **hybrid** (run profile default) | Write them normally — `tap("Allow")`, `exist(...)`, `ifCanSelect(...)` all reach across to SpringBoard when the app itself cannot resolve the selector. Nothing closes automatically unless you register it with `iosAlertHandler`. |
-| **xcuitest alone** | Write them as with hybrid (a physical iOS device always runs this way). |
-| **inapp alone** | Cannot resolve SpringBoard-side selectors (only sees the process it is injected into). Run alert-handling scenarios with hybrid or xcuitest. |
+| **inapp** (run profile default) | Write them normally — `tap("Allow")`, `exist(...)`, `ifCanSelect(...)` all reach across to SpringBoard when the app itself cannot resolve the selector. Nothing closes automatically unless you register it with `iosAlertHandler`. |
+| **xcuitest** | Write them as with inapp. |
 
 The only alert closed automatically without any declaration is `openURL`'s first-time
 confirmation.
@@ -82,7 +81,7 @@ the alert to clear (or be closed by a registered button), and fails with
 ```
 ❌ 6. [action] tap "#btn_something"
    system UI is covering the app ("MyApp" Would Like to Access the Photo Library).
-   The in-app engine could still reach the app, but a person could not, so the step was not
+   The in-app bridge could still reach the app, but a person could not, so the step was not
    performed. None of the registered iosAlertHandler entries
    (*Photo Library*→Allow) matched a button on it.
    Buttons on this alert: "Select Photos" / "Allow Full Access" / "Don't Allow".
@@ -94,7 +93,7 @@ the alert to clear (or be closed by a registered button), and fails with
 - A failure that happens under a system alert leaves the app's element list out of the report
   (nothing in it could be reached) and says so; the alert's title and buttons are in the failure
   message instead.
-- This exists because the in-app engine's tap is a direct call, not an OS touch event — it
+- This exists because the in-app bridge's tap is a direct call, not an OS touch event — it
   would otherwise reach the app underneath a covering alert, something a real person could not
   do. Android is not affected (its element tree is rooted at the active window, so covered app
   elements simply drop out of the tree).
@@ -126,7 +125,7 @@ the alert to clear (or be closed by a registered button), and fails with
 - **A leftover alert survives across runs, too.** A warning is printed at the start of a run if
   a device already has one on screen.
 - **An operation that goes through XCUITest is not delivered while an alert is in front.**
-  This covers the xcuitest engine, and in hybrid the operations the in-app engine cannot perform
+  This covers xcuitest mode, and in inapp mode the operations the in-app bridge cannot perform
   (home, the app switcher, coordinate drags and long presses). The step fails with
   `a system alert is in front of the app (title: …, buttons: …)` and the alert is left as it
   is — the tool never presses an alert button on its own, and never retries the operation.

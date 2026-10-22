@@ -1,4 +1,4 @@
-// swipe の「このエンジンでは不可」ラッチは path の有無で分ける。path 付き(scrollFrame 指定)は in-app が
+// swipe の「このブリッジでは不可」ラッチは path の有無で分ける。path 付き(scrollFrame 指定)は in-app が
 // 必ず 501 を返すので、共有すると1回撃っただけで path 無しの swipe まで XCUITest の実スワイプ化する
 // (バウンス由来の flake)。path 付きどうしでは往復を省く。
 // 指の下の容器の選び方(画面の根の全体を覆う要素には受理させない)は ScrollPointReach.mayAccept

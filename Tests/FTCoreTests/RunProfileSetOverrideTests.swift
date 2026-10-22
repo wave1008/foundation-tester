@@ -230,7 +230,7 @@ final class RunProfileSetOverrideKeysTests: XCTestCase {
     func testProfileOnlyKeysAreASubsetOfOverridableKeys() {
         XCTAssertTrue(RunProfileDocument.profileOnlyKeys.isSubset(of: RunProfileDocument.overridableKeys))
         XCTAssertEqual(RunProfileDocument.profileOnlyKeys, [
-            "iosInappEngine", "updateWebView", "wipeDataOnBloat", "recoverCpuFallbackToGpu",
+            "iosMode", "updateWebView", "wipeDataOnBloat", "recoverCpuFallbackToGpu",
             "app", "locale", "wipeDataThresholdGB", "responseMeasurement", "responseRepeat",
         ])
     }
@@ -272,7 +272,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         case "screenLooksLike": return doc.screenLooksLike.map(RunProfileSetValue.bool)
         case "ocrTextVisibilityCheck": return doc.ocrTextVisibilityCheck.map(RunProfileSetValue.bool)
         case "preferCheckStateClassifier": return doc.preferCheckStateClassifier.map(RunProfileSetValue.bool)
-        case "iosInappEngine": return doc.iosInappEngine.map(RunProfileSetValue.bool)
+        case "iosMode": return doc.iosMode.map(RunProfileSetValue.string)
         case "iosPreActionPing": return doc.iosPreActionPing.map(RunProfileSetValue.bool)
         case "containerInference": return doc.containerInference.map(RunProfileSetValue.bool)
         case "enableAnimations": return doc.enableAnimations.map(RunProfileSetValue.bool)
@@ -304,7 +304,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
     private static let sampleRawValues: [String: String] = [
         "heal": "false", "fmTextVisibilityCheck": "false",
         "screenLooksLike": "false", "ocrTextVisibilityCheck": "false", "preferCheckStateClassifier": "false",
-        "iosInappEngine": "false", "iosPreActionPing": "false",
+        "iosMode": "xcuitest", "iosPreActionPing": "false",
         "containerInference": "false", "enableAnimations": "true", "responseMeasurement": "true",
         "homeOnStart": "false",
         "playProtectBypass": "false", "updateWebView": "false", "wipeDataOnBloat": "false",

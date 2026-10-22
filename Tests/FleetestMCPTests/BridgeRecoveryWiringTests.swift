@@ -52,7 +52,7 @@ final class BridgeRecoveryWiringTests: XCTestCase {
 
     /// 成功時は bridgeRecoveryFailed へ insert しない(次に死んだらまた試してよい)。
     /// 失敗時だけ insert する(このセッションでは再挑戦しない)
-    func testOnlyFailureMarksTheEngineKeyAsGivenUp() throws {
+    func testOnlyFailureMarksTheBridgeKeyAsGivenUp() throws {
         let code = try source()
         guard let range = code.range(of: "func attemptXCUITestBridgeRecovery(") else {
             return XCTFail("attemptXCUITestBridgeRecovery が見当たらない")

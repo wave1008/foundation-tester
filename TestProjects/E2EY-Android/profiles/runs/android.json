@@ -1,7 +1,7 @@
 {
   "app": "ft_e2ey_android",
   "heal": true,
-  "iosInappEngine": false,
+  "iosMode": "xcuitest",
   "devices": [
     {
       "platform": "android",

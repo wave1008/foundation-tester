@@ -312,7 +312,7 @@ final class FakeAppDriver: AppDriver {
 
     /// waitForSettle の応答列(呼び出し回数ぶん。尽きたら最後を繰り返す)。空 = 常に静止して返す
     var waitForSettleResponses: [WaitForSettleResponse] = []
-    /// 非 nil なら waitForSettle がこのエラーを throw する(501 = 画面全体を撮れないエンジンの検証用)
+    /// 非 nil なら waitForSettle がこのエラーを throw する(501 = 画面全体を撮れないブリッジの検証用)
     var waitForSettleError: Error?
     /// waitForSettle に渡った要求と HTTP の待ちの上限(送り先の取り違え・範囲・窓の配線確認用)
     private(set) var waitForSettleRequests: [(request: WaitForSettleRequest, timeoutSeconds: Double)] = []

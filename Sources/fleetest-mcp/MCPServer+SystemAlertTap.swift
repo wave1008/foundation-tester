@@ -13,7 +13,7 @@ extension MCPServer {
     /// **元のアプリへ attach で向け直す**(activate は使わない = 前面確認だけ。CLAUDE.md の attach の規律)
     func tapSystemAlertButton(_ label: String, driver d: AppDriver,
                               args: [String: Any]) async throws -> [[String: Any]] {
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         let probe: SystemAlertProbeResponse?
         do {
             probe = try await d.systemAlert()

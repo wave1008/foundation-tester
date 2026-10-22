@@ -9,7 +9,7 @@ Compose Multiplatform・Flutter・React Native・Android(Views/XML)・iOS(SwiftU
 
 - 確かめた環境: Compose Multiplatform 1.12.1(Material3 1.4 相当)・Flutter 3.47.7・React Native 0.87.1
   (New Architecture / Fabric)・Android Views + Material Components・SwiftUI。
-  iOS 27 Simulator(hybrid エンジン / XCUITest エンジン)・Android 15 Emulator
+  iOS 27 Simulator(inapp モード / xcuitest モード)・Android 15 Emulator
 - 各節の挙動は fleetest 同梱の検証アプリ群(`E2EXAppCMP/` / `E2EXAppFlutter/` / `E2EXAppRN/` /
   `E2EXAppAndroid/` / `E2EXAppIOS/`)と、そのシナリオ(`TestProjects/E2EX-{CMP,Flutter,RN,Android,iOS}/scenarios/`)
   で再現できます(同じ部品の書き方の実例として読めます)。5つのアプリは同じ画面構成・同じ `#id`・
@@ -52,9 +52,9 @@ select("#txt_state").textIs("drawerOpen=false")
 
 **現時点の制約**: **Flutter の iOS**は、画面にオーバーレイ(`Tooltip`・ダイアログ等)を一度出すと、
 **次の画面遷移までその画面の a11y の矩形を 1/画面倍率(iPhone では 1/3)に縮めて申告します**
-(Flutter 側の申告)。**既定の iOS エンジン(in-app)は自動で補正する**ので書き方は変わりません。
-**XCUITest エンジン**(`iosInappEngine: false`)だけは補正できず、タップが狙った場所と違う位置に
-当たります。回避策(XCUITest エンジンのとき): オーバーレイを出した画面では、一度別の画面へ移って
+(Flutter 側の申告)。**既定の iOS モード(inapp)は自動で補正する**ので書き方は変わりません。
+**xcuitest モード**(`iosMode: "xcuitest"`)だけは補正できず、タップが狙った場所と違う位置に
+当たります。回避策(xcuitest モードのとき): オーバーレイを出した画面では、一度別の画面へ移って
 戻ってから次の操作をする。
 
 ### アイコンだけのボタンはアクセシビリティのラベルで指す
@@ -79,7 +79,7 @@ withScrollRight(scrollFrame: "#pager_main") {
 }
 ```
 
-iOS の in-app エンジンは、RN の `react-native-pager-view`(中身は `UIPageViewController`)を
+iOS の in-app ブリッジは、RN の `react-native-pager-view`(中身は `UIPageViewController`)を
 自分では送れないので、その領域の送りだけ XCUITest の実スワイプに切り替えます(注記 `fell back to XCUITest`)。
 書き方は変わりません。
 
@@ -115,7 +115,7 @@ android { tap("戻る") }       // Android View: ラベルで指す(id なし)
 |---|---|
 | CMP | `HorizontalPager`。共通 |
 | Flutter | `PageView`。共通 |
-| RN | `react-native-pager-view`。共通(iOS の in-app エンジンでは、送りだけ XCUITest の実スワイプに切り替わる) |
+| RN | `react-native-pager-view`。共通(iOS の in-app ブリッジでは、送りだけ XCUITest の実スワイプに切り替わる) |
 | Android View | `ViewPager2`。共通 |
 | SwiftUI(iOS) | `TabView(.page)`。共通(検証アプリはネイティブなので in-app の制約を受けない) |
 
@@ -254,9 +254,9 @@ tap("OK")
       FTFinger(x: 0.5, y: 0.3).move(x: 0.5, y: 0.85, durationSeconds: 1.0).hold(seconds: 0.3)
   }
   ```
-- **iOS の XCUITest エンジン**(`iosInappEngine: false`)では、一覧の上端で `scrollToTop()` を
+- **iOS の xcuitest モード**(`iosMode: "xcuitest"`)では、一覧の上端で `scrollToTop()` を
   使うと**更新が1回余分に走ります**(端に着いたことを確かめる送りが「引っ張る」になる。XCUITest は
-  容器が「まだ送れるか」を教えないため)。既定の iOS エンジンでは起きない
+  容器が「まだ送れるか」を教えないため)。既定の iOS モードでは起きない
 - **Flutter の iOS でも、`scrollToTop()` で上端へ戻すと更新が走ることがあります**(調査中)
 - 回避策はどちらも共通: 更新の回数を検証するシナリオでは、`scrollToTop()` の**後に回数を読まない**
   (回数の検証はそれより前に済ませる)
@@ -423,7 +423,7 @@ type("...")   // または type(".textField", "...") で入力欄を型で指す
 行を押すと echo が出る点・echo が縮んでも木に残る位置に置かれている点は全フレームワーク共通です。
 
 **現時点の制約**: RN の `react-native-collapsible-tab-view` で**タブを替えた直後、iOS では一覧の先頭の行がヘッダの裏に居る**
-ことがある。in-app エンジンの木には覆っている物が出ないので、fleetest は覆いを避けて送れない(XCUITest エンジンでは
+ことがある。in-app ブリッジの木には覆っている物が出ないので、fleetest は覆いを避けて送れない(xcuitest モードでは
 失敗文が `#Toolbar` を名指しする)。ヘッダの下に見えている行を押す
 
 ## 貼り付く見出し
@@ -564,7 +564,7 @@ select("#txt_focus_echo").textIs("focus=second")
 - **Android は一部の入力欄で `ACTION_SET_TEXT` を拒否します**(Material の `SearchView`・
   一部の Flutter の入力欄で確認)。回避策は無く、`type` は既定の打鍵で入力する(拒否されるのは
   a11y 経由の一括書き込みだけで、通常の `type` の打鍵は通る)
-- **React Native の iOS(in-app エンジン)で、欄の直下に出る候補を押せないことがあります**(調査中)。
+- **React Native の iOS(inapp モード)で、欄の直下に出る候補を押せないことがあります**(調査中)。
   `pressEnter()` の後もキーボードが残り、その下の候補がキーボードに隠れたままになる。回避策: 候補が
   キーボードに隠れない位置に出る画面構成にするか、確定後の値をアプリ自身の echo で確かめる
 

@@ -46,7 +46,7 @@ final class BridgeRouter {
     var refElements: [Int: ElementInfo] = [:]
     /// `/systemui/snapshot` が振る ref。**アプリの refFrames と別に持つ**のが要点 ——
     /// 同じ表に書くと、システム UI を1枚撮っただけで直前のアプリの ref が全部無効になる
-    /// (engine=xcuitest はブリッジが1本しかなく、主ドライバと共有している)
+    /// (xcuitest モードはブリッジが1本しかなく、主ドライバと共有している)
     private var systemRefFrames: [Int: CGRect] = [:]
     // 直前の要求が画面を変えうる操作(tap/swipe/press/type/drag/session)だったか。
     // XCUITest の tap quiescence は非同期 push 遷移の完了前に返ることがあり、直後 snapshot が
@@ -177,7 +177,7 @@ final class BridgeRouter {
             device: device.name,
             osVersion: "\(device.systemName) \(device.systemVersion)",
             sessionBundleID: sessionBundleID,
-            engine: "xcuitest",
+            bridge: "xcuitest",
             protocolVersion: BridgeAPI.bridgeProtocolVersion,
             // 画面が進んでいるかの計器(DisplayHeartbeat 参照)。凍結を絵の一様さではなく直接測る
             displayIdleSeconds: DisplayHeartbeat.shared.idleSeconds,
@@ -427,7 +427,7 @@ final class BridgeRouter {
     /// SpringBoard(別プロセス)の木を **セッションを触らずに** 撮る。
     ///
     /// `POST /session springboard` + `GET /snapshot` と結果は同じだが、あちらは `app` /
-    /// `sessionBundleID` / `refFrames` を差し替える。**engine=xcuitest はブリッジが1本しかなく
+    /// `sessionBundleID` / `refFrames` を差し替える。**xcuitest モードはブリッジが1本しかなく
     /// 主ドライバと共有している**ため、それを撃つとアプリのセッションと ref が巻き添えになり、
     /// アラートを閉じた次のステップが SpringBoard の木を読んで
     /// `cannot resolve the locator` で落ちる(2026-08-25 に E2E-iOS で実測)。
@@ -778,7 +778,7 @@ final class BridgeRouter {
             return .json(OKResponse(note: QuiescenceWait.takeCapNote(), hitAreaMiss: moved))
         }
         // 非公開 API が無い Xcode では下の XCUICoordinate へ縮退する。
-        // **セッションが SpringBoard のタップは直接合成に乗せない** —— 相手がシステム UI そのもの(hybrid の
+        // **セッションが SpringBoard のタップは直接合成に乗せない** —— 相手がシステム UI そのもの(inapp モードの
         // SystemUIDriver が `/session springboard` で撃つアラートのボタン = iosAlertHandler・tap("許可しない"))なので、
         // 送る口の門(アラートが前面なら一律 422)に断られて押せない。下の `coordinate.tap()` は押せる
         if CoordinatePinch.isAvailable, sessionBundleID != "com.apple.springboard" {
@@ -811,7 +811,7 @@ final class BridgeRouter {
     /// アクションを駆動する唯一の経路。fleetest はキーボード要素を snapshot から除外しているため
     /// 実ソフトキー tap はできない)。
     ///
-    /// hybrid(ios-inapp)では in-app 側が合成タッチでタップ・入力してフォーカスを立てているため、
+    /// inapp モード(ios-inapp)では in-app 側が合成タッチでタップ・入力してフォーカスを立てているため、
     /// 焦点の有無を確かめてから **app 全体へ** typeText する(/type の末尾改行と同じ形)。
     /// 焦点の要素へ向けた typeText は、確かめた後に焦点が動く・背面化すると要素スコープの XCUI 呼び出しが
     /// 失敗してランナーを落とし得る(確かめてから撃つまでの窓)。キーボードの入力先は最前のレスポンダなので app で届く。
@@ -1221,7 +1221,7 @@ final class BridgeRouter {
         // 座標ピンチ経路と同じ —— coordinate(app, point) を経由しない)
         let app = try requireForegroundAppForGesture()
         try validateFingers(req.fingers, what: "gesture")
-        // **501 にしない** —— ホストは 501 を「このエンジンでは無理」と読んで typeDriver へ回すが、
+        // **501 にしない** —— ホストは 501 を「このブリッジでは無理」と読んで typeDriver へ回すが、
         // XCUITest ランナー自身が回送先なので自分に戻る(501 は hideKeyboard の1箇所だけ)
         guard CoordinatePinch.isAvailable else {
             throw BridgeError(422, "this Xcode has no coordinate gesture support (XCPointerEventPath /"
@@ -1521,8 +1521,8 @@ final class BridgeRouter {
     /// (XCUITest の press は同期実行で、ダブルプレスとして解釈される間隔に入らない)。
     /// どちらも **ok を返しながら別の画面になる**ので、呼び手は永久に気付けない。
     /// スイッチャーはハードウェアボタンの2度押しで、送る手段が無い —— **黙って別のことを
-    /// するより断る**。**501 にしない**(501 は「このエンジンでは不可 = 他エンジンへ
-    /// フォールバックせよ」の意味で、実機には代わりのエンジンが無い。BridgeRouterStatusContractTests)
+    /// するより断る**。**501 にしない**(501 は「このブリッジでは不可 = 他ブリッジへ
+    /// フォールバックせよ」の意味で、実機には代わりのブリッジが無い。BridgeRouterStatusContractTests)
     private func handleAppSwitcher() throws -> BridgeHTTPServer.Response {
         let sb = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         if isHomeButtonPhone(sb) {
@@ -1685,7 +1685,7 @@ final class BridgeRouter {
     ///   これらは失敗しても issue を出さない(取得系)
     /// - **503 であることに意味がある**: 409 はセッション消失専用(`SessionRecoveryDriver` が
     ///   activate で復帰を試み、in-app では dylib 無しでアプリが起動してブリッジが戻らなくなる)、
-    ///   501/404 は「このエンジンでは不可」= XCUITest へのフォールバック判定に使われている
+    ///   501/404 は「このブリッジでは不可」= XCUITest へのフォールバック判定に使われている
     private func requireLiveApp() throws -> XCUIApplication {
         let app = try requireApp()
         guard app.state != .notRunning, app.state != .unknown else {

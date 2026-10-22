@@ -131,7 +131,7 @@ final class MCPDesignReviewFixesTests: XCTestCase {
 
     /// Android は戻るキー(ブリッジの hideKeyboard)を撃ち、下書きに DSL の1行が残る
     func testHideKeyboardRunsAndIsDraftedAsADSLLine() async throws {
-        server.engines[MCPServer.engineKey([:])] = "android"
+        server.bridges[MCPServer.sessionKey([:])] = "android"
         let text = body(try await server.call(tool: "ft_hide_keyboard", args: ["snapshotAfter": true]))
         XCTAssertTrue(text.hasPrefix("hideKeyboard sent."), text)
         XCTAssertTrue(text.contains("id=login_btn"), "木が付いていない: \(text)")
@@ -182,7 +182,7 @@ final class MCPDesignReviewFixesTests: XCTestCase {
 
     /// 束ねる前は Set<String> の2つが forgetDeviceState の外にあった(前の機の状態が残っていた)
     func testForgetDeviceStateAlsoDropsTheFlags() {
-        let key = MCPServer.engineKey([:])
+        let key = MCPServer.sessionKey([:])
         server.backgroundedByNavigate.insert(key)
         server.webPageCeilingLatched.insert(key)
         server.systemAlertProbePending.insert(key)

@@ -221,6 +221,6 @@
     }
   ],
   "heal": true,
-  "iosInappEngine": false,
+  "iosMode": "xcuitest",
   "wipeDataOnBloat": true
 }

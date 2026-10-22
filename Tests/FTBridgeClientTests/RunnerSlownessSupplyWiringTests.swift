@@ -139,7 +139,7 @@ final class RunnerSlownessProvisioningWiringTests: XCTestCase {
     func testFreshLaunchIsProbedThroughTheSharedHelper() throws {
         let text = compact(try source())
         XCTAssertTrue(text.contains(compact(
-            "if engine == \"xcuitest\", !escalating, case .launch = plan {")))
+            "if bridge == \"xcuitest\", !escalating, case .launch = plan {")))
         XCTAssertTrue(text.contains(compact(
             "return try await probeAndRestartIfDegraded( name: name, sim: sim, port: launched, claimed: claimed, log: log) ?? launched")))
         XCTAssertEqual(text.components(separatedBy: compact("tryawaitprobeAndRestartIfDegraded(")).count - 1, 2,
@@ -179,7 +179,7 @@ final class RunnerSlownessProvisioningWiringTests: XCTestCase {
     func testLaunchBranchAlsoReadsThePersistedMark() throws {
         let text = compact(try source())
         XCTAssertTrue(text.contains(compact(
-            "if engine == \"xcuitest\", !escalating, case .launch(let launchPort, _, _, _) = plan,"
+            "if bridge == \"xcuitest\", !escalating, case .launch(let launchPort, _, _, _) = plan,"
             + " let persisted = RunnerSlownessStore.current(stateDir: fleetestStateDir, key: sim.udid)")))
         XCTAssertEqual(text.components(separatedBy: compact("escalating: true)")).count - 1, 3,
                        "回復の途中の起動(restartRunner / restartSimulatorAndRunner)と新規起動の包みが escalating を渡していない")

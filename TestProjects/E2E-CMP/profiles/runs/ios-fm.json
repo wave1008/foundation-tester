@@ -373,7 +373,7 @@
     }
   ],
   "heal": true,
-  "iosInappEngine": true,
+  "iosMode": "inapp",
   "fmTextVisibilityCheck": true,
   "wipeDataOnBloat": false
 }

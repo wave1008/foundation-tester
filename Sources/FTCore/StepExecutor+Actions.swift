@@ -172,7 +172,7 @@ extension StepExecutor {
         // **直前の type が「打つ前後」でキーボードを動かしたか、ここで初めて確かめる**
         // (pendingTypeKeyboardCheck の doc)。上の freshSnapshot は元々撮る1枚なので、
         // 動いていなければ比較だけで追加コストはゼロ。動いていたときだけ収束を待って撮り直す。
-        // **読み返し(verifiesTypedText)の有無やエンジンに依存しない** —— type を実行した
+        // **読み返し(verifiesTypedText)の有無やモードに依存しない** —— type を実行した
         // ドライバが何であれ、ここで木を見て比べる
         // 前の type の出現待ちを待ち切った後、キーボードが今ここで出ていれば上限不足の事例として数える
         if keyboardWaitExhausted,
@@ -642,9 +642,9 @@ extension StepExecutor {
                     try await actingDriver.press(ref: element.ref, duration: hold)
                     phase.actionMs += Self.ms(clock.now - start)
                 } catch {
-                    // 「このエンジンでは不可」(501 / ルート不明 404)だけ XCUITest へ回す。
-                    // 409 を含めない理由は DriverError.isEngineIncapable 参照
-                    guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
+                    // 「このブリッジでは不可」(501 / ルート不明 404)だけ XCUITest へ回す。
+                    // 409 を含めない理由は DriverError.isBridgeIncapable 参照
+                    guard DriverError.isBridgeIncapable(error), let td = typeDriver else { throw error }
                     guard try await pressViaTypeDriver(td, step: step, phase: &phase) else { throw error }
                     pressFallbackLatched = true
                     driverFallback = Self.joinNotes(driverFallback, "fell back to XCUITest")
@@ -740,7 +740,7 @@ extension StepExecutor {
                     // in-app が「activate 不発・合成タッチは効かない」(SwiftUI)で 501 を返したら、
                     // 今の木の枠の中心を XCUITest の座標タップで押す(ref は別名前空間なので渡さない)。
                     // 撃ち直しではない: 501 は in-app が何も撃たずに返した場合だけ
-                    guard DriverError.isEngineIncapable(error),
+                    guard DriverError.isBridgeIncapable(error),
                           let td = typeDriver else { throw error }
                     // 長押しと同じく XCUITest の木で引き直して ref で押す(木を撮る段でランナーのセッションが
                     // 今のアプリへ向く。座標を直に撃つと、直前のプロファイルのアプリに向いたままのランナーが
@@ -785,7 +785,7 @@ extension StepExecutor {
             // "\n" を含む入力だけ typeDriver(XCUITest)を優先する: typeText は改行を Return
             // キー押下として発火し iOS 既定の挙動と揃うが、in-app の insertText は改行の解釈が
             // フレームワーク任せで揃わない。"\n" を含まない入力は両経路で結果が同じなので、この
-            // 振り分けはエンジン間の観測可能な挙動差を生まない。
+            // 振り分けはモード間の観測可能な挙動差を生まない。
             let text = step.text ?? ""
             // **確実に入力欄でないものへは、撃つ前に断る**(nonTextInputPreflightRefusal の doc)。
             // replace のクリアもタップを伴うので、それより前に置く
@@ -876,7 +876,7 @@ extension StepExecutor {
             let nonInputNote = TapTargetGeometry.nonInputTypeTargetNote(element, in: snapshot.elements)
             // **押し上げ検知の「打つ前」の基準**(keyboardFrameBeforeType の doc)。以下のどの経路
             // (typeDriver 優先/通常/409フォールバック)で打っても、成功したら等しく次のロケータ
-            // 操作へ引き継ぐ —— エンジンで挙動を変えない(読み返しの有無に依存しない)
+            // 操作へ引き継ぐ —— モードで挙動を変えない(読み返しの有無に依存しない)
             let keyboardBefore = snapshot.keyboardFrame
             if let td = typeDriver, preferTypeDriver || text.contains("\n") {
                 let routed = try await typeViaTypeDriver(td, step: step, phase: &phase)
@@ -1034,9 +1034,9 @@ extension StepExecutor {
                                             pressSeconds: FlowStep.defaultDragPressSeconds, durationSeconds: swipeDuration)
                 phase.actionMs += Self.ms(clock.now - start)
             } catch {
-                // in-app の drag は自前描画だけ(それ以外は 501)ため、hybrid では typeDriver=XCUITest
+                // in-app の drag は自前描画だけ(それ以外は 501)ため、inapp モードでは typeDriver=XCUITest
                 // で始点・終点を取り直す(ref はブリッジごとに別名前空間)
-                guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
+                guard DriverError.isBridgeIncapable(error), let td = typeDriver else { throw error }
                 guard try await dragViaTypeDriver(td, step: step, endStep: endStep,
                                                   durationSeconds: swipeDuration, phase: &phase) else {
                     throw error
@@ -1463,10 +1463,10 @@ extension StepExecutor {
         }
     }
 
-    /// 座標だけで完結するジェスチャの共通フォールバック。in-app が「このエンジンでは不可」と
+    /// 座標だけで完結するジェスチャの共通フォールバック。in-app が「このブリッジでは不可」と
     /// 返したとき(501 / ルート不明 404)だけ XCUITest へ回す —— in-app は自前描画の
     /// フレームワークなら多点も撃てるが、UIKit/SwiftUI では合成タッチが受理されず 501 を返す。
-    /// **409 は含めない**(理由は DriverError.isEngineIncapable)。
+    /// **409 は含めない**(理由は DriverError.isBridgeIncapable)。
     /// **private ではない**: StepExecutor+Hold.swift の executeHoldStart からも呼ぶ
     func gestureWithFallback(phase: inout PhaseAccumulator,
                              _ body: (AppDriver) async throws -> Void) async throws -> Bool {
@@ -1477,7 +1477,7 @@ extension StepExecutor {
             phase.actionMs += Self.ms(clock.now - start)
             return false
         } catch {
-            guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
+            guard DriverError.isBridgeIncapable(error), let td = typeDriver else { throw error }
             try await body(td)
             phase.actionMs += Self.ms(clock.now - start)
             return true

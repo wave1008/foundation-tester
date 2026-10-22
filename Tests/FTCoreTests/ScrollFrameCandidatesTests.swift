@@ -34,9 +34,9 @@ final class ScrollFrameCandidatesTests: XCTestCase {
         XCTAssertEqual(found.first?.ref, 1)
     }
 
-    /// 申告できないエンジン(Compose/Flutter の in-app)は全要素が nil。
+    /// 申告できないブリッジ(Compose/Flutter の in-app)は全要素が nil。
     /// **「候補なし」ではなく「分からない」**なので、黙る側に倒れていることを固定する
-    func testEngineThatCannotDeclareScrollableYieldsNothingAndNoNote() {
+    func testBridgeThatCannotDeclareScrollableYieldsNothingAndNoNote() {
         let snap = snapshot([
             element(1, id: "list_rows", frame: FTRect(x: 0, y: 100, width: 400, height: 500)),
             element(2, id: "row_1", frame: FTRect(x: 0, y: 110, width: 400, height: 40), depth: 2),

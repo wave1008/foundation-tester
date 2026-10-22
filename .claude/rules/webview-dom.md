@@ -14,7 +14,7 @@ paths:
 
 CLAUDE.md から移した規則(本文は移設前と同一)。この領域のファイルを Read したときに自動で読み込まれる。
 
-- **木の出どころは対象とエンジンで決まる**(一覧は docs/design.md §木はどこから来るか が唯一の定義元)。
+- **木の出どころは対象とモードで決まる**(一覧は docs/design.md §木はどこから来るか が唯一の定義元)。
   **自作アプリの WebView は DOM**(Android = WebView の版で a11y の属性が入れ替わる(124 は placeholder だけ・
   150 は id だけ)ので、a11y が足りて見えても読む。門は `webView` ノードの有無だけ /
   iOS in-app = WKWebView の a11y が見えない)、**iOS xcuitest は a11y**。

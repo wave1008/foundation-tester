@@ -255,7 +255,7 @@ struct RunScenarios: AsyncParsableCommand {
     /// 値の型はキーの宣言型に従う(Bool/Int/Double/String。パース失敗は型を名指しでエラーにする。
     /// 検証は `RunProfileSetOverride.parse`。validate() が呼ぶ)。
     /// **プロファイルの devices 一覧・供給工程に依存するキー**(`RunProfileDocument.profileOnlyKeys`:
-    /// iosInappEngine/updateWebView/wipeDataOnBloat/recoverCpuFallbackToGpu/app/machine/locale/
+    /// iosMode/updateWebView/wipeDataOnBloat/recoverCpuFallbackToGpu/app/machine/locale/
     /// wipeDataThresholdGB)は `--profile` が無いと run() のプロファイル無し分岐でエラーにする
     /// (黙って無視しない)。`record` は devices に依存しないが、単一接続(`--port` 未指定/1個)の
     /// 経路では別途エラーにする(RunOrchestrator の録画セッションが無い。run() 参照)。
@@ -266,7 +266,7 @@ struct RunScenarios: AsyncParsableCommand {
                 + "(repeatable): <key>=<value>, where <key> is exactly the run profile JSON key and "
                 + "<value> matches that key's type (e.g. --set fmTextVisibilityCheck=false "
                 + "--set reportDir=/tmp/out). Keys that need a run profile's device list/supply "
-                + "pipeline (iosInappEngine, updateWebView, wipeDataOnBloat, recoverCpuFallbackToGpu, "
+                + "pipeline (iosMode, updateWebView, wipeDataOnBloat, recoverCpuFallbackToGpu, "
                 + "app, machine, locale, wipeDataThresholdGB, responseMeasurement) need --profile. The run profile keys "
                 + "\"app\"/\"machine\" (an app/machine *profile* name) are unrelated to this command's "
                 + "own --app-id/--runner flags. Cannot combine reportDir with --report-dir. "
@@ -875,7 +875,7 @@ struct RunScenarios: AsyncParsableCommand {
                 dryRunDevices = resolved.devices.map(CommandTargetCheck.Device.init)
                 ConsoleOut.out("ℹ️ --dry-run touches no device; --profile decides that scenarios declaring no"
                       + " platform run their \(dryRunPlatform) { } blocks, and the commands they reach are checked"
-                      + " against its devices' engine and kind")
+                      + " against its devices' kind")
             }
             if runner != nil {
                 ConsoleOut.out("ℹ️ --dry-run touches no device, so --runner is not used"

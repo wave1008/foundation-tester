@@ -1,7 +1,7 @@
 // `#x` は identifier で引けなければ **placeholder** を引く(ユーザー指示)。
 //
 // 入力欄は指す手段が経路で割れる: HTML の id は XCUITest が読む a11y に出ないが placeholder は
-// 出る / Android は WebView の版で id と placeholder が入れ替わる。同じ欄が**エンジンや OS 版で
+// 出る / Android は WebView の版で id と placeholder が入れ替わる。同じ欄が**ブリッジや OS 版で
 // 指せたり指せなかったり**するのをセレクタ側で吸収する。
 //
 // **identifier が当たったらそちらだけ**を使うのが不変条件 —— 混ぜると `#x[2]` の序数と

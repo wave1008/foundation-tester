@@ -1,8 +1,8 @@
-// hybrid で「in-app が原理的に実行できない操作」だけを XCUITest 側へ回すデコレータ。
+// inapp モードで「in-app ブリッジが原理的に実行できない操作」だけを XCUITest ブリッジへ回すデコレータ。
 //
 // シナリオ実行では同じ判断を StepExecutor が持っている(driver → 501 なら typeDriver)。
 // **StepExecutor を通らない呼び出し口**(MCP の ft_*)にも同じ振る舞いを与えるのがこのクラスで、
-// これが無いと in-app エンジンでは home / drag / 座標 press が素の 501 で返る
+// これが無いと in-app ブリッジでは home / drag / 座標 press が素の 501 で返る
 // (live/MCP を xcuitest 固定にしていた理由そのもの)。
 //
 // **ref を使う操作は回さない**のが不変条件: ref はブリッジごとに別名前空間で、そのまま渡すと
@@ -60,19 +60,19 @@ public final class HybridFallbackDriver: AppDriver {
         self.foreignApp = foreignApp
     }
 
-    /// 入力系(pressEnter・type(ref: nil))が fallback へ回る条件。**isEngineIncapable も含む** ——
+    /// 入力系(pressEnter・type(ref: nil))が fallback へ回る条件。**isBridgeIncapable も含む** ——
     /// この3操作は元々 withFallback 経由で 501/ルート不明404 を拾っていたので、409 を足すときに
     /// そちらを落とすと後退になる(DSL 側の同じ判定が 409 だけを見るのは、あちらが 501 を
     /// hideKeyboard と同じ経路で別に扱うため)
     private static let textInputFallbackWorthy: @Sendable (Error) -> Bool = {
-        DriverError.isEngineIncapable($0) || DriverError.isTextInputFallback($0)
+        DriverError.isBridgeIncapable($0) || DriverError.isTextInputFallback($0)
     }
 
     /// primary を試し、`isFallbackWorthy` が true を返した失敗のときだけ fallback へ回す。
-    /// **既定は「このエンジンでは不可(501 / ルート不明 404)」だけ**で、409(一時的競合)は含めない ——
+    /// **既定は「このブリッジでは不可(501 / ルート不明 404)」だけ**で、409(一時的競合)は含めない ——
     /// 入力系(pressEnter・type/clearInput の ref なし)だけが判定を明示して 409 も回す
     private func withFallback<T>(
-        isFallbackWorthy: (Error) -> Bool = DriverError.isEngineIncapable,
+        isFallbackWorthy: (Error) -> Bool = DriverError.isBridgeIncapable,
         _ operation: (AppDriver) async throws -> T
     ) async throws -> T {
         try await withFallbackTracking(isFallbackWorthy: isFallbackWorthy, operation).value
@@ -81,7 +81,7 @@ public final class HybridFallbackDriver: AppDriver {
     /// withFallback と同じ振り分けで、**実際に操作を受けたドライバ**も返す(swipe の端申告など
     /// 「直前の操作を受けた側」に紐づく読み出しのため)
     private func withFallbackTracking<T>(
-        isFallbackWorthy: (Error) -> Bool = DriverError.isEngineIncapable,
+        isFallbackWorthy: (Error) -> Bool = DriverError.isBridgeIncapable,
         _ operation: (AppDriver) async throws -> T
     ) async throws -> (value: T, performer: AppDriver) {
         // 背面化中・別アプリを見ている間は primary を撃たない
@@ -144,7 +144,7 @@ public final class HybridFallbackDriver: AppDriver {
 
     /// **回した先すべてに戻させる**。各ドライバは自分が rotate したときだけ戻す(BridgeClient の
     /// originalOrientation)ので、withFallback で1本に絞ると fallback/foreignApp が回した回転が
-    /// 残る(primary は「回していない」と答えて no-op)。501(そのエンジンでは不可)は無視し、
+    /// 残る(primary は「回していない」と答えて no-op)。501(そのブリッジでは不可)は無視し、
     /// それ以外の失敗は全員に撃ってから最初の1つを投げる。
     /// primary は delegating 中は撃たない(背面化した in-app は応答せずタイムアウト分固まる)
     public func restoreOrientationIfNeeded() async throws {
@@ -156,7 +156,7 @@ public final class HybridFallbackDriver: AppDriver {
             do {
                 try await driver.restoreOrientationIfNeeded()
             } catch {
-                if DriverError.isEngineIncapable(error) { continue }
+                if DriverError.isBridgeIncapable(error) { continue }
                 if firstError == nil { firstError = error }
             }
         }
@@ -198,7 +198,7 @@ public final class HybridFallbackDriver: AppDriver {
         appBackgrounded = true
     }
     /// **409 では回さない**(DSL 側 StepExecutor+Actions のコメント参照。hideKeyboard は
-    /// isEngineIncapable(501/ルート不明404)だけを見る = このエンジンでは原理的に無理なとき限定)
+    /// isBridgeIncapable(501/ルート不明404)だけを見る = このブリッジでは原理的に無理なとき限定)
     public func hideKeyboard() async throws {
         try await withFallback { try await $0.hideKeyboard() }
     }
@@ -216,7 +216,7 @@ public final class HybridFallbackDriver: AppDriver {
         try await withFallback(isFallbackWorthy: Self.textInputFallbackWorthy) { try await $0.type(ref: nil, text: text) }
     }
 
-    /// ref なしは DriverError.isClearInputFallback(409 + 422 + isEngineIncapable)で回す ——
+    /// ref なしは DriverError.isClearInputFallback(409 + 422 + isBridgeIncapable)で回す ——
     /// 422 は XCUITest ランナーが同じ事情を表すときに使う status(あちらは 409 を使えない)。
     /// ref ありは primary 限定(type(ref:) と同じ理由)
     public func clearInput(ref: Int?) async throws {
@@ -238,7 +238,7 @@ public final class HybridFallbackDriver: AppDriver {
             try await primary.press(ref: ref, duration: duration)
             fallbackNote = nil
         } catch {
-            guard DriverError.isEngineIncapable(error) else { throw error }
+            guard DriverError.isBridgeIncapable(error) else { throw error }
             let snapshot = try await primary.snapshot()
             guard let element = snapshot.elements.first(where: { $0.ref == ref }) else {
                 throw error
@@ -249,7 +249,7 @@ public final class HybridFallbackDriver: AppDriver {
         }
     }
 
-    // MARK: - primary 限定(ref の名前空間・注入・エンジン identity を跨がせない)
+    // MARK: - primary 限定(ref の名前空間・注入・ブリッジの identity を跨がせない)
 
     public func tap(ref: Int) async throws { try await active.tap(ref: ref) }
     public func snapshot() async throws -> SnapshotResponse { try await snapshot(bypassingCache: false) }

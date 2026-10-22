@@ -58,10 +58,14 @@ public enum ResponseMeasurementPolicy {
         }
         // iOS 実機はホストから Reduce Motion を変えられないので、端末自身のアニメーション設定のまま測る
         // (Android は run の開始時に倍率を合わせる = ProfileWorkerFactory.syncAnimationSettings)。
-        // 実機のエンジンは xcuitest だけ(kind=physical に inapp を断る検査が RunProfile の解決にある)
         guard device.platform == "android" || device.platform == "ios" else {
             throw ProfileError.responseMeasurementUnsupportedPlatform(
                 run: run, device: device.name, platform: device.platform)
+        }
+        // 計測は XCUITest ランナーにしか無い(in-app ブリッジは 501)。解決は計測の run の既定を xcuitest に倒すので、
+        // ここで inapp が残るのはデバイスに mode を明示したときだけ
+        if device.platform == "ios", device.spec.mode == IOSMode.inapp {
+            throw ProfileError.responseMeasurementConflict(run: run, key: "mode", required: IOSMode.xcuitest)
         }
     }
 
@@ -72,6 +76,9 @@ public enum ResponseMeasurementPolicy {
         }
         if doc.enableAnimations == false {
             throw ProfileError.responseMeasurementConflict(run: run, key: "enableAnimations", required: "true")
+        }
+        if doc.iosMode == IOSMode.inapp {
+            throw ProfileError.responseMeasurementConflict(run: run, key: "iosMode", required: IOSMode.xcuitest)
         }
         let mustNotBeTrue: [(String, Bool?)] = [
             ("fmTextVisibilityCheck", doc.fmTextVisibilityCheck),

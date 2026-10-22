@@ -100,7 +100,7 @@ extension MCPServer {
     /// iOS の Simulator の udid。実機は断る(折りたためない)。
     /// 候補は ft_list_apps と同じ順(明示 → セッションの記憶 → ポートの実機記録 → /status の自己申告)
     private func foldSimulatorUDID(_ foldDriver: AppDriver, args: [String: Any]) async throws -> String {
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         let candidate = (args["udid"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             ?? udids[key].flatMap { $0 }
             ?? connectedPorts[key].flatMap { port in

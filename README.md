@@ -379,8 +379,8 @@ class ログインテスト {
 android.webkit.WebView)の中身も同じセレクタ・同じコマンドで操作できるが、規約が3点だけ違う:
 
 - **`#id`(HTML の `id`)が使えるかは読み取り経路で決まる**。DOM を読める経路
-  (iOS の既定エンジン / Android のアプリ内 WebView・ブラウザ)と、a11y が id を出す構成
-  (Android WebView 150 以降)では使える。**iOS の `engine: xcuitest` では出ない**
+  (iOS の inapp モード / Android のアプリ内 WebView・ブラウザ)と、a11y が id を出す構成
+  (Android WebView 150 以降)では使える。**iOS の xcuitest モードでは出ない**
   (WebKit が HTML id を a11y へ渡さない)
 - **リンクは `.link` と `.staticText` の2要素で重複して出る**(両 OS 共通)。同じラベルが
   2つ並ぶため、ラベル単独では曖昧になる → `.link&&ラベル` と型で絞る
@@ -391,7 +391,7 @@ android.webkit.WebView)の中身も同じセレクタ・同じコマンドで操
 
 コンテナは `.webView` 型で出る(`.webView >> …` のスコープ起点にできる)。中身が
 a11y/DOM に現れるまで初回は数秒かかることがあるため、**画面遷移直後の検証は `waitSeconds:` を
-長めに**取る。iOS の既定エンジン(hybrid)では中身の読み取り・委譲を自動で行うので
+長めに**取る。iOS の既定の inapp モードでは中身の読み取り・委譲を自動で行うので
 利用者側の書き分けは不要。
 
 **型付きセレクタ(併設)**: 同じ意味を型で書ける。綴り誤りは**コンパイルエラー**になり、補完も効く。
@@ -428,8 +428,8 @@ exist(.type(.button).text("保存", .contains))    // .button&&textContains=保�
   (方向はコンテンツ基準。`swipe(.up)` だけは指の動き)。**テキスト検証は自動スクロールしない**
 - **マップ・キャンバス系**(地図・画像ビューア・図面)は `swipeBy(dxRatio:dyRatio:)` でパン
   (**両軸を非 0 にすると斜め**)・`pinchOut` / `pinchIn` でズーム・`doubleTap` でズームイン。
-  **iOS は Compose のダブルタップだけエンジンで成否が分かれる**(既定の hybrid なら全て動き、
-  `xcuitest` エンジンでは Compose のダブルタップだけが成立しない。`xcuitest` 単独と実機に残る穴は docs/commands.md の表)
+  **iOS は Compose のダブルタップだけモードで成否が分かれる**(既定の inapp モードなら全て動き、
+  xcuitest モードでは Compose のダブルタップだけが成立しない。xcuitest モードと実機に残る穴は docs/commands.md の表)
 - **出るか不定のアプリ内メッセージ**は `irregularHandler` を beforeEach で1回宣言すると自動で閉じる
   (アプリ内の要素だけが対象。**OS のダイアログには効かない** —— 権限ダイアログは既定では自動で
   押さないので、`iosAlertHandler` か実行プロファイルで答えを決める。docs/commands.md)。**1ステップで最大10回**まで閉じ、
@@ -489,7 +489,7 @@ fleetest 本体を呼び出すため、挙動は CLI・MCP と共通のモジュ
 画面全体のピンチ。ダブルタップを「素早く2回クリック」にしていないのは、パネルの1クリックを
 既にタップとして送っているため —— 2回目を待つ設計にすると通常のタップが毎回遅くなる。
 **iOS の Compose のダブルタップは XCUITest 経路では届かない**
-(docs/commands.md の表。ライブ操作は実行プロファイルのエンジンに従う)。
+(docs/commands.md の表。ライブ操作は実行プロファイルのモードに従う)。
 
 **デバイス画面はヘッドレス映像ストリーミングで表示する**: デバイスモニター・ライブ操作の
 画面は、変化駆動でフレーム(JPEG)を配信する常駐ヘルパー(iOS: `fleetest-simstream` /
@@ -531,10 +531,10 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 | `ft_clear_input` | 入力欄を空にする(`ft_type` は追記なので、置き換えるならまず消す)。**パスワード欄は追記できない**(読みが伏せ字なので追記すると伏せ字が本文に入る)ため、Android は 422 で断る = 先にここを通す |
 | `ft_clear_app_data` | アプリのデータと権限を消す(iOS 実機は uninstall + install に振り替える。入れ直すパッケージは直前の `ft_install` のパスか `packagePath:`)。**シナリオは `clearAppData()` から始まる**ので、探索も同じ初期状態から行う。アプリは止まるので後で `ft_launch` |
 | `ft_dsl_commands` | **DSL コマンドの索引**(名前と署名)。シナリオを書く前に引いて、存在しないコマンドを書かないようにする。デバイスに触らない |
-| `ft_double_tap` / `ft_pinch` / `ft_drag` | マップ・キャンバス系の操作(ダブルタップ / ズーム / **斜めを含む任意方向のドラッグ**)。**`ft_drag` は `fromRef`(要素の中心から)と `dx`/`dy`(移動量)でも書ける** —— 半開きのボトムシートを広げるのに、グラバーの frame を読んで座標を組む必要がない。**`ft_pinch` は `ref` でも `x`/`y` でも対象を指せる** —— 地図は要素として木に無いので、シートが半分出ている画面で対象を省くと指が画面全体に開いて**シートのほうが掴まれる**(実測)。座標は**全エンジンが honour する**(XCUITest は非公開 API で座標ピンチを再生する。この API を
+| `ft_double_tap` / `ft_pinch` / `ft_drag` | マップ・キャンバス系の操作(ダブルタップ / ズーム / **斜めを含む任意方向のドラッグ**)。**`ft_drag` は `fromRef`(要素の中心から)と `dx`/`dy`(移動量)でも書ける** —— 半開きのボトムシートを広げるのに、グラバーの frame を読んで座標を組む必要がない。**`ft_pinch` は `ref` でも `x`/`y` でも対象を指せる** —— 地図は要素として木に無いので、シートが半分出ている画面で対象を省くと指が画面全体に開いて**シートのほうが掴まれる**(実測)。座標は**全ブリッジが honour する**(XCUITest は非公開 API で座標ピンチを再生する。この API を
 持たない Xcode でだけ要素の枠のピンチへ**退化したことを戻り値で言う**)。Compose の iOS の
-ダブルタップは MCP からは成立しない(XCUITest の合成タッチを Compose が数えない)。シナリオで in-app / hybrid のプロファイルを使えば成立する(docs/commands.md の表) |
-| `ft_gesture` | 指ごとの時刻つき経路を**1本の連続タッチ**として再生する(区切りで指を離さない)—— `ft_tap`/`ft_drag`/`ft_pinch` を繰り返し呼ぶと呼ぶたびに指が離れるが、これは離れない。パターンロック・長押しからのドラッグ・3本指以上のジェスチャ用。**ref 形は無く座標のみ**(iOS=pt / Android=px)。iOS は既定の hybrid でも常に XCUITest 経由(in-app に経路が無い) |
+ダブルタップは MCP からは成立しない(XCUITest の合成タッチを Compose が数えない)。シナリオを inapp モードで回せば成立する(docs/commands.md の表) |
+| `ft_gesture` | 指ごとの時刻つき経路を**1本の連続タッチ**として再生する(区切りで指を離さない)—— `ft_tap`/`ft_drag`/`ft_pinch` を繰り返し呼ぶと呼ぶたびに指が離れるが、これは離れない。パターンロック・長押しからのドラッグ・3本指以上のジェスチャ用。**ref 形は無く座標のみ**(iOS=pt / Android=px)。iOS は既定の inapp モードでも常に XCUITest ブリッジ経由(in-app ブリッジに経路が無い) |
 | `ft_screenshot` | スクリーンショット(画像を返す — エージェントの視覚検証用) |
 | `ft_capture_element` | 要素を画像分類器の見本として保存する(プロジェクト内 `vision/classifiers/<classifier>/<label>/`)。切り出しは `checkIsON`/`checkIsOFF`(CheckStateClassifier)や `imageIs`(DefaultClassifier)が判定時に使うのと同じ a11y の枠。保存後は必要なら学習し直し、見分けられない見本があれば報告する |
 | `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(`project`・`profile`・`heal` オプション付き。自動ビルド込みで、コンパイルエラーはそのまま返る=エージェントが直せる。既定では FM と Vision を使わない(screenLooksLike は skip・テキストの可視性検証なし・checkIsON は木だけ)。使うときは `fmAndVision: true`) |
@@ -550,11 +550,11 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 そのまま使える。**シミュレータ/エミュレータ専用の操作は自動で振り分ける**:
 `ft_install` は iOS 実機なら `devicectl`(シミュレータは `simctl`)、`ft_clear_app_data` は
 iOS 実機では uninstall + install に振り替える(devicectl にデータだけ消す手段が無い。Android は実機でも `pm clear` が効く)。
-in-app エンジンは注入できないので実機では選ばれない。Android のエミュレータ gRPC 制御も
+Android のエミュレータ gRPC 制御も
 実機では自動的に adb 経路へ落ちる。**`profile` を渡すと端末の UDID まで分かる**ので、
 渡しておくのが確実(渡さないときはブリッジが名乗るデバイス名から引き当てる)。
 
-**iOS のエンジン**: MCP の iOS は**常に XCUITest**(`profile` を渡しても in-app / hybrid にはならない)。
+**iOS のモード**: MCP の iOS は**常に XCUITest ブリッジ**(`profile` を渡しても inapp モードにはならない)。
 
 全ツールに `platform: ios|android` を指定可能。**`profile` を渡すと実行プロファイルと同じデバイスで動く**(iOS は常に XCUITest)。探索(explore 相当)はツール化していない —
 スナップショットと操作プリミティブがあれば、クライアント側のエージェント自身が探索できるため。

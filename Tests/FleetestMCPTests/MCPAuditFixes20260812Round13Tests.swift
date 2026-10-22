@@ -1,6 +1,6 @@
 // 2026-08-12 の実アプリ監査(赤羽→立川)由来の修正3件:
 //   ① ft_navigate に snapshotAfter/waitFor 系を足す(back/home/appSwitcher だけ木を返せなかった)
-//   ② ft_status / ft_list_devices にエンジン(inapp/xcuitest)を出す
+//   ② ft_status / ft_list_devices にブリッジ(inapp/xcuitest)を出す
 //   ③ connectionLostMessage の稼働ブリッジ列挙を「同じ端末を先に・残りは件数」へ畳む
 
 import XCTest
@@ -62,30 +62,30 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
         XCTAssertEqual(driver.calls, ["home"])
     }
 
-    // MARK: - ② ft_list_devices のエンジン表記
+    // MARK: - ② ft_list_devices のブリッジ表記
 
     /// 同じ端末に in-app / XCUITest が同時に立つとき、**両方**出ること
-    func testLineListsEveryEngineOnTheSameDevice() {
+    func testLineListsEveryBridgeOnTheSameDevice() {
         let row = DeviceInventory.Row(
             name: "iPhone 17 Pro", platform: "ios", identifier: "SIM-1",
             running: true, physical: false, registered: true,
-            bridges: [DeviceInventory.Row.Bridge(port: 8143, engine: "inapp"),
-                     DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest")])
+            bridges: [DeviceInventory.Row.Bridge(port: 8143, kind: "inapp"),
+                     DeviceInventory.Row.Bridge(port: 8124, kind: "xcuitest")])
         let text = DeviceInventory.line(row)
         XCTAssertTrue(text.contains("port 8143 (inapp)"), text)
         XCTAssertTrue(text.contains("port 8124 (xcuitest)"), text)
     }
 
-    /// エンジンが判別できないとき(engine: nil)は**捏造しない** —— 括弧無しでポートだけ
-    func testLineOmitsEngineWhenUnknown() {
+    /// ブリッジが判別できないとき(bridge: nil)は**捏造しない** —— 括弧無しでポートだけ
+    func testLineOmitsBridgeWhenUnknown() {
         let row = DeviceInventory.Row(
             name: "iPhone 17 Pro", platform: "ios", identifier: "SIM-1",
             running: true, physical: false, registered: true,
-            bridges: [DeviceInventory.Row.Bridge(port: 8143, engine: nil)])
+            bridges: [DeviceInventory.Row.Bridge(port: 8143, kind: nil)])
         let text = DeviceInventory.line(row)
         XCTAssertTrue(text.contains("bridge port 8143"), text)
         // 行全体は外側の括弧で包まれる("- name (ios, ..., bridge port N)") ので、
-        // 見るのはポート直後だけ — 捏造した engine 注記が無いこと
+        // 見るのはポート直後だけ — 捏造した bridge 注記が無いこと
         XCTAssertFalse(text.contains("8143 ("), text)
     }
 
@@ -98,12 +98,12 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
             spec: DeviceSpec(name: "iPhone 17 Pro"),
             simDevices: [device], physicalDevices: [],
             liveBridges: DeviceInventory.LiveBridges(
-                byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8143, engine: "inapp"),
-                                           DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest")]],
+                byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8143, kind: "inapp"),
+                                           DeviceInventory.Row.Bridge(port: 8124, kind: "xcuitest")]],
                 byUDID: [:]))
         XCTAssertEqual(row.bridges,
-                       [DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest"),
-                        DeviceInventory.Row.Bridge(port: 8143, engine: "inapp")])
+                       [DeviceInventory.Row.Bridge(port: 8124, kind: "xcuitest"),
+                        DeviceInventory.Row.Bridge(port: 8143, kind: "inapp")])
     }
 
     /// 端末が動いていなければブリッジ情報は乗せない(booted=false の機に稼働中カタログの
@@ -113,7 +113,7 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
             spec: DeviceSpec(name: "iPad Pro"),
             simDevices: [], physicalDevices: [],
             liveBridges: DeviceInventory.LiveBridges(
-                byName: ["iPad Pro": [DeviceInventory.Row.Bridge(port: 8143, engine: "inapp")]],
+                byName: ["iPad Pro": [DeviceInventory.Row.Bridge(port: 8143, kind: "inapp")]],
                 byUDID: [:]))
         XCTAssertFalse(row.running)
         XCTAssertTrue(row.bridges.isEmpty)
@@ -121,8 +121,8 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
 
     // MARK: - ③ connectionLostMessage の畳み方
 
-    private func found(_ port: UInt16, device: String, engine: String = "xcuitest") -> BridgeDiscovery.Found {
-        BridgeDiscovery.Found(port: port, device: device, engine: engine)
+    private func found(_ port: UInt16, device: String, bridge: String = "xcuitest") -> BridgeDiscovery.Found {
+        BridgeDiscovery.Found(port: port, device: device, bridge: bridge)
     }
 
     /// **同じ端末を先に**、残りは件数へ畳む
@@ -131,8 +131,8 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
             found(8130, device: "iPhone 17 Pro-01"),
             found(8131, device: "iPhone 17 Pro-02"),
             found(8132, device: "iPhone 17 Pro-03"),
-            found(8143, device: "iPhone 17 Pro-04", engine: "inapp"),
-            found(8144, device: "iPhone 17 Pro-04", engine: "xcuitest"),
+            found(8143, device: "iPhone 17 Pro-04", bridge: "inapp"),
+            found(8144, device: "iPhone 17 Pro-04", bridge: "xcuitest"),
         ]
         let summary = MCPServer.runningBridgesSummary(running, sameDevice: "iPhone 17 Pro-04")
         XCTAssertTrue(summary.hasPrefix("port 8143"), summary)
@@ -164,7 +164,7 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
     func testConnectionLostMessageStillNamesASmallRunningSetInFull() {
         let message = MCPServer.connectionLostMessage(
             connection: "port 8124",
-            running: [found(8130, device: "iPhone 17 Pro")], engine: "xcuitest")
+            running: [found(8130, device: "iPhone 17 Pro")], bridge: "xcuitest")
         XCTAssertTrue(message.contains("port 8124"), message)
         XCTAssertTrue(message.contains("8130"), message)
         XCTAssertFalse(message.contains("more"), message)

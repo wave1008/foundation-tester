@@ -1,6 +1,6 @@
-// engineKey に紐づく状態の後始末。
+// sessionKey に紐づく状態の後始末。
 //
-// engineKey は `direct:ios:<port>:<serial>` で、iOS のポートは同じセッション中に動く
+// sessionKey は `direct:ios:<port>:<serial>` で、iOS のポートは同じセッション中に動く
 // (監視が別ポートで起動し直す)。つまり死んだポートが後で別のシミュレータに再利用され得る。
 // forgetConnection が drivers/connections/connectedPorts しか消していなかったので、
 // lastSnapshots・refGenerations・launchedBundleIDs は**前の機のもの**が生き残り、
@@ -30,7 +30,7 @@ final class DeviceStateInvalidationTests: XCTestCase {
         server.drivers[key] = FakeDriver()
         server.connections[key] = "port 8128"
         server.connectedPorts[key] = 8128
-        server.engines[key] = "inapp"
+        server.bridges[key] = "inapp"
         server.udids[key] = "AAA"
         server.versionSkew[key] = "mismatch"
         server.lastSnapshots[key] = snapshot
@@ -64,7 +64,7 @@ final class DeviceStateInvalidationTests: XCTestCase {
         XCTAssertNil(server.launchTimestamps[key],
                      "前の機の launch 時刻が残ると クラッシュ帰属の窓が前の機の時刻で計算される")
         XCTAssertNil(server.udids[key] ?? nil)
-        XCTAssertNil(server.engines[key])
+        XCTAssertNil(server.bridges[key])
         XCTAssertNil(server.versionSkew[key])
         XCTAssertNil(server.uiFrameworkHints[key])
         XCTAssertNil(server.lastScreenshots[key])
@@ -125,15 +125,15 @@ final class DeviceStateInvalidationTests: XCTestCase {
 
     // MARK: - 同型の再発を落とす(足し忘れの検出)
 
-    /// **engineKey で引く記憶を MCPServer に並列で持たせると落ちる**。記憶は全部 `DeviceSession` の欄で、
+    /// **sessionKey で引く記憶を MCPServer に並列で持たせると落ちる**。記憶は全部 `DeviceSession` の欄で、
     /// `forgetDeviceState` はセッションを丸ごと捨てる —— 網羅はこの構造だけが担保している。
     /// 並列の `[String: …]` / `Set<String>` を戻すと、消し忘れが再び人の注意力頼みになる
     /// (束ねる前は `Set<String>` の2つがこの走査の外にあり、実際に消し忘れていた)。
     /// セッションを跨いで持つと決めた記憶だけを理由付きで通す
-    func testNoEngineKeyedMemoLivesOutsideTheSession() throws {
+    func testNoBridgeKeyedMemoLivesOutsideTheSession() throws {
         let sessionWide: [String: String] = [
             "explainedNotes": "注記の鍵。説明の中身は接続先に依らないので機ごとに割らない",
-            "seenExplicitAndroidSerials": "宛先の延べ集合(値が serial)。キーは engineKey ではない",
+            "seenExplicitAndroidSerials": "宛先の延べ集合(値が serial)。キーは sessionKey ではない",
         ]
         let declarations = try Self.serverDeclarations()
         var parallel: [String] = []
@@ -145,7 +145,7 @@ final class DeviceStateInvalidationTests: XCTestCase {
             parallel.append(name)
         }
         XCTAssertEqual(parallel, [],
-                       "engineKey で引く記憶が DeviceSession の外にある: \(parallel.joined(separator: ", "))。"
+                       "sessionKey で引く記憶が DeviceSession の外にある: \(parallel.joined(separator: ", "))。"
                        + "DeviceSession へ欄を足し、MCPServer には SessionMap / SessionFlags の窓だけを置く")
     }
 
@@ -301,7 +301,7 @@ final class DeviceStateInvalidationTests: XCTestCase {
     func testProfileCreationPathAlsoPurgesOnADeviceChange() throws {
         let source = try String(contentsOf: Self.driverSourceURL(), encoding: .utf8)
         guard let branch = source.range(of: "if let profileName = args[\"profile\"] as? String {"),
-              let end = source.range(of: "\n        // **engineKey と同じ解決を使う**",
+              let end = source.range(of: "\n        // **sessionKey と同じ解決を使う**",
                                      range: branch.upperBound..<source.endIndex) else {
             return XCTFail("profile 分岐が見つからない — 構造を変えたらこのテストも直す")
         }

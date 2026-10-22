@@ -61,7 +61,7 @@ struct Bridge: AsyncParsableCommand {
             guard !isUDID else { return device }
             do {
                 return try SimulatorCatalog.resolve(
-                    spec: DeviceSpec(name: device, engine: "xcuitest"), in: try devices()).udid
+                    spec: DeviceSpec(name: device, mode: "xcuitest"), in: try devices()).udid
             } catch {
                 throw ValidationError((error as? LocalizedError)?.errorDescription ?? "\(error)")
             }
@@ -154,7 +154,7 @@ struct Bridge: AsyncParsableCommand {
                 kind: physical ? .physical : nil,
                 udid: resolvedUDID,
                 port: driverOptions.resolvedPort,
-                engine: "xcuitest")
+                mode: "xcuitest")
             let provisioned = try await BridgeProvisioner(repoRoot: root)
                 .provision(devices: [(spec.name, spec)], log: { ConsoleOut.out($0) })
             // provision() は失敗時に throw する(空配列で正常復帰はしない)ため、first は常に存在する
@@ -372,7 +372,7 @@ enum BridgeStatusReport {
         // **要求されたポートに印を付ける**(--port を渡した人が自分の1本を見失わないため)
         let rows: [(port: UInt16, text: String)] = found.map { entry in
             let udid = entry.udid.map { " udid \($0)" } ?? ""
-            return (entry.port, "port \(entry.port): \(entry.device) (\(entry.engine))\(udid)")
+            return (entry.port, "port \(entry.port): \(entry.device) (\(entry.bridge))\(udid)")
         } + silent.map { entry in
             let udid = entry.udid.map { " udid \($0)" } ?? ""
             return (entry.port, "port \(entry.port): listening, but did not answer /status within 2s"

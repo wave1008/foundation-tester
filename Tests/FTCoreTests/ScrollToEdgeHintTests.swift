@@ -8,7 +8,7 @@
 //
 // `SnapshotResponse.offscreen` はその方向にまだ内容があるかの**肯定的な証拠**なので、
 // 供給がある画面では不変を2回重ねる必要がない。供給が無い画面(ネイティブ・旧ブリッジ・
-// hybrid の WebViewDelegatingDriver)は従来どおり = 挙動を変えない、が要件。
+// inapp モードの WebViewDelegatingDriver)は従来どおり = 挙動を変えない、が要件。
 
 import XCTest
 @testable import FTCore

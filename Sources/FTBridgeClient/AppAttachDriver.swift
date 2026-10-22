@@ -1,4 +1,4 @@
-// hybrid で Compose 等 UIKit 非依存アプリの type を XCUITest 実行するための attach 用ドライバ。
+// inapp モードで Compose 等 UIKit 非依存アプリの type を XCUITest 実行するための attach 用ドライバ。
 // springboard 参照の SystemUIDriver とは別用途(こちらはテスト対象アプリ自身に attach する)。
 //
 // 順序契約は SystemUIDriver と同じ: activate は refFrames をクリアするため snapshot() でのみ
@@ -188,7 +188,7 @@ public final class AppAttachDriver: AppDriver {
         }
     }
     /// drag も ref を使わないので swipe と同じ 409 回復を入れる(座標は対象アプリのセッションが要る)。
-    /// in-app は drag を実装しないため、hybrid のスクロール探索の空打ちはここへ回ってくる
+    /// in-app は drag を実装しないため、inapp モードのスクロール探索の空打ちはここへ回ってくる
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {
         try await ensureAttached()
@@ -204,9 +204,9 @@ public final class AppAttachDriver: AppDriver {
     }
 
     /// 座標ロングプレスも ref を使わないので drag と同じ 409 回復を入れる。
-    /// **既定実装(501)に落としてはいけない**: hybrid のフォールバックで in-app が長押しを
+    /// **既定実装(501)に落としてはいけない**: inapp モードのフォールバックで in-app が長押しを
     /// 持たない(501)ぶんをここが受けるため、無いと「どちらの経路でも 501」になる
-    /// (MCP のエンジン追従で実際に踏んだ)
+    /// (MCP のブリッジ追従で実際に踏んだ)
     public func press(x: Double, y: Double, duration: Double) async throws {
         try await ensureAttached()
         do {
@@ -219,7 +219,7 @@ public final class AppAttachDriver: AppDriver {
     }
 
     /// hold も ref を使わない(座標)ので press と同じ 409 回復を入れる。
-    /// **既定実装(501)に落としてはいけない**: in-app に /hold は無いので hybrid のフォールバックは
+    /// **既定実装(501)に落としてはいけない**: in-app に /hold は無いので inapp モードのフォールバックは
     /// 必ずここを経由する
     public func hold(x: Double, y: Double, duration: Double) async throws {
         try await ensureAttached()
@@ -233,7 +233,7 @@ public final class AppAttachDriver: AppDriver {
     }
 
     /// doubleTap / pinch も ref を使わない(座標・identifier)ので drag と同じ 409 回復を入れる。
-    /// in-app が 501 を返す組み合わせ(UIKit/SwiftUI)の hybrid ピンチはここへ回ってくる
+    /// in-app が 501 を返す組み合わせ(UIKit/SwiftUI)の inapp モードのピンチはここへ回ってくる
     public func doubleTap(x: Double, y: Double) async throws {
         try await ensureAttached()
         do {
@@ -311,7 +311,7 @@ public final class AppAttachDriver: AppDriver {
         try await client.openURL(url, bundleID: bundleID)
     }
     public func addMedia(path: String) async throws { try await client.addMedia(path: path) }
-    /// **素通しが必須**: 既定実装(no-op)に落ちると、hybrid で WebViewDelegatingDriver がこの
+    /// **素通しが必須**: 既定実装(no-op)に落ちると、inapp モードで WebViewDelegatingDriver がこの
     /// インスタンス(XCUITest 接続=springboard を見られる側)へ回した同意ステップが握りつぶされる
     public func acknowledgeOpenURLConsentIfPresent(bundleID: String) async {
         await client.acknowledgeOpenURLConsentIfPresent(bundleID: bundleID)

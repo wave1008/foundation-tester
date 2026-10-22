@@ -1,6 +1,6 @@
 // live / MCP(ft_* ツール)専用のブリッジ振り替え。
 //
-// live/MCP は **in-app エンジンを使わない**(ユーザー決定)。in-app ブリッジは
+// live/MCP は **in-app ブリッジ単独を使わない**(ユーザー決定)。in-app ブリッジは
 // home / appSwitcher / drag / 座標 press を原理的に実装できず、シナリオ実行と違って
 // StepExecutor のフォールバック機構を通らないため、これらが素の 501 で落ちる。
 // そこで接続先が in-app だと分かったら、同じデバイスの XCUITest ブリッジへ振り替える
@@ -19,7 +19,7 @@ public enum XCUIBridgeResolver {
         public let note: String?
         /// 指定ポートが in-app ブリッジだったときの、その in-app 自身。
         /// **自アプリだけは in-app を主に使いたい呼び手**(ライブ操作: WKWebView の DOM は
-        /// in-app しか読めない)が Hybrid 構成を組むために要る。振り替え先(endpoint)は
+        /// in-app しか読めない)が ハイブリッド構成を組むために要る。振り替え先(endpoint)は
         /// 別アプリ・SpringBoard・home/appSwitcher を受け持つ XCUITest のまま。
         public let inApp: InApp?
 
@@ -46,7 +46,7 @@ public enum XCUIBridgeResolver {
         // status(timeout:) を明示する(引数なしは sessionTimeout=45s に上書きされ、
         // 無応答の孤児ブリッジ1本で待たされる。BridgeProvisioner.scanRunningBridges と同じ理由)
         guard let status = try? await client(preferredEndpoint, timeout: 3).status(timeout: 3),
-              status.engine == "inapp" else {
+              status.bridge == "inapp" else {
             return Resolution(endpoint: preferredEndpoint, note: nil, inApp: nil)
         }
         return await resolve(preferred: preferred, inAppDevice: status.device,
@@ -109,7 +109,7 @@ public enum XCUIBridgeResolver {
                     let endpoint = endpoint(port: port, repoRoot: repoRoot)
                     guard let status = try? await client(endpoint, timeout: 2).status(timeout: 2),
                           status.ready else { return nil }
-                    let usable = status.device == device && (status.engine ?? "xcuitest") != "inapp"
+                    let usable = status.device == device && (status.bridge ?? "xcuitest") != "inapp"
                     return (port, usable)
                 }
             }

@@ -5,7 +5,7 @@
 // このファイルは **InAppBridge/build.sh が dylib へ直接コンパイルする**(BridgeDTO.swift と同じ扱い)。
 // UIKit / WebKit を import してはいけない(ホスト側 FTCore と共有するため)。
 //
-// なぜ DOM を読むのか: in-app エンジンからは WKWebView の a11y ツリーが見えず(別プロセス提供)、
+// なぜ DOM を読むのか: in-app ブリッジからは WKWebView の a11y ツリーが見えず(別プロセス提供)、
 // WebView 画面ごと XCUITest へ委譲すると 1 手 378ms(in-app は 3ms)で約120倍の劣化になる。
 // DOM を1往復で読めば in-app の速度のまま中身を扱える。
 
@@ -226,8 +226,8 @@ public enum WebViewDOM {
                   node.value = mixed ? "2" : (on ? "1" : "0");
                 }
                 nodes.push(node);
-                // リンクは a11y 経路が link + staticText の2要素で出す。エンジン間で見え方を
-                // 変えないため同じ形にする(片方だけにすると `.staticText&&…` が engine 依存になる)
+                // リンクは a11y 経路が link + staticText の2要素で出す。ブリッジ間で見え方を
+                // 変えないため同じ形にする(片方だけにすると `.staticText&&…` が ブリッジ依存になる)
                 if (role === "link" && text !== "") {
                   nodes.push({ role: "staticText", label: text,
                                x: r.left, y: r.top, width: r.width, height: r.height, enabled: true });

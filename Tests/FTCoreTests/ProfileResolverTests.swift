@@ -69,6 +69,37 @@ final class ProfileResolverTests: XCTestCase {
         }
     }
 
+    /// 計測は XCUITest ランナーにしか無いので、計測の run の iOS は既定で xcuitest モード。inapp の明示は断る
+    func testMeasurementRunsIOSInXCUITestMode() throws {
+        try write("""
+        { "ios": { "appName": "サンプルアプリ", "app": "com.example.sampleapp" } }
+        """, to: project.appsDir, name: "sampleapp")
+        try write("""
+        { "app": "sampleapp", "responseMeasurement": true,
+          "devices": [ { "platform": "ios", "machine": "local", "name": "実機", "kind": "physical", "udid": "00008130-000A1B2C3D4E5678" } ] }
+        """, to: project.runsDir, name: "measure")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "measure")
+        XCTAssertEqual(resolved.iosDevices.map { $0.spec.mode }, ["xcuitest"])
+        XCTAssertNoThrow(try ResponseMeasurementPolicy.validateDevices(resolved.devices, run: resolved.runName))
+
+        try write("""
+        { "app": "sampleapp", "responseMeasurement": true, "iosMode": "inapp",
+          "devices": [ { "platform": "ios", "machine": "local", "name": "実機", "kind": "physical", "udid": "00008130-000A1B2C3D4E5678" } ] }
+        """, to: project.runsDir, name: "profileInapp")
+        XCTAssertThrowsError(try ProfileResolver.resolve(project: project, runName: "profileInapp")) {
+            XCTAssertTrue($0.localizedDescription.contains("requires iosMode to be xcuitest"), $0.localizedDescription)
+        }
+
+        try write("""
+        { "app": "sampleapp", "responseMeasurement": true,
+          "devices": [ { "platform": "ios", "machine": "local", "name": "実機", "kind": "physical", "udid": "00008130-000A1B2C3D4E5678", "mode": "inapp" } ] }
+        """, to: project.runsDir, name: "deviceInapp")
+        let device = try ProfileResolver.resolve(project: project, runName: "deviceInapp")
+        XCTAssertThrowsError(try ResponseMeasurementPolicy.validateDevices(device.devices, run: device.runName)) {
+            XCTAssertTrue($0.localizedDescription.contains("requires mode to be xcuitest"), $0.localizedDescription)
+        }
+    }
+
     /// 一時フォルダの appPath は警告する(消えると次の run でアプリを入れられない)。リポジトリの中は警告しない
     func testAppPathInATemporaryFolderIsWarned() throws {
         try write("""
@@ -511,59 +542,86 @@ final class ProfileResolverTests: XCTestCase {
         }
     }
 
-    // MARK: - iosInappEngine(iOS 実効エンジンの選択)
+    // MARK: - iosMode(iOS 実効モードの選択)
 
-    func testIosInappEngineDefaultsToHybrid() throws {
-        // iosInappEngine 未指定(既定 true)→ engine 未指定の iOS デバイスは hybrid。Android は不変。
-        try writeStandardFixture()  // "all" は iosInappEngine 未指定
+    func testIosModeDefaultsToInapp() throws {
+        // iosMode 未指定(既定 inapp)→ mode 未指定の iOS デバイスは inapp。Android は不変。
+        try writeStandardFixture()  // "all" は iosMode 未指定
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "all")
-        XCTAssertEqual(resolved.iosDevices.map { $0.spec.engine }, ["hybrid", "hybrid"])
-        XCTAssertNil(resolved.androidDevices.first?.spec.engine, "Android には影響しないはず")
+        XCTAssertEqual(resolved.iosDevices.map { $0.spec.mode }, ["inapp", "inapp"])
+        XCTAssertNil(resolved.androidDevices.first?.spec.mode, "Android には影響しないはず")
     }
 
-    func testIosInappEngineFalseUsesXcuitest() throws {
+    func testIosModeXcuitestUsesXcuitest() throws {
         try writeStandardFixture()
         try write("""
         { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" }, { "platform": "ios", "machine": "local", "name": "サブ機", "osVersion": "iOS 27.0" } ],
-          "iosInappEngine": false }
+          "iosMode": "xcuitest" }
         """, to: project.runsDir, name: "xc")
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "xc")
-        XCTAssertEqual(resolved.iosDevices.map { $0.spec.engine }, ["xcuitest", "xcuitest"])
+        XCTAssertEqual(resolved.iosDevices.map { $0.spec.mode }, ["xcuitest", "xcuitest"])
     }
 
-    func testExplicitDeviceEngineOverridesFlag() throws {
-        // マシンでデバイスに engine を明示している場合はフラグより優先(上書きしない)。
+    func testExplicitDeviceModeOverridesFlag() throws {
+        // マシンでデバイスに mode を明示している場合はフラグより優先(上書きしない)。
         try write("""
         { "ios": { "app": "com.example.app" } }
         """, to: project.appsDir, name: "app4")
-        // フラグ OFF(xcuitest 既定)でも engine 明示の "注入機" は inapp のまま、
+        // iosMode が xcuitest でも mode 明示の "注入機" は inapp のまま、
         // 明示なしの "素機" はフラグどおり xcuitest。
         try write("""
-        { "app": "app4", "devices": [ { "platform": "ios", "machine": "local", "name": "注入機", "osVersion": "iOS 27.0", "engine": "inapp" }, { "platform": "ios", "machine": "local", "name": "素機", "osVersion": "iOS 27.0" } ],
-          "iosInappEngine": false }
+        { "app": "app4", "devices": [ { "platform": "ios", "machine": "local", "name": "注入機", "osVersion": "iOS 27.0", "mode": "inapp" }, { "platform": "ios", "machine": "local", "name": "素機", "osVersion": "iOS 27.0" } ],
+          "iosMode": "xcuitest" }
         """, to: project.runsDir, name: "r")
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
-        XCTAssertEqual(resolved.iosDevices.map { $0.spec.engine }, ["inapp", "xcuitest"])
-        // フラグ明示 × デバイス engine 明示 → 「適用されません」警告(GUI チェックボックスの空振り検知)
+        XCTAssertEqual(resolved.iosDevices.map { $0.spec.mode }, ["inapp", "xcuitest"])
+        // フラグ明示 × デバイス mode 明示 → 「適用されません」警告(GUI チェックボックスの空振り検知)
         XCTAssertTrue(resolved.warnings.contains { $0.contains("注入機") && $0.contains("does not apply") },
-                      "engine 明示デバイスへのフラグ空振り警告が出るはず: \(resolved.warnings)")
+                      "mode 明示デバイスへのフラグ空振り警告が出るはず: \(resolved.warnings)")
         XCTAssertFalse(resolved.warnings.contains { $0.contains("素機") },
-                       "engine 無指定デバイスには警告を出さないはず: \(resolved.warnings)")
+                       "mode 無指定デバイスには警告を出さないはず: \(resolved.warnings)")
     }
 
-    func testNoWarningWhenFlagUnspecifiedWithExplicitDeviceEngine() throws {
-        // フラグ未指定(既定)なら engine 明示デバイスがあっても警告しない(従来プロファイルを騒がせない)
+    func testNoWarningWhenFlagUnspecifiedWithExplicitDeviceMode() throws {
+        // フラグ未指定(既定)なら mode 明示デバイスがあっても警告しない(従来プロファイルを騒がせない)
         try write("""
         { "ios": { "app": "com.example.app" } }
         """, to: project.appsDir, name: "app5")
         try write("""
-        { "app": "app5", "devices": [ { "platform": "ios", "machine": "local", "name": "注入機", "osVersion": "iOS 27.0", "engine": "inapp" } ] }
+        { "app": "app5", "devices": [ { "platform": "ios", "machine": "local", "name": "注入機", "osVersion": "iOS 27.0", "mode": "inapp" } ] }
         """, to: project.runsDir, name: "r")
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
-        XCTAssertFalse(resolved.warnings.contains { $0.contains("適用されません") },
+        XCTAssertFalse(resolved.warnings.contains { $0.contains("does not apply") },
                        "フラグ未指定では警告しないはず: \(resolved.warnings)")
+    }
+
+    /// 値は inapp / xcuitest の2つだけ。それ以外(hybrid 等)は黙って既定へ倒さず断る
+    func testUnknownIosModeIsRefused() throws {
+        try write("""
+        { "ios": { "app": "com.example.app" } }
+        """, to: project.appsDir, name: "app6")
+        try write("""
+        { "app": "app6", "devices": [ { "platform": "ios", "machine": "local", "name": "機", "osVersion": "iOS 27.0" } ],
+          "iosMode": "hybrid" }
+        """, to: project.runsDir, name: "p")
+        XCTAssertThrowsError(try ProfileResolver.resolve(project: project, runName: "p")) { error in
+            guard case ProfileError.invalidIOSMode(_, let device, let value) = error else {
+                return XCTFail("invalidIOSMode のはず: \(error)")
+            }
+            XCTAssertNil(device)
+            XCTAssertEqual(value, "hybrid")
+        }
+        try write("""
+        { "app": "app6", "devices": [ { "platform": "ios", "machine": "local", "name": "機", "osVersion": "iOS 27.0", "mode": "hybrid" } ] }
+        """, to: project.runsDir, name: "d")
+        XCTAssertThrowsError(try ProfileResolver.resolve(project: project, runName: "d")) { error in
+            guard case ProfileError.invalidIOSMode(_, let device, _) = error else {
+                return XCTFail("invalidIOSMode のはず: \(error)")
+            }
+            XCTAssertEqual(device, "機")
+        }
     }
 
     // MARK: - wipeDataOnBloat / wipeDataThresholdGB
@@ -780,16 +838,16 @@ final class ProfileResolverTests: XCTestCase {
     // MARK: - 実機(kind: physical)
 
     /// 実機 1 台ずつを含む実行プロファイル一式を書く
-    private func writePhysicalFixture(iosEngine: String? = nil) throws {
+    private func writePhysicalFixture(iosMode: String? = nil) throws {
         try write("""
         { "ios":     { "app": "com.example.app" },
           "android": { "app": "com.example.app" } }
         """, to: project.appsDir, name: "app")
-        let engineField = iosEngine.map { ", \"engine\": \"\($0)\"" } ?? ""
+        let modeField = iosMode.map { ", \"mode\": \"\($0)\"" } ?? ""
         try write("""
         { "app": "app", "devices": [
               { "platform": "ios", "machine": "local", "name": "実機iPhone", "kind": "physical",
-                "udid": "00008130-000A1B2C3D4E5678"\(engineField) },
+                "udid": "00008130-000A1B2C3D4E5678"\(modeField) },
               { "platform": "android", "machine": "local", "name": "実機Pixel", "kind": "physical",
                 "serial": "14141JEC204922" } ] }
         """, to: project.runsDir, name: "r")
@@ -804,18 +862,18 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertEqual(resolved.androidDevices[0].spec.serial, "14141JEC204922")
     }
 
-    func testPhysicalIosDeviceGetsDefaultEngine() throws {
-        // 実機も通常と同じ: iosInappEngine の既定(true→hybrid)。縮退は供給が注入可否で行う(実機の in-app 対応)
+    func testPhysicalIosDeviceGetsDefaultMode() throws {
+        // 実機も通常と同じ: iosMode の既定(inapp)。縮退は供給が注入可否で行う(実機の in-app 対応)
         try writePhysicalFixture()
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
-        XCTAssertEqual(resolved.iosDevices[0].spec.engine, "hybrid")
+        XCTAssertEqual(resolved.iosDevices[0].spec.mode, "inapp")
     }
 
-    func testPhysicalIosDeviceAcceptsInappEngine() throws {
+    func testPhysicalIosDeviceAcceptsInappMode() throws {
         // 実機の inapp は拒否しない(開発署名でなければ供給が XCUITest へ縮退する)
-        try writePhysicalFixture(iosEngine: "inapp")
+        try writePhysicalFixture(iosMode: "inapp")
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
-        XCTAssertEqual(resolved.iosDevices[0].spec.engine, "inapp")
+        XCTAssertEqual(resolved.iosDevices[0].spec.mode, "inapp")
     }
 
     func testPhysicalDeviceWithoutIdentifierFails() throws {
@@ -1064,7 +1122,7 @@ final class ProfileResolverTests: XCTestCase {
     func testValidateRunReportsPhysicalErrorsOnlyForEnabledDevices() throws {
         let data = #"""
         { "app": "a", "devices": [
-          { "platform": "ios", "machine": "local", "name": "実機", "kind": "physical", "engine": "inapp" },
+          { "platform": "ios", "machine": "local", "name": "実機", "kind": "physical", "mode": "inapp" },
           { "platform": "android", "machine": "local", "name": "実機A", "kind": "physical" },
           { "platform": "android", "machine": "local", "name": "無効の実機", "kind": "physical", "enabled": false } ] }
         """#.data(using: .utf8)!

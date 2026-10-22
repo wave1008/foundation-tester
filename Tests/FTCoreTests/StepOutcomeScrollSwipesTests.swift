@@ -97,7 +97,7 @@ final class StepOutcomeScrollSwipesTests: XCTestCase {
     }
 
     /// 1本振った後に見つかるケース。**scrollSwipes は実際に撃った本数と一致する**こと
-    /// (台本は testEmptyDragFallsBackToTypeDriverWhenEngineIncapable と同型:
+    /// (台本は testEmptyDragFallsBackToTypeDriverWhenBridgeIncapable と同型:
     /// 空の2枚で静止確認 → スワイプ → 3枚目で発見)
     func testScrollSwipesCountsActualSwipesAfterSearching() async throws {
         let driver = ScriptedSwipeDriver(scripted: [[], [], [row(ref: 1, id: "target")]])

@@ -33,7 +33,7 @@ final class StepExecutorPointToPointTests: XCTestCase {
         XCTAssertEqual(primary.lastDragArgs?.durationSeconds, 1.5)
     }
 
-    func testEngineIncapableFallsBackToTheTypeDriver() async {
+    func testBridgeIncapableFallsBackToTheTypeDriver() async {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         primary.dragError = DriverError.badResponse(status: 501, body: "in-app has no drag")

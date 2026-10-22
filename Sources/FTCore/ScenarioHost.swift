@@ -45,13 +45,13 @@ public struct DriverConnection: Sendable, Hashable {
     public let platform: String
     public let port: UInt16?
     public let serial: String?
-    /// iOS 駆動エンジン("inapp"/"hybrid" のときサブプロセスは InAppDriver / Hybrid を使う)
-    public let engine: String?
+    /// iOS のモード(`IOSMode`。"inapp" のときサブプロセスは in-app ブリッジ主 + XCUITest ブリッジの合成を使う。nil = xcuitest)
+    public let mode: String?
     /// iOS: in-app の simctl 再起動に使うシミュレータ UDID
     public let udid: String?
-    /// iOS: engine=hybrid のフォールバック用 XCUITest ブリッジのポート
+    /// iOS: inapp モードで撃てない操作を回す XCUITest ブリッジのポート
     public let xcuiPort: UInt16?
-    /// iOS: provision 時に in-app ブリッジを注入したアプリの bundleID(engine=inapp/hybrid のみ)。
+    /// iOS: provision 時に in-app ブリッジを注入したアプリの bundleID(inapp モードのみ)。
     /// アプリが suspend され /status プローブが無応答のとき、注入先を特定して inapp/XCUITest の
     /// ルーティングを正しく決めるために使う(サブプロセスの mismatch 判定を参照)。
     public let inappBundleID: String?
@@ -61,23 +61,23 @@ public struct DriverConnection: Sendable, Hashable {
     /// 実機か(DeviceSpec.kind == physical)。simctl / エミュレータ前提の処理を止めるための判別軸。
     /// サブプロセスへは --physical で渡る(iOS の FastLaunchDriver 抑止に必要)
     public let physical: Bool
-    /// 結果の記録(`ScenarioRunRecord.engine`)に書く実効エンジン。iOS は engine が nil なら XCUITest
-    /// (`ProfileWorkerFactory.iosConnection` は inapp / hybrid のときだけ engine を入れる)。Android は nil(エンジンは1つ)
-    public var recordedEngine: String? {
-        platform == "ios" ? (engine ?? "xcuitest") : nil
+    /// 結果の記録(`ScenarioRunRecord.mode`)に書く実効モード。iOS は mode が nil なら xcuitest
+    /// (`ProfileWorkerFactory.iosConnection` は inapp のときだけ mode を入れる)。Android は nil(モードは無い)
+    public var recordedMode: String? {
+        platform == "ios" ? (mode ?? "xcuitest") : nil
     }
     /// iOS ブリッジの宛先ホスト。nil = 127.0.0.1(シミュレータ)。実機は LAN IP か
     /// iproxy のループバック(BridgeEndpoint 参照)。サブプロセスへは --bridge-host で渡る
     public let host: String?
 
     public init(platform: String, port: UInt16? = nil, serial: String? = nil,
-                engine: String? = nil, udid: String? = nil, xcuiPort: UInt16? = nil,
+                mode: String? = nil, udid: String? = nil, xcuiPort: UInt16? = nil,
                 inappBundleID: String? = nil, deviceName: String? = nil,
                 physical: Bool = false, host: String? = nil) {
         self.platform = platform
         self.port = port
         self.serial = serial
-        self.engine = engine
+        self.mode = mode
         self.udid = udid
         self.xcuiPort = xcuiPort
         self.inappBundleID = inappBundleID
@@ -88,7 +88,7 @@ public struct DriverConnection: Sendable, Hashable {
 
     /// 宛先ホストだけを差し替えた写し(他の欄はそのまま)
     func with(host: String?) -> DriverConnection {
-        DriverConnection(platform: platform, port: port, serial: serial, engine: engine, udid: udid,
+        DriverConnection(platform: platform, port: port, serial: serial, mode: mode, udid: udid,
                          xcuiPort: xcuiPort, inappBundleID: inappBundleID, deviceName: deviceName,
                          physical: physical, host: host)
     }
@@ -593,7 +593,7 @@ public enum ScenarioHost {
         var builder: ScenarioRecordBuilder? = (recording != nil && !dryRun)
             ? ScenarioRecordBuilder(scenarioID: scenarioID, platform: connection.platform,
                                     title: recording?.title, worker: recording?.worker,
-                                    engine: connection.recordedEngine)
+                                    mode: connection.recordedMode)
             : nil
         // シナリオ単位の実行ログ(events/<fileBase>.ndjson)。builder と同じゲート(recording != nil
         // かつ dry-run でない)で作る —— 両方が同時に nil/non-nil であることに、下の3箇所の
@@ -705,7 +705,7 @@ public enum ScenarioHost {
         }
         if let port = connection.port { args += ["--port", String(port)] }
         if let serial = connection.serial { args += ["--serial", serial] }
-        if let engine = connection.engine { args += ["--engine", engine] }
+        if let mode = connection.mode { args += ["--mode", mode] }
         if let udid = connection.udid { args += ["--udid", udid] }
         if let xcuiPort = connection.xcuiPort { args += ["--xcui-port", String(xcuiPort)] }
         if let inappBundleID = connection.inappBundleID { args += ["--inapp-app", inappBundleID] }

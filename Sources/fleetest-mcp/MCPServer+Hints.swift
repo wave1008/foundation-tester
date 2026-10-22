@@ -649,8 +649,8 @@ extension MCPServer {
             : " Scrollable areas here: \(real)."
     }
 
-    /// `isAndroid`: 「in-app エンジンだけが Compose/Flutter の申告を見られる」は iOS の話
-    /// (in-app vs XCUITest エンジンの差)。Android にエンジンの選択肢は無いので、そのまま出すと
+    /// `isAndroid`: 「in-app ブリッジだけが Compose/Flutter の申告を見られる」は iOS の話
+    /// (in-app vs XCUITest ブリッジの差)。Android にブリッジの選択肢は無いので、そのまま出すと
     /// 存在しない切り替え先を示唆する
     static func scrollAreaHint(_ snapshot: SnapshotResponse, args: [String: Any],
                                isAndroid: Bool) -> String {
@@ -688,13 +688,13 @@ extension MCPServer {
                 + " was used — add [n] to pick another: \(listed)."
         }
         // **スクロール容器が1つも申告されない木**では、案内が出せない理由ごと言う(
-        // 監査)。XCUITest エンジンの木には Compose/Flutter のスクロール容器が出ない(MCP の iOS は常に XCUITest
+        // 監査)。XCUITest ブリッジの木には Compose/Flutter のスクロール容器が出ない(MCP の iOS は常に XCUITest
         // なので、in-app を勧めない = エージェントが選べない手を示さない)。黙ると「scrollFrame を渡せ」という
         // ツール説明だけが残り、渡す候補が無いことに気づけない
         if !snapshot.elements.contains(where: { $0.scrollable == true }) {
-            let engineCaveat = isAndroid ? "" : " (the XCUITest tree does not show Compose/Flutter"
+            let bridgeCaveat = isAndroid ? "" : " (the XCUITest tree does not show Compose/Flutter"
                 + " scroll containers)"
-            return " No element in this tree declares itself scrollable\(engineCaveat), so the"
+            return " No element in this tree declares itself scrollable\(bridgeCaveat), so the"
                 + " search swiped the whole screen. If the target sits in a horizontal row, scroll"
                 + " the row with ft_drag inside its bounds; a container that has a #id (testTag)"
                 + " can still be passed as scrollFrame:."
@@ -1220,9 +1220,9 @@ extension MCPServer {
     /// **縁は外**(`<`): 幅 1080 の画面で x=1080 は画素の外(0…1079)。iOS の pt も同じ。
     /// 含み側にすると `(1080, 2220)` が done になる(§19 M4・担当)
     /// MCP の iOS は常に XCUITest なので、in-app の当たり判定を理由に挙げない(木は画面外にも要素を持つ
-    /// ことがある、という事実は engine を問わず有効)
+    /// ことがある、という事実は bridge を問わず有効)
     static func offscreenCoordinateError(x: Double, y: Double, screen: FTRect?,
-                                         engine: String?) -> MCPError? {
+                                         bridge: String?) -> MCPError? {
         // **判定は TapTargetGeometry.isPointOnScreen の1箇所**(ライブ操作の座標コマンドと共有。
         // LiveControlExitParityTests.sharedJudgements が両側の配線を固定する。screen が nil/幅高さ0
         // のときは isPointOnScreen が true を返すので、そのまま nil で抜ける)
@@ -1243,7 +1243,7 @@ extension MCPServer {
     /// 欄にスペースが入った(§19 担当報告の再現)。**拒否はしない**(キーそのものを押す意図があり得る)。
     /// 判定は直近の木の申告(`KeyboardOcclusion` = ref 形・DSL と同じ型)。木が無ければ黙る
     func keyboardCoordinateWarning(x: Double, y: Double, args: [String: Any]) -> String {
-        guard let snapshot = lastSnapshots[Self.engineKey(args)] else { return "" }
+        guard let snapshot = lastSnapshots[Self.sessionKey(args)] else { return "" }
         let occlusion = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame, in: snapshot.elements, screen: snapshot.screen)
         guard let frame = occlusion.frame,
               x >= frame.x, x < frame.x + frame.width, y >= frame.y, y < frame.y + frame.height
@@ -1271,7 +1271,7 @@ extension MCPServer {
     }
 
     func coordinateFrontAppWarning(_ driver: AppDriver, args: [String: Any]) async -> String {
-        guard let launched = launchedBundleIDs[Self.engineKey(args)] else { return "" }
+        guard let launched = launchedBundleIDs[Self.sessionKey(args)] else { return "" }
         return Self.frontAppWarning(launched: launched, front: (try? await driver.foregroundAppID()) ?? nil)
     }
 
@@ -1280,7 +1280,7 @@ extension MCPServer {
     /// 座標操作だけ。読めなければ nil = 撃つ側)。**生読み = 世代を作らない**(knownScreens の doc)。
     /// 回転は ft_rotate が木を記録するので lastSnapshots 側が勝つ
     func coordinateScreen(_ driver: AppDriver, args: [String: Any]) async -> FTRect? {
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         if let screen = lastSnapshots[key]?.screen { return screen }
         if let screen = knownScreens[key] { return screen }
         guard let screen = (try? await driver.snapshot(bypassingCache: driver.supportsCacheBypass))?.screen

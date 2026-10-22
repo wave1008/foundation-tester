@@ -147,7 +147,7 @@ final class BridgeWedgedTransportTests: XCTestCase {
 
     /// **bridgeBusyHint とは事実が違う文面**(所要時間で分けた根拠を busy 側と混ぜない)
     func testBridgeWedgedHintDiffersFromBridgeBusyHint() {
-        let busy = MCPServer.bridgeBusyHint(connection: "port 8152", engine: "xcuitest", mayHaveTakenEffect: false)
+        let busy = MCPServer.bridgeBusyHint(connection: "port 8152", bridge: "xcuitest", mayHaveTakenEffect: false)
         let wedged = MCPServer.bridgeWedgedHint(connection: "port 8152")
         XCTAssertNotEqual(busy, wedged)
         XCTAssertTrue(busy.lowercased().contains("busy"), busy)

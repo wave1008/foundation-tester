@@ -52,7 +52,7 @@ extension AndroidDriver {
     /// physicalDevice を書き漏らすと iOS 向けの案内が Android の失敗に付いたときと
     /// 同じ事故が起きる)
     func androidContext() -> DriverErrorContext {
-        DriverErrorContext(engine: .android, physicalDevice: isPhysicalAndroidDevice)
+        DriverErrorContext(bridge: .android, physicalDevice: isPhysicalAndroidDevice)
     }
 
     // MARK: - 状態機械
@@ -175,7 +175,7 @@ extension AndroidDriver {
                 + " clear this: the cache is per-process, so this same text replays until then]"
         } ?? ""
         return .bridgeUnreachable(
-            context: DriverErrorContext(engine: .android, physicalDevice: physicalDevice),
+            context: DriverErrorContext(bridge: .android, physicalDevice: physicalDevice),
             detail: (detail ?? "") + cached)
     }
 
@@ -744,7 +744,7 @@ extension AndroidDriver {
         // static(serial 不明・実機/エミュレータどちらもあり得る)。android の文言は
         // physicalDevice で分岐しないのでここでは無害
         throw DriverError.bridgeUnreachable(
-            context: DriverErrorContext(engine: .android, physicalDevice: false),
+            context: DriverErrorContext(bridge: .android, physicalDevice: false),
             detail: """
             the bridge APK (ftbridge.apk) was not found.
             Use the repository's AndroidRunner/prebuilt/ftbridge.apk, or set

@@ -750,7 +750,7 @@ private func waitForCloseImpl(_ selector: FTSelector, waitSeconds: Double?,
 /// throwsException が true(既定)なら失敗でシナリオを中断し、false なら false を返して先へ進む。
 /// **範囲の要素が解決できないときは throwsException に関わらず失敗**(空振りを許す引数は置かない)。
 /// 範囲の要素は `lastElement` を差し替えない(範囲の指定であって、掴んだ要素ではない)。
-/// iOS は XCUITest 側で撮るので in-app 単独のエンジンでは使えない(hybrid / xcuitest)
+/// iOS は XCUITest 側で撮るので XCUITest ブリッジが無いと使えない(inapp / xcuitest モード)
 @discardableResult
 public func waitForSettle(_ selector: String? = nil, quietSeconds: Double? = nil, throwsException: Bool = true,
                           waitSeconds: Double? = nil,

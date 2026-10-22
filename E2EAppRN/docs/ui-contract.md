@@ -29,7 +29,7 @@ tag 定数は `src/tags.ts` に集約する(値は共通契約の表と byte 一
 2. **`testID` を対象要素へ直接付けるだけでよい**。Flutter の `Semantics(identifier:)` +
    `MergeSemantics` のような追加ラッパーは不要 —— RN は view 単位の a11y delegate が testID を
    そのまま流す
-3. **`Modal`(ダイアログ)内も同じ経路で id が引ける**(両 OS・両エンジンで実測済み。Compose の
+3. **`Modal`(ダイアログ)内も同じ経路で id が引ける**(両 OS・両モードで実測済み。Compose の
    「ダイアログだけ id 全滅」問題は RN には無い)
 
 ## React Native 固有の罠(すべて実測で踏んだもの)
@@ -40,7 +40,7 @@ tag 定数は `src/tags.ts` に集約する(値は共通契約の表と byte 一
 `other`・非 scrollable)に付き、実際にスクロールするノードは**同 frame の別要素**に割れる。
 Android は `scrollView id=list_rows scroll` の理想形でそのまま出る。
 → **ホスト側で「同一 frame の id 付きラッパー + 匿名 scroll ノード」を統合する正規化**を入れて
-両エンジン・両 OS で吸収している(design.md §「スコープ `祖先 >> 子孫`」参照)。SUT 側の対処は不要。
+両モード・両 OS で吸収している(design.md §「スコープ `祖先 >> 子孫`」参照)。SUT 側の対処は不要。
 
 ### B. Android は Pressable の内側 Text が別ノードとして出る(ツール側で畳み込み済み)
 
@@ -55,7 +55,7 @@ staticText」を畳む(`SnapshotDedupe.dropLabelTwinsInsideButtons`。ラベル�
 ### C. iOS in-app は id 付き Text が2重化することがある
 
 `testID` を持つ `Text` が「id 付き staticText + 同 frame・同ラベルで id 無しの staticText」の対で
-出ることがある(iOS in-app エンジンのみ)。→ ホスト側(uiFramework=uikit のときだけ)で既存の
+出ることがある(iOS の in-app ブリッジのみ)。→ ホスト側(uiFramework=uikit のときだけ)で既存の
 `SnapshotDedupe` を適用して畳む。SUT 側の対処は不要。
 
 ### D. UIScene ライフサイクル未採用のまま Xcode 27 でビルドすると起動時に落ちる
@@ -122,9 +122,9 @@ xcuitest は Modal の内容だけを見るが、**in-app は背景ツリーと�
 **入力欄がネイティブ SUT(SwiftUI/View)と同型になるのが RN の特徴**(`RCTUITextField` は
 `UITextField` 派生・`ReactEditText` は `EditText` 派生のため)。CMP(iOS は入力欄が全部 `textView`)とも
 Flutter(in-app では `other`)とも違い、新しい型分岐をホスト側に足す必要が無かった
-(design.md §「入力欄は『エンジン間で揃える』ところまでが担保」)。
+(design.md §「入力欄は『モード間で揃える』ところまでが担保」)。
 
-`type` / `pressEnter` は両 OS・両エンジンで既存経路がそのまま通る(controlled `TextInput` の値
+`type` / `pressEnter` は両 OS・両モードで既存経路がそのまま通る(controlled `TextInput` の値
 巻き戻しは起きない。in-app の `pressEnter` も UIKit 経路で発火し、Flutter のような engine 私有 API
 は不要。ime カウンタは実測 +1・本文に改行は入らない)。
 
@@ -142,7 +142,7 @@ Flutter(in-app では `other`)とも違い、新しい型分岐をホスト側�
 - **iOS in-app は読みは DOM 経路で通るが、合成タッチが Web 側のハンドラに届かない**
   (2026-08-08 実測: リンクタップが無反応のまま成功に見える)。そのため RNCWebView は
   interop マーカー(`WebViewDOMSnapshot.isInteropHosted`・版59)に登録してあり、
-  **hybrid では WebView 画面ごと XCUITest へ委譲される**(CMP/Flutter と同じ扱い)。
+  **inapp モードでは WebView 画面ごと XCUITest ブリッジへ委譲される**(CMP/Flutter と同じ扱い)。
   利用者の書き分けは要らない
 - Android/iOS とも `#id` が効かない・`.link` と `.staticText` が分かれて出る等の**規約は
   `E2EAppCMP/docs/ui-contract.md` の WebView 節と共通**(RN 固有の追加規約は無い)

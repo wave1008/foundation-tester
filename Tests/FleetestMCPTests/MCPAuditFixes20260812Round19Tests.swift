@@ -315,9 +315,9 @@ final class MCPAuditFixes20260812Round19Tests: XCTestCase {
 
     /// **ドライバ選択と鍵が同じ解決を使う**: 食い違うと「Android を作って iOS の鍵で覚える」
     /// (ref 世代・キャッシュ・記憶が全部ずれる)
-    func testEngineKeyFollowsTheSameResolution() {
-        XCTAssertTrue(MCPServer.engineKey(["serial": "emulator-5554"]).contains("android"))
-        XCTAssertFalse(MCPServer.engineKey(["serial": "emulator-5554"]).contains("ios"))
+    func testSessionKeyFollowsTheSameResolution() {
+        XCTAssertTrue(MCPServer.sessionKey(["serial": "emulator-5554"]).contains("android"))
+        XCTAssertFalse(MCPServer.sessionKey(["serial": "emulator-5554"]).contains("ios"))
     }
 
     // MARK: - ⑥ 畳んだ群の注記

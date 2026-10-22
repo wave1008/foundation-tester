@@ -8,7 +8,7 @@
 // 裏の広告を押し、**Chrome が起動**した。
 //
 // **本物の順序はブリッジが送る**(`ElementInfo.z`。Android は `getDrawingOrder` を根から積んで
-// 通し番号にする)。持たないエンジン(iOS の XCUITest / in-app には描画順を読む API が無い)では
+// 通し番号にする)。持たないブリッジ(iOS の XCUITest / in-app には描画順を読む API が無い)では
 // ツリー順へ落ちる。
 
 import Foundation

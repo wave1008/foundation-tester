@@ -11,33 +11,33 @@ public struct ProvisionedIOSDevice: Sendable {
     public let name: String
     public let udid: String
     public let simulatorName: String
-    /// 主ブリッジのポート(inapp/xcuitest)。engine=hybrid のとき in-app ブリッジのポート
+    /// 主ブリッジのポート。inapp モードでは in-app ブリッジのポート
     public let port: UInt16
-    /// 駆動エンジン("xcuitest" / "inapp" / "hybrid")。DriverConnection 経由でサブプロセスへ伝える
-    public let engine: String
-    /// engine=hybrid のフォールバック用 XCUITest ブリッジのポート(hybrid 以外は nil)
+    /// モード(`IOSMode`)。DriverConnection 経由でサブプロセスへ伝える
+    public let mode: String
+    /// inapp モードで撃てない操作を回す XCUITest ブリッジのポート(xcuitest モードは nil)
     public let xcuiPort: UInt16?
     /// 実機か(kind=physical)。simctl 依存の経路を止める分岐に使う
     public let physical: Bool
     /// ブリッジへの到達先ホスト。シミュレータは 127.0.0.1、実機は LAN IP か iproxy のループバック
     public let host: String
-    /// 実行プロファイルが頼んだエンジン(engine と違えば縮退した = 結果の記録 `workerEngines` へ残す)
-    public let requestedEngine: String
+    /// 実行プロファイルが頼んだモード(mode と違えば縮退した = 結果の記録 `workerModes` へ残す)
+    public let requestedMode: String
     /// 縮退したときだけ、その理由(InAppCodeSign.inspect の一次情報)
-    public let engineFallbackReason: String?
+    public let modeFallbackReason: String?
 
-    /// requestedEngine / engineFallbackReason は**既定値を置かない**(渡し忘れで縮退の記録が黙って欠ける)
+    /// requestedMode / modeFallbackReason は**既定値を置かない**(渡し忘れで縮退の記録が黙って欠ける)
     public init(name: String, udid: String, simulatorName: String, port: UInt16,
-                engine: String, xcuiPort: UInt16? = nil,
+                mode: String, xcuiPort: UInt16? = nil,
                 physical: Bool = false, host: String = BridgeEndpoint.loopbackHost,
-                requestedEngine: String, engineFallbackReason: String?) {
-        self.requestedEngine = requestedEngine
-        self.engineFallbackReason = engineFallbackReason
+                requestedMode: String, modeFallbackReason: String?) {
+        self.requestedMode = requestedMode
+        self.modeFallbackReason = modeFallbackReason
         self.name = name
         self.udid = udid
         self.simulatorName = simulatorName
         self.port = port
-        self.engine = engine
+        self.mode = mode
         self.xcuiPort = xcuiPort
         self.physical = physical
         self.host = host
@@ -48,9 +48,9 @@ public enum BridgeProvisionerError: Error, LocalizedError {
     case noFreePort(scanned: ClosedRange<UInt16>)
     /// waitUntilReady() が失敗した場合(後始末として起動済みプロセス/pidファイルは停止済み)
     case notReady(port: UInt16, underlying: Error)
-    /// engine="inapp" のブリッジを新規起動するのに bundleID が無い(フォールバックしない=単一実装)
+    /// bridge="inapp" のブリッジを新規起動するのに bundleID が無い(フォールバックしない=単一実装)
     case inAppNeedsBundleID(name: String)
-    /// engine=inapp でアプリ未インストール・preinstallAppPath も無い(provision() が該当デバイスのみ離脱)
+    /// bridge=inapp でアプリ未インストール・preinstallAppPath も無い(provision() が該当デバイスのみ離脱)
     case appNotInstalled(device: String, bundleID: String, udid: String)
     /// preinstallAppPath 指定時の simctl install 自体が失敗した
     case preinstallFailed(device: String, detail: String)
@@ -62,7 +62,7 @@ public enum BridgeProvisionerError: Error, LocalizedError {
     case simulatorEraseFailed(name: String, detail: String)
     /// 起動し直した直後のランナーが 1 問にも答えなかった(測った事実)。このデバイスは今回の run では使えない
     case runnerNotAnswering(name: String, port: UInt16, waited: TimeInterval)
-    /// 別の実在するワークスペースの、再利用できないブリッジがこのデバイスに居る(EnginePlan.blockedByForeign)。
+    /// 別の実在するワークスペースの、再利用できないブリッジがこのデバイスに居る(BridgePlan.blockedByForeign)。
     /// 止めると相手の run を壊すので止めない
     case foreignBridgeInTheWay(name: String, port: UInt16, owner: String, reason: String)
     /// 引き取ろうとしたランナーが答えないが、そのデバイスを他のセッション(run・MCP・ライブ操作)が使っている。
@@ -87,12 +87,12 @@ public enum BridgeProvisionerError: Error, LocalizedError {
             return "the bridge did not become ready in time (port \(port)): "
                 + underlying.localizedDescription
         case .inAppNeedsBundleID(let name):
-            return "\(name): starting an engine=inapp bridge requires the app bundleID. "
+            return "\(name): starting the in-app bridge requires the app bundleID. "
                 + "Set ios.app in the apps profile"
-                + " (paths that do not pass a bundleID, such as device/live, do not support engine=inapp)"
+                + " (paths that do not pass a bundleID, such as device/live, do not support inapp mode)"
         case .appNotInstalled(_, let bundleID, let udid):
             // device 名は provision() の離脱ログが行頭に付けるためここには含めない
-            return "\(bundleID) is not installed, so this device drops out (engine=inapp requires it up front). "
+            return "\(bundleID) is not installed, so this device drops out (the in-app bridge requires it up front). "
                 + "Install it with `xcrun simctl install \(udid) <app>`, "
                 + "or set appPath + autoInstall in the apps profile"
         case .deviceLocked(let name, let waited):
@@ -408,7 +408,7 @@ public struct BridgeProvisioner: Sendable {
     /// run / api run の供給だけが渡す。名前は `devices[].name`(ランナーのビルドは端末に属さないので空文字)
     let supplyStage: SupplyStageReporter?
     /// この供給の中で起動を扱った Simulator の udid。`sim.booted` は計画を立てた時点の値なので、同じ端末の2つ目のブリッジ
-    /// (hybrid の xcuitest → in-app)で古い「未起動」を見て、起動済みの端末に「起動中」を立て直さないため
+    /// (inapp モードの xcuitest → in-app)で古い「未起動」を見て、起動済みの端末に「起動中」を立て直さないため
     private let bootHandled = LockedValue<Set<String>>([])
     /// assignPort が候補ポートを弾くための判定(lsof を伴うので production は
     /// `PortHolder.isHeldByAnotherDevice`。テストは注入して lsof を避ける)
@@ -417,7 +417,7 @@ public struct BridgeProvisioner: Sendable {
     /// 経路(run の供給・ワーカー復帰)だけ** —— 初期化で消えたアプリを戻す手が無い呼び手(MCP・デバイス起動・
     /// ライブ操作)から撃つと、アプリの無いデバイスができる。実際に初期化するかは `preinstallAppPath` の有無も見る
     let mayEraseSimulatorForRecovery: Bool
-    /// この供給の中で初期化したシミュレータの udid。同じ端末の in-app ブリッジ(hybrid)は計画の時点で「アプリは最新」と読んでいるので、
+    /// この供給の中で初期化したシミュレータの udid。同じ端末の in-app ブリッジ(inapp モード)は計画の時点で「アプリは最新」と読んでいるので、
     /// 初期化の後はインストールし直す
     private let erasedSimulators = LockedValue<Set<String>>([])
 
@@ -441,9 +441,9 @@ public struct BridgeProvisioner: Sendable {
         self.portHeldByAnotherDevice = portHeldByAnotherDevice
     }
 
-    /// 1 デバイス・1 エンジン分の供給プラン。planBridge(副作用なし・await なし)が確定し、
+    /// 1 デバイス・1 ブリッジ分の供給プラン。planBridge(副作用なし・await なし)が確定し、
     /// 実処理(停止・起動)は並列実行フェーズが担う。ポート採番はプランニングで確定済み。
-    enum EnginePlan: Sendable {
+    enum BridgePlan: Sendable {
         case reuse(port: UInt16)
         /// 別の実在するワークスペースのブリッジ(BridgeOwnership.foreign)をそのまま使う。
         /// **起動し直さない・測り直しで止めない** —— こちらにはツールチェーンの記録も劣化の印も
@@ -477,22 +477,22 @@ public struct BridgeProvisioner: Sendable {
         }
     }
 
-    /// 1 デバイス分のプラン。bridges は実行順(hybrid: inapp → xcuitest の 2 要素、他は 1 要素)
+    /// 1 デバイス分のプラン。bridges は実行順(inapp モード: inapp → xcuitest の 2 要素、xcuitest モード: 1 要素)
     struct DevicePlan: Sendable {
         /// 元のデバイス順(結果配列の並びの復元と「最初のエラー」の決定に使う)
         let index: Int
         let name: String
         let sim: SimDeviceInfo
-        /// ProvisionedIOSDevice.engine に入る値("hybrid" 含む)
-        let engine: String
-        let bridges: [(engine: String, plan: EnginePlan)]
-        /// 実行プロファイルが頼んだエンジンと、縮退したときの理由(ProvisionedIOSDevice へ写す)
-        let requestedEngine: String
-        let engineFallbackReason: String?
+        /// ProvisionedIOSDevice.mode に入る値
+        let mode: String
+        let bridges: [(kind: String, plan: BridgePlan)]
+        /// 実行プロファイルが頼んだモードと、縮退したときの理由(ProvisionedIOSDevice へ写す)
+        let requestedMode: String
+        let modeFallbackReason: String?
     }
 
     /// 稼働中ブリッジ(シミュレータ UDID が一致)は再利用し、不足分は空きポートで起動する。
-    /// engine="inapp" のデバイスは XCUITest ではなく dylib 注入で起動する(bundleID が必要)。
+    /// bridge="inapp" のデバイスは XCUITest ではなく dylib 注入で起動する(bundleID が必要)。
     /// preinstallAppPath: apps プロファイルの appPath+autoInstall が有効なときのアプリパス。
     /// inapp 起動時に未インストールを検出したらその場で simctl install する
     /// (ProfileWorkerFactory.installIfNeeded は provision の後段のため、それより前にここで埋める)。
@@ -536,15 +536,15 @@ public struct BridgeProvisioner: Sendable {
             }
         }
 
-        // 2. 稼働中ブリッジのスキャン(ポート → (UDID, engine)。同一 UDID に inapp/xcuitest が
-        // 共存する hybrid のため、engine まで見て正しいブリッジを再利用する)
+        // 2. 稼働中ブリッジのスキャン(ポート → (UDID, bridge)。同一 UDID に inapp/xcuitest が
+        // 共存する inapp モードのため、bridge まで見て正しいブリッジを再利用する)
         let running = await scanRunningBridges(catalog: catalog)
         if !running.isEmpty {
             let summary = running.keys.sorted().map(String.init).joined(separator: ", ")
             safeLog("→ Running bridges: port \(summary)")
         }
 
-        // 3. inapp/hybrid の autoInstall 差分判定(バンドル深比較で遅い)を並列に事前評価
+        // 3. inapp モードの autoInstall 差分判定(バンドル深比較で遅い)を並列に事前評価
         // (プランニングが needsInstall の決定に使うため先に必要)
         let appIsCurrent = await checkInstalledAppCurrency(
             targets: targets, bundleID: bundleID, preinstallAppPath: preinstallAppPath)
@@ -579,44 +579,44 @@ public struct BridgeProvisioner: Sendable {
         let inappSourceDigest = try? BridgeSourceSet.inApp.digest(repoRoot: repoRoot)
         for (position, target) in targets.enumerated() {
             let index = targetIndices[position]
-            var engine = target.spec.engine ?? "xcuitest"
-            let requestedEngine = engine
-            var engineFallbackReason: String?
-            // 実機の in-app/hybrid は、アプリが開発署名(get-task-allow)で、署名に使える証明書が手元にある
-            // ときだけ注入できる。満たさなければ XCUITest へ黙って縮退する(ユーザー決定。理由は1行ログに残す)
-            if target.sim.physical, engine == "inapp" || engine == "hybrid" {
+            var mode = target.spec.mode ?? IOSMode.xcuitest
+            let requestedMode = mode
+            var modeFallbackReason: String?
+            // 実機の inapp モードは、アプリが開発署名(get-task-allow)で、署名に使える証明書が手元にある
+            // ときだけ注入できる。満たさなければ xcuitest モードへ黙って縮退する(ユーザー決定。理由は1行ログに残す)
+            if target.sim.physical, mode == IOSMode.inapp {
                 let verdict = InAppCodeSign.inspect(appBundle: preinstallAppPath ?? "", sourceDigest: inappSourceDigest)
                 if !verdict.injectable {
                     let reason = "in-app injection is not available (\(verdict.reason ?? "no app bundle to check"))"
-                    safeLog("→ \(target.name): \(reason) — using XCUITest")
-                    engine = "xcuitest"
-                    engineFallbackReason = reason
+                    safeLog("→ \(target.name): \(reason) — using xcuitest mode")
+                    mode = IOSMode.xcuitest
+                    modeFallbackReason = reason
                 } else if verdict.presignedDylib != nil {
                     safeLog("→ \(target.name): injecting the in-app bridge signed on the dispatching Mac"
                         + " (the app's signing certificate is not in this machine's keychain)")
                 }
             }
-            var bridges: [(engine: String, plan: EnginePlan)] = []
+            var bridges: [(kind: String, plan: BridgePlan)] = []
             do {
-                if engine == "hybrid" {
-                    // in-app(主)+ XCUITest(フォールバック)の2ブリッジ
+                if mode == IOSMode.inapp {
+                    // in-app(主)+ XCUITest(撃てない操作の回し先)の2ブリッジ
                     bridges.append(("inapp", try planBridge(
-                        engine: "inapp", preferred: target.spec.port, name: target.name,
+                        bridge: "inapp", preferred: target.spec.port, name: target.name,
                         sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
                         preinstallAppPath: preinstallAppPath,
                         running: running, starting: startingByUDID, foreign: foreignByUDID,
                         inappSourceDigest: inappSourceDigest,
                         claimed: &claimed, usedPorts: &usedPorts)))
                     bridges.append(("xcuitest", try planBridge(
-                        engine: "xcuitest", preferred: nil, name: target.name,
+                        bridge: "xcuitest", preferred: nil, name: target.name,
                         sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
                         preinstallAppPath: preinstallAppPath,
                         running: running, starting: startingByUDID, foreign: foreignByUDID,
                         inappSourceDigest: inappSourceDigest,
                         claimed: &claimed, usedPorts: &usedPorts)))
                 } else {
-                    bridges.append((engine, try planBridge(
-                        engine: engine, preferred: target.spec.port, name: target.name,
+                    bridges.append(("xcuitest", try planBridge(
+                        bridge: "xcuitest", preferred: target.spec.port, name: target.name,
                         sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
                         preinstallAppPath: preinstallAppPath,
                         running: running, starting: startingByUDID, foreign: foreignByUDID,
@@ -628,8 +628,8 @@ public struct BridgeProvisioner: Sendable {
                 continue
             }
             plans.append(DevicePlan(index: index, name: target.name, sim: target.sim,
-                                    engine: engine, bridges: bridges,
-                                    requestedEngine: requestedEngine, engineFallbackReason: engineFallbackReason))
+                                    mode: mode, bridges: bridges,
+                                    requestedMode: requestedMode, modeFallbackReason: modeFallbackReason))
         }
 
         // 予定の端末を全台ぶん「待機」で立てる(起動の枠を待つ端末に行が無いと、先に済んだ端末だけで全台 ready に見える)。
@@ -643,7 +643,7 @@ public struct BridgeProvisioner: Sendable {
         // 記録の書き込み)さえ直列なら bindFailed(48) は防げる —— ready 待ちまで握っていると、
         // ワーカーが 2 つあっても供給が常に 1 台ずつになる(実測: iOS 5 本の供給 95 秒が
         // すべて直列。同時進行は 2 台のままで、撤回済みの ProvisionBatcher とは別物)。
-        // 起動直後で /status 未応答のランナーは、他プロセスからは EnginePlan.adopt が引き取る
+        // 起動直後で /status 未応答のランナーは、他プロセスからは BridgePlan.adopt が引き取る
         let claimBarrier = PortClaimBarrier(expected: plans.reduce(0) { $0 + $1.bridges.count })
         let earlyRelease = Task {
             await claimBarrier.waitAll()
@@ -662,7 +662,7 @@ public struct BridgeProvisioner: Sendable {
         let slotted = plans.map { plan in
             Self.needsLaunchSlot(
                 launchesInApp: plan.bridges.contains { bridge in
-                    if case .launch = bridge.plan { return bridge.engine == "inapp" }
+                    if case .launch = bridge.plan { return bridge.kind == "inapp" }
                     return false
                 },
                 launchesColdSimulator: !plan.sim.physical && !plan.sim.booted && plan.bridges.contains { bridge in
@@ -835,7 +835,7 @@ public struct BridgeProvisioner: Sendable {
         }
     }
 
-    /// autoInstall 付き inapp/hybrid の「インストール済みアプリが最新か」を並列評価(UDID → 最新か)。
+    /// autoInstall 付き inapp モードの「インストール済みアプリが最新か」を並列評価(UDID → 最新か)。
     /// InstalledAppCheck はバンドル全バイト深比較でアプリサイズ比例に遅い(installIfNeeded の
     /// 差分スキップと共用)。判定不能・マップ欠落は false 扱い=インストールする安全側
     private func checkInstalledAppCurrency(
@@ -843,8 +843,7 @@ public struct BridgeProvisioner: Sendable {
         bundleID: String?, preinstallAppPath: String?) async -> [String: Bool] {
         guard let bundleID, let preinstallAppPath else { return [:] }
         let udids = Set(targets.filter {
-            let engine = $0.spec.engine ?? "xcuitest"
-            return engine == "inapp" || engine == "hybrid"
+            ($0.spec.mode ?? IOSMode.xcuitest) == IOSMode.inapp
         }.map { $0.sim.udid })
         guard !udids.isEmpty else { return [:] }
         return await withTaskGroup(of: (String, Bool).self,
@@ -861,9 +860,9 @@ public struct BridgeProvisioner: Sendable {
         }
     }
 
-    /// 1 デバイス・1 エンジンのプラン決定。副作用は claimed/usedPorts の更新のみ
+    /// 1 デバイス・1 ブリッジのプラン決定。副作用は claimed/usedPorts の更新のみ
     /// (ログ・プロセス操作・await なし=単体テスト可能に保つこと)
-    func planBridge(engine: String, preferred: UInt16?, name: String, sim: SimDeviceInfo,
+    func planBridge(bridge: String, preferred: UInt16?, name: String, sim: SimDeviceInfo,
                             bundleID: String?, appIsCurrent: [String: Bool],
                             preinstallAppPath: String?,
                             running: [UInt16: RunningBridge],
@@ -871,13 +870,13 @@ public struct BridgeProvisioner: Sendable {
                             foreign: [String: [BridgeOwnership.RunnerProcess]] = [:],
                             inappSourceDigest: String? = nil,
                             claimed: inout Set<UInt16>,
-                            usedPorts: inout Set<UInt16>) throws -> EnginePlan {
+                            usedPorts: inout Set<UInt16>) throws -> BridgePlan {
         // autoInstall(preinstallAppPath)付き inapp は「インストールファイルが更新されているとき
         // だけ」install+注入起動で差し替える(install は起動中アプリ=in-app ブリッジを終了させる
-        // ため、後段の installIfNeeded で入れ直す順序は不可=あちらは inapp/hybrid をスキップする)。
+        // ため、後段の installIfNeeded で入れ直す順序は不可=あちらは inapp モードをスキップする)。
         // 最新なら稼働中ブリッジを再利用して install も relaunch も省く。
         var inappNeedsInstall = false
-        if engine == "inapp", preinstallAppPath != nil, bundleID != nil {
+        if bridge == "inapp", preinstallAppPath != nil, bundleID != nil {
             inappNeedsInstall = !(appIsCurrent[sim.udid] ?? false)
         }
         // 稼働ブリッジと供給対象 sim の相関: 通常は udid。ただし同名 sim が複数 booted だと
@@ -900,18 +899,18 @@ public struct BridgeProvisioner: Sendable {
         // ソースから計算するのでどちらにも掛かる。**計算できないとき(nil)は一致扱い**
         // = 判定材料が無いことを理由に毎回起動し直さない
         func inappSourcesMatch(_ rb: RunningBridge) -> Bool {
-            guard engine == "inapp", let current = inappSourceDigest else { return true }
+            guard bridge == "inapp", let current = inappSourceDigest else { return true }
             // 別のワークスペースの dylib の出所はこちらの台帳に無い(台帳はクローンごと)ので問わない
             if case .foreign = rb.ownership { return true }
             return rb.sourceDigest == current
         }
-        if !(engine == "inapp" && inappNeedsInstall),
+        if !(bridge == "inapp" && inappNeedsInstall),
            let port = running.first(where: {
-            sameDevice($0.value) && $0.value.engine == engine && !claimed.contains($0.key)
+            sameDevice($0.value) && $0.value.bridge == bridge && !claimed.contains($0.key)
                 // inapp も版一致を要求する(旧 dylib のまま suspend/常駐しているブリッジを
                 // 再利用すると新エンドポイントが 404 になり、フォールバックも効かない)
                 && $0.value.protocolVersion == BridgeAPI.bridgeProtocolVersion
-                && (engine != "inapp" || $0.value.sessionBundleID == bundleID)
+                && (bridge != "inapp" || $0.value.sessionBundleID == bundleID)
                 && inappSourcesMatch($0.value)
            })?.key {
             claimed.insert(port)
@@ -921,9 +920,9 @@ public struct BridgeProvisioner: Sendable {
             return .reuse(port: port)
         }
         // 起動中(announce 前)の xcuitest ランナーがこのデバイスに居るなら引き取る。
-        // pid ファイルを持つのは xcuitest だけ(inapp は .inapp 状態ファイル)なので engine は自明。
+        // pid ファイルを持つのは xcuitest だけ(inapp は .inapp 状態ファイル)なので bridge は自明。
         // **新しい空きポートで 2 本目を立てない**のがこの分岐の目的
-        if engine == "xcuitest",
+        if bridge == "xcuitest",
            let port = (starting[sim.udid] ?? []).first(where: { !claimed.contains($0) }) {
             claimed.insert(port)
             usedPorts.insert(port)
@@ -931,7 +930,7 @@ public struct BridgeProvisioner: Sendable {
         }
         // 別のワークスペースの XCUITest ランナーが、このデバイスで /status に答えずに動いている(その run の操作を
         // 処理中・起動中)。**隣に2本目を起動しない**(1デバイス1ランナーなので相手の run を壊す)。止めもしない
-        if engine == "xcuitest", let other = (foreign[sim.udid] ?? []).first(where: { !claimed.contains($0.port) }) {
+        if bridge == "xcuitest", let other = (foreign[sim.udid] ?? []).first(where: { !claimed.contains($0.port) }) {
             claimed.insert(other.port)
             return .blockedByForeign(port: other.port, owner: other.ownerRepo,
                                      reason: "xcuitest bridge that is not answering right now (busy or starting)")
@@ -941,8 +940,8 @@ public struct BridgeProvisioner: Sendable {
         // inapp は対象アプリ前面化で suspend したゾンビになる)。
         // 停止は並列実行フェーズが行い、ここは採番状態の更新だけ
         var stopStalePort: UInt16?
-        if engine == "xcuitest", let stale = running.first(where: {
-            sameDevice($0.value) && $0.value.engine == "xcuitest" && !claimed.contains($0.key)
+        if bridge == "xcuitest", let stale = running.first(where: {
+            sameDevice($0.value) && $0.value.bridge == "xcuitest" && !claimed.contains($0.key)
                 && $0.value.protocolVersion != BridgeAPI.bridgeProtocolVersion
         }) {
             // 別のワークスペースのものは止めない(1デバイス1ランナーなので、隣に起動しても相手を殺す)
@@ -957,8 +956,8 @@ public struct BridgeProvisioner: Sendable {
         }
         // 別アプリに注入された・または旧版のままの同一デバイスの inapp ブリッジ
         // (上の再利用条件から漏れたもの)
-        if engine == "inapp", let stale = running.first(where: {
-            sameDevice($0.value) && $0.value.engine == "inapp" && !claimed.contains($0.key)
+        if bridge == "inapp", let stale = running.first(where: {
+            sameDevice($0.value) && $0.value.bridge == "inapp" && !claimed.contains($0.key)
                 && ($0.value.sessionBundleID != bundleID
                     || $0.value.protocolVersion != BridgeAPI.bridgeProtocolVersion
                     || !inappSourcesMatch($0.value))
@@ -975,8 +974,8 @@ public struct BridgeProvisioner: Sendable {
                                   ignoringPidFileFor: stopStalePort)
         claimed.insert(port)
         // in-app の新規起動には注入対象アプリの bundleID が要る。無ければ XCUITest に
-        // フォールバックせず明示エラー(単一実装。device/live 等は engine=inapp 非対応)
-        if engine == "inapp", bundleID == nil {
+        // フォールバックせず明示エラー(単一実装。device/live 等は bridge=inapp 非対応)
+        if bridge == "inapp", bundleID == nil {
             throw BridgeProvisionerError.inAppNeedsBundleID(name: name)
         }
         // assignPort が .inapp 残留ポートを回収して返した場合(preferred 経由も含む)。
@@ -995,14 +994,14 @@ public struct BridgeProvisioner: Sendable {
                                      log: @escaping @Sendable (String) -> Void) async throws {
         let launches = plans.flatMap { plan in
             plan.bridges.filter { $0.plan.isLaunch }
-                .map { (sim: plan.sim, engine: $0.engine, port: $0.plan.port) }
+                .map { (sim: plan.sim, kind: $0.kind, port: $0.plan.port) }
         }
-        let inapp = launches.first { $0.engine == "inapp" }
+        let inapp = launches.first { $0.kind == "inapp" }
         // **シミュレータと実機で xctestrun は別物**(SDK も DerivedData も分かれている)。
         // 種別ごとに 1 つずつビルドする。first で 1 つだけ選ぶと、混在 run で選ばれなかった側が
         // startDetached の findXCTestRun で xctestrunNotFound になる
         let xcuiByKind = Dictionary(
-            grouping: launches.filter { $0.engine != "inapp" }, by: { $0.sim.physical })
+            grouping: launches.filter { $0.kind != "inapp" }, by: { $0.sim.physical })
             .compactMap { $0.value.first }
         guard inapp != nil || !xcuiByKind.isEmpty else { return }
         let runnerBuilding = self.runnerBuilding
@@ -1069,29 +1068,29 @@ public struct BridgeProvisioner: Sendable {
     }
 
     /// 1 デバイス分のプラン実行。デバイス間は並列だが、同一デバイス内のブリッジ
-    /// (hybrid の inapp → xcuitest)は同一シミュレータへの simctl 競合を避けるため直列。
+    /// (inapp モードの inapp → xcuitest)は同一シミュレータへの simctl 競合を避けるため直列。
     /// inapp が失敗したら xcuitest は実行しない(直列版と同じ)
     private func executeDevice(plan: DevicePlan, bundleID: String?, preinstallAppPath: String?,
                                claimBarrier: PortClaimBarrier,
                                log: @escaping @Sendable (String) -> Void) async throws -> ProvisionedIOSDevice {
-        var portsByEngine: [String: UInt16] = [:]
+        var portsByBridge: [String: UInt16] = [:]
         // **XCUITest ランナーを先に、in-app を後に**(Self.executionOrder): ランナーの起動し直し
         // (劣化・旧版)は XCTest の teardown が対象アプリを終了させ、そのプロセスに住む in-app
         // ブリッジを道連れにする。in-app を先に「再利用」と決めてしまうと、ワーカーが合流した直後に
         // 落ちて revive(数十秒)へ回る。後に回せば in-app 側の再利用判定が死んだブリッジに気付いて
         // 数秒で起動し直せる
-        for index in Self.executionOrder(of: plan.bridges.map(\.engine)) {
+        for index in Self.executionOrder(of: plan.bridges.map(\.kind)) {
             let bridge = plan.bridges[index]
             // **成否を問わず必ず 1 回通す**(撃ち漏らすと ProvisionLock が解放されない)。
             // executeBridge の中でも確保直後に撃つが、経路の取りこぼしをここで埋める
             let claim = ClaimOnce(barrier: claimBarrier)
             do {
-                portsByEngine[bridge.engine] = try await executeBridge(
-                    engine: bridge.engine, plan: bridge.plan, name: plan.name, sim: plan.sim,
+                portsByBridge[bridge.kind] = try await executeBridge(
+                    bridge: bridge.kind, plan: bridge.plan, name: plan.name, sim: plan.sim,
                     bundleID: bundleID, preinstallAppPath: preinstallAppPath,
                     claimed: { await claim.fire() }, log: log,
-                    // hybrid の実機: in-app のトンネルが相方(先に起動する xcuitest)のトンネルを消さないよう残す
-                    keepPeerPort: bridge.engine == "inapp" ? portsByEngine["xcuitest"] : nil)
+                    // inapp モードの実機: in-app のトンネルが相方(先に起動する xcuitest)のトンネルを消さないよう残す
+                    keepPeerPort: bridge.kind == "inapp" ? portsByBridge["xcuitest"] : nil)
                 await claim.fire()
             } catch {
                 await claim.fire()
@@ -1100,16 +1099,16 @@ public struct BridgeProvisioner: Sendable {
             }
         }
         supplyStage?(plan.name, "ios", .ready)
-        // 主ブリッジは plan の先頭(hybrid = in-app / 単独 = そのエンジン)。実行順とは無関係
-        let primary = portsByEngine[plan.bridges[0].engine]!
+        // 主ブリッジは plan の先頭(inapp モード = in-app / xcuitest モード = xcuitest)。実行順とは無関係
+        let primary = portsByBridge[plan.bridges[0].kind]!
         return ProvisionedIOSDevice(
             name: plan.name, udid: plan.sim.udid, simulatorName: plan.sim.name,
-            port: primary, engine: plan.engine,
-            xcuiPort: plan.bridges.count > 1 ? portsByEngine["xcuitest"] : nil,
+            port: primary, mode: plan.mode,
+            xcuiPort: plan.bridges.count > 1 ? portsByBridge["xcuitest"] : nil,
             physical: plan.sim.physical,
             // 再利用(.reuse)経路でも宛先を復元できるよう記録ファイルを唯一の正にする
             host: BridgeEndpoint.load(port: primary, repoRoot: repoRoot).host,
-            requestedEngine: plan.requestedEngine, engineFallbackReason: plan.engineFallbackReason)
+            requestedMode: plan.requestedMode, modeFallbackReason: plan.modeFallbackReason)
     }
 
     /// 同時起動の枠に並ぶ台か。in-app の新規注入か冷えたシミュレータのブートを含む台だけ
@@ -1145,10 +1144,10 @@ public struct BridgeProvisioner: Sendable {
     }
 
     /// 1 台のブリッジを実行する順(plan の添字)。xcuitest を in-app より先に(理由は executeDevice)。
-    /// 同じエンジン同士は plan の順を保つ
-    static func executionOrder(of engines: [String]) -> [Int] {
-        let xcuitest = engines.indices.filter { engines[$0] == "xcuitest" }
-        let others = engines.indices.filter { engines[$0] != "xcuitest" }
+    /// 同じ種類のブリッジ同士は plan の順を保つ
+    static func executionOrder(of kinds: [String]) -> [Int] {
+        let xcuitest = kinds.indices.filter { kinds[$0] == "xcuitest" }
+        let others = kinds.indices.filter { kinds[$0] != "xcuitest" }
         return xcuitest + others
     }
 
@@ -1180,7 +1179,7 @@ public struct BridgeProvisioner: Sendable {
                 : "⚠️ \(name): restarting SpringBoard failed (\(respring.detail)) — restarting the xcuitest bridge only")
         }
         let restarted = try await executeBridge(
-            engine: "xcuitest",
+            bridge: "xcuitest",
             plan: .launch(port: port, needsInstall: false, stopStalePort: nil, reclaimInApp: false),
             name: name, sim: sim, bundleID: nil, preinstallAppPath: nil, claimed: claimed, log: log,
             escalating: true)
@@ -1310,7 +1309,7 @@ public struct BridgeProvisioner: Sendable {
         }
         try? await launcher.stopAndWait()
         let restarted = try await executeBridge(
-            engine: "xcuitest",
+            bridge: "xcuitest",
             plan: .launch(port: port, needsInstall: false, stopStalePort: nil, reclaimInApp: false),
             name: name, sim: sim, bundleID: nil, preinstallAppPath: nil, claimed: claimed, log: log,
             escalating: true)
@@ -1419,7 +1418,7 @@ public struct BridgeProvisioner: Sendable {
         }
     }
 
-    private func executeBridge(engine: String, plan: EnginePlan, name: String, sim: SimDeviceInfo,
+    private func executeBridge(bridge: String, plan: BridgePlan, name: String, sim: SimDeviceInfo,
                                bundleID: String?, preinstallAppPath: String?,
                                claimed: @escaping @Sendable () async -> Void,
                                log: @escaping @Sendable (String) -> Void,
@@ -1427,7 +1426,7 @@ public struct BridgeProvisioner: Sendable {
                                escalating: Bool = false) async throws -> UInt16 {
         // **起動する枝にも印の段階を見せる**(.reuse の入口だけで見ると、ブリッジが死んで .launch になった印つきデバイスは
         // 一生の間はしごを登れない)。回復の途中の起動(escalating)は再帰になるので通さない
-        if engine == "xcuitest", !escalating, case .launch(let launchPort, _, _, _) = plan,
+        if bridge == "xcuitest", !escalating, case .launch(let launchPort, _, _, _) = plan,
            let persisted = RunnerSlownessStore.current(stateDir: fleetestStateDir, key: sim.udid) {
             let lease = RunnerAccessibilityHealth.hasForeignLease(udid: sim.udid, stateDir: fleetestStateDir)
             let block = wipeBlock(sim: sim, hasForeignLease: lease, preinstallAppPath: preinstallAppPath)
@@ -1441,9 +1440,9 @@ public struct BridgeProvisioner: Sendable {
         // **新しく起動した XCUITest ランナーも 1 問測る**(.reuse の入口と同じ手順 = probeAndRestartIfDegraded)。
         // 測らないと、再起動直後で印も稼働中のブリッジも無いデバイスは .launch だけを通り、答えないランナーのまま
         // 最初のシナリオで固まる(ワーカー復帰も .launch なので毎回同じ)。回復の途中の起動(escalating)は呼び手が測る
-        if engine == "xcuitest", !escalating, case .launch = plan {
+        if bridge == "xcuitest", !escalating, case .launch = plan {
             let launched = try await executeBridge(
-                engine: engine, plan: plan, name: name, sim: sim, bundleID: bundleID,
+                bridge: bridge, plan: plan, name: name, sim: sim, bundleID: bundleID,
                 preinstallAppPath: preinstallAppPath, claimed: claimed, log: log, escalating: true)
             return try await probeAndRestartIfDegraded(
                 name: name, sim: sim, port: launched, claimed: claimed, log: log) ?? launched
@@ -1453,7 +1452,7 @@ public struct BridgeProvisioner: Sendable {
             // **再利用する XCUITest ランナーは 1 問だけ測ってから使う**(RunnerAccessibilityHealth):
             // 長く生きたランナーが SpringBoard の remote element を引けなくなった後も参照し続け、
             // 照会のたびに約 3.7 秒待つ状態に落ちる。run のすべての照会に乗るので起動し直したほうが安い
-            if engine == "xcuitest" {
+            if bridge == "xcuitest" {
                 // **run をまたいだ印(RunnerSlownessStore)を先に見る** —— 起動し直しても直らなかったデバイスは
                 // 毎 run 同じ空振り(検知→起動し直し→また検知)を繰り返す。印があれば通常のプローブより
                 // 先に、印の段階に応じた一手(シミュレータごと再起動 / 触らずそのまま使う)へ回す。
@@ -1492,12 +1491,12 @@ public struct BridgeProvisioner: Sendable {
             // **in-app の再利用は /status を 1 回引いてから**: 直前に同じデバイスの XCUITest ランナーを起動し直した
             // 回は、対象アプリごと落ちてブリッジが居ない(接続拒否)。**無応答は死と読まない**
             // (背面に回ったアプリは TCP を受けて答えない = InAppDriver.openURL と同じ規律)
-            if engine == "inapp", bundleID != nil {
+            if bridge == "inapp", bundleID != nil {
                 let client = BridgeClient(endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot))
                 do { _ = try await client.status(timeout: 3) } catch DriverError.bridgeConnectionRefused {
                     log("→ \(name): the inapp bridge on port \(port) is gone (its app was terminated) — relaunching it")
                     return try await executeBridge(
-                        engine: engine,
+                        bridge: bridge,
                         plan: .launch(port: port, needsInstall: false, stopStalePort: nil, reclaimInApp: false),
                         name: name, sim: sim, bundleID: bundleID,
                         preinstallAppPath: preinstallAppPath, claimed: claimed, log: log)
@@ -1514,26 +1513,26 @@ public struct BridgeProvisioner: Sendable {
             case .reuse:
                 break
             case .warnAndReuse:
-                log("⚠️ \(name): the running \(engine) bridge"
+                log("⚠️ \(name): the running \(bridge) bridge"
                     + " \(Self.toolchainMismatchReason(stateDir: fleetestStateDir, port: port)),"
                     + " but another process holds this device — reusing it as is"
                     + " (restarting it would break that run)")
             case .restart:
-                log("→ \(name): the running \(engine) bridge"
+                log("→ \(name): the running \(bridge) bridge"
                     + " \(Self.toolchainMismatchReason(stateDir: fleetestStateDir, port: port))"
                     + " — restarting it")
                 return try await executeBridge(
-                    engine: engine,
+                    bridge: bridge,
                     plan: .launch(port: port, needsInstall: false, stopStalePort: port, reclaimInApp: false),
                     name: name, sim: sim, bundleID: bundleID,
                     preinstallAppPath: preinstallAppPath, claimed: claimed, log: log)
             }
             await claimed()
-            log("✅ \(name): reusing the running \(engine) bridge (port \(port), \(sim.name))")
+            log("✅ \(name): reusing the running \(bridge) bridge (port \(port), \(sim.name))")
             return port
         case .reuseForeign(let port, let owner):
             await claimed()
-            log("⚠️ \(name): the running \(engine) bridge (port \(port)) belongs to another workspace"
+            log("⚠️ \(name): the running \(bridge) bridge (port \(port)) belongs to another workspace"
                 + " (\(owner)) — using it as is (restarting it would break that workspace's runs)")
             return port
         case .blockedByForeign(let port, let owner, let reason):
@@ -1542,7 +1541,7 @@ public struct BridgeProvisioner: Sendable {
         case .adopt(let port):
             await claimed()
             // 別プロセスが起動した直後のランナー。起動はせず announce だけ待つ
-            log("→ \(name): taking over the starting \(engine) bridge (port \(port), \(sim.name))...")
+            log("→ \(name): taking over the starting \(bridge) bridge (port \(port), \(sim.name))...")
             let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
                                           physical: sim.physical)
             // budget 以上生きているのに announce していないランナーは、これ以上待っても
@@ -1566,7 +1565,7 @@ public struct BridgeProvisioner: Sendable {
             func stopAndRelaunch() async throws -> UInt16 {
                 try? await launcher.stopAndWait()
                 return try await executeBridge(
-                    engine: engine,
+                    bridge: bridge,
                     plan: .launch(port: port, needsInstall: false,
                                   stopStalePort: nil, reclaimInApp: false),
                     name: name, sim: sim, bundleID: bundleID,
@@ -1649,7 +1648,7 @@ public struct BridgeProvisioner: Sendable {
                     + " being built with this tool's Xcode toolchain — stopping and restarting it")
                 return try await stopAndRelaunch()
             }
-            log("✅ \(name): took over the \(engine) bridge that was starting (port \(port))")
+            log("✅ \(name): took over the \(bridge) bridge that was starting (port \(port))")
             return port
         case .launch(let port, let needsInstall, let stopStalePort, let reclaimInApp):
             let stateDir = repoRoot.appendingPathComponent(".fleetest")
@@ -1709,7 +1708,7 @@ public struct BridgeProvisioner: Sendable {
                 // xcuitest は bindFailed → portInUse 経路が拾って明示エラーになる。
                 // **in-app には bind 失敗の検知が無い**(注入先アプリの中で黙って失敗する)ので、
                 // 撃たずにここで原因を名指しして落とす
-                if engine == "inapp" {
+                if bridge == "inapp" {
                     throw BridgeProvisionerError.notReady(
                         port: port, underlying: LauncherError.portInUse(port: port, holder: holder))
                 }
@@ -1727,8 +1726,8 @@ public struct BridgeProvisioner: Sendable {
             // 起動済みの端末(実機を含む)だけここで立てる。未起動の Simulator は起動の後(下)で立てる ——
             // 先に立てると「ブリッジを起動中」が「デバイスを起動中」より前に一瞬出る
             if sim.physical || sim.booted { supplyStage?(name, "ios", .bridge) }
-            log("→ \(name): starting the \(engine) bridge (port \(port), \(sim.name) \(sim.os))...")
-            if engine == "inapp" {
+            log("→ \(name): starting the \(bridge) bridge (port \(port), \(sim.name) \(sim.os))...")
+            if bridge == "inapp" {
                 // planBridge が bundleID 必須を検証済み(ここは保険)
                 guard let bundleID else {
                     throw BridgeProvisionerError.inAppNeedsBundleID(name: name)
@@ -1881,7 +1880,7 @@ public struct BridgeProvisioner: Sendable {
                     throw BridgeProvisionerError.notReady(port: port, underlying: error)
                 }
             }
-            log("✅ \(name): \(engine) bridge ready (port \(port))")
+            log("✅ \(name): \(bridge) bridge ready (port \(port))")
             return port
         }
     }
@@ -1951,7 +1950,7 @@ public struct BridgeProvisioner: Sendable {
         }
     }
 
-    /// 稼働中ブリッジ 1 つの識別情報(接続先 UDID・engine 種別)
+    /// 稼働中ブリッジ 1 つの識別情報(接続先 UDID・bridge 種別)
     /// 引き取った起動途中のランナーが旧ビルドか(再利用の判定と同じ基準 = 版が現行値と一致しない。
     /// 版を名乗らない旧ランナーも旧ビルドとみなす)
     static func adoptedRunnerIsStale(_ status: StatusResponse) -> Bool {
@@ -1962,7 +1961,7 @@ public struct BridgeProvisioner: Sendable {
         let udid: String?
         /// /status が返したデバイス名。udid が同名複数で nil に落ちたときの相関フォールバックに使う。
         let name: String?
-        let engine: String
+        let bridge: String
         /// BridgeAPI.bridgeProtocolVersion。旧ブリッジは nil(xcuitest の再利用判定に使う)。
         let protocolVersion: Int?
         /// /status の sessionBundleID。in-app ブリッジは注入先アプリ固有のため、
@@ -1974,12 +1973,12 @@ public struct BridgeProvisioner: Sendable {
         /// 持ち主(/status の ownerRepo と自分の台帳から。仕分けは BridgeOwnership.classify)
         let ownership: BridgeOwnership
 
-        init(udid: String?, name: String?, engine: String, protocolVersion: Int?,
+        init(udid: String?, name: String?, bridge: String, protocolVersion: Int?,
              sessionBundleID: String?, sourceDigest: String? = nil,
              ownership: BridgeOwnership = .unknown) {
             self.udid = udid
             self.name = name
-            self.engine = engine
+            self.bridge = bridge
             self.protocolVersion = protocolVersion
             self.sessionBundleID = sessionBundleID
             self.sourceDigest = sourceDigest
@@ -1987,8 +1986,8 @@ public struct BridgeProvisioner: Sendable {
         }
     }
 
-    /// provision の再利用判定用。engine・protocolVersion は /status のもの(旧ブリッジはどちらも
-    /// nil。旧ブリッジは engine を "xcuitest" 扱いにするが protocolVersion は nil のままにして
+    /// provision の再利用判定用。bridge・protocolVersion は /status のもの(旧ブリッジはどちらも
+    /// nil。旧ブリッジは bridge を "xcuitest" 扱いにするが protocolVersion は nil のままにして
     /// 再利用不可と判定させる)。
     /// 注意: /status 無応答のゾンビは映らない。停止用途には BridgeLauncher.stopMatching を使う
     /// (HTTP でなく pid ファイル+プロセス引数の UDID 照合)。**ゾンビ側は provision() の
@@ -2035,7 +2034,7 @@ public struct BridgeProvisioner: Sendable {
                             || FileManager.default.fileExists(
                                 atPath: InAppBridgeState.url(stateDir: stateDir, port: port).path))
                     return (port, RunningBridge(udid: udid, name: status.device,
-                                                engine: status.engine ?? "xcuitest",
+                                                bridge: status.bridge ?? "xcuitest",
                                                 protocolVersion: status.protocolVersion,
                                                 sessionBundleID: status.sessionBundleID,
                                                 sourceDigest: InAppBridgeState.sourceDigest(

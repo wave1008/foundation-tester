@@ -11,9 +11,9 @@ import FTBridgeClient
 
 final class BridgeStatusReportTests: XCTestCase {
 
-    private func found(_ port: UInt16, _ device: String, _ engine: String,
+    private func found(_ port: UInt16, _ device: String, _ bridge: String,
                        udid: String? = nil) -> BridgeDiscovery.Found {
-        BridgeDiscovery.Found(port: port, device: device, engine: engine, udid: udid)
+        BridgeDiscovery.Found(port: port, device: device, bridge: bridge, udid: udid)
     }
 
     /// **動いているものを全部出す**。1本しか出さない実装へ戻ると落ちる
@@ -24,7 +24,7 @@ final class BridgeStatusReportTests: XCTestCase {
         ], silent: [], requested: 8123)
         XCTAssertTrue(text.contains("port 8124"), text)
         XCTAssertTrue(text.contains("port 8130"), text)
-        XCTAssertTrue(text.contains("inapp"), "エンジンは取り違え防止に必ず出す")
+        XCTAssertTrue(text.contains("inapp"), "ブリッジの種類は取り違え防止に必ず出す")
         XCTAssertTrue(text.contains("UD-1"), "udid があれば出す")
     }
 

@@ -21,7 +21,7 @@ MCP は同じ検証を `ft_dry_run` で提供し、VSCode 拡張は `fleetest ap
 | `ifCanSelect { }` / `.ifElse { }` の中の誤り | dry-run では条件の成否に関わらず**両方のブロックを実行する**ので、どちらの中の構文誤り・未知の `#id` も返る |
 | `expectation { }` にアサーションが1つも無い | `verify` がアサーションを数える方法と同じ(`exist`/`notExist`/`textIs` 以下・`thisIs` 系・`appIs`。`select` は数えない)。シナリオ全体でアサーションが**0本**ならさらに強い警告になる |
 | 撮った画面のどこにも存在しない `#id` | プロジェクトのセレクタ台帳(`<プロジェクト>/.fleetest/selector-inventory.json`。シナリオ執筆中の `ft_snapshot` 呼び出しで貯まる)と突き合わせて判定する |
-| プロファイルのデバイスでは動かないコマンド(`--profile` を付けたときだけ) | 通ったステップのコマンドを、そのシナリオを受け持ちうるデバイス(同じ OS の全台)のエンジンと種別に照らす。下の表 |
+| プロファイルのデバイスでは動かないコマンド(`--profile` を付けたときだけ) | 通ったステップのコマンドを、そのシナリオを受け持ちうるデバイス(同じ OS の全台)の種別に照らす。下の表 |
 
 最後の項目の補足: 実際に撮った画面についてしか警告しません — 対象の画面(あるいはプラットフォーム)の
 記録が台帳に無ければ、推測せず黙ります。台帳が薄いうちも黙ります — 警告が出るのはそのシナリオが
@@ -42,21 +42,13 @@ VSCode 拡張の dry-run では、警告は出力パネルに出ます(Test Expl
 
 | デバイス | 警告するコマンド |
 |---|---|
-| iOS で `engine: inapp` を指定したデバイス | `home` / `back` / `appSwitcher` / `tapAppIcon` / `fold` / `unfold` / `hinge` / `swipePointToPoint` / `swipeBy` / `swipeElementToElement` / `hold` / `gesture` / `waitForSettle` |
 | iOS の実機 | `fold` / `unfold` / `hinge` / `addMedia` |
-
-```
-⚠️ Login.S0010: home at 01_login.swift:30 cannot run on device "iPhone 17 Pro-01" — its engine is inapp, which cannot hand this command to XCUITest (use hybrid or xcuitest for that device)
-```
 
 警告するのは**コマンドの名前だけで決まるもの**です。次のものは dry-run からは分からないので警告しません。
 
 - 引数で決まるもの: `tap(holdSeconds:)`(0 より大きい長押し)・`appIs` / `launchApp` / `restartApp` に別のアプリを渡したとき
 - アプリの UI フレームワークで決まるもの: `doubleTap` / `pinchOut` / `pinchIn`(UIKit / SwiftUI / RN)・`swipe` / `flick*` / `scroll*`・
   Flutter の `clearInput` / `pressEnter`
-- `iosAlertHandler` と SpringBoard のダイアログを指すセレクタ(`engine: inapp` では掴めない)
-
-既定のエンジン(hybrid)は in-app にできない操作を XCUITest へ回すので、上の表の iOS の in-app の行は出ません。
 
 ## しないこと
 

@@ -38,7 +38,7 @@ const runProfileScreenLooksLike = document.getElementById('run-profile-screen-lo
 const runProfileOcrTextVisibilityCheck = document.getElementById('run-profile-ocr-text-visibility-check');
 const runProfilePreferCheckStateClassifier = document.getElementById('run-profile-prefer-check-state-classifier');
 const runProfileContainerInference = document.getElementById('run-profile-container-inference');
-const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
+const runProfileIosMode = document.getElementById('run-profile-ios-mode');
 const runProfileIosPreActionPing = document.getElementById('run-profile-ios-pre-action-ping');
 const runProfileInappOptions = document.getElementById('run-profile-inapp-options');
 const runProfileHomeOnStart = document.getElementById('run-profile-home-on-start');
@@ -254,8 +254,8 @@ function renderRunProfileEditor(fields) {
   runProfileScreenLooksLike.checked = fields.screenLooksLike;
   runProfileOcrTextVisibilityCheck.checked = fields.ocrTextVisibilityCheck;
   runProfilePreferCheckStateClassifier.checked = fields.preferCheckStateClassifier;
+  setIosModeSelect(fields.iosMode);
   updateInappOptionsVisibility();
-  runProfileIosInappEngine.checked = fields.iosInappEngine;
   runProfileIosPreActionPing.checked = fields.iosPreActionPing;
   runProfileHomeOnStart.checked = fields.homeOnStart;
   runProfilePlayProtectBypass.checked = fields.playProtectBypass;
@@ -329,13 +329,31 @@ function applyRunProfilePlatformScope() {
 }
 runProfileApp.addEventListener('change', applyRunProfilePlatformScope);
 
-// inapp エンジン ON のときだけ配下のサブオプション(iosPreActionPing)を表示する
-// (直前の接続確認は hybrid の domInterop 経路にしか無い = xcuitest エンジンでは効果が無いため。
-//  値そのものはエンジンの状態に関わらず保持・保存する)。
-function updateInappOptionsVisibility() {
-  runProfileInappOptions.style.display = runProfileIosInappEngine.checked ? '' : 'none';
+// inapp モードのときだけ配下のサブオプション(iosPreActionPing)を表示する
+// (直前の接続確認は inapp モードの domInterop 経路にしか無い = xcuitest モードでは効果が無いため。
+//  値そのものはモードに関わらず保持・保存する)。
+// プロファイルに inapp / xcuitest 以外が書かれていたら、その値を選択肢に足して選んだまま見せる
+// (選択肢に無い値を select に入れると空になり、保存で黙って別の値に書き換わる)
+function setIosModeSelect(value) {
+  for (const option of runProfileIosMode.querySelectorAll('option[data-unknown]')) option.remove();
+  if (value !== 'inapp' && value !== 'xcuitest') {
+    const option = document.createElement('option');
+    option.value = value;
+    option.dataset.unknown = '1';
+    option.textContent = t('wvMonitor2.runProfile.iosModeUnknown', { value });
+    runProfileIosMode.appendChild(option);
+  }
+  runProfileIosMode.value = value;
 }
-runProfileIosInappEngine.addEventListener('change', () => {
+
+function updateInappOptionsVisibility() {
+  runProfileInappOptions.style.display = runProfileIosMode.value === 'inapp' ? '' : 'none';
+}
+runProfileIosMode.addEventListener('change', () => {
+  // 選び直したら不明な値の選択肢は消す(自動保存の後、値が画面と同じならフォームは描き直されない)
+  if (!runProfileIosMode.selectedOptions[0]?.dataset.unknown) {
+    for (const option of runProfileIosMode.querySelectorAll('option[data-unknown]')) option.remove();
+  }
   updateInappOptionsVisibility();
 });
 // record ON のときだけ配下のサブオプション(recordFailuresOnly/recordFullResolution/
@@ -381,7 +399,7 @@ function runProfileValuesEqual(fields) {
     runProfileScreenLooksLike.checked === fields.screenLooksLike &&
     runProfileOcrTextVisibilityCheck.checked === fields.ocrTextVisibilityCheck &&
     runProfilePreferCheckStateClassifier.checked === fields.preferCheckStateClassifier &&
-    runProfileIosInappEngine.checked === fields.iosInappEngine &&
+    runProfileIosMode.value === fields.iosMode &&
     runProfileIosPreActionPing.checked === fields.iosPreActionPing &&
     runProfileHomeOnStart.checked === fields.homeOnStart &&
     runProfilePlayProtectBypass.checked === fields.playProtectBypass &&
@@ -476,7 +494,7 @@ function collectRunProfileFields() {
     screenLooksLike: runProfileScreenLooksLike.checked,
     ocrTextVisibilityCheck: runProfileOcrTextVisibilityCheck.checked,
     preferCheckStateClassifier: runProfilePreferCheckStateClassifier.checked,
-    iosInappEngine: runProfileIosInappEngine.checked,
+    iosMode: runProfileIosMode.value,
     iosPreActionPing: runProfileIosPreActionPing.checked,
     homeOnStart: runProfileHomeOnStart.checked,
     playProtectBypass: runProfilePlayProtectBypass.checked,

@@ -64,11 +64,13 @@ fleetest run --profile <name> --set responseMeasurement=true --set responseRepea
     users experience.
   - It turns off the text visibility check (`fmTextVisibilityCheck`, `ocrTextVisibilityCheck`), `screenLooksLike`, recording
     (`record`) and host-load pacing.
+  - On iOS it runs in xcuitest mode (the measurement lives in the XCUITest bridge; `iosMode` defaults to `xcuitest` for the run).
   - It holds the device monitor's observation and streaming for the duration of the run (released at the end). A hold without a time limit that you set yourself
     with `fleetest monitor pause` is left as it is; a hold with `--for` is replaced by one without a limit for the run and restored at
     the end if it has not expired yet.
 - It cannot be combined with the following (the run stops with a named error): `enableAnimations: false`; `fmTextVisibilityCheck`,
-  `ocrTextVisibilityCheck`, `screenLooksLike` or `record` set to `true`; `--broadcast`, `--fleet`, `--split`.
+  `ocrTextVisibilityCheck`, `screenLooksLike` or `record` set to `true`; `iosMode` or the device's `mode` set to `inapp`;
+  `--broadcast`, `--fleet`, `--split`.
 
 Before every action, measurement mode waits for the app to stop drawing (up to 10 seconds), so a run takes longer than usual.
 

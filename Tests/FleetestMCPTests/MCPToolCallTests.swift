@@ -121,44 +121,44 @@ final class MCPToolCallTests: XCTestCase {
 
     /// **無反応だったときの切り分けを応答に載せる**(XCUITest では Compose のダブルタップが届かない)。
     /// Android と分かっているときは付けない —— 無関係な助言は誤誘導になる。**ピンチには付けない**
-    /// (全フレームワークとも両エンジンで届く。docs/commands.md の表)
-    func testGestureResultsCarryTheEngineHintOnIOSOnly() async throws {
+    /// (全フレームワークとも両モードで届く。docs/commands.md の表)
+    func testGestureResultsCarryTheBridgeHintOnIOSOnly() async throws {
         let iosDouble = try await server.call(tool: "ft_double_tap", args: ["x": 1.0, "y": 2.0])
         let iosText = try XCTUnwrap(iosDouble.first?["text"] as? String)
-        XCTAssertTrue(iosText.contains("XCUITest engine"), iosText)
+        XCTAssertTrue(iosText.contains("XCUITest bridge"), iosText)
         XCTAssertTrue(iosText.contains("Compose"), iosText)
 
         let androidDouble = try await server.call(
             tool: "ft_double_tap", args: ["x": 1.0, "y": 2.0, "platform": "android"])
         let androidText = try XCTUnwrap(androidDouble.first?["text"] as? String)
-        XCTAssertFalse(androidText.contains("XCUITest engine"), androidText)
+        XCTAssertFalse(androidText.contains("XCUITest bridge"), androidText)
 
         let pinch = try await server.call(tool: "ft_pinch", args: [:])
         let pinchText = try XCTUnwrap(pinch.first?["text"] as? String)
-        XCTAssertFalse(pinchText.contains("XCUITest engine"), pinchText)
+        XCTAssertFalse(pinchText.contains("XCUITest bridge"), pinchText)
     }
 
-    /// **助言は「実際に使ったエンジン」で出し分ける**。in-app/hybrid ではジェスチャが成立するので
+    /// **助言は「実際に使ったブリッジ」で出し分ける**。in-app ブリッジではジェスチャが成立するので
     /// 添えない —— 成立しているのに「届かない」と言うと、無関係な原因を探させる
-    func testEngineHintDisappearsWhenTheRunIsNotOnXCUITest() async throws {
-        for engine in ["hybrid", "inapp"] {
-            server.engines[MCPServer.engineKey([:])] = engine
+    func testModeHintDisappearsWhenTheRunIsNotOnXCUITest() async throws {
+        for bridge in ["inapp"] {
+            server.bridges[MCPServer.sessionKey([:])] = bridge
             let result = try await server.call(tool: "ft_double_tap", args: ["x": 1.0, "y": 2.0])
             let resultText = try XCTUnwrap(result.first?["text"] as? String)
-            XCTAssertFalse(resultText.contains("XCUITest engine"), "\(engine): \(resultText)")
+            XCTAssertFalse(resultText.contains("XCUITest bridge"), "\(bridge): \(resultText)")
         }
     }
 
     /// **in-app 経路の背面化は「次が無応答になりうる」ことまで返す**(in-app ブリッジは
     /// 対象アプリの中に住む)。back は前面のままなので黙る
     func testHomeWarnsAboutTheSuspendedInAppBridge() {
-        XCTAssertTrue(MCPServer.backgroundedAppNote(target: "home", engine: "hybrid")
+        XCTAssertTrue(MCPServer.backgroundedAppNote(target: "home", bridge: "inapp")
             .contains("XCUITest bridge"))
-        XCTAssertTrue(MCPServer.backgroundedAppNote(target: "appSwitcher", engine: "inapp")
+        XCTAssertTrue(MCPServer.backgroundedAppNote(target: "appSwitcher", bridge: "inapp")
             .contains("ft_launch"))
-        XCTAssertEqual(MCPServer.backgroundedAppNote(target: "home", engine: "xcuitest"), "",
+        XCTAssertEqual(MCPServer.backgroundedAppNote(target: "home", bridge: "xcuitest"), "",
                        "XCUITest はアプリの外なので関係ない")
-        XCTAssertEqual(MCPServer.backgroundedAppNote(target: "back", engine: "hybrid"), "",
+        XCTAssertEqual(MCPServer.backgroundedAppNote(target: "back", bridge: "inapp"), "",
                        "back は背面化しない")
     }
 
@@ -216,7 +216,7 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertTrue(rendered.contains("login_btn"), "現在の画面は返すこと: \(rendered)")
     }
 
-    /// 照合は **DSL と同じセレクタエンジン**(ここで書ける式はそのままシナリオへ持ち込める)
+    /// 照合は **DSL と同じセレクタ解決**(ここで書ける式はそのままシナリオへ持ち込める)
     func testWaitForUsesTheDSLSelectorSyntax() {
         let screen = SnapshotResponse(
             sessionBundleID: "com.example.app",
@@ -507,7 +507,7 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertTrue(text.contains("id=chips scroll"), text)
     }
 
-    /// 申告できないエンジン(Compose/Flutter の in-app)では黙る。
+    /// 申告できないブリッジ(Compose/Flutter の in-app)では黙る。
     /// 印も注記も出さない = 「スクロールしない画面」と読ませない
     func testSnapshotStaysSilentWhenNoScrollContainerIsDeclared() async throws {
         let content = try await server.call(tool: "ft_snapshot", args: [:])

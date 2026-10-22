@@ -38,7 +38,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// キーはプロファイル JSON のキーそのもの。`fleetest run` と共有する口(FTCore/RunProfile.swift の
     /// RunProfileSetOverride)。値の型はキーの宣言型に従う(Bool/Int/Double/String。パース失敗は
     /// 型を名指しでエラーにする)。**プロファイルの devices 一覧・供給工程に依存するキー**
-    /// (RunProfileDocument.profileOnlyKeys: iosInappEngine/updateWebView/wipeDataOnBloat/
+    /// (RunProfileDocument.profileOnlyKeys: iosMode/updateWebView/wipeDataOnBloat/
     /// recoverCpuFallbackToGpu/app/machine/locale/wipeDataThresholdGB)は `--profile` が無いと
     /// エラーにする(黙って無視しない。run() のプロファイル無し分岐)。`record` は devices に
     /// 依存しないのでここでは通すが、この経路(runDirect。RunOrchestrator の録画セッションを
@@ -50,7 +50,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 + "(repeatable): <key>=<value>, where <key> is exactly the run profile JSON key and "
                 + "<value> matches that key's type (e.g. --set heal=true --set reportDir=/tmp/out "
                 + "--set defaultTimeout=8). Keys that need a run profile's device list/supply pipeline "
-                + "(iosInappEngine, updateWebView, wipeDataOnBloat, recoverCpuFallbackToGpu, app, "
+                + "(iosMode, updateWebView, wipeDataOnBloat, recoverCpuFallbackToGpu, app, "
                 + "machine, locale, wipeDataThresholdGB, responseMeasurement) need --profile. The run profile keys "
                 + "\"app\"/\"machine\" (an app/machine *profile* name) are unrelated to this command's "
                 + "own --app-id/--runner flags (a bundle ID / package name and a dispatch target). "
@@ -885,8 +885,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                          interrupted: outcome.interrupted,
                          abortReason: outcome.abortReason) ?? []
         if let abortReason = outcome.abortReason { logStderr("❌ Run stopped: \(abortReason)") }
-        // どのデバイスがどのエンジンで走ったか(run と同じ文言 = WorkerEngineSummary)
-        for line in WorkerEngineSummary.lines(recorder?.recordedWorkerEngines ?? []) { logStderr(line) }
+        // どのデバイスがどのモードで走ったか(run と同じ文言 = WorkerModeSummary)
+        for line in WorkerModeSummary.lines(recorder?.recordedWorkerModes ?? []) { logStderr(line) }
         if !outcome.degradedWorkers.isEmpty {
             logStderr("⚠️ Degraded or dropped workers (\(outcome.degradedWorkers.count)):")
             for entry in outcome.degradedWorkers { logStderr("   - \(entry)") }

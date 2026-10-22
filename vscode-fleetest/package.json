@@ -2,7 +2,7 @@
   "name": "vscode-fleetest",
   "displayName": "fleetest mobile",
   "description": "%fleetest.extension.description%",
-  "version": "0.1.465",
+  "version": "0.1.466",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -439,7 +439,7 @@
     "vscode:prepublish": "npm run compile",
     "compile": "node esbuild.mjs && tsc --noEmit",
     "watch": "node esbuild.mjs --watch",
-    "test": "node esbuild.mjs --tests && node --test --test-force-exit out-test/*.test.mjs",
+    "test": "node esbuild.mjs --tests && node --test out-test/*.test.mjs",
     "package": "vsce package",
     "install-local": "bash scripts/install-local.sh"
   },

@@ -1,5 +1,5 @@
 // アプリの UI フレームワークを問い合わせる**唯一の口**。判定を呼び手ごとに持つと同じアプリで答えが割れる
-// (実際に割れていた: in-app の自己申告と .app のマーカーで規則が違い、engine で答えが変わった)。
+// (実際に割れていた: in-app の自己申告と .app のマーカーで規則が違い、ブリッジで答えが変わった)。
 // 語彙は AppUIFramework、目印の規則は iOS = UIFrameworkMarkers(in-app ブリッジと共有)/ Android = AndroidPackageInspector。
 //
 // 答える順(最初に答えが出たところで止まる):

@@ -19,7 +19,7 @@ final class MCPDeviceLeaseTests: XCTestCase {
             .appendingPathComponent("MCPDeviceLeaseTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
         server.deviceLeaseStateDir = stateDir
-        server.udids[MCPServer.engineKey([:])] = "UDID-X"
+        server.udids[MCPServer.sessionKey([:])] = "UDID-X"
     }
 
     override func tearDownWithError() throws {

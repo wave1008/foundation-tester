@@ -6,7 +6,7 @@ import FTCore
 /// 「差し替える/断る/何もしない」を決める純粋関数(`ApiLiveServe.liveDriftOutcome`)を、
 /// 実ブリッジ無しで固定する。判定そのもの(`FTCore.BridgeIdentityCheck.hybridFallbackDrift`)は
 /// Tests/FTCoreTests/BridgeIdentityCheckTests.swift が固定するので、ここで見るのは
-/// 「その3値をライブ操作がどう扱うか」だけ。MCP 側の対の振り分け(`primaryEngineOutcome`)は
+/// 「その3値をライブ操作がどう扱うか」だけ。MCP 側の対の振り分け(`primaryBridgeOutcome`)は
 /// Tests/FleetestMCPTests/HybridFallbackDriftTests.swift。
 final class ApiLiveDriftOutcomeTests: XCTestCase {
 
@@ -15,10 +15,10 @@ final class ApiLiveDriftOutcomeTests: XCTestCase {
         XCTAssertEqual(outcome, .unchanged)
     }
 
-    /// 同じデバイスのブリッジがエンジンだけ入れ替わった形は、現状どおり差し替える(rebuild)
-    func testRebuildsWhenTheSameDeviceChangedEngine() {
+    /// 同じデバイスのブリッジがブリッジだけ入れ替わった形は、現状どおり差し替える(rebuild)
+    func testRebuildsWhenTheSameDeviceChangedBridge() {
         let outcome = ApiLiveServe.liveDriftOutcome(
-            drift: .sameDeviceEngineChanged, port: 8123, expectedUDID: "SIM-1")
+            drift: .sameDeviceBridgeChanged, port: 8123, expectedUDID: "SIM-1")
         XCTAssertEqual(outcome, .rebuild)
     }
 
@@ -53,7 +53,7 @@ final class ApiLiveDriftOutcomeTests: XCTestCase {
     }
 
     /// 毎コマンド同じ材料を渡せば同じ判定になること(黙って片方のデバイスに固定されない ——
-    /// run() は driver/port/primaryEngine を書き換えずに次のコマンドへ進む)
+    /// run() は driver/port/primaryBridge を書き換えずに次のコマンドへ進む)
     func testSameDriftAlwaysProducesTheSameOutcome() {
         let first = ApiLiveServe.liveDriftOutcome(drift: .differentDevice, port: 8123, expectedUDID: "SIM-1")
         let second = ApiLiveServe.liveDriftOutcome(drift: .differentDevice, port: 8123, expectedUDID: "SIM-1")

@@ -59,7 +59,7 @@ extension StepExecutor {
                     + " (\(read); \(ocrAttempts) OCR pass\(ocrAttempts == 1 ? "" : "es"))"))
         }
         // **OCR で決めた点は1つのノードの中の点**。in-app の座標タップは「点を含むノードを activate」するので、
-        // 段落ノードの activate(= 押した位置と無関係なリンク)に化ける。hybrid では本物のタッチ(XCUITest)で撃つ。
+        // 段落ノードの activate(= 押した位置と無関係なリンク)に化ける。inapp モードでは本物のタッチ(XCUITest)で撃つ。
         // 木の子孫で決めた点はそのノード自身なので従来の経路でよい
         if point.source == .ocr, let td = typeDriver {
             let clock = ContinuousClock()

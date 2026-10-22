@@ -16,7 +16,7 @@ public enum WebViewPath {
     public static let domInterop = "dom-interop"
     /// **WebView の中身を1つも読めなかった**(理由は snapshot の note)。`delegated` との差は
     /// 「まだ委譲していない」こと —— XCUITest ブリッジが居るデバイスではホストがこの後で委譲するが、
-    /// `iosInappEngine` のデバイスには委譲先が無い。**空の木を「中身が無い」の証拠にしてはいけない**
+    /// XCUITest ブリッジが無いときは委譲先が無い。**空の木を「中身が無い」の証拠にしてはいけない**
     public static let domUnread = "dom-unread"
     /// 画面ごと XCUITest へ委譲した
     public static let delegated = "delegated"

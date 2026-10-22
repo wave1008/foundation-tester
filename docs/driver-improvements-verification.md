@@ -18,7 +18,7 @@ Appium 比較 PoC 由来のドライバ改良(PR #1)が main 上で期待どお�
 
 ## 結果1: シナリオ全体(wall 中央値・秒)
 
-| シナリオ | hybrid(in-app) | xcuitest(改良on=既定) | xcuitest(改良off) | 改良効果 |
+| シナリオ | inapp | xcuitest(改良on=既定) | xcuitest(改良off) | 改良効果 |
 |---|---|---|---|---|
 | タブナビ | 7.5 | **11.5** | 13.3 | **−14%** |
 | カート追加 | 7.2 | **9.6** | 11.3 | **−15%** |
@@ -26,19 +26,19 @@ Appium 比較 PoC 由来のドライバ改良(PR #1)が main 上で期待どお�
 | ログイン(launch×3) | 15.2 | **23.5** | 28.6 | **−18%** |
 
 - xcuitest の改良効果(fast launch)は同一バイナリ A/B で **−14〜21%** を再現
-- hybrid のログイン 15.2s は改良前ベースライン(bench-6: 18.9s)比 **−20%**
+- inapp モードのログイン 15.2s は改良前ベースライン(bench-6: 18.9s)比 **−20%**
   (inapp type の Compose 対応の効果。同一ランタイム・専用シミュレータ条件)
 
 ## 結果2: 操作単位(step 中央値・ms)
 
-| 操作 | hybrid | xcuitest(改良on) | xcuitest(改良off) |
+| 操作 | inapp | xcuitest(改良on) | xcuitest(改良off) |
 |---|---|---|---|
 | launch(アプリ再起動) | 2,480 | **3,467** | 5,208(fast launch で −33%) |
 | type | **266**(in-app 直接挿入) | 1,176 | 1,172 |
 | tap | 126 | 406 | 416 |
 | exist | 6 | 36 | 36 |
 
-- **hybrid の type 266ms** = inapp の Compose 対応が main で機能している実証
+- **inapp モードの type 266ms** = inapp の Compose 対応が main で機能している実証
   (従来は XCUITest attach 経由で 1.0〜1.3s だった)
 - tap/exist は改良対象外のため on/off で一致(計測系の公平性の傍証)
 
@@ -57,7 +57,7 @@ Appium 比較 PoC 由来のドライバ改良(PR #1)が main 上で期待どお�
 ```bash
 # 専用シミュレータ+verify 用の実行プロファイル(runs/ios-verify-xcuitest.json 等)を用意して
 FT_EVENT_LOG_PATH=<file> fleetest run --project sut-ec-mobile \
-  --profile <ios-verify-xcuitest|ios-verify-hybrid> --scenario <シナリオ> --skip-build
+  --profile <ios-verify-xcuitest|ios-verify-inapp> --scenario <シナリオ> --skip-build
 # 改良オフ側: FT_NO_FAST_LAUNCH=1 を前置
 ```
 

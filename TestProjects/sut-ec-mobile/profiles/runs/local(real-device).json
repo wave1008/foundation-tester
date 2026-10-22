@@ -415,7 +415,7 @@
   "containerInference": true,
   "heal": true,
   "homeOnStart": true,
-  "iosInappEngine": true,
+  "iosMode": "inapp",
   "record": true,
   "recoverCpuFallbackToGpu": true,
   "screenLooksLike": true,

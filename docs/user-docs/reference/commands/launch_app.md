@@ -28,9 +28,9 @@ terminateApp()
 
 - **`launchApp` always terminates first, even if the app is already running** — it never just
   brings the app to the foreground. Every call starts at the entry screen.
-- **On iOS with the default (hybrid) engine, `launchApp` / `restartApp` of an app other than the scenario's own app
-  fails in the middle of a scenario.** The in-app engine runs inside the app under test and cannot drive another app.
-  Put the steps on another app (such as Settings) in a separate scenario under a run profile whose app profile names that app; that scenario runs on the XCUITest engine automatically.
+- **On iOS in the default mode (inapp), `launchApp` / `restartApp` of an app other than the scenario's own app
+  fails in the middle of a scenario.** The in-app bridge runs inside the app under test and cannot drive another app.
+  Put the steps on another app (such as Settings) in a separate scenario under a run profile whose app profile names that app; that scenario is driven through the XCUITest bridge automatically.
 - **Default app** (when `appID` is omitted, for `launchApp` / `restartApp` / `terminateApp` /
   `removeApp` / `clearAppData` / `appIs`): resolved from the run profile's `app`, then the app profile, then the current platform's `ios.app` /
   `android.app`. `@TestClass` has no `app:` argument (writing one is a compile error), so the same
@@ -45,7 +45,7 @@ terminateApp()
   which restarts first and then delivers. Use `openURL` to test deep links arriving while the
   app is already open.
 - On an iOS Simulator, the first `openURL` delivery for an app can trigger a one-time system
-  confirmation alert ("Open in \"App Name\"?"); the hybrid and xcuitest engines dismiss it
+  confirmation alert ("Open in \"App Name\"?"); both iOS modes dismiss it
   automatically. After that, consent for that device+app combination persists.
 - `openURL` against an app that is not running lets the OS launch it, but that is not what the
   command is for. To verify opening from a URL when the app is not running, use `launchApp(url:)`.

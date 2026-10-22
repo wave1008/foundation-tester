@@ -17,7 +17,7 @@ cd E2EAppIOS
 
 ```sh
 fleetest run --project E2E-iOS --profile ios-xcuitest   # 全件グリーンの基準
-fleetest run --project E2E-iOS --profile ios-inapp      # エンジン差分の観測用
+fleetest run --project E2E-iOS --profile ios-inapp      # モード差分の観測用
 fleetest run --project E2E-iOS --profile ios-heal       # --heal
 ```
 
@@ -36,7 +36,7 @@ fleetest run --project E2E-iOS --profile ios-heal       # --heal
 この SUT を作って初めて見えた2点。**どちらも Compose 固有ではなく SwiftUI ネイティブでも起きていた**。
 いずれも修正済みで、現在 `ios-inapp` は 20/20 グリーン(30.4s。xcuitest の 42.6s より速い)。
 
-### 1. in-app のジェスチャ空振りが hybrid でフォールバックされなかった
+### 1. in-app のジェスチャ空振りが inapp モードでフォールバックされなかった
 
 `press` / `swipe` が 200 を返して成功扱いになるのに `onLongPressGesture` / `DragGesture` が
 発火しない、という「黙った空振り」。原因は `InAppBridge` が `unsupportedActions` の申告も 501 の
@@ -52,10 +52,10 @@ fleetest run --project E2E-iOS --profile ios-heal       # --heal
   (フォールバック先の XCUITest ブリッジに attach していない状態で swipe が最初の操作になると落ちていた。
   Compose 版は press のフォールバックが先に snapshot=activate していて露呈していなかった)
 
-### 2. `.Cell` 型が in-app エンジンでは出なかった
+### 2. `.Cell` 型が in-app ブリッジでは出なかった
 
 `InAppSnapshot.elementType` に `UITableViewCell` の分岐が無く(enum の `.cell` は定義だけで到達不能)、
-セルが `Other` に落ちていた。XCUITest エンジンは同じ画面で `Cell` を返すため、エンジンを替えると
+セルが `Other` に落ちていた。XCUITest ブリッジは同じ画面で `Cell` を返すため、モードを替えると
 型セレクタが壊れる。`UITableViewCell` / `UICollectionViewCell` の判定を追加して解消。
 
 ### (解消済み 2026-07-23)SUT 跨ぎの inapp 連続実行ハザード

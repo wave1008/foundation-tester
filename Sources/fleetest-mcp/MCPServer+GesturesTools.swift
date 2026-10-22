@@ -23,7 +23,7 @@ extension MCPServer {
         // ここを通らず素の swipe へ落ち、StepExecutor 自身の撮り直しがキーボード無しと
         // 判定するので path は結局 nil(黙って全画面固定に戻るだけで誤動作しない)
         guard args["scrollFrame"] != nil else {
-            let cached = lastSnapshots[Self.engineKey(args)]
+            let cached = lastSnapshots[Self.sessionKey(args)]
             let keyboardUp = cached.map(KeyboardWait.isShown) == true
             guard keyboardUp else {
                 let frontWarning = await coordinateFrontAppWarning(swipeDriver, args: args)
@@ -70,8 +70,8 @@ extension MCPServer {
         // InAppBridge/Sources/InAppBridge.swift:673-677「黙って別の領域を動かすより
         // 501 で XCUITest へ回す」)で、その 501→XCUITest フォールバックは
         // `StepExecutor.swipeWithFallback`(StepExecutor+Settle.swift:479
-        // `DriverError.isEngineIncapable(error), let td = typeDriver`)にしか無いため、
-        // in-app 単独のエンジンで ft_swipe が 501 のまま終わっていた
+        // `DriverError.isBridgeIncapable(error), let td = typeDriver`)にしか無いため、
+        // XCUITest ブリッジが無いときに ft_swipe が 501 のまま終わっていた
         let scrollFrameArg = try await resolveScrollFrameArg(args, driver: swipeDriver)
         let scrollFrameLabelNote = scrollFrameArg.note.isEmpty ? ""
             : "note: the scrollFrame ref was re-checked against the current tree\(scrollFrameArg.note).\n"
@@ -254,7 +254,7 @@ extension MCPServer {
         // 覚えている木が無ければチェック自体をしない(照合の起点が無いのに撃つのは
         // 余計な往復を増やすだけ)。指紋は記憶から読むだけなので往復は増えない
         let wantsSnapshotAfter = args["snapshotAfter"] as? Bool == true
-        let beforeBack = target == "back" ? lastSnapshots[Self.engineKey(args)] : nil
+        let beforeBack = target == "back" ? lastSnapshots[Self.sessionKey(args)] : nil
         switch target {
         case "back": try await navigation.back()
         case "home": try await navigation.home()
@@ -265,7 +265,7 @@ extension MCPServer {
         // **背面へ送ったのはツール自身**という事実だけを覚える(照会に頼らない理由は
         // `backgroundedByNavigate` の doc)。back は画面内で戻るだけのことがあるので数えない
         if target == "home" || target == "appSwitcher" {
-            backgroundedByNavigate.insert(Self.engineKey(args))
+            backgroundedByNavigate.insert(Self.sessionKey(args))
         }
         // **snapshotAfter を渡されたら木はそちらが撮る**。ここで撮り直すと同じ木を2回
         // 取りに行くだけになるので、**先に本文を組み立ててから**その結果で無効を判定する
@@ -292,7 +292,7 @@ extension MCPServer {
                 // 読みに失敗すると lastSnapshots は back 前の木のまま残り、succeeded を見ずに
                 // 読むと指紋が自明に一致して「back は効かなかった」と誤読する(catch した回の
                 // 謝罪文の横に、矛盾する偽の注記が並ぶ)
-                if snapshotAfterSucceeded, let after = lastSnapshots[Self.engineKey(args)] {
+                if snapshotAfterSucceeded, let after = lastSnapshots[Self.sessionKey(args)] {
                     observations = [after]
                 }
             } else {
@@ -313,10 +313,10 @@ extension MCPServer {
         // 「変わった」と言い切ると誤操作の起点になる
         return text("\(target) sent"
             + Self.changedHint(args, otherwise: ". Take a fresh ft_snapshot to see the result")
-            + Self.backNoOpNote(target: target, engine: engines[Self.engineKey(args)])
+            + Self.backNoOpNote(target: target, bridge: bridges[Self.sessionKey(args)])
             + backIneffectiveNote
-            + Self.backgroundedAppNote(target: target, engine: engines[Self.engineKey(args)])
-            + Self.backgroundingNavigationNote(target: target, engine: engines[Self.engineKey(args)])
+            + Self.backgroundedAppNote(target: target, bridge: bridges[Self.sessionKey(args)])
+            + Self.backgroundingNavigationNote(target: target, bridge: bridges[Self.sessionKey(args)])
             + waitForWithoutSnapshotAfterNote(args) + afterBody)
     }
 
@@ -342,7 +342,7 @@ extension MCPServer {
         } else if let x = try Self.doubleArgument(args, "x"), let y = try Self.doubleArgument(args, "y") {
             if let offscreen = Self.offscreenCoordinateError(
                 x: x, y: y, screen: await coordinateScreen(doubleTapDriver, args: args),
-                engine: engines[Self.engineKey(args)]) { throw offscreen }
+                bridge: bridges[Self.sessionKey(args)]) { throw offscreen }
             doubleTapPoint = (x, y)
             doubleTapWhat = "(\(x), \(y))"
             doubleTapNote = keyboardCoordinateWarning(x: x, y: y, args: args)
@@ -358,7 +358,7 @@ extension MCPServer {
                           coordinate: doubleTapResolvedRef == nil ? doubleTapPoint : nil)
         return text("double tap \(doubleTapWhat) done.\(doubleTapNote)\(doubleTapSelector)"
             + changedHintOnce(args)
-            + iosEngineHint("Compose Multiplatform", frameworkKey: .compose, "double tap", args: args)
+            + iosModeHint("Compose Multiplatform", frameworkKey: .compose, "double tap", args: args)
             + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))
     }
 
@@ -386,7 +386,7 @@ extension MCPServer {
             }
             if let offscreen = Self.offscreenCoordinateError(
                 x: x, y: y, screen: await coordinateScreen(dragDriver, args: args),
-                engine: engines[Self.engineKey(args)]) { throw offscreen }
+                bridge: bridges[Self.sessionKey(args)]) { throw offscreen }
             fromPoint = (x, y)
             dragSelector = keyboardCoordinateWarning(x: x, y: y, args: args)
                 + (await coordinateFrontAppWarning(dragDriver, args: args))
@@ -407,7 +407,7 @@ extension MCPServer {
         // 一方でだけ断られる)。fromRef で始めても終点は座標
         if let offscreen = Self.offscreenCoordinateError(
             x: toX, y: toY, screen: await coordinateScreen(dragDriver, args: args),
-            engine: engines[Self.engineKey(args)]) { throw offscreen }
+            bridge: bridges[Self.sessionKey(args)]) { throw offscreen }
         let fromX = from.x
         let fromY = from.y
         let durationSeconds = try Self.doubleArgument(args, "durationSeconds") ?? FlowStep.defaultSwipeDurationSeconds
@@ -415,7 +415,7 @@ extension MCPServer {
                                   pressSeconds: FlowStep.defaultDragPressSeconds, durationSeconds: durationSeconds)
         // 下書きには DSL の `swipePointToPoint` として残す(座標タップと同じ扱い = 実行できる行 +
         // セレクタへ置き換えるべきことを行末コメントに)。fromRef で始めても終点は座標なので同じ形
-        lastTapTargets[Self.engineKey(args)] = nil
+        lastTapTargets[Self.sessionKey(args)] = nil
         var dragStep = FlowStep(action: "swipePointToPoint",
                                 duration: durationSeconds == FlowStep.defaultSwipeDurationSeconds
                                     ? nil : durationSeconds,
@@ -466,7 +466,7 @@ extension MCPServer {
             // 画面外の中心は撃たない(ft_tap / ft_drag 等と同じ門。snapshot 前でも画面を読んで判定する)
             let pinchScreen = await coordinateScreen(pinchDriver, args: args)
             if let offscreen = Self.offscreenCoordinateError(
-                x: x, y: y, screen: pinchScreen, engine: engines[Self.engineKey(args)]) { throw offscreen }
+                x: x, y: y, screen: pinchScreen, bridge: bridges[Self.sessionKey(args)]) { throw offscreen }
             pinchCoordinate = (x, y)
             pinchSelector += keyboardCoordinateWarning(x: x, y: y, args: args)
                 + (await coordinateFrontAppWarning(pinchDriver, args: args))
@@ -501,7 +501,7 @@ extension MCPServer {
                 }
             }
         } else if !(pinchDriver is AndroidDriver),
-                  let snapshot = lastSnapshots[Self.engineKey(args)] {
+                  let snapshot = lastSnapshots[Self.sessionKey(args)] {
             // **直近の木から、両方の指が同じものに載る位置を選ぶ**(画面全体だと指が端に着き、
             // 手前のシートに1本を取られてパンになる。実測と理由は PinchRegion)。
             // **絞れなくても画面矩形は渡す** —— 領域があれば座標で撃てる = DSL / ライブと同じ扱い
@@ -534,7 +534,7 @@ extension MCPServer {
             + (whole ? " The fingers spanned the whole screen, so anything on top of the area"
                 + " you meant (a bottom sheet, a card) may have taken the gesture instead —"
                 + " pass x/y to pinch a specific spot." : "")
-            // エンジンの助言(iosEngineHint)は付けない —— ピンチは全フレームワークとも両エンジンで
+            // ブリッジの助言(iosModeHint)は付けない —— ピンチは全フレームワークとも両ブリッジで
             // 届く(docs/commands.md の表。Flutter も ios-xcuitest で実測済み)
             + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))
     }
@@ -608,7 +608,7 @@ extension MCPServer {
         if let x = try Self.doubleArgument(args, "x"), let y = try Self.doubleArgument(args, "y") {
             if let offscreen = Self.offscreenCoordinateError(
                 x: x, y: y, screen: await coordinateScreen(pressDriver, args: args),
-                engine: engines[Self.engineKey(args)]) { throw offscreen }
+                bridge: bridges[Self.sessionKey(args)]) { throw offscreen }
             let frontWarning = await coordinateFrontAppWarning(pressDriver, args: args)
             try await pressDriver.press(x: x, y: y, duration: pressDuration)
             recordInteraction(action: "press", resolvedRef: nil, args: args, coordinate: (x, y),
@@ -632,7 +632,7 @@ extension MCPServer {
     /// 同じ要素に対して言うことが変わる。キーボード被覆だけは断り(keyboardRefusal の doc)、残りは警告して撃つ。
     /// 木は verifiedElement が撮り直したもの(lastSnapshots に反映済み)
     func refGestureGuard(_ element: ElementInfo, isAndroid: Bool, args: [String: Any]) throws -> String {
-        let snapshot = lastSnapshots[Self.engineKey(args)]
+        let snapshot = lastSnapshots[Self.sessionKey(args)]
         let keyboard = KeyboardOcclusion.resolve(
             reported: snapshot?.keyboardFrame, in: snapshot?.elements ?? [], screen: snapshot?.screen)
         if let refusal = Self.keyboardRefusal(element, keyboardOcclusion: keyboard) {

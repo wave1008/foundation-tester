@@ -44,8 +44,8 @@ public final class RunRecorder: @unchecked Sendable {
     public let runDir: URL
 
     private let lock = NSLock()
-    /// 参加したデバイスの実効エンジン(recordWorkerEngine。lock で守る)
-    private var workerEngines: [WorkerEngineRecord] = []
+    /// 参加したデバイスの実効モード(recordWorkerMode。lock で守る)
+    private var workerModes: [WorkerModeRecord] = []
     /// ファイル名(sanitize 済み scenarioID)ごとの**高水位**(これまでに振った最大の連番)。
     /// 2 回目以降は `~<回数>` を付与。discardLast で巻き戻すのは「消したのが最新」のときだけ
     private var fileNameCounts: [String: Int] = [:]
@@ -127,23 +127,23 @@ public final class RunRecorder: @unchecked Sendable {
 
     /// 計測 run の識別を、finish を待たず run.json へ書く(途中で殺された run の run.json にも識別が残る。
     /// finish も同じ値を書く)。実行中の形(`begin` と同じ欄 + 識別)で書き直す。`info == nil`(通常の run)は何もしない
-    /// 参加したデバイスの実効エンジン(RunOrchestrator が参加のたびに呼ぶ)。同じ worker は後の値で置き換える
-    /// (回復で起こし直したデバイスが別のエンジンで戻った場合は、最後に使ったほうを残す)。finish が run.json へ書く
-    public func recordWorkerEngine(_ record: WorkerEngineRecord) {
+    /// 参加したデバイスの実効モード(RunOrchestrator が参加のたびに呼ぶ)。同じ worker は後の値で置き換える
+    /// (回復で起こし直したデバイスが別のモードで戻った場合は、最後に使ったほうを残す)。finish が run.json へ書く
+    public func recordWorkerMode(_ record: WorkerModeRecord) {
         lock.lock()
-        if let index = workerEngines.firstIndex(where: { $0.worker == record.worker }) {
-            workerEngines[index] = record
+        if let index = workerModes.firstIndex(where: { $0.worker == record.worker }) {
+            workerModes[index] = record
         } else {
-            workerEngines.append(record)
+            workerModes.append(record)
         }
         lock.unlock()
     }
 
-    /// これまでに参加したデバイスの実効エンジン(コンソールの run のまとめ用)
-    public var recordedWorkerEngines: [WorkerEngineRecord] {
+    /// これまでに参加したデバイスの実効モード(コンソールの run のまとめ用)
+    public var recordedWorkerModes: [WorkerModeRecord] {
         lock.lock()
         defer { lock.unlock() }
-        return workerEngines
+        return workerModes
     }
 
     public func recordResponseMeasurement(_ info: ResponseMeasurementRunInfo?) {
@@ -331,7 +331,7 @@ public final class RunRecorder: @unchecked Sendable {
         let guardSkippedSum = guardSkippedTotal
         let guardStaleFrameSum = guardStaleFrameTotal
         let remembered = rememberedResponseMeasurement
-        let engines = workerEngines
+        let modes = workerModes
         lock.unlock()
         // [occlusion-guard] 1度もガードに入らなかった run では3欄とも省略。
         // 1件でもあれば guardSkipped/guardStaleFrame は0でも必ず書く
@@ -379,7 +379,7 @@ public final class RunRecorder: @unchecked Sendable {
             // 無ければ書かない(欄が無い = 警告なし、または この版より前の記録)
             servicesWarnings: servicesWarnings.isEmpty ? nil : servicesWarnings,
             responseMeasurement: responseMeasurement ?? remembered,
-            workerEngines: engines.isEmpty ? nil : engines)
+            workerModes: modes.isEmpty ? nil : modes)
         RunResultsStore.writeMeta(meta, runDir: runDir)
         return slowFindings
     }

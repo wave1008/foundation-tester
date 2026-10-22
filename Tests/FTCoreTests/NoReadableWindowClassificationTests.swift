@@ -1,7 +1,7 @@
 // DriverError.isNoReadableWindow: Android の /snapshot が「アクティブウィンドウの a11y 根が
 // 無い」で断った(422 + 宣言した本文接頭辞)応答だけを拾う。**期待値はリテラルで書く** ——
 // production の定数で書くと、接頭辞を変えた回にワイヤ契約が割れたまま緑になる。
-// isEngineIncapable(§StepExecutorTests+ScrollSearch.swift)と同じく status + 本文前置で見る。
+// isBridgeIncapable(§StepExecutorTests+ScrollSearch.swift)と同じく status + 本文前置で見る。
 
 import XCTest
 @testable import FTCore
@@ -26,6 +26,6 @@ final class NoReadableWindowClassificationTests: XCTestCase {
 
     func testDoesNotMatchUnrelatedErrors() {
         XCTAssertFalse(DriverError.isNoReadableWindow(DriverError.bridgeUnreachable(
-            context: DriverErrorContext(engine: .android, physicalDevice: false), detail: "timeout")))
+            context: DriverErrorContext(bridge: .android, physicalDevice: false), detail: "timeout")))
     }
 }

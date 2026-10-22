@@ -100,7 +100,7 @@ actor LiveBridgeAutoStarter {
         // **自分のデバイスにだけ効かせる**(F8b 型・実地 L1: このポートが版差のせいで古く見えても、
         // 疎通した相手が別デバイスなら止めない——他人のブリッジを版で止めて起動し直していた実害。
         // 判定は run 側4経路と同じ FTCore.BridgeIdentityCheck の1箇所)
-        let expected = BridgeIdentityCheck.Expected(port: port, udid: udid, physical: physical, engine: nil)
+        let expected = BridgeIdentityCheck.Expected(port: port, udid: udid, physical: physical, bridge: nil)
         if !BridgeIdentityCheck.matches(expected: expected, status: status) {
             logStderr("port \(port) is answering for a different device — leaving its bridge alone"
                 + " (requested udid: \(udid))")

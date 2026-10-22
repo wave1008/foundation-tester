@@ -29,8 +29,8 @@ extension StepExecutor {
     /// 尽きたときは通信のタイムアウトとして DriverError で失敗する(静止の判定ではない)
     static let waitForSettleTransportMarginSeconds: Double = 5
 
-    static let waitForSettleNeedsScreenCapture = "waitForSettle needs a whole-screen capture; the in-app engine only"
-        + " sees the app itself (no keyboard or system alerts). Switch the run profile to hybrid or xcuitest"
+    static let waitForSettleNeedsScreenCapture = "waitForSettle needs a whole-screen capture; the in-app bridge only"
+        + " sees the app itself (no keyboard or system alerts), and no XCUITest bridge is attached to hand it to"
 
     /// waitForSettle 本体。`region` = 比べる範囲(nil = 画面全体)。`startedAt` = ステップの開始(範囲の要素の解決も
     /// waitSeconds の中に数える)。戻り値の note は driverFallback に載る(throwsException: false で諦めた事実)
@@ -58,7 +58,7 @@ extension StepExecutor {
             response = try await (typeDriver ?? driver).waitForSettle(
                 request, timeoutSeconds: Double(timeoutMs) / 1000 + Self.waitForSettleTransportMarginSeconds)
         } catch {
-            guard DriverError.isEngineIncapable(error), typeDriver == nil, !isAndroid else { throw error }
+            guard DriverError.isBridgeIncapable(error), typeDriver == nil, !isAndroid else { throw error }
             return (.failed(Self.waitForSettleNeedsScreenCapture), nil)
         }
         phase.waitMs += Self.ms(clock.now - stageOneStart)

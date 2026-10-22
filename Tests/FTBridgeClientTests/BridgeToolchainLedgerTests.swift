@@ -57,7 +57,7 @@ final class BridgeToolchainLedgerTests: XCTestCase {
             atPath: BridgeToolchainLedger.url(stateDir: stateDir, port: 8123).path))
     }
 
-    /// ポートごとに独立(別ポートの控えを混同しない = hybrid の inapp/xcuitest 2 ポートを取り違えない)
+    /// ポートごとに独立(別ポートの控えを混同しない = inapp モードの inapp/xcuitest 2 ポートを取り違えない)
     func testDifferentPortsAreIndependent() {
         BridgeToolchainLedger.record(stateDir: stateDir, port: 8123, toolchain: "Xcode 27.0")
         XCTAssertFalse(BridgeToolchainLedger.matchesCurrent(stateDir: stateDir, port: 8124, current: "Xcode 27.0"))

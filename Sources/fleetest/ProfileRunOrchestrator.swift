@@ -72,10 +72,10 @@ enum ProfileRunOrchestrator {
                 return !serials.contains(serial)
             },
             bridgeLogSize: { worker in
-                // xcuitest ランナーのログのみ有効(hybrid は xcuiPort 側。in-app はホスト側ログが
+                // xcuitest ランナーのログのみ有効(inapp モードは xcuiPort 側。in-app はホスト側ログが
                 // AX 処理で成長しないため nil を返して /status のみの判定にフォールバックさせる)
                 guard let port = worker.connection.xcuiPort
-                    ?? ((worker.connection.engine == nil || worker.connection.engine == "xcuitest")
+                    ?? ((worker.connection.mode == nil || worker.connection.mode == "xcuitest")
                         ? worker.connection.port : nil) else { return nil }
                 let attrs = try? FileManager.default.attributesOfItem(
                     atPath: repoRoot.appendingPathComponent(".fleetest/bridge-\(port).log").path)
@@ -86,7 +86,7 @@ enum ProfileRunOrchestrator {
                 // (in-app ブリッジは台帳に pid を持たない)。BridgeLiveness.decide の材料で、
                 // 「生きている間はログ静止の近道を使わない/消えていれば窓の残りを待たない」を分ける
                 guard let port = worker.connection.xcuiPort
-                    ?? ((worker.connection.engine == nil || worker.connection.engine == "xcuitest")
+                    ?? ((worker.connection.mode == nil || worker.connection.mode == "xcuitest")
                         ? worker.connection.port : nil) else { return nil }
                 let pidPath = repoRoot.appendingPathComponent(".fleetest/bridge-\(port).pid").path
                 guard let text = try? String(contentsOfFile: pidPath, encoding: .utf8),
@@ -94,7 +94,7 @@ enum ProfileRunOrchestrator {
                 return ProcessLiveness.isAlive(pid)
             },
             probeBridge: { worker in
-                // hybrid の主ポート(in-app)は別アプリのシナリオ中サスペンドされ TCP 受理・HTTP
+                // inapp モードの主ポート(in-app)は別アプリのシナリオ中サスペンドされ TCP 受理・HTTP
                 // 無応答になる(design §8.8)ため、死活確認は suspend されない xcuitest 側で行う
                 guard let port = worker.connection.xcuiPort ?? worker.connection.port else {
                     return .silent

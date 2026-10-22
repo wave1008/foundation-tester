@@ -132,7 +132,7 @@ final class NoteCoverageTests: XCTestCase {
         // 2026-08-31 の実機監査で足した1枚。Android Compose Scaffold の NavigationBar が
         // 無ラベルで間引かれ(SnapshotBuilder.shouldInclude)、preorder+depth の復元が下部タブを
         // scroll 容器の子に再配線する形(ContainerGeometry.isChromePinnedOutside の witness)。
-        // 既存の sutec-home(iOS/hybrid 採取)とは別プラットフォームの捕獲なので独立の鍵にする
+        // 既存の sutec-home(iOS/inapp モード採取)とは別プラットフォームの捕獲なので独立の鍵にする
         "and-sutec_home": "ec",
         // 2026-09-05 の実機監査(Pixel 4a・E2E-Android の入力画面)で足した1枚。パスワード欄に
         // フォーカスして Gboard が 1073px に伸び、adjustResize で窓が 2340→1267px に縮んだ木。

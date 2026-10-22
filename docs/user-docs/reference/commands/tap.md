@@ -10,7 +10,7 @@ Taps an element, or raw coordinates, on the screen.
 |---|---|
 | `tap(sel, holdSeconds: 0, maxGestureSeconds:containerInference:linkText:settle:waitSeconds:scroll:maxSwipes:)` | Taps the first element matching the selector. `holdSeconds` greater than 0 makes it a long press (default 0 = normal tap, capped at 10 seconds by default — pass `maxGestureSeconds:` to allow up to 60 for this one call). Waits for the target to become enabled before tapping (see Notes). Returns the tapped element, so assertions chain directly: `tap("#btn_ok").textIs("OK")`. |
 | `tap(sel, linkText: "text")` | Taps the place where `linkText` is drawn **inside** the element the selector resolves to — for an inline link in a paragraph, which the accessibility tree does not expose as a node on Compose Multiplatform, Android Views (`ClickableSpan`) and SwiftUI (`AttributedString` links). Located first from the tree (a descendant whose label or value equals `linkText`, as Flutter and React Native expose links), then by OCR on the element's pixels. If neither finds it the step fails and lists what OCR read — it never falls back to the element's centre. The step note records which way located it (`tree` / `ocr`). A link wrapped across two lines is not found by OCR. Without `linkText:` it taps the centre of the element. |
-| `tap(x: Double, y: Double, holdSeconds: 0, maxGestureSeconds:, settle:)` | Taps raw coordinates. Coordinates use the same system as the `screen` frame in a snapshot — iOS = pt, Android = px (not dp). Prefer a selector whenever one is available. On iOS with the in-app engine, a point off the screen fails; a point on the software keyboard is tapped through XCUITest on the default hybrid engine, so the key is pressed (it fails only when the device sets `engine: inapp` alone) — to reach what is under the keyboard, close it first with `pressEnter` or `hideKeyboard`; and an element clipped out of its scroll container is not activated even if its frame contains the point — the touch is sent to whatever is actually visible at that point (the step gets the note `… is clipped by its scroll container here (not drawn), so it was not activated; sent a touch to what is on screen at that point`). |
+| `tap(x: Double, y: Double, holdSeconds: 0, maxGestureSeconds:, settle:)` | Taps raw coordinates. Coordinates use the same system as the `screen` frame in a snapshot — iOS = pt, Android = px (not dp). Prefer a selector whenever one is available. On iOS in inapp mode, a point off the screen fails; a point on the software keyboard is tapped through the XCUITest bridge, so the key is pressed — to reach what is under the keyboard, close it first with `pressEnter` or `hideKeyboard`; and an element clipped out of its scroll container is not activated even if its frame contains the point — the touch is sent to whatever is actually visible at that point (the step gets the note `… is clipped by its scroll container here (not drawn), so it was not activated; sent a touch to what is on screen at that point`). |
 | `tap(sel, scroll: .noScroll)` | Taps without scrolling, even inside a `withScrollDown { }` block. |
 | `tapAppIcon(name?)` | Taps the app icon on the home screen. Name defaults to the app profile's `appName` when omitted. |
 
@@ -41,13 +41,13 @@ tap(x: 120, y: 640)                    // only when no selector is available
   when `#id` resolves to the input's wrapping container rather than the field itself, focus can
   fail to land in the field; `type` recovers by locating the single input inside the tapped
   container. See [type](./type.md).
-- **iOS in-app engine: "a real touch would land elsewhere" note.** The in-app engine operates the element
+- **iOS in-app bridge: "a real touch would land elsewhere" note.** The in-app bridge operates the element
   directly (its accessibility action, or a touch sent straight to the element's window), so it can reach an
   element that a real finger cannot — for example a button hidden under a keyboard accessory bar. When a real
   touch at the centre of the element's frame would land on another view, the step stays green and gets the
   note `in-app operated the element directly, but a real touch at the centre of its frame lands on another view
   (<view> at (x, y))` (machine-readable: `inapp-tap-outside-hit-area`). The tap is not retried and the step is
-  not failed. The same tap can fail on the XCUITest engine, which presses the centre of the frame. Nothing is
+  not failed. The same tap can fail on the XCUITest bridge, which presses the centre of the frame. Nothing is
   said when it cannot be determined (for example Flutter, which draws everything in one view). A SwiftUI
   `.plain` button that is tappable only on its text gets a separate note instead: `in-app activated the element at
   its activation point, which is not the centre of its frame that a coordinate tap presses (activation point (x, y),

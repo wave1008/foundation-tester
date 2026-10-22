@@ -1,9 +1,9 @@
 // `launchApp(url:)` が URL を配送する前に「アプリが受け取れる状態か」を木から決める規則(純粋関数)。
 //
-// in-app エンジンの launch は**ネイティブのブリッジが答えた時点**で返る。React Native は JS が
+// in-app ブリッジの launch は**ネイティブのブリッジが答えた時点**で返る。React Native は JS が
 // 起動して `Linking.addEventListener('url')` を登録するまで warm な URL を捨てる(RCTLinkingManager は
 // JS 側の listener が居るまで通知を購読しない)ので、その前に `simctl openurl` を撃つと届かず、
-// ホームのまま = 誤った赤(E2E-RN ios-inapp が M1Max で 2/24。台帳 §19.26)。XCUITest エンジンの
+// ホームのまま = 誤った赤(E2E-RN ios-inapp が M1Max で 2/24。台帳 §19.26)。XCUITest ブリッジの
 // launch はアプリの静穏まで待つので同じ穴が無い。**待つ根拠は定数ではなく観測**:
 // 「利用者が触れる要素が木に載った」= 最初の画面が描かれた。RN/Flutter/Compose では JS・Dart の
 // 起動後にしか載らない。起動画面(ラベルだけ)では載らない

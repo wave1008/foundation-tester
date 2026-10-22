@@ -78,7 +78,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 委譲した WebView が**中身を1つも出さないまま待ちの上限に達した**木で判定した。
     /// 木からは「AX がまだ公開されていない」と「本当に空のページ」を区別できないので判定は変えないが、
     /// **黙るとこの木で成立した不在が後から見分けられない**(否定アサーションは空の木で必ず通る)。
-    /// 上限は Simulator の実測 2.3s に対する余裕で、hybrid は実機でも動く =
+    /// 上限は Simulator の実測 2.3s に対する余裕で、inapp モードは実機でも動く =
     /// 尽きること自体が想定内(`WebViewDelegatingDriver.contentWaitMs`)。
     /// 率が上がっていたら上限か画面の作りを疑う
     case webViewNotRendered = "webview-not-rendered"

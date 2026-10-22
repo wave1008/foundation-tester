@@ -193,7 +193,7 @@ jq -r 'select(.workerAnomalies == null) | .runID' results/runs/2026-08/*/run.jso
 **`results slow` / `results insights`(と `api results` の `slow`/`insights` キー)は「シナリオの集合」の
 単位を自分で守る**: 集計は scenarioID だけでなく **(scenarioID, platform)** で束ねる。
 E2E-CMP のように同じ scenarioID を iOS/Android の両方で回すプロジェクトで、scenarioID だけで
-前後半・連続失敗・偏りを見ると2つの platform の記録が混ざる(実測: iOS を XCUITest エンジンで
+前後半・連続失敗・偏りを見ると2つの platform の記録が混ざる(実測: iOS を xcuitest モードで
 1回回しただけで、Android の記録と混ざった `duration regressed` が10本以上出た)。
 `SlowTestRow`/`InsightRow` はどちらも `platform` 欄を持ち、メッセージにも `[platform]` が付く。
 
@@ -273,12 +273,12 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | guardStaleFrame | Int? | `guarded` のうち、絵が古いまま撮り直しても stale で素通りした回(`stale-screenshot`。古いと判定した絵とバイト同一のままなら、次のステップでも古いと扱う。exists・テキスト比較は古い間は待って撮り直し、締め切りまで古いままだった回だけ素通りする。findImage / findImages / existImage で古い絵を待って撮り直した回にも立つ)。`guardSkipped` と同じ 0/nil の規律 |
 | runGroup | String? | **同じ実行から分かれた run を束ねる鍵**。デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run(別 runID・別 machine・リモートは向こうの時計)になるので、`profile` と開始時刻では同じ実行かどうか決められない。ファンアウトの親が1回だけ発行し、手元の子にもリモートの子にも同じ値が入る。**単機の run と 2026-08-26 より前の記録では欠落**(束ねる相手が居ない) |
 | fmSettings | FMSettingsRecord? | **その run で実際に効いていた FM 設定**(プロファイルの値そのものではなく、`--set heal=…`/`--set fmTextVisibilityCheck=…` 等の CLI 上書きを反映した後の実効値)。下記の4フィールドを常に持つ。**欄が無い = この版より前の記録**であって、FM が無効だった意味ではない(fmDead 等と同じく「無い」と「false」を混ぜない) |
-| setOverrides | [String: String]? | **この run に効いた `--set <key>=<value>` の上書き**(キーは実行プロファイル JSON のキーそのもの、値は型を問わず文字列化したもの。例 `{"scenarioTimeout": "3", "iosInappEngine": "false"}`)。上書きが無い run では省略(空辞書ではなく無し)。**打ち切り run(`--set scenarioTimeout=…` で短くした run 等)を insights/flaky の集計から機械的に外すための欄** —— この欄が無い記録では、`--set` で打ち切った run と通常の失敗が見分けられない(この版より前の記録は全て欄が無い) |
+| setOverrides | [String: String]? | **この run に効いた `--set <key>=<value>` の上書き**(キーは実行プロファイル JSON のキーそのもの、値は型を問わず文字列化したもの。例 `{"scenarioTimeout": "3", "iosMode": "xcuitest"}`)。上書きが無い run では省略(空辞書ではなく無し)。**打ち切り run(`--set scenarioTimeout=…` で短くした run 等)を insights/flaky の集計から機械的に外すための欄** —— この欄が無い記録では、`--set` で打ち切った run と通常の失敗が見分けられない(この版より前の記録は全て欄が無い) |
 | interrupted | Bool? | **この run が SIGINT/SIGTERM/SIGHUP(拡張の「テストを中断」・端末の Ctrl-C・`kill <pid>`・ssh の切断等)を受けたか**。**供給段(デバイス・ブリッジの用意)の最中の中断も含む**(受け付けは記録の開始直後から)。true の run は途中で打ち切られており、残っていたシナリオは `"the run was interrupted (SIGINT/SIGTERM) before this scenario started"` という理由で failed に数えられる。false は書かない(既存レコードと同じ形)。**始まらなかったシナリオは `skipKind: "interrupted"` で記録され、`results insights`・flaky の判定と成功率(`results summary` / `devices`)からは外れる**(中断のたびに回帰の疑いを並べない・止めただけの run で成功率を下げない)。`results list` は件数の後に ` (interrupted)` を付ける(`abortReason` のある run は ` (aborted)`)。2026-09-11 より前の記録には無い(それより前は中断で finishedAt 自体が欠落していた) |
 | abortReason | String? | **ツールが異常として run を止めたときの理由**(英語、人間可読)。2つの形がある —— ①**供給段(ワーカー構築・レーン検査・Android の全台が実行前のチェックで除外された等)の例外で、run 全体が始まる前に終わった**: `total` 分すべて未実行(`passed:0`)/ ②**遅延参加の OS(iOS)が1台も合流せず、run を途中で止めた**: 走り始めていたシナリオは最後まで走らせて記録し、残りは同じ理由の未実行(`noWorker`)として記録する(`passed` は 0 とは限らない)。正常終了・`interrupted` の run では省略(②は利用者の中断ではないので `interrupted` を立てない)。**この欄が無いと理由はログにしか残らず、`results insights` の「クラッシュか強制終了」に紛れる**。2026-09-11 より前の記録には無い |
 | responseMeasurement | ResponseMeasurementRunInfo? | **レスポンス計測モード(プロファイルの `responseMeasurement: true`)の run だけ**書く。無い = 計測モードの run ではない(旧い記録も同じ意味)。前回比は同じデバイス・同じ `host` の run どうしだけを比べるので、デバイスを論理名ではなく端末で識別する。欄: `deviceName`(プロファイル上の論理名)・`serial`(Android の adb serial。省略あり)・`udid`(iOS の UDID。省略あり。前回比の「同じ端末」は `serial ?? udid ?? deviceName`)・`model` / `osVersion`(プロファイルに書かれていれば。端末から読み直さない。省略あり)・`repeatCount`(各シナリオを続けて回した回数 = `responseRepeat`)。繰り返しの結果ファイルは `<id>`、`<id>~2`、… で、`total` / `passed` / `failed` は繰り返しを含む本数 |
 | servicesWarnings | [String]? | **サービス(`scripts/compose.yaml`)の起動時に出た警告**(Android 実機への `adb reverse` が張れなかった 等。英語の文言そのまま。UDP の経路が届かないのは警告でなく起動の失敗 = `abortReason`)。**合否は変えない**(警告だけ)。警告が無い run と、この版より前の記録では省略 |
-| workerEngines | [WorkerEngineRecord]? | **iOS のデバイスごとの実効エンジン**(参加した順)。欄: `worker`(`scenarios/*.json` の `worker` と同じ規則 = join できる)・`requested`(実行プロファイルが頼んだエンジン `inapp` / `hybrid` / `xcuitest`)・`effective`(実際に使ったエンジン)・`reason`(**requested と effective が違うときだけ**。供給が縮退を決めた一次情報の文言。例: 実機の in-app が注入できず XCUITest で走った `in-app injection is not available (the app's signing certificate (…) is not in this machine's keychain)`)。記録は参加したデバイスだけ(供給に失敗して参加しなかったデバイスは載らない)。Android だけの run・iOS が1台も参加しなかった run・この版より前の記録では省略 |
+| workerModes | [WorkerModeRecord]? | **iOS のデバイスごとの実効モード**(参加した順)。欄: `worker`(`scenarios/*.json` の `worker` と同じ規則 = join できる)・`requested`(実行プロファイルが頼んだモード `inapp` / `xcuitest`)・`effective`(実際に使ったモード)・`reason`(**requested と effective が違うときだけ**。供給が縮退を決めた一次情報の文言。例: 実機の in-app が注入できず XCUITest で走った `in-app injection is not available (the app's signing certificate (…) is not in this machine's keychain)`)。記録は参加したデバイスだけ(供給に失敗して参加しなかったデバイスは載らない)。Android だけの run・iOS が1台も参加しなかった run・この版より前の記録では省略 |
 | slowWorkers | [String]? | **デバイスそのものが遅いことの観測**(`FTCore.SlowWorkerDetector`。`worker: median snapshot <N>ms over <M> samples (other lanes <K>ms)` の1行×デバイス)。ワーカーごとの in-app snapshot 所要(`scenarios/*.json` の `timeline[].snapshotMs`)の中央値が、標本8件以上かつ**同じ run の他ワーカー全体の中央値の10倍以上・かつ絶対値1,000ms以上**のときだけ載る(相対だけだとホスト負荷で全台が遅い run を1台のせいにし、絶対だけだと元から遅い環境で毎回鳴るため、両方を要求する)。**警告のみで除外・自動修復はしない** —— 既存の劣化検知(XCUITestランナーの遅いa11y照会での起動し直し・凍結トリアージ)は原理的にこの帯(ステップtimeout未満の遅さ)を見ないので、これが唯一の痕跡になる。**他ワーカーが1台も無い(単機の)runでは常に省略**(相対比較ができない)。CLI/`api run` はこの配列が1件でもあれば末尾に `⚠️ slow lane: …` を追加で出す(既存の劣化警告とは別行)。**2つ目の形(間欠的に詰まるデバイス)も同じ欄に載る**(2026-09-16): 中央値は正常でも `worker: <N> of <M> snapshots took 2000ms+ (p90 <P>ms, other lanes <K> of <L>)` の1行。標本8件以上・2秒超が5本以上かつ20%以上・他レーン全体の2秒超の割合がこのレーンの1/10以下、の全部を満たすときだけ(実測: 劣化デバイスは26〜43%・健全なレーンは最大9%(22標本中2本))。中央値判定が立ったデバイスには出さない(1台1件) |
 
 ### fmSettings(`FMSettingsRecord`)
@@ -347,11 +347,11 @@ Android の凍結事後判定(`AndroidHealthProbe.observeBlankAndRepair`)が試�
 
 | フィールド | 型 | 意味 |
 |---|---|---|
-| evidence | String | `crashReport`(iOS in-app エンジン。`SimulatorCrashReport` が直近の `.ips` を見つけた)/ `fatalException`(Android。crash バッファの FATAL EXCEPTION を見つけた)/ `nativeSignal`(Android。crash バッファのネイティブのクラッシュ = `Fatal signal` と debuggerd の `>>> <package> <<<` を見つけた。Flutter・NDK)。Android は**シナリオの開始以降**のクラッシュだけを載せる(前の run・前のシナリオの同じアプリのクラッシュを帰属させない) |
+| evidence | String | `crashReport`(iOS の in-app ブリッジ。`SimulatorCrashReport` が直近の `.ips` を見つけた)/ `fatalException`(Android。crash バッファの FATAL EXCEPTION を見つけた)/ `nativeSignal`(Android。crash バッファのネイティブのクラッシュ = `Fatal signal` と debuggerd の `>>> <package> <<<` を見つけた。Flutter・NDK)。Android は**シナリオの開始以降**のクラッシュだけを載せる(前の run・前のシナリオの同じアプリのクラッシュを帰属させない) |
 | path | String? | iOS のみ。見つかった `.ips` のパス |
 | summary | String? | iOS = クラッシュ理由の1行 / Android = FATAL EXCEPTION ブロックの先頭行か `Fatal signal …` の行 |
 
-**XCUITest エンジン(hybrid/xcuitest)の iOS クラッシュはこの版では検出しない**(検出箇所が
+**xcuitest モードの iOS クラッシュはこの版では検出しない**(検出箇所が
 `InAppDriver`/`InAppLauncher` の in-app 経路だけのため)。2026-09-27 より前の記録には無い。
 
 ---
@@ -378,7 +378,7 @@ Android の凍結事後判定(`AndroidHealthProbe.observeBlankAndRepair`)が試�
 | skipKind | String? | `notApplicable`(対象プラットフォーム外 = 意図された未実行)/ `noWorker`(ワーカー不在等の事故)/ `interrupted`(run の中断で始まらなかった。run の失敗数には数えるが、`results insights`・flaky の判定と成功率からは外す)。**run の前に合成する platform 対象外(`notApplicable` で `skipReason` の無いもの)は run.json の `total` の外**(下の `skipReason` の恒等式は、シナリオが実行中に宣言した対象外だけで成り立つ) |
 | skipReason | String? | シナリオ自身が実行中に「この環境では成り立たない」と宣言した理由(今は iOS のホームボタン機での `appSwitcher()`)。`skipKind: notApplicable` と対で、`passed: true`(失敗ではない)・宣言以降の step は skipped。`fleetest run` の合成レコード(platform 対象外)の理由は `failedSteps[0].description` で、こちらは持たない。**run のまとめでは緑でも赤でもない skipped**(コンソール `⏭ skipped (not applicable)`・NDJSON は `scenarioFinished.notApplicableReason` と `runFinished.skipped`・拡張はテスト結果を skipped にする)。run.json にキーは足さず、`total` には含めて `passed` には数えない(skipped = total - passed - failed)。成功率・フレークの統計からは外す |
 | interrupted | Bool? | **run が中断(SIGINT/SIGTERM)された後に失敗で終わった**(中断は走っているシナリオ子を止めるので、シナリオの性質とは無関係に落ちる)。true のときだけ書く。`skipKind: interrupted` と同じく `results insights` と flaky の判定からは外す。**成功率からは外さない**(印は書いた時点の中断の状態だけで付き、中断の前に確定した本当の失敗も混ざる) |
-| engine | String? | **iOS でそのシナリオを走らせたデバイスの実効エンジン**(`inapp` / `hybrid` / `xcuitest`)。hybrid は in-app を主に撃ち、in-app でできない手順(長押し・スワイプ・ピンチ等)だけ XCUITest へ回す。回した手順は説明(`timeline[].description`・`events/*.ndjson` の step)の末尾に `(fell back to XCUITest)` が付く(**`steps.passedViaFallback` とは別物** = あちらはセレクタの代替候補で解決できた手順の数)。頼んだエンジンから縮退したかとその理由は run.json の `workerEngines`(`worker` で join)。Android・合成レコード(始まらなかったシナリオ)・この版より前の記録は省略(= 不明。`xcuitest` と読まない) |
+| mode | String? | **iOS でそのシナリオを走らせたデバイスの実効モード**(`inapp` / `xcuitest`)。inapp モードは in-app ブリッジを主に撃ち、in-app でできない手順(長押し・スワイプ・ピンチ等)だけ XCUITest ブリッジへ回す。回した手順は説明(`timeline[].description`・`events/*.ndjson` の step)の末尾に `(fell back to XCUITest)` が付く(**`steps.passedViaFallback` とは別物** = あちらはセレクタの代替候補で解決できた手順の数)。頼んだモードから縮退したかとその理由は run.json の `workerModes`(`worker` で join)。Android・合成レコード(始まらなかったシナリオ)・この版より前の記録は省略(= 不明。`xcuitest` と読まない) |
 | reportPath | String? | Markdown レポート(リポジトリルート相対。**gitignore なので他マシンからは開けない**) |
 
 **ステップに到達しないまま落ちた run** では `failedSteps` が空になる(ブリッジ未接続・

@@ -43,7 +43,7 @@ final class FailureFactsTests: XCTestCase {
 
     func testFailedStepCarriesPhaseCommandKindAndNotes() {
         var builder = ScenarioRecordBuilder(scenarioID: "Foo.a", platform: "ios",
-                                            title: nil, worker: nil, engine: nil)
+                                            title: nil, worker: nil, mode: nil)
         builder.consume(stepEvent(index: 1, status: "passed", section: "condition",
                                   command: "launchApp"))
         var failure = stepEvent(index: 2, status: "failed", section: "condition",
@@ -70,7 +70,7 @@ final class FailureFactsTests: XCTestCase {
     /// 注記が無いステップに空配列を書かない(旧レコードと同じ形を保つ)
     func testFailedStepWithoutNotesOmitsTheKey() {
         var builder = ScenarioRecordBuilder(scenarioID: "Foo.a", platform: "ios",
-                                            title: nil, worker: nil, engine: nil)
+                                            title: nil, worker: nil, mode: nil)
         var failure = stepEvent(index: 1, status: "failed", section: "expectation",
                                 command: "textIs")
         failure.notes = []
@@ -98,7 +98,7 @@ final class FailureFactsTests: XCTestCase {
 
     /// **エラーの型だけ**で仕分ける。文言一致で分けると、文言を直した瞬間に静かに壊れる
     func testThrownErrorsAreClassifiedByType() {
-        let context = DriverErrorContext(engine: .iosXCUITest, physicalDevice: false)
+        let context = DriverErrorContext(bridge: .iosXCUITest, physicalDevice: false)
         XCTAssertEqual(StepExecutor.failureKind(thrown: DriverError.bridgeUnreachable(context: context, detail: "x")),
                        .driverUnreachable)
         XCTAssertEqual(StepExecutor.failureKind(thrown: DriverError.bridgeConnectionRefused(context: context, detail: "x")),

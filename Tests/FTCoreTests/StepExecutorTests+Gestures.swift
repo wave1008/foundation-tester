@@ -17,7 +17,7 @@ private extension Array where Element == String {
 extension StepExecutorTests {
     // MARK: - ジェスチャのドライバフォールバック(Compose)
 
-    /// 501(このエンジンでは未対応)なら swipe を typeDriver へ切り替え、driverFallback を記録すること
+    /// 501(このブリッジでは未対応)なら swipe を typeDriver へ切り替え、driverFallback を記録すること
     func testSwipe501FallsBackToTypeDriver() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log)
@@ -334,7 +334,7 @@ extension StepExecutorTests {
     }
 
     /// in-app 相当(drag が 501)なら始点・終点の両方を typeDriver 側で取り直して drag すること
-    func testSwipeElementToElementFallsBackToTypeDriverWhenEngineIncapable() async throws {
+    func testSwipeElementToElementFallsBackToTypeDriverWhenBridgeIncapable() async throws {
         let log = CallLog()
         let from = framed(ref: 1, id: "handle_from", x: 0, y: 100, width: 20, height: 20)
         let to = framed(ref: 2, id: "handle_to", x: 200, y: 300, width: 40, height: 40)
@@ -578,7 +578,7 @@ extension StepExecutorTests {
 
     /// in-app 相当(501)なら typeDriver へ回すこと。**座標・identifier はそのまま**渡る
     /// (ref と違いブリッジ間で意味が変わらないので取り直しが要らない)
-    func testPinchFallsBackToTypeDriverWhenEngineIncapable() async throws {
+    func testPinchFallsBackToTypeDriverWhenBridgeIncapable() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         primary.pinchError = DriverError.badResponse(status: 501, body: "in-app では pinch が効きません")
@@ -714,7 +714,7 @@ extension StepExecutorTests {
 
     /// 空打ちドラッグは in-app が未対応(501)なら typeDriver(XCUITest)へ回すこと。
     /// 回さないと Compose のスクロール容器がタッチを1回吸ったままになり直後の tap が空振りする
-    func testEmptyDragFallsBackToTypeDriverWhenEngineIncapable() async throws {
+    func testEmptyDragFallsBackToTypeDriverWhenBridgeIncapable() async throws {
         let log = CallLog()
         let row = framed(ref: 1, id: "row_40", x: 16, y: 300, width: 370, height: 56)
         // **1周目は静止確認で2枚撮る**(プログラム的スクロールの取りこぼし対策)。

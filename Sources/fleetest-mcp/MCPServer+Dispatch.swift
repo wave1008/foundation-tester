@@ -61,7 +61,7 @@ extension MCPServer {
         // **fresh を撮る前に世代の有無を固定する**: freshSnapshot は内部で adoptSnapshot を通し、
         // 世代が無ければその場で最初の世代を作ってしまう。後から見ると常に「世代あり」に見えて
         // 「そもそも撮っていない」と「見つからない」を区別できなくなる
-        let hadGenerations = !(refGenerations[Self.engineKey(args)]?.isEmpty ?? true)
+        let hadGenerations = !(refGenerations[Self.sessionKey(args)]?.isEmpty ?? true)
         let takenFrom = generationSnapshot(containing: ref, args: args)
         let fresh = try await freshSnapshot(driver, args: args)
         // **ref の出自がアプリを跨いでいないか**(verifiedRef と同じガード。理由はあちらの doc)
@@ -69,11 +69,11 @@ extension MCPServer {
             ref: ref, takenFrom: takenFrom, fresh: fresh) { throw MCPError(message) }
         // **アラートの前面では断る**(`verifiedRef` と同じ門。ここを通る double_tap / drag / pinch だけが
         // 門の外に居て、XCTest が「許可しない」を押して done と返していた —— 実機 SE3 で実測)
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         var gateNote = ""
         if launchedBundleIDs[key] != "com.apple.springboard",
            let described = resolved?.element ?? fresh.elements.first(where: { $0.ref == ref }) {
-            switch await Self.systemAlertGate(described, driver: driver, engine: engines[key]) {
+            switch await Self.systemAlertGate(described, driver: driver, bridge: bridges[key]) {
             case .refuse(let refusal): throw MCPError(refusal)
             case .proceed(let note): gateNote = note
             }
@@ -105,11 +105,11 @@ extension MCPServer {
         }
     }
 
-    /// driver(_:) が使うキャッシュキーと同じ引き当て(エンジンの記録先)。**93 箇所から
+    /// driver(_:) が使うキャッシュキーと同じ引き当て(ブリッジ種別の記録先)。**93 箇所から
     /// 呼ばれる non-throwing 関数**なので型ゲートは `try?` で通す(誤った型は nil = そのまま
     /// port なしのキーに畳む)——実際の接続は `portArgument`/`portForIOS`(throws)が別途
     /// 検査するので、ここが緩くても「文字列を渡したのに繋がってしまう」ことにはならない
-    static func engineKey(_ args: [String: Any]) -> String {
+    static func sessionKey(_ args: [String: Any]) -> String {
         if let profileName = args["profile"] as? String {
             return driverCacheKey(profile: profileName, project: args["project"] as? String,
                                   platform: args["platform"] as? String)
@@ -152,10 +152,10 @@ extension MCPServer {
             .first?.platform
     }
 
-    /// ft_logs の bundleId 既定。ログはブリッジを通らないので engineKey が launch 時と
+    /// ft_logs の bundleId 既定。ログはブリッジを通らないので sessionKey が launch 時と
     /// 揃わない(profile で起動し serial 直指定で読む等)。覚えている起動が1つだけならそれを使う
     func lastLaunchedBundleID(_ args: [String: Any]) -> String? {
-        if let exact = launchedBundleIDs[Self.engineKey(args)] { return exact }
+        if let exact = launchedBundleIDs[Self.sessionKey(args)] { return exact }
         let known = Set(launchedBundleIDs.values)
         return known.count == 1 ? known.first : nil
     }
@@ -206,10 +206,10 @@ extension MCPServer {
             let iosApp = resolved.apps["ios"]
             // provision の進捗クロージャは @escaping のため inout の prologue を直接キャプチャできない
             var provisionLog: [String] = []
-            // **MCP の iOS は常に XCUITest**(ユーザー決定)。プロファイルが in-app / hybrid でも XCUITest で供給する
+            // **MCP の iOS は常に XCUITest**(ユーザー決定)。プロファイルが inapp モードでも XCUITest で供給する
             // (in-app で供給すると、使わない注入付きの起動し直しが走る)
             var spec = device.spec
-            spec.engine = "xcuitest"
+            spec.mode = "xcuitest"
             let provisioned = try await provisioner.provision(
                 devices: [(device.name, spec)],
                 bundleID: iosApp?.bundleID,
@@ -526,10 +526,10 @@ extension MCPServer {
         let clock = ContinuousClock()
         let start = clock.now
         // **udid は入口で port へ畳む**。`driver(_:)` は解決後のポートで
-        // ドライバを引くのに、`engineKey` は生の引数しか見ないので、udid で指した機は
-        // すべて port=nil の同じキーに落ちていた。engineKey が引く記憶は
+        // ドライバを引くのに、`sessionKey` は生の引数しか見ないので、udid で指した機は
+        // すべて port=nil の同じキーに落ちていた。sessionKey が引く記憶は
         // lastSnapshots / launchedBundleIDs / uiFrameworkHints / connections /
-        // pendingWarnings / udids / engines / rememberedSnapshotFilters の8つで、
+        // pendingWarnings / udids / bridges / rememberedSnapshotFilters の8つで、
         // **2台を udid で操作すると混ざる**
         // (実測: 機A に Preferences・機B に Maps を launch した後、機A への
         //  ft_open_url が com.apple.Maps へ配ると申告した。Android では intent の
@@ -551,7 +551,7 @@ extension MCPServer {
                     ? try await SlowCallWatchdog.marking("resolving the target device") {
                         try await Self.foldingUDIDIntoPort(
                             args, rememberedPort: self.rememberedPort(forUDID: args["udid"] as? String),
-                            rebuildSimulatorBridge: { [self, sessionKey = Self.engineKey(args)] udid, diagnosis in
+                            rebuildSimulatorBridge: { [self, sessionKey = Self.sessionKey(args)] udid, diagnosis in
                                 let port = await self.rebuildMissingSimulatorBridge(
                                     udid: udid, diagnosis: diagnosis, sessionKey: sessionKey)
                                 if port != nil { bridgeStarted.started = true }
@@ -566,8 +566,8 @@ extension MCPServer {
             folded = Self.strippingSelectorQuotes(args)
         }
         // **セッション記憶の適用も同じ入口で畳む**: driver(_:) の内部(キャッシュ参照・
-        // engineKey 計算より後)で適用すると、省略呼び出しは常に `direct:ios:0:` の生キーで
-        // キャッシュ/ref 世代/engineKey を引き、明示切替後も旧デバイスのキャッシュ済み
+        // sessionKey 計算より後)で適用すると、省略呼び出しは常に `direct:ios:0:` の生キーで
+        // キャッシュ/ref 世代/sessionKey を引き、明示切替後も旧デバイスのキャッシュ済み
         // ドライバや ref 世代が返る。ここで args へ埋めてしまえば、明示指定と省略呼び出しが
         // 完全に同じキーへ揃う。
         // **拒否はこの do/catch の外で投げる**: connectionLostHint はデバイスを走査するので、
@@ -605,7 +605,7 @@ extension MCPServer {
             // 起動し直せなければ元のエラーがそのまま catch へ落ち、connectionLostHint 等はそのまま効く
             // (MCPToolFailure は接続拒否ではないので撃ち直しの対象にならない = シナリオを二重に走らせない)
             SlowCallWatchdog.mark("running \(tool)")
-            noteScope = Self.toolAcceptsDeviceTarget(tool) ? Self.engineKey(resolved) : ""
+            noteScope = Self.toolAcceptsDeviceTarget(tool) ? Self.sessionKey(resolved) : ""
             let content = try await dispatchRetryingAfterBridgeRecovery(tool: tool, args: resolved)
             return await decorated(bridgeStarted.prepended(to: content))
         } catch let failure as MCPToolFailure {
@@ -629,7 +629,7 @@ extension MCPServer {
 
     /// 実機で uiFramework が判定できないまま探索した回の直後に1回だけ(resolveExecutorHints が立てる)
     func takeUIFrameworkUnknownNote(args: [String: Any]) -> String? {
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         guard uiFrameworkUnknownPending.remove(key) != nil else { return nil }
         return "ℹ️ the UI framework of the app on this physical device is unknown (no .app/.ipa seen for"
             + " this bundle id yet): the relief drag after a scroll is decided per element from the"
@@ -643,7 +643,7 @@ extension MCPServer {
     /// デバイスの鍵は解決済みの記録(udids / connectedAndroidSerials)から採る = run の lease と同じ鍵。
     /// 記録が無い(接続する前に失敗した回)ときは引数の udid / serial。どれも無ければ何もしない
     func markDeviceInUse(args: [String: Any]) -> String? {
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         let recorded = (udids[key] ?? nil) ?? connectedAndroidSerials[key]
         guard let stateDir = deviceLeaseStateDir,
               let deviceKey = recorded ?? (args["udid"] as? String) ?? (args["serial"] as? String),
@@ -1096,7 +1096,7 @@ extension MCPServer {
     /// 祖先を掴むなり id を足すなりの次の手を選べる。
     /// `resolvedRef` は verifiedRef が撮り直した木での ref(掴み直しで動いていることがある)
     func reproductionNote(resolvedRef: Int, args: [String: Any]) -> String {
-        guard let snapshot = lastSnapshots[Self.engineKey(args)],
+        guard let snapshot = lastSnapshots[Self.sessionKey(args)],
               let element = snapshot.elements.first(where: { $0.ref == resolvedRef })
         else { return "" }
         if let graded = Self.SelectorNaming(snapshot).graded(for: element, in: snapshot) {
@@ -1145,10 +1145,10 @@ extension MCPServer {
         let centre = "(\(Int(miss.x.rounded())), \(Int(miss.y.rounded())))"
         switch miss.kind {
         case .receivedBy(let receiver):
-            return " Note: the in-app engine operated this element directly, but a real touch at the centre"
+            return " Note: the in-app bridge operated this element directly, but a real touch at the centre"
                 + " of its frame \(centre) lands on \(receiver), not on this element."
         case .activationPoint(let x, let y):
-            return " Note: the in-app engine activated this element at its activation point"
+            return " Note: the in-app bridge activated this element at its activation point"
                 + " (\(Int(x.rounded())), \(Int(y.rounded()))), which is not the centre of its frame \(centre)"
                 + " that a coordinate tap presses."
         case .movedBeforeFire:
@@ -1221,7 +1221,7 @@ extension MCPServer {
 
     /// 溜まっているプロファイル警告を先頭に付けて1度だけ吐き出す
     func withPendingWarnings(_ body: String, args: [String: Any]) -> String {
-        let key = Self.engineKey(args)
+        let key = Self.sessionKey(args)
         guard let warnings = pendingWarnings.removeValue(forKey: key), !warnings.isEmpty
         else { return body }
         return warnings.joined(separator: "\n") + "\n" + body

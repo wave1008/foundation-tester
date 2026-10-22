@@ -58,10 +58,10 @@ final class RunRejectionTests: XCTestCase {
     /// 以前は swift build の後(run() の途中)まで落ちなかった
     func testRunRejectsSetProfileOnlyKeyWithoutProfileAtParse() {
         XCTAssertThrowsError(
-            try RunScenarios.parse(["--set", "iosInappEngine=false"])
+            try RunScenarios.parse(["--set", "iosMode=xcuitest"])
         ) { error in
             let message = RunScenarios.message(for: error)
-            XCTAssertTrue(message.contains("iosInappEngine"), message)
+            XCTAssertTrue(message.contains("iosMode"), message)
             XCTAssertTrue(message.contains("needs --profile"), message)
         }
     }

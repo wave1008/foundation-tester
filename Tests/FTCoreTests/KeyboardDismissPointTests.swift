@@ -73,8 +73,8 @@ final class KeyboardDismissPointTests: XCTestCase {
         XCTAssertTrue(outcome.driverFallback?.contains("above the keyboard") == true, outcome.driverFallback ?? "nil")
     }
 
-    /// 当たり判定に答えないエンジン(XCUITest だけ)は木だけで決めて叩き、確かめていないことを注記に出す
-    func testIOSHideKeyboardFallsBackToTheTreeWhenTheEngineCannotTell() async throws {
+    /// 当たり判定に答えないブリッジ(XCUITest だけ)は木だけで決めて叩き、確かめていないことを注記に出す
+    func testIOSHideKeyboardFallsBackToTheTreeWhenTheBridgeCannotTell() async throws {
         let log = CallLog()
         let driver = FakeAppDriver(name: "primary", log: log, snapshotElements: [form()])
         driver.keyboardFrames = [keyboard, nil]

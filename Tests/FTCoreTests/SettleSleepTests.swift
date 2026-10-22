@@ -4,7 +4,7 @@
 // sleep の長さではない。キャッシュ迂回の snapshot は Android で約 +35ms 掛かるので、
 // 差し引かないと周期が伸びてスクロール系のステップが丸ごと遅くなる
 // (2026-08-03 実測: scroll 系ステップ合計 +3.2s → 差し引きで -2.0s 回収)。
-// **迂回しないエンジン(iOS)では引かない** —— あちらは snapshot 自体が重く、
+// **迂回しないブリッジ(iOS)では引かない** —— あちらは snapshot 自体が重く、
 // 引くと周期が大きく縮んで「早すぎる静止判定」に倒れる。
 
 import XCTest
@@ -22,12 +22,12 @@ final class SettleSleepTests: XCTestCase {
         }
     }
 
-    func testNonBypassingEngineKeepsTheFullInterval() {
+    func testNonBypassingBridgeKeepsTheFullInterval() {
         // iOS xcuitest の snapshot は数百 ms 掛かる。ここで引くと周期が縮んで誤判定に倒れる
         for cost in [5, 380, 900] {
             XCTAssertEqual(StepExecutor.settleSleepMs(afterSnapshotMs: cost, bypassing: false, treeLags: false),
                            StepExecutor.scrollSettleIntervalMs,
-                           "迂回しないエンジンでは待ちを縮めないこと")
+                           "迂回しないブリッジでは待ちを縮めないこと")
         }
     }
 
@@ -44,7 +44,7 @@ final class SettleSleepTests: XCTestCase {
                           "下限が周期以上だと差し引きが常に無効になる")
     }
 
-    /// 木が動きに遅れるエンジン(XCUITest)は、待ち + 取得の周期が 350ms を下回らない(定数の doc の実測)
+    /// 木が動きに遅れるブリッジ(XCUITest)は、待ち + 取得の周期が 350ms を下回らない(定数の doc の実測)
     func testLaggingTreeKeepsThePeriodAtLeast350ms() {
         XCTAssertEqual(StepExecutor.laggingTreeSettlePeriodMs, 350)
         for cost in [5, 20, 100] {
@@ -71,6 +71,6 @@ final class SettleSleepTests: XCTestCase {
         let lagging = try await elapsedMs(lags: true)
         XCTAssertGreaterThanOrEqual(lagging, 340, "XCUITest では 2 枚の間隔が 350ms 以上")
         let normal = try await elapsedMs(lags: false)
-        XCTAssertLessThan(normal, 340, "遅れないエンジンは従来の 100ms 周期のまま")
+        XCTAssertLessThan(normal, 340, "遅れないブリッジは従来の 100ms 周期のまま")
     }
 }

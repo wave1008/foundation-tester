@@ -1188,7 +1188,6 @@ test("buildRunProfileTemplate: 候補ありなら先頭のappを使い、devices
     ocrTextVisibilityCheck: true,
     preferCheckStateClassifier: true,
     screenLooksLike: true,
-    iosInappEngine: true,
     updateWebView: true,
     wipeDataOnBloat: true,
   });
@@ -1205,7 +1204,6 @@ test("buildRunProfileTemplate: 候補が無ければ app は空文字", () => {
     ocrTextVisibilityCheck: true,
     preferCheckStateClassifier: true,
     screenLooksLike: true,
-    iosInappEngine: true,
     updateWebView: true,
     wipeDataOnBloat: true,
   });

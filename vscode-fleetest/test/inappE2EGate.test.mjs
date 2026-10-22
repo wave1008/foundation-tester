@@ -1,9 +1,9 @@
-// Scripts/e2e.sh の「回さなかった側のエンジンが未検証のままではないか」ゲートを検証する。
+// Scripts/e2e.sh の「回さなかった側のモードが未検証のままではないか」ゲートを検証する。
 //
-// なぜ要るか: 1回の実行が見るのは iOS の2エンジンのうち片方だけ。2026-08-09 に in-app/xcuitest の
-// 両方を変えた回の E2E 254 本が全部 engine=xcuitest で、in-app 側は1度も動かないまま緑になった。
+// なぜ要るか: 1回の実行が見るのは iOS の2モードのうち片方だけ。2026-08-09 に in-app/xcuitest の
+// 両方を変えた回の E2E 254 本が全部 xcuitest モード で、in-app 側は1度も動かないまま緑になった。
 // ゲート自体が壊れても誰も気付かないので、ここで両方向を固定する。
-// 2026-08-11 に既定が in-app へ反転し、印もエンジンごと(.fleetest/<engine>-e2e-verified)になった。
+// 2026-08-11 に既定が in-app へ反転し、印もモードごと(.fleetest/<mode>-e2e-verified)になった。
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -25,7 +25,7 @@ const BINARY_PATH = join(ROOT, '.build', 'debug', 'fleetest')
 const BINARY_EXISTS = existsSync(BINARY_PATH)
 
 /** ゲートの2ブロック(判定・記録)だけを取り出し、変数を差し替えて実行する。
- * marker は「エンジン名 → 中身」。engine_marker が組み立てるパス($ROOT/.fleetest/<engine>-e2e-verified)
+ * marker は「モード名 → 中身」。mode_marker が組み立てるパス($ROOT/.fleetest/<mode>-e2e-verified)
  * に置くので、テスト側でパスの組み立て規則を二重に持たない。 */
 function runGate({ profile, failed, markers = {}, digest }) {
   const dir = mkdtempSync(join(tmpdir(), 'engine-gate-'))
@@ -33,8 +33,8 @@ function runGate({ profile, failed, markers = {}, digest }) {
   for (const [engine, body] of Object.entries(markers)) {
     writeFileSync(join(dir, '.fleetest', `${engine}-e2e-verified`), body)
   }
-  // e2e.sh から「engine_digest= の行」〜「FAILED=0」の直前までと、末尾の記録ブロックを抜く
-  const detect = source.slice(source.indexOf('engine_digest()'), source.indexOf('\nFAILED=0'))
+  // e2e.sh から「bridge_digest= の行」〜「FAILED=0」の直前までと、末尾の記録ブロックを抜く
+  const detect = source.slice(source.indexOf('bridge_digest()'), source.indexOf('\nFAILED=0'))
   const recordStart = source.indexOf('# **通した状態を覚えるのは全部成功したときだけ**')
   const record = source.slice(recordStart, source.indexOf('\nexit "$FAILED"'))
   const harness = [
@@ -46,7 +46,7 @@ function runGate({ profile, failed, markers = {}, digest }) {
     `FAILED=${failed}`,
     // api 呼び出しは固定値に差し替える(このテストはゲートの分岐を見るもので、
     // digest の中身は BridgeContractTests の担当)
-    detect.replace(/^engine_digest\(\).*$/m, `engine_digest() { echo ${JSON.stringify(digest)}; }`),
+    detect.replace(/^bridge_digest\(\).*$/m, `bridge_digest() { echo ${JSON.stringify(digest)}; }`),
     record,
   ].join('\n')
   const out = execFileSync('bash', ['-c', harness], { encoding: 'utf8' })

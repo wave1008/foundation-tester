@@ -227,7 +227,7 @@ public enum LocatorResolver {
         // **`#x` は identifier だけでなく placeholder も引く**(ユーザー指示)。
         // 入力欄は指す手段が経路で割れる: HTML の id は XCUITest が読む a11y には出ないが
         // placeholder は出る / Android は WebView の版で id と placeholder が入れ替わる
-        // ([[webview-support]])。同じ欄が**エンジンやOS版によって指せたり指せなかったり**するのを
+        // ([[webview-support]])。同じ欄が**モードやOS版によって指せたり指せなかったり**するのを
         // セレクタ側で吸収する。
         // **identifier が1件でも当たったらそちらだけ**(placeholder は id で引けなかったときの
         // 受け皿)。混ぜると `#x[2]` の序数や count が経路で変わる
