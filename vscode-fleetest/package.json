@@ -2,7 +2,7 @@
   "name": "vscode-fleetest",
   "displayName": "fleetest mobile",
   "description": "%fleetest.extension.description%",
-  "version": "0.1.466",
+  "version": "0.1.469",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -288,7 +288,8 @@
       },
       {
         "command": "fleetest.checkForUpdate",
-        "title": "%fleetest.command.checkForUpdate.title%"
+        "title": "%fleetest.command.checkForUpdate.title%",
+        "category": "fleetest"
       },
       {
         "command": "fleetest.selectProject",
@@ -367,6 +368,16 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "fleetest.deleteScenario",
+          "when": "false"
+        },
+        {
+          "command": "fleetest.showSteps",
+          "when": "false"
+        }
+      ],
       "testing/item/context": [
         {
           "command": "fleetest.showSteps",

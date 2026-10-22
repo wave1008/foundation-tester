@@ -152,7 +152,12 @@ test("英語ページに翻訳漏れの日本語が無い", () => {
 
 test("英語ページが引用するコマンド名が package.nls.json に実在する", () => {
   const en = JSON.parse(readFileSync(path.join(process.cwd(), "package.nls.json"), "utf8"));
-  const titles = new Set(Object.values(en));
+  const pkg = JSON.parse(readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
+  // パレットの表示名 = `<category>: <title>`(title 側に "fleetest: " を重ねると二重表示になる)
+  const titles = new Set(pkg.contributes.commands.map((c) => {
+    const title = en[c.title.replace(/^%|%$/g, "")] ?? c.title;
+    return c.category ? `${c.category}: ${title}` : title;
+  }));
   const unknown = [];
   for (const page of enPages) {
     // `fleetest: X` 形(バッククォート内・引用符内どちらも)を拾う

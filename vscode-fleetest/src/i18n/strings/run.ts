@@ -37,10 +37,18 @@ export const runStrings = {
   },
 
   "run.profileRequired.message": {
-    ja: "❌ 実行プロファイルが指定されていません。テストを実行する前に「デバイスモニター」タブで実行プロファイルを指定して下さい。",
-    en: "❌ No run profile is selected. Select one in the Device Monitor tab before running tests.",
+    ja: "❌ 実行プロファイルが選ばれていません。「実行プロファイルを選ぶ」で選んでから実行してください(コマンドパレットの「fleetest: 実行プロファイルを選択」と同じです)。",
+    en: "❌ No run profile is selected. Pick one with \"Select run profile\" before running tests (same as \"fleetest: Select Run Profile\" in the Command Palette).",
   },
-  "run.profileRequired.openTestRunTab": { ja: "「デバイスモニター」タブを開く", en: "Open the Device Monitor tab" },
+  "run.profileRequired.selectProfile": { ja: "実行プロファイルを選ぶ", en: "Select run profile" },
+  "run.profileAutoSelected": {
+    ja: "実行プロファイルが選ばれていなかったので、このプロジェクトに1つだけある「{name}」を選びました。",
+    en: "No run profile was selected, so the project's only run profile \"{name}\" was selected.",
+  },
+  "run.profileAutoSelectSaveFailed": {
+    ja: "実行プロファイル「{name}」を設定へ保存できませんでした(今回の実行には使います): {error}",
+    en: "Could not save run profile \"{name}\" to the settings (it is still used for this run): {error}",
+  },
 
   "run.label.all": { ja: "全体", en: "All" },
 

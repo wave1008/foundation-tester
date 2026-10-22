@@ -61,7 +61,8 @@ A scenario made by recording has no verifications in it, so ask the AI assistant
 Open VSCode's Testing view. The project's scenarios appear in three levels: folder -> class -> test.
 
 1. Choose a run profile with `fleetest: Select Run Profile` in the Command Palette
-   (without one, the run does not start and shows an error).
+   (when the project has only one run profile, it is selected automatically on the first run; with two or more
+   and none selected, the run does not start and shows an error with a "Select run profile" button).
 2. Select a test and press "Run" or "Run (dry-run)".
 
 What you see:

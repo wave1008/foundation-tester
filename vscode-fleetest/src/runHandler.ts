@@ -15,7 +15,7 @@ import { spawn } from "node:child_process";
 import * as vscode from "vscode";
 import { childEnv } from "./childEnv";
 import { type CliInvocationHandle, type FleetestCli } from "./cli";
-import { type FleetestConfig, resolveProjectName } from "./config";
+import { type FleetestConfig, listRunProfileNames, resolveProjectName } from "./config";
 import { resolveEntryAtCursor, truncateForStatusBar, type TreeItemEntry } from "./copyTestName";
 import { checkForDyldLaunchFailure } from "./dyldLaunchNotice";
 import { t } from "./i18n";
@@ -54,6 +54,42 @@ function offerForceKill(forceKill: () => void): void {
     }
   });
 }
+/**
+ * 実行プロファイル未選択のまま実行されたとき、プロジェクトの実行プロファイルがちょうど1つならそれを
+ * 設定へ保存して返す(ピッカーで選ぶのと同じ書き込み)。0個・2個以上は選べないので "" を返す。
+ */
+async function adoptSoleRunProfile(
+  workspaceRoot: string,
+  project: string,
+  log?: (line: string) => void,
+): Promise<string> {
+  const names = listRunProfileNames(workspaceRoot, project);
+  if (names.length !== 1) {
+    return "";
+  }
+  const name = names[0]!;
+  // 保存の失敗で投げると呼び手は run.end() を経ずに抜け、テストが実行中のまま残る。保存できなくても今回の実行には使う
+  try {
+    await vscode.workspace.getConfiguration("fleetest").update("profile", name, vscode.ConfigurationTarget.Workspace);
+  } catch (error) {
+    log?.(t("run.profileAutoSelectSaveFailed", { name, error: String(error) }));
+  }
+  const message = t("run.profileAutoSelected", { name });
+  log?.(message);
+  void vscode.window.showInformationMessage(`fleetest: ${message}`);
+  return name;
+}
+
+function showProfileRequiredError(message: string): void {
+  void vscode.window
+    .showErrorMessage(`fleetest: ${message}`, t("run.profileRequired.selectProfile"))
+    .then((picked) => {
+      if (picked !== undefined) {
+        void vscode.commands.executeCommand("fleetest.selectProfile");
+      }
+    });
+}
+
 export function isRunActive(): boolean {
   return activeRunCount > 0;
 }
@@ -602,7 +638,7 @@ async function executeRun(
   // 対象アプリが解決できず app 省略シナリオが全滅し(「no app could be resolved」)、
   // scenarioTimeout / record / defaultTimeout も効かず、複数デバイスの並列も1台に潰れる。
   // 下の args 分岐のコメントは元からこの条件を前提に書かれていたが、**実装だけが抜けていた**。
-  const profile = config.profile.trim();
+  let profile = config.profile.trim();
   const singleClass = new Set([...targets.keys()].map((id) => id.split(".")[0])).size === 1;
   let liveTarget: LiveRunTarget | undefined;
   if (!dryRun && singleClass && profile.length === 0 && prepareLiveForRun && targets.size > 0) {
@@ -625,6 +661,10 @@ async function executeRun(
   // `fleetest bridge up` を回していない限り全シナリオが接続拒否で即失敗するため、走らせずに止める
   // (実害: 19 シナリオが 2 秒で全滅し、原因が設定だと分からなかった)。
   // 除外2件: dry-run はデバイスに触れない / liveTarget はライブ操作パネルが実デバイスを解決済み。
+  // 選択肢が1つしか無ければ止めずにそれを選ぶ(ライブ連動の判定より後 = 連動の挙動は変えない)。
+  if (!dryRun && !liveTarget && profile.length === 0) {
+    profile = await adoptSoleRunProfile(workspaceRoot, resolution.project, (line) => outputChannel.appendLine(line));
+  }
   if (!dryRun && !liveTarget && profile.length === 0) {
     const message = t("run.profileRequired.message");
     run.appendOutput(`${message}\r\n`);
@@ -633,13 +673,7 @@ async function executeRun(
       run.errored(item, new vscode.TestMessage(message));
     }
     run.end();
-    void vscode.window
-      .showErrorMessage(`fleetest: ${message}`, t("run.profileRequired.openTestRunTab"))
-      .then((picked) => {
-        if (picked !== undefined) {
-          void vscode.commands.executeCommand("fleetest.showDeviceMonitor");
-        }
-      });
+    showProfileRequiredError(message);
     return;
   }
 
@@ -1072,19 +1106,16 @@ async function executeDebugRun(
 
   // プロファイル未指定で走らせない理由・除外条件は executeRun の同ガード参照
   // (デバッグ実行に dry-run / liveTarget は無いので無条件)。
-  const profile = config.profile.trim();
+  let profile = config.profile.trim();
+  if (profile.length === 0) {
+    profile = await adoptSoleRunProfile(workspaceRoot, resolution.project);
+  }
   if (profile.length === 0) {
     const message = t("run.profileRequired.message");
     run.appendOutput(`${message}\r\n`);
     run.errored(item, new vscode.TestMessage(message));
     run.end();
-    void vscode.window
-      .showErrorMessage(`fleetest: ${message}`, t("run.profileRequired.openTestRunTab"))
-      .then((picked) => {
-        if (picked !== undefined) {
-          void vscode.commands.executeCommand("fleetest.showDeviceMonitor");
-        }
-      });
+    showProfileRequiredError(message);
     return;
   }
 

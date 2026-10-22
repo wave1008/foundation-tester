@@ -199,7 +199,7 @@ The app, the devices, and the run-time settings are all resolved from it.
 
 From VSCode, open the **Test Explorer**, pick the scenario, and click **Run**.
 Before the first run, choose the run profile to use (for example `ios-run`) with `fleetest: Select Run Profile` in the
-Command Palette. Without one, the run does not start and shows an error.
+Command Palette. When the project has only one run profile, it is selected automatically on the first run.
 
 </details>
 

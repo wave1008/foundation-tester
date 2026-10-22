@@ -26,6 +26,11 @@ Setting `fleetest.profile` routes Run/Run (dry-run)/Debug through `fleetest api 
 are provisioned (a Simulator / Emulator that is not running is booted; a physical device cannot be booted,
 so connect and prepare it yourself) and the app is auto-installed by the run profile; Run (dry-run) needs no device at all.
 
+**Run and Debug need a run profile** (Run (dry-run) does not). If none is selected and the project has exactly one
+run profile, that one is saved to `fleetest.profile` and the run proceeds; with two or more, the run does not start
+and shows an error with a "Select run profile" button. However, when none is selected, a single class is run, and the
+Live Control panel can provide a device (`fleetest.liveControlOnRun`), the run uses that device without a run profile.
+
 ## Steps View
 
 A read-only **fleetest Steps** tree view (in the Testing view container) follows the cursor: put
