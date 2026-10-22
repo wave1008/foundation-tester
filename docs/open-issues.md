@@ -47,6 +47,16 @@
     `IOGPUSysMemory::retainCPUWireMapping: failed to map memory for CPU wire mapping` / `AGXk: map block failed for cpu`(05:58:36)。
     GPU の稼働率は 10%・Alloc system memory 36 GB。この回は白紙(05:51)の後に AVE の一時死(05:57)で、10/18 とは前後が逆。
     負荷: Simulator 12 台(うち 2 台は別作業の iOS 27.2)・Emulator 10 台・配信・録画
+  - 2026-10-22 の材料(M2 Ultra・手元の E2E-CMP の iOS・in-app 1 回と XCUITest 2 回): 赤の塊と、CMP のアプリ(`iosApp`)の Simulator 内ログの
+    `Execution of the command buffer was aborted … (MTLCommandBufferErrorDomain error 1)` が**時間帯でも台でも重なった**。
+    窓ごとの中断の件数(8 台の合計)= 17:24〜17:31(in-app・赤 1 本)12 件で全部その赤の台(-02)/ 18:35〜18:39(XCUITest・赤 8 本)103 件・
+    中断 0 件の 2 台(-03・-04)は赤なし / 18:56〜18:58(同じ赤 8 本の回し直し・全部緑)0 件 / 20:23〜20:27(XCUITest・赤 4 本 + 一色 1 本)74 件。
+    -02 の赤は中断(17:25:00〜01 に 12 件)の 2〜8 秒後の検証。**この回はホストのカーネルに IOGPU・AGX の記録が無い**(10/19 の
+    `IOGPUSysMemory` / `map block failed` とは違う)・エンコーダの故障の記録も無い。`Metal` を含む行の大半はシェーダのコンパイルで、
+    数える対象は `command buffer was aborted` だけにする(`xcrun simctl spawn <udid> log show --predicate 'process == "iosApp" AND
+    eventMessage CONTAINS "command buffer was aborted"'`。zsh では `log` が組み込みなので `/usr/bin/log`)。
+    中断と白紙が同じ現象の 2 つの見え方か、中断が白紙を起こすのかは分けていない。次に見るもの: 中断の直前に Simulator の GPU の使用者が何だったか
+    (同じ時刻の配信・録画・Emulator の数)
   - 2026-10-21 23:51(M2 Ultra・稼働約 28 時間)にも一時的な型が1回(約5分で自然回復)。引き金の候補は**配信の一斉の張り直し**:
     モニターのパネルが隠れて全台の配信が止まり(`Live streams stopped (the monitor panel is hidden)`)、約14秒後に戻った瞬間に
     手元の `fleetest-simstream` 10 本が同時にエンコードのセッションを開いて `AVE_USL_Drv_Start errorCode 0xfffffc0d`(-1011 → -17691)。
