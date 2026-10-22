@@ -768,6 +768,10 @@ public final class StepExecutor {
         elementLimitCeilingLatchedThisStep = false
         systemAlertAdvisoryThisStep = nil
         systemAlertProbeFailure = nil
+        // デバイスに触る前に断る(アクションも検証も通る入口。秒数の型へ変える所が下流に散っている)
+        if let violation = step.secondsArgumentViolation {
+            return StepOutcome(status: .failed(violation))
+        }
         // executeAction が投げた後でも、注入していれば集めた事実を失敗の StepOutcome に載せる
         var thrownResponse: ResponseMeasurementRecord?
         var thrownOpensReadyObservation = false

@@ -35,8 +35,8 @@ extension StepExecutor {
                 return try await executeAction(action, step: step, fingerprint: fingerprint, phase: &phase)
             } catch {
                 guard Self.isRetryableStaleRef(error) else { throw error }
-                // 予算を Duration にするのは最初の断りのとき —— `.seconds(Double)` は非有限で trap するので、範囲外の
-                // waitSeconds を action の入口(waitForSettle 等)が断るより前に変換しない。非有限の予算は引き直さない
+                // 予算を Duration にするのは最初の断りのとき —— `.seconds(Double)` は範囲外で trap する。範囲外の
+                // waitSeconds は executeStep の入口(FlowStep.secondsArgumentViolation)が先に断るので、isFinite は二重の備え
                 let budget = step.timeout ?? tunables.defaultTimeout
                 guard budget.isFinite, clock.now < start.advanced(by: .seconds(budget)) else { throw error }
                 lastInteraction = savedLast

@@ -280,6 +280,25 @@ public struct FlowStep: Codable, Sendable {
         return ArgumentBounds.hostGestureSecondsViolation(subject: "\(argument) of \(displayAction)", seconds: duration,
                                                           cap: cap, overridden: maxGestureSeconds != nil)
     }
+
+    /// 待ち・間隔の秒数(`timeout` = DSL の `waitSeconds:`・flick の `intervalSeconds:`)が 0〜`waitSecondsCeiling` の有限値か。
+    /// 範囲外は下流の `.seconds(Double)` / `Int(秒 * 1000)` で trap し、シナリオ実行バイナリごと落ちる
+    /// (DSL の値は MCP の `ArgumentBounds` を通らない)。呼ぶのは `StepExecutor.executeStep` の入口1箇所。
+    /// `duration` / `maxGestureSeconds` は `gestureDurationViolation` が見る
+    public var secondsArgumentViolation: String? {
+        for (name, value) in [("waitSeconds", timeout), ("intervalSeconds", intervalSeconds)] {
+            if let value, let violation = Self.secondsViolation(name, value) { return violation }
+        }
+        return nil
+    }
+
+    /// FlowStep を通らない DSL の秒数(`fold(waitSeconds:)`・`ifCanSelect` 等)も同じ判定を使う。
+    /// 上限は MCP と同じ `ArgumentBounds.waitSecondsCeiling`(有限でも `.seconds(1e30)` は Int128 の乗算で trap する)
+    public static func secondsViolation(_ name: String, _ value: Double) -> String? {
+        let ceiling = ArgumentBounds.waitSecondsCeiling
+        return value.isFinite && value >= 0 && value <= ceiling ? nil
+            : "\(name) must be a finite, non-negative number of seconds no greater than \(ceiling) (got \(value))"
+    }
 }
 
 /// 文字列属性(label / value / placeholder)の一致方法。**既定は exact**(素のラベルは完全一致)で、

@@ -82,6 +82,8 @@ private func foldCommand(_ target: FoldTarget, command: String, description: Str
     let wait = waitSeconds ?? core.tunables.defaultTimeout
     let driver = core.systemDriver
     core.performCustom(description: description, command: command, file: file, line: line) {
+        // FoldControl.apply は期限を Int のミリ秒へ畳む(非有限で trap)。MCP・ライブ操作は ArgumentBounds が先に断る
+        if let violation = FlowStep.secondsViolation("waitSeconds", wait) { throw FoldCommandFailure(violation) }
         do {
             _ = try await FoldControl.apply(target, waitSeconds: wait,
                                             send: { try await driver.setHingeAngle(degrees: $0) },

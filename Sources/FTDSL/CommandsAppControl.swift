@@ -557,11 +557,30 @@ public func ifCanSelect(_ selector: Sel, waitSeconds: Double = 0,
     ifCanSelectImpl(selector.ftSelector, waitSeconds: waitSeconds, file: file, line: line, body)
 }
 
+/// FlowStep を通らない待ち(ifCanSelect / repeatWhileCanSelect / doUntilTrue)の秒数の検査。範囲外は
+/// `IdleAllowance.during` の `Int(秒 * 1000)` で trap し、`.infinity` は期限が無くなる。断ったら失敗を記録して true。
+/// dry-run でも断る(実行より前の検査 = セレクタの構文誤りと同じ扱い)
+private func rejectsOutOfRangeSeconds(_ core: FTDriveCore, _ values: KeyValuePairs<String, Double>,
+                                      description: String, command: String,
+                                      file: StaticString, line: UInt) -> Bool {
+    guard let reason = values.lazy.compactMap({ FlowStep.secondsViolation($0.key, $0.value) }).first else {
+        return false
+    }
+    core.recordStep(description: description, status: .failed(reason), file: "\(file)", line: Int(line),
+                    command: command)
+    core.handleFailure(stepDescription: description, reason: reason)
+    return true
+}
+
 @discardableResult
 private func ifCanSelectImpl(_ selector: FTSelector, waitSeconds: Double,
                              file: StaticString, line: UInt,
                              _ body: () -> Void) -> FTBranch {
     let core = FTRuntime.requireCore(command: "ifCanSelect")
+    if rejectsOutOfRangeSeconds(core, ["waitSeconds": waitSeconds], description: "ifCanSelect \"\(selector.text)\"",
+                                command: "ifCanSelect", file: file, line: line) {
+        return FTBranch(taken: false)
+    }
     // 構文誤りは「不成立」と区別できない(どちらもブロックを飛ばして緑になる)ため、
     // perform を通らないこのコマンドでも実行前に検証する
     if let error = validationError(selector) {
@@ -720,6 +739,11 @@ private func repeatWhileCanSelectImpl(_ selector: FTSelector, maxLoopCount: Int,
                                       file: StaticString, line: UInt,
                                       _ body: () -> Void) {
     let core = FTRuntime.requireCore(command: "repeatWhileCanSelect")
+    if rejectsOutOfRangeSeconds(core, ["waitSeconds": waitSeconds],
+                                description: "repeatWhileCanSelect \"\(selector.text)\"",
+                                command: "repeatWhileCanSelect", file: file, line: line) {
+        return
+    }
     if let error = validationError(selector) {
         let reason = "invalid selector syntax: \(error)"
         core.recordStep(description: "repeatWhileCanSelect \"\(selector.text)\"",
@@ -888,6 +912,10 @@ public func doUntilTrue(_ title: String, waitSeconds: Double? = nil, intervalSec
     let waitSeconds = waitSeconds ?? core.tunables.doUntilTrueTimeout
     let intervalSeconds = intervalSeconds ?? core.tunables.doUntilTrueInterval
     let maxLoopCount = maxLoopCount ?? core.tunables.doUntilTrueMaxLoopCount
+    if rejectsOutOfRangeSeconds(core, ["waitSeconds": waitSeconds, "intervalSeconds": intervalSeconds],
+                                description: description, command: "doUntilTrue", file: file, line: line) {
+        return
+    }
     let clock = ContinuousClock()
     let start = clock.now
     var deadline = Date().addingTimeInterval(waitSeconds)
