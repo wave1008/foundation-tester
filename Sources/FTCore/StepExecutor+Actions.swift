@@ -6,6 +6,28 @@ import Foundation
 
 extension StepExecutor {
 
+    /// `waitSeconds:` を省いた操作がロケータを探し直す回数。待ちは `PollBackoff` の最初のこの回数ぶん
+    /// (`defaultLocatorRetrySeconds`)。変えるときは docs/commands.md の `waitSeconds:` 省略時の表と
+    /// user-docs の tap / select_and_assert(約 0.7 秒と書いている)も直す
+    static let defaultLocatorRetryAttempts = 3
+
+    /// 既定の探し直しの待ちの合計[秒](撮影の時間は含まない)。失敗文に出す数字の唯一の出どころ
+    static var defaultLocatorRetrySeconds: Double {
+        var backoff = PollBackoff()
+        let total = (0..<defaultLocatorRetryAttempts).reduce(Duration.zero) { sum, _ in sum + backoff.nextDelay() }
+        return Double(total.components.seconds) + Double(total.components.attoseconds) / 1e18
+    }
+
+    /// 既定の短い待ち(`waitSeconds:` 省略)のまま見つからなかったときだけ、延ばし方を添える。
+    /// 指定した待ちで見つからなかったなら待ちの長さが原因とは言えないので何も足さない
+    static func defaultWaitHint(_ step: FlowStep) -> String {
+        guard step.timeout == nil else { return "" }
+        let seconds = String(format: "%.1f", defaultLocatorRetrySeconds)
+        return ". Without waitSeconds: this command looks for the element for only about \(seconds) s;"
+            + " if it appears later (for example right after a screen transition), add waitSeconds: to this step"
+            + " (for example waitSeconds: 5)"
+    }
+
     func executeAction(_ action: String, step: FlowStep,
                                fingerprint: LocatorFingerprint? = nil,
                                phase: inout PhaseAccumulator) async throws -> StepOutcome {
@@ -255,7 +277,7 @@ extension StepExecutor {
                 }
             } else {
                 var backoff = PollBackoff()
-                for attempt in 0..<3 {
+                for attempt in 0..<Self.defaultLocatorRetryAttempts {
                     start = clock.now
                     try await Task.sleep(for: backoff.nextDelay())
                     phase.waitMs += Self.ms(clock.now - start)
@@ -493,6 +515,7 @@ extension StepExecutor {
             return StepOutcome(status: failed(
                 .notFound,
                 "cannot resolve the locator: \(step.locatorSummary)" + (hint.map { ". \($0)" } ?? "")
+                    + Self.defaultWaitHint(step)
                     + Self.truncationHint(snapshot)
                     + Self.keyboardResizedHint(snapshot)
                     + Self.webViewPathHint(snapshot)))
