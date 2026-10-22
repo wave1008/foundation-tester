@@ -211,6 +211,11 @@
   - 測り方(ブリッジ版 211): `FT_STALE_TAP_PROBE=1` で回すと、XCUITest ランナーの ref の `/tap` が撃つ直前に撮り直し、要素がもう
     控えた枠に居なかった回に注記 `stale-ref-at-tap` を残す(断らずに撃つ = 判定は変わらない)。率が 0 なら `/tap` は据え置き、
     出るなら `/type` と同じ断り → 引き直しを、出た画面の形に絞って入れる。`/press`・in-app・Android は測っていない
+  - 2026-10-22 の測定(ブリッジ v211・`--ios-xcuitest`・手元の E2E 4 SUT + M1Ultra の E2EX 4 SUT): ref の `/tap` 約 4,200 回で
+    `stale-ref-at-tap` は **0 回** → `/tap` の撮り直しは入れない(据え置き)。0 回の信頼: 陽性対照(ランナーへ直接、遷移の後に
+    遷移前の ref を撃つと `movedBeforeFire`・変わっていない ref では出ない)と、プローブ1回の費用(同じ画面で +21ms)が run の
+    タップの所要の伸び(+22ms)と一致 = run の中で効いていた。`/type` の約6割(`stale-ref-retried`)は、押した欄が展開して位置が
+    変わる検索バーの流れに特有
 
 - **OCR の段をオフにした構成では、FM の空の転写(読める文字に `""`)が今も赤になる**
   - 場所: `StepExecutor+Assert.swift` の空の転写の確認は `ocrTextVisibilityCheck` がオンのときだけ OCR を使う(オフの段は使わない)
