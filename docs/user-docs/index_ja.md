@@ -21,14 +21,12 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 ## チュートリアル
 
 - [AIアシスタントへの指示の仕方](tutorial/asking_ai_ja.md)
-- [アプリとデバイスを用意する](tutorial/preparing_app_and_devices_ja.md)
-- [アプリが依存するサーバーを用意する](tutorial/preparing_app_server_ja.md)
-- [ログインが必要なアプリをテストする](tutorial/logging_in_ja.md)
+- [デバイスを用意する](tutorial/preparing_app_and_devices_ja.md)
+- [サーバーを確かめる](tutorial/preparing_app_server_ja.md)
 - [テストを作る](tutorial/creating_tests_ja.md)
 - [テストを実行する](tutorial/running_tests_ja.md)
-- [スモークと回帰を分けて回す](tutorial/smoke_and_regression_ja.md)
 - [結果を読み、失敗を調べる](tutorial/investigating_failures_ja.md)
-- [アプリの変更にテストを追従させる](tutorial/keeping_up_with_app_changes_ja.md)
+- [スモークと回帰を分けて回す](tutorial/smoke_and_regression_ja.md)
 - [VSCode で見る](tutorial/watching_in_vscode_ja.md)
 
 ## セキュリティ
@@ -57,6 +55,14 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 - [テストプロジェクトを共有し、2人目が回すまで](in_action/sharing_project_ja.md)
 - [トラブルシューティング](in_action/troubleshooting_ja.md)
 - [長く使うためのメンテナンス](in_action/maintenance_ja.md)
+
+## 自分のアプリでテストする
+
+- [テスト対象アプリを用意する](own_app/preparing_app_ja.md)
+- [アプリが依存するサーバーを用意する](own_app/preparing_server_ja.md)
+- [ログインが必要なアプリをテストする](own_app/logging_in_ja.md)
+- [テストを作って回す](own_app/creating_and_running_ja.md)
+- [アプリの変更にテストを追従させる](own_app/keeping_up_ja.md)
 
 ## Appendix
 

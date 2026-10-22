@@ -77,7 +77,7 @@ volumes:
   fleetest のプロキシ経由で出ます(コンテナには `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` が入ります)。
   書き方は[シナリオから外部へ通信する](network_access_ja.md)にあります。
 - **公開ポート(`ports`)は `127.0.0.1` だけに束縛します**(実機は下の節)。
-- **イメージは、手元に無いときだけ取得します。** 取得はランタイムが直接行うので、初回は外へのネットワークが要ります。自分で `container build` / `docker build` したイメージも、同じ名前を `image:` に書けばそのまま使います(取得しません)。流れは[アプリが依存するサーバーを用意する](../../tutorial/preparing_app_server_ja.md)にあります。
+- **イメージは、手元に無いときだけ取得します。** 取得はランタイムが直接行うので、初回は外へのネットワークが要ります。自分で `container build` / `docker build` したイメージも、同じ名前を `image:` に書けばそのまま使います(取得しません)。流れは[アプリが依存するサーバーを用意する](../../own_app/preparing_server_ja.md)にあります。
 - **`build:`** の context は `scripts/` の下か、この Mac の設定 `"services": {"buildSources": ["<dir>", …]}` に書いた
   場所に置きます(読み取り専用でマウントしてビルドします)。ビルドの入力が変わっていなければ再ビルドしません。
   **Apple Container のビルドは、既定で 2 CPU・メモリ 2 GB のビルダー VM の中で動きます。** Gradle や Maven のビルドは

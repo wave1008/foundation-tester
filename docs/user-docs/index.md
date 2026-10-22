@@ -22,14 +22,12 @@ then continue with the [Tutorial](#tutorial).
 ## Tutorial
 
 - [Asking the AI assistant](tutorial/asking_ai.md)
-- [Preparing the app and devices](tutorial/preparing_app_and_devices.md)
-- [Preparing the servers your app depends on](tutorial/preparing_app_server.md)
-- [Testing an app that needs a login](tutorial/logging_in.md)
+- [Preparing devices](tutorial/preparing_app_and_devices.md)
+- [Checking the server](tutorial/preparing_app_server.md)
 - [Creating tests](tutorial/creating_tests.md)
 - [Running tests](tutorial/running_tests.md)
-- [Running smoke and regression separately](tutorial/smoke_and_regression.md)
 - [Reading results and investigating failures](tutorial/investigating_failures.md)
-- [Keeping tests up with app changes](tutorial/keeping_up_with_app_changes.md)
+- [Running smoke and regression separately](tutorial/smoke_and_regression.md)
 - [Watching in VSCode](tutorial/watching_in_vscode.md)
 
 ## Security
@@ -58,6 +56,14 @@ then continue with the [Tutorial](#tutorial).
 - [Sharing the test project until a second person runs it](in_action/sharing_project.md)
 - [Troubleshooting](in_action/troubleshooting.md)
 - [Maintenance for long-term use](in_action/maintenance.md)
+
+## Testing your own app
+
+- [Preparing the app under test](own_app/preparing_app.md)
+- [Preparing the servers your app depends on](own_app/preparing_server.md)
+- [Testing an app that needs a login](own_app/logging_in.md)
+- [Creating and running tests](own_app/creating_and_running.md)
+- [Keeping tests up with app changes](own_app/keeping_up.md)
 
 ## Appendix
 

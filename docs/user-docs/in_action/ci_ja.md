@@ -171,7 +171,7 @@ CI 用のシナリオ単位リトライは実装していません。自動リ�
   **シナリオは丸ごと再実行される前提で作ってください**([壊れにくいシナリオの書き方](../reference/writing/writing_robust_scenarios_ja.md))。
   取り消せない操作は、2回実行されても困らない環境(テスト用の決済・ステージングのサーバー)に向けてください。
 
-見つけた後の直し方は[結果を読み、失敗を調べる](../tutorial/investigating_failures_ja.md)の「見つけた後にすること」にあります。
+見つけたら[壊れにくいシナリオの書き方](../reference/writing/writing_robust_scenarios_ja.md)に沿って直し、同じシナリオを数回続けて回して確かめます。
 
 ### Link
 - [index](../index_ja.md)

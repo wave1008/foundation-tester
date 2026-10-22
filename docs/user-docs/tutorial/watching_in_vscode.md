@@ -20,7 +20,7 @@ Click a tile in the Line View to select the device. It is easiest to see when yo
 ### Prompt for the AI
 
 ```text
-In the fleetest test project myshop, run the scenario I created on iOS.
+In the fleetest test project project1, run the add-to-cart test with the run profile ios-run.
 ```
 
 What you'll see: the selected device's screen in the Grid View and its run log in the Run Log View. With nothing selected, both say "Select a device".
@@ -32,7 +32,7 @@ Open the "Live Control" tab ("fleetest: Show Live Control" in the Command Palett
 What you'll see: the place you click is tapped on the device, and the screen updates.
 
 "Start Recording" -> operate -> "Stop Recording" turns your operations into a scenario. A recording has no verifications in it, so ask the
-AI assistant to finish it ([Creating tests](creating_tests.md#finish-a-recorded-scenario-vscode)).
+AI assistant to add them, for example "add checks for what's on screen to each test of the scenario created by recording".
 
 <img src="../images/tutorial/en/vscode_live_control.png" width="720" alt="Live Control">
 
@@ -54,7 +54,7 @@ What you'll see: each scenario's video and steps. You can also export the result
 ### Prompt for the AI
 
 ```text
-For iOS runs of the fleetest test project myshop, keep recordings only for failed scenarios.
+For iOS runs of the fleetest test project project1, keep recordings only for failed scenarios.
 ```
 
 <img src="../images/tutorial/en/vscode_test_sessions.png" width="720" alt="Test Sessions">

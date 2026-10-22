@@ -177,7 +177,7 @@ Instead:
   Point operations that cannot be undone at an environment where running them twice does no harm (test payments, a
   staging server).
 
-What to do once you have found one is in "What to do once you find one" in [Reading Results and Investigating Failures](../tutorial/investigating_failures.md).
+Once you find one, fix it following [Writing robust scenarios](../reference/writing/writing_robust_scenarios.md), and run the same scenario several times in a row to confirm the fix.
 
 ### Link
 - [index](../index.md)

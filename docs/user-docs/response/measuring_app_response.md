@@ -246,7 +246,7 @@ Run the same scenario again with the fleetest android-response profile and list 
 ## Next
 
 - **Measure your own app**: add a physical device ([Adding physical devices](../fleet/adding_physical_devices.md)), point the app at a
-  destination the device can reach ("④ Point the app at the server" in [Preparing the servers your app depends on](../tutorial/preparing_app_server.md)),
+  destination the device can reach ("Point the app at the server" in [Preparing the servers your app depends on](../own_app/preparing_server.md)),
   then do steps 4 to 7 the same way.
 - **Measure regularly**: since only the same Mac and device are compared, pick one runner machine with the physical device
   connected and dispatch to it with `--runner` ([Remote Runners](../fleet/remote_runners.md)).

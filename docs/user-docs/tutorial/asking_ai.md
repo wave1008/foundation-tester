@@ -7,65 +7,30 @@ If you have not run anything yet, go through the [Quick Start](../quick-start.md
 
 ## What you can ask for
 
-- "In the fleetest test project myshop, create profiles for this app" → [Preparing the app and devices](preparing_app_and_devices.md)
-- "In the fleetest test project myshop, create a happy-path test (the normal flow of logging in successfully) for the login screen" → [Creating tests](creating_tests.md)
-- "Put the server my app depends on in a container and declare it to fleetest" → [Preparing the servers your app depends on](preparing_app_server.md)
-- "Run the scenarios you created on iOS" → [Running tests](running_tests.md)
-- "Summarize the current run results. If there are failures, investigate the cause" → [Read results and investigate failures](investigating_failures.md)
-- "I changed the design of the login screen, so fix the related tests" → [Keep tests up to date with app changes](keeping_up_with_app_changes.md)
-- "Set up another Mac so it can be used as a runner machine" → [Remote Runners](../fleet/remote_runners.md)
-- "Create a setup that runs this project's tests on Jenkins" → [Run in CI](../in_action/ci.md)
-
-You can watch runs in the VSCode extension's device monitor ([Watch in VSCode](watching_in_vscode.md)).
+- Add devices → [Preparing devices](preparing_app_and_devices.md)
+- Read the server declaration and check it starts → [Checking the server](preparing_app_server.md)
+- Create or extend tests → [Creating tests](creating_tests.md)
+- Run tests → [Running tests](running_tests.md)
+- Summarize results and investigate failures → [Read results and investigate failures](investigating_failures.md)
+- Run by folder → [Running smoke and regression separately](smoke_and_regression.md)
 
 ## Patterns for asking
 
-### 1. Narrow the target
-
-Limit each request to one screen or one flow of operations.
-
-```text
-In the fleetest test project myshop, create a happy-path test (the normal flow of logging in successfully) for the My Shop login screen.
-```
-
-### 2. Add the OS and device
-
-Say whether it is iOS or Android. If you know the run profile name, writing it is the most reliable.
+- **Narrow the target**: limit each request to one screen or one flow of operations.
+- **Add the OS and device**: writing the run profile name (such as `ios-run`) is the most reliable.
+- **Write the completion condition**: say where to stop, for example "stop once you've told me the file name of the new scenario".
+- **Make the request independent of the conversation**: instead of "with the app from before", write the app name (SUT Store) or the screen name.
+- **Keep the judgment with the human**: separate the investigation from the fix.
 
 ```text
-In the fleetest test project myshop, with the run profile android-run, create a happy-path test (the normal flow) for the cart screen.
+Find out why the tests in the fleetest test project project1 failed and report back. Don't fix the scenario yet.
 ```
 
-### 3. Write the completion condition
+AI is not used to replay a finished test (it behaves the same way every time).
 
-```text
-... Stop once you've told me the file name of the new scenario. There's no need to run it on a device.
-```
+You can also use other AI assistants: [AI assistants other than Claude Code](../reference/tools/other_agents.md)
 
-### 4. Make the request independent of the conversation
-
-Instead of "with the app you just built", write concrete names such as the app name, app ID and screen name (the request then works pasted into a new session or a different AI assistant).
-
-### 5. Keep the judgment with the human
-
-Whether it is acceptable to rewrite the app's expected values when a test fails is for you to decide. Separate the investigation from the fix.
-
-```text
-Find out why the tests in the fleetest test project myshop failed and report back. Don't fix the scenario yet.
-```
-
-## How it works
-
-<img src="../images/tutorial/en/how_it_works.png" width="720" alt="When creating tests the AI assistant operates the device and writes scenarios; when replaying, fleetest replays them without AI">
-
-AI is not used to replay a finished test (it behaves the same way every time). For details, see
-[MCP server](../reference/tools/mcp_server.md) and [Claude Code skills](../reference/tools/claude_code_skills.md).
-
-## AI assistants other than Claude Code
-
-You can also use MCP-capable AI assistants such as Codex and Cline: [AI assistants other than Claude Code](../reference/tools/other_agents.md)
-
-Next: [Preparing the app and devices](preparing_app_and_devices.md)
+Next: [Preparing devices](preparing_app_and_devices.md)
 
 ### Link
 - [index](../index.md)

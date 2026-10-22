@@ -243,7 +243,7 @@ fleetest の android-response プロファイルで同じシナリオをもう1�
 ## 次へ
 
 - **自分のアプリで測る**: 実機を追加し([実機を追加する](../fleet/adding_physical_devices_ja.md))、アプリの接続先を実機から届く宛先にして
-  ([アプリが依存するサーバーを用意する](../tutorial/preparing_app_server_ja.md)の「④ アプリの接続先を合わせる」)、ステップ 4〜7 を同じように行います。
+  ([アプリが依存するサーバーを用意する](../own_app/preparing_server_ja.md)の「アプリの接続先を合わせる」)、ステップ 4〜7 を同じように行います。
 - **定期的に測る**: 比べられるのは同じ Mac・同じ端末だけなので、実機をつないだランナー機を1台決めて `--runner` で飛ばします([リモート実行](../fleet/remote_runners_ja.md))。
 - **仕様**: [レスポンス計測](../reference/running/response_measurement_ja.md)・[実行プロファイルの設定項目](../reference/project/run_profile_ja.md)
 
