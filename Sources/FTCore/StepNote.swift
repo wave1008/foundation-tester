@@ -299,6 +299,10 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// flick・swipe・scroll の前に木の静止を待ち、**待っている間に実際に木が動いた**(= 待たなければ動いている
     /// 最中か古い枠へ指を置いていた)。立たない = 既に静止していた
     case settledBeforeGesture = "settled-before-gesture"
+    /// ブリッジが ref の指す要素はもう同じ場所に居ないと**撃たずに断り**(`DriverError.staleRef`)、木を撮り直して
+    /// 引き直した(`executeActionRetryingStaleRef`)。立つのは断りが1回でもあった回だけ。**緑の run でこの経路が
+    /// 働いたかを数える唯一の印**(無いと、経路が黙って効かなくなっても赤の率でしか気付けない)
+    case staleRefRetried = "stale-ref-retried"
 
     /// 1番目の occlusion-guard 評価だけで、ガード自身の所要(FM の呼び出しの枠の待ち+推論)が
     /// このステップの待ち予算を食い潰し、1回もポーリングできないまま反転が確定しかけたので、
@@ -396,6 +400,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
                 + " (the reason is in the end-of-scenario warning)"
         case .settledBeforeGesture:
             return "the screen was still moving before the gesture, so the gesture waited for it to settle"
+        case .staleRefRetried:
+            return "the bridge refused the action without performing it because the element had moved,"
+                + " so the target was resolved again from a fresh tree"
         case .settledAfterLaunch:
             return "the screen was still laying out after the launch, so the target was resolved again once it settled"
         case .visionAnomalyRetried:

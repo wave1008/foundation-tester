@@ -39,6 +39,7 @@ extension StepExecutor {
                 // waitSeconds は executeStep の入口(FlowStep.secondsArgumentViolation)が先に断るので、isFinite は二重の備え
                 let budget = step.timeout ?? tunables.defaultTimeout
                 guard budget.isFinite, clock.now < start.advanced(by: .seconds(budget)) else { throw error }
+                noteCodesThisStep.insert(.staleRefRetried)
                 lastInteraction = savedLast
                 tapAwaitingNextTree = savedAwaiting
                 previousTapTree = savedPrevious

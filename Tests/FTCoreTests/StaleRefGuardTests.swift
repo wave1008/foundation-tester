@@ -164,6 +164,22 @@ final class StaleRefRetryTests: XCTestCase {
         XCTAssertFalse(StepExecutor.isSuccess(outcome.status))
     }
 
+    /// 引き直した事実は注記で残る(緑の run でこの経路が働いた回を数える唯一の印)
+    func testRetriedNoteIsRecordedWhenRefused() async {
+        let outcome = await run(RefusingDriver(refusal: DriverError.staleRef(detail: "moved")))
+        XCTAssertTrue(StepExecutor.isSuccess(outcome.status), "\(outcome.status)")
+        XCTAssertTrue(outcome.notes.contains(.staleRefRetried), "引き直した事実が記録に残らない: \(outcome.notes)")
+    }
+
+    /// 注記は断られた回だけ(1回目で通ったステップ・他の 422 で落ちたステップには立てない)
+    func testRetriedNoteOnlyOnStepsThatWereRefused() async {
+        let clean = await run(RefusingDriver(refusal: nil, refusals: 0))
+        XCTAssertTrue(StepExecutor.isSuccess(clean.status), "\(clean.status)")
+        XCTAssertFalse(clean.notes.contains(.staleRefRetried), "断られていないのに注記が立っている")
+        let other = await run(RefusingDriver(refusal: DriverError.badResponse(status: 422, body: "x")))
+        XCTAssertFalse(other.notes.contains(.staleRefRetried), "引き直していないのに注記が立っている")
+    }
+
     func testOnlyStaleRefIsRetryable() {
         XCTAssertTrue(StepExecutor.isRetryableStaleRef(DriverError.staleRef(detail: "")))
         XCTAssertFalse(StepExecutor.isRetryableStaleRef(DriverError.badResponse(status: 422, body: "stale-ref")))
