@@ -30,7 +30,7 @@ fleetest をインストールし、サンプルアプリを対象にテスト�
 
 2. 作成したフォルダを VSCode で開きます
 
-3. AIアシスタント(Claude Code 拡張など)を起動して次のように指示します
+3. AIアシスタント(Claude Code 拡張など)を起動して次のように指示します（所要時間：約5分）
 
 ```text
 https://github.com/wave1008/foundation-tester をこのフォルダの隣に clone して

@@ -30,7 +30,7 @@ Install the following.
 
 2. Open the folder you created in VSCode
 
-3. Start your AI assistant (the Claude Code extension, for example) and give it this instruction:
+3. Start your AI assistant (the Claude Code extension, for example) and give it this instruction (takes about 5 minutes):
 
 ```text
 Clone https://github.com/wave1008/foundation-tester next to this folder, then set it up by
