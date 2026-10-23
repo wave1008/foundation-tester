@@ -87,7 +87,8 @@ swift test --parallel
 MESSAGE_FILE="$(mktemp -t fleetest-release-notes)"
 trap 'rm -f "$MESSAGE_FILE"' EXIT
 { printf 'fleetest %s\n\n' "$VERSION"; cat "$NOTES_FILE"; } >"$MESSAGE_FILE"
-git tag -a "$VERSION" -F "$MESSAGE_FILE"
+# --cleanup=whitespace: 既定(strip)は `#` で始まる行をコメントとして捨て、Markdown の見出しが注釈から消える(0.12.0 で実際に消えた)
+git tag -a "$VERSION" --cleanup=whitespace -F "$MESSAGE_FILE"
 echo "✅ タグ $VERSION を作成しました(HEAD: $(git rev-parse --short HEAD))"
 
 if [[ "$PUSH" == "1" ]]; then
