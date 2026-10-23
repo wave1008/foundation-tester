@@ -49,6 +49,8 @@ More:
 - [Custom commands](../reference/testclass/custom_commands.md)
 - [Handy features for writing test code](../reference/writing/helpers.md)
 
+<br>
+
 Next: [Creating and running tests](creating_and_running.md)
 
 ### Link

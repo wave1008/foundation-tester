@@ -59,6 +59,8 @@ Settable items:
 - [Profiles](../reference/project/profiles.md)
 - [Run profile settings](../reference/project/run_profile.md)
 
+<br>
+
 Next: [Preparing the servers your app depends on](preparing_server.md)
 
 ### Link

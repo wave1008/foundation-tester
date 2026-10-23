@@ -49,6 +49,8 @@ fleetest のテストプロジェクト myshop で、サーバー側の状態を
 - [独自コマンド](../reference/testclass/custom_commands_ja.md)
 - [テストコードを書くときの便利機能](../reference/writing/helpers_ja.md)
 
+<br>
+
 次へ: [テストを作って回す](creating_and_running_ja.md)
 
 ### Link

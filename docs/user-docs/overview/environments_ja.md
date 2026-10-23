@@ -35,6 +35,8 @@ macOS 27+ で Apple Intelligence を有効化すると Foundation Models(FM) を
 | React Native | iOS, Android |
 | View/XML | Android |
 
+<br>
+
 次へ: [クイックスタート](../quick-start_ja.md)
 
 ### Link

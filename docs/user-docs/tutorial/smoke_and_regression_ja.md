@@ -67,6 +67,8 @@ fleetest のテストプロジェクト project1 の ios-run プロファイル�
 
 - 3本(商品詳細を開くテストの1本 + カートに追加するテストの2本)が実行されます。
 
+<br>
+
 次へ: [VSCode で見る](watching_in_vscode_ja.md)
 
 ### Link

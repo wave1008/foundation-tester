@@ -21,7 +21,7 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 ## チュートリアル
 
 - [fleetest の使い方の基本](tutorial/basic_usage_ja.md)
-- [デバイスを用意する](tutorial/preparing_app_and_devices_ja.md)
+- [デバイスを用意する](tutorial/preparing_devices_ja.md)
 - [サーバーを確かめる](tutorial/preparing_app_server_ja.md)
 - [テストを作る](tutorial/creating_tests_ja.md)
 - [テストを実行する](tutorial/running_tests_ja.md)

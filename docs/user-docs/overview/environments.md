@@ -35,6 +35,8 @@ On macOS 27+, enabling Apple Intelligence lets your tests use the features that 
 | React Native | iOS, Android |
 | View/XML | Android |
 
+<br>
+
 Next: [Quick start](../quick-start.md)
 
 ### Link

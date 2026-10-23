@@ -181,6 +181,8 @@ fleetest clean --dry-run で消える量を見せて。問題なければ fleete
 - 録画・レポート・実行ログは、テストが終わるたびに裏で上限を超えた分が自動で削除されます。
 - 録画しないときは、実行プロファイルの `record` を `false` にします([実行プロファイルの設定項目](../reference/project/run_profile_ja.md))。
 
+<br>
+
 次へ: [長く使うためのメンテナンス](../in_action/maintenance_ja.md)
 
 ### Link

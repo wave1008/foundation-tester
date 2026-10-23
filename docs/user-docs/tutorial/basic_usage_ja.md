@@ -17,7 +17,9 @@ fleetest は、Claude Code などの AIアシスタントへ**自然言語で指
 
 Claude Code 以外の AIアシスタントでも使えます: [Claude Code 以外の AIアシスタント](../reference/tools/other_agents_ja.md)
 
-次へ: [デバイスを用意する](preparing_app_and_devices_ja.md)
+<br>
+
+次へ: [デバイスを用意する](preparing_devices_ja.md)
 
 ### Link
 - [index](../index_ja.md)

@@ -61,7 +61,7 @@ In VSCode, select a scenario in the Test Explorer and click "Run" (choose the ru
 
 Expected result:
 
-- `ios-run` has the three devices you set up in the Quick Start and [Preparing devices](preparing_app_and_devices.md), so the scenarios are distributed to all three automatically.
+- `ios-run` has the three devices you set up in the Quick Start and [Preparing devices](preparing_devices.md), so the scenarios are distributed to all three automatically.
 - The three devices in the Device Monitor run different scenarios at the same time.
 - A list of pass/fail appears when it finishes (no change to the scenarios is needed).
 
@@ -72,6 +72,8 @@ More details:
 - [Running scenarios (fleetest run)](../reference/running/running_scenarios.md)
 - [Dry-run](../reference/running/dry_run.md)
 - [Parallel execution](../reference/running/parallel_execution.md)
+
+<br>
 
 Next: [Reading results and investigating failures](investigating_failures.md)
 

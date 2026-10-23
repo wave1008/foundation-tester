@@ -17,7 +17,9 @@ For example, you can do things like the following.
 
 You can also use other AI assistants: [AI assistants other than Claude Code](../reference/tools/other_agents.md)
 
-Next: [Preparing devices](preparing_app_and_devices.md)
+<br>
+
+Next: [Preparing devices](preparing_devices.md)
 
 ### Link
 - [index](../index.md)

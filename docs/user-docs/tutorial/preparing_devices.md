@@ -1,6 +1,6 @@
 # Preparing devices
 
-[in Japanese(日本語)](preparing_app_and_devices_ja.md)
+[in Japanese(日本語)](preparing_devices_ja.md)
 
 Add to the devices you set up in the Quick Start.
 
@@ -22,15 +22,11 @@ In the **Profiles** tab of the device monitor, press the run profile's "Add devi
 </details>
 <br>
 
-Expected result:
+Check the result:
 
-- The AI assistant reports the device list of `ios-run` (the two from the Quick Start plus the one you added: three devices).
-- It also appears in the **Profiles** tab of the device monitor.
+- Check the **Profiles** tab of the device monitor.
 
-Settable items:
-
-- [Profiles](../reference/project/profiles.md)
-- [Run profile settings](../reference/project/run_profile.md)
+<br>
 
 Next: [Checking the server](preparing_app_server.md)
 

@@ -59,6 +59,8 @@ fleetest のテストプロジェクト myshop のアプリプロファイルに
 - [プロファイル](../reference/project/profiles_ja.md)
 - [実行プロファイルの設定項目](../reference/project/run_profile_ja.md)
 
+<br>
+
 次へ: [アプリが依存するサーバーを用意する](preparing_server_ja.md)
 
 ### Link

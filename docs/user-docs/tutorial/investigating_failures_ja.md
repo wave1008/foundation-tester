@@ -93,6 +93,8 @@ fleetest のテストプロジェクト project1 の「カートに追加する�
 - [テスト結果ファイル](../reference/testclass/test_result_files_ja.md)
 - [結果の分析](../reference/running/results_analysis_ja.md)
 
+<br>
+
 次へ: [スモークと回帰を分けて回す](smoke_and_regression_ja.md)
 
 ### Link

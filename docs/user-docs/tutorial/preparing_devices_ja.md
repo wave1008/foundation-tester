@@ -1,6 +1,6 @@
 # デバイスを用意する
 
-[in English](preparing_app_and_devices.md)
+[in English](preparing_devices.md)
 
 クイックスタートで用意したデバイスを増やします。
 
@@ -22,15 +22,11 @@ fleetest のテストプロジェクト project1 の実行プロファイル ios
 </details>
 <br>
 
-期待する結果:
+結果の確認:
 
-- AIアシスタントが `ios-run` のデバイス一覧を報告します(クイックスタートの2台 + 追加した1台 = 3台)。
-- デバイスモニターの「プロファイル」タブにも並びます。
+- デバイスモニターの「プロファイル」タブを確認します。
 
-設定できる項目:
-
-- [プロファイル](../reference/project/profiles_ja.md)
-- [実行プロファイルの設定項目](../reference/project/run_profile_ja.md)
+<br>
 
 次へ: [サーバーを確かめる](preparing_app_server_ja.md)
 

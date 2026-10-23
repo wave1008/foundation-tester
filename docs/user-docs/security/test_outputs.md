@@ -181,6 +181,8 @@ Expected result:
 - Recordings, reports and execution logs over the limit are deleted automatically in the background each time a test finishes.
 - To stop recording, set `record` to `false` in the run profile ([Run profile settings](../reference/project/run_profile.md)).
 
+<br>
+
 Next: [Maintenance for long-term use](../in_action/maintenance.md)
 
 ### Link

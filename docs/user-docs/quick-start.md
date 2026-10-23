@@ -235,6 +235,8 @@ can open the report from there.
 If you run into a problem, ask your AI assistant. Common symptoms and how to narrow them down are
 collected in [Troubleshooting](in_action/troubleshooting.md).
 
+<br>
+
 Next: [Basics of using fleetest](tutorial/basic_usage.md)
 
 ### Link

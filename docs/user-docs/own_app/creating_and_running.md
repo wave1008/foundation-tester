@@ -38,6 +38,8 @@ and check that they point at a test payment or staging server.
 For smoke, pick just a few of the app's main flows (it launches, you can log in, the main screens open). You can ask the AI assistant which ones to pick.
 How to split them into folders and run them is in [Running smoke and regression separately](../tutorial/smoke_and_regression.md).
 
+<br>
+
 Next: [Keeping tests up with app changes](keeping_up.md)
 
 ### Link

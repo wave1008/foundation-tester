@@ -235,6 +235,8 @@ fleetest のテストプロジェクト project1 の直近の実行結果を要�
 問題が起きたら AIアシスタントに相談してください。よくある症状と切り分けは
 [トラブルシューティング](in_action/troubleshooting_ja.md)にまとめてあります。
 
+<br>
+
 次へ: [fleetest の使い方の基本](tutorial/basic_usage_ja.md)
 
 ### Link

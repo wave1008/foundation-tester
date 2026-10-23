@@ -67,6 +67,8 @@ Expected result:
 
 - Three scenarios run (one in the open-product-details test and two in the add-to-cart test).
 
+<br>
+
 Next: [Watching in VSCode](watching_in_vscode.md)
 
 ### Link

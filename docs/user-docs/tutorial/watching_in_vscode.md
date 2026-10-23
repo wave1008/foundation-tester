@@ -95,6 +95,8 @@ Learn more:
 
 - [VSCode extension](../reference/tools/vscode_extension.md)
 
+<br>
+
 Next: [Checking the sandbox and opening the holes you need](../security/sandbox.md)
 
 ### Link

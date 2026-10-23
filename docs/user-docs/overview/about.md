@@ -58,6 +58,8 @@ The inapp mode, designed for the iOS Simulator, is one of Fleetest's distinctive
 
 - Tests can be run entirely locally on a Mac. **While tests run**, your app and screen data never leave your own fleet of Macs and devices (with a remote runner, they are sent to that other Mac). When you create tests, the screen contents are sent to the AI assistant you use. With a local LLM, even creating the tests can be kept fully local. This makes Fleetest easy to adopt in projects with high security requirements, such as those where cloud services are restricted.
 
+<br>
+
 Next: [Environment](environments.md)
 
 ### Link

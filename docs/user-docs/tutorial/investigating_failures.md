@@ -93,6 +93,8 @@ More details:
 - [Test result files](../reference/testclass/test_result_files.md)
 - [Analyzing results](../reference/running/results_analysis.md)
 
+<br>
+
 Next: [Running smoke and regression separately](smoke_and_regression.md)
 
 ### Link

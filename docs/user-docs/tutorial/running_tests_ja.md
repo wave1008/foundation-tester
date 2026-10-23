@@ -61,7 +61,7 @@ VSCode では Test Explorer でシナリオを選び、「実行」をクリッ�
 
 期待する結果:
 
-- `ios-run` にはクイックスタートと[デバイスを用意する](preparing_app_and_devices_ja.md)で3台を入れたので、シナリオが3台へ自動で振り分けられます。
+- `ios-run` にはクイックスタートと[デバイスを用意する](preparing_devices_ja.md)で3台を入れたので、シナリオが3台へ自動で振り分けられます。
 - デバイスモニターの3台がそれぞれ別のシナリオを同時に動かします。
 - 終わると成否の一覧が出ます(シナリオ側の変更は要りません)。
 
@@ -72,6 +72,8 @@ VSCode では Test Explorer でシナリオを選び、「実行」をクリッ�
 - [シナリオの実行(fleetest run)](../reference/running/running_scenarios_ja.md)
 - [dry-run](../reference/running/dry_run_ja.md)
 - [並列実行](../reference/running/parallel_execution_ja.md)
+
+<br>
 
 次へ: [結果を読み、失敗を調べる](investigating_failures_ja.md)
 
