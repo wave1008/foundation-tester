@@ -16,7 +16,10 @@ which servers are declared and where the app connects to them (for the iOS Simul
 Don't change the file.
 ```
 
-What you'll see: the explanation names two declared services (the server and PostgreSQL), and says the app connects to 127.0.0.1:8090 on the iOS Simulator and 10.0.2.2:8090 on the Android Emulator.
+Expected result:
+
+- The explanation names two declared services (the server and PostgreSQL).
+- It says the app connects to 127.0.0.1:8090 on the iOS Simulator and 10.0.2.2:8090 on the Android Emulator.
 
 ## 2. Start it and check
 
@@ -39,9 +42,16 @@ curl http://127.0.0.1:8090/health     # at the published port that was printed
 </details>
 <br>
 
-What you'll see: `services up` prints the published port and returns after the `healthcheck` passes. `/health` returns `{"status":"ok"}`.
+Expected result:
 
-Related: [Services the app depends on](../reference/writing/services.md) / [Network access from scenarios](../reference/writing/network_access.md) / [Extending](../reference/writing/extending.md)
+- `services up` prints the published port and returns after the `healthcheck` passes.
+- `/health` returns `{"status":"ok"}`.
+
+Related:
+
+- [Services the app depends on](../reference/writing/services.md)
+- [Network access from scenarios](../reference/writing/network_access.md)
+- [Extending](../reference/writing/extending.md)
 
 Next: [Creating tests](creating_tests.md)
 

@@ -64,8 +64,11 @@ the text that was typed. A report reads fine when opened in VSCode.
 </details>
 <br>
 
-What you see: the steps in the report contain text from the app's screen, such as `tap "Login"`.
-You can play recordings in the "Test Sessions" tab of the VSCode extension. They show the screen text as it was.
+Expected result:
+
+- The steps in the report contain text from the app's screen, such as `tap "Login"`.
+- You can play recordings in the "Test Sessions" tab of the VSCode extension.
+- They show the screen text as it was.
 
 ## 3. Mask secrets
 
@@ -108,10 +111,11 @@ Finally, run `grep` against the new run.
 grep -rn '\*\*\*' TestProjects/project1/reports/ | tail -3
 ```
 
-What you see: in the new report, execution log and result JSON, the password is `***`.
-**Text captured in screenshots and recordings is not masked**, however. Open a screenshot or recording of a screen that shows
-the password field in plain text and the value is visible. There is no way to erase text inside pixels,
-so do not use production credentials.
+Expected result:
+
+- In the new report, execution log and result JSON, the password is `***`.
+- **Text captured in screenshots and recordings is not masked**, however. Open a screenshot or recording of a screen that shows the password field in plain text and the value is visible.
+- There is no way to erase text inside pixels, so do not use production credentials.
 
 ## 4. Check the contents before sending anything out
 
@@ -137,10 +141,12 @@ Replace `Login` on the last line with text that appears on your app's screen.
 </details>
 <br>
 
-What you see: the zip holds bridge and other logs, the results of the most recent runs (3 by default, including each scenario's
-execution log), and the tool and OS versions. If the count is not 0, text from the app's screen is in the zip.
-The command sends nothing anywhere. Something leaves only when you attach the zip, so always check the contents before you share it
-("Reporting a problem" in [Troubleshooting](../in_action/troubleshooting.md)).
+Expected result:
+
+- The zip holds bridge and other logs, the results of the most recent runs (3 by default, including each scenario's execution log), and the tool and OS versions.
+- If the count is not 0, text from the app's screen is in the zip.
+- The command sends nothing anywhere.
+- Something leaves only when you attach the zip, so always check the contents before you share it ("Reporting a problem" in [Troubleshooting](../in_action/troubleshooting.md)).
 
 ## 5. Delete it
 
@@ -163,10 +169,12 @@ Show me how much fleetest clean --dry-run would delete. If that looks fine, run 
 </details>
 <br>
 
-What you see: `--dry-run` lists the targets without deleting anything. `clean` sweeps each category that is over 90% of its
-retention limit back down to 90%, oldest first. If nothing has reached its limit, nothing is deleted.
-What is never deleted is the record of results (the JSON with pass/fail and durations)
-("Keeping disk space free" in [Maintenance for long-term use](../in_action/maintenance.md)).
+Expected result:
+
+- `--dry-run` lists the targets without deleting anything.
+- `clean` sweeps each category that is over 90% of its retention limit back down to 90%, oldest first.
+- If nothing has reached its limit, nothing is deleted.
+- What is never deleted is the record of results (the JSON with pass/fail and durations) ("Keeping disk space free" in [Maintenance for long-term use](../in_action/maintenance.md)).
 
 ## Things to know
 

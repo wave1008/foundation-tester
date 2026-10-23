@@ -15,7 +15,12 @@ This app sometimes shows a "<dialog name>" dialog right after launch. "<close bu
 
 For screens that sometimes appear (first-launch guides, announcements, OS permission dialogs), give the name and the close button's label. To check that the screen changed, make the success condition a text that appears only on the destination screen.
 
-More details: [Creating a test class](../reference/testclass/creating_testclass.md) · [Selector expressions](../reference/selector/selector_expression.md) · [Writing robust scenarios](../reference/writing/writing_robust_scenarios.md) · [How to write for each UI component, and its quirks](../reference/writing/ui_component_patterns.md)
+More details:
+
+- [Creating a test class](../reference/testclass/creating_testclass.md)
+- [Selector expressions](../reference/selector/selector_expression.md)
+- [Writing robust scenarios](../reference/writing/writing_robust_scenarios.md)
+- [How to write for each UI component, and its quirks](../reference/writing/ui_component_patterns.md)
 
 ## 2. Before you run
 

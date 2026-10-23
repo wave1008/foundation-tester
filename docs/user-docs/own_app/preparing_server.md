@@ -34,7 +34,11 @@ Do not have the AI assistant write them.
 
 When you fix the server, ask the AI to rebuild the image under the same name.
 
-Related: [Services the app depends on](../reference/writing/services.md) / [Network access from scenarios](../reference/writing/network_access.md) / [Extending](../reference/writing/extending.md)
+Related:
+
+- [Services the app depends on](../reference/writing/services.md)
+- [Network access from scenarios](../reference/writing/network_access.md)
+- [Extending](../reference/writing/extending.md)
 
 Next: [Testing an app that needs a login](logging_in.md)
 

@@ -43,7 +43,11 @@ If they do, change them so that each scenario uses its own account. List the acc
 By default, typed passwords stay as they are in reports and run logs. If you write `"redactAccountValues": true` yourself in
 `~/.config/fleetest/config.json` on this Mac, the values from `account()` are replaced with `***` (text visible in screenshots cannot be hidden).
 
-More: [Test data and accounts](../reference/commands/dataset.md) / [Custom commands](../reference/testclass/custom_commands.md) / [Handy features for writing test code](../reference/writing/helpers.md)
+More:
+
+- [Test data and accounts](../reference/commands/dataset.md)
+- [Custom commands](../reference/testclass/custom_commands.md)
+- [Handy features for writing test code](../reference/writing/helpers.md)
 
 Next: [Creating and running tests](creating_and_running.md)
 

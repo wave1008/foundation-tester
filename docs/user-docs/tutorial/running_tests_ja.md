@@ -27,7 +27,9 @@ VSCode では Test Explorer でシナリオを選び、「実行 (dry-run)」を
 </details>
 <br>
 
-見えるもの: 警告が無ければ、問題が無いと報告されます。
+期待する結果:
+
+- 警告が無ければ、問題が無いと報告されます。
 
 ## 2. 実行する(2台で並列に)
 
@@ -57,12 +59,19 @@ VSCode では Test Explorer でシナリオを選び、「実行」をクリッ�
 </details>
 <br>
 
-見えるもの: `ios-run` には[デバイスを用意する](preparing_app_and_devices_ja.md)で2台を入れたので、シナリオが2台へ自動で振り分けられ、
-デバイスモニターの2台がそれぞれ別のシナリオを同時に動かします。終わると成否の一覧が出ます(シナリオ側の変更は要りません)。
+期待する結果:
+
+- `ios-run` には[デバイスを用意する](preparing_app_and_devices_ja.md)で2台を入れたので、シナリオが2台へ自動で振り分けられます。
+- デバイスモニターの2台がそれぞれ別のシナリオを同時に動かします。
+- 終わると成否の一覧が出ます(シナリオ側の変更は要りません)。
 
 <img src="../images/tutorial/ja/parallel_run.png" width="640" alt="6本のシナリオを fleetest が2台のデバイスへ自動で振り分ける">
 
-もっと詳しく: [シナリオの実行(fleetest run)](../reference/running/running_scenarios_ja.md)・[dry-run](../reference/running/dry_run_ja.md)・[並列実行](../reference/running/parallel_execution_ja.md)
+もっと詳しく:
+
+- [シナリオの実行(fleetest run)](../reference/running/running_scenarios_ja.md)
+- [dry-run](../reference/running/dry_run_ja.md)
+- [並列実行](../reference/running/parallel_execution_ja.md)
 
 次へ: [結果を読み、失敗を調べる](investigating_failures_ja.md)
 

@@ -24,9 +24,15 @@ fleetest のテストプロジェクト project1 の実行プロファイル ios
 </details>
 <br>
 
-見えるもの: AIアシスタントが `ios-run` のデバイス一覧(1台増えたもの)を報告し、デバイスモニターの「プロファイル」タブにも並びます。
+期待する結果:
 
-設定できる項目: [プロファイル](../reference/project/profiles_ja.md)・[実行プロファイルの設定項目](../reference/project/run_profile_ja.md)
+- AIアシスタントが `ios-run` のデバイス一覧(1台増えたもの)を報告します。
+- デバイスモニターの「プロファイル」タブにも並びます。
+
+設定できる項目:
+
+- [プロファイル](../reference/project/profiles_ja.md)
+- [実行プロファイルの設定項目](../reference/project/run_profile_ja.md)
 
 次へ: [サーバーを確かめる](preparing_app_server_ja.md)
 

@@ -184,7 +184,7 @@ fleetest doctor
 </details>
 <br>
 
-見えるもの:
+期待する結果:
 
 - 1つ目は、動いているブリッジの行です。何も動いていなければ何も出ません。アドレス(`NAME` 列)が `127.0.0.1:8123` や
   `localhost:8123` の形ならループバックだけです。Wi-Fi で繋いだ iOS 実機のブリッジは実機の上で待ち受けるので、
@@ -214,7 +214,7 @@ cat ~/.config/fleetest/config.json
 </details>
 <br>
 
-見えるもの:
+期待する結果:
 
 - `allowedDomains` に並んだ宛先だけが、シナリオから届く外部です。ファイルが無い・`allowedDomains` が無い・空なら、
   シナリオは外部へ一切出られません。Wi-Fi で繋いだ iOS 実機のブリッジへは、fleetest 本体がこの Mac の
@@ -249,7 +249,7 @@ done
 </details>
 <br>
 
-見えるもの:
+期待する結果:
 
 - (1)は方針 B の設定です。`url.https://<社内ミラー>/.insteadof https://github.com/` の行が出れば、GitHub 宛ての git が
   ミラーへ向きます。何も出なければ差し替えはありません(方針 A で運用)。

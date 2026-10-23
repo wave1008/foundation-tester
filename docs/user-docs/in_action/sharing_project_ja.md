@@ -26,7 +26,9 @@ git status --short
 </details>
 <br>
 
-見えるもの: `fleetest init` とインストールが、次の3行を `.gitignore` に足します(作業フォルダが git のリポジトリのとき)。
+期待する結果:
+
+- `fleetest init` とインストールが、次の3行を `.gitignore` に足します(作業フォルダが git のリポジトリのとき)。
 
 ```text
 .build/
@@ -100,8 +102,10 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 </details>
 <br>
 
-見えるもの: `project list` に共有されたプロジェクトが実行プロファイル名つきで並びます。`⚠️ not registered in Package.swift` の注記が
-付いていなければ登録済みです(付いていれば `project sync` がまだです)。
+期待する結果:
+
+- `project list` に共有されたプロジェクトが実行プロファイル名つきで並びます。
+- `⚠️ not registered in Package.swift` の注記が付いていなければ登録済みです(付いていれば `project sync` がまだです)。
 
 ## 4. 2人目のデバイスを用意する
 
@@ -191,8 +195,11 @@ fleetest の ios-run プロファイルで、すべてのシナリオを M1Max �
 </details>
 <br>
 
-見えるもの: 先に打ったほうが実行を始め、後に打ったほうは実行ログに自分の順番を出して待ち、先の実行が終わると始まります。
-`--wait-lock` を付けないと、後のほうは使用中であることと、誰がいつから使っているかを出して止まります。
+期待する結果:
+
+- 先に打ったほうが実行を始めます。
+- 後に打ったほうは実行ログに自分の順番を出して待ち、先の実行が終わると始まります。
+- `--wait-lock` を付けないと、後のほうは使用中であることと、誰がいつから使っているかを出して止まります。
 
 誰が使っているかは `fleetest remote status --runner M1Max` の LOCK 欄で見られます。自分の名前を表示に出すには、
 `~/.config/fleetest/config.json` に `issuerId` を書きます。待ち方・ロックの外し方・設定は

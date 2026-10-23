@@ -16,7 +16,10 @@ In the cart test of the fleetest test project project1, temporarily change just 
 Then run it on iOS (ios-run) and report only pass or fail. Don't fix it.
 ```
 
-What you'll see: the cart test fails and the other tests pass.
+Expected result:
+
+- The cart test fails.
+- The other tests pass.
 
 ## 2. Have the results summarized
 
@@ -36,7 +39,10 @@ Summarize the latest run of the fleetest test project project1. If anything fail
 </details>
 <br>
 
-What you'll see: the cart test is listed, along with the step where you changed the expected value.
+Expected result:
+
+- The cart test is listed.
+- The step where you changed the expected value is listed.
 
 ## 3. Have the cause investigated (don't fix it)
 
@@ -51,7 +57,10 @@ Don't fix the scenarios yet (and don't make them pass by adjusting expected valu
 - Always add "don't fix them". If you ask for investigation and a fix at once, a test that failed because of an app bug may get made to pass by adjusting the expected value to match the app.
 - Read the report first, then you decide whether to fix it.
 
-What you'll see: the report contains the failed step, the failure message, and the element list and screenshot at the moment of failure (below is from the sample app). This time it reports that the expected product name was not in the cart.
+Expected result:
+
+- The report contains the failed step, the failure message, and the element list and screenshot at the moment of failure (below is from the sample app).
+- This time it reports that the expected product name was not in the cart.
 
 <img src="../images/tutorial/en/report_failure.png" width="600" alt="Excerpt of a failed report: the failed step and its message, the element list at the moment of failure (collapsed), and the screenshot">
 
@@ -75,9 +84,14 @@ Results are recorded per profile, so run it with the same profile as last time.
 </details>
 <br>
 
-What you'll see: only the cart test that had failed runs, and it passes.
+Expected result:
 
-More details: [Test result files](../reference/testclass/test_result_files.md) / [Analyzing results](../reference/running/results_analysis.md)
+- Only the cart test that had failed runs, and it passes.
+
+More details:
+
+- [Test result files](../reference/testclass/test_result_files.md)
+- [Analyzing results](../reference/running/results_analysis.md)
 
 Next: [Running smoke and regression separately](smoke_and_regression.md)
 

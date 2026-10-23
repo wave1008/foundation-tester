@@ -27,7 +27,9 @@ In VSCode, select a scenario in the Test Explorer and use "Run (dry-run)".
 </details>
 <br>
 
-What you'll see: with no warnings, you are told there are no problems.
+Expected result:
+
+- With no warnings, you are told there are no problems.
 
 ## 2. Run (in parallel on two devices)
 
@@ -57,13 +59,19 @@ In VSCode, select a scenario in the Test Explorer and click "Run" (choose the ru
 </details>
 <br>
 
-What you'll see: `ios-run` has the two devices you set up in [Preparing devices](preparing_app_and_devices.md), so the scenarios are distributed
-to both automatically and the two devices in the Device Monitor run different scenarios at the same time. A list of pass/fail appears when it finishes
-(no change to the scenarios is needed).
+Expected result:
+
+- `ios-run` has the two devices you set up in [Preparing devices](preparing_app_and_devices.md), so the scenarios are distributed to both automatically.
+- The two devices in the Device Monitor run different scenarios at the same time.
+- A list of pass/fail appears when it finishes (no change to the scenarios is needed).
 
 <img src="../images/tutorial/en/parallel_run.png" width="640" alt="fleetest distributes six scenarios across two devices automatically">
 
-More details: [Running scenarios (fleetest run)](../reference/running/running_scenarios.md) · [Dry-run](../reference/running/dry_run.md) · [Parallel execution](../reference/running/parallel_execution.md)
+More details:
+
+- [Running scenarios (fleetest run)](../reference/running/running_scenarios.md)
+- [Dry-run](../reference/running/dry_run.md)
+- [Parallel execution](../reference/running/parallel_execution.md)
 
 Next: [Reading results and investigating failures](investigating_failures.md)
 

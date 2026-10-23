@@ -26,7 +26,9 @@ git status --short
 </details>
 <br>
 
-What you see: `fleetest init` and the installer add these three lines to `.gitignore` (when the work folder is a git repository).
+Expected result:
+
+- `fleetest init` and the installer add these three lines to `.gitignore` (when the work folder is a git repository).
 
 ```text
 .build/
@@ -101,8 +103,10 @@ When setup is done, register the `TestProjects/` that came with the clone in `Pa
 </details>
 <br>
 
-What you see: `project list` lists the shared project with its run profile names. It is registered when the line carries no
-`⚠️ not registered in Package.swift` note (if it does, `project sync` has not run yet).
+Expected result:
+
+- `project list` lists the shared project with its run profile names.
+- It is registered when the line carries no `⚠️ not registered in Package.swift` note (if it does, `project sync` has not run yet).
 
 ## 4. Prepare the second person's devices
 
@@ -192,9 +196,11 @@ In two terminals, type the following at nearly the same time.
 </details>
 <br>
 
-What you see: the one that was typed first starts running; the other prints its place in the queue in the execution log and waits,
-then starts when the first run finishes. Without `--wait-lock`, the later one stops, reporting that the runner is in use and
-who has been using it since when.
+Expected result:
+
+- The one that was typed first starts running.
+- The other prints its place in the queue in the execution log and waits, then starts when the first run finishes.
+- Without `--wait-lock`, the later one stops, reporting that the runner is in use and who has been using it since when.
 
 You can see who is using it in the LOCK column of `fleetest remote status --runner M1Max`. To have your name appear in these displays,
 write `issuerId` in `~/.config/fleetest/config.json`. How to wait, how to release a lock, and the settings are in

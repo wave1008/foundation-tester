@@ -15,7 +15,12 @@ fleetest のテストプロジェクト <名前> で、自分のアプリの基�
 
 出たり出なかったりする画面(初回の案内・お知らせ・OS の許可ダイアログ)は、名前と閉じるボタンの文言を入れます。画面が切り替わったかを確かめたいときは、切り替わった先にだけ出る文言を成功の条件に書きます。
 
-もっと詳しく: [テストクラスの作成](../reference/testclass/creating_testclass_ja.md)・[セレクタ式](../reference/selector/selector_expression_ja.md)・[壊れにくいシナリオの書き方](../reference/writing/writing_robust_scenarios_ja.md)・[UI 部品ごとの書き方と癖](../reference/writing/ui_component_patterns_ja.md)
+もっと詳しく:
+
+- [テストクラスの作成](../reference/testclass/creating_testclass_ja.md)
+- [セレクタ式](../reference/selector/selector_expression_ja.md)
+- [壊れにくいシナリオの書き方](../reference/writing/writing_robust_scenarios_ja.md)
+- [UI 部品ごとの書き方と癖](../reference/writing/ui_component_patterns_ja.md)
 
 ## 2. 実行する前に
 

@@ -29,7 +29,10 @@ fleetest のテストプロジェクト myshop のどのテストでも、この
 
 画面の ID が変わった程度の変化は自己修復が吸収します: [自己修復](../reference/running/self_healing_ja.md)
 
-関連: [長く使うためのメンテナンス](../in_action/maintenance_ja.md)・[自己修復](../reference/running/self_healing_ja.md)
+関連:
+
+- [長く使うためのメンテナンス](../in_action/maintenance_ja.md)
+- [自己修復](../reference/running/self_healing_ja.md)
 
 ### Link
 - [index](../index_ja.md)

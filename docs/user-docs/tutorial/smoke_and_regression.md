@@ -27,7 +27,9 @@ A scenario ID (`ClassName.methodName`) does not change with the folder.
 </details>
 <br>
 
-What you'll see: two Swift files in `scenarios/smoke/`.
+Expected result:
+
+- Two Swift files in `scenarios/smoke/`.
 
 ## 2. Run by folder (smoke) and run everything (regression)
 
@@ -50,7 +52,9 @@ Without a folder, everything runs.
 </details>
 <br>
 
-What you'll see: only the two scenarios inside `smoke` run.
+Expected result:
+
+- Only the two scenarios inside `smoke` run.
 
 Next, run everything without naming a folder (regression) and compare how many ran.
 

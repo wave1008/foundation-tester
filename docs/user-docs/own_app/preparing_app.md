@@ -22,8 +22,10 @@ When you're done, tell me the names of the run profiles you created. There's no 
 - If you already have builds, give their paths (`.app` / `.apk`) instead of the source.
 - Name the test project (`myshop`) in your later prompts too.
 
-What you'll see: the AI assistant reports the run profile names (such as `ios-run`). In VSCode, switch to `myshop` with
-`fleetest: Select Project` in the Command Palette, and they appear in the **Profiles** tab of the device monitor.
+Expected result:
+
+- The AI assistant reports the run profile names (such as `ios-run`).
+- In VSCode, switch to `myshop` with `fleetest: Select Project` in the Command Palette, and they appear in the **Profiles** tab of the device monitor.
 
 <details>
 <summary><b>If you do it manually (click to show details)</b></summary>
@@ -52,7 +54,10 @@ Ask only when the path or file name changes.
 Change the iOS app path in the app profile of the fleetest test project myshop to ~/builds/MyShop-2.0.app.
 ```
 
-Settable items: [Profiles](../reference/project/profiles.md) and [Run profile settings](../reference/project/run_profile.md)
+Settable items:
+
+- [Profiles](../reference/project/profiles.md)
+- [Run profile settings](../reference/project/run_profile.md)
 
 Next: [Preparing the servers your app depends on](preparing_server.md)
 

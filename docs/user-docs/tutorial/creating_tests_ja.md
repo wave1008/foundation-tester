@@ -31,7 +31,11 @@ fleetest のテストプロジェクト project1 の SUT Store の基本ルー�
 
 指示した挙動がアプリに無いときは、実際の挙動が報告され、仕様どおりかの判断を求められます。
 
-もっと詳しく: [テストクラスの作成](../reference/testclass/creating_testclass_ja.md)・[セレクタ式](../reference/selector/selector_expression_ja.md)・[壊れにくいシナリオの書き方](../reference/writing/writing_robust_scenarios_ja.md)
+もっと詳しく:
+
+- [テストクラスの作成](../reference/testclass/creating_testclass_ja.md)
+- [セレクタ式](../reference/selector/selector_expression_ja.md)
+- [壊れにくいシナリオの書き方](../reference/writing/writing_robust_scenarios_ja.md)
 
 次へ: [テストを実行する](running_tests_ja.md)
 

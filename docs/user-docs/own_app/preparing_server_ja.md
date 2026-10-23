@@ -34,7 +34,11 @@ AIアシスタントには書かせません。
 
 サーバーを直したら、同じ名前でイメージをビルドし直すよう指示します。
 
-関連: [アプリが依存するサービス](../reference/writing/services_ja.md)・[シナリオから外部へ通信する](../reference/writing/network_access_ja.md)・[自分で機能を足す](../reference/writing/extending_ja.md)
+関連:
+
+- [アプリが依存するサービス](../reference/writing/services_ja.md)
+- [シナリオから外部へ通信する](../reference/writing/network_access_ja.md)
+- [自分で機能を足す](../reference/writing/extending_ja.md)
 
 次へ: [ログインが必要なアプリをテストする](logging_in_ja.md)
 

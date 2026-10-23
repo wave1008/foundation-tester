@@ -198,7 +198,7 @@ fleetest doctor
 </details>
 <br>
 
-What you should see:
+Expected result:
 
 - The first command prints a line for each running bridge, and nothing if no bridge is running. An address (the `NAME`
   column) such as `127.0.0.1:8123` or `localhost:8123` means loopback only. The bridge of a physical iOS device connected
@@ -229,7 +229,7 @@ cat ~/.config/fleetest/config.json
 </details>
 <br>
 
-What you should see:
+Expected result:
 
 - Only the destinations listed in `allowedDomains` are reachable from a scenario. If the file does not exist, or
   `allowedDomains` is missing or empty, a scenario cannot reach the outside at all. The bridge of a physical iOS device over Wi-Fi is reached through a
@@ -265,7 +265,7 @@ done
 </details>
 <br>
 
-What you should see:
+Expected result:
 
 - (1) is the Option B setting. A line such as `url.https://<internal-mirror>/.insteadof https://github.com/` means git traffic
   to GitHub goes to the mirror. Nothing means no redirect (you run with Option A).

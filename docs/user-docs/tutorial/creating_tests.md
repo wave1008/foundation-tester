@@ -31,7 +31,11 @@ Check that the quantity of that product in the cart is 3. When it is ready, run 
 
 If the behavior you ask for is not in the app, the AI assistant reports the actual behavior and leaves the decision of whether that matches the specification to you.
 
-More details: [Creating a test class](../reference/testclass/creating_testclass.md) · [Selector expressions](../reference/selector/selector_expression.md) · [Writing robust scenarios](../reference/writing/writing_robust_scenarios.md)
+More details:
+
+- [Creating a test class](../reference/testclass/creating_testclass.md)
+- [Selector expressions](../reference/selector/selector_expression.md)
+- [Writing robust scenarios](../reference/writing/writing_robust_scenarios.md)
 
 Next: [Running tests](running_tests.md)
 

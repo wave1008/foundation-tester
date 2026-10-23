@@ -29,7 +29,10 @@ Update every test in the fleetest test project myshop so that, if the dialog app
 
 Minor changes such as a screen ID having changed are absorbed by self-healing: [Self-healing](../reference/running/self_healing.md)
 
-Related: [Maintenance for long-term use](../in_action/maintenance.md) / [Self-healing](../reference/running/self_healing.md)
+Related:
+
+- [Maintenance for long-term use](../in_action/maintenance.md)
+- [Self-healing](../reference/running/self_healing.md)
 
 ### Link
 - [index](../index.md)

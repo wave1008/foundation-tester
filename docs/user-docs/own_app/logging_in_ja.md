@@ -43,7 +43,11 @@ fleetest のテストプロジェクト myshop で、サーバー側の状態を
 既定では、入力したパスワードがレポートと実行ログにそのまま残ります。この Mac の `~/.config/fleetest/config.json` に
 `"redactAccountValues": true` を自分で書くと、`account()` の値が `***` に伏せられます(スクリーンショットに写った文字は伏せられません)。
 
-詳しく: [テストデータ・アカウント](../reference/commands/dataset_ja.md)・[独自コマンド](../reference/testclass/custom_commands_ja.md)・[テストコードを書くときの便利機能](../reference/writing/helpers_ja.md)
+詳しく:
+
+- [テストデータ・アカウント](../reference/commands/dataset_ja.md)
+- [独自コマンド](../reference/testclass/custom_commands_ja.md)
+- [テストコードを書くときの便利機能](../reference/writing/helpers_ja.md)
 
 次へ: [テストを作って回す](creating_and_running_ja.md)
 

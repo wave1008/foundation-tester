@@ -22,8 +22,10 @@ fleetest のテストプロジェクト myshop を新しく作り、自分のア
 - ビルド済みのアプリがあるなら、ソースの代わりにそのパス(`.app` / `.apk`)を伝えます。
 - 以降の指示にも、テストプロジェクト名(`myshop`)を添えます。
 
-見えるもの: AIアシスタントが実行プロファイル名(`ios-run` など)を報告します。VSCode では、コマンドパレットの
-`fleetest: プロジェクトを選択` で `myshop` に切り替えると、デバイスモニターの「プロファイル」タブに並びます。
+期待する結果:
+
+- AIアシスタントが実行プロファイル名(`ios-run` など)を報告します。
+- VSCode では、コマンドパレットの `fleetest: プロジェクトを選択` で `myshop` に切り替えると、デバイスモニターの「プロファイル」タブに並びます。
 
 <details>
 <summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
@@ -52,7 +54,10 @@ React Native は Release 構成)、作業フォルダで実行します。
 fleetest のテストプロジェクト myshop のアプリプロファイルにある iOS のアプリのパスを、~/builds/MyShop-2.0.app に変えて。
 ```
 
-設定できる項目: [プロファイル](../reference/project/profiles_ja.md)・[実行プロファイルの設定項目](../reference/project/run_profile_ja.md)
+設定できる項目:
+
+- [プロファイル](../reference/project/profiles_ja.md)
+- [実行プロファイルの設定項目](../reference/project/run_profile_ja.md)
 
 次へ: [アプリが依存するサーバーを用意する](preparing_server_ja.md)
 

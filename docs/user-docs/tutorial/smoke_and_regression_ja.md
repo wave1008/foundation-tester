@@ -27,7 +27,9 @@ mv TestProjects/project1/scenarios/<ファイル名>.swift TestProjects/project1
 </details>
 <br>
 
-見えるもの: `scenarios/smoke/` に2本の Swift ファイルが入ります。
+期待する結果:
+
+- `scenarios/smoke/` に2本の Swift ファイルが入ります。
 
 ## 2. フォルダ単位で回す(スモーク)・全部回す(回帰)
 
@@ -50,7 +52,9 @@ fleetest のテストプロジェクト project1 の ios-run プロファイル�
 </details>
 <br>
 
-見えるもの: `smoke` の中の2本だけが実行されます。
+期待する結果:
+
+- `smoke` の中の2本だけが実行されます。
 
 続けて、フォルダを指定せずに全部を回して(回帰)、本数の違いを見比べます。
 

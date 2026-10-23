@@ -15,7 +15,10 @@ fleetest のテストプロジェクト project1 の TestProjects/project1/works
 ファイルは変更しないで。
 ```
 
-見えるもの: サーバーと PostgreSQL の2つが宣言され、アプリの接続先は iOS Simulator が 127.0.0.1:8090・Android Emulator が 10.0.2.2:8090 だと説明されます。
+期待する結果:
+
+- サーバーと PostgreSQL の2つが宣言されます。
+- アプリの接続先は iOS Simulator が 127.0.0.1:8090・Android Emulator が 10.0.2.2:8090 だと説明されます。
 
 ## 2. 起動して確かめる
 
@@ -38,9 +41,16 @@ curl http://127.0.0.1:8090/health     # 印字された公開ポートへ
 </details>
 <br>
 
-見えるもの: `services up` が公開ポートを印字し、`healthcheck` が通るまで待ってから戻ります。`/health` は `{"status":"ok"}` を返します。
+期待する結果:
 
-関連: [アプリが依存するサービス](../reference/writing/services_ja.md)・[シナリオから外部へ通信する](../reference/writing/network_access_ja.md)・[自分で機能を足す](../reference/writing/extending_ja.md)
+- `services up` が公開ポートを印字し、`healthcheck` が通るまで待ってから戻ります。
+- `/health` は `{"status":"ok"}` を返します。
+
+関連:
+
+- [アプリが依存するサービス](../reference/writing/services_ja.md)
+- [シナリオから外部へ通信する](../reference/writing/network_access_ja.md)
+- [自分で機能を足す](../reference/writing/extending_ja.md)
 
 次へ: [テストを作る](creating_tests_ja.md)
 

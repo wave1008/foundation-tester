@@ -24,9 +24,15 @@ In the **Profiles** tab of the device monitor, press the run profile's "Add devi
 </details>
 <br>
 
-What you'll see: the AI assistant reports the device list of `ios-run` with one more device, and it also appears in the **Profiles** tab of the device monitor.
+Expected result:
 
-Settable items: [Profiles](../reference/project/profiles.md) and [Run profile settings](../reference/project/run_profile.md)
+- The AI assistant reports the device list of `ios-run` with one more device.
+- It also appears in the **Profiles** tab of the device monitor.
+
+Settable items:
+
+- [Profiles](../reference/project/profiles.md)
+- [Run profile settings](../reference/project/run_profile.md)
 
 Next: [Checking the server](preparing_app_server.md)
 
