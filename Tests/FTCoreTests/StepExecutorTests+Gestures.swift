@@ -1039,3 +1039,41 @@ extension StepExecutorTests {
     }
 
 }
+
+extension StepExecutorTests {
+    /// rotateTo: in-app の 501(iPad はアプリから回せない)なら typeDriver で回し、driverFallback を記録する
+    func testRotateTo501FallsBackToTypeDriver() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        primary.rotateError = DriverError.badResponse(status: 501, body: "rotate does not work via the in-app bridge on iPad")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
+
+        let outcome = await executor.execute(FlowStep(action: "rotateTo", direction: "landscape"))
+
+        guard case .passed = outcome.status else {
+            XCTFail("501 からの切替で passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
+        XCTAssertEqual(Array(log.entries.filter { $0.contains("rotate") }),
+                       ["primary.rotate(throws)", "typedriver.rotate(landscape)"])
+    }
+
+    /// rotateTo: 422(回したが向きが変わらない)は typeDriver へ回さず失敗のまま
+    func testRotateTo422DoesNotFallBack() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        primary.rotateError = DriverError.badResponse(status: 422, body: "orientation did not settle to landscape")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
+
+        let outcome = await executor.execute(FlowStep(action: "rotateTo", direction: "landscape"))
+
+        guard case .failed = outcome.status else {
+            XCTFail("422 は失敗のままを期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertEqual(log.entries.filter { $0.contains("rotate") }, ["primary.rotate(throws)"])
+    }
+}

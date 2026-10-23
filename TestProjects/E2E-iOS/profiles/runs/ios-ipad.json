@@ -1,0 +1,24 @@
+{
+  "app": "ft_e2e_ios",
+  "devices": [
+    {
+      "platform": "ios",
+      "machine": "local",
+      "name": "iPad Pro 11-inch (M5)(iOS 27.2)-01",
+      "model": "iPad Pro 11-inch (M5)",
+      "osVersion": "iOS 27.2",
+      "udid": "39117767-E154-4C45-B298-FEBE08A0B155"
+    },
+    {
+      "platform": "ios",
+      "machine": "local",
+      "name": "iPad Air 11-inch (M4)(iOS 27.2)-01",
+      "model": "iPad Air 11-inch (M4)",
+      "osVersion": "iOS 27.2",
+      "udid": "FE67370D-B019-4F4B-9486-5D9D79C0A52B"
+    }
+  ],
+  "heal": true,
+  "iosMode": "inapp",
+  "wipeDataOnBloat": true
+}

@@ -37,6 +37,8 @@ final class FakeAppDriver: AppDriver {
     /// 非 nil なら swipe/press がこのエラーを throw する(501 ジェスチャ切替の検証用)
     var swipeError: Error?
     var pressError: Error?
+    /// 非 nil なら rotate がこのエラーを throw する(iPad の in-app 501 → XCUITest の検証用)
+    var rotateError: Error?
     /// SnapshotResponse.keyboardFrame(全 snapshot() 呼び出しに一律で乗せる。
     /// キーボード遮蔽の配線テスト専用。既定 nil = 従来どおりキーボード非表示扱い)。
     /// **keyboardFrames(呼び出し回数ぶんの列)が設定されていればそちらを優先する**
@@ -226,6 +228,15 @@ final class FakeAppDriver: AppDriver {
             throw swipeError
         }
         log.entries.append("\(name).swipe")
+    }
+
+    func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        if let rotateError {
+            log.entries.append("\(name).rotate(throws)")
+            throw rotateError
+        }
+        log.entries.append("\(name).rotate(\(orientation.rawValue))")
+        return orientation
     }
 
     /// 直近の press に渡った長押し秒数(FlowStep.duration の配線確認用。ログ文言は変えない)

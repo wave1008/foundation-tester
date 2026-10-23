@@ -1668,6 +1668,12 @@ final class FTInAppBridge {
     /// answer 200 with a value that isn't what was requested (RotationSettle.deadlineSeconds).
     private func handleRotate(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(RotateRequest.self, body)
+        // iPad はアプリから自分の向きを変えられない(requestGeometryUpdate が効かず portrait のまま。
+        // iPad Pro 11 M5・Air 11 M4 / iOS 27.2 で実測)。501 = inapp モードは XCUITest ブリッジ(端末を回す)へ回す
+        if mainSync({ UIDevice.current.userInterfaceIdiom == .pad }) {
+            throw InAppError(501, "rotate does not work via the in-app bridge on iPad"
+                + " (the app cannot rotate its own scene). inapp mode hands it to the XCUITest bridge")
+        }
         let mask: UIInterfaceOrientationMask
         switch req.orientation {
         case .portrait: mask = .portrait

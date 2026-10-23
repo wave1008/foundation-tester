@@ -1146,8 +1146,18 @@ public final class FTDriveCore {
     /// `driver` は internal なので、ScenarioRunnerMain(別モジュール)からのシナリオ終端の
     /// リストア呼び出し用に forward するだけの公開口。呼ぶだけで安価
     /// (rotate(to:) を一度も呼んでいなければ AppDriver 側で no-op)
+    /// typeDriver も戻す: rotateTo は in-app が 501 のとき typeDriver で回す(iPad)。各ドライバは自分が回したときだけ戻す。
+    /// 片方の失敗で他方を撃ち漏らさない(全員に撃ってから最初の失敗を投げる = HybridFallbackDriver と同じ)
     public func restoreOrientationIfNeeded() async throws {
-        try await driver.restoreOrientationIfNeeded()
+        var firstError: Error?
+        for target in [driver, executor.typeDriver].compactMap({ $0 }) {
+            do {
+                try await target.restoreOrientationIfNeeded()
+            } catch {
+                if firstError == nil { firstError = error }
+            }
+        }
+        if let firstError { throw firstError }
     }
 
     /// 開閉の状態を読む(iOS Simulator = devicectl / Android = ドライバ)。iOS の実機は読まない(送れないので)

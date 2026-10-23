@@ -48,6 +48,18 @@ final class BridgeClientStaleRefTests: XCTestCase {
         XCTAssertEqual(sent.probeStaleRef, true)
     }
 
+    /// rotate の 501(iPad の in-app)は元の向きの控えを捨て、422(整定しない)は残す。
+    /// 応答の写像(check)から通す = 実際に投げられる型で判定が効くことまで見る
+    func testRotateKeepsTheOriginalOnlyWhenTheBridgeTriedToRotate() throws {
+        let body = try JSONEncoder().encode(ErrorResponse(error: "rotate does not work via the in-app bridge on iPad"))
+        XCTAssertThrowsError(try BridgeClient.check(response: response(501), data: body)) { error in
+            XCTAssertFalse(BridgeClient.keepsOriginalOrientation(afterRotateError: error), "\(error)")
+        }
+        XCTAssertThrowsError(try BridgeClient.check(response: response(422), data: body)) { error in
+            XCTAssertTrue(BridgeClient.keepsOriginalOrientation(afterRotateError: error), "\(error)")
+        }
+    }
+
     /// 理由の無い 422 は従来どおり badResponse(本文に stale-ref と書いてあっても写さない)
     func testPlain422StaysBadResponse() throws {
         let body = try JSONEncoder().encode(ErrorResponse(error: "stale-ref in the text only"))

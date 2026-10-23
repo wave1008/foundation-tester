@@ -431,7 +431,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 |---|---|---|
 | XCUITest(Runner/) | `POST /drag`・`POST /gesture`・`POST /hold`・`POST /appswitcher`・`POST /home`・`POST /hinge`(折りたたみの Duo の Simulator のヒンジ角。仮想 HID・`FTCore.FoldControl`)・共通コアの /screenshot のクエリ `display=<id>`(追加のルートではない。内蔵画面が2枚以上 = `/status` の `multiDisplay` のとき必須。ホストが devicectl で確かめた表示中の画面を渡す。`DisplayRouting`)・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/covering`・`GET /systemui/snapshot`・`POST /systemui/tap`・`POST /systemui/drag`・`POST /systemui/swipe`・`POST /waitForSettle`(§4.7)・`POST /responsePrepare`・`POST /responseCollect`・`POST /responseObservation`・`POST /responseObservationStop`(応答時間計測。docs/response-measurement.md §5・§7) | 34 |
 | Android(AndroidRunner/) | `POST /gesture`・`POST /hold`・`POST /locale`・`POST /settle`・`POST /scrollAction`(§4.5)・`POST /waitForSettle`(§4.7)・`POST /responsePrepare`・`POST /responseCollect`・`POST /responseObservation`・`POST /responseObservationStop`(応答時間計測。docs/response-measurement.md §8.5) | 23 |
-| InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`POST /tapprobe`(iOS の hideKeyboard が叩く点がキーボード・ステータスバー・別のウィンドウの上でないか。`InAppTapProbe.swift`)・`POST /drag`(自前描画の Compose・Flutter だけ。実時間 60Hz で move を処理させ、終点の後に1刻み待って離す。それ以外は 501 = inapp モードは XCUITest ブリッジへ) | 18 |
+| InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate`(iPad では 501 = inapp モードは XCUITest ブリッジへ)・`POST /tapprobe`(iOS の hideKeyboard が叩く点がキーボード・ステータスバー・別のウィンドウの上でないか。`InAppTapProbe.swift`)・`POST /drag`(自前描画の Compose・Flutter だけ。実時間 60Hz で move を処理させ、終点の後に1刻み待って離す。それ以外は 501 = inapp モードは XCUITest ブリッジへ) | 18 |
 
 **ジェスチャの秒数(`/press` の duration・`/drag` の press+移動・速度つき `/swipe`・`/pinch`・`/gesture` の全体)の上限は2層**:
 方針(既定 10 秒・コマンドの `maxGestureSeconds` で最大 60 秒)は**ホスト側**(`FlowStep.gestureDurationViolation` /
@@ -495,7 +495,11 @@ SpringBoard は system shell なので背面に回らず、`requireForegroundApp
 旧ランナー(版 < 79)は 404 を返し、`SystemUIDriver` が旧経路へ落ちる。
 
 `POST /rotate` は iOS の2実装だけが持つ(`{orientation}` → 整定後の実際の向き、整定しなければ
-`422`)。Android は adb(`AndroidDriver`)で直接行うためルートを持たない。XCUITest ランナーは判定に
+`422`)。**in-app ブリッジは iPad では撃たずに `501`**(アプリから自分の画面を回せない = `requestGeometryUpdate` が
+効かず portrait のまま。iPad の Simulator 2機種・iOS 27.2 で実測)。iPhone 専用アプリの iPad 互換表示は idiom が phone なので
+in-app のまま回し、実際に回る(同じ2機種で実測)。in-app が 501 で断った回は元の向きの控えを捨てる(`BridgeClient.keepsOriginalOrientation`。
+残すと終端の戻しが in-app へ撃って同じ 501 を出す)。inapp モードはこの 501 だけで XCUITest ブリッジへ回し
+(`StepExecutor.executeDirectRotateTo`・ライブ操作は `HybridFallbackDriver`)、422 は回さない。Android は adb(`AndroidDriver`)で直接行うためルートを持たない。XCUITest ランナーは判定に
 アプリの窓を読むので、**セッションのアプリが落ちていれば 503・背面なら 422 で撃たずに断る**
 (`requireForegroundAppForRotation`。読むと XCTest が Tear Down してランナーごと消える。v118)。
 

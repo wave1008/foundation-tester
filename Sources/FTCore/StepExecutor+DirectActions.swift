@@ -33,16 +33,25 @@ extension StepExecutor {
                            driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
     }
 
-    // Device-level, no locator. Per policy this does NOT fall back to typeDriver on failure —
-    // rotation uses whichever bridge this connection already uses. The driver throws (never
-    // returns a mismatched orientation) if it didn't settle, so no post-hoc mismatch check needed.
+    // Device-level, no locator. Falls back to typeDriver only on "this bridge cannot" (501/404:
+    // the in-app bridge on iPad, where the app cannot rotate its own scene). A 422 (did not
+    // settle) is not retried there. The driver throws (never returns a mismatched orientation)
+    // if it didn't settle, so no post-hoc mismatch check needed.
+    // 戻すのはシナリオ終端の FTRuntime.restoreOrientationIfNeeded(typeDriver 側も戻す)
     func executeDirectRotateTo(step: FlowStep, phase: inout PhaseAccumulator) async throws -> StepOutcome {
         guard let raw = step.direction, let orientation = FTOrientation(rawValue: raw) else {
             return StepOutcome(status: .failed("rotateTo requires an orientation"))
         }
         let clock = ContinuousClock()
         let start = clock.now
-        _ = try await driver.rotate(to: orientation)
+        var viaXCUITest = false
+        do {
+            _ = try await driver.rotate(to: orientation)
+        } catch {
+            guard DriverError.isBridgeIncapable(error), let td = typeDriver else { throw error }
+            _ = try await td.rotate(to: orientation)
+            viaXCUITest = true
+        }
         phase.actionMs += Self.ms(clock.now - start)
         // **向きが変わっただけでは終わりではない**: ドライバは「向きが要求と一致したか」までしか
         // 見ておらず、その時点でレイアウトはまだ動いている。直後のタップは動く前の座標を撃つ
@@ -50,7 +59,7 @@ extension StepExecutor {
         // 別の要素を押していた)。スクロール後の静止をホスト側が担うのと同じ規律で、
         // 木が2回続けて同じ署名になるまで待つ
         if !skippingSettle(step) { _ = try? await settledSignature(phase: &phase) }
-        return StepOutcome(status: .passed)
+        return StepOutcome(status: .passed, driverFallback: viaXCUITest ? "fell back to XCUITest" : nil)
     }
 
     // スクロールだけ行う(Shirates の scrollDown 等)。maxSwipes を繰り返し回数として使う

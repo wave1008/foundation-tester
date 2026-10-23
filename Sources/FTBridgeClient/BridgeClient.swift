@@ -1173,13 +1173,26 @@ public final class BridgeClient: AppDriver, Sendable {
     }
 
     public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
-        if originalOrientation == nil {
+        let capturedNow = originalOrientation == nil
+        if capturedNow {
             let current: StatusResponse = try await status()
             originalOrientation = current.orientation ?? .portrait
         }
-        let response: RotateResponse = try await post(
-            "/rotate", body: RotateRequest(orientation: orientation), timeout: interactionTimeout)
-        return response.orientation
+        do {
+            let response: RotateResponse = try await post(
+                "/rotate", body: RotateRequest(orientation: orientation), timeout: interactionTimeout)
+            return response.orientation
+        } catch {
+            if capturedNow, !Self.keepsOriginalOrientation(afterRotateError: error) { originalOrientation = nil }
+            throw error
+        }
+    }
+
+    /// 回せなかった rotate の後も元の向きの控えを残すか。**このブリッジでは回せない(501 = iPad の in-app)なら捨てる** ——
+    /// 残すと終端の restoreOrientationIfNeeded が同じブリッジへ撃って同じ 501 を出す(回したのは呼び手が回した先の XCUITest)。
+    /// 422(撃ったが整定しない)は途中まで回った可能性があるので残す
+    static func keepsOriginalOrientation(afterRotateError error: Error) -> Bool {
+        !DriverError.isBridgeIncapable(error)
     }
 
     /// XCUITest ランナーの POST /hinge(Simulator だけ。in-app ブリッジはルートを持たない = 404 → 呼び手が回す)
