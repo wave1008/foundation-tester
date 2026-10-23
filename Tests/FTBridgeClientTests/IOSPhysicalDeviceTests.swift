@@ -227,7 +227,7 @@ final class IOSPhysicalDeviceTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/FTBridgeClient/BridgeLauncher.swift")
         let code = try String(contentsOf: url, encoding: .utf8)
-        guard let ended = code.range(of: "let marker = Self.runnerSessionEnded(inLog: text)"),
+        guard let ended = code.range(of: "case .sessionEnded(let marker)?:"),
               let generic = code.range(of: "the test session already ended (\\(marker))") else {
             return XCTFail("waitUntilReady の session-ended 分岐が見つからない")
         }

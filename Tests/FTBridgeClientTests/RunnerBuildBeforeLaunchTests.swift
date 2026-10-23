@@ -23,11 +23,12 @@ final class RunnerBuildBeforeLaunchTests: XCTestCase {
         code.components(separatedBy: "\n")
     }
 
-    /// 起動口は2つ(通常の起動と、portInUse の後の1回だけの再試行)。増えたら、その口が
+    /// 起動口は3つ(通常の起動・実機で端末側に握られたポートの撃ち直し・portInUse の後の1回だけの再試行)。
+    /// 撃ち直しの2つは同じ関数で通常の起動(ensureRunnerBuilt 済み)の後にしか来ない。増えたら、その口が
     /// ensureRunnerBuilt を通るかを見直してからこの数を上げる
     func testStartDetachedCallSitesArePinned() throws {
         let sites = Self.lines(try Self.source).filter { $0.contains("launcher.startDetached()") }
-        XCTAssertEqual(sites.count, 2, "BridgeProvisioner の startDetached の呼び出しが増減した: \(sites)")
+        XCTAssertEqual(sites.count, 3, "BridgeProvisioner の startDetached の呼び出しが増減した: \(sites)")
     }
 
     /// 最初の起動口(通常の起動)は、同じ detached ブロックの中で ensureRunnerBuilt を先に通すこと
