@@ -2,8 +2,7 @@
 
 [in English](quick-start.md)
 
-fleetest をインストールし、サンプルアプリを対象にシナリオを作って実行するまでの最短手順です。
-シナリオを手で書く必要はありません。
+fleetest をインストールし、サンプルアプリを対象にテストシナリオを作って実行するまでの最短手順です。
 
 ## 1. 環境
 
@@ -147,7 +146,7 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 
 ## 6. シナリオを作る
 
-商品を開くまでの基本ルート(正常に進む流れ)のテストを作成してみましょう。
+商品を開くまでの基本ルートのテストを作成してみましょう。
 
 ### AIへの指示文
 
@@ -157,13 +156,12 @@ fleetest のテストプロジェクト project1 で、SUT Store の「商品詳
 シナリオのファイル名を報告したら終わりにして。
 ```
 
-`setUpDevice` は、テストの前にデバイスごとに1回だけ行う準備を書く場所です(ここでは言語の切り替え)。
+`setUpDevice` は、テストの前にデバイスごとに1回だけ行う準備を書く場所(関数)です。
+
 Android の場合は「iOS で」を「Android で」に読み替えてください。
 
 AIアシスタントはデバイス上でアプリを起動し、画面を操作しながら要素を読み取って、
 その流れをシナリオに落とします。
-AIアシスタントは操作を始める前に、compose.yaml に宣言したサーバーを `ft_services` で起こします。
-このとき AIアシスタントが `ft_services` を使う許可を求めてくるので、許可してください。
 
 <details>
 <summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
@@ -180,16 +178,14 @@ AIアシスタントは操作を始める前に、compose.yaml に宣言した�
 ## 7. デバイスで実行する
 
 作成したシナリオを実行してみましょう。
-実行のたびに fleetest がサーバーを起動し、終わったら止めます。先に起こしてあったサービスは引き取ります。
 
 ### AIへの指示文
 
 ```text
-fleetest のテストプロジェクト project1 のシナリオを iOS(ios-run)で実行して。
+fleetest のテストプロジェクト project1 のシナリオを ios-run プロファイルで実行して。
 ```
 
-※Android で作ったシナリオなら「Android(android-run)で実行して」と指示します。
-実行を始める `ft_start_run` も、許可を求められたら許可してください。
+※Android で作ったシナリオなら「android-run プロファイルで実行して」と指示します。
 
 <img src="images/quick_start/ja/run_in_progress.png" width="640" alt="デバイスモニターで実行している最中">
 
@@ -239,7 +235,7 @@ fleetest のテストプロジェクト project1 の直近の実行結果を要�
 問題が起きたら AIアシスタントに相談してください。よくある症状と切り分けは
 [トラブルシューティング](in_action/troubleshooting_ja.md)にまとめてあります。
 
-次へ: [AIアシスタントへの指示の仕方](tutorial/asking_ai_ja.md)
+次へ: [fleetest の使い方の基本](tutorial/basic_usage_ja.md)
 
 ### Link
 - [index](index_ja.md)

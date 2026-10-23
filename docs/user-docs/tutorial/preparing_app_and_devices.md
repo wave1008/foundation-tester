@@ -14,8 +14,6 @@ If there aren't enough, you can create one with the same model and OS.
 Then show me the profile's updated device list.
 ```
 
-If the Mac gets slow, ask to reduce them.
-
 <details>
 <summary><b>If you do it manually (click to show details)</b></summary>
 

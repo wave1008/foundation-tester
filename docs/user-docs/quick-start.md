@@ -2,8 +2,7 @@
 
 [in Japanese(日本語)](quick-start_ja.md)
 
-The shortest path from installing fleetest to creating scenarios for a sample app and running them.
-You do not write scenarios by hand.
+The shortest path from installing fleetest to creating test scenarios for a sample app and running them.
 
 ## 1. Environment
 
@@ -148,7 +147,7 @@ See [Profiles](./reference/project/profiles.md) for the details.
 
 ## 6. Create the scenarios
 
-Let's create a happy-path test (the normal flow) up to opening a product.
+Let's create a happy-path test up to opening a product.
 
 ### Prompt for the AI
 
@@ -158,13 +157,12 @@ It checks the happy path (the normal flow) of opening a product from the home sc
 Stop once you've told me the file name of the new scenario.
 ```
 
-`setUpDevice` is where you put the preparation that is done once per device before the tests (here, switching the language).
+`setUpDevice` is the place (a function) where you put the preparation that is done once per device before the tests.
+
 For Android, read "on iOS" as "on Android".
 
 The AI assistant launches the app on a device, reads the elements of the screens while
 operating them, and turns that flow into a scenario.
-Before it starts operating the app, the AI assistant starts the server declared in compose.yaml with `ft_services`.
-The AI assistant asks for permission to use `ft_services` at this point; allow it.
 
 <details>
 <summary><b>If you do it manually (click to show details)</b></summary>
@@ -181,16 +179,14 @@ Start the server by hand, create the test, and stop it when you are done.
 ## 7. Run it on a device
 
 Let's run the scenarios you created.
-On every run fleetest starts the server and stops it when the run ends. Services you started beforehand are taken over.
 
 ### Prompt for the AI
 
 ```text
-Run the scenarios of the fleetest test project project1 on iOS (ios-run).
+Run the scenarios of the fleetest test project project1 with the ios-run profile.
 ```
 
-For scenarios created on Android, ask "on Android (android-run)" instead.
-When asked for permission to use `ft_start_run`, which starts the run, allow it as well.
+For scenarios created on Android, ask "with the android-run profile" instead.
 
 <img src="images/quick_start/en/run_in_progress.png" width="640" alt="The device monitor while the run is in progress">
 
@@ -239,7 +235,7 @@ can open the report from there.
 If you run into a problem, ask your AI assistant. Common symptoms and how to narrow them down are
 collected in [Troubleshooting](in_action/troubleshooting.md).
 
-Next: [Asking the AI assistant](tutorial/asking_ai.md)
+Next: [Basics of using fleetest](tutorial/basic_usage.md)
 
 ### Link
 - [index](index.md)

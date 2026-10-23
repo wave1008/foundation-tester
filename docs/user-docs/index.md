@@ -21,7 +21,7 @@ then continue with the [Tutorial](#tutorial).
 
 ## Tutorial
 
-- [Asking the AI assistant](tutorial/asking_ai.md)
+- [Basics of using fleetest](tutorial/basic_usage.md)
 - [Preparing devices](tutorial/preparing_app_and_devices.md)
 - [Checking the server](tutorial/preparing_app_server.md)
 - [Creating tests](tutorial/creating_tests.md)

@@ -9,7 +9,7 @@ how far you can trust it: **AI-friendliness, stability, security and privacy**. 
 
 - **Just give the AI assistant instructions in plain language** ("create tests for the login screen",
   "run the tests", "find out why this failed" and so on). You do not need to read or write test code yourself
-  ([Asking the AI assistant](../tutorial/asking_ai.md)).
+  ([Basics of using fleetest](../tutorial/basic_usage.md)).
 - **When you ask for a test, the AI operates the app through the MCP server, reads the screen, gathers what it
   needs and then writes the test code** ([MCP Server](../reference/tools/mcp_server.md)).
 

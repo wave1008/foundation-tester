@@ -132,7 +132,7 @@ In the first `scene`, `launchApp()` is added when the condition has no launch.
 
 ## What to tell the AI assistant
 
-Once the test base is in place, ask like this ([Asking the AI assistant](../../tutorial/asking_ai.md)).
+Once the test base is in place, ask like this ([Basics of using fleetest](../../tutorial/basic_usage.md)).
 
 ```text
 Use docs/testbases/login.md as the test base and create a scenario draft with fleetest draft-scenario.

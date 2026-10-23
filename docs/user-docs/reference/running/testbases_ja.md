@@ -126,7 +126,7 @@ fleetest draft-scenario --project SampleApp --testbase docs/testbases/login.md
 
 ## AIアシスタントに頼むときの指示文
 
-テストベースを置いたあとは、次のように頼みます([AIアシスタントへの指示の仕方](../../tutorial/asking_ai_ja.md))。
+テストベースを置いたあとは、次のように頼みます([fleetest の使い方の基本](../../tutorial/basic_usage_ja.md))。
 
 ```text
 docs/testbases/login.md をテストベースにして、fleetest draft-scenario でシナリオの下書きを作って。
