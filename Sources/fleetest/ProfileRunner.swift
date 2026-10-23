@@ -117,7 +117,7 @@ enum ProfileRunner {
     }
 
     /// **機械分担の run がリモートへ配る前に**、手元の子と同じ規則(この機械のデバイスへ絞る →
-    /// 本数+予備で絞る(MCP のデバイスを避ける)→ lease 照合)で二重使用を断る(デバイス+保持者 pid を名指しして throw)。
+    /// 本数で絞る(MCP のデバイスを避ける)→ lease 照合)で二重使用を断る(デバイス+保持者 pid を名指しして throw)。
     /// 手元の子の拒否より先にリモートの子がロックを取り、断られた run の半分が走って同時刻の
     /// 別 run のリモート分を丸ごと弾いていた(負荷テスト M12)。
     /// 判定材料が揃わない(プロファイル解決の失敗等)ときは何もしない = 手元の子の判定に任せる。
@@ -142,9 +142,9 @@ enum ProfileRunner {
         let full = resolvedAll.filteringDevices(
             names: localDeviceNames, deviceMachine: DeviceMachineGrouping.localDisplayName)
         guard !full.devices.isEmpty else { return }
+        let counts = full.scenarioCounts(platforms: localScenarios.map(\.platform))
         let (resolved, _) = limitingDevicesAvoidingMCP(
-            full, iosScenarios: localScenarios.filter { $0.platform != "android" }.count,
-            androidScenarios: localScenarios.filter { $0.platform != "ios" }.count,
+            full, iosScenarios: counts.ios, androidScenarios: counts.android,
             trim: !broadcast, leaseStateDir: leaseStateDir)
         var elapsed = 0
         while true {
@@ -208,13 +208,13 @@ enum ProfileRunner {
     }
 
     /// **回す本数に絞るとき、MCP(fleetest-mcp)が操作しているデバイスを避ける**(ユーザー決定「避けて、
-    /// 足りなければ警告して使う」。予備にも残さない理由は `ResolvedProfile.limitingDevices(avoiding:)`)。
+    /// 足りなければ警告して使う」。規則は `ResolvedProfile.limitingDevices(avoiding:)`)。
     /// それでも使うデバイスは警告で名指しする(断らない = 新しい検知は警告から)。
     /// 印(`MCPDeviceLease`)が1つも無ければデバイスの実体を引かない(simctl/adb の往復を払わない)。
     /// 自分と親の pid が持つ印は数えない(MCP が起こした run が自分を「MCP が操作中」と言わない)。
     /// `trim: false`(--broadcast)は絞らず、使うデバイスの警告だけ返す
     static func limitingDevicesAvoidingMCP(
-        _ full: ResolvedProfile, iosScenarios: Int, androidScenarios: Int, trim: Bool,
+        _ full: ResolvedProfile, iosScenarios: Int?, androidScenarios: Int?, trim: Bool,
         leaseStateDir: URL?
     ) -> (resolved: ResolvedProfile, warnings: [String]) {
         let holders = leaseStateDir.map {
@@ -231,9 +231,9 @@ enum ProfileRunner {
                                    avoiding: { heldBy[$0] != nil })
             : full
         // trim の理由は数で言う(「空きが無かった」は実測で誤り: 実際は「空きはあったが、
-        // 本数+予備1台に足りなかった」ことが起きる。ResolvedProfile.limitingDevices の
+        // 本数に足りなかった」ことが起きる。ResolvedProfile.limitingDevices の
         // deviceKeepCount と同じ計算を、プラットフォームごとに読み直す)
-        func reason(for platform: String, scenarios: Int) -> String {
+        func reason(for platform: String, scenarios: Int?) -> String {
             guard trim else { return "--broadcast runs on every device" }
             let list = platform == "ios" ? full.iosDevices : full.androidDevices
             let free = list.filter { heldBy[$0] == nil }.count
@@ -251,17 +251,17 @@ enum ProfileRunner {
     }
 
     /// デバイスが足りず MCP のデバイスを使うときの理由を事実で組み立てる(純粋関数)。
-    /// `scenarios == 0` はレーン数を数で言えない(本数不明 = 絞りの計算に使わない)ときの
-    /// 単純な言い方。`scenarios > 0` は必要レーン数(本数+予備1台)と空き台数を数で言う
-    static func shortageReason(needed: Int, scenarios: Int, free: Int) -> String {
-        guard scenarios > 0 else { return "no other device was free" }
+    /// `scenarios == nil` はレーン数を数で言えない(本数不明 = 絞りの計算に使わない)ときの
+    /// 単純な言い方。それ以外は必要レーン数(本数ぶん)と空き台数を数で言う
+    static func shortageReason(needed: Int, scenarios: Int?, free: Int) -> String {
+        guard let scenarios else { return "no other device was free" }
         func plural(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
         let freeClause = free == 1 ? "only 1 device was free" : "only \(free) devices were free"
         // **導出は成り立つときだけ書く**: `deviceKeepCount` は台数でクランプされる
-        // (min(available, scenarios + 1))ので、本数よりデバイスが少ない run では
-        // 「(N scenarios + 1 spare)」が needed を生まない。そのときは数の内訳を出さない
-        let derivation = needed == scenarios + 1
-            ? " (\(plural(scenarios, "scenario")) + 1 spare)"
+        // (min(available, scenarios))ので、本数よりデバイスが少ない run では
+        // 「(one per scenario)」が needed を生まない。そのときは数の内訳を出さない
+        let derivation = needed == scenarios
+            ? " (one per scenario)"
             : " (every device this profile has on this machine)"
         return "needed \(plural(needed, "lane"))" + derivation + " but \(freeClause)"
     }
@@ -346,15 +346,15 @@ enum ProfileRunner {
         }
 
         // 2. 準備の段(台数の絞り込み・サービス・開始スクリプト・供給のタスクの起動)。本数はここで確定している
-        // (items は解決済み)。platform 未指定のシナリオは**両方**に数える(どちらでも走りうる)
+        // (items は解決済み)。platform 未指定のシナリオは実行時と同じ規則で片方の OS にだけ数える(`scenarioCounts`)
         let prepared: PreparedSupply
         if let early {
             prepared = early
         } else {
+            let counts = full.scenarioCounts(platforms: items.map(\.info.platform))
             prepared = try await Self.prepareSupply(
                 full: full, profileName: profileName,
-                iosScenarios: items.filter { $0.info.platform != "android" }.count,
-                androidScenarios: items.filter { $0.info.platform != "ios" }.count,
+                iosScenarios: counts.ios, androidScenarios: counts.android,
                 scenarioCount: items.count, broadcast: broadcast, reportDirOverride: reportDirOverride,
                 failureLogDir: recorder?.runDir, supplyProgress: supplyProgress, interruptState: interruptState)
         }
@@ -415,8 +415,9 @@ enum ProfileRunner {
         }
 
         // 3. 両OS同時並列実行(platform 別キューは RunOrchestrator がそのまま担う)
-        let defaultPlatform = (hasLateIOS || (workers + eagerIOSWorkers).contains { $0.platform == "ios" })
-            ? "ios" : "android"
+        // 台数の見積りと同じ規則(`undeclaredScenarioPlatform`)。iOS の供給が全滅しても android へ倒さない ——
+        // 見積りが未宣言のシナリオを iOS にだけ数えるので、倒す先の台は用意されていない
+        let defaultPlatform = resolved.undeclaredScenarioPlatform
         // 長いシナリオを先に流すと末尾の遊休が減る(実績は platform 別。--no-lpt で素の ID 順)
         items = LPTOrdering.apply(items, project: project, defaultPlatform: defaultPlatform,
                                   enabled: lpt, historyRuns: lptHistoryRuns, log: { ConsoleOut.out($0) })

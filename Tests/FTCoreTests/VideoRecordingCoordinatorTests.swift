@@ -948,8 +948,8 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         XCTAssertEqual(recordings.count, 2, "シナリオ区間ごとに 1 エントリのはず")
     }
 
-    /// **アイドルワーカーの空ソースは失敗に数えない**。`deviceKeepCount` は本数+予備1台を
-    /// 残すので、本数 < 台数の run では予備が必ず空になる。数えると小さい run のたびに
+    /// **アイドルワーカーの空ソースは失敗に数えない**。本数で絞っても1本も来ないワーカーは出る
+    /// (一覧の前に台数を決める経路は両 OS に用意する・本数で絞らない run)。数えると小さい run のたびに
     /// 誤警報が出て「録画が本当に全滅した run」と見分けが付かなくなる
     func testIdleWorkerWithEmptySourceIsNotCountedAsFailure() async throws {
         let tmp = try makeTempDir()

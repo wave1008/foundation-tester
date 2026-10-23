@@ -220,12 +220,12 @@ extension MCPServer {
         var appBundleID: String?
 
         if let profileName = args["profile"] as? String {
-            // 接続先はシナリオ(クラス展開時は先頭本)の platform に合う先頭デバイス。
+            // 接続先はシナリオ(クラス展開時は先頭本)の platform に合う先頭デバイス(未宣言なら run と同じ規則)。
             // プロファイル自身の machine 指定が最優先。クラスが複数 platform に跨る束は
             // 想定していない(1回の ft_run_scenario 呼び出し = 1接続)
             let (platform, resolved, target) = try await resolveProfileTarget(
                 project: project, profileName: profileName,
-                platformArg: infos.first?.platform, prologue: &prologue)
+                platformArg: infos.first?.platform, fallback: .undeclaredScenario, prologue: &prologue)
             // **プロファイルの実行設定は丸ごと通す**(欄ごとに拾うと、足した欄が黙って落ちる)
             exec = ScenarioExecutionSettings(resolved)
             // heal 引数は override(未指定は resolved のまま)。FM を使わないので fm.enabled は見ない

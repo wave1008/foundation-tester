@@ -5,7 +5,7 @@
 ## With a run profile
 
 **The parallelism level equals the number of resolved devices.** Each device in a run profile
-becomes a worker; scenarios are shared out across them. When only a few scenarios run, the number of devices prepared is cut to "scenarios + 1 spare" (`--broadcast` is not cut down). iOS reuses any already-running bridge
+becomes a worker; scenarios are shared out across them. When only a few scenarios run, the number of devices prepared is cut to the number of scenarios (`--broadcast` is not cut down). If some devices cannot be prepared, the run continues on the rest; it stops only when no device of that OS could be prepared. iOS reuses any already-running bridge
 and only starts what's missing. A run profile can mix iOS and Android devices in the same
 `devices` list to use iOS and Android devices together in one run (each scenario runs on only one of the two OSes — see below; see [profiles.md](../project/profiles.md)).
 
@@ -13,8 +13,8 @@ and only starts what's missing. A run profile can mix iOS and Android devices in
 fleetest run --project SampleApp --profile all
 ```
 
-A scenario declared with no `platform:` runs on whichever OS is the run's default (the first
-platform with a worker, normally `ios` if any iOS device is present). **A scenario that declares
+A scenario declared with no `platform:` runs on the run's default OS (`ios` if the run profile
+has any iOS device, otherwise `android`). **A scenario that declares
 `platform:` explicitly, and whose declared OS isn't among the run's devices, is skipped rather
 than queued** — the other OS's devices in the same profile just sit idle for it. If every selected scenario is skipped this way, the run ends as a success (exit code `0`) without running any. To run a
 platform-agnostic scenario on both OSes, run `--profile ios-run` and `--profile android-run` separately.

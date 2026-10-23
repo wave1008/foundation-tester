@@ -59,7 +59,7 @@ final class MCPProfileWorkspaceStagingTests: XCTestCase {
         var prologue: [String] = []
         do {
             _ = try await MCPServer().resolveProfileTarget(
-                project: project, profileName: "run", platformArg: "ios", prologue: &prologue)
+                project: project, profileName: "run", platformArg: "ios", fallback: .firstDevice, prologue: &prologue)
             XCTFail("iOS の台が無いので抜けるはず")
         } catch {
             XCTAssertTrue("\(error)".contains("has no ios device"), "\(error)")

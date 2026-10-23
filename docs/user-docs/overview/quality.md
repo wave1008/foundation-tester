@@ -35,7 +35,6 @@ how far you can trust it: **AI-friendliness, stability, security and privacy**. 
 - **Devices in trouble are recovered automatically.**
   If the connection to a device drops, fleetest tries to restore it.
 - **Tests that fail because of a device problem, such as a device freezing partway through a test, are rerun on another device.**
-  One spare device is kept on standby among the prepared devices.
 
 ## Reproducibility and cost efficiency
 

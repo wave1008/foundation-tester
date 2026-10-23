@@ -5,6 +5,7 @@
 // 差し替える。env はプロセス全体の状態なので必ず戻す。
 
 import XCTest
+@testable import FTCore
 @testable import fleetest_mcp
 
 final class MCPProfilePlatformTests: XCTestCase {
@@ -53,6 +54,28 @@ final class MCPProfilePlatformTests: XCTestCase {
     /// 混在プロファイルは **最初のデバイス**(resolveProfileTarget の `devices.first` と同じ規則)
     func testMixedProfileFollowsTheFirstDevice() {
         XCTAssertEqual(MCPServer.platformName(["profile": "mixed-run"]), "android")
+    }
+
+    /// **ft_run_scenario の未宣言のシナリオは run と同じ OS**(先頭が Android の混在でも iOS)。直接操作は先頭のデバイスのまま
+    /// (`platformName` と揃える)。run と食い違うと、同じシナリオが MCP でだけ Android で走る
+    func testUndeclaredScenarioFollowsTheRunRuleWhileDirectToolsFollowTheFirstDevice() {
+        func device(_ name: String, _ platform: String) -> ResolvedDevice {
+            ResolvedDevice(platform: platform, spec: DeviceSpec(name: name, kind: .physical, udid: "U-\(name)"))
+        }
+        let mixed = ResolvedProfile(
+            project: TestProject(name: "dummy", rootURL: URL(fileURLWithPath: "/tmp/dummy")),
+            runName: "r", appName: "app", apps: [:],
+            devices: [device("Emu", "android"), device("Sim", "ios")], fm: FMConfig(), heal: false,
+            reportDir: URL(fileURLWithPath: "/tmp/dummy/reports"),
+            defaultTimeout: nil, scenarioTimeout: nil, wipeDataOnBloat: true, updateWebView: false,
+            wipeDataThresholdGB: 8, recoverCpuFallbackToGpu: false, locale: "ja_JP",
+            iosPreActionPing: true, containerInference: true, ocrTextVisibilityCheck: true,
+            preferCheckStateClassifier: true,
+            enableAnimations: false, responseMeasurement: false, responseRepeat: 5,
+            homeOnStart: true, playProtectBypass: true, record: false, recordFailuresOnly: false,
+            recordBitrateKbps: 1500, recordFullResolution: false, warnings: [])
+        XCTAssertEqual(MCPServer.fallbackPlatform(.undeclaredScenario, resolved: mixed), "ios")
+        XCTAssertEqual(MCPServer.fallbackPlatform(.firstDevice, resolved: mixed), "android")
     }
 
     /// 明示 platform と明示ターゲットはプロファイルより勝つ(既存の優先順を変えない)

@@ -203,8 +203,8 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
   クローンに入り、そこで SUT をビルドして回す)を同時に起こす。先に commit → `Scripts/align.sh`
   (向こうで動くのは align 済みのコミット)。E2EX の SUT は M1Ultra でビルドする(競合しない・負荷分散)
 - **1シナリオの確認にフリート全台を用意しない**。`ProfileRunner` は回す本数から台数を絞る
-  (`ResolvedProfile.deviceKeepCount` = 本数 + 予備1台)。実測で iOS の1本実行が 21.8s → 9.3s。
-  **予備1台は必須**(用意したデバイスが blank/frozen で弾かれると run ごと落ちる)。
+  (`ResolvedProfile.deviceKeepCount` = 本数ぶん)。実測で iOS の1本実行が 21.8s → 9.3s。
+  **予備は置かない**(欠けた台のぶんは残りの台が消化する。予備を起こして待つ・後から合流させる形の不採用理由は maintainer-notes §103)。
   **例外は `--broadcast`** —— 各デバイスで1回ずつ回すのが目的なので絞らない(分配だけ
   `ScenarioDispatch.broadcast` に差し替え、他は同じ経路)。`fleetest api run` と、ビルドが要る回の
   `fleetest run --profile` はシナリオ一覧をビルドと並行に解決するので一覧を待てない —— 確定している `--scenario` の指定

@@ -1041,24 +1041,34 @@ public struct ResolvedProfile: Sendable {
     public let warnings: [String]
 
     public var iosDevices: [ResolvedDevice] { devices.filter { $0.platform == "ios" } }
-    /// platform を宣言していないシナリオを、デバイスに触らない dry-run でどちらの OS として列挙するか。
-    /// **`fleetest run --dry-run` と `api run --dry-run` が共有する唯一の規則**(実行時の「iOS のワーカーがあれば ios」と同じ方針)。
-    /// 別々に持つと、同じ `--profile android-run --dry-run` が CLI だけ iOS を検証して緑になった
-    public var dryRunDefaultPlatform: String { iosDevices.isEmpty ? "android" : "ios" }
+    /// platform を宣言していないシナリオをどちらの OS で走らせるか(iOS のデバイスがあれば ios)。**唯一の規則** ——
+    /// 実行(`run` / `api run` の既定 platform)・dry-run の列挙・台数の見積り(`scenarioCounts`)が全部ここを通す。
+    /// 別々に持つと、同じ `--profile android-run --dry-run` が CLI だけ iOS を検証して緑になり、
+    /// 見積りが両 OS に数えて走らない側の OS の台を用意していた
+    public var undeclaredScenarioPlatform: String { iosDevices.isEmpty ? "android" : "ios" }
+
+    /// 台数の見積りに使う OS ごとの本数(platform 未宣言は `undeclaredScenarioPlatform` の側にだけ数える)。
+    /// 一覧が確定しているときに使う = 0 は「その OS で走るシナリオが無い」(`limitingDevices` はその OS の台を用意しない)
+    public func scenarioCounts(platforms: [String?]) -> (ios: Int, android: Int) {
+        let resolvedPlatforms = platforms.map { $0 ?? undeclaredScenarioPlatform }
+        return (resolvedPlatforms.filter { $0 == "ios" }.count, resolvedPlatforms.filter { $0 == "android" }.count)
+    }
     public var androidDevices: [ResolvedDevice] { devices.filter { $0.platform == "android" } }
 
     /// **回す本数を超える台数を用意しない**。1本のシナリオを回すのに 10 台ぶんのブリッジ供給と
     /// アプリ版チェックを払うのは丸損で、実測では iOS の固定費 14.8s のほとんどがこれだった
     /// (合計 21.8s のうちテスト実行は 7.0s)。
     ///
-    /// **予備を1台残す**(`+ 1`): 用意したデバイスが blank/frozen で triage に弾かれると
-    /// 「使えるワーカーが無い」で run ごと落ちる。10 台あった頃はその余裕が偶然あった。
-    /// 台数が上限以下、または本数が 0(= platform 不明で絞れない)のときは何もしない
+    /// **予備は置かない**(本数ぶんだけ)。欠けた台のぶんは残りの台が消化する(供給は部分失敗を許容)。止まるのは
+    /// その OS の台が1台も残らないときだけ。予備を起こして待つと全台の合流が遅れ、待たずに後から合流させると
+    /// 起動の負荷がテストに重なる → maintainer-notes §103。
     /// 用意する台数。**判断はここだけ**(テストはこの純粋関数を直接叩く)。
-    /// `scenarios == 0` は「判断材料が無い」= 絞らない
-    public static func deviceKeepCount(available: Int, scenarios: Int) -> Int {
-        guard scenarios > 0 else { return available }
-        return min(available, scenarios + 1)
+    /// `scenarios == nil` は「本数が分からない」(一覧の前に台数を決める経路で、ID が `Class.method` だけでない)= 絞らない。
+    /// **0 は「分からない」ではない** —— 一覧が確定していて、その OS で走るシナリオが無い = 1台も用意しない
+    /// (0 を絞らないと読むと、Android だけの run が混在プロファイルの iOS を全台用意していた)
+    public static func deviceKeepCount(available: Int, scenarios: Int?) -> Int {
+        guard let scenarios else { return available }
+        return min(available, scenarios)
     }
 
     /// `run --device` の絞り込み(マシン別サブ実行が「自分のぶんのデバイス」だけを回すのに使う)。
@@ -1083,15 +1093,15 @@ public struct ResolvedProfile: Sendable {
     }
 
     /// `avoiding` のデバイス(MCP が操作しているデバイス。ユーザー決定「避けて、足りなければ警告して使う」)は、**ほかのデバイスで
-    /// 本数ぶん足りるなら予備にも残さない** —— 残したデバイスはシナリオを早い者勝ちで取り合うので、予備として残すと
-    /// 結局そこで走る。本数が分からない(0 = 絞らない)ときは、ほかにデバイスがあれば外す。足りないときだけ足りない
-    /// ぶんを加える。**既定値を置かない** —— 呼び出し元が渡し忘れると黙って MCP のデバイスを使う形へ戻る
-    public func limitingDevices(iosScenarios: Int, androidScenarios: Int,
+    /// 本数ぶん足りるなら外す**。本数が分からない(nil = 絞らない)ときは、ほかにデバイスがあれば外す。足りないときだけ足りない
+    /// ぶんを加える。本数 0 はその OS の台を外す(`deviceKeepCount`)。**既定値を置かない** —— 呼び出し元が渡し忘れると黙って
+    /// MCP のデバイスを使う形へ戻る
+    public func limitingDevices(iosScenarios: Int?, androidScenarios: Int?,
                                 avoiding: (ResolvedDevice) -> Bool) -> ResolvedProfile {
-        func keep(_ list: [ResolvedDevice], _ count: Int) -> [ResolvedDevice] {
+        func keep(_ list: [ResolvedDevice], _ count: Int?) -> [ResolvedDevice] {
             let free = list.filter { !avoiding($0) }
             let avoided = list.filter(avoiding)
-            guard count > 0 else { return free.isEmpty ? avoided : free }
+            guard let count else { return free.isEmpty ? avoided : free }
             if free.count >= count {
                 return Array(free.prefix(Self.deviceKeepCount(available: free.count, scenarios: count)))
             }

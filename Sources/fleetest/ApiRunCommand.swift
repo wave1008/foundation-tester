@@ -473,7 +473,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // (ワークスペースの雛形・供給の絞り込み)だけを行う
         var resolvedProfile: ResolvedProfile?
         // dry-run の照合に使うデバイス。**本数で絞る前**(`full`)から取る —— 絞った後だと、明示 ID の指定で
-        // 本数 + 予備1台に削られた外のデバイスが照合されず、同じ打鍵で `fleetest run --dry-run` だけが警告した
+        // 本数ぶんに削られた外のデバイスが照合されず、同じ打鍵で `fleetest run --dry-run` だけが警告した
         var commandCheckDevices: [CommandTargetCheck.Device] = []
         if let (resolvedAll, full) = preResolvedProfile {
             // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17)
@@ -499,11 +499,13 @@ struct ApiRunCommand: AsyncParsableCommand {
             // ので、**確定している情報だけ**で絞る —— 明示 ID(`Class.method`)だけの指定なら
             // 1つの ID は高々1本なので本数が決まる。クラス名指定・全件は絞らない
             // (そこは並列度が要る場面で、絞ると遅くなる)。platform はまだ分からないので両方に同じ数を使う
+            // (0 = 本数も分からない → nil = 絞らない)
             let exactCount = ApiRun.exactScenarioCount(scenarios)
+            let estimate: Int? = exactCount > 0 ? exactCount : nil
             // dry-run はデバイスに触らないので MCP のデバイスを避ける理由が無い(印を読むと simctl/adb を引き、
             // 「奪う」と嘘の警告を出す)
             let (resolved, mcpWarnings) = ProfileRunner.limitingDevicesAvoidingMCP(
-                full, iosScenarios: exactCount, androidScenarios: exactCount, trim: true,
+                full, iosScenarios: estimate, androidScenarios: estimate, trim: true,
                 leaseStateDir: dryRun ? nil : (try? RepoRoot.find())?.appendingPathComponent(".fleetest"))
             if resolved.devices.count < full.devices.count {
                 logStderr("→ Using \(resolved.devices.count) of \(full.devices.count) device(s)"
@@ -1171,11 +1173,9 @@ struct ApiRunCommand: AsyncParsableCommand {
         let blankTriage = triageBox.get()
         let preRunAnomalies = triageBox.getAnomalies()
 
-        // シナリオが platform 未指定のときの既定 platform(iOS ワーカーがあれば ios 優先。
-        // dry-run はワーカーを構築しないため resolved のデバイス構成から同じ方針で決める)
-        let defaultPlatform: String = dryRun
-            ? resolved.dryRunDefaultPlatform
-            : (workers.contains { $0.platform == "ios" } ? "ios" : "android")
+        // シナリオが platform 未指定のときの既定 platform(台数の見積り・並列経路と同じ規則。
+        // dry-run はワーカーを構築しないので、どちらもデバイス構成から決める)
+        let defaultPlatform = resolved.undeclaredScenarioPlatform
 
         // 中断時は次のシナリオへ進まず、今動いている子を SIGTERM してから普通に return する
         // (呼び出し元 run() の通常の完了経路をそのまま通す。runDirect と同じ形)。
@@ -1346,10 +1346,9 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
         emitLine(ApiWorkersReadyEvent(workers: readyInfo))
 
-        // シナリオが platform 未指定のときの既定 platform(既存の runWithProfile と同じ方針。
-        // iOS は遅延参加のため resolved 側で判定する)
-        let defaultPlatform = (!resolved.iosDevices.isEmpty
-            || workers.contains { $0.platform == "ios" }) ? "ios" : "android"
+        // シナリオが platform 未指定のときの既定 platform(台数の見積り・`fleetest run` と同じ規則。
+        // iOS は遅延参加なのでワーカーではなくデバイス構成から決める)
+        let defaultPlatform = resolved.undeclaredScenarioPlatform
 
         // 長いシナリオを先に流すと末尾の遊休が減る(LPTOrdering。--no-lpt で元の ID 順)
         let lptItems = LPTOrdering.apply(selected.map { ScenarioRunItem(info: $0) },

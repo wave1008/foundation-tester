@@ -49,7 +49,7 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
         let a = phone("A", udid: "UA"), b = phone("B", udid: "UB"), c = phone("C", udid: "UC")
         let kept = profile([a, b, c]).limitingDevices(iosScenarios: 1, androidScenarios: 0,
                                                       avoiding: { $0 == a })
-        XCTAssertEqual(kept.devices.map(\.name), ["B", "C"], "1本 + 予備1台 = 2台。MCP の A を後回しにする")
+        XCTAssertEqual(kept.devices.map(\.name), ["B"], "1本 = 1台。MCP の A を後回しにする")
     }
 
     func testDeprioritizedDevicesAreStillUsedWhenNothingElseIsFree() {
@@ -59,27 +59,20 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
         XCTAssertEqual(Set(kept.devices.map(\.name)), ["A", "B"])
     }
 
-    /// 予備にも残さない(残したデバイスはシナリオを早い者勝ちで取り合うので、予備でも結局そこで走る)
-    func testAnAvoidedDeviceIsNotKeptEvenAsTheSpare() {
-        let a = phone("A", udid: "UA"), b = phone("B", udid: "UB")
-        let kept = profile([a, b]).limitingDevices(iosScenarios: 1, androidScenarios: 0, avoiding: { $0 == a })
-        XCTAssertEqual(kept.devices.map(\.name), ["B"])
-    }
-
-    /// 本数が分からない(0 = 絞らない)ときも、ほかにデバイスがあれば外す / 全部が避けるデバイスなら使う
+    /// 本数が分からない(nil = 絞らない)ときも、ほかにデバイスがあれば外す / 全部が避けるデバイスなら使う
     func testUntrimmedRunsDropAvoidedDevicesOnlyWhenOthersExist() {
         let a = phone("A", udid: "UA"), b = phone("B", udid: "UB"), c = phone("C", udid: "UC")
-        XCTAssertEqual(profile([a, b, c]).limitingDevices(iosScenarios: 0, androidScenarios: 0,
+        XCTAssertEqual(profile([a, b, c]).limitingDevices(iosScenarios: nil, androidScenarios: nil,
                                                           avoiding: { $0 == a }).devices.map(\.name), ["B", "C"])
-        XCTAssertEqual(profile([a, b]).limitingDevices(iosScenarios: 0, androidScenarios: 0,
+        XCTAssertEqual(profile([a, b]).limitingDevices(iosScenarios: nil, androidScenarios: nil,
                                                        avoiding: { _ in true }).devices.map(\.name), ["A", "B"])
     }
 
-    /// 避けるデバイスが無ければ従来と同じ(本数 + 予備1台)
+    /// 避けるデバイスが無ければ先頭から本数ぶん
     func testNothingAvoidedKeepsTheOldTrimming() {
         let a = phone("A", udid: "UA"), b = phone("B", udid: "UB"), c = phone("C", udid: "UC")
         XCTAssertEqual(profile([a, b, c]).limitingDevices(iosScenarios: 1, androidScenarios: 0,
-                                                          avoiding: { _ in false }).devices.map(\.name), ["A", "B"])
+                                                          avoiding: { _ in false }).devices.map(\.name), ["A"])
     }
 
     // MARK: - 印の読み取り
@@ -109,13 +102,13 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
 
     // MARK: - run 側
 
-    /// **本命**: MCP が A を操作中なら、2台で足りる run は A を使わず、警告も出ない
+    /// **本命**: MCP が A を操作中なら、ほかの台で足りる run は A を使わず、警告も出ない
     func testRunAvoidsTheDeviceTheMCPIsDriving() {
         MCPDeviceLease.write(stateDir: stateDir, key: "UA", pid: otherLivePID)
         let (resolved, warnings) = ProfileRunner.limitingDevicesAvoidingMCP(
             profile([phone("A", udid: "UA"), phone("B", udid: "UB"), phone("C", udid: "UC")]),
             iosScenarios: 1, androidScenarios: 0, trim: true, leaseStateDir: stateDir)
-        XCTAssertEqual(resolved.devices.map(\.name), ["B", "C"])
+        XCTAssertEqual(resolved.devices.map(\.name), ["B"])
         XCTAssertTrue(warnings.isEmpty, "\(warnings)")
     }
 
@@ -137,55 +130,58 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
         let (resolved, warnings) = ProfileRunner.limitingDevicesAvoidingMCP(
             profile([phone("A", udid: "UA"), phone("B", udid: "UB"), phone("C", udid: "UC")]),
             iosScenarios: 1, androidScenarios: 0, trim: true, leaseStateDir: stateDir)
-        XCTAssertEqual(resolved.devices.map(\.name), ["A", "B"])
+        XCTAssertEqual(resolved.devices.map(\.name), ["A"])
         XCTAssertTrue(warnings.isEmpty, "\(warnings)")
     }
 
     // MARK: - 理由文(事実ベース。実測 9/16: 空きが1台あっても「no other device was free」と
-    // 出ていた。真の理由は「本数+予備1台に足りない」ことなので数で言う)
+    // 出ていた。真の理由は「本数ぶんに足りない」ことなので数で言う)
 
     func testShortageReasonNamesTheRealNumbers() {
         XCTAssertEqual(
-            ProfileRunner.shortageReason(needed: 3, scenarios: 2, free: 1),
-            "needed 3 lanes (2 scenarios + 1 spare) but only 1 device was free")
+            ProfileRunner.shortageReason(needed: 3, scenarios: 3, free: 1),
+            "needed 3 lanes (one per scenario) but only 1 device was free")
     }
 
     func testShortageReasonSingularizes() {
         XCTAssertEqual(
-            ProfileRunner.shortageReason(needed: 2, scenarios: 1, free: 1),
-            "needed 2 lanes (1 scenario + 1 spare) but only 1 device was free")
+            ProfileRunner.shortageReason(needed: 2, scenarios: 2, free: 1),
+            "needed 2 lanes (one per scenario) but only 1 device was free")
+        XCTAssertEqual(
+            ProfileRunner.shortageReason(needed: 1, scenarios: 1, free: 0),
+            "needed 1 lane (one per scenario) but only 0 devices were free")
     }
 
     /// **導出が成り立たない形では内訳を書かない**: `deviceKeepCount` は台数でクランプされる
-    /// (min(available, scenarios + 1))ので、本数よりデバイスが少ない run では needed が
-    /// 「本数 + 予備1台」にならない。そこで括弧に「scenarios + 1 spare」と書くと嘘になる
+    /// (min(available, scenarios))ので、本数よりデバイスが少ない run では needed が
+    /// 本数にならない。そこで括弧に「one per scenario」と書くと嘘になる
     func testShortageReasonDoesNotDeriveWhenTheKeepCountIsClamped() {
         let text = ProfileRunner.shortageReason(needed: 3, scenarios: 10, free: 2)
         XCTAssertEqual(text,
                        "needed 3 lanes (every device this profile has on this machine)"
                        + " but only 2 devices were free")
-        XCTAssertFalse(text.contains("spare"), "クランプされた形で内訳を書いている: \(text)")
+        XCTAssertFalse(text.contains("per scenario"), "クランプされた形で内訳を書いている: \(text)")
     }
 
-    /// scenarios == 0(本数不明)は数で言えないので、従来の言い方のまま
+    /// scenarios == nil(本数不明)は数で言えないので、従来の言い方のまま
     func testShortageReasonFallsBackWhenScenarioCountIsUnknown() {
-        XCTAssertEqual(ProfileRunner.shortageReason(needed: 2, scenarios: 0, free: 0),
+        XCTAssertEqual(ProfileRunner.shortageReason(needed: 2, scenarios: nil, free: 0),
                        "no other device was free")
     }
 
-    /// 実測(06:39): 空いているデバイス(1台)があっても、必要レーン数(本数+予備1台=3)に
-    /// 足りないと MCP のデバイスを2台とも使う。文言は「空きが無い」ではなく数で言う
+    /// 実測(06:39): 空いているデバイス(1台)があっても、必要レーン数(本数ぶん)に
+    /// 足りないと MCP のデバイスを使う。文言は「空きが無い」ではなく数で言う
     func testRunNamesTheRealShortageInTheWarning() {
         MCPDeviceLease.write(stateDir: stateDir, key: "UA", pid: otherLivePID)
         MCPDeviceLease.write(stateDir: stateDir, key: "UD", pid: otherLivePID)
         let (resolved, warnings) = ProfileRunner.limitingDevicesAvoidingMCP(
             profile([phone("A", udid: "UA"), phone("D", udid: "UD"), phone("B", udid: "UB")]),
-            iosScenarios: 2, androidScenarios: 0, trim: true, leaseStateDir: stateDir)
+            iosScenarios: 3, androidScenarios: 0, trim: true, leaseStateDir: stateDir)
         XCTAssertEqual(Set(resolved.devices.map(\.name)), ["A", "B", "D"])
         XCTAssertEqual(warnings.count, 2, "\(warnings)")
         for warning in warnings {
             XCTAssertTrue(
-                warning.contains("needed 3 lanes (2 scenarios + 1 spare) but only 1 device was free"),
+                warning.contains("needed 3 lanes (one per scenario) but only 1 device was free"),
                 warning)
         }
     }

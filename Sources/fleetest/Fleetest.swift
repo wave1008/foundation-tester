@@ -752,11 +752,13 @@ struct RunScenarios: AsyncParsableCommand {
                 project: testProject, profileName: profile, setOverrides: profileOverrides,
                 workspaceOverride: workspace, deviceFilter: effectiveDeviceFilter,
                 deviceMachine: effectiveDeviceHost, broadcast: broadcast)
+            // 一覧の前なので OS が分からない = 明示 ID の本数を両 OS に数える(0 = 本数も分からない → 絞らない)
             let exactCount = ApiRun.exactScenarioCount(scenarios)
+            let estimate: Int? = exactCount > 0 ? exactCount : nil
             ConsoleOut.out("→ Preparing the devices while the scenarios build")
             early.supply = try await ProfileRunner.prepareSupply(
-                full: full, profileName: profile, iosScenarios: exactCount, androidScenarios: exactCount,
-                scenarioCount: exactCount > 0 ? exactCount : nil, broadcast: broadcast,
+                full: full, profileName: profile, iosScenarios: estimate, androidScenarios: estimate,
+                scenarioCount: estimate, broadcast: broadcast,
                 reportDirOverride: reportDir, failureLogDir: nil,
                 supplyProgress: supplyProgress, interruptState: interruptState)
         }
@@ -862,7 +864,7 @@ struct RunScenarios: AsyncParsableCommand {
                     throw ProfileError.runProfileNotFound(name: profile, available: names)
                 }
                 // **platform を宣言していないシナリオの OS はプロファイルのデバイスから決める**(`api run` と同じ
-                // `ResolvedProfile.dryRunDefaultPlatform`)。--platform で決めると、Android だけのプロファイルの dry-run が
+                // `ResolvedProfile.undeclaredScenarioPlatform`)。--platform で決めると、Android だけのプロファイルの dry-run が
                 // iOS の ios { } を検証して緑になった(--profile と --platform は併用できないので既定の ios に倒れていた)
                 // **`--device` / `--device-machine` で絞った後のデバイスで決める**(`api run` の dry-run も絞った `full` から
                 // 決める。絞る前で決めると、混在プロファイルで Android の1台だけを指したときに CLI だけ ios を検証した)
@@ -870,7 +872,7 @@ struct RunScenarios: AsyncParsableCommand {
                     project: testProject, runName: profile,
                     workspaceOverride: workspace, overrides: try RunProfileSetOverride.parse(setOverrides))
                     .filteringDevices(names: devices, deviceMachine: deviceMachine)
-                dryRunPlatform = resolved.dryRunDefaultPlatform
+                dryRunPlatform = resolved.undeclaredScenarioPlatform
                 dryRunDevices = resolved.devices.map(CommandTargetCheck.Device.init)
                 ConsoleOut.out("ℹ️ --dry-run touches no device; --profile decides that scenarios declaring no"
                       + " platform run their \(dryRunPlatform) { } blocks, and the commands they reach are checked"

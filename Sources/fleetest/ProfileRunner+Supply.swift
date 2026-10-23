@@ -128,11 +128,11 @@ extension ProfileRunner {
         return full
     }
 
-    /// 準備の段。`iosScenarios` / `androidScenarios` は台数の見積りに使う本数(0 = 絞らない)、
+    /// 準備の段。`iosScenarios` / `androidScenarios` は台数の見積りに使う本数(nil = 分からないので絞らない・0 = その OS の台を用意しない)、
     /// `scenarioCount` は表示用(分からなければ nil)。`failureLogDir` = 開始スクリプトが落ちたときにサービスのログを残す場所
     /// (無ければレポートの出力先)
     static func prepareSupply(
-        full: ResolvedProfile, profileName: String, iosScenarios: Int, androidScenarios: Int,
+        full: ResolvedProfile, profileName: String, iosScenarios: Int?, androidScenarios: Int?,
         scenarioCount: Int?, broadcast: Bool, reportDirOverride: String?, failureLogDir: URL?,
         supplyProgress: RunSupplyProgress, interruptState: RunInterruptState
     ) async throws -> PreparedSupply {

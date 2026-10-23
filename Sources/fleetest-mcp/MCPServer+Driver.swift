@@ -125,7 +125,7 @@ extension MCPServer {
             // (既存ブリッジ再利用時は数秒。進捗は stderr に出る)
             let (_, _, target) = try await resolveProfileTarget(
                 project: project, profileName: profileName,
-                platformArg: args["platform"] as? String, prologue: &prologue)
+                platformArg: args["platform"] as? String, fallback: .firstDevice, prologue: &prologue)
             prologue.forEach(Self.logStderr)
             // **警告を stderr に捨てない**(外部フィードバック)。MCP クライアントは
             // stderr を見ないので、「runs の name が machines のデバイスに解決できない」等の

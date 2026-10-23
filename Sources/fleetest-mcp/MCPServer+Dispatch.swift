@@ -174,10 +174,26 @@ extension MCPServer {
         case android(serial: String, deviceName: String)
     }
 
+    /// `platformArg` が無いときにどの OS の台へ繋ぐか。**呼び手が選ぶ(既定値を置かない)**
+    enum PlatformFallback {
+        /// platform を宣言していないシナリオ = `ResolvedProfile.undeclaredScenarioPlatform`(run / api run と同じ OS で走らせる)
+        case undeclaredScenario
+        /// 直接操作 = プロファイルの先頭のデバイス(`platformName` の `profilePlatform` と同じ。食い違うと記録・言い回しが別の OS になる)
+        case firstDevice
+    }
+
+    static func fallbackPlatform(_ fallback: PlatformFallback, resolved: ResolvedProfile) -> String {
+        switch fallback {
+        case .undeclaredScenario: return resolved.undeclaredScenarioPlatform
+        case .firstDevice: return resolved.devices.first?.platform ?? "ios"
+        }
+    }
+
     /// profile からデバイスを解決する(ft_run_scenario と直接操作系で共通)。iOS は
     /// BridgeProvisioner.provision を伴うため、初回コールドスタートは分単位かかりうる
     func resolveProfileTarget(
-        project: TestProject, profileName: String, platformArg: String?, prologue: inout [String]
+        project: TestProject, profileName: String, platformArg: String?, fallback: PlatformFallback,
+        prologue: inout [String]
     ) async throws -> (platform: String, resolved: ResolvedProfile, target: ResolvedDriverTarget) {
         let resolved = try ProfileResolver.resolve(project: project, runName: profileName)
         prologue.append(contentsOf: resolved.warnings.map { "⚠️ \($0)" })
@@ -192,7 +208,7 @@ extension MCPServer {
         if !staged.isEmpty {
             prologue.append("→ Staged app package(s) into the workspace: " + staged.joined(separator: ", "))
         }
-        let platform = platformArg ?? resolved.devices.first?.platform ?? "ios"
+        let platform = platformArg ?? Self.fallbackPlatform(fallback, resolved: resolved)
         guard let device = resolved.devices.first(where: { $0.platform == platform }) else {
             throw MCPError("profile \(profileName) has no \(platform) device")
         }
