@@ -31,7 +31,7 @@ Expected result:
 
 - With no warnings, you are told there are no problems.
 
-## 2. Run (in parallel on two devices)
+## 2. Run (in parallel on three devices)
 
 ### Prompt for the AI
 
@@ -61,11 +61,11 @@ In VSCode, select a scenario in the Test Explorer and click "Run" (choose the ru
 
 Expected result:
 
-- `ios-run` has the two devices you set up in [Preparing devices](preparing_app_and_devices.md), so the scenarios are distributed to both automatically.
-- The two devices in the Device Monitor run different scenarios at the same time.
+- `ios-run` has the three devices you set up in the Quick Start and [Preparing devices](preparing_app_and_devices.md), so the scenarios are distributed to all three automatically.
+- The three devices in the Device Monitor run different scenarios at the same time.
 - A list of pass/fail appears when it finishes (no change to the scenarios is needed).
 
-<img src="../images/tutorial/en/parallel_run.png" width="640" alt="fleetest distributes six scenarios across two devices automatically">
+<img src="../images/tutorial/en/parallel_run.png" width="640" alt="fleetest distributes six scenarios across three devices automatically">
 
 More details:
 

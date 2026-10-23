@@ -3,14 +3,14 @@
 [in Japanese(日本語)](smoke_and_regression_ja.md)
 
 Split your scenarios into a short set you run every time (smoke) and a set that runs everything (regression). No scenario needs to change.
-Here, smoke is the product-details test (made in the Quick Start) plus the cart test, and regression is everything.
+Here, smoke is the open-product-details test (made in the Quick Start) plus the add-to-cart test, and regression is everything.
 
 ## 1. Sort them into folders
 
 ### Prompt for the AI
 
 ```text
-In the fleetest test project project1, create a smoke folder under scenarios/ and move the scenario that opens product details and the cart test scenario into it.
+In the fleetest test project project1, create a smoke folder under scenarios/ and move OpenProductDetails.swift and AddToCart.swift into it.
 After moving, confirm that it still compiles.
 ```
 
@@ -19,7 +19,7 @@ After moving, confirm that it still compiles.
 
 ```bash
 mkdir TestProjects/project1/scenarios/smoke
-mv TestProjects/project1/scenarios/<FileName>.swift TestProjects/project1/scenarios/smoke/
+mv TestProjects/project1/scenarios/OpenProductDetails.swift TestProjects/project1/scenarios/AddToCart.swift TestProjects/project1/scenarios/smoke/
 ```
 
 A scenario ID (`ClassName.methodName`) does not change with the folder.
@@ -54,7 +54,7 @@ Without a folder, everything runs.
 
 Expected result:
 
-- Only the two scenarios inside `smoke` run.
+- Only the three scenarios inside `smoke` run (one in the open-product-details test and two in the add-to-cart test).
 
 Next, run everything without naming a folder (regression) and compare how many ran.
 

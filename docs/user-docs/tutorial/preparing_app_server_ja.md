@@ -44,7 +44,7 @@ curl http://127.0.0.1:8090/health     # 印字された公開ポートへ
 期待する結果:
 
 - `services up` が公開ポートを印字し、`healthcheck` が通るまで待ってから戻ります。
-- `/health` は `{"status":"ok"}` を返します。
+- `/health` は `{"status":"ok","db":"up"}` を返します。
 
 関連:
 

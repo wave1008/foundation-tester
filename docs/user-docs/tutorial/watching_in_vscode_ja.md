@@ -95,7 +95,7 @@ fleetest のテストプロジェクト project1 の iOS の実行で、失敗�
 
 - [VSCode 拡張](../reference/tools/vscode_extension_ja.md)
 
-次へ: [ネットワークの露出とセキュリティ](../security/network_security_ja.md)
+次へ: [サンドボックスを確かめて、必要な穴をあける](../security/sandbox_ja.md)
 
 ### Link
 - [index](../index_ja.md)

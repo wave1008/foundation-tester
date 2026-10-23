@@ -102,10 +102,10 @@ def parallel(t):
     b+=f'<text x="520" y="285" text-anchor="middle" font-size="14" fill="{C["ink"]}">{t["par_q"]}</text>'
     b+=f'<text x="520" y="308" text-anchor="middle" font-size="14" fill="{C["sub"]}">{t["par_note"]}</text>'
     for i in range(6): b+=arrow(232,84+i*48,386,195)
-    # チュートリアルの「デバイスを用意する」で ios-run を2台にする流れに合わせる
-    devs=[("iPhone 17-01",["S0010","S0030","S0050"]),("iPhone 17-02",["S0020","S0040","S0060"])]
+    # クイックスタートの2台 +「デバイスを用意する」の1台 = ios-run の3台に合わせる
+    devs=[("iPhone 17-01",["S0010","S0040"]),("iPhone 17-02",["S0020","S0050"]),("iPhone 17-03",["S0030","S0060"])]
     for i,(d,ss) in enumerate(devs):
-        y=110+i*110
+        y=60+i*100
         b+=box(820,y,230,80,C["devBg"],C["dev"],d,", ".join(ss),ts=16)
         b+=arrow(652,195,816,y+40)
     return svg(W,H,b)

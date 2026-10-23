@@ -26,7 +26,7 @@ In the **Profiles** tab of the device monitor, press the run profile's "Add devi
 
 Expected result:
 
-- The AI assistant reports the device list of `ios-run` with one more device.
+- The AI assistant reports the device list of `ios-run` (the two from the Quick Start plus the one you added: three devices).
 - It also appears in the **Profiles** tab of the device monitor.
 
 Settable items:

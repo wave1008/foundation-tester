@@ -45,7 +45,7 @@ curl http://127.0.0.1:8090/health     # at the published port that was printed
 Expected result:
 
 - `services up` prints the published port and returns after the `healthcheck` passes.
-- `/health` returns `{"status":"ok"}`.
+- `/health` returns `{"status":"ok","db":"up"}`.
 
 Related:
 

@@ -95,7 +95,7 @@ Learn more:
 
 - [VSCode extension](../reference/tools/vscode_extension.md)
 
-Next: [Network exposure and security](../security/network_security.md)
+Next: [Checking the sandbox and opening the holes you need](../security/sandbox.md)
 
 ### Link
 - [index](../index.md)

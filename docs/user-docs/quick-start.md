@@ -46,7 +46,11 @@ following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
 
    <img src="images/quick_start/en/device_monitor.png" width="640" alt="The device monitor just opened">
 
-7. Ask your AI assistant to "run `../foundation-tester/.build/debug/fleetest doctor` and report the result", and confirm that no errors are reported
+7. Give your AI assistant this instruction and confirm that no errors are reported
+
+```text
+Run ../foundation-tester/.build/debug/fleetest doctor and report the result.
+```
 
 ## 4. Preparing the sample app
 
@@ -83,26 +87,26 @@ Create the app profile and the run profile.
 For iOS:
 
 ```text
-Build the sut-ec-mobile iOS app and create its profiles. The app's display name is "SUT Store". Use two devices.
+In the fleetest test project project1, build the sut-ec-mobile iOS app and create its profiles. The app's display name is "SUT Store". Use two devices.
 The build needs JDK 25; if it is missing, you can install JDK 25 with Homebrew. Don't modify any shell configuration files.
 ```
 
 For Android:
 
 ```text
-Build the sut-ec-mobile Android app and create its profiles. The app's display name is "SUT Store". Use two devices.
+In the fleetest test project project1, build the sut-ec-mobile Android app and create its profiles. The app's display name is "SUT Store". Use two devices.
 The build needs JDK 25; if it is missing, you can install JDK 25 with Homebrew. Don't modify any shell configuration files.
 ```
 
 <details>
 <summary><b>If you do it manually (click to show details)</b></summary>
 
-Build the app in the sut-ec-mobile folder:
+Build the app in the sut-ec-mobile folder. The build needs JDK 25 or later (if it is missing, `brew install openjdk@25`).
 
 ```bash
-# iOS Simulator (set the name in -destination to a Simulator you have)
+# iOS Simulator
 xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \
-  -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
   -derivedDataPath build/ios-sim CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build
 #   -> build/ios-sim/Build/Products/Debug-iphonesimulator/iosApp.app
 
@@ -111,12 +115,9 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 #   -> androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
-Go back to your work folder and run the following. The installation creates no test project, so create one first
-(when you ask the AI assistant, it is created automatically; the VSCode extension also creates it on startup after VSCode restarts).
+Go back to your work folder and run the following. The profiles are created in the test project project1 that step 4 created.
 
 ```bash
-../foundation-tester/.build/debug/fleetest project create project1
-
 # iOS
 ../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.sutec.mobile.ios --auto-device --count 2 --app-name "SUT Store" \
   --app-path ../sut-ec-mobile/build/ios-sim/Build/Products/Debug-iphonesimulator/iosApp.app
@@ -150,7 +151,9 @@ Let's create a happy-path test (the normal flow) up to opening a product.
 ### Prompt for the AI
 
 ```text
-In sut-ec-mobile (SUT Store), create one happy-path test (the normal flow) on iOS that opens a product from the home screen and shows its product details. Put the step that switches the app to English mode in setUpDevice. Stop once you've told me the file name of the new scenario.
+In the fleetest test project project1, create one "open-product-details test" for SUT Store on iOS. Name the file OpenProductDetails.swift.
+It checks the happy path (the normal flow) of opening a product from the home screen until its product details are shown. Put the step that switches the app to English mode in setUpDevice.
+Stop once you've told me the file name of the new scenario.
 ```
 
 `setUpDevice` is where you put the preparation that is done once per device before the tests (here, switching the language).
@@ -159,6 +162,7 @@ For Android, read "on iOS" as "on Android".
 The AI assistant launches the app on a device, reads the elements of the screens while
 operating them, and turns that flow into a scenario.
 Before it starts operating the app, the AI assistant starts the server declared in compose.yaml with `ft_services`.
+The AI assistant asks for permission to use `ft_services` at this point; allow it.
 
 <details>
 <summary><b>If you do it manually (click to show details)</b></summary>
@@ -180,10 +184,11 @@ On every run fleetest starts the server and stops it when the run ends. Services
 ### Prompt for the AI
 
 ```text
-Run the scenarios you created on iOS.
+Run the scenarios of the fleetest test project project1 on iOS (ios-run).
 ```
 
-For scenarios created on Android, ask "Run them on Android" instead.
+For scenarios created on Android, ask "on Android (android-run)" instead.
+When asked for permission to use `ft_start_run`, which starts the run, allow it as well.
 
 <img src="images/quick_start/en/run_in_progress.png" width="640" alt="The device monitor while the run is in progress">
 
@@ -216,7 +221,7 @@ Let's summarize the reports and analyze the errors.
 ### Prompt for the AI
 
 ```text
-Summarize the results of that run. If anything failed, use the report to find out why.
+Summarize the latest run of the fleetest test project project1. If anything failed, use the report to find out why.
 ```
 
 <details>

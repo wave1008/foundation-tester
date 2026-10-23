@@ -46,7 +46,11 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 
    <img src="images/quick_start/ja/device_monitor.png" width="640" alt="デバイスモニターが開いたところ">
 
-7. AIアシスタントへ「`../foundation-tester/.build/debug/fleetest doctor` を実行して結果を報告して」と指示し、エラーが出ないことを確かめます
+7. AIアシスタントへ次のように指示し、エラーが出ないことを確かめます
+
+```text
+../foundation-tester/.build/debug/fleetest doctor を実行して結果を報告して。
+```
 
 ## 4. サンプルアプリの準備
 
@@ -83,26 +87,26 @@ bash ../sut-ec-mobile/fleetest/prepare.sh
 iOS の場合:
 
 ```text
-sut-ec-mobile の iOS アプリをビルドし、プロファイルを作成して。アプリの表示名は「SUT Store」。デバイスは2台にして。
+fleetest のテストプロジェクト project1 に、sut-ec-mobile の iOS アプリをビルドしてプロファイルを作成して。アプリの表示名は「SUT Store」。デバイスは2台にして。
 ビルドには JDK 25 が必要。無ければ Homebrew で JDK 25 をインストールしてよい。シェルの設定ファイルは変更しないで。
 ```
 
 Android の場合:
 
 ```text
-sut-ec-mobile の Android アプリをビルドし、プロファイルを作成して。アプリの表示名は「SUT Store」。デバイスは2台にして。
+fleetest のテストプロジェクト project1 に、sut-ec-mobile の Android アプリをビルドしてプロファイルを作成して。アプリの表示名は「SUT Store」。デバイスは2台にして。
 ビルドには JDK 25 が必要。無ければ Homebrew で JDK 25 をインストールしてよい。シェルの設定ファイルは変更しないで。
 ```
 
 <details>
 <summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
-sut-ec-mobile のフォルダでアプリをビルドします。
+sut-ec-mobile のフォルダでアプリをビルドします。ビルドには JDK 25 以降が必要です(無ければ `brew install openjdk@25`)。
 
 ```bash
-# iOS Simulator(-destination の name は手元にある Simulator の名前にする)
+# iOS Simulator
 xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \
-  -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
   -derivedDataPath build/ios-sim CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build
 #   -> build/ios-sim/Build/Products/Debug-iphonesimulator/iosApp.app
 
@@ -111,12 +115,9 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 #   -> androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
-作業フォルダに戻って実行します。テストプロジェクトはインストールでは作られないので、最初に作ります
-(AIアシスタントへ指示したときは自動で作られます。VSCode 拡張も VSCode の再起動後の起動時に作ります)。
+作業フォルダに戻って実行します。プロファイルは、ステップ4で作られたテストプロジェクト project1 に作られます。
 
 ```bash
-../foundation-tester/.build/debug/fleetest project create project1
-
 # iOS
 ../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.sutec.mobile.ios --auto-device --count 2 --app-name "SUT Store" \
   --app-path ../sut-ec-mobile/build/ios-sim/Build/Products/Debug-iphonesimulator/iosApp.app
@@ -149,7 +150,9 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 ### AIへの指示文
 
 ```text
-sut-ec-mobile(SUT Store)で、ホームから商品を1つ開いて商品詳細が表示されるまでの基本ルート(正常に進む流れ)のテストを、iOS で1本作成して。アプリを日本語モードに切り替える処理は setUpDevice に書いて。シナリオのファイル名を報告したら終わりにして。
+fleetest のテストプロジェクト project1 で、SUT Store の「商品詳細を開くテスト」を iOS で1本作成して。ファイル名は 商品詳細を開く.swift にして。
+ホームから商品を1つ開いて商品詳細が表示されるまでの基本ルート(正常に進む流れ)を確かめる。アプリを日本語モードに切り替える処理は setUpDevice に書いて。
+シナリオのファイル名を報告したら終わりにして。
 ```
 
 `setUpDevice` は、テストの前にデバイスごとに1回だけ行う準備を書く場所です(ここでは言語の切り替え)。
@@ -158,6 +161,7 @@ Android の場合は「iOS で」を「Android で」に読み替えてくださ
 AIアシスタントはデバイス上でアプリを起動し、画面を操作しながら要素を読み取って、
 その流れをシナリオに落とします。
 AIアシスタントは操作を始める前に、compose.yaml に宣言したサーバーを `ft_services` で起こします。
+このとき AIアシスタントが `ft_services` を使う許可を求めてくるので、許可してください。
 
 <details>
 <summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
@@ -179,10 +183,11 @@ AIアシスタントは操作を始める前に、compose.yaml に宣言した�
 ### AIへの指示文
 
 ```text
-作成したシナリオを iOS で実行して。
+fleetest のテストプロジェクト project1 のシナリオを iOS(ios-run)で実行して。
 ```
 
-※Android で作ったシナリオなら「Android で実行して」と指示します。
+※Android で作ったシナリオなら「Android(android-run)で実行して」と指示します。
+実行を始める `ft_start_run` も、許可を求められたら許可してください。
 
 <img src="images/quick_start/ja/run_in_progress.png" width="640" alt="デバイスモニターで実行している最中">
 
@@ -216,7 +221,7 @@ VSCode からは **Test Explorer** でシナリオを選び、**実行**をク�
 ### AIへの指示文
 
 ```text
-今の実行結果を要約し、失敗があればレポートから原因を調べて。
+fleetest のテストプロジェクト project1 の直近の実行結果を要約し、失敗があればレポートから原因を調べて。
 ```
 
 <details>

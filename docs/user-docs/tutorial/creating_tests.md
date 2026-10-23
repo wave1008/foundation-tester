@@ -11,8 +11,8 @@ This suits your first test. It creates one test for the normal flow only (add er
 ### Prompt for the AI
 
 ```text
-In the fleetest test project project1, create one happy-path test (the normal flow) for SUT Store.
-Search for a product on the search screen (narrowing by category is fine), open it, add it to the cart, and check that the product is in the cart. No login is needed.
+In the fleetest test project project1, create one "add-to-cart test" for SUT Store. Name the file AddToCart.swift.
+It is a happy-path test (the normal flow): search for a product on the search screen (narrowing by category is fine), open it, add it to the cart, and check that the product is in the cart. No login is needed.
 When it is ready, run it on iOS (ios-run) to confirm.
 ```
 
@@ -25,7 +25,8 @@ The AI assistant compiles it, verifies it without a device (dry-run), runs it on
 ### Prompt for the AI
 
 ```text
-In the fleetest test project project1, add a case to the SUT Store happy-path test: without logging in, set the quantity to 3 in the product details and add it to the cart.
+In the fleetest test project project1, add a second test to the "add-to-cart test" (AddToCart.swift):
+without logging in, set the quantity to 3 in the product details and add it to the cart. Don't create a new file.
 Check that the quantity of that product in the cart is 3. When it is ready, run it on iOS (ios-run) to confirm.
 ```
 

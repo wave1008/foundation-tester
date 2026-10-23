@@ -7,18 +7,18 @@ What fleetest records is only the facts: at which stage, which operation, and ho
 
 ## 1. Make one fail on purpose
 
-To practice investigating, temporarily change an expected value in the cart test so that it fails.
+To practice investigating, temporarily change an expected value in the add-to-cart test so that it fails.
 
 ### Prompt for the AI
 
 ```text
-In the cart test of the fleetest test project project1, temporarily change just one expected value, the one that checks the product name in the cart, to a product name that does not exist.
+In the first test of the "add-to-cart test" (AddToCart.swift) of the fleetest test project project1, temporarily change just one expected value, the one that checks the product name in the cart, to a product name that does not exist.
 Then run it on iOS (ios-run) and report only pass or fail. Don't fix it.
 ```
 
 Expected result:
 
-- The cart test fails.
+- The first test of the add-to-cart test fails.
 - The other tests pass.
 
 ## 2. Have the results summarized
@@ -41,7 +41,7 @@ Summarize the latest run of the fleetest test project project1. If anything fail
 
 Expected result:
 
-- The cart test is listed.
+- The first test of the add-to-cart test is listed.
 - The step where you changed the expected value is listed.
 
 ## 3. Have the cause investigated (don't fix it)
@@ -69,7 +69,7 @@ Expected result:
 ### Prompt for the AI
 
 ```text
-In the cart test of the fleetest test project project1, restore the expected value to the original product name, and re-run only the scenarios that failed on iOS last time.
+In the "add-to-cart test" (AddToCart.swift) of the fleetest test project project1, restore the expected value to the original product name, and re-run only the scenarios that failed on iOS last time.
 ```
 
 <details>
@@ -86,7 +86,7 @@ Results are recorded per profile, so run it with the same profile as last time.
 
 Expected result:
 
-- Only the cart test that had failed runs, and it passes.
+- Only the one test that had failed runs, and it passes.
 
 More details:
 
