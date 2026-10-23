@@ -123,6 +123,11 @@ fleetest profile setup --project <プロジェクト> --platform <ios|android|hy
   既存デバイスを番号の小さい順に再利用し、足りない分だけこの機械の既存の名前を全部避けた最小の番号で作る。既に N 台以上なら
   何もしない(その旨を1行出す)。`--platform hybrid` なら各 OS に効く。`--device-name`/`--avd`/`--udid` とは併用できない。
   ステップ5の報告に全台を並べる。
+- **既存の実行プロファイルへ「あと N 台追加」**(例「ios-run に Simulator をあと1台追加して」)も同じ1回で済む:
+  `fleetest profile list --project <プロジェクト>` で該当 OS の今の台数 M を数え、**`--auto-device --count <M+N>`**
+  (`--app-id` は既存のアプリプロファイルと同じ値)を撃つ。同じ機種・OS の既存デバイスの再利用と、足りない分の作成は
+  コマンドが行うので、`simctl list`・`device-catalog`・`create-device` で自分で探したり作ったりしない。このスキルの他の節
+  (アプリのビルド・表示名の確認)も要らない。
 
 #### 4-b. 新規作成が要るとき(create-device)
 

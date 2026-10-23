@@ -72,6 +72,8 @@ test("ファイルが無ければ作り、2回目は変えない(冪等)", () =>
   assert.ok(first.text.includes("`/fleetest-scenario`"), "スキルの呼び出し記法が / でない");
   assert.ok(first.text.includes("`../foundation-tester/.claude/skills/fleetest-scenario/SKILL.md`"), first.text);
   assert.ok(first.text.includes("`../foundation-tester/docs/user-docs/reference/tools/agent_guide.md`"), first.text);
+  // CLI は PATH に無い。場所を書かないとエージェントは案内の素の `fleetest …` を撃ってからバイナリを探して数手使う
+  assert.ok(first.text.includes("`../foundation-tester/.build/debug/fleetest …`"), first.text);
   assert.ok(!first.text.includes(tmpdir()), "入口に絶対パスが残っている");
 });
 

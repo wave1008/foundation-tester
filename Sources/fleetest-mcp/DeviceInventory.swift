@@ -105,6 +105,16 @@ enum DeviceInventory {
                                               allMovedAway: !movedAway.isEmpty)
                 return ([text] + notes).joined(separator: "\n")
             }
+            if let profile, let testProject = try? ScenarioHost.project(named: project) {
+                for platform in ["ios", "android"] {
+                    let count = local.filter { $0.platform == platform }.count
+                    guard count > 0, (platform == "ios" && wantsIOS) || (platform == "android" && wantsAndroid),
+                          let appID = ProfileResolver.declaredAppID(
+                            project: testProject, runName: profile, platform: platform) else { continue }
+                    notes.append(addDevicesHint(fleetest: fleetestCommand(), project: testProject.name,
+                                                profile: profile, platform: platform, appID: appID, count: count))
+                }
+            }
             return (["devices from \(resolved.label)"] + notes + rows.map(line)).joined(separator: "\n")
         }
 
@@ -127,6 +137,24 @@ enum DeviceInventory {
             if entry.machine == nil { kept.append(entry) } else { movedAway.append(entry) }
         }
         return (kept, movedAway)
+    }
+
+    /// 実行プロファイルへ台数を足す1手(純粋関数・テスト用)。MCP にデバイスを足すツールは無く、案内が無いと
+    /// エージェントは simctl・device-catalog・create-device を自分で組み立てて10手前後かかった(チュートリアルの実測)。
+    /// `--count` は該当 OS の合計台数 = 同じ機種・OS の既存デバイスを再利用し、足りない分だけ作る
+    static func addDevicesHint(fleetest: String, project: String, profile: String, platform: String,
+                               appID: String, count: Int) -> String {
+        "to add \(platform) devices to run profile \"\(profile)\" (now \(count)), run once:"
+            + " `\(fleetest) profile setup --project \(project) --platform \(platform) --app-id \(appID)"
+            + " --auto-device --count <total>` (it reuses or creates devices of the same model/OS)"
+    }
+
+    /// CLI の実体のパス(このサーバと同じビルドの隣)。**素の `fleetest` は PATH に無い**(受け手は clone の .build を指して使う)ので、
+    /// 素の名前を案内するとエージェントがバイナリ探しに数手使った(チュートリアルの実測)。見つからなければ素の名前
+    static func fleetestCommand() -> String {
+        guard let sibling = ExecutablePath.current?.deletingLastPathComponent().appendingPathComponent("fleetest"),
+              FileManager.default.isExecutableFile(atPath: sibling.path) else { return "fleetest" }
+        return sibling.path
     }
 
     /// 別の機械へ落ちたデバイスの案内文(純粋関数・テスト用)。stderr は MCP クライアントに見えないため

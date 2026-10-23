@@ -36,6 +36,17 @@ final class DeviceInventoryTests: XCTestCase {
     /// project: 無指定でも既定の1プロジェクトしか読まないため、見出しにその名前を入れる
     /// (実測: E2E-* のプロファイルに載っているデバイスが default プロジェクトの ft_list_devices では
     /// 「unregistered」と表示され、どのプロジェクトの台帳を見ているか分からなかった)
+    /// 台数を足す1手は、そのまま撃てる完全なコマンド(プロジェクト・OS・アプリ ID・`--auto-device --count`)と今の台数を持つ
+    func testAddDevicesHintIsACompleteOneShotCommand() {
+        let hint = DeviceInventory.addDevicesHint(fleetest: "/x/.build/debug/fleetest", project: "project1",
+                                                  profile: "ios-run", platform: "ios",
+                                                  appID: "com.sutec.mobile.ios", count: 2)
+        XCTAssertTrue(hint.contains("`/x/.build/debug/fleetest profile setup --project project1 --platform ios"
+            + " --app-id com.sutec.mobile.ios --auto-device --count <total>`"), hint)
+        XCTAssertTrue(hint.contains("(now 2)"), hint)
+        XCTAssertTrue(hint.contains("\"ios-run\""), hint)
+    }
+
     func testAllRunProfilesLabelNamesTheProject() {
         XCTAssertEqual(DeviceInventory.allRunProfilesLabel(projectName: "default"),
                        "all run profiles of project \"default\"")

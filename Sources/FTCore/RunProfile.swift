@@ -1332,6 +1332,15 @@ public enum ProfileResolver {
     /// (declaredWorkspace と同じ理由 —— RemoteRunDispatcher はミラー直前にここだけ要る)。
     /// 戻り値: platform("ios"/"android") → (原本の絶対パス, 生の宣言文字列)
     /// (appPath 未指定の platform は含まない)。プロファイル/アプリ定義が読めなければ空を返す
+    /// 実行プロファイルが指すアプリの、その OS のアプリ ID を軽量に読む(デバイスを解決しない)。読めなければ nil
+    public static func declaredAppID(project: TestProject, runName: String, platform: String) -> String? {
+        guard let runData = try? Data(contentsOf: project.runsDir.appendingPathComponent("\(runName).json")),
+              let appRef = (try? JSONDecoder().decode(RunProfileDocument.self, from: runData))?.app,
+              let appData = try? Data(contentsOf: project.appsDir.appendingPathComponent("\(appRef).json")),
+              let appProfile = try? JSONDecoder().decode(AppProfile.self, from: appData) else { return nil }
+        return appProfile.section(for: platform).app
+    }
+
     public static func declaredAppPaths(project: TestProject,
                                         runName: String) -> [DeclaredAppPath: DeclaredAppPathEntry] {
         guard let runData = try? Data(
