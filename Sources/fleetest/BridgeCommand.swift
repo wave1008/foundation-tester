@@ -319,12 +319,36 @@ struct Bridge: AsyncParsableCommand {
                         throw ExitCode(1)
                     }
                 }
+                // 止める前に引く(止めると in-app の台帳が消える)。listener からは引かない —— 引けるのは
+                // 応答しない XCUITest を止める場合で、そのとき残るのは in-app(知らせの対象外)だけ
+                let deviceUDID = found.first(where: { $0.port == resolvedPort })?.udid
+                    ?? InAppBridgeState.recordedUDID(stateDir: leaseStateDir, port: resolvedPort)
                 // physical は stop() が見ない(kind を知らない経路からも止められるよう、
                 // stop() 側が条件分岐しない宣言をしている)ので false でよい
                 let launcher = BridgeLauncher(repoRoot: root, port: resolvedPort, physical: false)
                 try launcher.stop()
                 ConsoleOut.out("✅ Stopped the bridge (port: \(resolvedPort))")
+                if let deviceUDID, let notice = Self.remainingRunnerNotice(
+                    stopped: resolvedPort,
+                    runnerPorts: BridgeLauncher.portsMatching(udid: deviceUDID, repoRoot: root)) {
+                    ConsoleOut.out("⚠️ \(notice)")
+                }
             }
+        }
+
+        /// inapp モードは1台に in-app と XCUITest の2本があり、ポートを1つ止めても片割れが残る。
+        /// 残ったのが XCUITest ランナーだと、Simulator を止めた直後に xcodebuild が起こし直す
+        /// (約1分後にランナー自身が止める)。止めないのは片方だけ止めて縮退を確かめる使い方を残すため。
+        /// in-app の台帳はアプリが死んでも残るので数えない(生きたプロセスを照合する portsMatching だけ)
+        static func remainingRunnerNotice(stopped: UInt16, runnerPorts: [UInt16]) -> String? {
+            let remaining = runnerPorts.filter { $0 != stopped }
+            guard !remaining.isEmpty else { return nil }
+            let list = remaining.map(String.init).joined(separator: ", ")
+            let stopCommands = remaining.map { "fleetest bridge down --port \($0)" }.joined(separator: " / ")
+            return "The XCUITest bridge of the same device is still running (port: \(list))."
+                + " Shutting a simulator down while it runs makes it boot the simulator again."
+                + " Stop it too (\(stopCommands)), or stop the device together with all its bridges"
+                + " (fleetest devices down --profile <run profile>)"
         }
     }
 
