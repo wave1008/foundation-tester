@@ -25,7 +25,7 @@ export const runBoardExpandAll = document.getElementById('run-board-expand-all')
 export const runBoardRows = document.getElementById('run-board-rows');
 // 2カラムの境目(ドラッグで幅を変える。runBoard.js)。
 export const runBoardSplit = document.getElementById('run-board-split');
-// プラットフォームの表示フィルタ(3択・既定は「すべて」。状態と配線は deviceTiles.js)。
+// プラットフォームの表示フィルタ(3択・既定は「両方」。状態と配線は deviceTiles.js)。
 // 見た目はバッジ(選択中だけ色付き・非選択は灰色。ユーザー決定)。
 export const platformFilterBadges = [
   document.getElementById('rad-platform-ios'),

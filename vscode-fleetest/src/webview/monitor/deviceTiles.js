@@ -137,7 +137,9 @@ export const selectedDeviceIds = new Set();
 // 「デバイスをすべて選択」が入っているか。デバイスが1枚でも居る間は**選択の集合から導く**
 // (トグルの向きと挙動を2箇所に持たない)が、**ラインビューが空の間だけ据え置く** ——
 // モニター再起動や「すべて終了」で0枚になっても ON を落とさない = 戻ってきたデバイスを選び直させない。
-// 初期値はホストが ready 後に送る 'selectAllDevices' で上書きされる(前回の値の復元)。
+// 初期値はホストが ready 後に送る 'selectAllDevices' で上書きされる(前回の値の復元)。**利用者に見える既定は
+// ホスト側**(monitorPanel.ts の workspaceState.get の第2引数 = ON)。ここは復元が届くまでの仮の値で、復元を送らない
+// webview の単体テストが「選んでいない状態から始まる」を前提にしているので false のまま
 let selectAllOn = false;
 
 // **旗を書く唯一の口**。値が変わったときだけホストへ知らせて workspaceState へ残す
@@ -1444,7 +1446,7 @@ export function onPlatformFilterChanged(listener) {
   platformFilterListeners.push(listener);
 }
 
-/** 選んでいるものだけ色付き(iOS / Android はデバイスのピルと同じ色・「すべて」は白)、
+/** 選んでいるものだけ色付き(iOS / Android はデバイスのピルと同じ色・「両方」は白)、
  *  選んでいないものは灰色(ユーザー決定)。色は CSS が `.selected` で持つ。 */
 function paintPlatformBadges() {
   for (const badge of platformFilterBadges) {
@@ -1467,7 +1469,7 @@ function applyPlatformFilterState(next, persist) {
 }
 
 /** host からの復元値(sendInitialState)。**投げ返さない**(applySelectAllDevices と同じ規律)。
- *  **知らない値は「すべて」へ倒す** —— デバイスが黙って消えるより出しすぎるほうが安全。 */
+ *  **知らない値は「両方」へ倒す** —— デバイスが黙って消えるより出しすぎるほうが安全。 */
 export function applyPlatformFilter(message) {
   const known = platformFilterBadges.some((badge) => badge.dataset.value === message.value);
   applyPlatformFilterState(known ? message.value : PLATFORM_FILTER_ALL, false);
@@ -1482,7 +1484,7 @@ for (const badge of platformFilterBadges) {
   });
 }
 
-// 既定(「すべて」)の見た目を初期化する —— host の復元値(applyPlatformFilter)が来るまでの間も
+// 既定(「両方」)の見た目を初期化する —— host の復元値(applyPlatformFilter)が来るまでの間も
 // バッジの色が状態と食い違わないようにする(**デバイスの一覧には触らない**ので描き直しは走らせない)
 paintPlatformBadges();
 

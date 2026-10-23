@@ -1,4 +1,4 @@
-// run ボードのヘッダのプラットフォーム表示フィルタ(iOS / Android / すべて の3択。既定は「すべて」)
+// run ボードのヘッダのプラットフォーム表示フィルタ(iOS / Android / 両方 の3択。既定は「両方」)
 // の DOM テスト。選ばれていない側のデバイスは**4つのセクション**(実行中・デバイス一覧・
 // 選択したデバイス・実行ログ)から同時に消える —— 落とすのは deviceTiles.js の applyDevices の
 // 入口1箇所で、4つともそこから作られるため。
@@ -107,17 +107,17 @@ test("フィルタはラインビューの見出しで「ライブ更新」の�
   assert.equal(document.querySelectorAll("#run-board-header .run-board-platform-filter").length, 0, "run ボードの見出しには残さない");
 });
 
-test("既定は「すべて」(フィルタを持たない状態と同じ見え方)", (t) => {
+test("既定は「両方」(フィルタを持たない状態と同じ見え方)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  assert.deepEqual(selectedBadges(document), ["all"], "既定は「すべて」だけが色付き");
+  assert.deepEqual(selectedBadges(document), ["all"], "既定は「両方」だけが色付き");
   assert.equal(badge(document, "all").getAttribute("aria-checked"), "true");
   assert.equal(badge(document, "ios").getAttribute("aria-checked"), "false");
   sendDevices(window);
   assert.deepEqual(tileNames(document), ["iPhone-01", "iPhone-02", "Pixel-01"]);
 });
 
-test("選んだプラットフォームだけが4つのセクションに残り、「すべて」でその場で戻る", (t) => {
+test("選んだプラットフォームだけが4つのセクションに残り、「両方」でその場で戻る", (t) => {
   const { window, document, posted } = createWebview();
   t.after(() => window.close());
   post(window, { type: "monitorRuns", observed: true, runs: [] });
@@ -162,7 +162,7 @@ test("host の復元値はバッジに入り、投げ返さない", (t) => {
 });
 
 // 知らない値(古い形の保存値・壊れた設定)で**デバイスが黙って消えない**こと
-test("知らない復元値は「すべて」へ倒す", (t) => {
+test("知らない復元値は「両方」へ倒す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window);

@@ -389,8 +389,9 @@ export class MonitorPanelController implements vscode.Disposable {
     // 既定 展開(webview 側 runBoard.js の初期値と揃える)。
     this.runBoardCollapsed = workspaceState.get<boolean>("monitor.runBoardCollapsed", false);
     this.runBoardExpandAll = workspaceState.get<boolean>("monitor.runBoardExpandAll", false);
-    // 既定 OFF(選んでいない状態から始める。webview 側 deviceTiles.js の初期値と揃える)。
-    this.selectAllDevices = workspaceState.get<boolean>("monitor.selectAllDevices", false);
+    // 既定 ON(全台を選んだ状態から始める。ready 後に必ず送るので、利用者に見える既定はここで決まる。
+    // webview 側 deviceTiles.js の初期値は復元が届くまでの仮の値 = monitorSelectAllDefault.test.mjs)。
+    this.selectAllDevices = workspaceState.get<boolean>("monitor.selectAllDevices", true);
     // 既定 ON = run 中も配信する(webview 側 streamToggle.js の初期値と揃える)。
     this.showStreamDuringRun = workspaceState.get<boolean>("monitor.showStreamDuringRun", true);
     this.deps = {

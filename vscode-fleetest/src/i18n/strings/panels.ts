@@ -105,7 +105,7 @@ export const panelsStrings = {
       + " Plain drags are not sent to the device. Double-click outside the screen to toggle the selection",
   },
   "panels.devices.selectAllLabel": { ja: "すべて選択", en: "Select all" },
-  "panels.runBoard.platformFilterAll": { ja: "すべて", en: "All" },
+  "panels.runBoard.platformFilterAll": { ja: "両方", en: "Both" },
   "panels.runBoard.splitAriaLabel": { ja: "デバイスとステータスの分割境界線", en: "Divider between devices and status" },
   "panels.runBoard.platformFilterTitle": {
     ja: "実行中・デバイス一覧・選択したデバイス・実行ログに出すデバイスをプラットフォームで絞ります",

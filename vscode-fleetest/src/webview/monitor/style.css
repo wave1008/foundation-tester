@@ -599,7 +599,7 @@ html[lang="en"] .header-count {
   opacity: 1;
 }
 /* 選択時の色。**iOS / Android はタイルのデバイス名ピルと同じ値**(.tile-name-ios / -android。
-   変更時は揃えること)。「すべて」は白なので、文字だけ暗い色にする */
+   変更時は揃えること)。「両方」は白なので、文字だけ暗い色にする */
 .platform-badge.selected {
   opacity: 1;
 }
