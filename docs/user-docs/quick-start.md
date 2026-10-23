@@ -88,22 +88,24 @@ For iOS:
 
 ```text
 In the fleetest test project project1, build the sut-ec-mobile iOS app and create its profiles. The app's display name is "SUT Store". Use two devices.
-The build needs JDK 25; if it is missing, you can install JDK 25 with Homebrew. Don't modify any shell configuration files.
+Use JDK 25 for the build (Homebrew's openjdk@25, at /opt/homebrew/opt/openjdk@25). Don't modify any shell configuration files.
 ```
 
 For Android:
 
 ```text
 In the fleetest test project project1, build the sut-ec-mobile Android app and create its profiles. The app's display name is "SUT Store". Use two devices.
-The build needs JDK 25; if it is missing, you can install JDK 25 with Homebrew. Don't modify any shell configuration files.
+Use JDK 25 for the build (Homebrew's openjdk@25, at /opt/homebrew/opt/openjdk@25). Don't modify any shell configuration files.
 ```
 
 <details>
 <summary><b>If you do it manually (click to show details)</b></summary>
 
-Build the app in the sut-ec-mobile folder. The build needs JDK 25 or later (if it is missing, `brew install openjdk@25`).
+Build the app in the sut-ec-mobile folder. The build uses JDK 25 (prepare.sh in step 4 installs Homebrew's openjdk@25).
 
 ```bash
+export JAVA_HOME=/opt/homebrew/opt/openjdk@25
+
 # iOS Simulator
 xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \
   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \

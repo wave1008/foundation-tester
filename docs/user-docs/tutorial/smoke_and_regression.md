@@ -3,14 +3,14 @@
 [in Japanese(日本語)](smoke_and_regression_ja.md)
 
 Split your scenarios into a short set you run every time (smoke) and a set that runs everything (regression). No scenario needs to change.
-Here, smoke is the open-product-details test (made in the Quick Start) plus the add-to-cart test, and regression is everything.
+Here, smoke is the open-product-details test (made in the Quick Start), and regression is everything.
 
 ## 1. Sort them into folders
 
 ### Prompt for the AI
 
 ```text
-In the fleetest test project project1, create a smoke folder under scenarios/ and move OpenProductDetails.swift and AddToCart.swift into it.
+In the fleetest test project project1, create a smoke folder under scenarios/ and move OpenProductDetails.swift into it. Do not move AddToCart.swift.
 After moving, confirm that it still compiles.
 ```
 
@@ -19,7 +19,7 @@ After moving, confirm that it still compiles.
 
 ```bash
 mkdir TestProjects/project1/scenarios/smoke
-mv TestProjects/project1/scenarios/OpenProductDetails.swift TestProjects/project1/scenarios/AddToCart.swift TestProjects/project1/scenarios/smoke/
+mv TestProjects/project1/scenarios/OpenProductDetails.swift TestProjects/project1/scenarios/smoke/
 ```
 
 A scenario ID (`ClassName.methodName`) does not change with the folder.
@@ -29,7 +29,8 @@ A scenario ID (`ClassName.methodName`) does not change with the folder.
 
 Expected result:
 
-- Two Swift files in `scenarios/smoke/`.
+- `OpenProductDetails.swift` is in `scenarios/smoke/`.
+- `AddToCart.swift` stays directly under `scenarios/`.
 
 ## 2. Run by folder (smoke) and run everything (regression)
 
@@ -54,13 +55,17 @@ Without a folder, everything runs.
 
 Expected result:
 
-- Only the three scenarios inside `smoke` run (one in the open-product-details test and two in the add-to-cart test).
+- Only the one scenario inside `smoke` runs (the open-product-details test).
 
 Next, run everything without naming a folder (regression) and compare how many ran.
 
 ```text
 With the ios-run profile of the fleetest test project project1, run all scenarios.
 ```
+
+Expected result:
+
+- Three scenarios run (one in the open-product-details test and two in the add-to-cart test).
 
 Next: [Watching in VSCode](watching_in_vscode.md)
 

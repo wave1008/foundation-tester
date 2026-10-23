@@ -88,22 +88,24 @@ iOS の場合:
 
 ```text
 fleetest のテストプロジェクト project1 に、sut-ec-mobile の iOS アプリをビルドしてプロファイルを作成して。アプリの表示名は「SUT Store」。デバイスは2台にして。
-ビルドには JDK 25 が必要。無ければ Homebrew で JDK 25 をインストールしてよい。シェルの設定ファイルは変更しないで。
+ビルドには JDK 25(Homebrew の openjdk@25。/opt/homebrew/opt/openjdk@25)を使って。シェルの設定ファイルは変更しないで。
 ```
 
 Android の場合:
 
 ```text
 fleetest のテストプロジェクト project1 に、sut-ec-mobile の Android アプリをビルドしてプロファイルを作成して。アプリの表示名は「SUT Store」。デバイスは2台にして。
-ビルドには JDK 25 が必要。無ければ Homebrew で JDK 25 をインストールしてよい。シェルの設定ファイルは変更しないで。
+ビルドには JDK 25(Homebrew の openjdk@25。/opt/homebrew/opt/openjdk@25)を使って。シェルの設定ファイルは変更しないで。
 ```
 
 <details>
 <summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
 
-sut-ec-mobile のフォルダでアプリをビルドします。ビルドには JDK 25 以降が必要です(無ければ `brew install openjdk@25`)。
+sut-ec-mobile のフォルダでアプリをビルドします。ビルドには JDK 25 を使います(ステップ4の prepare.sh が Homebrew の openjdk@25 を入れます)。
 
 ```bash
+export JAVA_HOME=/opt/homebrew/opt/openjdk@25
+
 # iOS Simulator
 xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \
   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \

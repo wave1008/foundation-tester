@@ -3,14 +3,14 @@
 [in English](smoke_and_regression.md)
 
 毎回回す短い一式(スモーク)と、全部を回す一式(回帰)に分けます。シナリオの書き換えは要りません。
-ここでは、スモークを「商品詳細を開くテスト(クイックスタートで作ったもの)+ カートに追加するテスト」、回帰を「全部」とします。
+ここでは、スモークを「商品詳細を開くテスト(クイックスタートで作ったもの)」、回帰を「全部」とします。
 
 ## 1. フォルダに分ける
 
 ### AIへの指示文
 
 ```text
-fleetest のテストプロジェクト project1 の scenarios/ の下に smoke フォルダを作って、商品詳細を開く.swift と カートに追加する.swift を移して。
+fleetest のテストプロジェクト project1 の scenarios/ の下に smoke フォルダを作って、商品詳細を開く.swift を移して。カートに追加する.swift は移さないで。
 移したらコンパイルが通ることを確かめて。
 ```
 
@@ -19,7 +19,7 @@ fleetest のテストプロジェクト project1 の scenarios/ の下に smoke 
 
 ```bash
 mkdir TestProjects/project1/scenarios/smoke
-mv TestProjects/project1/scenarios/商品詳細を開く.swift TestProjects/project1/scenarios/カートに追加する.swift TestProjects/project1/scenarios/smoke/
+mv TestProjects/project1/scenarios/商品詳細を開く.swift TestProjects/project1/scenarios/smoke/
 ```
 
 シナリオの ID(`クラス名.メソッド名`)はフォルダに関係なく変わりません。
@@ -29,7 +29,8 @@ mv TestProjects/project1/scenarios/商品詳細を開く.swift TestProjects/proj
 
 期待する結果:
 
-- `scenarios/smoke/` に2つの Swift ファイルが入ります。
+- `scenarios/smoke/` に `商品詳細を開く.swift` が入ります。
+- `カートに追加する.swift` は `scenarios/` 直下に残ります。
 
 ## 2. フォルダ単位で回す(スモーク)・全部回す(回帰)
 
@@ -54,13 +55,17 @@ fleetest のテストプロジェクト project1 の ios-run プロファイル�
 
 期待する結果:
 
-- `smoke` の中の3本(商品詳細を開くテストの1本 + カートに追加するテストの2本)だけが実行されます。
+- `smoke` の中の1本(商品詳細を開くテスト)だけが実行されます。
 
 続けて、フォルダを指定せずに全部を回して(回帰)、本数の違いを見比べます。
 
 ```text
 fleetest のテストプロジェクト project1 の ios-run プロファイルで、全部のシナリオを実行して。
 ```
+
+期待する結果:
+
+- 3本(商品詳細を開くテストの1本 + カートに追加するテストの2本)が実行されます。
 
 次へ: [VSCode で見る](watching_in_vscode_ja.md)
 
