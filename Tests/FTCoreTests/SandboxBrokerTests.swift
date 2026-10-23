@@ -327,7 +327,7 @@ final class DevicectlPolicyTests: XCTestCase {
              "--domain-identifier", "com.example.app", "--json-output", "-", "-q"],
             ["device", "process", "launch", "--device", "PHONE-1", "--terminate-existing",
              "--environment-variables", "{\"FT_PORT\":\"8123\"}", "com.example.app", "-q"],
-            ["device", "process", "terminate", "--device", "PHONE-1", "--bundle-identifier", "com.example.app", "-q"],
+            ["device", "process", "terminate", "--device", "PHONE-1", "--pid", "26057", "-q"],
         ] {
             XCTAssertNil(refusal(arguments), arguments.joined(separator: " "))
         }
@@ -347,7 +347,12 @@ final class DevicectlPolicyTests: XCTestCase {
             ["device", "process", "launch", "--device", "PHONE-2", "--terminate-existing",
              "--environment-variables", "{}", "com.example.app", "-q"]))
         XCTAssertNotNil(refusal(
-            ["device", "process", "terminate", "--device", "PHONE-2", "--bundle-identifier", "com.example.app", "-q"]))
+            ["device", "process", "terminate", "--device", "PHONE-2", "--pid", "26057", "-q"]))
+        XCTAssertNotNil(refusal(
+            ["device", "process", "terminate", "--device", "PHONE-1", "--pid", "1;rm", "-q"]), "数字でない pid は断る")
+        XCTAssertNotNil(refusal(
+            ["device", "process", "terminate", "--device", "PHONE-1", "--bundle-identifier", "com.example.app", "-q"]),
+            "devicectl が受けない旧い形は許可表にも無い")
     }
 
     func testAnotherDeviceIsRefused() {

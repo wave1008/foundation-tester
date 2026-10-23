@@ -1119,8 +1119,12 @@ public struct BridgeLauncher: Sendable {
                 lastError = error
             }
             let text = try? String(contentsOf: logPath, encoding: .utf8)
-            // **終わったセッションを待たない**(理由は runnerSessionEnded)
-            if let text, let marker = Self.runnerSessionEnded(inLog: text) {
+            let runnerPid = Self.runnerPid(at: pidPath)
+            switch Self.startupAbort(logText: text, runnerAlive: runnerPid.map { ProcessLiveness.isAlive($0) }) {
+            case .portInUse?:
+                // 別プロセスがポートを握っている限り再試行しても直らない(撃ち直しは呼び手が持ち主を片付けてから)
+                throw LauncherError.portInUse(port: port, holder: nil)
+            case .sessionEnded(let marker)?:
                 // **理由が分かる終わり方は名指しで落とす**(証明書未信頼・Developer Mode・
                 // automation mode のタイムアウト = IOSDeviceTransport.runnerFailureReason)。
                 // 先に総称の「session already ended」を投げると、ログに理由が書いてあるのに
@@ -1128,15 +1132,16 @@ public struct BridgeLauncher: Sendable {
                 _ = try physicalDiagnosis()
                 throw LauncherError.timedOut("the test session already ended (\(marker))",
                                              logPath.path)
-            }
-            // **死んだランナーを待たない**: xcodebuild が起動直後に落ちる形(`Existing file at
-            // -resultBundlePath` 等)は締切まで待っても上がらない。理由はログの末尾にある
-            if let pid = Self.runnerPid(at: pidPath), !ProcessLiveness.isAlive(pid) {
+            case .runnerExited?:
+                // **死んだランナーを待たない**: xcodebuild が起動直後に落ちる形(`Existing file at
+                // -resultBundlePath` 等)は締切まで待っても上がらない。理由はログの末尾にある
                 _ = try physicalDiagnosis()
                 throw LauncherError.timedOut(
-                    "the runner process (pid \(pid)) exited before the bridge became ready"
+                    "the runner process (pid \(runnerPid ?? 0)) exited before the bridge became ready"
                         + (Self.lastLogLine(in: text).map { " — last log line: \($0)" } ?? ""),
                     logPath.path)
+            case nil:
+                break
             }
             // 進み具合: ログが伸びた時刻・**ランナーアプリがシミュレータで起動した**(xcodebuild は
             // 設定を書き出した後、テスト本体が始まるまで何も書かない。冷えた起動ではその無音が
@@ -1158,12 +1163,6 @@ public struct BridgeLauncher: Sendable {
                 announcedExtension = true
                 log("⏳ still starting after \(Int(timeout))s — xcodebuild is still making progress"
                     + " (cold start), so waiting while its log keeps growing")
-            }
-            // startDetached が logPath を毎回空で作り直す(createFile)ため、ここで見つかる
-            // bindFailed は必ず今回の起動試行のもの。180 秒待たずに fail-fast する
-            // (別プロセスがポートを握っている限り再試行しても直らないため)。
-            if logTailContainsBindFailed() {
-                throw LauncherError.portInUse(port: port, holder: nil)
             }
             if let detected = try physicalDiagnosis(), detected != blocker {
                 blocker = detected
@@ -1209,18 +1208,19 @@ public struct BridgeLauncher: Sendable {
             .last { !$0.isEmpty }
     }
 
+    /// 起動待ちの途中で「もう上がらない」と決まった理由(nil = まだ待つ)。**bindFailed を最初に見る** ——
+    /// bind できないランナーはテストが 0.02 秒で終わり xcodebuild もすぐ抜けるので、終了の判定を先にすると
+    /// `portInUse` に届かず、持ち主を片付けて撃ち直す手当て(BridgeProvisioner)が一度も走らない
+    /// (iPhone SE3 で実測: 端末の上で前の run の in-app ブリッジが同じポートを握り「runner exited」で落ちた)。
+    /// ログは起動のたびに空で作り直される(startDetached の createFile)ので、見つかる印は必ず今回のもの。
     /// 検知文字列 "bindFailed(" は Runner/FleetestRunnerUITests/BridgeHTTPServer.swift の
-    /// ServerError.bindFailed(errno)(XCTest 失敗ログに Swift 既定の記述で出力される)との言語間契約。
-    /// 変更する場合は両方を同期させること。
-    private func logTailContainsBindFailed() -> Bool {
-        guard let handle = try? FileHandle(forReadingFrom: logPath) else { return false }
-        defer { try? handle.close() }
-        guard let size = try? handle.seekToEnd() else { return false }
-        let readSize: UInt64 = 64 * 1024
-        let offset = size > readSize ? size - readSize : 0
-        guard (try? handle.seek(toOffset: offset)) != nil,
-              let data = try? handle.readToEnd() else { return false }
-        return String(data: data, encoding: .utf8)?.contains("bindFailed(") ?? false
+    /// ServerError.bindFailed(errno)(XCTest の失敗ログに Swift 既定の記述で出る)との言語間契約。変えるなら両方を同期する
+    enum StartupAbort: Equatable { case portInUse, sessionEnded(String), runnerExited }
+    static func startupAbort(logText: String?, runnerAlive: Bool?) -> StartupAbort? {
+        if let logText, logText.contains("bindFailed(") { return .portInUse }
+        if let logText, let marker = runnerSessionEnded(inLog: logText) { return .sessionEnded(marker) }
+        if runnerAlive == false { return .runnerExited }
+        return nil
     }
 
     /// コールド起動時のみ実行(稼働中ブリッジの再利用時はここを通らない。run 開始ごとの同期は

@@ -19,6 +19,17 @@ final class IOSPhysicalRunningAppsTests: XCTestCase {
         }]]
     }
 
+    /// terminate が撃つ pid: 本体のプロセスだけ(拡張・別アプリは撃たない)
+    func testPidsAreTheAppProcessesOnly() {
+        let json = processes([
+            "file:///private/var/containers/Bundle/Application/44BC62D2/Maps.app/PlugIns/W.appex/W",
+            "file:///private/var/containers/Bundle/Application/BC213E3A/Tips.app/Tips",
+            "file:///private/var/containers/Bundle/Application/44BC62D2/Maps.app/Maps",
+        ])
+        XCTAssertEqual(IOSPhysicalRunningApps.pids(apps: [maps], processesJSON: json), [102])
+        XCTAssertEqual(IOSPhysicalRunningApps.pids(apps: [noURL], processesJSON: json), [])
+    }
+
     func testMatchesAppProcessesByInstallURL() {
         let ids = IOSPhysicalRunningApps.bundleIDs(apps: [maps, tips, noURL], processesJSON: processes([
             "file:///usr/libexec/backboardd",

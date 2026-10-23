@@ -336,14 +336,15 @@ public struct InAppLauncher: Sendable {
 
     public func terminate(bundleID: String) {
         if physical {
-            // **コマンド形は固定**(DevicectlPolicy の許可表と1対1)。bundleID を名指しして終了する
-            _ = try? Shell.run([
-                "xcrun", "devicectl", "device", "process", "terminate", "--device", udid,
-                "--bundle-identifier", bundleID, "-q",
-            ], timeout: 15)
+            Self.terminateOnPhysicalDevice(udid: udid, bundleID: bundleID)
             return
         }
         _ = try? Shell.run(["xcrun", "simctl", "terminate", udid, bundleID], timeout: 15)
+    }
+
+    /// 失敗は飲む(呼び手は後始末・撃ち直しの前段で、止められなくても次の手が理由を言う)。実体は IOSPhysicalRunningApps.terminate
+    public static func terminateOnPhysicalDevice(udid: String, bundleID: String) {
+        _ = try? IOSPhysicalRunningApps.terminate(udid: udid, bundleID: bundleID, timeout: 15)
     }
 
     /// 実機は endpoint(iproxy のループバック + token)へ、シミュレータはループバックへ到達待ちする

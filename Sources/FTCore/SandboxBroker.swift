@@ -251,9 +251,11 @@ public enum DevicectlPolicy {
                 && a[5] == "--terminate-existing" && a[6] == "--environment-variables"
                 && a[9] == "-q":
             return device(a[4]) ?? (SimctlPolicy.isBundleID(a[8]) ? nil : refuse("not a bundle ID: \(a[8])"))
+        // 実機のアプリの終了(IOSPhysicalRunningApps.terminate)。devicectl は --pid しか受けない。宛先はレーンの端末だけ
         case let a where a.count == 8 && Array(a[0..<4]) == ["device", "process", "terminate", "--device"]
-                && a[5] == "--bundle-identifier" && a[7] == "-q":
-            return device(a[4]) ?? (SimctlPolicy.isBundleID(a[6]) ? nil : refuse("not a bundle ID: \(a[6])"))
+                && a[5] == "--pid" && a[7] == "-q":
+            return device(a[4]) ?? (!a[6].isEmpty && a[6].allSatisfy(\.isASCII) && a[6].allSatisfy(\.isNumber)
+                ? nil : refuse("not a process id: \(a[6])"))
         default:
             return refuse("devicectl \(args.prefix(3).joined(separator: " ")) is not allowed from a sandboxed scenario")
         }

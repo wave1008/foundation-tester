@@ -1849,6 +1849,44 @@ public struct BridgeProvisioner: Sendable {
                     }
                     // 失敗した試行の pid ファイルを掃除してから占有者を特定・後始末を試みる
                     try? launcher.stop()
+                    // **実機はポートを端末の上で握られている**(ランナーは端末の中で bind する)。ホストの持ち主探しでは
+                    // 見えず、採番でも避けられない —— 実測(iPhone SE3)は前の run の in-app ブリッジが、背面に残った
+                    // 対象アプリの中で同じ番号を待ち受けていた(inapp モードは XCUITest を先に起動するので、in-app の
+                    // 起こし直しがアプリを止めるより前に衝突する)。対象アプリを止めて、同じポートで1回だけ撃ち直す
+                    if sim.physical {
+                        let held = "a listener on the device itself (not on this Mac)"
+                        guard let bundleID else {
+                            throw BridgeProvisionerError.notReady(
+                                port: port, underlying: LauncherError.portInUse(port: port, holder: held))
+                        }
+                        log("🔧 \(name): port \(port) is held on the device itself — quitting \(bundleID) there"
+                            + " (an in-app bridge left in it from an earlier run can hold the port) and retrying once")
+                        InAppLauncher.terminateOnPhysicalDevice(udid: sim.udid, bundleID: bundleID)
+                        do {
+                            try await Task.detached(priority: .userInitiated) {
+                                try launcher.startDetached()
+                            }.value
+                            let retried = try await IOSDeviceTransport.establish(
+                                port: port, deviceUDID: sim.udid, repoRoot: repoRoot,
+                                wired: sim.wired, token: launcher.bridgeToken, log: { log("\(name): \($0)") },
+                                approvalPending: { userAction?(name, $0 ? .approveAutomation : nil) })
+                            try await launcher.waitUntilReady(endpoint: retried,
+                                                              log: { log("\(name): \($0)") },
+                                                              approvalPending: { userAction?(name, $0 ? .approveAutomation : nil) })
+                        } catch let retryError as LauncherError {
+                            try? launcher.stop()
+                            guard case .portInUse = retryError else {
+                                throw BridgeProvisionerError.notReady(port: port, underlying: retryError)
+                            }
+                            throw BridgeProvisionerError.notReady(
+                                port: port, underlying: LauncherError.portInUse(port: port, holder: held))
+                        } catch {
+                            try? launcher.stop()
+                            throw BridgeProvisionerError.notReady(port: port, underlying: error)
+                        }
+                        log("✅ \(name): \(bridge) bridge ready (port \(port))")
+                        return port
+                    }
                     let outcome = PortHolder.stopIfOwnedBridge(
                         port: port, stateDir: repoRoot.appendingPathComponent(".fleetest"),
                         derivedDataPath: launcher.derivedDataPath, ownerUDID: sim.udid)

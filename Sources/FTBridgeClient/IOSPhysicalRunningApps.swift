@@ -31,6 +31,10 @@ public enum IOSPhysicalRunningApps {
     public static func running(
         udid: String, apps: [IOSPhysicalAppCatalog.App], timeout: Double = IOSPhysicalDeviceCatalog.devicectlTimeoutSeconds
     ) throws -> [String] {
+        bundleIDs(apps: apps, processesJSON: try processesJSON(udid: udid, timeout: timeout))
+    }
+
+    private static func processesJSON(udid: String, timeout: Double) throws -> [String: Any] {
         let outputURL = TemporaryDirectory.url
             .appendingPathComponent("fleetest-devicectl-processes-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: outputURL) }
@@ -42,7 +46,46 @@ public enum IOSPhysicalRunningApps {
         else {
             throw IOSPhysicalRunningAppsError.devicectlFailed(udid: udid, detail: result.tail)
         }
-        return bundleIDs(apps: apps, processesJSON: json)
+        return json
+    }
+
+    /// 実機のアプリを bundle ID で終了する。**`devicectl device process terminate` は `--pid` しか受けない**
+    /// (Xcode 27.2 実測: `--bundle-identifier` は終了コード 64 で何もしない)ので、apps の `url` と processes の実行ファイルで
+    /// pid を引いて撃つ。戻り値は終了させた pid(動いていなければ空)。devicectl が失敗したら投げる(黙って成功にしない)
+    @discardableResult
+    public static func terminate(udid: String, bundleID: String,
+                                 timeout: Double = IOSPhysicalDeviceCatalog.devicectlTimeoutSeconds) throws -> [Int] {
+        let apps = try IOSPhysicalAppCatalog.apps(udid: udid, timeout: timeout).filter { $0.id == bundleID }
+        guard !apps.isEmpty else { return [] }
+        let found = pids(apps: apps, processesJSON: try processesJSON(udid: udid, timeout: timeout))
+        for pid in found {
+            // **コマンド形は固定**(DevicectlPolicy の許可表と1対1)
+            let result = try Shell.run(["xcrun", "devicectl", "device", "process", "terminate", "--device", udid,
+                                        "--pid", String(pid), "-q"], timeout: timeout)
+            // 引いた後に自分で終わったプロセスは失敗で返る。もう一度一覧を見て居なければ成功とみなす
+            if result.status != 0,
+               pids(apps: apps, processesJSON: try processesJSON(udid: udid, timeout: timeout)).contains(pid) {
+                throw IOSPhysicalRunningAppsError.devicectlFailed(udid: udid, detail: result.tail)
+            }
+        }
+        return found
+    }
+
+    /// 純粋関数: apps(同じ bundle ID の1件)の本体のプロセスの pid。突き合わせの規則は `bundleIDs` と同じ
+    static func pids(apps: [IOSPhysicalAppCatalog.App], processesJSON json: [String: Any]) -> [Int] {
+        guard let processes = (json["result"] as? [String: Any])?["runningProcesses"] as? [[String: Any]] else {
+            return []
+        }
+        let urls = apps.compactMap(\.url)
+        return processes.compactMap { process in
+            guard let executable = process["executable"] as? String,
+                  let pid = process["processIdentifier"] as? Int,
+                  urls.contains(where: { url in
+                      let rest = executable.dropFirst(url.count)
+                      return executable.hasPrefix(url) && !rest.isEmpty && !rest.contains("/")
+                  }) else { return nil }
+            return pid
+        }
     }
 
     /// 純粋関数(実機無しでテストできる)。processes の各 `executable` を apps の `url` の前方一致で引く。
