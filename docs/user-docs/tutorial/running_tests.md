@@ -5,33 +5,7 @@
 Run the tests you created. AI is not used for the run itself (scenarios are replayed deterministically as code).
 This page runs the tests you made in the Quick Start and in "Creating tests" on iOS.
 
-## 1. Verify without a device (dry-run)
-
-### Prompt for the AI
-
-```text
-Dry-run all scenarios in the fleetest test project project1 and list any warnings.
-```
-
-No device is started, so it finishes in a few seconds.
-
-<details>
-<summary><b>If you do it manually (click to show details)</b></summary>
-
-```bash
-../foundation-tester/.build/debug/fleetest run --project project1 --dry-run
-```
-
-In VSCode, select a scenario in the Test Explorer and use "Run (dry-run)".
-
-</details>
-<br>
-
-Expected result:
-
-- With no warnings, you are told there are no problems.
-
-## 2. Run (in parallel on three devices)
+## 1. Run (in parallel on three devices)
 
 ### Prompt for the AI
 

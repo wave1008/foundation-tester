@@ -43,7 +43,7 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 
 6. VSCode の左下のステータスバーに表示される **fleetest mobile** をクリックします。デバイスモニターが開きます
 
-   <img src="images/quick_start/ja/device_monitor.png" width="640" alt="デバイスモニターが開いたところ">
+   <img src="images/quick_start/ja/device_monitor.png" width="1200" alt="デバイスモニターが開いたところ">
 
 7. AIアシスタントへ次のように指示し、エラーが出ないことを確かめます
 
@@ -138,11 +138,9 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 </details>
 <br>
 
-成功すると、AIアシスタントが実行プロファイル名(`ios-run` など)を報告し、VSCode のデバイスモニターの「プロファイル」タブにその実行プロファイルが並びます。
+VSCode のデバイスモニターの「プロファイル」タブを開き、アプリプロファイルと実行プロファイルが作成されたことを確認します。
 
 <img src="images/quick_start/ja/profiles_tab.png" width="640" alt="デバイスモニターの「プロファイル」タブに実行プロファイル ios-run が並んだところ">
-
-プロファイルの詳細は[プロファイル](./reference/project/profiles_ja.md)。
 
 ## 6. シナリオを作る
 
@@ -156,12 +154,10 @@ fleetest のテストプロジェクト project1 で、SUT Store の「商品詳
 シナリオのファイル名を報告したら終わりにして。
 ```
 
-`setUpDevice` は、テストの前にデバイスごとに1回だけ行う準備を書く場所(関数)です。
-
-Android の場合は「iOS で」を「Android で」に読み替えてください。
-
-AIアシスタントはデバイス上でアプリを起動し、画面を操作しながら要素を読み取って、
-その流れをシナリオに落とします。
+- MCPの許可ダイアログが表示された場合は許可してください。
+- `setUpDevice` は、テストの前にデバイスごとに1回だけ行う準備を書く場所(関数)です。
+- Android の場合は「iOS で」を「Android で」に読み替えてください。
+- AIアシスタントはデバイス上でアプリを起動し、画面を操作しながら要素を読み取って、その流れをシナリオに落とします。
 
 <details>
 <summary><b>手動で実行する場合(クリックで詳細表示)</b></summary>
@@ -184,6 +180,8 @@ AIアシスタントはデバイス上でアプリを起動し、画面を操作
 ```text
 fleetest のテストプロジェクト project1 のシナリオを ios-run プロファイルで実行して。
 ```
+
+- MCPの許可ダイアログが表示された場合は許可してください。
 
 ※Android で作ったシナリオなら「android-run プロファイルで実行して」と指示します。
 

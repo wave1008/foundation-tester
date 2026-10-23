@@ -43,7 +43,7 @@ following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
 
 6. Click **fleetest mobile** in the status bar at the lower-left corner of VSCode. The device monitor opens.
 
-   <img src="images/quick_start/en/device_monitor.png" width="640" alt="The device monitor just opened">
+   <img src="images/quick_start/en/device_monitor.png" width="1200" alt="The device monitor just opened">
 
 7. Give your AI assistant this instruction and confirm that no errors are reported
 
@@ -139,11 +139,9 @@ run profiles `ios-run` and `android-run`. `--count 2` makes the run profile hold
 </details>
 <br>
 
-When it succeeds, the AI assistant reports the name of the run profile (such as `ios-run`), and that run profile is listed on the "Profiles" tab of the VSCode device monitor.
+Open the "Profiles" tab of the VSCode device monitor and check that the app profile and the run profile have been created.
 
 <img src="images/quick_start/en/profiles_tab.png" width="640" alt="The Profiles tab of the device monitor listing the run profile ios-run">
-
-See [Profiles](./reference/project/profiles.md) for the details.
 
 ## 6. Create the scenarios
 
@@ -157,12 +155,10 @@ It checks the happy path (the normal flow) of opening a product from the home sc
 Stop once you've told me the file name of the new scenario.
 ```
 
-`setUpDevice` is the place (a function) where you put the preparation that is done once per device before the tests.
-
-For Android, read "on iOS" as "on Android".
-
-The AI assistant launches the app on a device, reads the elements of the screens while
-operating them, and turns that flow into a scenario.
+- If an MCP permission dialog appears, allow it.
+- `setUpDevice` is the place (a function) where you put the preparation that is done once per device before the tests.
+- For Android, read "on iOS" as "on Android".
+- The AI assistant launches the app on a device, reads the elements of the screens while operating them, and turns that flow into a scenario.
 
 <details>
 <summary><b>If you do it manually (click to show details)</b></summary>
@@ -185,6 +181,8 @@ Let's run the scenarios you created.
 ```text
 Run the scenarios of the fleetest test project project1 with the ios-run profile.
 ```
+
+- If an MCP permission dialog appears, allow it.
 
 For scenarios created on Android, ask "with the android-run profile" instead.
 
