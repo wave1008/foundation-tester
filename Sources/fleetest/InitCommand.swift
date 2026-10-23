@@ -78,6 +78,12 @@ struct InitCommand: AsyncParsableCommand {
                 project = try ProjectScaffold.createAndRegister(name: projectName, repoRoot: cwd)
             }
             let scaffoldedProjectName: String? = noProject ? nil : projectName
+            // 依存の版を fleetest がテストした組に揃える(ResolvedPinSync)。失敗しても init は続行
+            do {
+                try ResolvedPinSync.sync(packageRoot: cwd)
+            } catch {
+                ConsoleOut.err("⚠️ Failed to copy fleetest's Package.resolved: \(error.localizedDescription)")
+            }
             // 受け手が自分のプロジェクトをエージェントで開いて fleetest-setup で残りを駆動できるように
             try ProjectScaffold.writeRecipientSkill(
                 packageRoot: cwd, projectName: scaffoldedProjectName)

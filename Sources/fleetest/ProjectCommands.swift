@@ -149,6 +149,10 @@ struct ProjectCommand: AsyncParsableCommand {
         func run() async throws {
             let root = try fleetestRepoRoot()
             try syncManifest(repoRoot: root, verbose: true)
+            // クローンが依存の版を上げたら受け手にも写す(update.sh が毎回 project sync を呼ぶ)
+            if try ResolvedPinSync.sync(packageRoot: root) {
+                ConsoleOut.out("   Package.resolved: matched the dependency versions to fleetest's")
+            }
             // 既定ワークスペースの規約フォルダを既存プロジェクトへも補完する
             // (scaffold 導入以前に作られた受け手には create が走らない。update.sh が
             // 毎回 project sync を呼ぶのでここが既存受け手への配達口)

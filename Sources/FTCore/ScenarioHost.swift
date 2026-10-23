@@ -224,6 +224,10 @@ public enum ScenarioHost {
         }
 
         willBuild?()
+        // 固定に無い依存(受け手の追加依存)があると失敗する。そのときは素の swift build が解決し直すので止めない
+        if ResolvedPinSync.pinnedResolveNeeded(packageRoot: root) {
+            _ = try? Shell.run(["swift", "package", "resolve", "--only-use-versions-from-resolved-file"], cwd: root)
+        }
         let result = try Shell.run(["swift", "build", "--product", project.productName], cwd: root)
         guard result.status == 0 else {
             throw ScenarioHostError.buildFailed(result.tail)

@@ -1756,6 +1756,20 @@ OCR の段も FM のテキストの可視性検証も切った run でも起こ�
   抱えたので外し、run 完了時の1方式にした(ソフトウェアしか使えなかった時の run 完了時は 116 本で約 80 秒の後処理)
 - **ハードウェアの故障**(マシン全体・再起動まで戻らない)は今日3回。単独要因の実験では再現しない → maintainer-notes §86
 
+### 3.38 受け手の最初のシナリオのビルド(2026-10-23・**計測。クローンの Package.resolved を写して固定した版で解決するを採用**)
+
+条件: M2 Ultra・`fleetest init` 直後の作業フォルダ・SwiftPM の共有キャッシュは温まっている(取得はネットに出ない)。
+クイックスタート手順6・Android でも、最初の `ft_list_scenarios` が 103〜110 秒 = テストを作るセッションで最大のツール時間だった。
+
+- **内訳**(103 秒): 版の解決と取り出し 約 52 秒 + コンパイル 約 50 秒。受け手の作業フォルダは Package.resolved を持たず、
+  **依存 25 件の版を毎回計算し直していた**(しかも fleetest がテストした組と違う版になる: swift-syntax 603.0.2 → 604.0.0)
+- **コンパイルの約 50 秒は削らない**: 64 ターゲットの大半は gRPC・NIO・BoringSSL。シナリオの中の Android ドライバが Emulator の
+  ドラッグ・長押しに gRPC を使う(`EmulatorControl`)ので、シナリオの製品から外せない。swift-syntax はコンパイルされない(既製品が使われる)
+- **解決**: 素の `swift package resolve` 42.3s / クローンの Package.resolved を置いて素の resolve 36.2s(SPM は固定があっても版を計算し直す)/
+  **置いて `--only-use-versions-from-resolved-file` 15.1s**。その後のビルド 54.3s → 合計 **約 69〜72 秒**(`fleetest run --dry-run` 経由で 72.4s)
+- 採用の形: `ResolvedPinSync` が `fleetest init` と `project sync`(update.sh が毎回呼ぶ)でクローンの固定を写し(受け手だけの依存の固定は残す)、
+  `ScenarioHost.build` は**まだ一度も解決していない作業フォルダでだけ**固定した版で解決してからビルドする(失敗したら素の swift build に任せる)
+
 ## 4. 計測基盤の使い方(チューニングの必須手順)
 
 **変更前にベースライン、変更後に同条件で再計測、summary.md を比較する。**
