@@ -77,4 +77,18 @@ final class DevicesDownSweepFanoutTests: XCTestCase {
         XCTAssertEqual(DevicesCommand.Down.simulatorSweepLine(.stopped), "✅ All simulators shut down")
         XCTAssertFalse(DevicesCommand.Down.simulatorSweepLine(.stillBooted).contains("✅"))
     }
+
+    /// Emulator の結果行: 残った・読めない・adb が無いを ✅ と言わず、黙りもしない
+    func testEmulatorSweepLineNamesWhatWasNotConfirmed() {
+        struct ReadError: Error {}
+        typealias Down = DevicesCommand.Down
+        XCTAssertEqual(Down.emulatorSweepLine(Down.emulatorObservation(.success([]))), "✅ All emulators shut down")
+        XCTAssertFalse(Down.emulatorSweepLine(Down.emulatorObservation(.success(["emulator-5554"]))).contains("✅"))
+        let unreadable = Down.emulatorSweepLine(Down.emulatorObservation(.failure(ReadError())))
+        XCTAssertFalse(unreadable.contains("✅"), unreadable)
+        XCTAssertTrue(unreadable.contains("Could not confirm"), unreadable)
+        let missing = Down.emulatorSweepLine(nil)
+        XCTAssertFalse(missing.contains("✅"), missing)
+        XCTAssertTrue(missing.contains("not checked"), missing)
+    }
 }

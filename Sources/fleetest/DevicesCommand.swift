@@ -107,6 +107,30 @@ struct DevicesCommand: AsyncParsableCommand {
             }
         }
 
+        static func emulatorObservation(_ read: Result<[String], Error>) -> SimulatorShutdownObservation {
+            switch read {
+            case .success(let serials): return serials.isEmpty ? .stopped : .stillBooted
+            case .failure(let error): return .unreadable(error.localizedDescription)
+            }
+        }
+
+        /// Emulator の結果行。nil = adb が見つからない(確かめていないことを言う。✅ も ⚠️ も出さない
+        /// = Android を入れていないマシンで毎回警告しない)。**黙って飛ばさない** —— 何も出さないと
+        /// 「Emulator は無かった」と読まれる(リモートの数え漏れの実害)
+        static func emulatorSweepLine(_ observation: SimulatorShutdownObservation?) -> String {
+            switch observation {
+            case nil:
+                return "– adb not found: emulators were not checked"
+            case .stopped:
+                return "✅ All emulators shut down"
+            case .stillBooted:
+                return "⚠️ Some emulators will not stop (check adb devices)"
+            case .unreadable(let reason):
+                return "⚠️ Could not confirm that the emulators shut down — the emulator list could not be"
+                    + " read (\(reason)). Check adb devices"
+            }
+        }
+
         func run() async throws {
             if let profile {
                 try await shutdownProfile(profile)
@@ -155,18 +179,27 @@ struct DevicesCommand: AsyncParsableCommand {
             ConsoleOut.out(Self.simulatorSweepLine(observation))
             // gRPC SHUTDOWN 優先(adb 経路死亡でも届く)・不可なら emu kill。
             // それでも offline には届かないため、残った qemu を最後に直接落とす
-            if let adb = try? AndroidDriver.findADB(),
-               let serials = try? AndroidDeviceCatalog.allEmulatorSerials() {
-                for serial in serials {
-                    if await !EmulatorControl.shutdown(serial: serial) {
-                        _ = try? Shell.run([adb, "-s", serial, "emu", "kill"])
+            if let adb = try? AndroidDriver.findADB() {
+                var read = Result { try AndroidDeviceCatalog.allEmulatorSerials() }
+                if case .success(let serials) = read, !serials.isEmpty {
+                    for serial in serials {
+                        if await !EmulatorControl.shutdown(serial: serial) {
+                            _ = try? Shell.run([adb, "-s", serial, "emu", "kill"])
+                        }
+                        ConsoleOut.out("→ Emulator shutdown requested (\(serial))")
                     }
-                    ConsoleOut.out("✅ Emulator shut down (\(serial))")
-                }
-                if !serials.isEmpty {
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
                     _ = try? Shell.run(["pkill", "-9", "-f", "sdk/emulator/qemu"])
+                    // 落とした直後の adb は offline の行を残しうるので、Simulator と同じく3回まで読み直す
+                    for attempt in 1...3 {
+                        read = Result { try AndroidDeviceCatalog.allEmulatorSerials() }
+                        if case .success(let left) = read, left.isEmpty { break }
+                        if attempt < 3 { try? await Task.sleep(nanoseconds: 2_000_000_000) }
+                    }
                 }
+                ConsoleOut.out(Self.emulatorSweepLine(Self.emulatorObservation(read)))
+            } else {
+                ConsoleOut.out(Self.emulatorSweepLine(nil))
             }
             // 実機のブリッジも掃討対象(ユーザー決定)。emu kill/pkill は撃たない ——
             // connectedSerials()(adb に見えている全台)から allEmulatorSerials() を引いた残りが
