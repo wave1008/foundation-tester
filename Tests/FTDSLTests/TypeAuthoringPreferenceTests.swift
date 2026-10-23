@@ -35,6 +35,7 @@ final class TypeAuthoringPreferenceTests: XCTestCase {
 
     func testAgentFacingExamplesUseTheSelectorForm() throws {
         let pages = [".claude/skills/fleetest-scenario/SKILL.md",
+                     ".claude/skills/fleetest-scenario/dsl-reference.md",
                      "docs/user-docs/reference/tools/agent_guide.md",
                      "docs/user-docs/reference/tools/agent_guide_ja.md"]
         for page in pages {
