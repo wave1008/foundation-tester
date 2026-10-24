@@ -44,9 +44,12 @@
 #                                   # プロファイルは1本も走らない(部分実行にすらならない)。
 #                                   # 揃えるのは**ランナーがこの clone の祖先のときだけ**
 #                                   # (自分が古い/分岐しているときは触らない。理由は下の align_runners)
-#   Scripts/e2e.sh --no-negative   # 最後の陽性対照スイート(Scripts/e2e-negative.sh)を回さない。
-#                                   # **既定では回す**(--ios-xcuitest / --performance のときは回さない =
-#                                   # 対照はモードを表で決めている・時間の比較を乱す)。数分かかる
+#   Scripts/e2e.sh --negative      # 最後に陽性対照スイート(Scripts/e2e-negative.sh)も回す。
+#                                   # **既定では回さない**(ユーザーの指示があるときだけ。約 10 分)。
+#                                   # 見ている部分が前回 ✅ から変わった検証(陽性対照・heal-verify・fm-verify)は
+#                                   # 終わりに推奨として出る(Scripts/verification_watch.py)。
+#                                   # --ios-xcuitest / --performance では付けても回さない(対照はモードを表で
+#                                   # 決めている・時間の比較を乱す)
 #   Scripts/e2e.sh --record        # 各プロファイルの一時コピー(<名前>-record-tmp.json。実行後に削除)に
 #                                   # record:true を付けて実行し、録画パイプラインの整合を
 #                                   # Scripts/check-recordings.py で検証する(元のプロファイルは書き換えない)
@@ -80,8 +83,9 @@ SUTS=""
 # iOS の実行プロファイル。**既定は in-app**(利用者の既定モード inapp に合わせる)。
 # --ios-xcuitest で XCUITest 側へ切り替える(E2E-Android には iOS プロファイルが無い)
 IOS_PROFILE="ios-inapp"
-# 陽性対照(期待赤)スイート。緑の run では通らない検知・門・クラッシュの記録を最後に確かめる
-NEGATIVE=1
+# 陽性対照(期待赤)スイート。緑の run では通らない検知・門・クラッシュの記録を最後に確かめる。
+# 既定では回さない(--negative で明示。変わったときの推奨は末尾の verification_watch.py stale)
+NEGATIVE=0
 # 画像分類器の学習済みキャッシュを消してから回す(学習の経路は見本を変えたときしか通らない)。
 # macOS・Xcode を上げたら付けて回す —— Create ML / Core ML が書く場所が変わると、サンドボックスの中で学習が黙って失敗する
 RETRAIN_CLASSIFIERS=0
@@ -98,7 +102,7 @@ for arg in "$@"; do
     --align) ALIGN=1 ;;
     --local) LOCAL_ONLY=1 ;;
     --performance) PERFORMANCE=1 ;;
-    --no-negative) NEGATIVE=0 ;;
+    --negative) NEGATIVE=1 ;;
     --retrain-classifiers) RETRAIN_CLASSIFIERS=1 ;;
     --cmp|--ios-native|--android-native|--flutter|--rn) SUTS="$SUTS ${arg#--}" ;;
     *) echo "不明な引数: $arg" >&2; exit 2 ;;
@@ -480,6 +484,18 @@ else
 fi
 if [ "$NEG_FAILED" = 1 ]; then
   echo "❌ 陽性対照に期待と違うものがあります(上の「陽性対照の判定」)"
+fi
+# 緑の run では通らない経路の検証は既定で回さない。見ている部分が前回 ✅ から変わったものだけ推奨する(合否に入れない)
+STALE_VERIFICATIONS="$(python3 "$ROOT/Scripts/verification_watch.py" stale 2>/dev/null || true)"
+if [ -n "$STALE_VERIFICATIONS" ]; then
+  echo "💡 見ている部分が前回 ✅ のときから変わった検証があります(回すのはユーザーの指示があるときだけ):"
+  printf '%s\n' "$STALE_VERIFICATIONS" | while IFS=$'\t' read -r unit why; do
+    [ "$why" = never ] && why="未記録" || why="変更あり"
+    case "$unit" in
+      negative:*) echo "   - 陽性対照 ${unit#negative:}($why)→ Scripts/e2e-negative.sh" ;;
+      *) echo "   - $unit($why)→ Scripts/$unit.sh" ;;
+    esac
+  done
 fi
 
 # **通した状態を覚えるのは全部成功したときだけ** —— 失敗したまま印を更新すると、

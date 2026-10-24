@@ -3,7 +3,9 @@
 # 陽性対照(期待赤)スイート。緑の run では1度も通らない経路(検知・門・クラッシュの記録)を、
 # _disabled/ の陽性対照で強制的に通し、**落ちた場所と理由まで**期待値と突き合わせる。
 # 期待値は Scripts/negative-controls.json、判定は Scripts/negative_controls_judge.py。
-# 最後に指紋照合(heal-verify.sh)と FM 経路(fm-verify.sh)の検証へ委ねる。
+# **既定では回さない**(e2e.sh も呼ばない)。全シナリオが ✅ だった対照は Scripts/verification_watch.py へ記録し、
+# その対照が見ているソース(表の watches)が変わったら e2e.sh の終わりで回すことを推奨する。回すのは指示があるときだけ。
+# 指紋照合(heal-verify.sh)と FM 経路(fm-verify.sh)の検証は別に回す(同じく推奨だけ)。
 #
 # 判定は3値: ✅ 期待どおり / ❌ 緑になった・別の場所や理由で落ちた / ⚠️ 未検証(FM が使えない・既知の見逃し)。
 # **⚠️ は合否を変えない**が、何を確かめていないかを必ず出す。exit は ❌ が1つでもあれば 1。
@@ -160,26 +162,21 @@ echo "═══ 陽性対照の判定 ═══"
 python3 "$ROOT/Scripts/negative_controls_judge.py" "$TABLE" "$PLAN" "$SUMMARY"
 STATUS=$?
 
-# 委ねる検証: 指紋照合(デバイスだけで決まる)/ FM 経路(FM が判定を返した回だけ意味がある)
-covers() {  # $1 = project, $2 = os
-  [ "$2" = ios ] && [ "$RUN_IOS" != 1 ] && return 1
-  [ "${#PROJECTS[@]}" = 0 ] && return 0
-  printf '%s\n' "${PROJECTS[@]}" | grep -qx "$1"
-}
-UNVERIFIED=()
-if covers E2E-CMP ios; then
-  echo ""
-  "$ROOT/Scripts/heal-verify.sh" || STATUS=1
-  FM_VERIFIED="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("fmVerified"))' "$SUMMARY")"
-  if [ "$FM_VERIFIED" = True ]; then
-    echo ""
-    "$ROOT/Scripts/fm-verify.sh" || STATUS=1
-  else
-    UNVERIFIED+=("Scripts/fm-verify.sh(遮蔽の反転で FM が判定を返さなかった = この機械の FM が使えない)")
-  fi
+# 全シナリオが ✅ の対照だけを記録する(⚠️ 未検証・❌ を含む対照は記録しない = 次も推奨に残る)
+PASSED_UNITS="$(python3 - "$TABLE" "$SUMMARY" <<'PY'
+import json, sys
+controls = json.load(open(sys.argv[1]))["controls"]
+for i in json.load(open(sys.argv[2])).get("passed", []):
+    c = controls[i]
+    print(f"negative:{c['project']}/{c['profile']}/{c['file']}")
+PY
+)"
+if [ -n "$PASSED_UNITS" ]; then
+  # shellcheck disable=SC2086
+  python3 "$ROOT/Scripts/verification_watch.py" record $PASSED_UNITS \
+    || echo "⚠️ 陽性対照の ✅ を記録できなかった(次の e2e.sh でも推奨が出る)" >&2
 fi
 rm -f "$PLAN" "$SUMMARY"
 
-for u in "${UNVERIFIED[@]+"${UNVERIFIED[@]}"}"; do echo "⚠️ 未検証: $u"; done
 [ "$STATUS" = 0 ] && echo "✅ 陽性対照は期待どおりに落ちています(⚠️ は未検証)" || echo "❌ 陽性対照に期待と違うものがあります"
 exit "$STATUS"

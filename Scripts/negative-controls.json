@@ -5,11 +5,18 @@
     "**写真の権限アラートは OS が持ち、ボタンで答えるまで消えない**(2026-10-02 実測: simctl terminate・privacy reset・privacy revoke・clearAppData・launchApp のどれでも残り、次の対照の最初のタップに持ち越された = 96未登録 が狙いの形で落ちない)。resetPhotos を持つ対照の前後で e2e-negative.sh が photosAlertCleanup の補助シナリオで「許可しない」を押して閉じ、simctl privacy reset で権限を未決定へ戻す。順序も アラート無しの前提 → アラートを出す → アプリを落とす に保つ。",
     "_disabled/*.swift は全部ここに載せる(controls か delegated)。漏れは vscode-fleetest/test/negativeControls.test.mjs が落とす。"
   ],
+  "watches": {
+    "_comment": "変わったら検証を回し直すべきソース(Scripts/verification_watch.py が digest を取る)。common は陽性対照の全件に効く。各 control の watches はその対照の中心の実装だけ —— どの対照にも効く基盤(FTRuntime・ScenarioRunnerMain・RunOrchestrator・RunRecord・RunRecorder・StepExecutor.swift)は入れない(ほぼ毎回変わり、推奨が常に出る。そこの退行は本体の E2E が拾う)。どの検証も既定では回さず、変わったら e2e.sh の終わりで推奨するだけ",
+    "common": ["Scripts/e2e-negative.sh", "Scripts/negative_controls_judge.py", "Sources/FTCore/StepFailureKind.swift", "Sources/FTCore/StepNote.swift", "Sources/FTCore/ScenarioEvent.swift"],
+    "heal-verify": ["Scripts/heal-verify.sh", "TestProjects/E2E-CMP/scenarios/_disabled/94_指紋照合.swift", "TestProjects/E2E-CMP/scenarios/_disabled/95_指紋照合の前提切替.swift", "TestProjects/E2E-CMP/profiles/runs/ios-heal.json", "Sources/FTCore/LocatorFingerprint.swift", "Sources/FTCore/StepExecutor+Actions.swift", "Sources/FTCore/StepExecutor+StaleRef.swift", "Sources/FTCore/SelectorNaming.swift", "Sources/FTCore/StepNote.swift", "Sources/FTDSL/LocatorFingerprintCache.swift", "Sources/FTCore/HealSourceWriteBack.swift", "Sources/FTCore/HealWriteBack.swift", "Sources/FTCore/HealFixApplier.swift", "Sources/FTCore/ScenarioSourceEditor.swift"],
+    "fm-verify": ["Scripts/fm-verify.sh", "TestProjects/E2E-CMP/scenarios/_disabled/92_screenLooksLike.swift", "TestProjects/E2E-CMP/profiles/runs/ios-fm.json", "Sources/FTFoundationModels/**/*.swift", "Sources/FTCore/StepExecutor+AssertState.swift", "Sources/FTCore/FMServe.swift", "Sources/FTCore/FMHealth.swift", "Sources/FTCore/FMCallSlots.swift", "Sources/FTCore/FMCallAdmission.swift", "Sources/FTCore/FMVisionSupport.swift"]
+  },
   "controls": [
     {
       "project": "E2E-iOS", "file": "95_可視性の幾何.swift", "profile": "ios-fpc", "os": "ios",
       "class": "可視性の幾何",
       "guards": "requireVisible の幾何の段(木に居るが中心が画面外なら不可視)。FM は使わない",
+      "watches": ["Sources/FTCore/StepExecutor+Assert.swift", "Sources/FTCore/TapTargetGeometry.swift", "Sources/FTDSL/CommandsVerify.swift", "InAppBridge/Sources/InAppSnapshot.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "command": "exist", "failureKind": "assertion",
                    "detailContains": ["text visibility check failed (offscreen)"] },
@@ -21,6 +28,7 @@
       "project": "E2E-iOS", "file": "97_入力欄でないrefへのtype.swift", "profile": "ios-inapp", "os": "ios",
       "class": "入力欄でないrefへのtype",
       "guards": "欄に焦点を残したまま入力欄でない要素へ type しても、前の欄へ打たずに断る(inapp モードの撃ち直し込み)",
+      "watches": ["Sources/FTCore/StepExecutor+Actions.swift", "Sources/FTCore/StepExecutor+TypeClear.swift", "Sources/FTCore/TapTargetGeometry.swift", "Sources/FTCore/NonTextInputTarget.swift", "Sources/FTCore/TypeReadback.swift", "Sources/FTBridgeClient/HybridFallbackDriver.swift", "Sources/FTBridgeClient/HybridDriverComposition.swift", "InAppBridge/Sources/InAppBridge.swift", "InAppBridge/Sources/InAppSnapshot.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "command": "type", "detailContains": ["not a text field"] }
       }
@@ -29,6 +37,7 @@
       "project": "E2E-iOS", "file": "96_遮蔽の反転.swift", "profile": "ios-fpc", "os": "ios",
       "class": "遮蔽の反転",
       "guards": "テキストの可視性検証が FM に訊いて反転する経路(2段目)",
+      "watches": ["Sources/FTCore/StepExecutor+Assert.swift", "Sources/FTFoundationModels/OcclusionVerifier.swift", "Sources/FTFoundationModels/ReplayAssist.swift", "Sources/FTFoundationModels/FMServeServer.swift", "Sources/FTCore/OcclusionEligibility.swift", "Sources/FTCore/RegionInk.swift", "Sources/FTCore/OcclusionSuspicion.swift", "Sources/FTCore/TranscriptMatch.swift", "Sources/FTCore/OCROnlyVisibility.swift", "Sources/FTCore/RegionText.swift", "Sources/FTCore/OcclusionCrop.swift", "Sources/FTCore/VisibilityVerdictMemo.swift", "Sources/FTCore/FMCallSlots.swift", "Sources/FTCore/FMCallAdmission.swift", "Sources/FTCore/FMVisionSupport.swift", "Sources/FTCore/StaleFrameDetector.swift", "Sources/FTCore/BlankFrameDetector.swift", "Sources/FTCore/FMServe.swift", "Sources/FTCore/FMHealth.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "command": "exist", "failureKind": "assertion",
                    "detailContains": ["text visibility check failed (on screen"],
@@ -43,6 +52,7 @@
       "class": "システムアラートの陽性対照",
       "resetPhotos": "com.ftester.e2e.ios",
       "guards": "OS の権限アラートが覆っている間は背面のアプリへの操作を撃たない(登録はあるがボタンが一致しない形)",
+      "watches": ["Sources/FTCore/SystemUIGate.swift", "Sources/FTCore/SystemAlertDismissal.swift", "Sources/FTCore/StepExecutor+Actions.swift", "Runner/FleetestRunnerUITests/InterruptionGuard.swift", "Sources/FTCore/StepExecutor+Assert.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "command": "tap", "failureKind": "system-ui-covered",
                    "detailContains": ["system UI is covering the app", "Buttons on this alert:"] }
@@ -53,6 +63,7 @@
       "class": "未登録のシステムアラート",
       "resetPhotos": "com.ftester.e2e.ios",
       "guards": "iosAlertHandler の登録が無いままアラートが前面にあるとき、注記を残し失敗文言に題名を添える",
+      "watches": ["Sources/FTCore/SystemUIGate.swift", "Sources/FTCore/SystemAlertDismissal.swift", "Sources/FTCore/StepExecutor+Actions.swift", "Runner/FleetestRunnerUITests/InterruptionGuard.swift", "Sources/FTCore/StepExecutor+JudgmentCapture.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "command": "exist", "failureKind": "not-found",
                    "notesContains": ["system-alert-present"],
@@ -63,6 +74,7 @@
       "project": "E2E-iOS", "file": "91_クラッシュ検知.swift", "profile": "ios-inapp", "os": "ios",
       "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
       "guards": "アプリのクラッシュを .ips 付きで記録する(inapp モード)",
+      "watches": ["Sources/FTBridgeClient/InAppDriver.swift", "Sources/FTBridgeClient/InAppLauncher.swift", "Sources/FTBridgeClient/SimulatorCrashReport.swift", "Sources/FTBridgeClient/SimulatorAppProcess.swift", "Sources/FTCore/AppCrashRecord.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "command": "tap", "failureKind": "driver-unreachable",
                    "appCrash": "crashReport" }
@@ -72,6 +84,7 @@
       "project": "E2E-iOS", "file": "91_クラッシュ検知.swift", "profile": "ios-xcuitest", "os": "ios",
       "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
       "guards": "アプリのクラッシュを .ips 付きで記録する(xcuitest モード = 切断の注記を持たないので失敗時のプロセス証拠が拾う。落ちたことを返すステップは時機で変わるので command は見ない。既定の e2e.sh の陽性対照の段で XCUITest のプロファイルを1本回す分だけ所要が延びる)",
+      "watches": ["Sources/FTBridgeClient/SimulatorAppProcess.swift", "Sources/FTBridgeClient/SimulatorCrashReport.swift", "Sources/FTCore/AppCrashRecord.swift", "Sources/FTCore/SandboxBroker.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "appCrash": "crashReport" }
       }
@@ -80,6 +93,7 @@
       "project": "E2E-CMP", "file": "91_クラッシュ検知.swift", "profile": "ios-inapp", "os": "ios",
       "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
       "guards": "アプリのクラッシュを .ips 付きで記録する(inapp モード)",
+      "watches": ["Sources/FTBridgeClient/InAppDriver.swift", "Sources/FTBridgeClient/InAppLauncher.swift", "Sources/FTBridgeClient/SimulatorCrashReport.swift", "Sources/FTBridgeClient/SimulatorAppProcess.swift", "Sources/FTCore/AppCrashRecord.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "command": "tap", "failureKind": "driver-unreachable",
                    "appCrash": "crashReport" }
@@ -89,6 +103,7 @@
       "project": "E2E-Flutter", "file": "91_クラッシュ検知.swift", "profile": "ios-inapp", "os": "ios",
       "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
       "guards": "アプリのクラッシュを .ips 付きで記録する(inapp モード・SIGSEGV)",
+      "watches": ["Sources/FTBridgeClient/InAppDriver.swift", "Sources/FTBridgeClient/InAppLauncher.swift", "Sources/FTBridgeClient/SimulatorCrashReport.swift", "Sources/FTBridgeClient/SimulatorAppProcess.swift", "Sources/FTCore/AppCrashRecord.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "command": "tap", "failureKind": "driver-unreachable",
                    "appCrash": "crashReport" }
@@ -98,6 +113,7 @@
       "project": "E2E-RN", "file": "91_クラッシュ検知.swift", "profile": "ios-inapp", "os": "ios",
       "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
       "guards": "アプリのクラッシュを .ips 付きで記録する(inapp モード)",
+      "watches": ["Sources/FTBridgeClient/InAppDriver.swift", "Sources/FTBridgeClient/InAppLauncher.swift", "Sources/FTBridgeClient/SimulatorCrashReport.swift", "Sources/FTBridgeClient/SimulatorAppProcess.swift", "Sources/FTCore/AppCrashRecord.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "command": "tap", "failureKind": "driver-unreachable",
                    "appCrash": "crashReport" }
@@ -107,6 +123,7 @@
       "project": "E2E-CMP", "file": "91_クラッシュ検知.swift", "profile": "android", "os": "android",
       "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
       "guards": "アプリのクラッシュを crash バッファの FATAL EXCEPTION から記録する",
+      "watches": ["Sources/FTAndroid/AndroidAppProcessEvidence.swift", "Sources/FTAndroid/AndroidLogcat.swift", "Sources/FTCore/AppCrashRecord.swift", "Sources/FTCore/AdbPolicy.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "appCrash": "fatalException" }
       }
@@ -115,6 +132,7 @@
       "project": "E2E-Android", "file": "91_クラッシュ検知.swift", "profile": "android", "os": "android",
       "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
       "guards": "アプリのクラッシュを crash バッファの FATAL EXCEPTION から記録する",
+      "watches": ["Sources/FTAndroid/AndroidAppProcessEvidence.swift", "Sources/FTAndroid/AndroidLogcat.swift", "Sources/FTCore/AppCrashRecord.swift", "Sources/FTCore/AdbPolicy.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "appCrash": "fatalException" }
       }
@@ -123,6 +141,7 @@
       "project": "E2E-RN", "file": "91_クラッシュ検知.swift", "profile": "android", "os": "android",
       "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
       "guards": "アプリのクラッシュを crash バッファの FATAL EXCEPTION から記録する",
+      "watches": ["Sources/FTAndroid/AndroidAppProcessEvidence.swift", "Sources/FTAndroid/AndroidLogcat.swift", "Sources/FTCore/AppCrashRecord.swift", "Sources/FTCore/AdbPolicy.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "appCrash": "fatalException" }
       }
@@ -131,6 +150,7 @@
       "project": "E2E-Flutter", "file": "91_クラッシュ検知.swift", "profile": "android", "os": "android",
       "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
       "guards": "ネイティブのクラッシュ(dart:ffi の SIGSEGV)を crash バッファの Fatal signal から記録する",
+      "watches": ["Sources/FTAndroid/AndroidAppProcessEvidence.swift", "Sources/FTAndroid/AndroidLogcat.swift", "Sources/FTCore/AppCrashRecord.swift", "Sources/FTCore/AdbPolicy.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "appCrash": "nativeSignal" }
       }
@@ -139,6 +159,7 @@
       "project": "E2E-iOS", "file": "90_シナリオ全体の打ち切り.swift", "profile": "ios-inapp", "os": "ios",
       "class": "シナリオ全体の打ち切り",
       "guards": "@Test(scenarioTimeout:) がプロファイルより優先し、進み続けるシナリオも全体の上限で打ち切る(値の出所と最後の出力からの秒を行に残す)",
+      "watches": ["Sources/FTCore/ScenarioHost.swift", "Sources/FTCore/ScenarioTimeoutResolution.swift", "Sources/FTCore/ScenarioIdleWatch.swift", "Sources/FTDSLMacros/TestClassMacro.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "timedOut": true,
                    "errorLogsContains": ["exceeded 15s (@Test scenarioTimeout) and was killed", "last output from the scenario"] }
@@ -148,6 +169,7 @@
       "project": "E2E-iOS", "file": "90_出力の途切れの打ち切り.swift", "profile": "ios-inapp", "os": "ios",
       "class": "出力の途切れの打ち切り", "slow": true,
       "guards": "出力が 2 × commandTimeout を超えて途切れた子を打ち切り、長さを申告した待ち(ifCanSelect の waitSeconds)は打ち切らない。約 8 分かかるので e2e-negative.sh --with-slow のときだけ",
+      "watches": ["Sources/FTCore/ScenarioHost.swift", "Sources/FTCore/ScenarioIdleWatch.swift", "Sources/FTCore/IdleAllowance.swift", "Sources/FTDSL/CommandsAppControl.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "timedOut": true, "errorLogsContains": ["produced no output for", "and was killed"] },
         "S0020": { "expect": "green" }

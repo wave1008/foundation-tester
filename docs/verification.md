@@ -1618,8 +1618,22 @@ E2E も、その経路が要る失敗(古い a11y を読む誤った赤)が出�
 
 `_disabled/` の陽性対照(検知・門・クラッシュの記録を強制的に通すシナリオ)は、手で回す運用のあいだ
 **1度も回らずに腐っていた**(97 の期待文言は実装と食い違い、Flutter/RN のクラッシュは「in-app では
-要素が見えない」という7月の記録のまま XCUITest で回す指示になっていた)。いまは `Scripts/e2e.sh` が
-**既定で最後に回す**(`--no-negative` で外す。`--ios-xcuitest` / `--performance` では回さない)。
+要素が見えない」という7月の記録のまま XCUITest で回す指示になっていた)。10/02〜10/24 は `e2e.sh` が既定で
+最後に回したが、フル E2E が毎回約 10 分(本体 30 分の 3 割)延びた。
+
+**いまは既定で回さず、見ている部分が変わったときだけ推奨する**(ユーザー決定 2026-10-24。指紋照合
+`heal-verify.sh`・FM 経路 `fm-verify.sh` も同じ扱い)。**回すのはユーザーの指示があるときだけ**
+(`Scripts/e2e-negative.sh` を直接・または `Scripts/e2e.sh --negative`)。腐りの防ぎは推奨で担う:
+
+- 監視対象は `Scripts/negative-controls.json` の `watches`(`common` = 陽性対照の全件・各 control の `watches` =
+  その対照の中心の実装・`heal-verify`・`fm-verify`)。**どの対照にも効く基盤**(`FTRuntime`・`ScenarioRunnerMain`・
+  `RunOrchestrator`・`RunRecord`・`RunRecorder`・`StepExecutor.swift`。2 週間に 14〜20 回変わる)**は入れない** ——
+  入れると推奨が常に出て無視される。そこの退行は本体の E2E が拾う
+- `Scripts/verification_watch.py` が監視対象の digest を取る。✅ だった単位(対照ごと・`heal-verify`・`fm-verify`)を
+  `.fleetest/verification-watch.json` に記録し(⚠️ 未検証・❌ を含む対照は記録しない)、**`e2e.sh` の終わりに
+  記録から変わった・未記録の単位を推奨として出す**(合否には入れない)
+- `watches` の pattern が改名・削除で当たらなくなると推奨が黙って止まりうるので、`negativeControls.test.mjs` が
+  全 pattern の実在を固定する
 
 - 期待値は `Scripts/negative-controls.json`。**落ちた場所(`command`)・経路(`failureKind`)・文言の断片・
   注記・`appCrash.evidence` まで**見る(赤なら何でも ✅ にしない)。期待値は**実測から書く** ——
@@ -1634,8 +1648,8 @@ E2E も、その経路が要る失敗(古い a11y を読む誤った赤)が出�
   消えたのは別の要因で、止めた後・動いている間のどちらのリセットでも消えないことを撮って確かめた
 - 表と `_disabled/` の同期・判定の各分岐は `vscode-fleetest/test/negativeControls.test.mjs` が固定する。
   `_disabled/` に陽性対照を足したら表に載せる(載らなければこのテストが落ちる)
-- 指紋照合は `heal-verify.sh`、FM の画像判定は `fm-verify.sh` へ委ねる。後者は**遮蔽の反転で FM が
-  判定を返した回だけ**回す(返さない機械では ⚠️ 未検証として出す)。**`heal-verify.sh` も腐っていた**:
+- 指紋照合は `heal-verify.sh`、FM の画像判定は `fm-verify.sh` が別に持つ(陽性対照のスイートからは呼ばない。
+  どちらも上と同じく推奨だけで、回すのは指示があるとき)。**`heal-verify.sh` も腐っていた**:
   台の既定をプロファイルの先頭から無条件に取っていたため、先頭の台を無効にした `ios-heal.json` では7段とも
   「matched no device」で1本も走らなかった(有効・この Mac・実機でない最初の台へ直した)
 
@@ -2921,6 +2935,9 @@ availability は available と嘘をつく。**`SystemLanguageModel(guardrails:
 Scripts/fm-verify.sh                    # 既定 TestProjects/E2E-CMP・プロファイル ios-fm
 ```
 
+**既定では回さない**。見ているソース(`negative-controls.json` の `watches."fm-verify"`)が前回 ✅ から変わったら
+`e2e.sh` の終わりで推奨する。回すのはユーザーの指示があるとき(§陽性対照スイート)。
+
 - FM 専用シナリオは `TestProjects/E2E-CMP/scenarios/_disabled/` に置く(`92_screenLooksLike` =
   screenLooksLike)。**既定スイートに入れない**: 生きた FM の判定は非決定的でフレーク源になり、
   かつ FM が死んでいる間は skip されるので緑のまま気付けない。**自己修復(FM 版)の witness
@@ -3014,7 +3031,7 @@ Scripts/heal-verify.sh --profile android-heal
 - run の特定は実行前後の `results/runs/` の差で行う。`fm-verify.sh` と**同時に回さない**
   (どちらも `_disabled/` のシナリオを出し入れする)
 - 自己修復(`StepExecutor` の解決分岐・`LocatorFingerprint`・`LocatorFingerprintCache`・`heal` の配線)を
-  触ったら回す。実測(2026-09-15): iPhone 17 Pro Simulator で約 70 秒(シナリオのビルド込み)・Pixel 9 Emulator(`--profile android-heal`)で約 40 秒。どちらも全段が期待どおり
+  触ったら回すことを**推奨する**(`e2e.sh` の終わりに出る。回すのはユーザーの指示があるとき = §陽性対照スイート)。実測(2026-09-15): iPhone 17 Pro Simulator で約 70 秒(シナリオのビルド込み)・Pixel 9 Emulator(`--profile android-heal`)で約 40 秒。どちらも全段が期待どおり
 
 ## FM 呼び出しの許可枠(FMCallSlots)
 

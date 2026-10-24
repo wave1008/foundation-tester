@@ -10,6 +10,8 @@
 # そこで FM 専用シナリオ(_disabled/)を一時的に有効化し、FM を全部 ON にした
 # ios-fm プロファイルで回して、結果 JSON の fm.byKind に screenLooksLike が出ることを確かめる
 # (occlusion は疑いが立ったときだけなので警告に留める)。
+# **既定では回さない**(e2e.sh も e2e-negative.sh も呼ばない)。見ているソース(negative-controls.json の
+# watches."fm-verify")が前回 ✅ のときから変わったら e2e.sh の終わりで推奨する。回すのは指示があるときだけ。
 #
 # 使い方: Scripts/fm-verify.sh [--project <名前>] [--profile <名前>]
 set -uo pipefail
@@ -108,4 +110,9 @@ sys.exit(1 if problems else 0)
 PY
 STATUS=$?
 [ "$STATUS" = 0 ] && echo "✅ FM の実行時経路は生きています"
+# ✅ を記録する(Scripts/verification_watch.py。監視対象は既定の E2E-CMP / ios-fm を指すので、その組で通したときだけ)
+if [ "$STATUS" = 0 ] && [ "$PROJECT" = E2E-CMP ] && [ "$PROFILE" = ios-fm ]; then
+  python3 "$ROOT/Scripts/verification_watch.py" record fm-verify \
+    || echo "⚠️ FM の経路の検証の ✅ を記録できなかった(次の e2e.sh でも推奨が出る)" >&2
+fi
 exit "$STATUS"

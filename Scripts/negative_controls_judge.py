@@ -105,6 +105,7 @@ def main():
     summary_path = sys.argv[3] if len(sys.argv) > 3 else None
     counts = {"ok": 0, "fail": 0, "unverified": 0}
     fm_verified = None  # requiresFM の対照が ok になったら True(FM の経路を実際に通った)
+    passed = []  # 全シナリオが ok の対照の添字(verification_watch.py が ✅ として記録する。⚠️ を含む対照は記録しない)
     marks = {"ok": "✅", "fail": "❌", "unverified": "⚠️"}
 
     for line in open(sys.argv[2]):
@@ -114,18 +115,22 @@ def main():
         c = controls[int(idx)]
         results = load_results(run.strip())
         print(f"\n{c['project']} / {c['profile']} / {c['file']}")
+        all_ok = True
         for sid, spec in c["scenarios"].items():
             verdict, reasons = judge_scenario(spec, results.get(f"{c['class']}.{sid}"))
             counts[verdict] += 1
+            all_ok = all_ok and verdict == "ok"
             if spec.get("requiresFM"):
                 fm_verified = (verdict == "ok") if fm_verified is None else (fm_verified and verdict == "ok")
             print(f"  {marks[verdict]} {sid}({spec['expect']})")
             for r in reasons:
                 print(f"      {r}")
+        if all_ok:
+            passed.append(int(idx))
 
     print(f"\n陽性対照: ✅ {counts['ok']} / ❌ {counts['fail']} / ⚠️ 未検証 {counts['unverified']}")
     if summary_path:
-        json.dump({"counts": counts, "fmVerified": fm_verified}, open(summary_path, "w"))
+        json.dump({"counts": counts, "fmVerified": fm_verified, "passed": passed}, open(summary_path, "w"))
     sys.exit(1 if counts["fail"] else 0)
 
 

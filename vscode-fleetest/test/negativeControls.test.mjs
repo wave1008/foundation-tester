@@ -3,12 +3,15 @@
 //   (controls か delegated)。載らない陽性対照は自動で回らないまま腐る
 // ②判定 —— Scripts/negative_controls_judge.py の judge_scenario が「赤なら何でも ✅」になっていない
 //   (場所・理由・クラッシュの記録まで見る。⚠️ 未検証を ✅ に畳まない)
+// ③監視対象 —— watches が改名・削除に追随している(当たらない pattern は推奨を黙って止めうる)・
+//   Scripts/verification_watch.py が未記録/変化を推奨に出す
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { readFileSync, readdirSync, existsSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 
 const ROOT = resolve(import.meta.dirname, '../..')
 const table = JSON.parse(readFileSync(join(ROOT, 'Scripts/negative-controls.json'), 'utf8'))
@@ -48,6 +51,40 @@ test('表の対照は実在するファイル・クラス・メソッドを指�
   for (const d of table.delegated) {
     assert.ok(existsSync(join(ROOT, d.by)), `${d.by} が無い`)
   }
+})
+
+/** verification_watch.py を呼ぶ。ledger を渡すと本物の台帳(.fleetest/)の代わりにそこへ読み書きする */
+function watch(args, ledger) {
+  return execFileSync('python3', [join(ROOT, 'Scripts/verification_watch.py'), ...args], {
+    encoding: 'utf8',
+    env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', ...(ledger ? { FT_VERIFICATION_WATCH_LEDGER: ledger } : {}) },
+  })
+}
+
+test('監視対象: 全対照と heal-verify・fm-verify が watches を持ち、どの pattern も実在のファイルに当たる', () => {
+  for (const key of ['common', 'heal-verify', 'fm-verify']) {
+    assert.ok(Array.isArray(table.watches[key]) && table.watches[key].length > 0, `watches.${key} が無い`)
+  }
+  for (const c of table.controls) {
+    assert.ok(Array.isArray(c.watches) && c.watches.length > 0, `${c.project}/${c.profile}/${c.file} に watches が無い`)
+  }
+  const units = watch(['units']).trim().split('\n')
+  assert.equal(units.length, table.controls.length + 2)
+  for (const u of units) {
+    const missing = watch(['files', u]).split('\n').filter((l) => l.startsWith('MISSING'))
+    assert.deepEqual(missing, [], `${u} の監視対象に当たらない pattern がある(改名・削除に追随する)`)
+  }
+})
+
+test('監視対象: 未記録は never・記録すれば消え・digest が食い違えば changed', () => {
+  const ledger = join(mkdtempSync(join(tmpdir(), 'verification-watch-')), 'ledger.json')
+  const stale = () => Object.fromEntries(watch(['stale'], ledger).trim().split('\n').filter(Boolean).map((l) => l.split('\t')))
+  assert.equal(stale()['heal-verify'], 'never')
+  watch(['record', 'heal-verify'], ledger)
+  assert.equal(stale()['heal-verify'], undefined, '記録した直後なのに推奨に残る')
+  assert.equal(stale()['fm-verify'], 'never', '記録していない unit まで消えた')
+  writeFileSync(ledger, JSON.stringify({ ...JSON.parse(readFileSync(ledger, 'utf8')), 'heal-verify': 'x' }))
+  assert.equal(stale()['heal-verify'], 'changed')
 })
 
 /** judge_scenario(spec, result) を Python で呼ぶ。result が null = 結果が無い */

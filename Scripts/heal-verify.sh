@@ -17,6 +17,8 @@
 # (過去の控えに結果を左右させない・この検証の控えを残さない)。
 # schema はデバイスごとのアプリデータなので、全段を --device で1台に固定する(省略時はプロファイルの先頭)。
 # fm-verify.sh と同時に回さない(どちらも _disabled のシナリオを出し入れする)。
+# **既定では回さない**(e2e.sh も e2e-negative.sh も呼ばない)。見ているソース(negative-controls.json の
+# watches."heal-verify")が前回 ✅ のときから変わったら e2e.sh の終わりで推奨する。回すのは指示があるときだけ。
 #
 # 使い方: Scripts/heal-verify.sh [--project <名前>] [--profile <名前>] [--device <デバイスの名前>]
 set -uo pipefail
@@ -197,4 +199,9 @@ sys.exit(1 if problems else 0)
 PY
 STATUS=$?
 [ "$STATUS" = 0 ] && echo "✅ 自己修復(指紋照合)はデバイスで働いています"
+# ✅ を記録する(Scripts/verification_watch.py。監視対象は既定の E2E-CMP / ios-heal を指すので、その組で通したときだけ)
+if [ "$STATUS" = 0 ] && [ "$PROJECT" = E2E-CMP ] && [ "$PROFILE" = ios-heal ]; then
+  python3 "$ROOT/Scripts/verification_watch.py" record heal-verify \
+    || echo "⚠️ 指紋照合の検証の ✅ を記録できなかった(次の e2e.sh でも推奨が出る)" >&2
+fi
 exit "$STATUS"

@@ -76,7 +76,9 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **`heal=false` は指紋照合(= 自己修復)を止める**(門は `StepExecutor.execute` の入口1箇所)。
   **FM のトグル(`fmTextVisibilityCheck` / `screenLooksLike`)では止めない**(FM を使わないので。ユーザー決定 2026-09-15)。
   **緑の run では1度も実行されない**ので、自己修復を触ったらデバイスの陽性対照
-  `Scripts/heal-verify.sh`(v1 で採取 → v2 で2周 → `heal=false` で赤。1台に固定)を回す
+  `Scripts/heal-verify.sh`(v1 で採取 → v2 で2周 → `heal=false` で赤。1台に固定)を**回すことを推奨する**
+  (回すのはユーザーの指示があるとき。監視対象は `Scripts/negative-controls.json` の `watches."heal-verify"` で、
+  変わると `e2e.sh` の終わりに推奨が出る。自己修復のファイルを足したらそこへも足す)
 - **セレクタ文法(`FTSelector`)・コマンド索引(`CommandIndex`)・コード生成(`ScenarioCodeGen`)は
   FTCore に居る**(写像先の `FlowLocator` が FTCore の型で、DSL ランタイムには依存しない)。
   利用者からの見え方は `Descriptors.swift` の `@_exported import FTCore` が保っている。
