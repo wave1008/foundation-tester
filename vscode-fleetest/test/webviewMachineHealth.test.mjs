@@ -3,6 +3,7 @@
 // FM チップ・警告色・内訳ツールチップを見る。方式は webviewDashboardExtras.test.mjs / webviewHostMetricsRows.test.mjs と同じ。
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { before, test } from "node:test";
@@ -187,6 +188,24 @@ test("今の列: Vision の件数・失敗(>0 で警告色)・コンパイル中
   assert.ok(vision.querySelector(".mh-chip-compiling"));
   assert.match(tipOf(vision), /1/, "窓の秒数");
   assert.equal(local.children[4].textContent, "CPU 34% · MEM 61%");
+});
+
+test("今の列の数字は幅の決まった枠に入る(90% → 100% で列幅が組み直されて表が動かない)", (t) => {
+  const { window, document, send } = createWebview();
+  t.after(() => window.close());
+  send(sample("", { cpu: 0.9, visionCalls: 7, visionFailures: 0 }));
+  loadData(send, payload([]));
+  const nums = (cell) => [...cell.querySelectorAll(".mh-num")].map((el) => [el.textContent, el.className]);
+  const local = rowsOf(document)[0];
+  assert.deepEqual(nums(local.children[4]), [["90%", "mh-num mh-num-4"], ["61%", "mh-num mh-num-4"]]);
+  assert.deepEqual(nums(local.children[3]), [["7", "mh-num mh-num-4"], ["0", "mh-num mh-num-3"]]);
+  send(sample("", { cpu: 1, visionCalls: 7, visionFailures: 0 }));
+  assert.equal(rowsOf(document)[0].children[4].textContent, "CPU 100% · MEM 61%");
+  assert.deepEqual(nums(rowsOf(document)[0].children[4])[0], ["100%", "mh-num mh-num-4"]);
+  const css = readFileSync(path.resolve("src/webview/dashboard/style.css"), "utf8");
+  assert.match(css, /\.mh-num \{[^}]*display: inline-block;[^}]*font-variant-numeric: tabular-nums;/);
+  assert.match(css, /\.mh-num-3 \{ min-width: 3ch; \}/);
+  assert.match(css, /\.mh-num-4 \{ min-width: 4ch; \}/);
 });
 
 test("集計期間の列: 失敗・停止・素通り・要注意の注記で警告色になり、内訳ツールチップが出る", (t) => {

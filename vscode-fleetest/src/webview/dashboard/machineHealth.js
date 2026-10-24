@@ -81,6 +81,23 @@ function pct(ratio) {
   return ratio === null || ratio === undefined ? '–' : Math.round(ratio * 100) + '%';
 }
 
+/** 1Hz で変わる数字を幅の決まった枠に入れて文言へ差し込む(桁が増えると列幅が組み直されて表全体が動く。90% → 100% 等)。
+ *  values: { 名前: [文字列, 枠の桁数] }。桁数は CSS の .mh-num-<桁数> と対(style.css) */
+function fixedWidthMessage(cell, key, values) {
+  const names = Object.keys(values);
+  const marked = Object.fromEntries(names.map((name, i) => [name, '\u0001' + i + '\u0001']));
+  const parts = t(key, marked).split('\u0001');
+  parts.forEach((part, i) => {
+    if (i % 2 === 0) {
+      if (part) cell.appendChild(document.createTextNode(part));
+      return;
+    }
+    const [text, digits] = values[names[Number(part)]];
+    cell.appendChild(chip('mh-num mh-num-' + digits, text));
+  });
+  return cell;
+}
+
 function seconds(ms) {
   return (ms / 1000).toFixed(1);
 }
@@ -190,8 +207,8 @@ function visionCell(live) {
   if (!live || live.stale || live.visionCalls === null) {
     cell.textContent = '–';
   } else {
-    cell.textContent = t('wvDashboard.machineHealth.visionCalls', {
-      calls: String(live.visionCalls), failures: String(live.visionFailures),
+    fixedWidthMessage(cell, 'wvDashboard.machineHealth.visionCalls', {
+      calls: [String(live.visionCalls), 4], failures: [String(live.visionFailures), 3],
     });
     warn(cell, live.visionFailures > 0);
     setHoverTip(cell, t('wvDashboard.machineHealth.visionWindowTitle', { seconds: String(live.windowTicks) }));
@@ -206,7 +223,10 @@ function visionCell(live) {
 
 function loadCell(live) {
   if (!live || live.stale) return td('–');
-  return td(t('wvDashboard.machineHealth.load', { cpu: pct(live.cpu), mem: pct(live.memRatio) }));
+  // 4桁 = "100%"
+  return fixedWidthMessage(document.createElement('td'), 'wvDashboard.machineHealth.load', {
+    cpu: [pct(live.cpu), 4], mem: [pct(live.memRatio), 4],
+  });
 }
 
 function nz(value) {

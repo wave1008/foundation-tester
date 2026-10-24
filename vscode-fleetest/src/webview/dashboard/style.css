@@ -464,6 +464,10 @@ select.dash-since:focus {
   background-color: var(--vscode-charts-blue, #0078d4);
   color: #ffffff;
 }
+/* 1Hz で変わる数字の枠(machineHealth.js の fixedWidthMessage)。桁が増えても列幅が変わらないよう等幅数字で右寄せ */
+.mh-num { display: inline-block; text-align: right; font-variant-numeric: tabular-nums; }
+.mh-num-3 { min-width: 3ch; }
+.mh-num-4 { min-width: 4ch; }
 td.mh-warn { color: var(--vscode-editorWarning-foreground, #cca700); font-weight: bold; }
 .dh-storage-carried-over { color: var(--vscode-descriptionForeground); }
 .dh-storage-measuring,
