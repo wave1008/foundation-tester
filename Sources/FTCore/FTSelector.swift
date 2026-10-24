@@ -155,11 +155,6 @@ public struct FTSelector {
         return result
     }
 
-    /// 単一のロケータが要る場所(検証・比較)向け。展開結果の先頭を返す
-    static func parseClause(_ clause: String) -> FlowLocator {
-        parseClauses(clause).first ?? FlowLocator(label: clause)
-    }
-
     /// `>>` で割った 1 区間。相対ステップ(`:rightSwitch` 等)を末尾から剥がし、
     /// 残りを `&&` 区切りのフィルタ列としてパースする(`(a|b)` があれば複数返る)
     static func parseSegments(_ segment: String) -> [FlowLocator] {

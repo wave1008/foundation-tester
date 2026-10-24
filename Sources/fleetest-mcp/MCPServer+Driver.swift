@@ -1955,8 +1955,6 @@ extension MCPServer {
     }
 
     /// 窓の定義は DSL と共有する(AndroidAppProcessEvidenceQuery。ft_logs の既定 300 秒と揃える)
-    static let defaultCrashAttributionWindowSeconds = AndroidAppProcessEvidenceQuery.defaultAttributionWindowSeconds
-
     static func crashAttributionWindowSeconds(launchedAt: Date?, now: Date) -> Int {
         AndroidAppProcessEvidenceQuery.attributionWindowSeconds(since: launchedAt, now: now)
     }
@@ -1970,7 +1968,7 @@ extension MCPServer {
     /// **crashSummary は直近の launch 以降に絞り直す**(`AndroidAppProcessEvidenceQuery.scoped`。
     /// DSL はシナリオの開始を起点に同じ関数を通る)。
     /// launch を覚えていない(このセッションが ft_launch していない・profile 経由で既存の
-    /// セッションに繋いだ)ときは `defaultCrashAttributionWindowSeconds` へ落ちる
+    /// セッションに繋いだ)ときは `AndroidAppProcessEvidenceQuery.defaultAttributionWindowSeconds` へ落ちる
     /// (無制限に戻すと元の欠陥に戻るので、「分からない」を「無限に遡ってよい」とは読まない)
     func androidProcessEvidenceForSwitch(launched: String?, snapshot: SnapshotResponse,
                                          driver: AppDriver, args: [String: Any])

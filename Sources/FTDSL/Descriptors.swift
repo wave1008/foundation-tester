@@ -100,18 +100,6 @@ open class FTScenarioRegistration: NSObject {
     }
 }
 
-/// シナリオの一意 ID: クラス名.メソッド名
-public struct ScenarioID: CustomStringConvertible, Equatable {
-    public let className: String
-    public let methodName: String
-    public var description: String { "\(className).\(methodName)" }
-
-    public init(className: String, methodName: String) {
-        self.className = className
-        self.methodName = methodName
-    }
-}
-
 public enum ScenarioDiscovery {
     /// プロセスに読み込まれた全 FTScenarioRegistration 派生クラスから descriptor を収集する。
     /// 重要: 未実現(unrealized)クラスへメッセージを送ると壊れるクラスがあるため、

@@ -313,8 +313,6 @@ export const webviewMonitorAStrings = {
   "wvMonitor.devicePick.iosEmpty": { ja: "iOS シミュレータも接続中の実機もありません。", en: "No iOS simulators or connected devices." },
   "wvMonitor.devicePick.androidFetchFailed": { ja: "Android AVD を取得できませんでした(実機は別に取得します)。", en: "Failed to retrieve Android AVDs (physical devices are retrieved separately)." },
   "wvMonitor.devicePick.androidEmpty": { ja: "Android AVD も接続中の実機もありません。", en: "No Android AVDs or connected devices." },
-  "wvMonitor.devicePick.iosTitle": { ja: "iOS デバイス", en: "iOS devices" },
-  "wvMonitor.devicePick.androidTitle": { ja: "Android デバイス", en: "Android devices" },
   "wvMonitor.devicePick.fetchFailed": { ja: "一覧の取得に失敗しました。", en: "Failed to retrieve the list." },
   "wvMonitor.devicePick.syncFailed": { ja: "デバイスの同期に失敗しました。", en: "Failed to sync devices." },
   // devicePickDeviceDeleteResult の error が空(理論上想定外)のときだけ使うフォールバック。

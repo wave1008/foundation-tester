@@ -20,9 +20,6 @@ import Synchronization
 
 public enum AppUIFrameworkSource: String, Sendable, CaseIterable {
     case package, installedBundle, ledger, bridgeReport
-
-    /// アプリを動かさずに決まった答えか
-    public var isStatic: Bool { self != .bridgeReport }
 }
 
 public enum AppUIFrameworkAnswer: Equatable, Sendable {

@@ -207,24 +207,6 @@ enum RefGuard {
             + " or use ft_scroll_to to bring it into view first)"
     }
 
-    static func ghostMessage(ref: Int, found: ElementInfo, in elements: [ElementInfo],
-                             screen: FTRect) -> String {
-        let hit = occluder(of: found, in: elements, screen: screen)
-            .map { " — the tap would land on \(describe($0))" } ?? ""
-        let f = found.frame
-        // **逃げ道も書く**が、順序を守る(外部フィードバック)。
-        // 先に「本来の直し方」、次に「確かめたうえでの回避」。座標タップを無条件に勧めると、
-        // 判定が正しいとき **覆っている要素を黙って叩く**ことになり、このガードの意味が消える
-        return "[\(ref)] \(describe(found)) is outside its scroll container and something else is"
-            + " drawn at its coordinates\(hit). It is a leftover from scrolling, not what you see."
-            + " Bring it into view with ft_scroll_to and re-snapshot."
-            + " If ft_screenshot shows it really is visible there, this check was wrong —"
-            + " tap the coordinates directly (x: \(Int(f.x + f.width / 2)),"
-            + " y: \(Int(f.y + f.height / 2))), which skips the check, and please report it."
-    }
-
-
-
     /// **無効な要素を叩こうとしている**ときの警告。木には `disabled` と印字しているのに、
     /// 操作経路は `enabled` を一度も見ておらず、押しても何も起きない要素へ "done" を返していた
     /// (棚卸しで確認。E2E-CMP の契約上「押しても何も起きない」ボタンに対し

@@ -195,16 +195,6 @@ public final class AndroidDriver: AppDriver {
         return try Shell.run(full + args)
     }
 
-    func adbData(_ args: [String]) throws -> Data {
-        var full = [adbPath]
-        if let serial { full += ["-s", serial] }
-        let (status, data) = try Shell.runData(full + args)
-        guard status == 0 else {
-            throw DriverError.badResponse(status: Int(status), body: "adb \(args.joined(separator: " "))")
-        }
-        return data
-    }
-
     // MARK: - AppDriver
 
     public func status() async throws -> StatusResponse {

@@ -700,11 +700,6 @@ export type MonitorFromWebviewMessage =
   // タイルから撃つと手元の同名のデバイスを再起動する(deviceOp と同じ規律。monitorDeviceOps.ts が
   // machine 付きはその機械の down→up へ回す)
   | { readonly type: "deviceRestartGpu"; readonly name: string; readonly machine?: string }
-  // deviceRestartGpu の複数選択版(バッチ再起動)。devices はタイル複数選択の対象(machine 付き)。
-  | {
-      readonly type: "devicesRestartGpu";
-      readonly devices: readonly { readonly name: string; readonly machine?: string }[];
-    }
   | { readonly type: "selectProfile"; readonly profile: string }
   // 「デバイスモニター」タブのプロジェクト選択。ダッシュボード封筒の同名メッセージとは別経路だが、
   // どちらも fleetest.project 設定を書き換えるだけ(実行プロファイルの追随は
@@ -1074,7 +1069,7 @@ function isInstallRuntimeRequestLike(value: unknown): value is { version: string
   return isRecord(value) && typeof value.version === "string" && value.version !== "";
 }
 
-/** deviceRestartGpu / devicesRestartGpu の1台ぶん(name 必須・machine は省略か非空文字列)。 */
+/** deviceRestartGpu の1台ぶん(name 必須・machine は省略か非空文字列)。 */
 function isGpuRestartTarget(value: unknown): value is { name: string; machine?: string } {
   if (typeof value !== "object" || value === null) {
     return false;
@@ -1129,12 +1124,6 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return typeof value.text === "string" && value.text !== "";
     case "deviceRestartGpu":
       return isGpuRestartTarget(value);
-    case "devicesRestartGpu":
-      return (
-        Array.isArray(value.devices) &&
-        value.devices.length > 0 &&
-        value.devices.every((d) => isGpuRestartTarget(d))
-      );
     case "selectProfile":
       return typeof value.profile === "string";
     // 空文字は「未選択」= 切り替え先が無いので弾く(selectProfile と違い意味を持たない)。

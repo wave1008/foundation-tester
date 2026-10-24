@@ -196,11 +196,6 @@ public enum BlankWorkerTriage {
         }
     }
 
-    /// **確定した**凍結ワーカーの label 一覧(疑いだけの機は含めない)
-    public static func frozenLabels(_ workers: [RunWorker]) async -> [String] {
-        await frozenVerdicts(workers).filter { $0.value.isFrozen }.map(\.key)
-    }
-
     /// 確定していない根拠を警告として出す(除外・回復は撃たない)。
     /// **実機は「暗い」しか言わない** —— 消灯と wedge を分ける材料が無いのに frozen を名乗ると、
     /// 持ち主は端末が壊れたと読んで復旧手順を探しに行く(たいていは消灯しているだけ)

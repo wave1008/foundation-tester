@@ -879,7 +879,6 @@ test("isLiveFromWebviewMessage: 各メッセージ種別の正常な値を true 
     }),
     true,
   );
-  assert.equal(isLiveFromWebviewMessage({ type: "tapRef", ref: 1 }), true);
   assert.equal(isLiveFromWebviewMessage({ type: "typeText", text: "hello", ref: null }), true);
   assert.equal(isLiveFromWebviewMessage({ type: "typeText", text: "hello", ref: 2 }), true);
   assert.equal(
@@ -936,7 +935,6 @@ test("isLiveFromWebviewMessage: 未知の type・型不一致・フィールド�
   );
   assert.equal(isLiveFromWebviewMessage({ type: "pinch" }), false, "zoomIn 欠落は不正");
   assert.equal(isLiveFromWebviewMessage({ type: "pinch", zoomIn: "yes" }), false);
-  assert.equal(isLiveFromWebviewMessage({ type: "tapRef", ref: "1" }), false);
   assert.equal(isLiveFromWebviewMessage({ type: "typeText", text: 1, ref: null }), false);
   assert.equal(isLiveFromWebviewMessage({ type: "visibility" }), false);
 });
@@ -946,7 +944,7 @@ test("isLiveFromWebviewMessage: 未知の type・型不一致・フィールド�
 test("isLiveWebviewEnvelope: type:'live' + 正常な LiveFromWebviewMessage を true と判定する", () => {
   assert.equal(isLiveWebviewEnvelope({ type: "live", message: { type: "refreshDevices" } }), true);
   assert.equal(
-    isLiveWebviewEnvelope({ type: "live", message: { type: "tapRef", ref: 3 } }),
+    isLiveWebviewEnvelope({ type: "live", message: { type: "pinch", zoomIn: true } }),
     true,
   );
 });

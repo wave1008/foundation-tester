@@ -137,8 +137,6 @@ public struct Healthcheck: Sendable, Equatable {
     }
 }
 
-public typealias HealthcheckTest = Healthcheck.Test
-
 public struct Dependency: Sendable, Equatable {
     public enum Condition: String, Sendable, Equatable {
         case serviceStarted = "service_started"

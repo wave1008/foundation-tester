@@ -1179,17 +1179,6 @@ export function devicesOnMachine(machine) {
   return out;
 }
 
-// run ボード(runBoard.js)のツリー用: run が走っていない機械の行に出す「何を見ているか」。
-// モニターがデバイスを並べる範囲そのもの(`api monitor --project <P> [--profile <run>]`)なので、
-// ツールバーの選択をそのまま返す。**予約値(@running)と未選択は profile 無し**として扱う。
-export function currentMonitorScope() {
-  const profile = profileSelect.value;
-  return {
-    project: projectSelect.value,
-    profile: profile === '' || profile === PROFILE_RUNNING_VALUE ? undefined : profile,
-  };
-}
-
 // run ボード(runBoard.js)の行クリック用: 複数台を一括で選び直す(selectOnlyDevice の複数版。
 // 「このデバイスのみ選択」の直前選択に戻す仕組みは1台前提なので流用しない = restore は捨てる)。
 // 一致するタイルが1枚も無ければ何もしない(消えたデバイスの run 行を押しても選択を崩さない)。

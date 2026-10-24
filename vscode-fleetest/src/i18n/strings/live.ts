@@ -168,7 +168,6 @@ export const liveStrings = {
   // ---- 「操作記録」ラベル(monitorLiveController.ts の手動操作 / liveModel.ts の
   // stepDescriptionToOperationLabel が両方使う。表示と比較を同一 t() に揃える契約) ----
   "live.opLabel.tap": { ja: "タップ: {target}", en: "Tap: {target}" },
-  "live.opLabel.tapPlain": { ja: "タップ", en: "Tap" },
   "live.opLabel.press": { ja: "ロングプレス: {target}", en: "Long press: {target}" },
   "live.opLabel.doubleTap": { ja: "ダブルタップ: {target}", en: "Double tap: {target}" },
   "live.opLabel.doubleTapPlain": { ja: "ダブルタップ", en: "Double tap" },

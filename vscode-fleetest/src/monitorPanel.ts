@@ -1129,9 +1129,6 @@ export class MonitorPanelController implements vscode.Disposable {
       case "deviceRestartGpu":
         this.deviceOps.restartWithGpu(message.name, message.machine);
         break;
-      case "devicesRestartGpu":
-        this.deviceOps.restartWithGpuBatch(message.devices);
-        break;
       case "selectProfile":
         this.profiles.selectProfile(message.profile);
         break;

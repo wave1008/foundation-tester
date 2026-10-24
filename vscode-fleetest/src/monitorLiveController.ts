@@ -1861,16 +1861,6 @@ export class MonitorLiveController implements vscode.Disposable {
         );
         break;
       }
-      case "tapRef": {
-        const refHit = this.lastElements.find((element) => element.ref === message.ref);
-        const refChain = refHit ? locatorChainForElement(refHit, this.lastElements) : undefined;
-        const tapRefStep: RecordedStep | undefined = refChain ? { action: "tap", ...refChain } : undefined;
-        const tapRefLabel = refHit
-          ? t("live.opLabel.tap", { target: describeElementShort(refHit) })
-          : t("live.opLabel.tapPlain");
-        void this.runAction({ cmd: "tap", ref: message.ref }, tapRefStep, { logLabel: tapRefLabel });
-        break;
-      }
       case "typeText": {
         if (message.text.trim().length === 0) {
           this.postActionError(t("live.typeTextEmpty"));

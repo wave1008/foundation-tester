@@ -9,12 +9,6 @@ public enum ComposeNormalizer {
         return .failure(ComposeRefusals(state.errors))
     }
 
-    static let serviceKeys: Set<String> = [
-        "image", "build", "command", "entrypoint", "environment", "env_file", "ports", "expose", "volumes",
-        "tmpfs", "healthcheck", "depends_on", "working_dir", "user", "networks", "labels", "platform", "init",
-        "stop_grace_period", "mem_limit", "cpus",
-    ]
-
     static let forbiddenServiceKeys: [String: String] = [
         "privileged": "gives the container full access to the host",
         "cap_add": "capabilities cannot be added",

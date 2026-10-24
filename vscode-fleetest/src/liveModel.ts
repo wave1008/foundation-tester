@@ -768,8 +768,8 @@ export function describeElementShort(element: LiveElement): string {
   return element.type;
 }
 
-/** セレクタ(`||` 区切り節)から表示ラベルを抽出する。節分類は Sources/FTCore/FTSelector.swift の
- * parseClause と同期(label を持つ最初の節を採用。無ければセレクタ全体を返す)。 */
+/** セレクタ(`||` 区切り節)から表示ラベルを抽出する。Sources/FTDSL/StepDescription.swift の
+ * objectPhrase(ofSelector:)(節分類は FTSelector.parse)と同期(label を持つ最初の節を採用。無ければセレクタ全体を返す)。 */
 export function selectorObjectPhrase(selector: string): string {
   for (const clause of selector.split("||")) {
     if (clause.startsWith("=")) {
@@ -815,7 +815,7 @@ export function swipeDirectionLabel(direction: "up" | "down" | "left" | "right")
 
 /** StepEvent.description(RunEventBus 由来)を「操作記録」用の表示ラベルへ変換する。description の
  * 構文は Sources/FTDSL/Commands.swift 各コマンドの perform(description:) と、セレクタ→ラベル抽出は
- * selectorObjectPhrase(= StepDescription.objectPhrase(ofSelector:) / FTSelector.parseClause)と同期が必要。 */
+ * selectorObjectPhrase(= StepDescription.objectPhrase(ofSelector:))と同期が必要。 */
 export function stepDescriptionToOperationLabel(description: string): string {
   const verb = description.split(/\s/, 1)[0] ?? "";
   const quoted = description.match(/"([^"]*)"/g)?.map((s) => s.slice(1, -1));
@@ -1123,7 +1123,6 @@ export type LiveFromWebviewMessage =
       readonly displayWidth: number;
       readonly displayHeight: number;
     }
-  | { readonly type: "tapRef"; readonly ref: number }
   /** 入力は**デバイス側でフォーカスしている要素**へ送る(ref は付けない)。パネルで最後に
    * 触った要素の ref は、その操作が返すスナップショットで採番し直されるため、次の入力の時点では
    * もう同じ要素を指していない —— 送ると別の要素へ黙って打ち込む。 */
@@ -1206,8 +1205,6 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
       );
     case "fold":
       return value.state === "fold" || value.state === "unfold";
-    case "tapRef":
-      return typeof value.ref === "number";
     case "typeText":
       return typeof value.text === "string";
     case "visibility":

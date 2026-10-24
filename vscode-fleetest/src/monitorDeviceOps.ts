@@ -56,9 +56,8 @@ type PipeProcess = ChildProcessByStdio<null, Readable, Readable>;
  * **identifier が主**(iOS = UDID / Android = AVD id)で、name は確認・ログ・タイル表示用。 */
 type WipeTargetDevice = Extract<MonitorFromWebviewMessage, { type: "runProfileDeviceWipe" }>["devices"][number];
 
-/** 「GPU で再起動」の1台ぶん(deviceRestartGpu / devicesRestartGpu の要素と同じ形)。
- * machine 省略 = 手元。 */
-type GpuRestartTarget = Extract<MonitorFromWebviewMessage, { type: "devicesRestartGpu" }>["devices"][number];
+/** 「GPU で再起動」の1台ぶん(deviceRestartGpu メッセージと同じ形)。machine 省略 = 手元。 */
+type GpuRestartTarget = Omit<Extract<MonitorFromWebviewMessage, { type: "deviceRestartGpu" }>, "type">;
 
 /** デバイスライフサイクルの直列キューおよび device-catalog/installed-devices/create-device の
  * 短命プロセス実行を担う。MonitorPanelController が1つ保持する。 */

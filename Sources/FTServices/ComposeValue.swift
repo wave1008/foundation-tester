@@ -66,16 +66,4 @@ extension ComposeValue {
         case .null, .list, .map: return nil
         }
     }
-
-    var kindName: String {
-        switch self {
-        case .string: return "string"
-        case .int: return "integer"
-        case .double: return "number"
-        case .bool: return "boolean"
-        case .null: return "null"
-        case .list: return "list"
-        case .map: return "mapping"
-        }
-    }
 }

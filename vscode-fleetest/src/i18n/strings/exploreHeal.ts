@@ -21,10 +21,6 @@ export const exploreHealStrings = {
   },
 
   // ---- ダッシュボードタブ(monitorDashboardController.ts / monitorHtml.ts renderDashboardPanel()) ----
-  "exploreHeal.dashboard.panelTitle": {
-    ja: "fleetest 結果ダッシュボード",
-    en: "fleetest Results Dashboard",
-  },
   "exploreHeal.dashboard.title": {
     ja: "テストプロジェクト",
     en: "Test Project",

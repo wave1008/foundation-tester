@@ -941,11 +941,6 @@ public struct ResolvedAppTarget: Sendable, Hashable {
         physical ? (appPathPhysical ?? appPath) : appPath
     }
 
-    /// packagePath の原本側(ステージングの元。名前の対応は packagePath と同じ規則)
-    public func packageSource(physical: Bool) -> String? {
-        physical ? (sourcePathPhysical ?? sourcePath) : sourcePath
-    }
-
     /// sourcePath 省略時は appPath と同値にする(ワークスペース非経由の既存呼び出しとの互換)
     /// `appName` に既定値を置かない(新しい生成元の渡し忘れをコンパイルで止める)
     public init(bundleID: String, appName: String?, sourcePath: String? = nil, appPath: String? = nil,
