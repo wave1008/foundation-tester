@@ -85,15 +85,36 @@ public enum MachineInventory {
     public static func loadAllNamed(project: TestProject, warn: (String) -> Void) -> [Source] {
         ProfileResolver.runProfileNames(project: project).sorted().compactMap { name in
             let url = project.runsDir.appendingPathComponent("\(name).json")
-            guard let data = try? Data(contentsOf: url),
-                  let doc = try? JSONDecoder().decode(RunProfileDocument.self, from: data) else {
-                warn("skipping run profile \(name): it cannot be read")
+            let doc: RunProfileDocument
+            do {
+                doc = try JSONDecoder().decode(RunProfileDocument.self, from: Data(contentsOf: url))
+            } catch {
+                warn("skipping run profile \(name): \(Self.unreadableReason(error))")
                 return nil
             }
             let roster = DeviceRoster(entries: DeviceMachineGrouping.entries(
                 runDevices: doc.devices ?? [], enabledOnly: false))
             return Source(name: "runs/\(name).json", profile: roster)
         }
+    }
+
+    /// 読み飛ばした理由。**どの欄を直せばよいか**まで言う(理由の無い「読めない」では利用者が直せない)。
+    /// JSON の型の不一致・欠落は `ProfileResolver.describeDecodingError`(プロファイルの検証と同じ言い方)。
+    /// 構文エラー(最上位の dataCorrupted で下に JSONSerialization のエラーがある)は形式でなく構文と言う。
+    /// **`localizedDescription` を使わない** —— OS の言語で返るので CLI(英語だけ)に日本語が混ざる。POSIX の `strerror` は英語
+    public static func unreadableReason(_ error: Error) -> String {
+        if case .dataCorrupted(let context)? = error as? DecodingError,
+           context.codingPath.isEmpty, context.underlyingError != nil {
+            return "it is not valid JSON (syntax error)"
+        }
+        if error is DecodingError {
+            return "it does not match the run profile format (\(ProfileResolver.describeDecodingError(error)))"
+        }
+        let ns = error as NSError
+        if let posix = ns.userInfo[NSUnderlyingErrorKey] as? NSError, posix.domain == NSPOSIXErrorDomain {
+            return "it cannot be read (\(String(cString: strerror(Int32(posix.code)))))"
+        }
+        return "it cannot be read (\(ns.domain) error \(ns.code))"
     }
 
     /// 畳んだカタログを1つの台帳の姿へ戻す。**既存の (machine, name) 解決をそのまま使うため** ——

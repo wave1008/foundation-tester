@@ -132,9 +132,12 @@ struct ApiDeleteDeviceCommand: AsyncParsableCommand {
         var profiles: [(name: String, profile: RunProfileDocument)] = []
         for runName in ProfileResolver.runProfileNames(project: testProject) {
             let url = testProject.runsDir.appendingPathComponent("\(runName).json")
-            guard let data = try? Data(contentsOf: url),
-                  let profile = try? JSONDecoder().decode(RunProfileDocument.self, from: data) else {
-                logStderr("⚠️ Cannot read/parse run profile \(runName).json (skipping the referencedBy check for it)")
+            let profile: RunProfileDocument
+            do {
+                profile = try JSONDecoder().decode(RunProfileDocument.self, from: Data(contentsOf: url))
+            } catch {
+                logStderr("⚠️ Skipping the referencedBy check for run profile \(runName).json:"
+                    + " \(MachineInventory.unreadableReason(error))")
                 continue
             }
             profiles.append((runName, profile))

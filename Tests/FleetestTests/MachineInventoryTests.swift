@@ -334,4 +334,32 @@ final class MachineInventoryTests: XCTestCase {
         XCTAssertEqual(merged.ios?.devices?.map { "\($0.name)@\($0.machine ?? "-")" }, ["A@M1Max", "C@-"])
         XCTAssertEqual(merged.android?.devices?.map { "\($0.name)@\($0.machine ?? "-")" }, ["B@M1Max"])
     }
+
+    /// 読み飛ばした実行プロファイルは**どの欄が読めないか**まで言う(理由の無い「読めない」では直せない)。
+    /// 中身はランナー機に残っていた古い形式の写し(デバイスを名前だけで指し platform が無い)
+    func testSkippedRunProfileNamesTheFieldThatFailed() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("mi-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let project = TestProject(name: "p", rootURL: root)
+        try FileManager.default.createDirectory(at: project.runsDir, withIntermediateDirectories: true)
+        try #"{"app": "p", "devices": [{"machine": "local", "name": "メイン機"}], "heal": false}"#
+            .write(to: project.runsDir.appendingPathComponent("old.json"), atomically: true, encoding: .utf8)
+        try "{ not json".write(to: project.runsDir.appendingPathComponent("broken.json"), atomically: true, encoding: .utf8)
+        var warnings: [String] = []
+        XCTAssertEqual(MachineInventory.loadAllNamed(project: project) { warnings.append($0) }.count, 0)
+        XCTAssertEqual(warnings.count, 2)
+        XCTAssertTrue(warnings.contains { $0 == "skipping run profile broken: it is not valid JSON (syntax error)" },
+                      "\(warnings)")
+        XCTAssertTrue(warnings.contains {
+            $0 == "skipping run profile old: it does not match the run profile format (missing \"platform\" in \"devices[0]\")"
+        }, "\(warnings)")
+    }
+
+    /// 開けないファイルの理由は英語(OS の言語で返る localizedDescription を使わない)
+    func testUnreadableFileReasonIsEnglish() {
+        let missing = URL(fileURLWithPath: "/nonexistent-\(UUID().uuidString).json")
+        XCTAssertThrowsError(try Data(contentsOf: missing)) { error in
+            XCTAssertEqual(MachineInventory.unreadableReason(error), "it cannot be read (No such file or directory)")
+        }
+    }
 }
