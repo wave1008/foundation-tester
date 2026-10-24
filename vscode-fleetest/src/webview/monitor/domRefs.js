@@ -25,12 +25,11 @@ export const runBoardExpandAll = document.getElementById('run-board-expand-all')
 export const runBoardRows = document.getElementById('run-board-rows');
 // 2カラムの境目(ドラッグで幅を変える。runBoard.js)。
 export const runBoardSplit = document.getElementById('run-board-split');
-// プラットフォームの表示フィルタ(3択・既定は「両方」。状態と配線は deviceTiles.js)。
-// 見た目はバッジ(選択中だけ色付き・非選択は灰色。ユーザー決定)。
+// プラットフォームの表示フィルタ(iOS / Android の独立トグル・既定は両方 ON。状態と配線は deviceTiles.js)。
+// 見た目はバッジ(ON だけ色付き・OFF は灰色。ユーザー決定)。
 export const platformFilterBadges = [
   document.getElementById('rad-platform-ios'),
   document.getElementById('rad-platform-android'),
-  document.getElementById('rad-platform-all'),
 ];
 // 「実行中」と「デバイス」の間のセパレーター(run ボードの高さを変える。splitter.js)。
 export const devicesSeparator = document.getElementById('devices-separator');

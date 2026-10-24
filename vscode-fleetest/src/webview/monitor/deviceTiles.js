@@ -1391,12 +1391,13 @@ export function clearTilesForRestart() {
   updateLaneVisibility();
 }
 
-// ---- プラットフォームの表示フィルタ(run ボードのヘッダのラジオ。'all' | 'ios' | 'android') ----
+// ---- プラットフォームの表示フィルタ(ラインビュー見出しの iOS / Android 独立トグル。{ ios, android }) ----
 // **入口で落とす** —— タイル・レーン・拡大表示・run ボードのツリーはすべてこの一覧から作るので、
 // ここで落とせば4つのセクション(実行中・デバイス一覧・選択したデバイス・実行ログ)から同時に消える。
 // **生の一覧を控える** —— 切り替えたその場で描き直すため(次の監視サイクルを待たない)。
-const PLATFORM_FILTER_ALL = 'all';
-let platformFilter = PLATFORM_FILTER_ALL;
+// 既定は両方 ON(monitorPanel.ts の DEFAULT_PLATFORM_FILTER と揃える)。**両方 OFF にはならない**
+// (ユーザー決定: 唯一 ON の側を押すと、もう片方と入れ替わる)
+let platformFilter = { ios: true, android: true };
 let lastDevices = [];
 // 「起動中のデバイス」(設定 fleetest.monitorDeviceFilter)。**ここで落とすのはタイル側だけ** ——
 // run ボードのツリー(devicesOnMachine)はこの値を見ない。停止中・観測できないデバイスを消すと、
@@ -1427,7 +1428,8 @@ function notifyMonitorDevicesChanged() {
 }
 
 export function isPlatformVisible(platform) {
-  return platformFilter === PLATFORM_FILTER_ALL || platformFilter === platform;
+  // 知らない platform は隠さない(デバイスが黙って消えるより出しすぎるほうが安全)
+  return platformFilter[platform] !== false;
 }
 
 /** 表示フィルタが変わったら呼ぶ(runBoard.js が自分のツリーを描き直す)。 */
@@ -1435,13 +1437,22 @@ export function onPlatformFilterChanged(listener) {
   platformFilterListeners.push(listener);
 }
 
-/** 選んでいるものだけ色付き(iOS / Android はデバイスのピルと同じ色・「両方」は白)、
- *  選んでいないものは灰色(ユーザー決定)。色は CSS が `.selected` で持つ。 */
+/** 押した側を反転する。**唯一 ON の側を押したら OFF にせず、もう片方と入れ替える**
+ *  (両方 OFF = 何も出ない状態を作らない。ユーザー決定) */
+function nextPlatformFilter(current, key) {
+  const other = key === 'ios' ? 'android' : 'ios';
+  if (current[key] && !current[other]) {
+    return { [key]: false, [other]: true };
+  }
+  return { ...current, [key]: !current[key] };
+}
+
+/** ON だけ色付き(デバイスのピルと同じ色)、OFF は灰色(ユーザー決定)。色は CSS が `.selected` で持つ。 */
 function paintPlatformBadges() {
   for (const badge of platformFilterBadges) {
-    const on = badge.dataset.value === platformFilter;
+    const on = platformFilter[badge.dataset.value] === true;
     badge.classList.toggle('selected', on);
-    badge.setAttribute('aria-checked', on ? 'true' : 'false');
+    badge.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
 }
 
@@ -1453,15 +1464,17 @@ function applyPlatformFilterState(next, persist) {
     listener();
   }
   if (persist) {
-    vscode.postMessage({ type: 'setPlatformFilter', value: platformFilter });
+    vscode.postMessage({ type: 'setPlatformFilter', value: { ios: platformFilter.ios, android: platformFilter.android } });
   }
 }
 
 /** host からの復元値(sendInitialState)。**投げ返さない**(applySelectAllDevices と同じ規律)。
- *  **知らない値は「両方」へ倒す** —— デバイスが黙って消えるより出しすぎるほうが安全。 */
+ *  **知らない形は両方 ON へ倒す** —— デバイスが黙って消えるより出しすぎるほうが安全。 */
 export function applyPlatformFilter(message) {
-  const known = platformFilterBadges.some((badge) => badge.dataset.value === message.value);
-  applyPlatformFilterState(known ? message.value : PLATFORM_FILTER_ALL, false);
+  const v = message.value;
+  const known = typeof v === 'object' && v !== null && typeof v.ios === 'boolean' && typeof v.android === 'boolean'
+    && (v.ios || v.android);
+  applyPlatformFilterState(known ? { ios: v.ios, android: v.android } : { ios: true, android: true }, false);
 }
 
 for (const badge of platformFilterBadges) {
@@ -1469,11 +1482,11 @@ for (const badge of platformFilterBadges) {
     // 見出し行(ラインビューのヘッダ)のクリックはラインビューごと畳むので、ここで止める
     // (streamToggle.js と同じ)
     event.stopPropagation();
-    applyPlatformFilterState(badge.dataset.value, true);
+    applyPlatformFilterState(nextPlatformFilter(platformFilter, badge.dataset.value), true);
   });
 }
 
-// 既定(「両方」)の見た目を初期化する —— host の復元値(applyPlatformFilter)が来るまでの間も
+// 既定(両方 ON)の見た目を初期化する —— host の復元値(applyPlatformFilter)が来るまでの間も
 // バッジの色が状態と食い違わないようにする(**デバイスの一覧には触らない**ので描き直しは走らせない)
 paintPlatformBadges();
 

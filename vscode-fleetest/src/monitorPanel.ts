@@ -53,6 +53,7 @@ import {
   type MonitorDevice,
   type MonitorToWebviewMessage,
   type PlatformFilter,
+  DEFAULT_PLATFORM_FILTER,
   isPlatformFilter,
 } from "./monitorModel";
 import { type MachineLock, bulkDownGate, streamFoldMachines } from "./machineLockModel";
@@ -313,7 +314,7 @@ export class MonitorPanelController implements vscode.Disposable {
   /** 実行ログビュー(#log-pane)の高さ(px)。tilePaneHeight と同じ契約(splitter.js と対)。 */
   private logPaneHeight: number | undefined;
   /** プラットフォームの表示フィルタ。tilePaneHeight と同じ契約(deviceTiles.js と対)。
-   * 既定は "all"(webview 側の既定と揃える。片方だけ変えない)。 */
+   * 既定は両方 true(webview 側の既定と揃える。片方だけ変えない)。 */
   private platformFilter: PlatformFilter;
   /** run ボード(#run-board)の高さ(px)。tilePaneHeight と同じ契約(splitter.js と対)。
    * 未設定(セパレーター未ドラッグ)は undefined = 中身なりの高さ。 */
@@ -379,10 +380,12 @@ export class MonitorPanelController implements vscode.Disposable {
     this.fleetVisible = workspaceState.get<boolean>("monitor.fleetVisible", true);
     this.logPaneHeight = workspaceState.get<number>("monitor.logPaneHeight");
     this.runBoardHeight = workspaceState.get<number>("monitor.runBoardHeight");
-    // **知らない値は "all" へ倒す**(古い形の保存値もここで落ちる) —— デバイスが黙って消えるより
+    // **知らない値は両方 true へ倒す**(古い形の保存値もここで落ちる) —— デバイスが黙って消えるより
     // 出しすぎるほうが安全
     const savedFilter = workspaceState.get<unknown>("monitor.platformFilter");
-    this.platformFilter = isPlatformFilter(savedFilter) ? savedFilter : "all";
+    this.platformFilter = isPlatformFilter(savedFilter)
+      ? { ios: savedFilter.ios, android: savedFilter.android }
+      : DEFAULT_PLATFORM_FILTER;
     // 既定 true(webview 側 splitter.js の「!== false」と揃える。片方だけ変えない)。
     this.logViewVisible = workspaceState.get<boolean>("monitor.logViewVisible", true);
     this.gridViewVisible = workspaceState.get<boolean>("monitor.gridViewVisible", true);
@@ -1290,7 +1293,7 @@ export class MonitorPanelController implements vscode.Disposable {
         void this.workspaceState.update("monitor.fleetVisible", message.value);
         break;
       case "setPlatformFilter":
-        this.platformFilter = message.value;
+        this.platformFilter = { ios: message.value.ios, android: message.value.android };
         void this.workspaceState.update("monitor.platformFilter", this.platformFilter);
         break;
       case "setRunBoardHeight":

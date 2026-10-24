@@ -568,8 +568,8 @@ html[lang="en"] .header-count {
 #run-board-title {
   min-width: 56px;
 }
-/* プラットフォームの表示フィルタ(3択)。**見た目はバッジ**(ユーザー決定)——
-   選んでいるものだけ色付き、選んでいないものは灰色。押せる面なので cursor は pointer */
+/* プラットフォームの表示フィルタ(iOS / Android の独立トグル)。**見た目はバッジ**(ユーザー決定)——
+   ON だけ色付き、OFF は灰色。押せる面なので cursor は pointer */
 .run-board-platform-filter {
   /* ラインビューの見出しで「ライブ更新」の右に続く(ユーザー決定)。離す幅は
      .platform-badge-ios の margin-left が持つ */
@@ -586,20 +586,27 @@ html[lang="en"] .header-count {
      幅の下限 8ch はこの重みの "0" 幅で決まるので、重みを変えたら "Android" が収まるか見る */
   font-weight: 600;
   cursor: pointer;
-  /* **3つとも同じ幅**(ユーザー決定)—— 文字数(iOS / Android / すべて)で幅が
-     変わると、並びが不揃いで押し分けにくい。いちばん長い "Android" が収まる下限にして中央寄せ */
+  /* **両方同じ幅**(ユーザー決定)—— 文字数(iOS / Android)で幅が変わると、並びが不揃いで
+     押し分けにくい。長い "Android" が収まる下限にして中央寄せ */
   min-width: 8ch;
   text-align: center;
-  /* 非選択は灰色(選択色と同じく固定値。テーマ変数だと選択色との対比が崩れる) */
-  background-color: #8a8a8a;
+  /* 非選択は灰色(選択色と同じく固定値。テーマ変数だと選択色との対比が崩れる)。
+     背景は --platform-badge-bg 経由 —— 下の :hover で同じ値に固定するため */
+  --platform-badge-bg: #8a8a8a;
+  background-color: var(--platform-badge-bg);
   color: #ffffff;
   opacity: 0.8;
 }
-.platform-badge:hover {
+/* ホバーで色を変えない —— 素の button:hover:not(:disabled)(0,2,1)が .selected(0,2,0)に勝って
+   背景をテーマのホバー色へ塗り替えるので、同じ詳細度以上で今の状態の色に固定する。
+   OFF だけ不透明度で押せることを示す(ユーザー決定: ON はホバーで変えない) */
+.platform-badge:hover:not(:disabled) {
+  background-color: var(--platform-badge-bg);
+}
+.platform-badge:not(.selected):hover {
   opacity: 1;
 }
-/* 選択時の色。**iOS / Android はタイルのデバイス名ピルと同じ値**(.tile-name-ios / -android。
-   変更時は揃えること)。「両方」は白なので、文字だけ暗い色にする */
+/* ON の色。**タイルのデバイス名ピルと同じ値**(.tile-name-ios / -android。変更時は揃えること) */
 .platform-badge.selected {
   opacity: 1;
 }
@@ -610,16 +617,12 @@ html[lang="en"] .header-count {
   margin-left: calc(8ch - 6px);
 }
 .platform-badge-ios.selected {
-  background-color: #29b6f6;
+  --platform-badge-bg: #29b6f6;
   color: #ffffff;
 }
 .platform-badge-android.selected {
-  background-color: #3ddc84;
+  --platform-badge-bg: #3ddc84;
   color: #ffffff;
-}
-.platform-badge-all.selected {
-  background-color: #ffffff;
-  color: #1e1e1e;
 }
 .run-board-idle-machine-status {
   flex: 1 1 auto;

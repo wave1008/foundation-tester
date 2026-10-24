@@ -43,12 +43,16 @@ import type {
 } from "./monitorProfileForms";
 
 /** extension → webview へ送るメッセージ(型付き)。 */
-/** プラットフォームの表示フィルタ(run ボードのヘッダのラジオ)。**"all" が既定**。
- * 受け手は webview 側 deviceTiles.js。 */
-export type PlatformFilter = "all" | "ios" | "android";
+/** プラットフォームの表示フィルタ(ラインビュー見出しの iOS / Android の独立トグル。true = 出す)。
+ * **既定は両方 true**。**両方 false は不正**(webview は唯一 ON の側を押すと入れ替える)。受け手は webview 側 deviceTiles.js。 */
+export type PlatformFilter = { readonly ios: boolean; readonly android: boolean };
+
+export const DEFAULT_PLATFORM_FILTER: PlatformFilter = { ios: true, android: true };
 
 export function isPlatformFilter(value: unknown): value is PlatformFilter {
-  return value === "all" || value === "ios" || value === "android";
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.ios === "boolean" && typeof v.android === "boolean" && (v.ios || v.android);
 }
 
 export type MonitorToWebviewMessage =
@@ -450,10 +454,9 @@ export type MonitorToWebviewMessage =
   // run ボードの「全て展開」トグル(true = 新しく現れた run も自動で展開する)。永続化の経路は
   // tilePaneHeight と同じ(setRunBoardExpandAll と対の契約。受け手は runBoard.js)。
   | { readonly type: "runBoardExpandAll"; readonly value: boolean }
-  // プラットフォームの表示フィルタ("all" | "ios" | "android"。all 以外はその側だけを
-  // 4つのセクションに出す)。永続化の経路は tilePaneHeight と同じ
-  // (setPlatformFilter と対の契約。受け手は deviceTiles.js)。
-  | { readonly type: "platformFilter"; readonly value: string }
+  // プラットフォームの表示フィルタ(PlatformFilter。false の側を4つのセクションから落とす)。
+  // 永続化の経路は tilePaneHeight と同じ(setPlatformFilter と対の契約。受け手は deviceTiles.js)。
+  | { readonly type: "platformFilter"; readonly value: PlatformFilter }
   // 「デバイスモニター」タブの全選択トグルの状態(true = 全デバイス選択)。永続化の理由と経路は
   // tilePaneHeight と同じ(setSelectAllDevices と対の契約)。**0枚でも復元する** ——
   // ready 直後はモニターがまだデバイスを出しておらず、出てきたデバイスを webview 側が選び直す。

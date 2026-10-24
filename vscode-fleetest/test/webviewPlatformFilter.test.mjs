@@ -1,5 +1,5 @@
-// run ボードのヘッダのプラットフォーム表示フィルタ(iOS / Android / 両方 の3択。既定は「両方」)
-// の DOM テスト。選ばれていない側のデバイスは**4つのセクション**(実行中・デバイス一覧・
+// ラインビュー見出しのプラットフォーム表示フィルタ(iOS / Android の独立トグル。既定は両方 ON)
+// の DOM テスト。OFF の側のデバイスは**4つのセクション**(実行中・デバイス一覧・
 // 選択したデバイス・実行ログ)から同時に消える —— 落とすのは deviceTiles.js の applyDevices の
 // 入口1箇所で、4つともそこから作られるため。
 // 契約は monitorWebviewMessages.ts の setPlatformFilter / platformFilter。
@@ -86,15 +86,15 @@ const logNames = (document) => [...document.querySelectorAll("#lanes-grid .lane"
   .filter((el) => el.style.display !== "none").map((el) => el.querySelector(".lane-header").textContent);
 const previewCount = (document) => [...document.querySelectorAll("#preview-grid .lane-preview")]
   .filter((el) => el.style.display !== "none").length;
-// 3択は**バッジ**(ユーザー決定 2026-09-22)。選んでいるものだけ .selected が付く
+// トグルは**バッジ**(ユーザー決定 2026-09-22)。ON のものだけ .selected が付く
 const badge = (document, value) => document.getElementById(`rad-platform-${value}`);
-const pick = (window, document, value) => {
+const toggle = (window, document, value) => {
   badge(document, value).dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
 };
-const selectedBadges = (document) => ["ios", "android", "all"]
+const selectedBadges = (document) => ["ios", "android"]
   .filter((value) => badge(document, value).classList.contains("selected"));
 
-test("フィルタはラインビューの見出しで「ライブ更新」のすぐ右に置かれる", (t) => {
+test("フィルタはラインビューの見出しで「ライブ更新」のすぐ右に置かれ、「両方」は無い", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   const group = badge(document, "ios").closest(".run-board-platform-filter");
@@ -104,21 +104,22 @@ test("フィルタはラインビューの見出しで「ライブ更新」の�
     document.getElementById("chk-show-stream-during-run").closest("label"),
     "すぐ左が「ライブ更新」",
   );
+  assert.deepEqual([...group.querySelectorAll("button")].map((b) => b.dataset.value), ["ios", "android"]);
   assert.equal(document.querySelectorAll("#run-board-header .run-board-platform-filter").length, 0, "run ボードの見出しには残さない");
 });
 
-test("既定は「両方」(フィルタを持たない状態と同じ見え方)", (t) => {
+test("既定は両方 ON(フィルタを持たない状態と同じ見え方)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  assert.deepEqual(selectedBadges(document), ["all"], "既定は「両方」だけが色付き");
-  assert.equal(badge(document, "all").getAttribute("aria-checked"), "true");
-  assert.equal(badge(document, "ios").getAttribute("aria-checked"), "false");
+  assert.deepEqual(selectedBadges(document), ["ios", "android"]);
+  assert.equal(badge(document, "ios").getAttribute("aria-pressed"), "true");
+  assert.equal(badge(document, "android").getAttribute("aria-pressed"), "true");
   sendDevices(window);
   assert.deepEqual(tileNames(document), ["iPhone-01", "iPhone-02", "Pixel-01"]);
 });
 
-test("選んだプラットフォームだけが4つのセクションに残り、「両方」でその場で戻る", (t) => {
-  const { window, document, posted } = createWebview();
+test("OFF の側が4つのセクションから消え、監視サイクル後も隠れたまま", (t) => {
+  const { window, document } = createWebview();
   t.after(() => window.close());
   post(window, { type: "monitorRuns", observed: true, runs: [] });
   sendDevices(window);
@@ -127,7 +128,9 @@ test("選んだプラットフォームだけが4つのセクションに残り�
   assert.equal(previewCount(document), 3, "前提: 拡大表示に3台");
   assert.deepEqual(boardNames(document), ["iPhone-01", "iPhone-02", "Pixel-01"], "前提: 実行中のツリーに3台");
 
-  pick(window, document, "ios");
+  toggle(window, document, "android");   // 両方 ON → Android だけ OFF
+  assert.deepEqual(selectedBadges(document), ["ios"], "iOS は ON のまま");
+  assert.equal(badge(document, "android").getAttribute("aria-pressed"), "false");
   assert.deepEqual(tileNames(document), ["iPhone-01", "iPhone-02"], "デバイス一覧");
   assert.deepEqual(boardNames(document), ["iPhone-01", "iPhone-02"], "実行中");
   assert.deepEqual(logNames(document), ["iPhone-01", "iPhone-02"], "実行ログ");
@@ -137,69 +140,89 @@ test("選んだプラットフォームだけが4つのセクションに残り�
   sendDevices(window);
   assert.deepEqual(tileNames(document), ["iPhone-01", "iPhone-02"], "監視サイクル後も隠れたまま");
   assert.deepEqual(logNames(document), ["iPhone-01", "iPhone-02"], "監視サイクル後も隠れたまま(実行ログ)");
+});
 
-  pick(window, document, "android");
-  assert.deepEqual(tileNames(document), ["Pixel-01"], "もう片方へ切り替えられる");
-
-  // **次の監視サイクルを待たない** —— 切り替えたその場で戻る(生の一覧を控えてあるため)
-  pick(window, document, "all");
-  assert.deepEqual(tileNames(document), ["iPhone-01", "iPhone-02", "Pixel-01"]);
-
-  // webview 側の realm で作られたオブジェクトなので、そのまま deepEqual すると prototype 違いで
-  // 落ちる(値だけを取り出して比べる)
-  assert.deepEqual(posted.filter((m) => m?.type === "setPlatformFilter").map((m) => m.value),
-    ["ios", "android", "all"]);
+// 唯一 ON の側を押すと入れ替わる・両方 ON にはできる・両方 OFF にはならない(ユーザー決定 2026-10-24)。
+// **次の監視サイクルを待たない** —— 切り替えたその場で描き直す(生の一覧を控えてあるため)
+test("唯一 ON の側を押すと入れ替わり、両方 OFF にはならない", (t) => {
+  const { window, document, posted } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window);
+  const steps = [
+    ["android", ["ios"], ["iPhone-01", "iPhone-02"]],                 // 両方 ON → Android OFF
+    ["ios", ["android"], ["Pixel-01"]],                               // iOS だけ ON で iOS → 入れ替え
+    ["android", ["ios"], ["iPhone-01", "iPhone-02"]],                 // Android だけ ON で Android → 入れ替え
+    ["android", ["ios", "android"], ["iPhone-01", "iPhone-02", "Pixel-01"]], // OFF 側を押す → 両方 ON
+    ["ios", ["android"], ["Pixel-01"]],                               // 両方 ON → iOS OFF
+    ["ios", ["ios", "android"], ["iPhone-01", "iPhone-02", "Pixel-01"]],
+  ];
+  for (const [key, on, names] of steps) {
+    toggle(window, document, key);
+    assert.deepEqual(selectedBadges(document), on, `${key} を押した後`);
+    assert.deepEqual(tileNames(document), names, `${key} を押した後`);
+  }
+  // webview 側の realm で作られたオブジェクトなので、値だけを取り出して比べる
+  assert.deepEqual(posted.filter((m) => m?.type === "setPlatformFilter").map((m) => [m.value.ios, m.value.android]),
+    [[true, false], [false, true], [true, false], [true, true], [false, true], [true, true]]);
 });
 
 test("host の復元値はバッジに入り、投げ返さない", (t) => {
   const { window, document, posted } = createWebview();
   t.after(() => window.close());
   sendDevices(window);
-  post(window, { type: "platformFilter", value: "android" });
+  post(window, { type: "platformFilter", value: { ios: false, android: true } });
   assert.deepEqual(selectedBadges(document), ["android"]);
   assert.deepEqual(tileNames(document), ["Pixel-01"]);
   assert.deepEqual(posted.filter((m) => m?.type === "setPlatformFilter"), [], "復元は送り返さない");
 });
 
-// 知らない値(古い形の保存値・壊れた設定)で**デバイスが黙って消えない**こと
-test("知らない復元値は「両方」へ倒す", (t) => {
+// 知らない形(古い3択の保存値・壊れた設定・両方 OFF)で**デバイスが黙って消えない**こと
+test("知らない復元値は両方 ON へ倒す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window);
-  post(window, { type: "platformFilter", value: "windows" });
-  assert.deepEqual(selectedBadges(document), ["all"]);
-  assert.deepEqual(tileNames(document), ["iPhone-01", "iPhone-02", "Pixel-01"]);
+  for (const value of ["ios", "all", { ios: "yes", android: true }, null, { ios: false, android: false }]) {
+    post(window, { type: "platformFilter", value: { ios: false, android: true } });
+    post(window, { type: "platformFilter", value });
+    assert.deepEqual(selectedBadges(document), ["ios", "android"], JSON.stringify(value));
+    assert.deepEqual(tileNames(document), ["iPhone-01", "iPhone-02", "Pixel-01"]);
+  }
 });
 
-// 3つとも同じ幅・選択中の文字は白(ユーザー決定 2026-09-22)。**jsdom は CSS を読まない**ので
-// 宣言そのものをテキストで押さえる(run ボードの CSS テストと同じ方式)
-test("バッジは3つとも同じ幅で、iOS / Android の選択中は白フォント", async () => {
-  const { readFileSync } = await import("node:fs");
+// **jsdom は CSS を読まない**ので宣言そのものをテキストで押さえる(run ボードの CSS テストと同じ方式)
+test("バッジは同じ幅で、ON の文字は白・ON はホバーで色を変えない", async () => {
   const css = readFileSync(new URL("../src/webview/monitor/style.css", import.meta.url), "utf8");
-  const base = css.slice(css.indexOf(".platform-badge {"));
-  const decl = base.slice(0, base.indexOf("}"));
+  const rule = (selector) => {
+    const at = css.indexOf(`${selector} {`);
+    assert.notEqual(at, -1, selector);
+    return css.slice(at, css.indexOf("}", at));
+  };
+  const decl = rule(".platform-badge");
   assert.match(decl, /min-width:\s*8ch/, "文字数で幅が変わらないよう下限を揃える");
   assert.match(decl, /text-align:\s*center/);
+  assert.match(decl, /background-color:\s*var\(--platform-badge-bg\)/);
   // 「ライブ更新」の右へ流れに沿って続く(中央の絶対位置ではない)
-  const group = css.slice(css.indexOf(".run-board-platform-filter {"));
-  const groupDecl = group.slice(0, group.indexOf("}"));
-  assert.doesNotMatch(groupDecl, /position:\s*absolute/);
+  assert.doesNotMatch(rule(".run-board-platform-filter"), /position:\s*absolute/);
   // 「ライブ更新」との間はバッジ1つぶん(min-width の 8ch。行の gap 6px を引く)
-  const ios = css.slice(css.indexOf(".platform-badge-ios {"));
-  assert.match(ios.slice(0, ios.indexOf("}")), /margin-left:\s*calc\(8ch - 6px\)/);
+  assert.match(rule(".platform-badge-ios"), /margin-left:\s*calc\(8ch - 6px\)/);
   for (const platform of ["ios", "android"]) {
-    const rule = css.slice(css.indexOf(`.platform-badge-${platform}.selected {`));
-    assert.match(rule.slice(0, rule.indexOf("}")), /color:\s*#ffffff/, platform);
+    const sel = rule(`.platform-badge-${platform}.selected`);
+    assert.match(sel, /color:\s*#ffffff/, platform);
+    assert.doesNotMatch(sel, /(^|[^-])background-color:/, "背景は変数で持つ(ホバーの固定が効くように)");
   }
-  const all = css.slice(css.indexOf(".platform-badge-all.selected {"));
-  assert.match(all.slice(0, all.indexOf("}")), /color:\s*#1e1e1e/, "白地なので文字だけ暗色");
+  // 素の button:hover:not(:disabled)(0,2,1)に勝つ詳細度でホバー時の背景を今の色に固定する
+  assert.match(rule(".platform-badge:hover:not(:disabled)"), /background-color:\s*var\(--platform-badge-bg\)/);
+  // 不透明度を上げるのは OFF だけ
+  assert.match(rule(".platform-badge:not(.selected):hover"), /opacity:\s*1/);
+  assert.equal(css.indexOf(".platform-badge:hover {"), -1, "ON も含むホバーの装飾を置かない");
+  assert.equal(css.indexOf("platform-badge-all"), -1, "「両方」の名残を置かない");
 });
 
-test("setPlatformFilter は host 側の検証を通り、知らない値は弾く", async () => {
-  const { isMonitorFromWebviewMessage } = await import("../src/monitorWebviewMessages");
-  for (const value of ["all", "ios", "android"]) {
-    assert.equal(isMonitorFromWebviewMessage({ type: "setPlatformFilter", value }), true, value);
+test("setPlatformFilter は host 側の検証を通り、知らない形と両方 OFF は弾く", () => {
+  for (const value of [{ ios: true, android: true }, { ios: false, android: true }, { ios: true, android: false }]) {
+    assert.equal(isMonitorFromWebviewMessage({ type: "setPlatformFilter", value }), true, JSON.stringify(value));
   }
-  assert.equal(isMonitorFromWebviewMessage({ type: "setPlatformFilter", value: "windows" }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "setPlatformFilter", ios: true, android: false }), false);
+  for (const value of ["all", "ios", "android", null, { ios: true }, { ios: 1, android: 0 }, { ios: false, android: false }]) {
+    assert.equal(isMonitorFromWebviewMessage({ type: "setPlatformFilter", value }), false, JSON.stringify(value));
+  }
 });

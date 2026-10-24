@@ -472,7 +472,7 @@ test("台の行にはプラットフォームの色のデバイスアイコン�
     const icon = css.slice(css.indexOf(`.run-board-lane-icon-${platform} {`));
     const badge = css.slice(css.indexOf(`.platform-badge-${platform}.selected {`));
     assert.match(icon.slice(0, icon.indexOf("}")), new RegExp(`color:\\s*${color}`), platform);
-    assert.match(badge.slice(0, badge.indexOf("}")), new RegExp(`background-color:\\s*${color}`), platform);
+    assert.match(badge.slice(0, badge.indexOf("}")), new RegExp(`--platform-badge-bg:\\s*${color}`), platform);
   }
 });
 

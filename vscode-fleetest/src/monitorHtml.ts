@@ -409,19 +409,15 @@ function renderDevicesPanel(): string {
            状態の保存と復元は streamToggle.js ⇄ monitorPanel.ts
            (setShowStreamDuringRun / showStreamDuringRun) -->
       <label class="profile-label header-toggle run-stream-toggle" title="${t("panels.toolbar.showStreamDuringRunTitle")}"><input type="checkbox" class="toggle-switch" role="switch" id="chk-show-stream-during-run" checked>${t("panels.toolbar.showStreamDuringRun")}</label>
-      <!-- プラットフォームの表示フィルタ(3択・既定は「両方」)。選ばれていない側のデバイスは
-           4つのセクション(実行中・デバイス一覧・選択したデバイス・実行ログ)から同時に消える
-           —— deviceTiles.js が applyDevices の入口で落とすため。**見出し行のクリック
+      <!-- プラットフォームの表示フィルタ(iOS / Android の**独立したトグル**・既定は両方 ON)。
+           OFF の側のデバイスは4つのセクション(実行中・デバイス一覧・選択したデバイス・実行ログ)から
+           同時に消える —— deviceTiles.js が applyDevices の入口で落とすため。**見出し行のクリック
            (ラインビューの開閉)へ波及させない**ので deviceTiles.js が stopPropagation する。
-           **見た目はバッジ**(ユーザー決定): 選んでいるものだけ色付き
-           (iOS / Android はタイルのデバイス名ピルと同じ色・「両方」は白)で、
-           選んでいないものは灰色。3択なので role は radiogroup/radio のまま持つ。
-           位置は「ライブ更新」の右(ユーザー決定)。
-           iOS / Android は製品名なので翻訳しない(「両方」と説明だけ t() を通す) -->
-      <span class="run-board-platform-filter" role="radiogroup" aria-label="${t("panels.runBoard.platformFilterTitle")}" title="${t("panels.runBoard.platformFilterTitle")}">
-        <button type="button" class="badge platform-badge platform-badge-ios" id="rad-platform-ios" data-value="ios" role="radio" aria-checked="false">iOS</button>
-        <button type="button" class="badge platform-badge platform-badge-android" id="rad-platform-android" data-value="android" role="radio" aria-checked="false">Android</button>
-        <button type="button" class="badge platform-badge platform-badge-all" id="rad-platform-all" data-value="all" role="radio" aria-checked="true">${t("panels.runBoard.platformFilterAll")}</button>
+           **見た目はバッジ**(ユーザー決定): ON はタイルのデバイス名ピルと同じ色・OFF は灰色。
+           位置は「ライブ更新」の右(ユーザー決定)。iOS / Android は製品名なので翻訳しない -->
+      <span class="run-board-platform-filter" role="group" aria-label="${t("panels.runBoard.platformFilterTitle")}" title="${t("panels.runBoard.platformFilterTitle")}">
+        <button type="button" class="badge platform-badge platform-badge-ios" id="rad-platform-ios" data-value="ios" aria-pressed="true">iOS</button>
+        <button type="button" class="badge platform-badge platform-badge-android" id="rad-platform-android" data-value="android" aria-pressed="true">Android</button>
       </span>
     </div>
 
