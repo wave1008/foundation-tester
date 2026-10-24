@@ -1954,11 +1954,6 @@ extension MCPServer {
             + " ft_launch \(launched) before trusting these refs\n"
     }
 
-    /// 窓の定義は DSL と共有する(AndroidAppProcessEvidenceQuery。ft_logs の既定 300 秒と揃える)
-    static func crashAttributionWindowSeconds(launchedAt: Date?, now: Date) -> Int {
-        AndroidAppProcessEvidenceQuery.attributionWindowSeconds(since: launchedAt, now: now)
-    }
-
     /// `switchedAppNote` の `processEvidence` 引数を埋める(Android のみ・adb 2〜3往復)。
     /// **すり替わっていない通常の呼び出しでは adb を払わない**(session == launched ならここで
     /// 抜ける)。serial は明示引数か、このセッションが覚えている宛先(connectedAndroidSerials。

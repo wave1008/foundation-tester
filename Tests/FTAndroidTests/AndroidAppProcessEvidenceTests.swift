@@ -198,6 +198,13 @@ final class AndroidAppProcessEvidenceTests: XCTestCase {
         XCTAssertEqual(AndroidAppProcessEvidenceQuery.attributionWindowSeconds(since: nil, now: start), 300)
         XCTAssertEqual(AndroidAppProcessEvidenceQuery.defaultAttributionWindowSeconds, 300)
     }
+
+    /// 経過が負(時計のずれ・launch がまだ記録されていない世代)でも下限5秒を割らない
+    func testAttributionWindowHasAFloorOfFiveSeconds() {
+        let launchedAt = Date(timeIntervalSince1970: 2_000)
+        let now = Date(timeIntervalSince1970: 1_000)
+        XCTAssertEqual(AndroidAppProcessEvidenceQuery.attributionWindowSeconds(since: launchedAt, now: now), 5)
+    }
 }
 
 /// **文言の一覧に無い adb の失敗**も「判定できない」に倒す(2026-09-16 のレビュー指摘)。
