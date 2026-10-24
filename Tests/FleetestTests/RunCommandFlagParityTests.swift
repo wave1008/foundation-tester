@@ -1,12 +1,14 @@
 // `fleetest run`(RunScenarios)と `fleetest api run`(ApiRunCommand)は**同じ run を2つの入口で
-// 提供する手写しの2実装**で、オプションも配線も別々に持っている。片方だけに足した変更は
+// 提供する2実装**。共通のオプション宣言と検査は RunCommonOptions に1つだが、それ以外のフラグと
+// 配線(受け取った値を実行段へ渡す)は別々に持っている。片方だけに足した変更は
 // **どちらの経路も緑のまま**通るので(実行されるのは足したほうだけ)、run.json にも E2E にも出ない。
 // 実際にこの分岐から出た欠陥: `--runner local` の絞り込みが api run 側だけ通っていなかった /
 // run フックの呼び出しが2箇所にあり片方が漏れた / `exactScenarioCount` の台数削減が api run にだけ無かった。
 //
 // ここで**意図した差分だけ**を等号で固定する。片側にフラグを足すと落ちるので、
-// 「両方に足す」か「片側だけでよい理由をここへ書く」かを必ず選ぶことになる。
-// 共通フラグは固定しない(両方に足す変更は素通ししてよい ―― 分岐が増えていないため)。
+// 「RunCommonOptions に足す」か「片側だけでよい理由をここへ書く」かを必ず選ぶことになる。
+// 両方にあるフラグは、RunCommonOptions から来るか理由付きで別々に宣言するかを固定する
+// (testFlagsOnBothSidesComeFromTheSharedOptions。両方へ別々に足すと上の固定は素通しする)。
 //
 // 判定は**ヘルプの宣言列**から採る。実際に利用者へ見えている面がそのまま対象になり、
 // @OptionGroup で畳まれた DriverOptions も含まれる(ソース走査だと拾えない)。
@@ -20,7 +22,7 @@ final class RunCommandFlagParityTests: XCTestCase {
     // MARK: - 意図した差分(ここが唯一の定義元)
 
     /// `fleetest run` にだけあるもの。**理由が書けないものはここへ足さない** ――
-    /// 書けないなら api run 側にも足すのが正しい。
+    /// 書けないなら RunCommonOptions へ移すのが正しい。
     private static let runOnly: [String: String] = [
         "--broadcast": "分配の差し替え(ScenarioDispatch.broadcast)は ProfileRunner にしか無い。拡張にブロードキャストの導線が無いため api run へは配線していない",
         "--failed": "前回失敗ぶんの再実行。拡張は Test Explorer 側が対象を持っているので、解決済みの --scenario を渡す",
@@ -41,6 +43,19 @@ final class RunCommandFlagParityTests: XCTestCase {
         "--scenario-timeout": "同上",
     ]
 
+    /// 両方にあるが `RunCommonOptions` に入れず、各コマンドが別々に宣言しているもの。
+    /// **意味かヘルプの内容が2本で違う**ものだけを置く —— 同じなら共有の宣言へ移すのが正しい。
+    private static let declaredSeparately: [String: String] = [
+        "--scenario": "run は省略で全部・api run は1本以上必須(拡張が解決済みの対象を渡す)",
+        "--port": "run は繰り返して並列・api run は1回だけ(--profile 無しの並列経路を持たない)",
+        "--set": "ヘルプが衝突する専用フラグを名指しする(api run だけ --default-timeout/--scenario-timeout を持つ)",
+        "--report-dir": "api run のヘルプは --profile のときプロファイルの reportDir を上書きすることを書く",
+        "--dry-run": "ヘルプが別(run は No-Load-Run の検出内容・api run は --profile のワーカー構築の省略)",
+        "--runner": "api run はリモートの NDJSON を中継する(ヘルプが違う)",
+        "--wait-lock": "run だけ --force-lock との併用不可を持つ",
+        "--performance": "run は --fleet でもよい(前提とヘルプが違う)",
+    ]
+
     // MARK: - 検証
 
     func testRunAndApiRunDivergeOnlyWhereDocumented() {
@@ -56,6 +71,20 @@ final class RunCommandFlagParityTests: XCTestCase {
                     side: "fleetest run", other: "fleetest api run", literal: "runOnly")
         assertEqual(actual: api.subtracting(run), pinned: Self.apiOnly,
                     side: "fleetest api run", other: "fleetest run", literal: "apiOnly")
+    }
+
+    /// 両方にあるフラグは `RunCommonOptions`(共有の宣言)から来ているか、`declaredSeparately` に理由付きで
+    /// 載っているかのどちらか。**両方へ別々に宣言して足す**と、上の差分のテストは素通しする(集合が割れない)ので、
+    /// ここで共有の宣言へ寄せさせる。
+    func testFlagsOnBothSidesComeFromTheSharedOptions() {
+        let both = Self.longFlags(of: RunScenarios.self).intersection(Self.longFlags(of: ApiRunCommand.self))
+        let shared = Self.longFlags(of: RunCommonOptions.self)
+        XCTAssertGreaterThan(shared.count, 5, "RunCommonOptions のフラグ抽出に失敗している")
+        let separately = both.subtracting(shared)
+        XCTAssertEqual(separately.sorted(), Self.declaredSeparately.keys.sorted(),
+                       "両方にあるのに RunCommonOptions に無いフラグが declaredSeparately と食い違っています。"
+                       + "同じ意味なら RunCommonOptions へ移し、2本で意味が違うなら理由を declaredSeparately に書いてください")
+        XCTAssertEqual(Self.flagsMissingAReason(in: Self.declaredSeparately), [])
     }
 
     /// 差分の表に**理由の無い行**を置かせない。理由が書けないなら、その差分は意図ではなく漏れ。
@@ -126,7 +155,7 @@ final class RunCommandFlagParityTests: XCTestCase {
             message += """
 
             ● \(side) にだけ増えた: \(added.joined(separator: " "))
-              → \(other) にも足すか、片側だけでよい理由を \(literal) に書いてください。
+              → 両方に要るなら RunCommonOptions へ移すか、片側だけでよい理由を \(literal) に書いてください。
 
             """
         }
@@ -157,7 +186,7 @@ final class RunCommandFlagParityTests: XCTestCase {
     /// (`--wait-lock <wait-lock> Instead of …`)、説明文に出てくる `--runner` や `--fleet.` まで
     /// フラグとして拾う。代わりに**宣言列の文法**で切る: 行頭から「フラグ」か「`<値>`」である
     /// 限り読み進め、それ以外の語(= 説明文の1語目)で止める。
-    private static func longFlags<C: ParsableCommand>(of command: C.Type) -> Set<String> {
+    private static func longFlags<C: ParsableArguments>(of command: C.Type) -> Set<String> {
         longFlags(fromHelp: command.helpMessage(columns: 10_000))
     }
 

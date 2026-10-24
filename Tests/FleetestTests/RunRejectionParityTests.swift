@@ -1,11 +1,11 @@
-// `fleetest run`(RunScenarios)と `fleetest api run`(ApiRunCommand)は同じ run の2つの入口を
-// **手写しで持つ2実装**。RunCommandFlagParityTests は**フラグ名の集合**しか見ないので、
-// 「同じフラグが両方にあるのに、併用不可・必須の検査が片方にしか無い」型の分岐を**1つも
+// `fleetest run`(RunScenarios)と `fleetest api run`(ApiRunCommand)は同じ run の2つの入口。
+// 共通の規則は RunCommonOptions の関数だが、**各 validate() が呼ぶ順序と片側だけのフラグの規則は別々**。
+// RunCommandFlagParityTests は**フラグ名の集合**しか見ないので、「同じフラグが両方にあるのに、併用不可・必須の検査が片方にしか無い」型の分岐を**1つも
 // 捕まえられない** —— 現に `--profile` + `--port` は run で黙って無視され api run では
 // エラーになっていた(同じ打鍵が片方で通り片方で落ちる)。
 //
 // ここは**規則そのもの**を同じ打鍵で両方へ当て、受理/拒否の一致を等号で固定する。
-// 片方だけに規則を足すと落ちるので、「両方に足す」か「片側だけでよい理由を divergent へ書く」
+// 片方だけに規則を足すと落ちるので、「RunCommonOptions の関数に足して両方から呼ぶ」か「片側だけでよい理由を divergent へ書く」
 // かを必ず選ぶことになる。
 
 import XCTest

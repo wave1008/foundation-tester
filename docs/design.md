@@ -6010,7 +6010,7 @@ CLI 実行・他人の run・ランナー機で直に打たれた run は `inRun
 - **記帳は `RunOrchestrator` の1箇所**。run-lease と同じ注入口(`writeRunLease` の隣)で、
   `runSequential` / `runParallel` の両方がここを通る = 記帳の実装を2つ持たない
 - **ただし注入は2経路**(`ProfileRunner` と `ApiRunCommand`。`fleetest run` と `fleetest api run` は
-  オプションも配線も別々に持つ2実装)。**片方だけに足すとその経路では何も出ないまま緑で通る**ので、
+  配線を別々に持つ2実装。共有はオプション宣言と検査の `RunCommonOptions` だけ)。**片方だけに足すとその経路では何も出ないまま緑で通る**ので、
   両経路の注入をソース走査テストで等号固定する
 - **書くのは変化した瞬間だけ**(シナリオの開始・終了、レーンの増減)。秒ごとには書かない ——
   経過は読み手が計算する(18.3)

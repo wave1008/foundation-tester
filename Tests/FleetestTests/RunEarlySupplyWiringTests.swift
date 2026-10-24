@@ -21,7 +21,7 @@ final class RunEarlySupplyWiringTests: XCTestCase {
         let build = try XCTUnwrap(index("try ScenarioHost.build(project: testProject"), "走査がビルドの呼び出しに届いていない")
         XCTAssertLessThan(prepare, build, "準備の段がビルドの後にある(並行にならない)")
         // ビルドが要らない回は一覧の後に正確な本数で絞るので、門は buildNeeded。--failed は開始スクリプトを空撃ちしない
-        let gate = try XCTUnwrap(lines[..<prepare].lastIndex { $0.hasPrefix("if let profile, !dryRun, !skipBuild") },
+        let gate = try XCTUnwrap(lines[..<prepare].lastIndex { $0.hasPrefix("if let profile = common.profile, !dryRun, !common.skipBuild") },
                                  "準備の段の門が無い")
         XCTAssertTrue(lines[gate].contains("ScenarioHost.buildNeeded(project: testProject)"), lines[gate])
         XCTAssertTrue(lines[gate].contains("!failed"), lines[gate])

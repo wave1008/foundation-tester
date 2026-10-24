@@ -234,11 +234,7 @@ struct RunScenarios: AsyncParsableCommand {
     /// = exit を非ゼロにするため)ので、言わないと「16 of 16 failed」が1本も走っていない run に付く
     static let interruptedCountNote = " — the run was interrupted; scenarios that never started count as failed"
 
-    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
-    var project: String?
-
-    @Option(help: "Run profile name (profiles/runs/<name>.json). Includes device provisioning and auto-install. Cannot be combined with --platform/--port/--serial/--app-id")
-    var profile: String?
+    @OptionGroup var common: RunCommonOptions
 
     @Option(name: .customLong("scenario"), parsing: .upToNextOption,
             help: "Scenario IDs to run (Class.method; a class name alone runs all of its scenarios). Repeatable; defaults to all. @Deleted / @Draft scenarios run only on an exact match")
@@ -278,14 +274,6 @@ struct RunScenarios: AsyncParsableCommand {
           help: "Enumerate and validate the steps without touching a device (No-Load-Run). Catches selector syntax errors, unreachable scenes and expectation blocks with no assertions")
     var dryRun = false
 
-    @Flag(name: .customLong("no-lpt"),
-          help: "Disable LPT ordering (longest past runtime first) and dispatch in scenario ID order")
-    var noLPT = false
-
-    @Option(name: .customLong("lpt-history-runs"),
-            help: "Number of past runs to read for LPT ordering (newest first, default 5)")
-    var lptHistoryRuns: Int?
-
     @Flag(help: "Run only the scenarios that failed last time (results are recorded in .fleetest/last-results/ on every run)")
     var failed = false
 
@@ -296,9 +284,6 @@ struct RunScenarios: AsyncParsableCommand {
     @Option(name: .customLong("port"),
             help: "Bridge port for running iOS scenarios in parallel. Repeatable (--port 8123 --port 8124); each port must already have a bridge up on a separate device")
     var ports: [UInt16] = []
-
-    @Flag(name: .customLong("skip-build"), help: "Skip the swift build before running")
-    var skipBuild = false
 
     @Flag(help: "Suppress step lines and print only the summary (for CI and agents)")
     var quiet = false
@@ -312,14 +297,6 @@ struct RunScenarios: AsyncParsableCommand {
         "Dispatch this run to a remote runner: a registered machine name (fleetest remote machines) "
         + "or a raw user@host/host. Requires --profile"))
     var runner: String?
-
-    @Option(name: .customLong("remote-dir"),
-            help: "Runner-only base directory on the remote host (holds its own clone and workspace; default: the host registry's entry, or ~/fleetest-runner). Must NOT point at an existing local install of foundation-tester")
-    var remoteDir: String?
-
-    @Option(name: .customLong("remote-timeout"),
-            help: "Timeout in seconds for the whole remote dispatch (default: auto, sized from the scenario count; see docs/user-docs/fleet/remote_runners.md)")
-    var remoteTimeout: Int?
 
     @Flag(name: .customLong("performance"),
           help: "Performance-testing mode (requires --profile or --fleet): if a dead lane cannot be revived before the run starts, fail instead of dropping it and continuing on the remaining lanes. iOS lanes are built before the run starts (no late join) so a missing one is reported before the run, not in the middle of it")
@@ -361,74 +338,14 @@ struct RunScenarios: AsyncParsableCommand {
             + "told apart by their worker field"))
     var broadcast = false
 
-    @Option(name: .customLong("device"), parsing: .upToNextOption,
-            help: ArgumentHelp("Run on only these devices of the run profile (device names as written in "
-                + "the run profile). Repeatable; defaults to every device the run profile lists. "
-                + "Used by the per-host sub-runs when one run profile spans devices on several machines"))
-    var devices: [String] = []
-
-    /// **どの機械のデバイスを使うか**。`--device` は名前でしか絞れないが、一意なのは (host, name)
-    /// なので、名前だけだと別の機械の同名デバイスまで掴む(docs/remote-runner.md §13)。
-    /// マシン別サブ実行が自分で付ける値で、手で打つものではない
-    @Option(name: .customLong("device-machine"),
-            help: ArgumentHelp(
-                "Only use the devices assigned to this machine (\"local\" or a registered host name). "
-                + "Set by the per-host sub-runs; not for hand use",
-                visibility: .hidden))
-    var deviceMachine: String?
-
-    /// `--device <name>` の名前が実行プロファイルの2つ以上の機械に当たるとき、黙って全機械で
-    /// 回ってしまう既定を明示させる口(RunDeviceMachineAmbiguity)。無指定・--runner/--device-machine
-    /// 無指定でその状況になったら実行前に断る(ValidationError 相当。run()参照)
-    @Flag(name: .customLong("all-machines"),
-          help: ArgumentHelp("Run on every machine a --device name matches, instead of refusing "
-            + "when it matches devices on more than one machine (the previous default behavior). "
-            + "Cannot be combined with --runner/--device-machine (those already restrict the run "
-            + "to one machine)"))
-    var allMachines = false
-
-    /// 同じ実行から分かれた run を束ねる鍵(FTCore.RunMetaRecord.runGroup)。**発行は
-    /// マシン別サブ実行の親だけ**で、子は受け取った値をそのまま run.json に書く。手で打つものではない
-    @Option(name: .customLong("run-group"),
-            help: ArgumentHelp(
-                "Group key shared by the per-machine sub-runs of one execution. "
-                + "Set by the per-host sub-runs; not for hand use",
-                visibility: .hidden))
-    var runGroup: String?
-
-    /// **手で打つものではない**。RemoteRunDispatcher がミラー後の絶対パスを渡す
-    /// (Sources/FTRemote/RemoteDispatch.swift の RemoteRunArgs.build)。プロファイルの
-    /// `remoteControl.workspace` を上書きし、appPath のインストール先(ステージ先。原本の解決基準は
-    /// 常にリポジトリルートで不変)をそちらへ切り替える(ProfileResolver.resolve の
-    /// workspaceOverride / WorkspaceAppStaging 参照)
-    @Option(help: ArgumentHelp(
-        "Override this run profile's remoteControl.workspace (where the staged appPath package is "
-        + "installed from). Set by the remote dispatcher on the far side; not for hand use",
-        visibility: .hidden))
-    var workspace: String?
-
-    /// **実行プロファイル無し**で回すときのアプリの指定。
-    /// --profile があればそちらのアプリプロファイルから解決されるので併用不可(validate() 参照)
-    @Option(name: .customLong("app-id"),
-            help: "Default app (bundle ID / package name) for runs without --profile. Cannot be combined with --profile (the app profile supplies the bundle ID)")
-    var appID: String?
-
-    @Option(help: "Target platform: ios / android (default ios)")
-    var platform: String?
-
-    @Option(help: "Android device serial (adb -s; defaults to the only connected device)")
-    var serial: String?
-
-    /// `platform` は non-Optional にしない —— 既定値を持たせると「指定された」と「既定のまま」が
-    /// 区別できず、`--profile` との併用禁止のような検査ができなくなる(DriverOptions と同じ規律)。
     /// 省略時の推定は `DeviceTargetConsistency.defaultPlatform`(--serial だけなら android)
     var resolvedPlatform: String {
         FTCore.DeviceTargetConsistency.defaultPlatform(
-            explicit: platform, gaveIOSTarget: !ports.isEmpty, gaveAndroidTarget: serial != nil)
+            explicit: common.platform, gaveIOSTarget: !ports.isEmpty, gaveAndroidTarget: common.serial != nil)
     }
 
     func validate() throws {
-        try ports.forEach { try DriverOptions.rejectZeroPort($0) }  // 判定は DriverOptions の1箇所
+        try RunCommonOptions.rejectZeroPorts(ports)
         // レポートは run 後に書くので、書けない先は**始める前に**言う(フリート run では
         // 20 分走ってから分かっていた)。末尾の書き込み失敗が警告のみの規律は変えない
         // (判定は FTCore.JUnitOutputPath の doc)
@@ -439,78 +356,35 @@ struct RunScenarios: AsyncParsableCommand {
         if junit != nil, dryRun {
             throw ValidationError("--junit cannot be combined with --dry-run (a dry-run writes no JUnit report)")
         }
-        let parsed: [String: RunProfileSetValue]
-        do { parsed = try RunProfileSetOverride.parse(setOverrides) }
-        catch { throw ValidationError(error.localizedDescription) }
-        // 専用フラグと同じキーの `--set` は黙ってどちらかを勝たせない(--profile の有無を問わない)
-        if let message = RunProfileDocument.flagOverrideCollision(
-            flag: "--report-dir", key: "reportDir", flagIsSet: reportDir != nil, overrides: parsed) {
-            throw ValidationError(message)
-        }
-        // --profile 無しのときだけ判定できる(デバイス一覧・録画基盤が無い経路。run() が
-        // build 後にもう一度これを検査すると約12秒のビルドを無駄に払う。引数だけで決まるので
-        // ここへ寄せる)。**--fleet は除く**(各エントリが自分の --profile を持つので、
-        // ここでの「プロファイル無し」判定は誤り。dispatchToFleet は素通しで転送する)。
-        // **--dry-run も除く**(デバイスにも録画にも触れないので --set はそもそも使われない。
-        // run() が info 注記を出すだけで、この検査までは到達しない)
-        if profile == nil, fleet == nil, !dryRun {
-            let unsupported = Set(parsed.keys).intersection(RunProfileDocument.profileOnlyKeys).sorted()
-            guard unsupported.isEmpty else {
-                throw ValidationError("--set \(unsupported.joined(separator: ", ")) needs --profile"
-                    + " (there are no devices from a run profile to apply"
-                    + " \(unsupported.count == 1 ? "it" : "them") to)")
-            }
-            // 単一接続の runSequential は RunOrchestrator を経由しないため録画できない
-            // (FTCore.RunProfileDocument.recordNeedsRejecting 参照)。--port を2つ以上渡せば
-            // runParallel = RunOrchestrator 経由になり録画できる
-            let noProfileSettings = DeviceIndependentRunSettings.resolve(
-                DeviceIndependentRunSettings.profileLessBase.applyingOverrides(parsed))
-            let iosPorts: [UInt16] = ports.isEmpty ? [BridgeAPI.defaultPort] : ports
-            if RunProfileDocument.recordNeedsRejecting(record: noProfileSettings.record,
-                                                        hasRecordingSession: iosPorts.count > 1) {
-                throw ValidationError("--set record=true needs --profile, or --port given more than"
-                    + " once (a single connection here runs scenarios directly; there is no"
-                    + " recording session for --set record to attach to)")
-            }
-        }
-        // `--platform` は dry-run でも検証する(`ios{}`/`android{}` の選択に直結するので、
-        // 大文字違い等が黙って両方を実行してしまう。)
-        if let platform, !RunWorker.knownPlatforms.contains(platform) {
-            throw ValidationError("--platform must be one of "
-                + "\(RunWorker.knownPlatforms.sorted().joined(separator: "/")): \(platform)")
-        }
-        if profile != nil,
-           platform != nil || !ports.isEmpty || serial != nil {
-            throw ValidationError("--profile cannot be combined with --platform/--port/--serial")
-        }
-        if profile != nil, appID != nil {
-            throw ValidationError("--app-id cannot be combined with --profile (the app profile supplies the bundle ID)")
-        }
-        if performanceMode, profile == nil, fleet == nil {
-            throw ValidationError("--performance requires --profile or --fleet")
-        }
-        // 明示 --runner("local" を除く)は --profile が無いと dispatchToRemoteHost の冒頭で
-        // 必ず落ちる。デバイスの machine による自動ディスパッチは --profile がある側でしか
-        // 見ないので、ここは引数だけから決まる(ファイル I/O が要らない = validate() に置ける)。
-        // **api run と同じ規則・同じ文言**(RunRejectionParityTests が両者の一致を固定する)
-        if profile == nil, fleet == nil, let target = runner, !MachineDispatch.isExplicitLocal(target) {
-            throw ValidationError("--runner requires --profile")
-        }
-        // **api run と同じ規則・同じ文言**(RunRejectionParityTests が両者の一致を固定する)
-        if let message = RunDeviceMachineAmbiguity.allMachinesConflictMessage(
-            allMachines: allMachines, runner: runner, deviceMachine: deviceMachine) {
-            throw ValidationError(message)
-        }
+        // `--set` の検査(型・専用フラグとの衝突・--profile 無し時の profile-only キーと record)は api run と共有。
+        // **--fleet は除く**(各エントリが自分の --profile を持つので、ここでの「プロファイル無し」判定は誤り。
+        // dispatchToFleet は素通しで転送する)。**--dry-run も除く**(デバイスにも録画にも触れないので
+        // --set はそもそも使われない。run() が info 注記を出すだけで、この検査までは到達しない)。
+        // 単一接続の runSequential は RunOrchestrator を経由しないため録画できない
+        // (FTCore.RunProfileDocument.recordNeedsRejecting 参照)。--port を2つ以上渡せば
+        // runParallel = RunOrchestrator 経由になり録画できる。build 後に検査すると約12秒のビルドを
+        // 無駄に払うので、引数だけで決まるここへ寄せる
+        let iosPorts: [UInt16] = ports.isEmpty ? [BridgeAPI.defaultPort] : ports
+        try common.validateSet(
+            setOverrides: setOverrides,
+            flagCollisions: [("--report-dir", "reportDir", reportDir != nil)],
+            hasFleet: fleet != nil, dryRun: dryRun, hasRecordingSession: iosPorts.count > 1,
+            recordRejection: "--set record=true needs --profile, or --port given more than"
+                + " once (a single connection here runs scenarios directly; there is no"
+                + " recording session for --set record to attach to)")
+        try common.validateTargeting(ports: ports)
+        try common.validatePerformance(performanceMode: performanceMode, hasFleet: fleet != nil, acceptsFleet: true)
+        try common.validateRunnerAndMachines(runner: runner, hasFleet: fleet != nil)
         if fleet != nil {
             if runner != nil { throw ValidationError("--fleet cannot be combined with --runner") }
-            if profile != nil {
+            if common.profile != nil {
                 throw ValidationError(
                     "--fleet cannot be combined with --profile (set profile per entry in the fleet file)")
             }
             if !ports.isEmpty { throw ValidationError("--fleet cannot be combined with --port") }
             if failed { throw ValidationError("--fleet cannot be combined with --failed") }
             if reportDir != nil { throw ValidationError("--fleet cannot be combined with --report-dir") }
-            if skipBuild { throw ValidationError("--fleet cannot be combined with --skip-build") }
+            if common.skipBuild { throw ValidationError("--fleet cannot be combined with --skip-build") }
         }
         if split, fleet == nil {
             throw ValidationError("--split requires --fleet")
@@ -518,10 +392,10 @@ struct RunScenarios: AsyncParsableCommand {
         if broadcast {
             // 黙って無視しない(fleet の子へは中継していない。ports 経路にはレーンの名が無い)
             if fleet != nil { throw ValidationError("--broadcast cannot be combined with --fleet") }
-            if profile == nil { throw ValidationError("--broadcast requires --profile") }
+            if common.profile == nil { throw ValidationError("--broadcast requires --profile") }
         }
         if forceLock, let message = RemoteDispatchFlagPolicy.forceLockRejection(
-            host: runner, fleet: fleet, profile: profile) {
+            host: runner, fleet: fleet, profile: common.profile) {
             throw ValidationError(message)
         }
         if let message = RemoteDispatchFlagPolicy.waitLockConflictsWithForceLock(
@@ -542,29 +416,29 @@ struct RunScenarios: AsyncParsableCommand {
     /// 戻り値は解決したプロファイル(`--set` 適用済み。OCR のコンパイルの要否に使う)。`--profile` 無しは nil
     @discardableResult
     private func validateProfileDevicesBeforeLock() throws -> ResolvedProfile? {
-        guard let profile else { return nil }
-        let testProject = try ScenarioHost.project(named: project)
+        guard let profile = common.profile else { return nil }
+        let testProject = try ScenarioHost.project(named: common.project)
         let resolvedAll = try ProfileResolver.resolve(
             project: testProject, runName: profile,
-            workspaceOverride: workspace, overrides: try RunProfileSetOverride.parse(setOverrides))
+            workspaceOverride: common.workspace, overrides: try RunProfileSetOverride.parse(setOverrides))
         if broadcast, resolvedAll.responseMeasurement {
             throw ValidationError(ResponseMeasurementPolicy.combinationRejection(flag: "--broadcast"))
         }
         // 明示 --runner local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
         // local 枠だけに絞る(理由は run() 本編の同じ判定の宣言参照)
-        var effectiveDeviceFilter = devices
-        var effectiveDeviceHost = deviceMachine
-        if deviceMachine == nil, MachineDispatch.isExplicitLocal(runner) {
+        var effectiveDeviceFilter = common.devices
+        var effectiveDeviceHost = common.deviceMachine
+        if common.deviceMachine == nil, MachineDispatch.isExplicitLocal(runner) {
             (effectiveDeviceFilter, effectiveDeviceHost) = try machineScopedDeviceFilter(
                 project: testProject, profile: profile,
-                targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices)
+                targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: common.devices)
         }
         let full = resolvedAll.filteringDevices(names: effectiveDeviceFilter, deviceMachine: effectiveDeviceHost)
         // 絞り込みを指定したときだけ「合致0」を言う(指定なしで0台はプロファイル自体の誤りで、
         // resolve / ProfileRunner.run が自分の言葉で報告する)。文言は ProfileRunner.run と同じ形
         if full.devices.isEmpty, !effectiveDeviceFilter.isEmpty || effectiveDeviceHost != nil {
-            let scope = [devices.isEmpty ? nil : "--device \(devices.joined(separator: ", "))",
-                         deviceMachine.map { "--device-machine \($0)" }]
+            let scope = [common.devices.isEmpty ? nil : "--device \(common.devices.joined(separator: ", "))",
+                         common.deviceMachine.map { "--device-machine \($0)" }]
                 .compactMap { $0 }.joined(separator: " ")
             throw ValidationError(
                 "\(scope) matched no device in run profile \(profile)"
@@ -607,11 +481,11 @@ struct RunScenarios: AsyncParsableCommand {
         // **--device の名前が2つ以上の機械に当たるのに、どの機械かを指定していなければ断る**
         // (RunDeviceMachineAmbiguity。api run と共有する同じ判定 —— 両方に置く規律)。
         // マシン別サブ実行の子は常に --runner/--device-machine を伴うのでここでは断られない
-        if !dryRun, fleet == nil, let profile {
-            let ambiguityProject = try ScenarioHost.project(named: project)
+        if !dryRun, fleet == nil, let profile = common.profile {
+            let ambiguityProject = try ScenarioHost.project(named: common.project)
             if let message = RunDeviceMachineAmbiguity.rejectionMessage(
-                deviceNames: devices, runner: runner, deviceMachine: deviceMachine,
-                allMachines: allMachines,
+                deviceNames: common.devices, runner: runner, deviceMachine: common.deviceMachine,
+                allMachines: common.allMachines,
                 devices: ProfileResolver.runDeviceMachines(
                     project: ambiguityProject, runProfileName: profile, overrides: profileOverrides)) {
                 throw ValidationError(message)
@@ -620,25 +494,25 @@ struct RunScenarios: AsyncParsableCommand {
         // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとのサブ実行へ分ける
         // (単一ディスパッチでは「そのホストに無いデバイス」が解決できない)。--runner 明示や
         // 全台が同じ機械なら nil が返り、通常の経路をそのまま通る
-        if !dryRun, fleet == nil, let profile,
+        if !dryRun, fleet == nil, let profile = common.profile,
            let groups = try DeviceMachineRunner.plan(
-               project: try ScenarioHost.project(named: project), profileName: profile,
-               explicitHost: runner, deviceFilter: devices,
+               project: try ScenarioHost.project(named: common.project), profileName: profile,
+               explicitHost: runner, deviceFilter: common.devices,
                disabledMachines: MachineEnablement.disabledMachines(config: LocalConfig.load()),
                overrides: profileOverrides) {
             let exitCode = try await DeviceMachineRunner.run(
-                project: try ScenarioHost.project(named: project), profileName: profile,
+                project: try ScenarioHost.project(named: common.project), profileName: profile,
                 groups: groups, scenarios: scenarios, folders: folders,
-                setOverrides: profileOverrides, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+                setOverrides: profileOverrides, noLPT: common.noLPT, lptHistoryRuns: common.lptHistoryRuns,
                 performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
-                remoteDir: remoteDir, remoteTimeout: remoteTimeout,
+                remoteDir: common.remoteDir, remoteTimeout: common.remoteTimeout,
                 quiet: quiet, junit: junit,
                 broadcast: broadcast, failed: failed, reportDir: reportDir)
             if exitCode != 0 { throw ExitCode(exitCode) }
             return
         }
         if !dryRun, let dispatch = try resolveEffectiveDispatchTarget(
-        explicitTarget: runner, profile: profile, project: project,
+        explicitTarget: runner, profile: common.profile, project: common.project,
             requireProfileMachine: true) {
             try await dispatchToRemoteHost(dispatch)
             return
@@ -680,12 +554,12 @@ struct RunScenarios: AsyncParsableCommand {
             // **待機中の中断は上で登録済みの interruptState をそのまま使う**(acquire() が自前で
             // 2つ目の InterruptRelay を立てない)
             dispatchLock = try LocalDispatchLock(
-                runGroup: runGroup, waitLock: waitLock, forceLock: forceLock,
+                runGroup: common.runGroup, waitLock: waitLock, forceLock: forceLock,
                 log: { ConsoleOut.out($0) }
             ).acquire(interruptCheck: { interruptState.isStopped })
         }
         defer { dispatchLock?.release() }
-        let testProject = try ScenarioHost.project(named: project)
+        let testProject = try ScenarioHost.project(named: common.project)
         PhaseLog.mark("project-resolved")
 
         // run 進捗の記帳(docs/design.md §18.1)。**ビルドより前に1本書く** —— 実測でシナリオの
@@ -696,14 +570,14 @@ struct RunScenarios: AsyncParsableCommand {
         // 関数を抜けたら控えを消す
         let progressPid = ProcessInfo.processInfo.processIdentifier
         var progressHandedToProfileRunner = false
-        let recordsProgress = profile != nil && !dryRun
+        let recordsProgress = common.profile != nil && !dryRun
         // 書き直しても**入口の時刻のまま**(経過が巻き戻らない)
         let progressStartedAt = ISO8601DateFormatter().string(from: Date())
         // 供給の段階の箱(ProfileRunner.run が供給と台帳の書き手へ渡す)。dry-run では誰も書かない
         let supplyProgress = RunSupplyProgress()
         let entryProgress = PreparingProgressWriter(
             pid: progressPid, runID: nil, runGroup: nil, issuer: LocalConfig.resolveIssuerId(),
-            project: testProject.name, profile: profile, startedAt: progressStartedAt,
+            project: testProject.name, profile: common.profile, startedAt: progressStartedAt,
             supply: supplyProgress)
         /// **段階は実際にやっていることだけを言う**(ユーザー決定)—— 入口ではまだ
         /// ビルドしていない(`--skip-build` = 機械分担のローカル子なら最後までしない)ので
@@ -719,7 +593,7 @@ struct RunScenarios: AsyncParsableCommand {
             writeProgress(phase: "preparing")
         }
         defer {
-            if profile != nil, !dryRun, !progressHandedToProfileRunner {
+            if common.profile != nil, !dryRun, !progressHandedToProfileRunner {
                 entryProgress.close()
                 RunProgressLedger.remove(pid: progressPid, directory: RunProgressLedger.directory())
             }
@@ -736,21 +610,21 @@ struct RunScenarios: AsyncParsableCommand {
         // そちらのエントリに解決し、向こうの UDID を手元で探して
         // "no simulator with that UDID" で止まる(受け手報告)。判定は
         // --runner <リモート> と同じ machineScopedDeviceFilter(RemoteDispatchExplicitDeviceScope)
-        var effectiveDeviceFilter = devices
-        var effectiveDeviceHost = deviceMachine
-        if let profile, !dryRun, deviceMachine == nil, MachineDispatch.isExplicitLocal(runner) {
+        var effectiveDeviceFilter = common.devices
+        var effectiveDeviceHost = common.deviceMachine
+        if let profile = common.profile, !dryRun, common.deviceMachine == nil, MachineDispatch.isExplicitLocal(runner) {
             (effectiveDeviceFilter, effectiveDeviceHost) = try machineScopedDeviceFilter(
                 project: testProject, profile: profile,
-                targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices)
+                targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: common.devices)
         }
         // **ビルドが要る回は、ビルドの前に供給を起こしてビルドと並行に進める**(`api run` と同じ形。準備の段は
         // ProfileRunner+Supply.swift)。台数はいま分かっている本数(`--scenario` の `Class.method` の明示だけ)で絞る。
         // 要らない回は一覧の後に ProfileRunner.run が正確な本数で絞る(並行にしても得が無く、絞り込みだけ緩む)。
         // `--failed` は対象が無ければ何もせず終わるので、開始スクリプトとサービスを空撃ちしないよう外す
-        if let profile, !dryRun, !skipBuild, !failed, ScenarioHost.buildNeeded(project: testProject) {
+        if let profile = common.profile, !dryRun, !common.skipBuild, !failed, ScenarioHost.buildNeeded(project: testProject) {
             let full = try ProfileRunner.resolveFullProfile(
                 project: testProject, profileName: profile, setOverrides: profileOverrides,
-                workspaceOverride: workspace, deviceFilter: effectiveDeviceFilter,
+                workspaceOverride: common.workspace, deviceFilter: effectiveDeviceFilter,
                 deviceMachine: effectiveDeviceHost, broadcast: broadcast)
             // 一覧の前なので OS が分からない = 明示 ID の本数を両 OS に数える(0 = 本数も分からない → 絞らない)
             let exactCount = ApiRun.exactScenarioCount(scenarios)
@@ -763,7 +637,7 @@ struct RunScenarios: AsyncParsableCommand {
                 supplyProgress: supplyProgress, interruptState: interruptState)
         }
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
-        if !skipBuild {
+        if !common.skipBuild {
             do {
                 try ScenarioHost.build(project: testProject, log: { ConsoleOut.out($0) }, willBuild: {
                     writeProgress(phase: "building")
@@ -830,11 +704,11 @@ struct RunScenarios: AsyncParsableCommand {
             // 手元でこの分岐へ来る時点でリモート/フリートへの分岐(dispatchToRemoteHost/
             // dispatchToFleet)は既に return 済みなので、`--failed` は常にこの機械での直近実行を見る。
             // リモートで落ちた分は RemoteRunDispatcher が回収した scenario JSON から書く
-            let failedSet = LastResultsStore.failedIDs(project: testProject, profile: profile)
+            let failedSet = LastResultsStore.failedIDs(project: testProject, profile: common.profile)
             selected = selected.filter { failedSet.contains($0.id) }
             guard !selected.isEmpty else {
                 ConsoleOut.out(LastResultsStore.nothingFailedMessage(
-                    recordedCount: LastResultsStore.recordedCount(project: testProject, profile: profile),
+                    recordedCount: LastResultsStore.recordedCount(project: testProject, profile: common.profile),
                     failedCount: failedSet.count))
                 return
             }
@@ -855,7 +729,7 @@ struct RunScenarios: AsyncParsableCommand {
         if dryRun {
             var dryRunPlatform = resolvedPlatform
             var dryRunDevices: [CommandTargetCheck.Device] = []
-            if let profile {
+            if let profile = common.profile {
                 // **使わなくても実在は確かめる** —— `api run` は同じ打鍵を「run profile not found」で
                 // 断る(2実装で検査規則を揃える)。確かめないと打ち間違えたプロファイル名が dry-run を
                 // 素通りし、デバイス実行で初めて落ちる
@@ -870,8 +744,8 @@ struct RunScenarios: AsyncParsableCommand {
                 // 決める。絞る前で決めると、混在プロファイルで Android の1台だけを指したときに CLI だけ ios を検証した)
                 let resolved = try ProfileResolver.resolve(
                     project: testProject, runName: profile,
-                    workspaceOverride: workspace, overrides: try RunProfileSetOverride.parse(setOverrides))
-                    .filteringDevices(names: devices, deviceMachine: deviceMachine)
+                    workspaceOverride: common.workspace, overrides: try RunProfileSetOverride.parse(setOverrides))
+                    .filteringDevices(names: common.devices, deviceMachine: common.deviceMachine)
                 dryRunPlatform = resolved.undeclaredScenarioPlatform
                 dryRunDevices = resolved.devices.map(CommandTargetCheck.Device.init)
                 ConsoleOut.out("ℹ️ --dry-run touches no device; --profile decides that scenarios declaring no"
@@ -909,22 +783,22 @@ struct RunScenarios: AsyncParsableCommand {
         // 2行並ぶうえ、機能ごとのトグルを持たないこちらの既定のほうが情報として粗い。
         // プロファイル無しの run にはその呼び出し元が無いので、ここが唯一の口になる
         // (`--set` がデバイス一覧・録画基盤に依存するキーを持つかは validate() が既に検査済み)
-        if profile == nil {
+        if common.profile == nil {
             await ProfileRunner.warnIfFMDegraded(fm: noProfileSettings.fm) { ConsoleOut.out($0) }
         }
 
         PhaseLog.mark("fm-doctor")
-        let recorder = RunRecorder.begin(project: testProject, profile: profile, trigger: "cli",
-                                         runGroup: runGroup,
+        let recorder = RunRecorder.begin(project: testProject, profile: common.profile, trigger: "cli",
+                                         runGroup: common.runGroup,
                                          lastResultsDir: LastResultsStore.stateDir(project: testProject,
-                                                                                   profile: profile))
+                                                                                   profile: common.profile))
         PhaseLog.mark("recorder-begin")
         // **interruptState はロック取得の直後(build より前)に登録済み**(このコメントより上、
         // dispatchLock の直前)。ここでは作った recorder を繋ぐだけ(`attachRecorder`。既に
         // 中断済みならその場で markInterrupted)
         interruptState.attachRecorder(recorder)
 
-        if let profile {
+        if let profile = common.profile {
             let runSummary: RunSummary
             let fmSettings: FMSettingsRecord
             progressHandedToProfileRunner = true
@@ -933,12 +807,12 @@ struct RunScenarios: AsyncParsableCommand {
                     project: testProject, profileName: profile, items: items,
                     setOverrides: profileOverrides,
                     reportDirOverride: reportDir,
-                    quiet: quiet, lpt: !noLPT,
-                    lptHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
+                    quiet: quiet, lpt: !common.noLPT,
+                    lptHistoryRuns: common.lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
                     performanceMode: performanceMode,
                     deviceFilter: effectiveDeviceFilter,
                     deviceMachine: effectiveDeviceHost,
-                    workspaceOverride: workspace,
+                    workspaceOverride: common.workspace,
                     recorder: recorder,
                     broadcast: broadcast,
                     supplyProgress: supplyProgress,
@@ -1080,7 +954,7 @@ struct RunScenarios: AsyncParsableCommand {
         do {
             // Android の宛先は供給の前に1回決める(serial 省略で複数台なら断る = 生の adb エラーにしない)
             let androidSerial = items.contains(where: { ($0.info.platform ?? resolvedPlatform) == "android" })
-                ? try DirectAndroidSerial.resolve(explicit: serial, names: .cliRun) : serial
+                ? try DirectAndroidSerial.resolve(explicit: common.serial, names: .cliRun) : common.serial
             if iosPorts.count <= 1 {
                 (failedCount, skippedCount, interrupted) = try await runSequential(items, project: testProject,
                                                       port: iosPorts[0], androidSerial: androidSerial,
@@ -1146,7 +1020,7 @@ struct RunScenarios: AsyncParsableCommand {
     /// (docs/remote-runner.md §3・§7・Phase 1)。デバイス割当競合を避けるためリモート1本での
     /// 実行のみサポートし、ローカル専用オプションは併用不可にする
     private func dispatchToRemoteHost(_ dispatch: EffectiveDispatchTarget) async throws {
-        guard let profile else {
+        guard let profile = common.profile else {
             throw ValidationError("--runner requires --profile")
         }
         // `--set` は向こうの子へそのまま中継する
@@ -1164,31 +1038,31 @@ struct RunScenarios: AsyncParsableCommand {
         if failed {
             try applyFlagPolicy(RemoteDispatchFlagPolicy.rejected(flag: "--failed", origin: origin))
         }
-        if skipBuild {
+        if common.skipBuild {
             try applyFlagPolicy(RemoteDispatchFlagPolicy.skipBuild(origin: origin))
         }
 
-        let resolved = try resolveRemoteTarget(dispatch, remoteDirOverride: remoteDir)
+        let resolved = try resolveRemoteTarget(dispatch, remoteDirOverride: common.remoteDir)
         resolved.announce()
-        let testProject = try ScenarioHost.project(named: project)
+        let testProject = try ScenarioHost.project(named: common.project)
         let localRoot = try RepoRoot.find()
         let dispatcher = RemoteRunDispatcher(
             host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
             forceLock: forceLock, waitLock: waitLock, hostLabel: dispatch.rawTarget)
-        var scopedDevices = devices
-        var scopedDeviceHost = deviceMachine
-        if deviceMachine == nil {
+        var scopedDevices = common.devices
+        var scopedDeviceHost = common.deviceMachine
+        if common.deviceMachine == nil {
             (scopedDevices, scopedDeviceHost) = try machineScopedDeviceFilter(
                 project: testProject, profile: profile, targetMachine: dispatch.rawTarget,
-                requestedDevices: devices)
+                requestedDevices: common.devices)
         }
         let exitCode = try await dispatcher.dispatch(
             project: testProject, profile: profile, scenarios: scenarios, folders: folders,
             deviceNames: scopedDevices, deviceMachine: scopedDeviceHost,
             setOverrides: dispatchOverrides,
-            noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+            noLPT: common.noLPT, lptHistoryRuns: common.lptHistoryRuns,
             performanceMode: performanceMode, broadcast: broadcast,
-            localJUnitPath: junit, remoteTimeoutSeconds: remoteTimeout, runGroup: runGroup)
+            localJUnitPath: junit, remoteTimeoutSeconds: common.remoteTimeout, runGroup: common.runGroup)
         if exitCode != 0 {
             throw ExitCode(exitCode)
         }
@@ -1212,7 +1086,7 @@ struct RunScenarios: AsyncParsableCommand {
     /// §13)。検証は投入前に全部済ませる(FleetProfile.validate)。実体は FleetRunner
     /// (エントリごとに子プロセスを起動し、出力を host 名で前置する)
     private func dispatchToFleet(_ fleetName: String) async throws {
-        let testProject = try ScenarioHost.project(named: project)
+        let testProject = try ScenarioHost.project(named: common.project)
         let doc = try FleetProfile.load(project: testProject, name: fleetName)
         let config = LocalConfig.load()
         let registeredNames = Set((config.remoteHosts ?? []).map(\.machine))
@@ -1247,8 +1121,8 @@ struct RunScenarios: AsyncParsableCommand {
             project: testProject, fleetName: fleetName, fleet: enabledDoc,
             scenarios: scenarios, folders: folders,
             setOverrides: try RunProfileSetOverride.parse(setOverrides),
-            noLPT: noLPT, lptHistoryRuns: lptHistoryRuns, performanceMode: performanceMode,
-            forceLock: forceLock, waitLock: waitLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
+            noLPT: common.noLPT, lptHistoryRuns: common.lptHistoryRuns, performanceMode: performanceMode,
+            forceLock: forceLock, waitLock: waitLock, remoteDir: common.remoteDir, remoteTimeout: common.remoteTimeout,
             split: split, quiet: quiet, junit: junit)
         if exitCode != 0 {
             throw ExitCode(exitCode)
@@ -1390,7 +1264,7 @@ struct RunScenarios: AsyncParsableCommand {
                 // まとめて止める(個別に切ると残った経路が FM の直列化待ちを払う)
                 settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
                 reportDir: tempDir.path,
-                dryRun: true, appBundleID: appID) { event in
+                dryRun: true, appBundleID: common.appID) { event in
                 if let step = DryRunTargetWarnings.step(from: event) { steps.append(step) }
                 let lines = ScenarioLogFormatter.lines(for: event)
                     .filter { !$0.contains("→ report:") }
@@ -1415,14 +1289,14 @@ struct RunScenarios: AsyncParsableCommand {
             project: project, connection: DriverConnection(platform: defaultPlatform),
             deviceSession: deviceSession, settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
             reportDir: tempDir.path, dryRun: true,
-            appPath: nil, appName: nil, appBundleID: appID, registerChildProcess: nil) {
+            appPath: nil, appName: nil, appBundleID: common.appID, registerChildProcess: nil) {
             ConsoleOut.out(ScenarioHost.describe(outcome))
         }
         for outcome in await ScenarioHost.runAfterAlls(
             project: project, shared: deviceSession.shared,
             target: { platforms in ScenarioHost.LifecycleTarget(
                 connection: DriverConnection(platform: platforms.sorted().first ?? defaultPlatform),
-                appPath: nil, appName: nil, appBundleID: appID) },
+                appPath: nil, appName: nil, appBundleID: common.appID) },
             settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
             reportDir: tempDir.path, dryRun: true, registerChildProcess: nil) {
             ConsoleOut.out(ScenarioHost.describe(outcome))
@@ -1500,7 +1374,7 @@ struct RunScenarios: AsyncParsableCommand {
                 settings: settings,
                 reportDir: URL(fileURLWithPath: reportDir),
                 recorder: recorder,
-                appBundleID: appID,
+                appBundleID: common.appID,
                 registerChildProcess: { interruptState.registerChildProcess($0) }) { event in
                 let lines = RunLogFormatter.lines(for: event)
                 if quiet {
@@ -1528,7 +1402,7 @@ struct RunScenarios: AsyncParsableCommand {
                 for outcome in await ScenarioHost.runDeviceTearDowns(
                     project: project, connection: connection, deviceSession: session,
                     settings: settings, reportDir: reportDir, dryRun: false,
-                    appPath: nil, appName: nil, appBundleID: appID,
+                    appPath: nil, appName: nil, appBundleID: common.appID,
                     registerChildProcess: { interruptState.registerChildProcess($0) }) {
                     ConsoleOut.out(ScenarioHost.describe(outcome))
                 }
@@ -1538,7 +1412,7 @@ struct RunScenarios: AsyncParsableCommand {
                 target: { platforms in
                     guard let platform = sessionConnections.keys.sorted().first(where: { platforms.isEmpty || platforms.contains($0) }),
                           let connection = sessionConnections[platform] else { return nil }
-                    return ScenarioHost.LifecycleTarget(connection: connection, appPath: nil, appName: nil, appBundleID: appID)
+                    return ScenarioHost.LifecycleTarget(connection: connection, appPath: nil, appName: nil, appBundleID: common.appID)
                 },
                 settings: settings, reportDir: reportDir, dryRun: false,
                 registerChildProcess: { interruptState.registerChildProcess($0) }) {
@@ -1559,8 +1433,8 @@ struct RunScenarios: AsyncParsableCommand {
     ) async -> (failed: Int, skipped: Int, interrupted: Bool) {
         let defaultPlatform = resolvedPlatform
         let items = LPTOrdering.apply(rawItems, project: project, defaultPlatform: defaultPlatform,
-                                      enabled: !noLPT,
-                                      historyRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
+                                      enabled: !common.noLPT,
+                                      historyRuns: common.lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
                                       log: { ConsoleOut.out($0) })
         let androidItems = items.filter { ($0.info.platform ?? defaultPlatform) == "android" }
         let portList = iosPorts.map(String.init).joined(separator: ", ")
@@ -1600,14 +1474,14 @@ struct RunScenarios: AsyncParsableCommand {
                                            // 注入しない(docs/design.md §18.1: 注入は2経路だけ)ので
                                            // 残り見積もりの実績も読まれない。値自体は LPTOrdering.apply
                                            // (直前)と揃える —— 将来ここへ注入するときに窓がズレない
-                                           progressHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
+                                           progressHistoryRuns: common.lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
                                            // デバイス定義が無くブリッジを作り直せない = 残ったアラートは警告だけ
                                            clearResidualSystemAlert: { worker in
                                                await ProfileWorkerFactory.keepSoftwareKeyboardShown(worker: worker)
                                                return await ProfileWorkerFactory.clearResidualSystemAlert(
                                                    worker: worker, profile: nil)
                                            },
-                                           appBundleIDs: Self.appBundleIDs(appID),
+                                           appBundleIDs: Self.appBundleIDs(common.appID),
                                            registerChildProcess: { interruptState.registerChildProcess($0) })
         // **新しい InterruptRelay は登録しない**(1プロセス1組)。供給中に既に中断済みなら
         // ここで即 orchestrator.requestInterrupt() が呼ばれる
