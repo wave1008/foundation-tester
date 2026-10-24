@@ -64,7 +64,7 @@ cwd(あなたのパッケージ)とは別物です。
 | `ft_rotate` | デバイスを回転し、新しい向きの要素一覧を返す |
 | `ft_fold` | 折りたたみ端末を畳む/開く(状態 "fold" / "unfold"、またはヒンジ角) |
 | `ft_navigate` | 戻る / ホーム / タスク切替 |
-| `ft_hide_keyboard` | ソフトキーボードを閉じる(Android のみ。iOS は `ft_type` の `pressEnter`) |
+| `ft_hide_keyboard` | ソフトキーボードを閉じる(Android は戻る操作。iOS はキーボードの上の空いた所をタップし、閉じなければ失敗にする。Return は送らない) |
 | `ft_open_url` | アプリを再起動せずディープリンクを配送する |
 | `ft_clear_input` | 入力欄を空にする |
 | `ft_clear_app_data` | アプリのデータと権限をリセットする(iOS 実機は `ft_install` のパスか `packagePath:` で uninstall + install に振り替える) |

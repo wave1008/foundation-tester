@@ -8,5 +8,5 @@ node_modules/**
 .gitignore
 esbuild.mjs
 tsconfig.json
-*.map
+**/*.map
 **/*.ts

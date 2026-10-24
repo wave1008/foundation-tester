@@ -65,6 +65,16 @@ async function buildWebview() {
     logLevel: "info",
   };
 
+  // **エントリの無いパネルの出力を残さない**。media/ は git 管理外で、統合・撤去したパネル
+  // (healReview・live・dashboard)の古いバンドルが残り続け、vsce package が vsix へ同梱していた
+  const outDir = options.outdir;
+  const expected = new Set(options.entryPoints.map((p) => path.relative(options.outbase, p).split(path.sep)[0]));
+  for (const name of fs.existsSync(outDir) ? fs.readdirSync(outDir) : []) {
+    if (!expected.has(name)) {
+      fs.rmSync(path.join(outDir, name), { recursive: true, force: true });
+    }
+  }
+
   if (watch) {
     const ctx = await esbuild.context(options);
     await ctx.watch();

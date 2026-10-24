@@ -65,7 +65,7 @@ that omit all of these; naming a second device (including through `profile`) req
 | `ft_rotate` | Rotate the device and return the element list in the new orientation |
 | `ft_fold` | Fold / unfold a foldable device (state "fold" / "unfold", or hinge degrees) |
 | `ft_navigate` | Back / Home / app switcher |
-| `ft_hide_keyboard` | Close the soft keyboard (Android only; on iOS use `ft_type` with `pressEnter`) |
+| `ft_hide_keyboard` | Close the soft keyboard (Android sends back; iOS taps an empty spot above the keyboard and fails if that does not close it — it never sends Return) |
 | `ft_open_url` | Deliver a deep link without restarting the app |
 | `ft_clear_input` | Clear a text field |
 | `ft_clear_app_data` | Reset app data and permissions (on a physical iOS device it falls back to uninstall + install, using the path from `ft_install` or `packagePath:`) |
