@@ -81,6 +81,8 @@ test("flaky scenarioID cell click requests the trend and opens the section", (t)
   pane.getBoundingClientRect = () => ({ top: 100 });
   section.getBoundingClientRect = () => ({ top: 1000 });
   Object.defineProperty(window.document.getElementById("dash-toolbar"), "offsetHeight", { value: 40 });
+  // プロジェクトの行(sticky)は履歴のセクションより上にあるので、その高さもよける
+  Object.defineProperty(window.document.getElementById("dash-project-row"), "offsetHeight", { value: 30 });
   let scrollTop = 0;
   Object.defineProperty(pane, "scrollTop", { get: () => scrollTop, set: (v) => { scrollTop = v; } });
   cell.click();
@@ -88,7 +90,7 @@ test("flaky scenarioID cell click requests the trend and opens the section", (t)
   const trendPost = posts.find((p) => p.type === "dashboard" && p.message?.type === "trend");
   assert.deepEqual(JSON.parse(JSON.stringify(trendPost)), { type: "dashboard", message: { type: "trend", scenarioID: "Foo.S0010" } });
   assert.equal(section.style.display, "block");
-  assert.equal(scrollTop, 1000 - 100 - 40, "the pane scrolls so the section lands just under the sticky toolbar");
+  assert.equal(scrollTop, 1000 - 100 - 40 - 30, "the pane scrolls so the section lands just under the sticky toolbar and project row");
 
   sendToWebview({
     type: "dashboard",

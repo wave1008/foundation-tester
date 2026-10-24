@@ -23,10 +23,11 @@
    ここで h2 の font/margin を上書きしない。 */
 /* 帯の見た目は実行プロファイルタブの .profile-toolbar(monitor/style.css)と同じ:
    不透明なエディタ背景の上に半透明グレーを重ねる。#panel-dashboard の横 padding(16px)を
-   負の margin で打ち消してペインの端まで帯を伸ばす(padding を変えたら両方直す)。 */
-.dash-toolbar {
+   負の margin で打ち消してペインの端まで帯を伸ばす(padding を変えたら両方直す)。
+   ツールバー(集計期間の行)とプロジェクトの行は同じ帯(見た目はここ1箇所。違うのは貼り付く位置だけ) */
+.dash-toolbar,
+.dash-project-row {
   position: sticky;
-  top: 0;
   z-index: 1;
   display: flex;
   align-items: center;
@@ -36,7 +37,16 @@
   background-color: var(--vscode-editor-background);
   background-image: linear-gradient(rgba(128, 128, 128, 0.18), rgba(128, 128, 128, 0.18));
 }
-.dash-title {
+.dash-toolbar {
+  top: 0;
+}
+/* スクロールしてもツールバーの直下に貼り付く。top は dashboardTab.js が実測したツールバーの高さ(折り返しで変わる) */
+.dash-project-row {
+  top: var(--dash-toolbar-height, 0px);
+}
+/* 集計期間のラベルもテストプロジェクトのラベルと同じ見た目 */
+.dash-title,
+.dash-since-label {
   font-weight: 600;
 }
 select.dash-project {
@@ -46,18 +56,18 @@ select.dash-project {
   border-radius: 2px;
   padding: 1px 4px;
 }
-/* 集計期間: ラベルは控えめな文字だけ、選択欄はアクセント色(ボタンの色)の枠で目を引かせる(地は塗らない) */
+/* 集計期間: 選択欄はアクセント色(ボタンの色)の枠で目を引かせる(地は塗らない) */
 .dash-since-field {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  /* ラベルと選択欄の間はプロジェクトの行(.dash-project-row の gap)と同じ */
+  gap: 8px;
+  margin-right: 8px;
   cursor: pointer;
 }
-.dash-since-label {
-  color: var(--vscode-descriptionForeground);
-  font-size: 0.9em;
-}
-select.dash-since {
+/* プロジェクトも表の中身を丸ごと決めるので同じ枠(録画タブと共用の select.dash-project は変えない = id で当てる) */
+select.dash-since,
+#panel-dashboard select#dash-project-select {
   background: var(--vscode-dropdown-background);
   color: var(--vscode-dropdown-foreground);
   border: 1px solid var(--vscode-button-background);
@@ -65,7 +75,8 @@ select.dash-since {
   padding: 2px 6px;
   cursor: pointer;
 }
-select.dash-since:focus {
+select.dash-since:focus,
+#panel-dashboard select#dash-project-select:focus {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }

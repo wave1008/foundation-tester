@@ -37,7 +37,7 @@ before(async () => {
   webviewBundle = mainBuild.outputFiles[0].text;
 });
 
-function createWebview() {
+function createWebview(posted = [], persisted = undefined) {
   const dom = new JSDOM(panelHtml, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://localhost/" });
   const { window } = dom;
   const noop = () => {};
@@ -46,7 +46,7 @@ function createWebview() {
     closePath: noop, fillRect: noop, stroke: noop, fill: noop, globalAlpha: 1, fillStyle: "", strokeStyle: "",
     lineWidth: 0, lineJoin: "", lineCap: "",
   });
-  window.acquireVsCodeApi = () => ({ postMessage: noop, setState: noop, getState: () => undefined });
+  window.acquireVsCodeApi = () => ({ postMessage: (m) => posted.push(m), setState: noop, getState: () => persisted });
   window.HTMLElement.prototype.scrollIntoView = noop;
   window.Element.prototype.setPointerCapture = noop;
   window.Element.prototype.releasePointerCapture = noop;
@@ -328,4 +328,110 @@ test("集計期間の列は発生順(実行 → 減速 → OCR → Vision → FM
   t.after(() => window.close());
   const heads = [...document.querySelectorAll("#table-machine-health thead tr:nth-child(2) th")].map((th) => th.textContent);
   assert.deepEqual(heads.slice(4), ["実行", "減速", "OCR 注記", "Vision 注記", "FM 枠待ち", "FM 失敗", "判定の素通り", "FM 停止"]);
+});
+
+test("他のタブからダッシュボードへ切り替えたら取り直す(起動時・ダッシュボードのままの切り替えでは送らない)", (t) => {
+  const posted = [];
+  const { window, document, send } = createWebview(posted);
+  t.after(() => window.close());
+  const refreshes = () => posted.filter((m) => m.type === "dashboard" && m.message.type === "refresh").length;
+  // createWebview は起動時の初期タブ(デバイスモニター)からダッシュボードへ切り替える = 1回。起動時の最初の
+  // 切り替え(初期タブの表示)では送らない(ready が取得する)
+  assert.equal(refreshes(), 1);
+  // 表示中のタブのクリックは tabs.js が捨てるので、ダッシュボードのままの切り替えはホストの switchTab で起こす
+  send({ type: "switchTab", tab: "dashboard" });
+  assert.equal(refreshes(), 1, "ダッシュボードのまま");
+  document.getElementById("tab-devices").click();
+  assert.equal(refreshes(), 1);
+  document.getElementById("tab-dashboard").click();
+  assert.equal(refreshes(), 2, "他のタブから切り替えたときだけ取り直す");
+});
+
+test("起動時の初期タブがダッシュボードなら refresh を送らない(ready が同じ取得を起こす)", (t) => {
+  const posted = [];
+  const { window } = createWebview(posted, { activeTab: "dashboard" });
+  t.after(() => window.close());
+  const types = posted.filter((m) => m.type === "dashboard").map((m) => m.message.type);
+  assert.deepEqual(types.filter((type) => type === "refresh"), []);
+  assert.ok(types.includes("ready"));
+});
+
+test("プロジェクトの選択は本文があれば「最後の実行」の直前、本文が隠れている間はツールバーの直下(選び直して復帰できる)", (t) => {
+  const { window, document, send } = createWebview();
+  t.after(() => window.close());
+  const row = document.getElementById("dash-project-row");
+  const toolbar = document.getElementById("dash-toolbar");
+  assert.equal(toolbar.querySelector("#dash-project-select"), null, "ツールバーには置かない");
+  assert.ok(row.querySelector(".dash-title") && row.querySelector("#dash-project-select"));
+  send({ type: "dashboard", message: { type: "error", message: "project unresolved" } });
+  assert.equal(document.getElementById("content").style.display, "none");
+  assert.equal(toolbar.nextElementSibling, row, "本文が隠れている間はツールバーの直下");
+  loadData(send, payload([]));
+  assert.equal(row.nextElementSibling, document.getElementById("section-headline"));
+  assert.equal(row.parentElement, document.getElementById("content"));
+  assert.ok(document.getElementById("content").classList.contains("dash-no-runs") === false);
+});
+
+test("run が0件でもプロジェクトの選択は本文の中に残る(.dash-no-runs が隠すのは .dash-section だけ)", (t) => {
+  const { window, document, send } = createWebview();
+  t.after(() => window.close());
+  loadData(send, { ...payload([]), runs: [] });
+  const content = document.getElementById("content");
+  assert.ok(content.classList.contains("dash-no-runs"));
+  const row = document.getElementById("dash-project-row");
+  assert.equal(row.parentElement, content);
+  assert.equal(row.nextElementSibling, document.getElementById("section-headline"));
+  assert.ok(!row.classList.contains("dash-section"));
+});
+
+test("プロジェクトの行はツールバー(集計期間の行)と同じ帯で、ツールバーの実測の高さの位置に貼り付く(sticky)", () => {
+  const css = readFileSync(path.resolve("src/webview/dashboard/style.css"), "utf8");
+  const band = css.match(/\.dash-toolbar,\n\.dash-project-row \{[^}]*\}/);
+  assert.ok(band, "帯の見た目は2つの行で1つの規則");
+  assert.match(band[0], /position: sticky;/);
+  assert.match(band[0], /background-color:/, "下を流れる本文が透けない");
+  assert.match(band[0], /background-image: linear-gradient/);
+  assert.match(css, /\n\.dash-project-row \{\n  top: var\(--dash-toolbar-height, 0px\);\n\}/);
+  const js = readFileSync(path.resolve("src/webview/monitor/dashboardTab.js"), "utf8");
+  assert.match(js, /setProperty\('--dash-toolbar-height'/);
+});
+
+test("「更新」は押した瞬間から取得の終わり(data / error)までリングを回す", (t) => {
+  const posted = [];
+  const { window, document, send } = createWebview(posted);
+  t.after(() => window.close());
+  const btn = document.getElementById("btn-refresh");
+  const busy = () => [btn.classList.contains("busy"), btn.getAttribute("aria-busy")];
+  send({ type: "dashboard", message: { type: "loading" } });
+  assert.deepEqual(busy(), [true, "true"], "最初の読み込み中も回す");
+  loadData(send, payload([]));
+  assert.deepEqual(busy(), [false, "false"]);
+  btn.click();
+  assert.deepEqual(busy(), [true, "true"], "ホストの loading を待たずに回す");
+  assert.ok(posted.some((m) => m.type === "dashboard" && m.message.type === "refresh"));
+  send({ type: "dashboard", message: { type: "loading" } });
+  assert.deepEqual(busy(), [true, "true"]);
+  send({ type: "dashboard", message: { type: "error", message: "boom" } });
+  assert.deepEqual(busy(), [false, "false"], "失敗でも止める");
+  btn.click();
+  loadData(send, payload([health("H")]));
+  assert.deepEqual(busy(), [false, "false"]);
+});
+
+test("「更新」のリングはタブバーの「更新する」と同じ規則・集計期間の右に余白", () => {
+  const monitorCss = readFileSync(path.resolve("src/webview/monitor/style.css"), "utf8");
+  assert.match(monitorCss, /#tabbar \.tabbar-update\.busy::before,\n#panel-dashboard #btn-refresh\.busy::before \{[^}]*animation: ft-placeholder-spin/);
+  const css = readFileSync(path.resolve("src/webview/dashboard/style.css"), "utf8");
+  assert.match(css.match(/\.dash-since-field \{[^}]*\}/)[0], /margin-right: 8px;/);
+  assert.match(css.match(/\.dash-since-field \{[^}]*\}/)[0], /gap: 8px;/, "ラベルと選択欄の間");
+  assert.match(css, /\n\.dash-title,\n\.dash-since-label \{\n  font-weight: 600;\n\}/, "集計期間のラベルはテストプロジェクトのラベルと同じ規則");
+  assert.equal(css.match(/\.dash-since-label[ ,{]/g).length, 1, "集計期間のラベルの規則は上の1つだけ(控えめな色・小さい字の規則を持たない)");
+});
+
+test("テストプロジェクトの選択欄も集計期間と同じ色の枠(録画タブと共用の select.dash-project は変えない)", () => {
+  const css = readFileSync(path.resolve("src/webview/dashboard/style.css"), "utf8");
+  const rule = css.match(/select\.dash-since,\n#panel-dashboard select#dash-project-select \{[^}]*\}/);
+  assert.ok(rule, "集計期間と1つの規則");
+  assert.match(rule[0], /border: 1px solid var\(--vscode-button-background\);/);
+  assert.doesNotMatch(css.match(/\nselect\.dash-project \{[^}]*\}/)[0], /button-background/);
 });

@@ -35,6 +35,10 @@ import {
 
 setDashboardTransport((message) => monitorVscode.postMessage({ type: 'dashboard', message }));
 
+const projectRow = document.getElementById('dash-project-row');
+const dashboardPane = document.getElementById('panel-dashboard');
+const dashToolbar = document.getElementById('dash-toolbar');
+const sectionHeadline = document.getElementById('section-headline');
 const statusLoading = document.getElementById('status-loading');
 const statusError = document.getElementById('status-error');
 const statusEmpty = document.getElementById('status-empty');
@@ -59,12 +63,26 @@ function showState(state) {
   statusLoading.style.display = state === 'loading' ? 'block' : 'none';
   statusError.style.display = state === 'error' ? 'block' : 'none';
   statusEmpty.style.display = state === 'empty' ? 'block' : 'none';
-  content.style.display = state === 'data' || state === 'empty' ? 'block' : 'none';
+  const showContent = state === 'data' || state === 'empty';
+  content.style.display = showContent ? 'block' : 'none';
   content.classList.toggle('dash-no-runs', state === 'empty');
+  // プロジェクトの選択は本文を出したら「最後の実行」の直前へ移す(それまではツールバーの直下 = 未解決のエラーから選び直せる)。
+  // 本文を一度出した後は隠れない(以後の loading/error は hasRenderedData でツールバーの表示だけ)ので戻す経路は要らない。
+  // run 0件でも #section-headline の前に残る(.dash-no-runs が隠すのは .dash-section だけ)
+  if (showContent) {
+    sectionHeadline.before(projectRow);
+  }
 }
 
 function setUpdating(active) {
   updatingLabel.style.display = active ? 'inline' : 'none';
+  setRefreshBusy(active);
+}
+
+// 「更新」のリング(monitor/style.css の .busy::before)。取得の終わり(data / error)まで回す
+function setRefreshBusy(active) {
+  btnRefresh.classList.toggle('busy', active);
+  btnRefresh.setAttribute('aria-busy', String(active));
 }
 
 function setUpdateError(message) {
@@ -171,6 +189,7 @@ export function handleDashboardMessage(message) {
       if (hasRenderedData) {
         setUpdating(true);
       } else {
+        setRefreshBusy(true);
         showState('loading');
       }
       break;
@@ -179,6 +198,7 @@ export function handleDashboardMessage(message) {
         setUpdating(false);
         setUpdateError(message.message);
       } else {
+        setRefreshBusy(false);
         statusError.textContent = message.message;
         showState('error');
       }
@@ -230,7 +250,28 @@ export function handleDashboardMessage(message) {
   }
 }
 
+// 他のタブからダッシュボードへ切り替えたら取り直す(マシンの健全性の集計期間の列は api results からしか来ない)。
+// 起動時の最初の切り替えは送らない(下の 'ready' が同じ取得を起こす)。同じ中身なら applyData が描き直さない
+let previousTab = null;
+document.addEventListener('ft-tab-activated', (event) => {
+  const tab = event.detail.tab;
+  if (tab === 'dashboard' && previousTab !== null && previousTab !== 'dashboard') {
+    vscode.postMessage({ type: 'refresh' });
+  }
+  previousTab = tab;
+});
+
+// プロジェクトの行(sticky)をツールバーの直下に貼り付ける位置。ツールバーは幅で折り返して高さが変わるので実測で渡す
+// (非表示のタブでは 0 が来るが、表示されたときにもう一度通知される)
+if (typeof ResizeObserver === 'function') {
+  new ResizeObserver(() => {
+    dashboardPane.style.setProperty('--dash-toolbar-height', dashToolbar.offsetHeight + 'px');
+  }).observe(dashToolbar);
+}
+
 btnRefresh.addEventListener('click', () => {
+  // ホストの loading が届く前から回す(押せたことがすぐ分かる)。取得中に押した分はホストが1回にまとめて後から取る
+  setRefreshBusy(true);
   vscode.postMessage({ type: 'refresh' });
 });
 

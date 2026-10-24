@@ -12,14 +12,19 @@ export function clearChildren(el) {
  * (直近の実行 50 行・不安定なシナリオ数十行)の直後に置かれているので、出すだけだと画面外に
  * 開いて「クリックしても何も起きない」に見える(実害あり)。スクロール領域は
  * #panel-dashboard 自身(タブペイン。window ではない)。sticky なツールバーの分は実測の高さで
- * 避ける(定数を置かない)。 */
+ * 避ける(定数を置かない)。プロジェクトの行(#dash-project-row。本文の中で sticky)は、対象がその行より下に
+ * あるときだけ貼り付いて重なるので、そのときだけ高さを足す(上のセクション = デバイスの健全性では貼り付かない)。 */
 export function revealSection(section) {
   const pane = document.getElementById('panel-dashboard');
   const toolbar = document.getElementById('dash-toolbar');
   if (!pane || !toolbar) {
     return;
   }
-  const delta = section.getBoundingClientRect().top - pane.getBoundingClientRect().top - toolbar.offsetHeight;
+  const projectRow = document.getElementById('dash-project-row');
+  const rowAbove = projectRow && projectRow.parentElement === document.getElementById('content')
+    && (projectRow.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  const covered = toolbar.offsetHeight + (rowAbove ? projectRow.offsetHeight : 0);
+  const delta = section.getBoundingClientRect().top - pane.getBoundingClientRect().top - covered;
   pane.scrollTop += delta;
 }
 

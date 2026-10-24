@@ -3422,8 +3422,10 @@ button.settings-remote-hosts-color-swatch:focus-visible {
 #dlg-progress[hidden] {
   display: none;
 }
-/* タブバーの「更新する」も実行中はスピナーを持つ(設定タブを見ていなくても進行が分かる)。 */
-#tabbar .tabbar-update.busy::before {
+/* タブバーの「更新する」も実行中はスピナーを持つ(設定タブを見ていなくても進行が分かる)。
+   ダッシュボードの「更新」も取得中は同じリング(付け外しは dashboardTab.js の setRefreshBusy) */
+#tabbar .tabbar-update.busy::before,
+#panel-dashboard #btn-refresh.busy::before {
   content: '';
   display: inline-block;
   box-sizing: border-box;

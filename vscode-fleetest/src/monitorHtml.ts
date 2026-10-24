@@ -97,8 +97,6 @@ function renderTabBar(): string {
 function renderDashboardPanel(): string {
   return `<div id="panel-dashboard" class="tab-panel" role="tabpanel" aria-labelledby="tab-dashboard" style="display: none;">
   <div id="dash-toolbar" class="dash-toolbar">
-    <span class="dash-title">${t("exploreHeal.dashboard.title")}</span>
-    <select id="dash-project-select" class="dash-project" title="${t("exploreHeal.dashboard.projectSelectTitle")}"></select>
     <!-- 集計期間は表の中身を丸ごと決めるので、選択欄に色を付けて目立たせる(style.css の .dash-since-field) -->
     <label class="dash-since-field" title="${t("exploreHeal.dashboard.sinceSelectTitle")}">
     <span class="dash-since-label">${t("exploreHeal.dashboard.sinceLabel")}</span>
@@ -120,6 +118,13 @@ function renderDashboardPanel(): string {
     <button id="btn-refresh" type="button">${t("exploreHeal.dashboard.refreshButton")}</button>
     <span id="dash-updating" class="dash-updating" style="display: none;">${t("exploreHeal.dashboard.updating")}</span>
     <span id="dash-generated-at" class="dash-generated-at"></span>
+  </div>
+
+  <!-- 本文を出している間は dashboardTab.js の showState が「最後の実行」(#section-headline)の直前へ移す。ここは本文が
+       隠れている間(読み込み中・プロジェクト未解決のエラー)の置き場 —— 本文と一緒に隠すと選び直して復帰できない -->
+  <div id="dash-project-row" class="dash-project-row">
+    <span class="dash-title">${t("exploreHeal.dashboard.title")}</span>
+    <select id="dash-project-select" class="dash-project" title="${t("exploreHeal.dashboard.projectSelectTitle")}"></select>
   </div>
 
   <div id="dash-update-error" class="status-message status-error dash-update-error" style="display: none;"></div>
@@ -917,7 +922,7 @@ function renderRecordingsPanel(): string {
     <div id="recordings-list-view" class="recordings-list-view">
       <div class="recordings-toolbar">
         <span class="recordings-toolbar-title">${t("panels.common.testProject")}</span>
-        <!-- 並び・見た目はダッシュボードの #dash-toolbar と揃える(選択 → 更新。select.dash-project を共用) -->
+        <!-- 選択欄の見た目はダッシュボードと共用(select.dash-project) -->
         <select id="recordings-project-select" class="dash-project" title="${t("exploreHeal.dashboard.projectSelectTitle")}"></select>
         <button id="recordings-refresh" type="button">${t("panels.recordings.refresh")}</button>
         <span id="recordings-refreshing" class="recordings-refreshing" style="display: none;">${t("panels.recordings.refreshing")}</span>
