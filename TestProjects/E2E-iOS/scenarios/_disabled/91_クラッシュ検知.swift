@@ -4,8 +4,8 @@
 //
 // fleetest 機能: 操作でアプリが落ちたときの検知とレポート添付。#btn_crash_confirm で
 // プロセスを即異常終了させ、以降のコマンドが失敗としてレポートに記録される。
-// **`ios-inapp` で回すこと**(クラッシュレポート[.ips]の添付は inapp 固有。xcuitest はブリッジが
-// 別プロセスなので切断しない)。
+// inapp モードはブリッジがアプリと一緒に落ちる切断の時点で .ips を探し、xcuitest モードは失敗時にアプリのプロセスが
+// 居ないとき探す(`SimulatorAppProcess.failureEvidence`)。表は両モードの対照を持つ。
 // SUT のクラッシュ手段: SwiftUI の fatalError(SIGTRAP)
 
 import FTDSL

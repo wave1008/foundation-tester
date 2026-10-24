@@ -1,12 +1,13 @@
 // 97_入力欄でないrefへのtype.swift
 // **陽性対照**(既定スイートには載せない): 欄に焦点を残したまま**入力欄でない要素**へ type すると、
 // 前の欄へ打たずに断ることを、**hybrid の DSL を端から端まで**通して確かめる。
-// in-app ブリッジは 409 で断るが、hybrid のホストは 409 を XCUITest へ撃ち直すので、ブリッジ単体の
-// 確認では「XCUITest 側が前の欄へ打って緑」を見落とす(実際に見落として素通りしていた)。
-// 回すのは Scripts/e2e-negative.sh(ios-inapp = hybrid。期待値は Scripts/negative-controls.json)。
-// **S0010 は落ちるのが正常**: type のステップが「the target is a button, not a text field」で断られ、
-// XCUITest へは撃ち直さない(タップが届いていれば二重に押すため)。
-// **type が緑になったら退行**(前の欄へ打っている)。
+// 回すのは Scripts/e2e-negative.sh(ios-inapp。期待値は Scripts/negative-controls.json)。
+// **S0010 は落ちるのが正常**: ホストが type を**撃つ前に**断る(`nonTextInputPreflightRefusal`。文言
+// 「the target is a button, not a text field — refusing before anything is typed」)。ボタンへ撃つと
+// ドライバがまずタップするので押してしまう(送信・購入)。
+// **type が緑になったら退行**(前の欄へ打っている)。**断る文言が撃ち直しの門(「not retried via XCUITest」)に
+// 変わったら、撃つ前の門が抜けている**(in-app へ撃って 409 を受けてから断っている = もう押している)。
+// 撃ち直しの門そのものはボタン型の容器(中に入力欄が1つ)でしか届かず、この画面には無いので単体テストが持つ。
 import FTDSL
 
 @TestClass(platform: "ios")

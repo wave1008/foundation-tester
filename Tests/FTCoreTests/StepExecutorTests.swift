@@ -121,6 +121,18 @@ final class StepExecutorTests: XCTestCase {
                    frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
     }
 
+    /// 内側に入力欄がちょうど1つあるボタン型の容器(button + 子の textField)。type / clearInput の撃つ前の門
+    /// (nonTextInputPreflightRefusal)は容器を断らないので、**409 で撃ち直しを止める門に届く唯一の形**。
+    /// 素のボタンを使うと撃つ前の門で落ち、撃ち直しの門を1度も通らないまま緑になる
+    func buttonWrappingOneField(ref: Int, id: String) -> [ElementInfo] {
+        [ElementInfo(ref: ref, type: "button", identifier: id, label: nil, value: nil,
+                     placeholder: nil, enabled: true,
+                     frame: FTRect(x: 0, y: 0, width: 100, height: 40), depth: 0),
+         ElementInfo(ref: ref + 1, type: "textField", identifier: nil, label: nil, value: nil,
+                     placeholder: nil, enabled: true,
+                     frame: FTRect(x: 10, y: 5, width: 80, height: 30), depth: 1)]
+    }
+
     /// 役割の確定しない受け皿の型(自前描画の本物の欄が落ちる型)
     func clickable(ref: Int, id: String) -> ElementInfo {
         ElementInfo(ref: ref, type: "clickable", identifier: id, label: nil, value: nil,

@@ -351,8 +351,7 @@ Android の凍結事後判定(`AndroidHealthProbe.observeBlankAndRepair`)が試�
 | path | String? | iOS のみ。見つかった `.ips` のパス |
 | summary | String? | iOS = クラッシュ理由の1行 / Android = FATAL EXCEPTION ブロックの先頭行か `Fatal signal …` の行 |
 
-**xcuitest モードの iOS クラッシュはこの版では検出しない**(検出箇所が
-`InAppDriver`/`InAppLauncher` の in-app 経路だけのため)。2026-09-27 より前の記録には無い。
+2026-09-27 より前の記録には無い。
 
 ---
 

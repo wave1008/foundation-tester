@@ -992,14 +992,15 @@ extension StepExecutorTests {
     }
 
     /// **対象が確実に入力欄でない(button)+ 自前描画でないと確定**しているときは、409 でも
-    /// typeDriver へ撃ち直さない(type ケースと同じ判定。TypeReadback.isPositivelyNonTextInput の doc)
+    /// typeDriver へ撃ち直さない(type ケースと同じ判定。TypeReadback.isPositivelyNonTextInput の doc)。
+    /// 対象は buttonWrappingOneField(素のボタンは撃つ前の門で落ちてこの門に届かない)
     func testClearInput409WithConfirmedNonSelfRenderedButtonTargetFailsWithoutRetrying() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "btn_submit")]])
+                                    snapshotElements: [buttonWrappingOneField(ref: 1, id: "btn_submit")])
         primary.clearInputError = DriverError.badResponse(status: 409, body: "no focused input")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
-                                       snapshotElements: [[element(ref: 2, id: "btn_submit")]])
+                                       snapshotElements: [buttonWrappingOneField(ref: 3, id: "btn_submit")])
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables(),
                                     uiFramework: .uikit)
         let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "btn_submit"))
@@ -1009,20 +1010,21 @@ extension StepExecutorTests {
         guard case .failed(let message) = outcome.status else {
             XCTFail("ボタンへの 409 は撃ち直さず failed を期待したが \(outcome.status) だった"); return
         }
-        XCTAssertTrue(message.contains("button"), message)
+        XCTAssertTrue(log.entries.contains("primary.clearInput(throws)"), "in-app へ撃って 409 を受けていない(撃つ前の門で落ちた?): \(log.entries)")
+        XCTAssertTrue(message.contains("not retried via XCUITest"), "撃ち直しを止める門の文言でない: \(message)")
         XCTAssertFalse(log.entries.contains { $0.hasPrefix("typedriver") },
                        "確実に入力欄でない対象では typeDriver を照会してはいけない: \(log.entries)")
     }
 
     /// `type(replace: true)` の pre-clear も同じ門を通ること(performClearInput は clearInput
-    /// ケースと replace 前処理の両方が通る共有経路 = ClearOutcome の doc)
+    /// ケースと replace 前処理の両方が通る共有経路 = ClearOutcome の doc)。対象は buttonWrappingOneField
     func testTypeWithReplaceButtonTargetFailsWithoutRetryingWhenClearInput409sWithConfirmedNonSelfRendered() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "btn_submit")]])
+                                    snapshotElements: [buttonWrappingOneField(ref: 1, id: "btn_submit")])
         primary.clearInputError = DriverError.badResponse(status: 409, body: "no focused input")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
-                                       snapshotElements: [[element(ref: 2, id: "btn_submit")]])
+                                       snapshotElements: [buttonWrappingOneField(ref: 3, id: "btn_submit")])
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables(),
                                     uiFramework: .uikit)
         let step = FlowStep(action: "type", locator: FlowLocator(id: "btn_submit"), text: "new", replace: true)
@@ -1032,7 +1034,8 @@ extension StepExecutorTests {
         guard case .failed(let message) = outcome.status else {
             XCTFail("ボタンへの replace-clear 409 は撃ち直さず failed を期待したが \(outcome.status) だった"); return
         }
-        XCTAssertTrue(message.contains("button"), message)
+        XCTAssertTrue(log.entries.contains("primary.clearInput(throws)"), "in-app へ撃って 409 を受けていない(撃つ前の門で落ちた?): \(log.entries)")
+        XCTAssertTrue(message.contains("not retried via XCUITest"), "撃ち直しを止める門の文言でない: \(message)")
         XCTAssertFalse(log.entries.contains { $0.hasPrefix("typedriver") },
                        "確実に入力欄でない対象では typeDriver を照会してはいけない: \(log.entries)")
         XCTAssertFalse(log.entries.contains { $0.hasPrefix("primary.type(ref:") },

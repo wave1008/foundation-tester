@@ -27,22 +27,22 @@
     {
       "project": "E2E-iOS", "file": "97_入力欄でないrefへのtype.swift", "profile": "ios-inapp", "os": "ios",
       "class": "入力欄でないrefへのtype",
-      "guards": "欄に焦点を残したまま入力欄でない要素へ type しても、前の欄へ打たずに断る(inapp モードの撃ち直し込み)",
+      "guards": "欄に焦点を残したまま入力欄でない要素へ type しても、前の欄へ打たずに撃つ前に断る(nonTextInputPreflightRefusal)。409 で XCUITest へ撃ち直さない門(nonTextInputFallbackRefusal)はボタン型の容器でしか届かず、この画面には無いので単体テスト(StepExecutorTests の buttonWrappingOneField を使う3本)が持つ",
       "watches": ["Sources/FTCore/StepExecutor+Actions.swift", "Sources/FTCore/StepExecutor+TypeClear.swift", "Sources/FTCore/TapTargetGeometry.swift", "Sources/FTCore/NonTextInputTarget.swift", "Sources/FTCore/TypeReadback.swift", "Sources/FTBridgeClient/HybridFallbackDriver.swift", "Sources/FTBridgeClient/HybridDriverComposition.swift", "InAppBridge/Sources/InAppBridge.swift", "InAppBridge/Sources/InAppSnapshot.swift"],
       "scenarios": {
-        "S0010": { "expect": "red", "command": "type", "detailContains": ["not a text field"] }
+        "S0010": { "expect": "red", "command": "type", "detailContains": ["not a text field — refusing before anything is typed"] }
       }
     },
     {
       "project": "E2E-iOS", "file": "96_遮蔽の反転.swift", "profile": "ios-fpc", "os": "ios",
       "class": "遮蔽の反転",
-      "guards": "テキストの可視性検証が FM に訊いて反転する経路(2段目)",
+      "guards": "テキストの可視性検証が FM に訊いて反転する経路(FM の転写が期待文字列を読めない → 赤)",
       "watches": ["Sources/FTCore/StepExecutor+Assert.swift", "Sources/FTFoundationModels/OcclusionVerifier.swift", "Sources/FTFoundationModels/ReplayAssist.swift", "Sources/FTFoundationModels/FMServeServer.swift", "Sources/FTCore/OcclusionEligibility.swift", "Sources/FTCore/RegionInk.swift", "Sources/FTCore/OcclusionSuspicion.swift", "Sources/FTCore/TranscriptMatch.swift", "Sources/FTCore/OCROnlyVisibility.swift", "Sources/FTCore/RegionText.swift", "Sources/FTCore/OcclusionCrop.swift", "Sources/FTCore/VisibilityVerdictMemo.swift", "Sources/FTCore/FMCallSlots.swift", "Sources/FTCore/FMCallAdmission.swift", "Sources/FTCore/FMVisionSupport.swift", "Sources/FTCore/StaleFrameDetector.swift", "Sources/FTCore/BlankFrameDetector.swift", "Sources/FTCore/FMServe.swift", "Sources/FTCore/FMHealth.swift"],
       "scenarios": {
         "S0010": { "expect": "red", "command": "exist", "failureKind": "assertion",
                    "detailContains": ["text visibility check failed (on screen"],
                    "detailNotContains": ["judged by OCR alone"],
-                   "fmCallsAtLeast": { "occlusion": 2 },
+                   "fmCallsAtLeast": { "occlusion": 1 },
                    "requiresFM": true },
         "S0020": { "expect": "green" }
       }

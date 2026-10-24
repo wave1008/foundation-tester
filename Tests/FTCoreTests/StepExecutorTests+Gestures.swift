@@ -226,15 +226,15 @@ extension StepExecutorTests {
 
     /// **対象が確実に入力欄でない(button)+ 自前描画でないと確定**しているときは、409 でも
     /// typeDriver へ撃ち直さない(in-app の /type は撃つ前に合成タップを撃っており、ここで
-    /// XCUITest がもう一度タップすると対象を2回押しかねない。element(ref:id:) は type "button"
-    /// を返す。TypeReadback.isPositivelyNonTextInput の doc)
+    /// XCUITest がもう一度タップすると対象を2回押しかねない。TypeReadback.isPositivelyNonTextInput の doc)。
+    /// 対象は buttonWrappingOneField(素のボタンは撃つ前の門で落ちてこの門に届かない)
     func testType409WithConfirmedNonSelfRenderedButtonTargetFailsWithoutRetrying() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "btn_submit")]])
+                                    snapshotElements: [buttonWrappingOneField(ref: 1, id: "btn_submit")])
         primary.typeError = DriverError.badResponse(status: 409, body: "no first responder")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
-                                       snapshotElements: [[element(ref: 2, id: "btn_submit")]])
+                                       snapshotElements: [buttonWrappingOneField(ref: 3, id: "btn_submit")])
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables(),
                                     uiFramework: .uikit)
         let step = FlowStep(action: "type", locator: FlowLocator(id: "btn_submit"), text: "hi")
@@ -244,7 +244,9 @@ extension StepExecutorTests {
         guard case .failed(let message) = outcome.status else {
             XCTFail("ボタンへの 409 は撃ち直さず failed を期待したが \(outcome.status) だった"); return
         }
-        XCTAssertTrue(message.contains("button"), message)
+        XCTAssertTrue(log.entries.contains("primary.type(throws)"), "in-app へ撃って 409 を受けていない(撃つ前の門で落ちた?): \(log.entries)")
+        XCTAssertTrue(message.contains("not retried via XCUITest"), "撃ち直しを止める門の文言でない: \(message)")
+        XCTAssertTrue(message.contains("#btn_submit >> .textField"), "内側の欄を名指ししていない: \(message)")
         XCTAssertFalse(log.entries.contains { $0.hasPrefix("typedriver") },
                        "確実に入力欄でない対象では typeDriver を照会してはいけない: \(log.entries)")
     }

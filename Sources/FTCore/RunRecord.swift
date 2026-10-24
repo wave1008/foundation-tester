@@ -766,8 +766,8 @@ public struct ScenarioRunRecord: Codable, Sendable {
     /// 始まらなかった分は `skipKind: interrupted` のほう(RunRecorder.markInterrupted が付ける)
     public var interrupted: Bool?
     /// 検出できたときだけのアプリのクラッシュ事実(検出箇所から型で運ぶ。自由文の後解析はしない)。
-    /// iOS(inapp モード)= SimulatorCrashReport が見つけた直近の .ips /
-    /// Android = crash バッファの FATAL EXCEPTION。旧レコードも nil
+    /// iOS Simulator = SimulatorCrashReport が見つけた直近の .ips(inapp モードは切断の時点・xcuitest モードは失敗時に
+    /// プロセスが居ないとき)/ Android = crash バッファの FATAL EXCEPTION か Fatal signal。旧レコードも nil
     public var appCrash: AppCrashRecord?
     /// iOS でそのシナリオを走らせたデバイスの実効モード(`inapp` / `xcuitest`)。Android・合成レコード・
     /// 古い記録は nil(= 不明。xcuitest と読まない)。頼んだモードからの縮退とその理由は run.json の `workerModes`
