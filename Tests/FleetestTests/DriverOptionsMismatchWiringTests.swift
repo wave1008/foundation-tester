@@ -133,9 +133,9 @@ final class DriverOptionsMismatchWiringTests: XCTestCase {
             }
         }
         // 走査そのものが壊れて空集合を舐めているだけ、という緑を防ぐ(CommentDateScanTests と同じ規律)。
-        // 現在の実数は14(ApiListApps・ApiLiveServe・Bridge.Up・Bridge.Status・ManualDriveCommands の9個・
+        // 現在の実数は13(ApiLiveServe・Bridge.Up・Bridge.Status・ManualDriveCommands の9個・
         // VisionCapture)。ここでは新規追加で増える分だけ緩め、機械的に減った(=走査が壊れた)ことだけを検出する
-        XCTAssertGreaterThanOrEqual(driverOptionsTypeCount, 14, "scan found fewer driverOptions-holding"
+        XCTAssertGreaterThanOrEqual(driverOptionsTypeCount, 13, "scan found fewer driverOptions-holding"
             + " commands than expected — the scan itself may be broken")
         XCTAssertTrue(violations.isEmpty, """
             these commands hold DriverOptions but their validate() never calls \

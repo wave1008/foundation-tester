@@ -152,7 +152,6 @@ here; `fleetest api --help` shows all of them.
 | `api run` | Run scenarios and stream events as NDJSON |
 | `api monitor` | Poll the devices in the run profiles at a fixed interval and stream their state and screenshots as NDJSON |
 | `api list-devices` | Evaluate every device on this machine and its current state once, and print it as JSON |
-| `api list-apps` | Print the list of apps installed on the device as JSON |
 | `api validate-profile` | Validate the profile JSON (apps / runs) |
 | `api results` | Aggregate the run-results database (the machine-facing side of `fleetest results`) |
 | `api retention` | Read or update the retention policy |

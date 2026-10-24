@@ -1,5 +1,5 @@
 // `--allow-version-skew` は DriverOptions を共有する全コマンドのヘルプに出るが、効くのは
-// `makeDriver` を通る手動駆動コマンドだけ。通らないコマンド(bridge up/status・api list-apps・
+// `makeDriver` を通る手動駆動コマンドだけ。通らないコマンド(bridge up/status・
 // api live)は「指定したのに黙って効かない」形を作らないよう名指しで断る。
 // ここは拒否が parse 時点で落ちることと、手動駆動側では受理されること(陰性対照)を固定する。
 
@@ -20,13 +20,6 @@ final class VersionSkewFlagScopeTests: XCTestCase {
         XCTAssertThrowsError(try Bridge.Status.parse(["--allow-version-skew"])) { error in
             let message = Bridge.Status.message(for: error)
             XCTAssertTrue(message.contains("has no effect on bridge status"), message)
-        }
-    }
-
-    func testApiListAppsRejectsTheFlag() {
-        XCTAssertThrowsError(try ApiListApps.parse(["--allow-version-skew"])) { error in
-            let message = ApiListApps.message(for: error)
-            XCTAssertTrue(message.contains("has no effect on api list-apps"), message)
         }
     }
 

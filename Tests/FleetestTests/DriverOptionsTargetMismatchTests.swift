@@ -1,5 +1,5 @@
 // platform と宛先(--port/--serial・api live serve の --udid)の食い違いは parse 時点(validate())
-// で断る。実測: `fleetest api list-apps --platform ios --serial X` は --serial を黙って捨てて既定の
+// で断る。実測: `--platform ios --serial X` は --serial を黙って捨てて既定の
 // iOS ブリッジのデバイスを返していた。判定は FTCore.DeviceTargetConsistency(MCP と共有)、
 // この OptionGroup(DriverOptions)を持つ各コマンドが自分の validate() から呼ぶ
 // (ArgumentParser は OptionGroup の validate() を自動では呼ばない)。
@@ -30,14 +30,6 @@ final class DriverOptionsTargetMismatchTests: XCTestCase {
         XCTAssertThrowsError(try Tap.parse(["--port", "8200", "--serial", "emulator-5554"])) { error in
             let message = Tap.message(for: error)
             XCTAssertTrue(message.contains("with no --platform to say which one to use"), message)
-        }
-    }
-
-    /// 実測した事故そのもの: `api list-apps --platform ios --serial X` が serial を黙って捨てていた
-    func testApiListAppsRejectsSerialWithPlatformIOS() {
-        XCTAssertThrowsError(try ApiListApps.parse(["--platform", "ios", "--serial", "emulator-5554"])) { error in
-            let message = ApiListApps.message(for: error)
-            XCTAssertTrue(message.contains("--platform ios was given along with --serial"), message)
         }
     }
 
@@ -105,8 +97,8 @@ final class DriverOptionsTargetMismatchTests: XCTestCase {
 
     /// `--serial` だけなら android へ解決する(ios に倒すと既定ポートの別のデバイスを操作する)
     func testSerialAloneResolvesToAndroid() throws {
-        XCTAssertEqual(try ApiListApps.parse(["--serial", "emulator-5554"]).driverOptions.resolvedPlatform, "android")
+        XCTAssertEqual(try Bridge.Status.parse(["--serial", "emulator-5554"]).driverOptions.resolvedPlatform, "android")
         XCTAssertEqual(try Tap.parse(["--serial", "emulator-5554", "--ref", "1"]).driverOptions.resolvedPlatform, "android")
-        XCTAssertEqual(try ApiListApps.parse([]).driverOptions.resolvedPlatform, "ios")
+        XCTAssertEqual(try Bridge.Status.parse([]).driverOptions.resolvedPlatform, "ios")
     }
 }

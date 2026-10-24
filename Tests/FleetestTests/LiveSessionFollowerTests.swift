@@ -476,7 +476,7 @@ extension LiveSessionFollowerTests {
                       "back-off の判定は running() より前に行うこと")
     }
 
-    /// 毎コマンド撃つ2呼び出しは、他の呼び手(list-apps 等)の既定 30 秒ではなく
+    /// 毎コマンド撃つ2呼び出しは、他の呼び手(ft_list_apps 等)の既定 30 秒ではなく
     /// physicalDevicectlTimeoutSeconds(短い timeout)を渡すこと
     func testBothDevicectlCallsUseTheShortTimeout() throws {
         let body = try frontmostAppBody()

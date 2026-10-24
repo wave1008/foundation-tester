@@ -1,4 +1,4 @@
-// --profile 無しで Android を撃つ CLI の経路(run / api run の直接指定・api list-apps・手動駆動のサブコマンド)の宛先。
+// --profile 無しで Android を撃つ CLI の経路(run / api run の直接指定・手動駆動のサブコマンド)の宛先。
 // serial 省略時は接続中の1台を採り、複数・0台は断る(素の `AndroidDriver(serial: nil)` は adb を -s 無しで撃ち、
 // 複数台つながっていると "more than one device/emulator" が生で出た)。
 // 判定と文言は `AndroidTargetResolution` / `AndroidSerialResolver` の1箇所。ここは `AndroidTargetError` を

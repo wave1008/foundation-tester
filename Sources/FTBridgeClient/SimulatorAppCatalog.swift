@@ -1,7 +1,4 @@
-// iOS シミュレータのインストール済みアプリ一覧。`fleetest api list-apps`(Sources/fleetest/
-// ApiListAppsCommand.swift)と MCP の ft_list_apps(Sources/fleetest-mcp/DeviceInventory.swift)が
-// 共有する。移設元は ApiListAppsCommand.swift の旧 private iosApps/bootedSimulatorUDID —
-// 挙動は変えていない。
+// iOS シミュレータのインストール済みアプリ一覧。MCP の ft_list_apps(Sources/fleetest-mcp/DeviceInventory.swift)が使う。
 //
 // parse は `xcrun simctl listapps <udid>` の OpenStep 形式 plist(トップレベルは
 // [bundleID: 情報dict])を PropertyListSerialization でそのまま食わせる。

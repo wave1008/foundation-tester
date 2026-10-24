@@ -1,6 +1,6 @@
 // SimulatorAppCatalog.parse は `xcrun simctl listapps <udid>` の OpenStep 形式 plist を食べる。
-// ここでは実出力を模した文字列を直接当てて、移設元(旧 ApiListAppsCommand.iosApps)の
-// 既存仕様を機械的に固定する: .xctrunner 除外・表示名フォールバック・user/system 判定・並び順。
+// ここでは実出力を模した文字列を直接当てて、
+// 仕様を機械的に固定する: .xctrunner 除外・表示名フォールバック・user/system 判定・並び順。
 
 import XCTest
 @testable import FTBridgeClient

@@ -17,6 +17,17 @@
   - 要る材料: 実例の木。ステータスバーの高さは木に載らない(画面の枠だけ)ので、定数で帯を決めると機種で黙って誤る。
     ブリッジが安全領域(safeAreaInsets / WindowInsets)を申告する形なら根拠のある判定になる
 
+- **inapp モードの WebView 委譲中に `keyboardIsNotShown` が「cannot determine」で落ちる**(2026-10-20 の仕様監査・推測)
+  - 場所: `Sources/FTBridgeClient/WebViewDelegatingDriver.swift`(委譲中は XCUITest の木を返す)/ `Sources/FTCore/KeyboardWait.swift`
+  - 要る材料: inapp モードで WebView の入力欄に打った後の `keyboardIsNotShown` の実例(木と失敗文)
+
+- **MCP で払った `ft_snapshot waitFor` が `ft_draft_scenario` の下書きに写らず、下書きの `tap("#id")` が DSL 既定の約 0.7 秒の再試行しか持たず、遅い画面で赤になりうる**(2026-10-20 の仕様監査・推測)
+  - 場所: `Sources/fleetest-mcp/MCPServer+Draft.swift`(下書きは待ちを記録しない)。利用者向けには agent_guide(en/ja)の
+    「探索で払った待ちも下書きには写らない」で明記済み
+  - 確かめた範囲: 経路はコードで確定。デバイスで赤になった実例は無い
+  - 要る材料: 遅い画面を `waitFor` で待って作った下書きを、そのまま回して赤になった実例。あれば、直前に待った要素への tap に
+    `waitSeconds:` を出す直し方が根拠を持つ
+
 ## run の中で自動回復するようにしたもの(原因は環境側に残る)
 
 - **Android Emulator の表示が止まり、ブリッジの撮影が数分前の絵を返し続ける**(2026-10-18・負荷下で 6 台中 5 台・15 分で再発)。

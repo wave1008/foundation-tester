@@ -29,7 +29,7 @@
 #       **無音の時間を作らない**のが逐次表示の目的(クローン〜ビルドは数分。人が「止まった」と
 #       誤解して中断するのを防ぐ)。数分かかる工程には経過時間を付ける。
 # 終了コード: 0=完了 / 1=必須ステップの失敗 / 2=任意ステップのみ失敗(CLI は使える)
-# 本体全体を { } で括る(末尾の } と対)。curl | bash では残りのスクリプトが stdin にあり、子プロセス
+# 本体全体を { } で括る(末尾の } と対)。stdin から流し込む実行(`bash -s` 等)では残りのスクリプトが stdin にあり、子プロセス
 # (doctor の中の adb 等)が stdin を読むと残りが吸われ、exit 0 のまま黙って途中で終わる
 # (実際に集計と Next steps が出なかった)。括ると bash が最後まで読んでから実行する
 # (pipedScriptsBraceWrapped.test.mjs)
@@ -371,7 +371,7 @@ record "prerequisites" ok "macOS $(sw_vers -productVersion) / ${xcode_version%%$
 fi
 
 # ---- 0.5 TOOL_ROOT(SKILL ステップ0.5) ----------------------------------------
-# クローン内から実行されたならそれが TOOL_ROOT(curl | bash では $0 が読めないので clone へ倒す)。
+# クローン内から実行されたならそれが TOOL_ROOT(stdin から流し込んだ `bash -s` では $0 が読めないので clone へ倒す)。
 # **.git を条件に含める** —— git でない複製(アーカイブ展開・コピー)を TOOL_ROOT にすると、
 # pull できないまま古いソースをビルドし .mcp.json がそこを指す
 SELF_ROOT=""
@@ -383,9 +383,9 @@ if [ -f "${BASH_SOURCE[0]:-}" ]; then
 fi
 
 # WORK_DIR が既に外部構成として導入済み(Package.swift が clone 先を宣言済み)なら、
-# curl 形の再実行(SELF_ROOT は取れない。$0 がファイルではないため)でもその宣言を既定の隣より
-# 優先する(preflight.sh/update.sh/toolRootResolve.ts と同じ規則)。ここが無いと、
-# `--tool-root <custom>` で導入した受け手が引数無しで curl 形を再実行したときに既定の隣を
+# SELF_ROOT が取れない実行(`bash -s` で流し込む・git でない置き場の控えを実行する)でもその宣言を
+# 既定の隣より優先する(preflight.sh/update.sh/toolRootResolve.ts と同じ規則。4箇所を揃える)。
+# ここが無いと、`--tool-root <custom>` で導入した受け手が引数無しで再実行したときに既定の隣を
 # 見てしまい、既存のクローンを無視して別の場所へ新しく clone しようとする
 DECLARED_ROOT=""
 if [ -z "$TOOL_ROOT_ARG" ] && [ -z "$SELF_ROOT" ] && [ -f "$WORK_DIR/Package.swift" ]; then
@@ -444,7 +444,7 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
     # pipefail + errexit で [fail] を1行も出さずにスクリプトが止まる。awk は入力を最後まで読む
     git -C "$TOOL_ROOT" status --short | awk 'NR<=20'
     answer=""
-    # curl | bash では stdin がスクリプト自身なので、質問と回答は端末から直接行う。
+    # stdin から流し込む実行(`bash -s` 等)では stdin がスクリプト自身なので、質問と回答は端末から直接行う。
     # 制御端末が無い(エージェント・CI)と /dev/tty は存在しても open に失敗するので、
     # test -r ではなく実際に書けたかで判定する。聞けない場合は破棄せず中止する(黙って捨てない・
     # 古いクローンのまま進めない)
@@ -626,7 +626,7 @@ fi
 # そのため update.sh 経由(= クローンの Scripts/install.sh を bash で起動する経路)では、
 # **pull で入った新しいステップがその回は1つも実行されない**。しかも次回は update.sh が
 # up-to-date で即終了するので**永久に実行されない**(実害: ステップ7.6 の入口(AGENTS.md / CLAUDE.md)が
-# 版だけ上がって一度も走らなかった)。スキル既定の curl 形は常に新鮮なので対象外。
+# 版だけ上がって一度も走らなかった)。
 #
 # 条件は「**いま実行しているファイルが、たった今 pull したクローンの install.sh 自身**」のときだけ。
 # ダウンロード済みの控えを実行している場合に再 exec しても意味が無い(同じ古い内容を読み直す)。

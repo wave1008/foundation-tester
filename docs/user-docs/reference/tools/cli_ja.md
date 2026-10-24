@@ -150,7 +150,6 @@ MCP の `ft_*` ツール([MCP サーバー](./mcp_server_ja.md))と同じ操作�
 | `api run` | シナリオを実行し、イベントを NDJSON で流す |
 | `api monitor` | 実行プロファイルのデバイスを一定間隔で観測し、状態と画面を NDJSON で流す |
 | `api list-devices` | この Mac のデバイスと現在の状態を一度だけ評価して JSON で出す |
-| `api list-apps` | デバイスに入っているアプリの一覧を JSON で出す |
 | `api validate-profile` | プロファイル(apps / runs)の JSON を検証する |
 | `api results` | 結果データベースを集計する(`fleetest results` の機械向け) |
 | `api retention` | 保持容量(掃除の上限)の方針を読む・更新する |

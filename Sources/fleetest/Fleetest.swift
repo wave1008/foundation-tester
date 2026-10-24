@@ -110,7 +110,7 @@ struct DriverOptions: ParsableArguments {
     @Flag(help: "Proceed even if the connected bridge's protocol version differs from this build (manual drive commands only)")
     var allowVersionSkew = false
 
-    /// `makeDriver` を通らないコマンド(`bridge up/status`・`api list-apps`・`api live`)が
+    /// `makeDriver` を通らないコマンド(`bridge up/status`・`api live`)が
     /// この OptionGroup を共有しているので、そこでは `--allow-version-skew` が黙って効かない。
     /// **指定したのに効かない形を作らない** —— 効かせられない場所では名指しで断る
     func rejectVersionSkewFlag(in command: String) throws {

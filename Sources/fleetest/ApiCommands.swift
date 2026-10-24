@@ -13,7 +13,7 @@ struct ApiCommand: AsyncParsableCommand {
         abstract: "Machine-readable API for external tools such as the VSCode extension (JSON on stdout)",
         subcommands: [ApiListScenarios.self, ApiSteps.self, ApiRunCommand.self,
                       ApiMonitorCommand.self, ApiListDevices.self,
-                      ApiListApps.self, ApiStartDeviceCommand.self, ApiStopDeviceCommand.self,
+                      ApiStartDeviceCommand.self, ApiStopDeviceCommand.self,
                       ApiWipeDeviceCommand.self,
                       ApiStartAllDevicesCommand.self,
                       ApiStopAllDevicesCommand.self, ApiRestartDevicesCommand.self,

@@ -1,7 +1,7 @@
 // LAN の先にあるブリッジ(Wi-Fi で繋いだ iOS 実機)への、親が立てる TCP の中継。
 // シナリオの子は Seatbelt の中で `localhost` にしか出られない。Seatbelt のアドレス条件はホストに `*` か `localhost`
 // しか書けないので、実機の IP へ直接出すにはポート番号で `*:<port>` を開けるしかなく、そのポートなら任意のホストへ
-// 出られた(docs/spec-defects.md の 4)。中継は `127.0.0.1:<実機と同じポート>` で待ち受け、届いた接続を
+// 出られた(実測。docs/sandbox-seatbelt.md §2.5)。中継は `127.0.0.1:<実機と同じポート>` で待ち受け、届いた接続を
 // **決めた1つの宛先にだけ**つなぐ。子からは USB トンネル(iproxy)と同じ形に見える ——
 // **待ち受けのポートを実機と同じ番号にする理由**: 子の BridgeClient は実機の認証トークンを
 // `.fleetest/bridge-<port>.endpoint` からポート番号で引く(`BridgeClient.inferredToken`)。別の番号にすると 401 になる。
