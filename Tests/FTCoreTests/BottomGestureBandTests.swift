@@ -175,6 +175,26 @@ final class BottomGestureBandTests: XCTestCase {
         XCTAssertGreaterThan(reach.jump, 0)
     }
 
+    /// Android の Flutter の切り詰められた枠: `#shelf_7` は本来 315 のうち、画面下端の 44 だけが枠として報告される
+    func testBringIntoViewMovesAShelfWhoseClampedFrameSitsOnTheScreenBottom() throws {
+        let screen = FTRect(x: 0, y: 0, width: 1080, height: 2424)
+        let outer = element(4, "list_nested", FTRect(x: 0, y: 426, width: 1080, height: 1998), scrollable: true)
+        let shelf = FTRect(x: 0, y: 2380, width: 1080, height: 44)
+        let reach = try XCTUnwrap(ScrollGeometry.bringIntoView(frame: shelf, screen: screen,
+                                                               elements: [outer, element(36, "shelf_7", shelf, scrollable: true)]))
+        XCTAssertGreaterThan(reach.jump, 0)   // 枠が下 = 指を上へ
+    }
+
+    /// 半開きシートを広げるドラッグの始点は Android の帯(84px)の外。iOS(帯 0)は従来どおり下端から 48 の床
+    func testSheetExpandDragStartsAboveTheAndroidBottomGestureBand() throws {
+        let screen = FTRect(x: 0, y: 0, width: 1080, height: 2424)
+        let sheetList = FTRect(x: 0, y: 1300, width: 1080, height: 1124)
+        let android = try XCTUnwrap(StepExecutor.sheetExpandDrag(container: sheetList, screen: screen, bottomGestureBand: 84))
+        XCTAssertLessThan(android.fromY, 2340)
+        let ios = try XCTUnwrap(StepExecutor.sheetExpandDrag(container: sheetList, screen: screen, bottomGestureBand: 0))
+        XCTAssertEqual(ios.fromY, 2424 - StepExecutor.bottomUncoveredBand - 1)
+    }
+
     func testBringIntoViewIsNilWhenVisibleEnoughOrNoEnclosingContainer() {
         let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
         let outer = element(1, "outer", FTRect(x: 0, y: 100, width: 402, height: 900), scrollable: true)

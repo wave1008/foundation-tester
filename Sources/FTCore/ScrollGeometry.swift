@@ -139,7 +139,11 @@ public enum ScrollGeometry {
                                      elements: [ElementInfo]) -> (outer: FTRect, jump: Double)? {
         guard frame.height > 0, screen.height > 0 else { return nil }
         let visibleHeight = intersection(frame, screen)?.height ?? 0
-        guard visibleHeight / frame.height < minVisibleRatioForCrossAxisSearch else { return nil }
+        // **画面の上端・下端に付いた枠も送る**: Android の Flutter は画面の外にはみ出した枠を見えている部分へ切り詰めて
+        // 報告するので、見えている割合が 1 に見える(E2EY-Flutter の `#shelf_7` は 315 のうち下端の 44 だけ = 下端のジェスチャ帯の中。
+        // 横の払いが 1 本も効かなかった)。本当に縁ぴったりの枠でも、40% の高さへ寄せるだけで害は無い
+        let flushWithScreenEdge = abs(frame.y + frame.height - (screen.y + screen.height)) < 1 || abs(frame.y - screen.y) < 1
+        guard visibleHeight / frame.height < minVisibleRatioForCrossAxisSearch || flushWithScreenEdge else { return nil }
         let outer = elements
             .filter {
                 $0.scrollable == true && $0.frame.height > frame.height

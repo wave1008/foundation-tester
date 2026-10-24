@@ -126,9 +126,13 @@ extension StepExecutor {
     /// 全開になった)。始点は容器の下端(画面下端の a11y 空白帯は避ける)・終点は容器の上端 = 容器の高さぶん。
     /// **利用者が scrollFrame で指した容器の中だけを払う**(当てずっぽうに画面を動かさない)。
     /// 払える距離が無ければ nil
-    static func sheetExpandDrag(container: FTRect, screen: FTRect) -> (x: Double, fromY: Double, toY: Double)? {
+    /// `bottomGestureBand` は Android の下端のジェスチャ帯の高さ(px。iOS・3 ボタンは 0)。**帯の中から払うとホームへ抜ける**
+    /// (E2EY-Flutter のシート S0020: 床が iOS の pt の空白帯 48 のままで、Android の px の木では帯 84px の中 = y 2375 から払い、
+    /// ランチャーが前面になった)ので、大きいほうを床にする
+    static func sheetExpandDrag(container: FTRect, screen: FTRect,
+                                bottomGestureBand: Double) -> (x: Double, fromY: Double, toY: Double)? {
         let fromY = min(container.y + container.height - 1,
-                        screen.y + screen.height - bottomUncoveredBand - 1)
+                        screen.y + screen.height - max(bottomUncoveredBand, bottomGestureBand) - 1)
         let toY = container.y + 1
         guard fromY - toY >= minSheetExpandDistance else { return nil }
         return (container.x + container.width / 2, fromY, toY)
@@ -795,11 +799,13 @@ extension StepExecutor {
                         // **半開きシートの中で1度も動かなかったら、1回だけシートを広げて探し直す**(sheetExpandDrag の doc)
                         // 容器は scrollFrame で指した物だけ(scrollContainer は未指定なら nil・キーボードが出ていれば画面全体 =
                         // シートの幾何に合わない)= 利用者が指していない画面は動かさない
+                        let bottomGestureBand = isAndroid ? (await driver.backGestureEdgeWidths())?.bottom ?? 0 : 0
                         if !sheetExpandTried, !contentEverMoved, containerIsPartialHeight, direction == .up,
                            !defersPartialSheetRecovery,
                            let frame = scrollContainer(step: step, in: confirmed.snapshot, vertical: true)
                                .flatMap({ ScrollGeometry.intersection($0, confirmed.snapshot.screen) }),
-                           let drag = Self.sheetExpandDrag(container: frame, screen: confirmed.snapshot.screen) {
+                           let drag = Self.sheetExpandDrag(container: frame, screen: confirmed.snapshot.screen,
+                                                              bottomGestureBand: bottomGestureBand) {
                             sheetExpandTried = true
                             try await dragWithFallback(fromX: drag.x, fromY: drag.fromY, toX: drag.x, toY: drag.toY,
                                                        pressSeconds: FlowStep.defaultDragPressSeconds,
