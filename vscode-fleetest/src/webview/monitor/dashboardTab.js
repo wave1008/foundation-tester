@@ -261,12 +261,15 @@ document.addEventListener('ft-tab-activated', (event) => {
   previousTab = tab;
 });
 
-// プロジェクトの行(sticky)をツールバーの直下に貼り付ける位置。ツールバーは幅で折り返して高さが変わるので実測で渡す
-// (非表示のタブでは 0 が来るが、表示されたときにもう一度通知される)
+// プロジェクトの行(sticky)をツールバーの直下に貼り付ける位置と、行の高さを揃える基準(「更新」ボタンの高さ)。
+// どちらも幅・フォントで変わるので実測で渡す(非表示のタブでは 0 が来るが、表示されたときにもう一度通知される)
 if (typeof ResizeObserver === 'function') {
-  new ResizeObserver(() => {
+  const observer = new ResizeObserver(() => {
     dashboardPane.style.setProperty('--dash-toolbar-height', dashToolbar.offsetHeight + 'px');
-  }).observe(dashToolbar);
+    dashboardPane.style.setProperty('--dash-band-control-height', btnRefresh.offsetHeight + 'px');
+  });
+  observer.observe(dashToolbar);
+  observer.observe(btnRefresh);
 }
 
 btnRefresh.addEventListener('click', () => {

@@ -40,9 +40,12 @@
 .dash-toolbar {
   top: 0;
 }
-/* スクロールしてもツールバーの直下に貼り付く。top は dashboardTab.js が実測したツールバーの高さ(折り返しで変わる) */
+/* スクロールしてもツールバーの直下に貼り付く。top は dashboardTab.js が実測したツールバーの高さ(折り返しで変わる)。
+   高さはツールバーの1段ぶんに揃える = 実測した「更新」ボタンの高さ(ツールバーで最も背が高い)+ 帯の上下の padding(上の 6px × 2。
+   変えたら両方直す)。ツールバー全体の高さを使わないのは、狭い幅でツールバーが折り返したときに2段ぶんにしないため */
 .dash-project-row {
   top: var(--dash-toolbar-height, 0px);
+  min-height: calc(var(--dash-band-control-height, 0px) + 12px);
 }
 /* 集計期間のラベルもテストプロジェクトのラベルと同じ見た目 */
 .dash-title,

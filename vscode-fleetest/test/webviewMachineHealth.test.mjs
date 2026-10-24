@@ -391,9 +391,11 @@ test("プロジェクトの行はツールバー(集計期間の行)と同じ帯
   assert.match(band[0], /position: sticky;/);
   assert.match(band[0], /background-color:/, "下を流れる本文が透けない");
   assert.match(band[0], /background-image: linear-gradient/);
-  assert.match(css, /\n\.dash-project-row \{\n  top: var\(--dash-toolbar-height, 0px\);\n\}/);
+  assert.match(css, /\n\.dash-project-row \{\n  top: var\(--dash-toolbar-height, 0px\);\n  min-height: calc\(var\(--dash-band-control-height, 0px\) \+ 12px\);\n\}/);
+  assert.match(band[0], /padding: 6px 12px;/, "min-height の 12px は帯の上下の padding の和");
   const js = readFileSync(path.resolve("src/webview/monitor/dashboardTab.js"), "utf8");
   assert.match(js, /setProperty\('--dash-toolbar-height'/);
+  assert.match(js, /setProperty\('--dash-band-control-height', btnRefresh\.offsetHeight/);
 });
 
 test("「更新」は押した瞬間から取得の終わり(data / error)までリングを回す", (t) => {
