@@ -65,7 +65,7 @@ final class PreparingProgressWriter: Sendable {
             project: project, profile: profile,
             startedAt: startedAt, total: 0, done: 0, failed: 0,
             requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [], phase: phase,
-            supply: supply.snapshot()),
+            supply: supply.snapshot(), videoClips: nil),
             directory: RunProgressLedger.directory())
     }
 }

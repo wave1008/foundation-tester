@@ -32,7 +32,7 @@ final class RunProgressLedgerTests: XCTestCase {
             lanes: [RunProgressLane(key: "UDID-A", name: "iPhone 17-01", platform: "ios",
                                     scenario: "05_検索", scenarioStartedAt: "2026-09-20T10:04:00Z",
                                     expectedSeconds: nil)],
-            phase: phase, supply: supply)
+            phase: phase, supply: supply, videoClips: nil)
     }
 
     func testDefaultDirectoryIsHomeDotFleetestRuns() {

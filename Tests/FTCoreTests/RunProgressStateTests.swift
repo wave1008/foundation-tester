@@ -55,6 +55,22 @@ final class RunProgressStateTests: XCTestCase {
         XCTAssertEqual(journal.writes.last?.etaSeconds, 10, "2本×10秒 ÷ 2レーン")
     }
 
+    /// 全シナリオの後の動画の切り出しの間は進みを載せて残りを出さない(phase は running のまま)
+    func testVideoClipsProgressIsCarriedAndHidesEta() async {
+        let journal = Journal()
+        let key = RunProgressEstimate.ScenarioKey(scenarioID: "05_検索", platform: "ios")
+        let state = makeState(journal, total: 1, estimates: [key: 10_000], pendingScenarios: [key])
+        await state.laneJoined(key: "UDID-A", name: "iPhone 17-01", platform: "ios")
+        XCTAssertNil(journal.writes.last?.videoClips)
+        XCTAssertNotNil(journal.writes.last?.etaSeconds)
+        await state.videoClipsProgress(done: 0, total: 2)
+        await state.videoClipsProgress(done: 1, total: 2)
+        XCTAssertEqual(journal.writes.suffix(2).map(\.videoClips),
+                       [RunProgressVideoClips(done: 0, total: 2), RunProgressVideoClips(done: 1, total: 2)])
+        XCTAssertNil(journal.writes.last?.etaSeconds)
+        XCTAssertEqual(journal.writes.last?.phase, "running")
+    }
+
     func testJoiningTheSameLaneWithIdenticalContentDoesNotWriteTwice() async {
         let journal = Journal()
         let state = makeState(journal)

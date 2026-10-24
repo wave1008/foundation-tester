@@ -87,11 +87,14 @@ public struct RunProgressRecord: Codable, Equatable, Sendable {
     /// 準備中の端末ごとの供給の段階(`RunSupplyProgress.snapshot()`)。端末の行は ready になっても残す
     /// (読み手は全部 ready なら「実行が始まる直前」と読む = 予定の端末は計画の時点で pending として立てる)。供給の段階が1つも無い run は空
     public let supply: [RunProgressSupply]
+    /// 全シナリオの後の動画の切り出しの進み(`VideoRecordingCoordinator.finish`)。切り出しの間だけ非 nil で、
+    /// その間 etaSeconds は nil(読み手は残りの代わりにこれを出す)。phase は "running" のまま
+    public let videoClips: RunProgressVideoClips?
 
     public init(pid: Int32, runID: String?, runGroup: String?, issuer: String?, project: String,
                profile: String?, startedAt: String, total: Int, done: Int, failed: Int,
                requeued: Int, laneDropouts: Int, etaSeconds: Int?, lanes: [RunProgressLane],
-               phase: String, supply: [RunProgressSupply]) {
+               phase: String, supply: [RunProgressSupply], videoClips: RunProgressVideoClips?) {
         self.pid = pid
         self.runID = runID
         self.runGroup = runGroup
@@ -108,8 +111,20 @@ public struct RunProgressRecord: Codable, Equatable, Sendable {
         self.lanes = lanes
         self.phase = phase
         self.supply = supply
+        self.videoClips = videoClips
     }
 
+}
+
+/// 動画の切り出しの進み。done は成否を問わず終えた本数(失敗・断念も数える = total で必ず止まる)
+public struct RunProgressVideoClips: Codable, Equatable, Sendable {
+    public let done: Int
+    public let total: Int
+
+    public init(done: Int, total: Int) {
+        self.done = done
+        self.total = total
+    }
 }
 
 public enum RunProgressLedger {

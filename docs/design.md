@@ -6044,6 +6044,11 @@ CLI 実行・他人の run・ランナー機で直に打たれた run は `inRun
   計っているので、画面の数え方と食い違う)。全レーンが同じ1本を待つので run 全体の段階として持ち、
   待ちの間は進捗・残りを出さない(延長の秒数を見積もる定数を置かない)。待ち終えたらレーンの経過は
   0 から始まり、残りもその時点で計算し直される
+- **全シナリオの後の動画の切り出しの間は `videoClips`(`{done, total}`)を載せる**(`FTCore.RunProgressVideoClips`。
+  `VideoRecordingCoordinator.finish` の進みを `RunOrchestrator` が `RunProgressState.videoClipsProgress` へ中継する)。
+  切り出すクリップがあるときだけ、開始時に `0/n`・1本終えるごとに1つ進む(失敗・断念も数える = `n` で必ず止まる)。
+  **`phase` は `"running"` のまま**(本数と進捗バーは出し続ける)で、その間 `etaSeconds` は省く。
+  拡張は残りの代わりに「動画を編集中 n/m」を出す(機械分担の run は全 run が切り出し中のときだけ合計。ProtocolVersion 55)
 - **準備中の間は端末ごとの供給の段階を `supply` に載せる**(`FTCore.RunProgressSupply`:
   `name`(`devices[].name`。ランナーの build-for-testing は端末に属さないので空文字)・`platform`・
   `step` = `pending` / `runnerBuild` / `booting` / `bridge` / `configuring` / `installing` / `ready`)。iOS は計画の時点で予定の端末を全台 `pending` で

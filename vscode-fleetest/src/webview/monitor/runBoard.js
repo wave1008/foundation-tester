@@ -529,6 +529,12 @@ function renderRowTime(row) {
   }
   const now = Date.now();
   row.elapsedEl.textContent = formatMinSec(liveElapsedSeconds(run.elapsedSeconds, run.receivedAtMs, now));
+  if (run.videoClips) {
+    row.remainingEl.textContent = t('runBoard.encodingVideo', {
+      done: String(run.videoClips.done), total: String(run.videoClips.total),
+    });
+    return;
+  }
   const remaining = liveRemaining(run.etaSeconds, run.receivedAtMs, now);
   if (!remaining) {
     row.remainingEl.textContent = t('runBoard.remainingUnknown');

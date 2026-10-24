@@ -414,6 +414,38 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         XCTAssertEqual(leftovers, [], "再試行で取れたらソースは消すはず")
     }
 
+    /// 切り出しの進みは開始時に (0, n)、1本終えるごとに1つ進み、失敗した本も数えて n で止まるはず
+    func testFinishReportsClipProgressIncludingFailures() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp),
+            makeSession: realFileSessionFactory(),
+            extractClip: writing { _, _, _, _, _, _, outputURL in
+                !outputURL.lastPathComponent.contains("S0010")
+            })
+        let workers = [makeWorker(1), makeWorker(2), makeWorker(3)]
+        for (i, worker) in workers.enumerated() {
+            _ = await coordinator.start(worker)
+            await registerInterval(coordinator, worker: worker, scenarioID: "Progress.S00\(i + 1)0")
+            await coordinator.stop(worker)
+        }
+        let reports = LockedValue<[[Int]]>([])
+        await coordinator.finish { done, total in reports.withLock { $0.append([done, total]) } }
+        XCTAssertEqual(reports.withLock { $0 }, [[0, 3], [1, 3], [2, 3], [3, 3]])
+    }
+
+    /// 切り出すクリップが無ければ進みを1度も報告しないはず(録画の無い run に「動画を編集中」を出さない)
+    func testFinishWithoutClipsReportsNoProgress() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp), makeSession: realFileSessionFactory())
+        let reports = LockedValue<[[Int]]>([])
+        await coordinator.finish { done, total in reports.withLock { $0.append([done, total]) } }
+        XCTAssertEqual(reports.withLock { $0 }, [])
+    }
+
     /// 再試行でも失敗したら失敗として数え、**そのソースだけ**診断用に残すはず(成功したワーカーのソースは消す)
     func testClipFailingTwiceIsCountedAndKeepsItsSource() async throws {
         let tmp = try makeTempDir()

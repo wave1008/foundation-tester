@@ -125,6 +125,8 @@ struct ApiMonitorRunProgress: Codable, Equatable {
     let phase: String
     /// 準備中の端末ごとの供給の段階。台帳の値をそのまま運ぶ(作り替えない。空 = 段階の情報なし)
     let supply: [RunProgressSupply]
+    /// 動画の切り出しの進み。台帳の値をそのまま運ぶ(切り出しの間だけ非 nil。ProtocolVersion 55)
+    let videoClips: RunProgressVideoClips?
 }
 
 /// monitorRuns イベント: フリート横断の run 進捗(docs/design.md §18.2)。**手元でも出す**

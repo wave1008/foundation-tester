@@ -71,6 +71,8 @@ is unavailable.
   run starts, the row says what it is doing instead of the counts ("Building scenarios…", "Starting device
   preparation…", "Building the runner…", "Booting devices…", "Starting the bridge…", "Configuring devices…", "Installing the app…",
   "Starting tests…").
+  When the run records video, the time left is replaced by "Encoding videos 12/48" (clips done / all clips)
+  while the clips are cut after the last scenario.
   Expanding a row lists that machine's devices; clicking a row selects them in the Line View.
 - The Device Monitor tab is split into three views, top to bottom: the **Line View** (the row of
   device tiles), the **Grid View** (enlarged screens of the selected devices), and the **Run Log View**

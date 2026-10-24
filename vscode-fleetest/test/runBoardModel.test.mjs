@@ -169,6 +169,20 @@ test("全 run が見積もりを持つときだけ etaSeconds を出す(1本で�
   assert.equal(buildRunGroups(both)[0].etaSeconds, 200, "最大値(直列化された下限)");
 });
 
+test("全 run が動画の切り出し中のときだけ videoClips を合計する(1本でもシナリオを回していれば省く)", () => {
+  let state = applyMonitorRunsEvent(new Map(), {
+    machine: "A", observed: true, runs: [run({ runID: "a", runGroup: "g", videoClips: { done: 3, total: 10 } })],
+  });
+  state = applyMonitorRunsEvent(state, {
+    machine: "B", observed: true, runs: [run({ runID: "b", runGroup: "g" })],
+  });
+  assert.equal(buildRunGroups(state)[0].videoClips, undefined);
+  state = applyMonitorRunsEvent(state, {
+    machine: "B", observed: true, runs: [run({ runID: "b", runGroup: "g", videoClips: { done: 1, total: 4 } })],
+  });
+  assert.deepEqual(buildRunGroups(state)[0].videoClips, { done: 4, total: 14 });
+});
+
 test("他人の run(mine:false)の issuer は保たれる。自分の run では issuer 無しでよい", () => {
   const state = applyMonitorRunsEvent(new Map(), {
     machine: "M1Max", observed: true,
@@ -276,6 +290,19 @@ test("isMonitorEvent: monitorRuns の生 NDJSON を受理し、etaSeconds:null �
   const value = structuredClone(wireEvent);
   assert.equal(isMonitorEvent(value), true);
   assert.equal(value.runs[0].etaSeconds, undefined);
+});
+
+test("isMonitorEvent: videoClips は省略・null・{done,total} を受理し、型崩れは拒否する", () => {
+  const withNull = structuredClone(wireEvent);
+  withNull.runs[0].videoClips = null;
+  assert.equal(isMonitorEvent(withNull), true);
+  assert.equal(withNull.runs[0].videoClips, undefined);
+  const withClips = structuredClone(wireEvent);
+  withClips.runs[0].videoClips = { done: 12, total: 48 };
+  assert.equal(isMonitorEvent(withClips), true);
+  const broken = structuredClone(wireEvent);
+  broken.runs[0].videoClips = { done: "12", total: 48 };
+  assert.equal(isMonitorEvent(broken), false);
 });
 
 test("isMonitorEvent: supply は必須。platform:null は undefined に正規化し、型崩れは拒否する", () => {

@@ -282,6 +282,20 @@ test("Vision のコンパイル待ちの run は「Vision コンパイル中」�
   assert.equal(runRow.querySelector(".run-board-progress").style.display, "none");
 });
 
+test("動画の切り出し中は残りの代わりに「動画を編集中 n/m」を出し、本数と進捗バーはそのまま", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  post(window, { type: "monitorRuns", observed: true, runs: [{
+    pid: 41233, runID: "run-1", mine: true, phase: "running", requeued: 0, laneDropouts: 0, supply: [],
+    project: "E2E-iOS", profile: "ios-inapp", elapsedSeconds: 171, total: 48, done: 48, failed: 0, lanes: [],
+    videoClips: { done: 12, total: 48 },
+  }] });
+  const [runRow] = runRows(document);
+  assert.equal(runRow.querySelector(".run-board-counts").textContent, "48/48");
+  assert.notEqual(runRow.querySelector(".run-board-progress").style.display, "none");
+  assert.match(runRow.querySelector(".run-board-time").textContent, /^2:5\d \/ 動画を編集中 12\/48$/);
+});
+
 test("失敗があるときだけ ❌失敗数 を足し、無ければ本数だけ", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());

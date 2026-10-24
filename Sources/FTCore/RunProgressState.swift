@@ -65,11 +65,11 @@ actor RunProgressState {
             pid: pid, runID: runID, runGroup: runGroup, issuer: issuer, project: project,
             profile: profile, startedAt: startedAt, total: total, done: done, failed: failed,
             requeued: requeuedCount, laneDropouts: laneDropoutsCount,
-            // コンパイル待ちの間は残りを出さない(読み手は受信時点の値から秒読みするので、出すと待ちの間に減っていく)
-            etaSeconds: ocrCompileWaiters > 0 ? nil : currentEtaSeconds(),
+            // コンパイル待ち・動画の切り出しの間は残りを出さない(読み手は受信時点の値から秒読みするので、出すと待ちの間に減っていく)
+            etaSeconds: ocrCompileWaiters > 0 || videoClips != nil ? nil : currentEtaSeconds(),
             lanes: lanesByKey.values.sorted { $0.key < $1.key },
             phase: ocrCompileWaiters > 0 ? "compiling" : "running",
-            supply: supply?.snapshot() ?? [])
+            supply: supply?.snapshot() ?? [], videoClips: videoClips)
         guard record != lastWritten else { return }
         let firstWrite = lastWritten == nil
         lastWritten = record
@@ -138,6 +138,14 @@ actor RunProgressState {
 
     func ocrCompileWaitEnded() {
         ocrCompileWaiters = max(0, ocrCompileWaiters - 1)
+        flush()
+    }
+
+    /// 全シナリオの後の動画の切り出しの進み(RunOrchestrator が VideoRecordingCoordinator.finish から中継する)
+    private var videoClips: RunProgressVideoClips?
+
+    func videoClipsProgress(done: Int, total: Int) {
+        videoClips = RunProgressVideoClips(done: done, total: total)
         flush()
     }
 

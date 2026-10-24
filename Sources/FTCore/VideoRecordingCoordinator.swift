@@ -378,12 +378,13 @@ actor VideoRecordingCoordinator {
     }
 
     /// run() の task group join 後に 1 回呼ぶ。残っているセッション(通常は無いはずの安全網)を
-    /// 畳み、クリップをまとめて切り出してから index.json を書く
-    func finish() async {
+    /// 畳み、クリップをまとめて切り出してから index.json を書く。
+    /// progress: 切り出しの進み(終えた本数, 全本数)。切り出すクリップがあるときだけ、開始時に (0, n)・1本終えるごとに呼ぶ
+    func finish(progress: (@Sendable (_ done: Int, _ total: Int) async -> Void)? = nil) async {
         let remaining = active
         active.removeAll()
         for (label, entry) in remaining { await collect(label, entry) }
-        await extractAtRunEnd()
+        await extractAtRunEnd(progress: progress)
         // 先頭 segment の startedAt 昇順(再生ビューの既定選択・一覧表示の安定順)
         entries.sort { ($0.segments.first?.startedAt ?? "") < ($1.segments.first?.startedAt ?? "") }
         if clipsFailed > 0 {
@@ -479,9 +480,12 @@ actor VideoRecordingCoordinator {
     /// **2回とも失敗したクリップのソースは残す**(壊れたソースか一時的な失敗かを後から分ける唯一の材料)。
     /// エンコーダの選び方: 台帳が新しい死ならソフトウェア。**この Mac で配信がハードウェアを使っているなら、1本目だけを
     /// 先にハードウェアで切り出して速さを測り**、MinLiveSpeedRatio 未満なら残りはソフトウェア(余力が無い)
-    private func extractAtRunEnd() async {
+    private func extractAtRunEnd(progress: (@Sendable (Int, Int) async -> Void)?) async {
         var clips = queue
         queue.removeAll()
+        let total = clips.count
+        var finished = 0
+        if total > 0 { await progress?(0, total) }
         if hardwareFirst, !clips.isEmpty, VideoEncoderLiveness.isKnownDead() {
             hardwareAbandoned = true
             ConsoleOut.err("⚠️ [recording] the hardware video encoder is known to be broken on this Mac"
@@ -489,7 +493,10 @@ actor VideoRecordingCoordinator {
         }
         if hardwareFirst, !hardwareAbandoned, !clips.isEmpty, liveStreamsActive() {
             let first = clips.removeFirst()
-            if let speed = await extractFinal(first), speed < Self.minHardwareSpeedWhileStreaming, !hardwareAbandoned {
+            let speed = await extractFinal(first)
+            finished += 1
+            await progress?(finished, total)
+            if let speed, speed < Self.minHardwareSpeedWhileStreaming, !hardwareAbandoned {
                 hardwareAbandoned = true
                 ConsoleOut.err("⚠️ [recording] live streams are using the hardware video encoder (the first clip ran at "
                     + String(format: "%.1f", speed) + "x real time) — extracting the rest with the software encoder")
@@ -498,6 +505,10 @@ actor VideoRecordingCoordinator {
         await withTaskGroup(of: Void.self) { group in
             for clip in clips {
                 group.addTask { _ = await self.extractFinal(clip) }
+            }
+            for await _ in group {
+                finished += 1
+                await progress?(finished, total)
             }
         }
         await hardwareProbe?.value

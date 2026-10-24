@@ -36,4 +36,5 @@ export const runBoardStrings = {
     ja: "残 ~0:00(+{time} 超過)",
     en: "~0:00 left (+{time} over)",
   },
+  "runBoard.encodingVideo": { ja: "動画を編集中 {done}/{total}", en: "Encoding videos {done}/{total}" },
 } satisfies MessageDict;

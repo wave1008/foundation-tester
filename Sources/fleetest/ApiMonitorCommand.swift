@@ -704,7 +704,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                             scenarioElapsedSeconds: lane.scenarioStartedAt.flatMap { elapsedSeconds(since: $0) },
                             expectedSeconds: lane.expectedSeconds)
                     },
-                    phase: record.phase, supply: record.supply)
+                    phase: record.phase, supply: record.supply, videoClips: record.videoClips)
             }
     }
 

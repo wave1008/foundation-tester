@@ -148,7 +148,7 @@ final class MCPRunJobsTests: XCTestCase {
                           startedOffset: TimeInterval = 5) -> RunProgressRecord {
         RunProgressRecord(pid: pid, runID: nil, runGroup: nil, issuer: nil, project: project, profile: profile,
                           startedAt: iso(startedOffset), total: 10, done: 3, failed: 1, requeued: 0,
-                          laneDropouts: 0, etaSeconds: nil, lanes: [], phase: "running", supply: [])
+                          laneDropouts: 0, etaSeconds: nil, lanes: [], phase: "running", supply: [], videoClips: nil)
     }
 
     func testProgressPrefersTheExactPID() {

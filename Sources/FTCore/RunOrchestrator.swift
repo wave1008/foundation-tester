@@ -1436,7 +1436,10 @@ public final class RunOrchestrator: Sendable {
         await runLeases.releaseAll()
         await recordingLeases.releaseAll()
         // 全ワーカー終了後に 1 回だけ index.json を書く(拡張側との契約。RecordingIndexIO 参照)
-        await videoRecording?.finish()
+        let progressDuringClips = progressState
+        await videoRecording?.finish { done, total in
+            await progressDuringClips?.videoClipsProgress(done: done, total: total)
+        }
 
         // ワーカー全滅(broadcast: そのレーンのデバイスが不在・復帰不能)でキューに残ったシナリオは失敗扱い。
         // 中断による drain は「ワーカーが使えない」ではなく事実が違うので理由を差し替える

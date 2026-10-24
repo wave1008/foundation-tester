@@ -58,6 +58,13 @@ export interface RunBoardRawRun {
   readonly failed: number;
   readonly etaSeconds?: number;
   readonly lanes: readonly RunBoardLane[];
+  /** 全シナリオの後の動画の切り出しの進み(切り出しの間だけ。その間 etaSeconds は省かれる)。 */
+  readonly videoClips?: RunBoardVideoClips;
+}
+
+export interface RunBoardVideoClips {
+  readonly done: number;
+  readonly total: number;
 }
 
 /** 控えに畳んだあとの1 run。machine は undefined = 手元(MonitorDevice.machine と同じ規約)。 */
@@ -150,6 +157,8 @@ export interface RunBoardGroup {
   /** 全 run が見積もりを持つときだけ最大値(直列化された下限)。1本でも欠けたら省く = 「—」。
    * receivedAtMs 時点の値(liveRemaining と組で使う)。 */
   readonly etaSeconds?: number;
+  /** 全 run が動画の切り出し中のときだけ合計(1本でもシナリオを回していれば省く = 残りの表示のまま)。 */
+  readonly videoClips?: RunBoardVideoClips;
   /** 束ねた run のうち最も古い受信時刻(ms)。機械分担の run は各機械が別々に届くため、
    * elapsedSeconds/etaSeconds の基準時刻として最も保守的な(= 遅れていない側の)値を使う。 */
   readonly receivedAtMs: number;
@@ -201,6 +210,12 @@ export function buildRunGroups(state: ReadonlyMap<string, MachineRunsEntry>): re
       failed: sum(runs.map((r) => r.failed)),
       elapsedSeconds: Math.max(...runs.map((r) => r.elapsedSeconds)),
       etaSeconds: allHaveEta ? Math.max(...(etaValues as number[])) : undefined,
+      videoClips: runs.every((r) => r.videoClips !== undefined)
+        ? {
+            done: sum(runs.map((r) => r.videoClips!.done)),
+            total: sum(runs.map((r) => r.videoClips!.total)),
+          }
+        : undefined,
       receivedAtMs: Math.min(...runs.map((r) => r.receivedAtMs)),
       runs,
     });

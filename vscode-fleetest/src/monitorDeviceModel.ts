@@ -200,6 +200,13 @@ export interface MonitorRunEntry {
    * (docs/design.md §18.4)。null は undefined に正規化する(isMonitorRunEntry)。 */
   readonly etaSeconds?: number;
   readonly lanes: readonly MonitorRunLane[];
+  /** 全シナリオの後の動画の切り出しの進み。切り出しの間だけ(ProtocolVersion 55。FTCore.RunProgressVideoClips と対)。 */
+  readonly videoClips?: MonitorRunVideoClips;
+}
+
+export interface MonitorRunVideoClips {
+  readonly done: number;
+  readonly total: number;
 }
 
 /** `fleetest api monitor` の NDJSON 1行分のイベント(kind で判別)。 */
@@ -427,6 +434,9 @@ function isMonitorRunEntry(value: unknown): value is MonitorRunEntry {
     // 実績の無い run は省く(docs/design.md §18.4)。省略と同じ「—」表示に正規化する。
     value.etaSeconds = undefined;
   }
+  if (value.videoClips === null) {
+    value.videoClips = undefined;
+  }
   return (
     typeof value.pid === "number" &&
     (value.runID === undefined || typeof value.runID === "string") &&
@@ -446,7 +456,11 @@ function isMonitorRunEntry(value: unknown): value is MonitorRunEntry {
     typeof value.requeued === "number" &&
     typeof value.laneDropouts === "number" &&
     Array.isArray(value.lanes) &&
-    value.lanes.every(isMonitorRunLane)
+    value.lanes.every(isMonitorRunLane) &&
+    (value.videoClips === undefined ||
+      (isRecord(value.videoClips) &&
+        typeof value.videoClips.done === "number" &&
+        typeof value.videoClips.total === "number"))
   );
 }
 
