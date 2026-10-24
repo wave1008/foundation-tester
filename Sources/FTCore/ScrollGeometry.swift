@@ -166,6 +166,25 @@ public enum ScrollGeometry {
         return (limit - 1, true)
     }
 
+    /// 要素の枠が、指の向きで中身が**出てくる側の縁**(指が左なら右端)に付いているか(1pt/px 未満の差は付いている)。
+    /// 枠を見えている部分へ切り詰めて報告するフレームワーク(Android の Flutter)では、縁から少しだけ出た要素がこの形になり、
+    /// 見切れ(`TapTargetGeometry.isClippedByViewport`)と分からない。容器以上の大きさの要素は縁に付くのが当然なので false
+    public static func touchesLeadingEdge(_ frame: FTRect, viewport: FTRect, finger: FTSwipeDirection) -> Bool {
+        let tolerance = 1.0
+        switch finger {
+        case .left:
+            return frame.width < viewport.width
+                && abs((frame.x + frame.width) - (viewport.x + viewport.width)) < tolerance
+        case .right:
+            return frame.width < viewport.width && abs(frame.x - viewport.x) < tolerance
+        case .up:
+            return frame.height < viewport.height
+                && abs((frame.y + frame.height) - (viewport.y + viewport.height)) < tolerance
+        case .down:
+            return frame.height < viewport.height && abs(frame.y - viewport.y) < tolerance
+        }
+    }
+
     /// タップ点(要素の中心)が下端のジェスチャ帯の中なら、**要素の帯より上に出ている部分の中心**の y を返す。
     /// 帯の中の押下はランチャーの入力に取られ、負荷下ではアプリが背面へ回る(E2EY-Flutter のミニプレーヤー
     /// `#txt_mini_title` 2312〜2368・帯 2340〜: 中心 2340 を押してホームへ抜けた)。

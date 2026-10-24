@@ -520,6 +520,8 @@ extension StepExecutor {
         var bringIntoViewDrags = 0
         // 半開きシートを広げるドラッグを撃ったか(1 探索に 1 回。sheetExpandDrag の doc)
         var sheetExpandTried = false
+        // 進む先の縁に付いた要素を見つけて同じ向きへ送り直したか(1 探索に 1 回。下の touchesLeadingEdge の分岐)
+        var leadingEdgeNudged = false
         for attempt in 0...maxSwipes {
             // **1周目だけは静止を待ってから撮る**。直前の操作がプログラム的な
             // アニメーションスクロール(「先頭へ」等)だと、ブリッジの整定はすり抜けることがあり
@@ -660,6 +662,21 @@ extension StepExecutor {
                     }
                     let finger = FTSwipeDirection(rawValue: recovery.direction ?? "") ?? direction
                     if try await swipeWithFallback(finger, intent: .search, path: path,
+                                                   phase: &phase) { viaXCUITest = true }
+                    swipes += 1
+                    previousSnapshot = snapshot
+                    continue
+                }
+                // **進む先の縁に付いている = 枠が見えている部分へ切り詰められている**ことがある(Android の Flutter は
+                // 画面の外にはみ出した要素の枠を見えている幅へ詰めて出すので、上の見切れの判定で分からない。実測: E2EY-Flutter の
+                // #card_0_14 が右端に 18px だけ出た所で見つかったとし、その中心 = 右端の戻るの帯を撃って飲まれた。並列で 5/5)。
+                // 同じ向きへ1回だけ送り直す(本当に縁ぴったりの要素なら、端で動かないか見える位置へ移るだけ = 次の周回で見つかる)。
+                // in-app の 1 ページ送り(pagesPerSwipe)は対象を飛び越すので除く(上の flushWithEdge と同じ理由)
+                if attempt < maxSwipes, !leadingEdgeNudged, !pagesPerSwipe,
+                   ScrollGeometry.touchesLeadingEdge(element.frame, viewport: viewport, finger: direction) {
+                    leadingEdgeNudged = true
+                    if try await swipeWithFallback(direction, intent: .search,
+                                                   path: scrollPath(step: step, intent: .search, in: snapshot),
                                                    phase: &phase) { viaXCUITest = true }
                     swipes += 1
                     previousSnapshot = snapshot
