@@ -893,12 +893,24 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// ref から要素を引く(doubleTap / pinch が対象の座標・identifier を採るため)。
     /// **snapshot を撮り直す**: ref は直近スナップショット基準なので、ここで採り直しても同じ番号を指す
     private static func element(ref: Int, driver: AppDriver) async throws -> ElementInfo {
+        try await elementAndScreen(ref: ref, driver: driver).element
+    }
+
+    private static func elementAndScreen(ref: Int, driver: AppDriver) async throws -> (element: ElementInfo, screen: FTRect) {
         let snapshot = try await driver.snapshot()
         guard let element = snapshot.elements.first(where: { $0.ref == ref }) else {
             throw ServeCommandError.invalidArguments(
                 "unknown reference number [\(ref)]. Take a snapshot first")
         }
-        return element
+        return (element, snapshot.screen)
+    }
+
+    /// Android の ref の tap: 中心が下端のジェスチャ帯の中なら帯より上の部分の中心(判定は `BottomGestureBandTap` = DSL・MCP と共有)
+    private static func bottomBandPoint(ref: Int, driver: AppDriver) async throws -> (x: Double, y: Double)? {
+        let (element, screen) = try await elementAndScreen(ref: ref, driver: driver)
+        guard let y = await BottomGestureBandTap.tapY(for: element.frame, screen: screen,
+                                                      isAndroid: true, driver: driver) else { return nil }
+        return (element.frame.centerX, y)
     }
 
     /// ref で撃つ type / clear の門(判定は `TapTargetGeometry.typeTargetVerdict` = DSL・MCP と共有)。
@@ -996,7 +1008,14 @@ struct ApiLiveServe: AsyncParsableCommand {
         switch command.cmd {
         case "tap":
             if let ref = command.ref {
-                try await driver.tap(ref: ref)
+                // 中心が Android の下端のジェスチャ帯の中なら帯より上の部分を座標で(ref はブリッジが中心へ解決する)。
+                // 枠が要るので Android の ref の tap だけ木を1回撮る(座標のクリックには払わせない)
+                if driverOptions.resolvedPlatform == "android",
+                   let point = try await Self.bottomBandPoint(ref: ref, driver: driver) {
+                    try await driver.tap(x: point.x, y: point.y)
+                } else {
+                    try await driver.tap(ref: ref)
+                }
             } else if let x = command.x, let y = command.y {
                 try await requireOnScreen([(x, y)], driver: driver, screenMemo: screenMemo)
                 try await driver.tap(x: x, y: y)
@@ -1035,8 +1054,11 @@ struct ApiLiveServe: AsyncParsableCommand {
         case "doubleTap":
             // **座標へ畳んでから撃つ**(ref はブリッジごとに別名前空間。AppDriver.doubleTap の注記参照)
             if let ref = command.ref {
-                let element = try await Self.element(ref: ref, driver: driver)
-                try await driver.doubleTap(x: element.frame.centerX, y: element.frame.centerY)
+                let (element, screen) = try await Self.elementAndScreen(ref: ref, driver: driver)
+                let bandY = await BottomGestureBandTap.tapY(
+                    for: element.frame, screen: screen,
+                    isAndroid: driverOptions.resolvedPlatform == "android", driver: driver)
+                try await driver.doubleTap(x: element.frame.centerX, y: bandY ?? element.frame.centerY)
             } else if let x = command.x, let y = command.y {
                 try await requireOnScreen([(x, y)], driver: driver, screenMemo: screenMemo)
                 try await driver.doubleTap(x: x, y: y)

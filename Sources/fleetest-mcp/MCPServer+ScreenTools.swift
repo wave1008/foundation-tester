@@ -75,6 +75,26 @@ extension MCPServer {
             args: args))
     }
 
+    /// ref の要素の中心が Android の下端のジェスチャ帯の中なら、帯より上に出ている部分の中心(撃つ点)。
+    /// 判定は `BottomGestureBandTap`(DSL・ライブ操作と共有)。木は verifiedRef / verifiedElement が撮った直近のもの(セッション ref)
+    func bottomBandPoint(sessionRef: Int, driver: AppDriver, args: [String: Any]) async -> (x: Double, y: Double)? {
+        guard let element = lastSnapshots[Self.sessionKey(args)]?.elements.first(where: { $0.ref == sessionRef })
+        else { return nil }
+        return await bottomBandPoint(frame: element.frame, driver: driver, args: args)
+    }
+
+    /// 枠を既に持っている呼び手(verifiedElement が位置を合わせ直した要素)用。画面の大きさは直近の木から
+    func bottomBandPoint(frame: FTRect, driver: AppDriver, args: [String: Any]) async -> (x: Double, y: Double)? {
+        guard let screen = lastSnapshots[Self.sessionKey(args)]?.screen,
+              let y = await BottomGestureBandTap.tapY(for: frame, screen: screen,
+                                                      isAndroid: driver is AndroidDriver, driver: driver)
+        else { return nil }
+        return (frame.centerX, y)
+    }
+
+    static let bottomBandTouchNote = " Its centre is inside the Android bottom gesture band (a touch there can go to"
+        + " home / app switch), so the part of the element above the band was touched instead."
+
     func ftTap(_ args: [String: Any]) async throws -> [[String: Any]] {
         let d = try await driver(args)
         if let button = try Self.stringArgument(args, "alertButton") {
@@ -83,14 +103,20 @@ extension MCPServer {
         if let ref = try Self.intArgument(args, "ref") {
             let target = try await verifiedRef(ref, driver: d, args: args)
             // **target.ref はセッション ref**。ブリッジは native の番号しか知らないので、
-            // 撃つ直前にだけ nativeRef で戻す(応答・記録には引き続きセッション ref を使う)
-            try await d.tap(ref: nativeRef(target.ref, args: args))
+            // 撃つ直前にだけ nativeRef で戻す(応答・記録には引き続きセッション ref を使う)。
+            // 中心が Android の下端のジェスチャ帯の中なら、帯より上の部分を座標で撃つ(ref はブリッジが中心へ解決する)
+            let bandPoint = await bottomBandPoint(sessionRef: target.ref, driver: d, args: args)
+            if let bandPoint {
+                try await d.tap(x: bandPoint.x, y: bandPoint.y)
+            } else {
+                try await d.tap(ref: nativeRef(target.ref, args: args))
+            }
             recordInteraction(action: "tap", resolvedRef: target.ref, args: args)
             // 次の ref なし ft_type の救済材料(verifiedRef が撮り直した木 = 叩く前の木から引く)
             let treeBeforeTap = lastSnapshots[Self.sessionKey(args)]?.elements
             lastTapTargets[Self.sessionKey(args)] = treeBeforeTap?.first { $0.ref == target.ref }
             focusedBeforeLastTaps[Self.sessionKey(args)] = treeBeforeTap?.first { $0.focused == true }
-            return text("tap [\(ref)] done.\(target.note)"
+            return text("tap [\(ref)] done.\(target.note)" + (bandPoint != nil ? Self.bottomBandTouchNote : "")
                 // ブリッジの /tap が返す note(例:
                 // 「activate 不発 → 合成タッチ」— BridgeClient.tap(ref:) の lastActionNote)を
                 // 捨てない。DSL は同じ note を StepExecutor+Actions.swift の driverFallback へ

@@ -102,6 +102,44 @@ final class ForegroundWindowsTests: XCTestCase {
         XCTAssertNil(AndroidForegroundWindows.topmostAppPackage(dumpsys: text))
     }
 
+    private func realDump(_ name: String) throws -> String {
+        try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/AndroidWindowDumps/\(name)"), encoding: .utf8)
+    }
+
+    /// 実出力(Pixel 9 / Android 15 の Emulator): 帯の中の押下でランチャーへ抜けた後。アプリの窓は isVisible=false
+    func testFrontAppWhileHiddenNamesTheLauncherWhenTheAppWentToTheBackground() throws {
+        let text = try realDump("launcher-in-front.txt")
+        XCTAssertEqual(AndroidForegroundWindows.frontAppWhileHidden(package: "com.ftester.e2ey.flutter", dumpsys: text),
+                       "com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity")
+        XCTAssertEqual(AndroidForegroundWindows.overlaying(package: "com.ftester.e2ey.flutter", dumpsys: text), [])
+    }
+
+    func testFrontAppWhileHiddenIsNilWhileTheAppIsInFront() throws {
+        let text = try realDump("app-in-front.txt")
+        XCTAssertNil(AndroidForegroundWindows.frontAppWhileHidden(package: "com.ftester.e2ey.flutter", dumpsys: text))
+        // 接頭辞が重なる別パッケージ(com.ftester.e2ey)を対象アプリと取り違えない
+        XCTAssertEqual(AndroidForegroundWindows.frontAppWhileHidden(package: "com.ftester.e2ey", dumpsys: text),
+                       "com.ftester.e2ey.flutter/com.ftester.e2ey.flutter.MainActivity")
+    }
+
+    /// アプリが見えている間は、背後に可視の別アプリの窓があっても名指ししない(前面の判定は overlaying の担当)
+    func testFrontAppWhileHiddenIsNilWhenTheAppIsVisibleEvenWithAnotherVisibleAppBehind() {
+        let text = dump([
+            ("StatusBar", true),
+            ("\(package)/\(package).MainActivity", true),
+            ("com.other.app/com.other.app.MainActivity", true),
+        ])
+        XCTAssertNil(AndroidForegroundWindows.frontAppWhileHidden(package: package, dumpsys: text))
+    }
+
+    /// 可視のアプリ窓が1つも無い(取得失敗の形)ときは黙る
+    func testFrontAppWhileHiddenIsNilWithoutAVisibleAppWindow() {
+        let text = dump([("StatusBar", true), ("com.hidden.app/com.hidden.app.MainActivity", false)])
+        XCTAssertNil(AndroidForegroundWindows.frontAppWhileHidden(package: package, dumpsys: text))
+    }
+
     func testParsesWindowNameFromRealLine() {
         XCTAssertEqual(
             AndroidForegroundWindows.windowName("Window #7 Window{b9b01a8 u0 InputMethod}:"),

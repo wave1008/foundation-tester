@@ -363,11 +363,19 @@ extension StepExecutor {
             // 近道は「起動時の探りが読めた」ことを条件にするので、負荷の下ではそのプロセスの最初のガードで撃てず、
             // FM の1回の空振りがそのまま赤になった(maintainer-notes §92.1)。OCR は素通りの根拠にだけ使う
             // (丸ごと読めたら緑・読めなければ判定は FM のまま)。**オフの構成では読まない**(利用者が切った段を使わない)
+            var ocrConfirmationFact = ""
             if occlusionOCRMode == .on, ocrReading == nil {
                 let ocrStart = clock.now
-                let confirmation = await RegionText.resolveWithinBudget(
+                var confirmation = await RegionText.resolveWithinBudget(
                     expected: expectedText, pngData: screenshot, frame: element.frame, screen: screen,
                     budget: Self.emptyTranscriptOCRBudget)
+                // ここへ来るのは近道の準備ができていない(このプロセスの Vision がまだ空を返す)ときなので、確かめの読みも
+                // 空で返りやすい。空なら読めるようになるまで待って1回だけ読み直す(誤読は読み直さない = 読めている Vision の答え)
+                if Self.confirmationSawNothing(confirmation), await awaitReadableVision() {
+                    confirmation = await RegionText.resolveWithinBudget(
+                        expected: expectedText, pngData: screenshot, frame: element.frame, screen: screen,
+                        budget: Self.emptyTranscriptOCRBudget)
+                }
                 let ocrElapsed = Self.ms(clock.now - ocrStart)
                 phase.guardMs += ocrElapsed
                 phase.ocrMs += ocrElapsed
@@ -377,10 +385,11 @@ extension StepExecutor {
                     pixelsShowedTextThisStep = true
                     return nil
                 }
+                ocrConfirmationFact = Self.emptyTranscriptOCRFact(confirmation)
             }
             noteCodesThisStep.insert(.fmEmptyTranscriptOnInk)
             emptyTranscriptOnInk = " — FM transcribed nothing, but the element's area is not blank"
-                + " (luminance stdDev \(String(format: "%.1f", ink)))"
+                + " (luminance stdDev \(String(format: "%.1f", ink)))" + ocrConfirmationFact
         }
         let merged = OCROnlyVisibility.merge(fmVisible: v.visible, fmState: TranscriptMatch.State(rawValue: v.state),
                                              ocr: occlusionOCRMode == .on ? ocrOnly.outcome : .undetermined)
@@ -399,6 +408,35 @@ extension StepExecutor {
                        + emptyTranscriptOnInk
                        + Self.blankAppAreaFact(screenshot: screenshot, elements: elements, screen: screen))
     }
+
+    /// 空の転写を確かめた OCR が「読めた」以外を返したときの事実(判定は変えない)。無いと、同じ絵を後から読むと
+    /// 読めるのに赤だった回(負荷テストの E2E-CMP の `wv_result=-`)で、OCR の誤読か Vision の不調かを読み分けられない
+    static func emptyTranscriptOCRFact(_ confirmation: RegionText.BudgetedReading) -> String {
+        switch confirmation {
+        case .read(readable: true, _):
+            return ""
+        case .read(readable: false, let reading):
+            let lines = reading.lines.joined(separator: " / ")
+            return lines.isEmpty ? "; OCR found no text there"
+                : "; OCR read \"\(lines.prefix(Self.ocrFactMaxCharacters))\" there, not the expected text"
+        case .unreadable:
+            return "; OCR returned no reading (the crop could not be made or Vision failed)"
+        case .budgetExhausted:
+            return "; OCR did not finish within \(Self.emptyTranscriptOCRBudget)"
+        }
+    }
+
+    /// 確かめの読みが**何も返さなかった**か(空の行・読み自体が無い)。誤読(何か読めた)と予算切れは含めない
+    static func confirmationSawNothing(_ confirmation: RegionText.BudgetedReading) -> Bool {
+        switch confirmation {
+        case .read(readable: false, let reading): return reading.lines.isEmpty
+        case .unreadable: return true
+        case .read(readable: true, _), .budgetExhausted: return false
+        }
+    }
+
+    /// 失敗文に載せる OCR の読みの上限(文字)。行が長い画面で失敗文が埋もれない程度
+    static let ocrFactMaxCharacters = 80
 
     /// 絵の**アプリ領域全体が一色**だったときに失敗文へ添える事実(そうでなければ空文字)。判定は変えない —— テキストの
     /// 可視性検証は白を「描かれていない」の事実として扱う(`BlankFrameDetector.isUnjudgeable` の doc)。添えないと、

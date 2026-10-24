@@ -369,29 +369,6 @@ public final class InAppDriver: AppDriver {
     /// **協調スレッドプールで待たない**(Shell.run は同期で最大 timeout 秒ブロックする)
     private func appIsStillRunning(bundleID: String) async -> Bool? {
         guard let udid = simulatorUDID else { return nil }
-        return await Task.detached {
-            guard let result = try? Shell.run(
-                ["xcrun", "simctl", "spawn", udid, "launchctl", "list"],
-                timeout: Self.launchctlListTimeoutSeconds
-            ), result.status == 0 else { return nil }
-            return Self.processIsRunning(inLaunchctlListOutput: result.output, bundleID: bundleID)
-        }.value
-    }
-
-    /// `launchctl list` の直読み(5 秒 = SafariWebInspector の lsof 診断と同じ、応答が無ければ
-    /// 待つ意味の無い読み取り専用診断の目安)
-    private static let launchctlListTimeoutSeconds: Double = 5
-
-    /// `launchctl list` の1行は "PID\tステータス\tラベル"。対象アプリのラベルは
-    /// "UIKitApplication:<bundleID>[" を含み、未起動なら PID 列が "-"。純粋関数でテストする
-    static func processIsRunning(inLaunchctlListOutput output: String, bundleID: String) -> Bool {
-        let marker = "UIKitApplication:\(bundleID)["
-        for line in output.split(separator: "\n") {
-            let fields = line.split(separator: "\t")
-            guard let label = fields.last, label.contains(marker) else { continue }
-            guard let pidField = fields.first, Int(pidField) != nil else { continue }
-            return true
-        }
-        return false
+        return await Task.detached { SimulatorAppProcess.isRunning(udid: udid, bundleID: bundleID) }.value
     }
 }

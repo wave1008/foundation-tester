@@ -414,6 +414,15 @@ extension StepExecutor {
     /// 帯の中から始めると OS のホーム・アプリ切替に取られてアプリが離脱する)
     static let bottomBandNote = "start point moved above the Android bottom gesture band (home / app switch)"
 
+    /// 要素を押す点を下端のジェスチャ帯の外へ寄せたときの注記(タップ・長押し・ダブルタップ)
+    static let bottomBandTapNote = "touched the part of the element above the Android bottom gesture band"
+        + " (its centre is inside the band, where a touch can go to home / app switch)"
+
+    /// 押す点を下端のジェスチャ帯の外へ寄せた y(寄せなければ nil)。判定は `BottomGestureBandTap`(MCP・ライブ操作と共有)
+    func bottomBandTapY(for frame: FTRect, screen: FTRect) async -> Double? {
+        await BottomGestureBandTap.tapY(for: frame, screen: screen, isAndroid: isAndroid, driver: driver)
+    }
+
     // ピンチ・ダブルタップ・相対ドラッグ(斜め可)の**対象未指定版** = 画面全体を対象にする。
     // ロケータ付きは下の switch(要素解決・ヒール・スクロール探索にそのまま乗せるため)で、
     // 対象の決め方以外は performGesture に集約してある

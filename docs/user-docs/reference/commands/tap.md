@@ -41,6 +41,12 @@ tap(x: 120, y: 640)                    // only when no selector is available
   when `#id` resolves to the input's wrapping container rather than the field itself, focus can
   fail to land in the field; `type` recovers by locating the single input inside the tapped
   container. See [type](./type.md).
+- **Elements at the very bottom of an Android screen**: on a device with gesture navigation, a touch inside the band at the
+  bottom edge of the screen (the band that takes the home / app-switch gesture) can be taken by the OS and send the app to
+  the background. When an element's centre lies inside this band and part of the element is above it, `tap` (and long press
+  and `doubleTap`) touches the centre of the part above the band (the step gets the note
+  `touched the part of the element above the Android bottom gesture band`). An element entirely inside the band is touched
+  at its centre.
 - **iOS in-app bridge: "a real touch would land elsewhere" note.** The in-app bridge operates the element
   directly (its accessibility action, or a touch sent straight to the element's window), so it can reach an
   element that a real finger cannot — for example a button hidden under a keyboard accessory bar. When a real

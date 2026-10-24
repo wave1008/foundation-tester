@@ -251,6 +251,17 @@ final class FakeAppDriver: AppDriver {
         log.entries.append("\(name).press(ref:\(ref))")
     }
 
+    /// true なら座標の長押しを受ける(既定は AppDriver の既定実装と同じ 501 = in-app の形を崩さない)
+    var acceptsCoordinatePress = false
+    /// 座標の長押しの記録(log には載せない = 既存のテストのログの完全一致を崩さない)
+    private(set) var lastCoordinatePress: (x: Double, y: Double, duration: Double)?
+    func press(x: Double, y: Double, duration: Double) async throws {
+        guard acceptsCoordinatePress else {
+            throw DriverError.badResponse(status: 501, body: "This driver does not support long-press by coordinates")
+        }
+        lastCoordinatePress = (x, y, duration)
+    }
+
     /// 非 nil なら hold(x:y:duration:) がこのエラーを throw する(501 切替・既定未対応の検証用)
     var holdError: Error?
     /// 直近の hold 呼び出しに渡った座標・秒数(holdStart の配線確認用)
@@ -279,9 +290,16 @@ final class FakeAppDriver: AppDriver {
     /// 既定 nil = 除外なし(AppDriver の既定と同じ)
     var backGestureEdgeWidthsValue: (left: Double, right: Double, bottom: Double)?
 
+    /// 帯を問い合わせた回数(下端から遠い要素では問い合わせない、の確認用)
+    private(set) var backGestureEdgeWidthsCalls = 0
     func backGestureEdgeWidths() async -> (left: Double, right: Double, bottom: Double)? {
-        backGestureEdgeWidthsValue
+        backGestureEdgeWidthsCalls += 1
+        return backGestureEdgeWidthsValue
     }
+
+    /// px/dp(既定 1 = AppDriver の既定実装と同じ)
+    var pointScaleValue: Double = 1
+    var pointScale: Double { pointScaleValue }
 
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
               pressSeconds: Double, durationSeconds: Double) async throws {

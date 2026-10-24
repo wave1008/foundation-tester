@@ -477,7 +477,7 @@ public final class FTDriveCore {
     /// 失敗時に「アプリより手前にある別プロセスの window」を問い合わせる(Android のみ設定される)。
     /// adb を叩くので FTAndroid を見られる FTScenarioRunner が注入する(FTDSL は FTAndroid に依存しない)
     public var foregroundOverlays: (@Sendable () -> [String])?
-    /// 失敗時に「アプリの process が生きているか」を問い合わせる(Android のみ設定される。
+    /// 失敗時に「アプリの process が生きているか」を問い合わせる(Android と iOS Simulator で設定される。
     /// foregroundOverlays と同じ注入元・同じ理由)。戻り値は表示行(空 = 言うことなし)
     public var appProcessEvidence: (@Sendable () -> [String])?
     /// true = このプロセスでアプリを起動したときだけ `appProcessEvidence` を問い合わせる(afterAll の専用の子 =

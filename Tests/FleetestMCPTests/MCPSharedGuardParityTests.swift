@@ -61,6 +61,17 @@ final class MCPSharedGuardParityTests: XCTestCase {
         XCTAssertEqual(missing, [], "座標で撃つのに、キーボードか前面のアプリの警告を通していない")
     }
 
+    /// **ref で要素を押すツールは、Android の下端のジェスチャ帯を避ける**(DSL の tap・長押し・doubleTap と同じ
+    /// `BottomGestureBandTap` を `bottomBandPoint` 経由で通す。DSL にだけ入れていた = 同じ画面で MCP だけホームへ抜けた)
+    func testEveryRefTouchHandlerClearsTheBottomGestureBand() throws {
+        let handlers = Dictionary(try functions(in: "Sources/fleetest-mcp").map { ($0.name, $0.body) },
+                                  uniquingKeysWith: { a, _ in a })
+        for name in ["ftTap", "ftLongPress", "ftDoubleTap"] {
+            let body = try XCTUnwrap(handlers[name], "\(name) を拾えていない")
+            XCTAssertTrue(body.contains("bottomBandPoint("), "\(name) が下端のジェスチャ帯を避けていない")
+        }
+    }
+
     /// **分類器の見本を保存する経路は、一色の絵を断る**(DSL の分類と同じ BlankFrameDetector.isUnjudgeable)。MCP と CLI の両方
     func testEveryVisionSampleSaverRefusesABlankFrame() throws {
         let savers = try (functions(in: "Sources/fleetest-mcp") + functions(in: "Sources/fleetest"))

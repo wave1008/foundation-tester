@@ -664,6 +664,18 @@ struct RunScenario: AsyncParsableCommand {
                 return ["process not running"] + evidence.crashSummary
             }
             core.appProcessEvidenceRequiresLaunch = afterAllOnly
+        } else if runPlatform == "ios", !physical, let udid {
+            // iOS Simulator も同じ形で添える(XCUITest モードでは、アプリが落ちても XCTest の
+            // 「Lost connection to the application」しか出ず、.ips の事実が記録に残らなかった。
+            // 実測: E2EY-iOS の選択モード S0020 が AXCoreUtilities の例外で落ちた)。.ips は Mac 側にしか無いので実機は除く
+            let bundle = appBundleID
+            let scenarioStartedAt = Date()
+            core.appProcessEvidence = {
+                SimulatorAppProcess.failureEvidence(bundleID: bundle, udid: udid, scenarioStartedAt: scenarioStartedAt)
+            }
+            // 起動していないシナリオ(起動前に落ちた・SpringBoard が相手)では、居ないのは当然なので訊かない
+            // (生死の確認 最大 5 秒 + .ips の待ち 4 秒を払って「落ちたかも」と誤って言うことになる)
+            core.appProcessEvidenceRequiresLaunch = true
         }
 
         var debugControl: ScenarioDebugControl?

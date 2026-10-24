@@ -546,7 +546,7 @@ public final class AndroidDriver: AppDriver {
     /// InputInjector が ACTION_SET_TEXT のたび自前で読み返す(docs/design.md §Android のテキスト注入の規律)
     public var verifiesTypedText: Bool { true }
 
-    static let bottomGestureBandFallbackDp: Double = 48
+    static let bottomGestureBandFallbackDp = BottomGestureBandTap.maxBandHeightDp
 
     /// 読めた値(3ボタン navigation の (0,0,0) を含む)は端末ごとに1度だけ控える。**読めなかった回は
     /// 控えない** —— adb の一時的な失敗を控えると、その端末では以後ずっと帯を避けなくなる。

@@ -333,11 +333,12 @@ extension MCPServer {
         var doubleTapResolvedRef: Int?
         if let ref = try Self.intArgument(args, "ref") {
             let (element, labelNote) = try await verifiedElement(ref, driver: doubleTapDriver, args: args)
-            doubleTapPoint = (element.frame.centerX, element.frame.centerY)
+            let bandPoint = await bottomBandPoint(frame: element.frame, driver: doubleTapDriver, args: args)
+            doubleTapPoint = bandPoint ?? (element.frame.centerX, element.frame.centerY)
             doubleTapWhat = "[\(ref)]"
             doubleTapResolvedRef = element.ref
             doubleTapNote = try refGestureGuard(element, isAndroid: doubleTapDriver is AndroidDriver, args: args)
-                + labelNote
+                + labelNote + (bandPoint != nil ? Self.bottomBandTouchNote : "")
             doubleTapSelector = reproductionNote(resolvedRef: element.ref, args: args)
         } else if let x = try Self.doubleArgument(args, "x"), let y = try Self.doubleArgument(args, "y") {
             if let offscreen = Self.offscreenCoordinateError(
@@ -591,13 +592,18 @@ extension MCPServer {
         let pressCap = try Self.doubleArgument(args, "maxGestureSeconds")
         if let ref = try Self.intArgument(args, "ref") {
             let pressTarget = try await verifiedRef(ref, driver: pressDriver, args: args)
-            // pressTarget.ref はセッション ref。ブリッジへ渡す直前にだけ native へ戻す
-            try await pressDriver.press(ref: nativeRef(pressTarget.ref, args: args),
-                                        duration: pressDuration)
+            // pressTarget.ref はセッション ref。ブリッジへ渡す直前にだけ native へ戻す。帯の中なら ft_tap と同じく座標で
+            let bandPoint = await bottomBandPoint(sessionRef: pressTarget.ref, driver: pressDriver, args: args)
+            if let bandPoint {
+                try await pressDriver.press(x: bandPoint.x, y: bandPoint.y, duration: pressDuration)
+            } else {
+                try await pressDriver.press(ref: nativeRef(pressTarget.ref, args: args),
+                                            duration: pressDuration)
+            }
             recordInteraction(action: "press", resolvedRef: pressTarget.ref, args: args,
                               duration: pressDuration,
                               maxGestureSeconds: pressCap)
-            return text("press [\(ref)] done.\(pressTarget.note)"
+            return text("press [\(ref)] done.\(pressTarget.note)" + (bandPoint != nil ? Self.bottomBandTouchNote : "")
                 + reproductionNote(resolvedRef: pressTarget.ref, args: args)
                 + changedHintOnce(args)
                 + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args, outsideTheAppTree: false)))

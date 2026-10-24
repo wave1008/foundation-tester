@@ -222,6 +222,38 @@ public enum RegionText {
     /// 開始時の探りを「読めなかった」にする陽性対照の注入口(`modelCompileOnce`)。探り直しには効かない
     public static let startupProbeUnreadyInjectionKey = "FT_FAKE_OCR_STARTUP_PROBE_UNREADY"
 
+    /// 失敗が確定しかけた経路(FM の空の転写を OCR で確かめる = StepExecutor)が、このプロセスの Vision が
+    /// まだ読めない状態(探りが空)で撃たれたとき、**読めるようになるまで探り直して待つ**。読めたら ready にして true。
+    /// 背景の探り直し(`requestReprobeIfDue`)は待たないので、確かめの読みは未準備の Vision の空をそのまま受けて
+    /// 赤になっていた(負荷テストの E2E-CMP `wv_result=-`: 同じ絵を後で読むと 3/3 読めた)
+    /// **待つのはプロセスで1回だけ**: 待ち切って読めなかったら、以後は待たずに背景の探り直しだけ頼む
+    /// (Vision が終日空を返す機械では、FM の空振りのたび・待ちのループの周回のたびに 10 秒ずつ払うことになる)
+    public static func awaitReadableVision(cap: Duration = readableVisionWaitCap,
+                                           interval: Duration = readableVisionProbeInterval) async -> Bool {
+        if isModelReady { return true }
+        if readableVisionWaitExhausted.withLock({ $0 }) {
+            requestReprobeIfDue()
+            return false
+        }
+        guard let image = renderedProbe() else { return false }
+        let (lines, _, _) = await probeWithRetry(image: image, budget: cap, interval: interval)
+        guard modelReady(probe: lines) else {
+            readableVisionWaitExhausted.withLock { $0 = true }
+            return false
+        }
+        markModelReady()
+        return true
+    }
+
+    /// `awaitReadableVision` を一度待ち切って読めなかったか(プロセス全体で1つ)
+    static let readableVisionWaitExhausted = Mutex(false)
+
+    /// `awaitReadableVision` の待ちの上限。**根拠**: 負荷の下の Vision の異常はプロセスの最初の照合で起き、
+    /// 数秒〜10 秒で戻る(特徴量での実測)。失敗の経路でだけ払う。**尽きたら判定は FM のまま**
+    public static let readableVisionWaitCap: Duration = .seconds(10)
+    /// 探りの間隔。**根拠**: 探り 1 回 130〜235ms(`modelCompileRetryBudget` の doc)なので、待つ間の CPU を約 1/3 コアに抑える
+    public static let readableVisionProbeInterval: Duration = .milliseconds(500)
+
     /// 探り直しを背景で 1 回頼む(待たない)。読めたら ready にする(以後のガードから近道を撃つ)
     static func requestReprobeIfDue() {
         let clock = ContinuousClock()

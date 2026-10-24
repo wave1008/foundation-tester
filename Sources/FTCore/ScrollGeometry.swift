@@ -161,8 +161,23 @@ public enum ScrollGeometry {
                                                  bottom: Double) -> (y: Double, moved: Bool) {
         guard bottom > 0 else { return (y, false) }
         let limit = viewport.y + viewport.height - bottom
-        guard y > limit else { return (y, false) }
+        // 帯は [limit, 下端) の半開区間 = limit ちょうども帯の中(実測: 帯 84px・y=2340 の押下がランチャーに取られた)
+        guard y >= limit else { return (y, false) }
         return (limit - 1, true)
+    }
+
+    /// タップ点(要素の中心)が下端のジェスチャ帯の中なら、**要素の帯より上に出ている部分の中心**の y を返す。
+    /// 帯の中の押下はランチャーの入力に取られ、負荷下ではアプリが背面へ回る(E2EY-Flutter のミニプレーヤー
+    /// `#txt_mini_title` 2312〜2368・帯 2340〜: 中心 2340 を押してホームへ抜けた)。
+    /// 中心が帯の外・要素が帯より上へ出ていない(帯の中を押すしかない = 人の指も同じ)・帯の幅 0 なら nil
+    public static func tapYClearingBottomGestureBand(frame: FTRect, viewport: FTRect,
+                                                     bottom: Double) -> Double? {
+        guard bottom > 0 else { return nil }
+        let limit = viewport.y + viewport.height - bottom
+        guard frame.centerY >= limit else { return nil }
+        let top = max(frame.y, viewport.y)
+        guard top < limit - 1 else { return nil }
+        return (top + limit) / 2
     }
 
     /// 比率の上限(片側)。非有限は 0(= 動かさない)に倒す

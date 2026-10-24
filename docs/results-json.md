@@ -347,7 +347,7 @@ Android の凍結事後判定(`AndroidHealthProbe.observeBlankAndRepair`)が試�
 
 | フィールド | 型 | 意味 |
 |---|---|---|
-| evidence | String | `crashReport`(iOS の in-app ブリッジ。`SimulatorCrashReport` が直近の `.ips` を見つけた)/ `fatalException`(Android。crash バッファの FATAL EXCEPTION を見つけた)/ `nativeSignal`(Android。crash バッファのネイティブのクラッシュ = `Fatal signal` と debuggerd の `>>> <package> <<<` を見つけた。Flutter・NDK)。Android は**シナリオの開始以降**のクラッシュだけを載せる(前の run・前のシナリオの同じアプリのクラッシュを帰属させない) |
+| evidence | String | `crashReport`(iOS Simulator。`SimulatorCrashReport` が直近の `.ips` を見つけた。inapp モードはブリッジの切断の時点、xcuitest モードは失敗時にアプリのプロセスが居ないとき = `SimulatorAppProcess.failureEvidence`。実機は .ips が Mac に無いので記録しない)/ `fatalException`(Android。crash バッファの FATAL EXCEPTION を見つけた)/ `nativeSignal`(Android。crash バッファのネイティブのクラッシュ = `Fatal signal` と debuggerd の `>>> <package> <<<` を見つけた。Flutter・NDK)。Android は**シナリオの開始以降**のクラッシュだけを載せる(前の run・前のシナリオの同じアプリのクラッシュを帰属させない) |
 | path | String? | iOS のみ。見つかった `.ips` のパス |
 | summary | String? | iOS = クラッシュ理由の1行 / Android = FATAL EXCEPTION ブロックの先頭行か `Fatal signal …` の行 |
 

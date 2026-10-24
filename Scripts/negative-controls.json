@@ -69,6 +69,14 @@
       }
     },
     {
+      "project": "E2E-iOS", "file": "91_クラッシュ検知.swift", "profile": "ios-xcuitest", "os": "ios",
+      "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
+      "guards": "アプリのクラッシュを .ips 付きで記録する(xcuitest モード = 切断の注記を持たないので失敗時のプロセス証拠が拾う。落ちたことを返すステップは時機で変わるので command は見ない。既定の e2e.sh の陽性対照の段で XCUITest のプロファイルを1本回す分だけ所要が延びる)",
+      "scenarios": {
+        "S0010": { "expect": "red", "appCrash": "crashReport" }
+      }
+    },
+    {
       "project": "E2E-CMP", "file": "91_クラッシュ検知.swift", "profile": "ios-inapp", "os": "ios",
       "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
       "guards": "アプリのクラッシュを .ips 付きで記録する(inapp モード)",

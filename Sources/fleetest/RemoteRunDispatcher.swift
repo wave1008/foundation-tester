@@ -203,7 +203,7 @@ struct RemoteRunDispatcher {
         writeBackHealedSelectors(texts: texts, project: project)
         cleanupDispatchDir(layout: layout, stamp: stamp)
 
-        log(Self.finishedLine(exitCode: exitCode))
+        log(Self.finishedLine(exitCode: exitCode, interrupted: interruptFlag.interrupted))
         return exitCode
     }
 
@@ -285,7 +285,7 @@ struct RemoteRunDispatcher {
         writeBackHealedSelectors(texts: texts, project: project)
         cleanupDispatchDir(layout: layout, stamp: stamp)
 
-        log(Self.finishedLine(exitCode: exitCode))
+        log(Self.finishedLine(exitCode: exitCode, interrupted: interruptFlag.interrupted))
         return exitCode
     }
 
@@ -1259,9 +1259,14 @@ struct RemoteRunDispatcher {
     /// 終了コードはそのまま返る)。ロックの取得・セットアップの経路も同じ値で到達不能を判定している
     static let sshConnectionFailureStatus: Int32 = 255
 
-    /// run の終わりの1行。255 は ssh 自身の失敗なので、向こうの run が「終わった」とは言わない
-    static func finishedLine(exitCode: Int32) -> String {
-        exitCode == sshConnectionFailureStatus
+    /// run の終わりの1行。255 は ssh 自身の失敗なので、向こうの run が「終わった」とは言わない。
+    /// **中断(こちらが SIGINT/SIGTERM を受けて止めた)を先に見る**(reportsMissingNote と同じ順) ——
+    /// 中断でも ssh は 255 で返り、「接続が切れた」と環境のせいにしていた(負荷テストの SIGTERM の注入で実測)
+    static func finishedLine(exitCode: Int32, interrupted: Bool) -> String {
+        if interrupted {
+            return "==> remote run stopped (this run received SIGINT/SIGTERM and stopped it; exit \(exitCode))"
+        }
+        return exitCode == sshConnectionFailureStatus
             ? "==> ssh exited 255 (the connection failed or dropped) — the remote run's own result is unknown"
             : "==> remote run finished (exit \(exitCode))"
     }

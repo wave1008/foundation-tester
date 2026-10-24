@@ -128,9 +128,15 @@ final class RemoteDispatcherScenarioTextsTests: XCTestCase {
         XCTAssertEqual(
             RemoteRunDispatcher.reportsMissingNote(interrupted: false, exitCode: 255),
             "note: the remote produced no reports (ssh exited 255, so whether the run started at all is unknown)")
-        XCTAssertEqual(RemoteRunDispatcher.finishedLine(exitCode: 255),
+        XCTAssertEqual(RemoteRunDispatcher.finishedLine(exitCode: 255, interrupted: false),
                        "==> ssh exited 255 (the connection failed or dropped) — the remote run's own result is unknown")
-        XCTAssertEqual(RemoteRunDispatcher.finishedLine(exitCode: 1), "==> remote run finished (exit 1)")
+        XCTAssertEqual(RemoteRunDispatcher.finishedLine(exitCode: 1, interrupted: false), "==> remote run finished (exit 1)")
+    }
+
+    /// こちらが SIGTERM を受けて止めた回も ssh は 255 で返る。接続の失敗と言わない(負荷テストの注入で実測)
+    func testFinishedLineSaysInterruptedBeforeBlamingSSH() {
+        XCTAssertEqual(RemoteRunDispatcher.finishedLine(exitCode: 255, interrupted: true),
+                       "==> remote run stopped (this run received SIGINT/SIGTERM and stopped it; exit 255)")
     }
 
     // MARK: - recordedBoolField

@@ -51,6 +51,99 @@ final class BottomGestureBandTests: XCTestCase {
         XCTAssertFalse(ScrollGeometry.clearingBottomGestureBand(y: 790, viewport: screen, bottom: 0).moved)
     }
 
+    /// 帯は [上端, 画面下端) = 上端ちょうども帯の中(実測: 帯 84px・y=2340 の押下がランチャーに取られた)
+    func testClearingBottomGestureBandTreatsTheBandTopAsInside() {
+        let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
+        let onEdge = ScrollGeometry.clearingBottomGestureBand(y: 700, viewport: screen, bottom: 100)
+        XCTAssertTrue(onEdge.moved)
+        XCTAssertEqual(onEdge.y, 699)
+        XCTAssertFalse(ScrollGeometry.clearingBottomGestureBand(y: 699, viewport: screen, bottom: 100).moved)
+    }
+
+    /// E2EY-Flutter の #txt_mini_title(42,2312 849x56)・帯 84px(2340〜2424)の実寸
+    func testTapYMovesTheMiniPlayerTitleIntoItsPartAboveTheBand() {
+        let screen = FTRect(x: 0, y: 0, width: 1080, height: 2424)
+        let title = FTRect(x: 42, y: 2312, width: 849, height: 56)
+        XCTAssertEqual(ScrollGeometry.tapYClearingBottomGestureBand(frame: title, viewport: screen, bottom: 84), 2326)
+    }
+
+    func testTapYIsNilWhenTheCentreIsAboveTheBandOrNothingIsAboveItOrNoBand() {
+        let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
+        XCTAssertNil(ScrollGeometry.tapYClearingBottomGestureBand(
+            frame: FTRect(x: 0, y: 600, width: 400, height: 60), viewport: screen, bottom: 100))
+        XCTAssertNil(ScrollGeometry.tapYClearingBottomGestureBand(
+            frame: FTRect(x: 0, y: 710, width: 400, height: 60), viewport: screen, bottom: 100))
+        XCTAssertNil(ScrollGeometry.tapYClearingBottomGestureBand(
+            frame: FTRect(x: 0, y: 680, width: 400, height: 40), viewport: screen, bottom: 0))
+    }
+
+    /// Pixel 9 の密度(2.625)= 帯の上限の見積り 48dp は 126px。画面は 400x800 なので 674 より下の中心だけ帯を問い合わせる
+    private func bandDriver(_ elements: [ElementInfo]) -> FakeAppDriver {
+        let driver = FakeAppDriver(name: "primary", log: CallLog(), snapshotElements: [elements])
+        driver.backGestureEdgeWidthsValue = (left: 78, right: 78, bottom: 100)
+        driver.pointScaleValue = 2.625
+        return driver
+    }
+
+    /// 中心が下端の 48dp より上の要素では帯を問い合わせない(dumpsys を払わない)
+    func testTapFarAboveTheBottomDoesNotQueryTheBand() async throws {
+        let primary = bandDriver([element(1, "row", FTRect(x: 0, y: 300, width: 400, height: 40))])
+        _ = await StepExecutor(driver: primary, isAndroid: true, tunables: RunTunables())
+            .execute(FlowStep(action: "tap", locator: FlowLocator(id: "row")))
+        XCTAssertEqual(primary.backGestureEdgeWidthsCalls, 0)
+        XCTAssertTrue(primary.log.entries.contains("primary.tap(ref:1)"), "\(primary.log.entries)")
+    }
+
+    /// 判定そのもの(MCP・ライブ操作が直接呼ぶ口)
+    func testSharedTapYRespectsPlatformAndThePrefilter() async {
+        let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
+        let mini = FTRect(x: 0, y: 680, width: 400, height: 40)
+        let driver = bandDriver([])
+        let y = await BottomGestureBandTap.tapY(for: mini, screen: screen, isAndroid: true, driver: driver)
+        XCTAssertEqual(y, 690)
+        let ios = await BottomGestureBandTap.tapY(for: mini, screen: screen, isAndroid: false, driver: driver)
+        XCTAssertNil(ios)
+        XCTAssertEqual(BottomGestureBandTap.maxBandHeightDp, 48)
+    }
+
+    func testTapOnAnElementWhoseCentreIsInTheBandTouchesItsPartAboveTheBand() async throws {
+        let primary = bandDriver([element(1, "mini", FTRect(x: 0, y: 680, width: 400, height: 40))])
+        let outcome = await StepExecutor(driver: primary, isAndroid: true, tunables: RunTunables())
+            .execute(FlowStep(action: "tap", locator: FlowLocator(id: "mini")))
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(primary.coordinateTaps.map(\.y), [690])
+        XCTAssertFalse(primary.log.entries.contains { $0.contains("tap(ref:") }, "\(primary.log.entries)")
+        XCTAssertTrue(outcome.driverFallback?.contains("above the Android bottom gesture band") == true,
+                      "\(String(describing: outcome.driverFallback))")
+    }
+
+    func testTapAboveTheBandStaysOnTheRefAndIOSIsUntouched() async throws {
+        let primary = bandDriver([element(1, "row", FTRect(x: 0, y: 600, width: 400, height: 40))])
+        _ = await StepExecutor(driver: primary, isAndroid: true, tunables: RunTunables())
+            .execute(FlowStep(action: "tap", locator: FlowLocator(id: "row")))
+        XCTAssertTrue(primary.coordinateTaps.isEmpty)
+        XCTAssertTrue(primary.log.entries.contains("primary.tap(ref:1)"), "\(primary.log.entries)")
+        let ios = bandDriver([element(1, "mini", FTRect(x: 0, y: 680, width: 400, height: 40))])
+        _ = await StepExecutor(driver: ios, isAndroid: false, tunables: RunTunables())
+            .execute(FlowStep(action: "tap", locator: FlowLocator(id: "mini")))
+        XCTAssertTrue(ios.coordinateTaps.isEmpty)
+    }
+
+    func testLongPressAndDoubleTapInTheBandTouchAboveIt() async throws {
+        let mini = element(1, "mini", FTRect(x: 0, y: 680, width: 400, height: 40))
+        let pressing = bandDriver([mini])
+        pressing.acceptsCoordinatePress = true
+        _ = await StepExecutor(driver: pressing, isAndroid: true, tunables: RunTunables())
+            .execute(FlowStep(action: "tap", locator: FlowLocator(id: "mini"), duration: 0.5))
+        XCTAssertEqual(pressing.lastCoordinatePress?.y, 690)
+        let doubling = bandDriver([mini])
+        let outcome = await StepExecutor(driver: doubling, isAndroid: true, tunables: RunTunables())
+            .execute(FlowStep(action: "doubleTap", locator: FlowLocator(id: "mini")))
+        XCTAssertEqual(doubling.lastDoubleTap?.y, 690)
+        XCTAssertTrue(outcome.driverFallback?.contains("above the Android bottom gesture band") == true,
+                      "\(String(describing: outcome.driverFallback))")
+    }
+
     func testPanPathKeepsBothEndsAboveTheBottomBand() throws {
         let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
         let path = try XCTUnwrap(ScrollGeometry.panPath(container: screen, viewport: screen,

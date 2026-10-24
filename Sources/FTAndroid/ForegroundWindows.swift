@@ -98,11 +98,24 @@ public enum AndroidForegroundWindows {
         return nil
     }
 
+    /// 対象アプリの window が1枚も可視でなく、**別のアプリの window が前面に可視**ならその名前(`<package>/<activity>`)。
+    /// `overlaying` はアプリの window が見えないと黙るので、ランチャーへ抜けた(帯の中の押下でホームへ)・
+    /// 別アプリが開いた形が失敗の記録に何も残らなかった(探索は「スワイプが届いていない」と言った)。
+    /// 前面が読めなければ nil(判定できないときは黙る)
+    public static func frontAppWhileHidden(package: String, dumpsys: String) -> String? {
+        let blocks = windowBlocks(dumpsys)
+        guard !blocks.contains(where: { $0.visible && $0.name.hasPrefix("\(package)/") }) else { return nil }
+        return blocks.first(where: { $0.visible && $0.name.contains("/") && !$0.name.hasPrefix("\(package)/") })?.name
+    }
+
     /// 実機/エミュレータへ問い合わせる。adb が無い・失敗した場合は空(失敗診断の付加情報なので非致命)
     public static func query(package: String, serial: String) -> [String] {
         guard let adb = try? AndroidDriver.findADB(),
               let output = try? Shell.run([adb, "-s", serial, "shell", "dumpsys", "window", "windows"],
                                           timeout: 10).outputIfSucceeded else { return [] }
+        if let front = frontAppWhileHidden(package: package, dumpsys: output) {
+            return ["\(front) (the app's own window is not visible)"]
+        }
         return overlaying(package: package, dumpsys: output)
     }
 }

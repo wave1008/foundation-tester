@@ -333,7 +333,7 @@ final class RegionTextRecognizeOverrideDefaultTests: XCTestCase {
 private enum RegionTextProbeTestError: Error { case boom }
 
 /// テストからスレッドセーフに呼び出し回数を数えるだけの最小ヘルパー
-private final class LockedCallCount: @unchecked Sendable {
+final class LockedCallCount: @unchecked Sendable {
     private let lock = NSLock()
     private var n = 0
     var value: Int { lock.lock(); defer { lock.unlock() }; return n }
@@ -479,3 +479,73 @@ final class RegionTextProbeWithRetryTests: XCTestCase {
 
 
 
+
+/// `RegionText.awaitReadableVision` — 空の転写の確かめが未準備の Vision(探りが空)で撃たれたとき、読めるまで探り直して待つ。
+/// 実測(負荷テスト): E2E-CMP の `wv_result=-` が FM の空振り + 確かめの OCR の空で赤。同じ絵を後で読むと 3/3 読めた
+final class RegionTextAwaitReadableVisionTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        RegionText.readableVisionWaitExhausted.withLock { $0 = false }
+    }
+
+    override func tearDown() {
+        RegionText.recognizeOverrideForTesting = nil
+        RegionText.modelReadyOverrideForTesting = nil
+        RegionText.readableVisionWaitExhausted.withLock { $0 = false }
+        super.tearDown()
+    }
+
+    /// 一度待ち切って読めなかったら、2回目は待たない(探りを撃たずに即 false)
+    func testWaitsOnlyOncePerProcessWhenVisionNeverReads() async {
+        RegionText.modelReadyOverrideForTesting = false
+        let callCount = LockedCallCount()
+        RegionText.recognizeOverrideForTesting = { _ in callCount.incrementAndGet(); return [] }
+        let first = await RegionText.awaitReadableVision(cap: .milliseconds(200), interval: .milliseconds(20))
+        let afterFirst = callCount.value
+        let clock = ContinuousClock()
+        let start = clock.now
+        let second = await RegionText.awaitReadableVision(cap: .seconds(5), interval: .milliseconds(20))
+        XCTAssertFalse(first)
+        XCTAssertFalse(second)
+        XCTAssertLessThan(clock.now - start, .milliseconds(500), "2回目も待っている")
+        XCTAssertGreaterThan(afterFirst, 1)
+    }
+
+    /// 既定値(production が使う値)をリテラルで固定する(他のテストは cap / interval を明示して呼ぶ)
+    func testDefaultsArePinned() {
+        XCTAssertEqual(RegionText.readableVisionWaitCap, .seconds(10))
+        XCTAssertEqual(RegionText.readableVisionProbeInterval, .milliseconds(500))
+    }
+
+    /// 未準備で探りが空 → 読めるまで撃ち直し、読めたら true
+    func testWaitsUntilTheProbeReads() async {
+        RegionText.modelReadyOverrideForTesting = false
+        let callCount = LockedCallCount()
+        RegionText.recognizeOverrideForTesting = { _ in callCount.incrementAndGet() < 3 ? [] : ["fleetest"] }
+        let ready = await RegionText.awaitReadableVision(cap: .seconds(2), interval: .milliseconds(10))
+        XCTAssertTrue(ready)
+        XCTAssertEqual(callCount.value, 3)
+    }
+
+    /// 読めないまま上限に達したら false(判定は FM のまま)。上限より大きく超えて待たない
+    func testGivesUpAtTheCapWhenTheProbeNeverReads() async {
+        RegionText.modelReadyOverrideForTesting = false
+        RegionText.recognizeOverrideForTesting = { _ in [] }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let ready = await RegionText.awaitReadableVision(cap: .milliseconds(300), interval: .milliseconds(20))
+        XCTAssertFalse(ready)
+        XCTAssertLessThan(clock.now - start, .milliseconds(800))
+    }
+
+    /// 既に読める状態なら探らない
+    func testDoesNotProbeWhenAlreadyReady() async {
+        RegionText.modelReadyOverrideForTesting = true
+        let callCount = LockedCallCount()
+        RegionText.recognizeOverrideForTesting = { _ in callCount.incrementAndGet(); return [] }
+        let ready = await RegionText.awaitReadableVision(cap: .seconds(2), interval: .milliseconds(10))
+        XCTAssertTrue(ready)
+        XCTAssertEqual(callCount.value, 0)
+    }
+}

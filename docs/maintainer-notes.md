@@ -5114,6 +5114,8 @@ worktree の run がそれらの端末を「別のワークスペースのブリ
   (`emptyTranscriptOCRBudget` = 60 秒。丸ごと読めたら緑・注記 `ocr-read-what-fm-missed`)。**オフの構成では読まない**
   —— 最初は FM 側の「惜しい転写の OCR 確認」(オフでも読む例外 = ユーザー決定の範囲)に条件を足して広げ、レビューで
   「OCR をオフにしているのに使う」と指摘されて置き直した。例外の範囲を自分で広げない
+- **続き(§104.4)**: 確かめの OCR 自体も、近道が撃てない = このプロセスの Vision がまだ空を返す状態で撃たれるので空で返り、
+  直しが効かない回が残っていた(負荷テストで 3 件)。確かめが何も返さなければ Vision が読めるまで待って1回読み直す
 ### 92.2 起こしたばかりの Emulator を「ホストへ届かない」と確定していた
 - `ip route get 10.0.2.2` は `sys.boot_completed` の後も約 5.6 秒 exit 2(実測・M2Ultra の負荷下)。run 前の点検はその瞬間を測って停止と起動を撃ち、
   起こし直した直後にまた測って除外した(M1mini で使える端末 0 = run ごと失敗)
@@ -5356,3 +5358,36 @@ worktree の run がそれらの端末を「別のワークスペースのブリ
   (iOS は全台がそろってから合流・Android もレーンを返さない)。待たずに残りの台で始めたほうが早い。**待たずに始めて予備を
   後から合流させる形は採らない** —— 起動の負荷がテストに重なる(全台の起動を待ってから合流する理由と同じ)。
 - **再導入するなら**、上の3つのどれでもない形(例: 全滅したときだけ起こす)で、それが救う run の頻度を実測してから。
+
+## 104. 2時間負荷テストで見つけた不具合(2026-10-24)
+
+台帳は ~/github/wave1008/lt-harness-20261024/ledger.md。
+
+### 104.1 Android のタップが下端のジェスチャ帯の中を押し、ランチャーへ抜けた
+- E2EY-Flutter のミニプレーヤー `#txt_mini_title`(2312〜2368)の中心 y=2340 が、帯(`mBottomGestureHeight` 84px = 2340〜2424)の
+  上端ちょうど。logcat に `NexusNavHandleLongPressHandler: touch started` → ホームが前面。負荷下でだけ抜ける(並列で 2/2・単独で 0/3)
+- 帯を避けていたのはドラッグの始点だけで、タップ・長押し・ダブルタップは要素の中心を撃っていた。境界も `y > limit` で上端ちょうどを外と扱っていた
+- 直し: 判定は `FTCore.BottomGestureBandTap`(DSL・MCP の ft_tap / ft_long_press / ft_double_tap・ライブ操作の ref の tap / doubleTap が共有)。
+  中心が帯の中で要素が帯より上へ出ていれば、上に出ている部分の中心を座標で撃つ。中心が下端の 48dp より上なら帯を問い合わせない
+  (dumpsys は 1 回 30〜60ms・約 370KB。読めない端末では控えが残らずタップのたびに払う)。**DSL にだけ入れると MCP・ライブ操作だけ抜ける**
+  (最初の実装がそうだった。`MCPSharedGuardParityTests` / `ApiLiveBottomGestureBandWiringTests` が配線を固定)
+- 失敗時: アプリの窓が見えず別アプリが前面なら、その名前を「Another window is in front」に載せる(`AndroidForegroundWindows.frontAppWhileHidden`)。
+  それまでは探索が「スワイプが届いていない・シートを広げろ」と言っていた
+- 対照(手元の Emulator): 旧版はナビハンドルへのタッチ開始 2/2・直し後 0/2
+
+### 104.2 XCUITest モードでアプリのクラッシュが記録に残らなかった
+- `.ips` を探すのは in-app ドライバの切断の注記だけで、XCUITest モードは XCTest の「Lost connection to the application」だけが出ていた
+- 直し: 失敗時のプロセス証拠に iOS Simulator 版(`SimulatorAppProcess.failureEvidence`)。**このプロセスで launchApp / restartApp を撃ったときだけ**
+  訊く(起動していないシナリオでは居ないのが当然 = 生死の確認 5 秒 + .ips の待ち 4 秒を払って「落ちたかも」と誤って言う)。
+  陽性対照の表に E2E-iOS 91_クラッシュ検知 × ios-xcuitest の行
+
+### 104.3 SIGTERM で止めたリモート run を「ssh 255 = 接続が切れた」と言っていた
+- `finishedLine` だけが中断を見ていなかった(`reportsMissingNote` は先に見ていた)。中断を先に言う
+
+### 104.4 負荷下で、読める文字がテキストの可視性検証で赤(§92.1 の続き)
+- `wv_result=-` など 3 件。注記は `fm-empty-transcript-on-ink` + `ocr-shortcut-not-ready`。同じ絵を後で `RegionText.resolve` に読ませると 3/3 読めた
+- 直し: 確かめが**何も返さなかった**ときだけ、Vision が読めるまで最大 10 秒待って1回読み直す(`RegionText.awaitReadableVision`)。
+  **待つのはプロセスで1回だけ** —— Vision が終日空を返す機械では、FM の空振りのたび・待ちのループの周回のたびに 10 秒払うことになる。
+  確かめの答え(何と読んだか・何も読まなかったか・予算切れ)は失敗文へ事実として添える(判定は変えない)
+- A/B(同じテストを 24 本同時): 読み直し無し 23/24 赤・直し後 0/24。単独では直す前も 3/3 緑 = 並列の負荷でだけ出る
+

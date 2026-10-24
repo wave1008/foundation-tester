@@ -662,7 +662,12 @@ extension StepExecutor {
                 }
                 do {
                     start = clock.now
-                    try await actingDriver.press(ref: element.ref, duration: hold)
+                    if let bandY = await bottomBandTapY(for: element.frame, screen: snapshot.screen) {
+                        try await actingDriver.press(x: element.frame.centerX, y: bandY, duration: hold)
+                        driverFallback = Self.joinNotes(driverFallback, Self.bottomBandTapNote)
+                    } else {
+                        try await actingDriver.press(ref: element.ref, duration: hold)
+                    }
                     phase.actionMs += Self.ms(clock.now - start)
                 } catch {
                     // 「このブリッジでは不可」(501 / ルート不明 404)だけ XCUITest へ回す。
@@ -731,9 +736,17 @@ extension StepExecutor {
             if let visible = Self.visibleTapRect(for: element, in: snapshot.elements,
                                                 inferring: step.containerInference ?? true,
                                                 scale: driver.pointScale) {
-                try await actingDriver.tap(x: visible.centerX, y: visible.centerY)
+                let bandY = await bottomBandTapY(for: visible, screen: snapshot.screen)
+                try await actingDriver.tap(x: visible.centerX, y: bandY ?? visible.centerY)
                 driverFallback = Self.joinNotes(driverFallback,
                     "tapped the visible part (the reported frame's centre falls outside its container)")
+                if bandY != nil { driverFallback = Self.joinNotes(driverFallback, Self.bottomBandTapNote) }
+            } else if let bandY = await bottomBandTapY(for: element.frame, screen: snapshot.screen) {
+                // ref で撃つと Android は frame の中心(帯の中)を押すので座標で撃つ
+                adviseTarget(TapTargetGeometry.occlusionAdvisory(
+                    for: element, in: snapshot.elements, screen: snapshot.screen, isAndroid: isAndroid))
+                try await actingDriver.tap(x: element.frame.centerX, y: bandY)
+                driverFallback = Self.joinNotes(driverFallback, Self.bottomBandTapNote)
             } else {
                 // 寄せずに frame の中心を撃つ = 座標に依るチェーンが言える経路。
                 // **keyboard/disabled はここでは足さない**(上ですでに1回付けている。
@@ -1112,6 +1125,7 @@ extension StepExecutor {
                         identifier: String?, viewport: FTRect,
                         phase: inout PhaseAccumulator) async throws -> StepOutcome {
         var viaXCUITest = false
+        var bandNote: String?
         switch action {
         case "pinchOut", "pinchIn":
             let out = action == "pinchOut"
@@ -1129,8 +1143,10 @@ extension StepExecutor {
                 durationSeconds: step.duration ?? tunables.defaultPinchDuration,
                 phase: &phase)
         case "doubleTap":
-            viaXCUITest = try await doubleTapWithFallback(x: target.centerX, y: target.centerY,
+            let bandY = await bottomBandTapY(for: target, screen: viewport)
+            viaXCUITest = try await doubleTapWithFallback(x: target.centerX, y: bandY ?? target.centerY,
                                                           phase: &phase)
+            if bandY != nil { bandNote = Self.bottomBandTapNote }
         case "swipeBy":
             // iOS/3ボタン navigation は nil → 除外なし(0, 0)。既定値を panPath 側に置かないのは
             // この分岐に確実に決めさせるため(ScrollGeometry.panPath の doc 参照)
@@ -1167,6 +1183,7 @@ extension StepExecutor {
         let settled = skippingSettle(step) ? true : try await settledSignature(phase: &phase).settled
         var notes: [String] = []
         if viaXCUITest { notes.append("fell back to XCUITest") }
+        if let bandNote { notes.append(bandNote) }
         if !settled { note(.settleCapped, into: &notes) }
         // 比率は対象の大きさに対する割合で片側 maxPanRatio が上限。超えた指定を黙って丸めると、小さい要素で
         // 「14 倍払った」つもりが数 pt しか動かず緑になる(実測: シートの見出しで閉じなかった)
