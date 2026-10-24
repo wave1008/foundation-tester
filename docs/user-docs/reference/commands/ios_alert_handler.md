@@ -115,7 +115,13 @@ the alert to clear (or be closed by a registered button), and fails with
      counterpart).
      **The app's permission for it is now denied**, and the scenario's log says so; a scenario that
      starts with `clearAppData()` is back to undecided anyway.
-  3. Otherwise, on a Simulator, fleetest restarts SpringBoard without pressing anything and reconnects
+  3. If it is the iOS software update alert (titled `Software Update`), fleetest presses `Later` to defer it
+     (no update is installed during a test). If the follow-up choice of `Install Tonight` / `Remind Me Later`
+     appears, it presses `Remind Me Later`. The installing buttons (`Install Now`, `Install Tonight`) are never
+     pressed. This works on physical devices too. Only an alert left on screen **before a scenario starts** is
+     deferred this way; an update alert that appears in the middle of a scenario is an interruption like any other,
+     for the scenario to close (`iosAlertHandler`).
+  4. Otherwise, on a Simulator, fleetest restarts SpringBoard without pressing anything and reconnects
      to that device (about 20 seconds; needs a run profile, `--profile`).
   An affirming button (`Allow` and so on) is never pressed. Labels are matched exactly. What
   was done appears in the scenario's log as `🧹 … a system alert was left on screen before this scenario (…)`.

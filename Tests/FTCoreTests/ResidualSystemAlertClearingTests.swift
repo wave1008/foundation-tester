@@ -65,6 +65,62 @@ final class ResidualSystemAlertClearingTests: XCTestCase {
         XCTAssertTrue(noProfile.contains("--profile"), noProfile)
     }
 
+    /// ソフトウェアアップデートは常に保留(ユーザー決定)。実機の iPhone 13 で出た実物の題名と並び。インストールの側は押さない
+    func testSoftwareUpdateIsAlwaysDeferredAndNeverInstalled() {
+        let update = SystemAlertProbeResponse(present: true, title: "ソフトウェアアップデート",
+                                              buttons: ["今すぐインストール", "あとで", "詳細"])
+        XCTAssertEqual(plan(update, physical: true), .press(button: "あとで", deniesPermission: false))
+        XCTAssertEqual(plan(SystemAlertProbeResponse(present: true, title: "Software Update",
+                                                     buttons: ["Install Now", "Later", "Details"]), physical: true),
+                       .press(button: "Later", deniesPermission: false))
+        // 続けて出る選択(題名が無いことがある): 通知だけ先送りする側を押す
+        XCTAssertEqual(plan(SystemAlertProbeResponse(present: true, title: nil, buttons: ["今夜インストール", "あとで通知"]),
+                            physical: true),
+                       .press(button: "あとで通知", deniesPermission: false))
+        // 題名がアップデートでなければ「あとで」は押さない(別のアラートでは別の意味になりうる)
+        guard case .warnOnly = plan(SystemAlertProbeResponse(present: true, title: "T", buttons: ["続ける", "あとで"]),
+                                    physical: true) else { return XCTFail() }
+        // 「今夜インストール」と並んでいない「あとで通知」も押さない
+        guard case .warnOnly = plan(alert(["あとで通知", "設定"]), physical: true) else { return XCTFail() }
+    }
+
+    /// 続けて出る選択に「キャンセル」が並んでいても、保留(あとで通知)を先に押す(キャンセルでは保留にならずすぐまた出る)
+    func testDeferralComesBeforeAHarmlessCancelOnTheFollowUpChoice() {
+        XCTAssertEqual(plan(SystemAlertProbeResponse(present: true, title: nil,
+                                                     buttons: ["今夜インストール", "あとで通知", "キャンセル"])),
+                       .press(button: "あとで通知", deniesPermission: false))
+        // 他のアラートの「キャンセル」は従来どおり
+        XCTAssertEqual(plan(alert(["削除", "キャンセル"])), .press(button: "キャンセル", deniesPermission: false))
+    }
+
+    /// 続けて出る選択は SpringBoard の木から引く。アラートでもアクションシートでもよい(問い合わせはアラートしか見ない)。
+    /// 「今夜インストール」と同じ入れ物に並んでいるときだけ
+    func testFollowUpRemindIsFoundInAnAlertOrAnActionSheet() {
+        func element(_ ref: Int, _ type: String, _ label: String?, depth: Int) -> ElementInfo {
+            ElementInfo(ref: ref, type: type, identifier: nil, label: label, value: nil, placeholder: nil,
+                        enabled: true, frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: depth)
+        }
+        for container in ["sheet", "alert"] {
+            let tree = [element(1, container, nil, depth: 1), element(2, "button", "今夜インストール", depth: 2),
+                        element(3, "button", "あとで通知", depth: 2)]
+            let found = ResidualSystemAlertClearing.softwareUpdateFollowUpRemind(in: tree)
+            XCTAssertEqual(found?.ref, 3, container)
+            XCTAssertEqual(found?.label, "あとで通知", container)
+        }
+        // 「今夜インストール」が別の入れ物・入れ物の外なら返さない
+        let apart = [element(1, "sheet", nil, depth: 1), element(2, "button", "あとで通知", depth: 2),
+                     element(3, "button", "今夜インストール", depth: 1)]
+        XCTAssertNil(ResidualSystemAlertClearing.softwareUpdateFollowUpRemind(in: apart))
+    }
+
+    /// 記録は「あとで」を押した事実を必ず含む(続けて出た選択を押したならそれも)
+    func testDeferredUpdateMessageMentionsBothPresses() {
+        let both = ResidualSystemAlertClearing.deferredUpdateMessage(label: "L", alert: "A", later: "あとで", remind: "あとで通知")
+        XCTAssertTrue(both.contains("\u{201C}あとで\u{201D}") && both.contains("\u{201C}あとで通知\u{201D}"), both)
+        let only = ResidualSystemAlertClearing.deferredUpdateMessage(label: "L", alert: "A", later: "Later", remind: nil)
+        XCTAssertTrue(only.contains("\u{201C}Later\u{201D}") && !only.contains("follow-up"), only)
+    }
+
     /// 押すボタンは、アラートの子孫の中でラベルが完全一致するものだけ(アラートの外の同名ボタンを押さない)
     func testButtonRefIsTakenFromInsideTheAlertWithAnExactLabel() {
         func element(_ ref: Int, _ type: String, _ label: String?, depth: Int) -> ElementInfo {

@@ -40,10 +40,27 @@ final class ResidualSystemAlertClearingWiringTests: XCTestCase {
         let press = try XCTUnwrap(text.range(of: "static func pressResidualAlertButton("))
         let pressBody = String(text[press.lowerBound...].prefix(1500))
         XCTAssertTrue(pressBody.contains("ResidualSystemAlertClearing.buttonRef(label: button"))
+        XCTAssertTrue(pressBody.contains("pressSystemUIButton(client: client, ref: ref)"))
         // SpringBoard の木とその ref の名前空間で押す(アプリの木にはアラートが写らない)
         XCTAssertTrue(pressBody.contains("client.systemUISnapshot()"))
         XCTAssertEqual(text.components(separatedBy: "client.systemUITap(ref:").count - 1, 1, "only one place presses a button")
         // 確認の問い合わせが取れないこと(nil)を「消えた」に倒さない
         XCTAssertTrue(body.contains("guard let after = await probeSystemAlert(client) else {"))
+    }
+
+    /// アップデートの「あとで」の後に続けて出る選択も保留にする。**SpringBoard の木で探す**(問い合わせはアラートしか見ない =
+    /// アクションシートで出ると見落とす)。緑の run では通らない
+    func testDefersTheFollowUpChoiceAfterPressingLaterByReadingTheSpringBoardTree() throws {
+        let text = try source("Sources/FTAndroid/ProfileWorkerFactory.swift")
+        let start = try XCTUnwrap(text.range(of: "public static func clearResidualSystemAlert("))
+        let body = String(text[start.lowerBound...].prefix(3000))
+        XCTAssertTrue(body.contains("ResidualSystemAlertClearing.softwareUpdateLaterButtons.contains(button)"))
+        XCTAssertTrue(body.contains("deferSoftwareUpdateFollowUp("))
+        let follow = try XCTUnwrap(text.range(of: "static func deferSoftwareUpdateFollowUp("))
+        // 本体だけ(次の関数の同じ呼び出しで通らないように)
+        let rest = text[follow.upperBound...]
+        let followBody = String(rest[..<(rest.range(of: "\n    static func ")?.lowerBound ?? rest.endIndex)])
+        XCTAssertTrue(followBody.contains("client.systemUISnapshot()"))
+        XCTAssertTrue(followBody.contains("ResidualSystemAlertClearing.softwareUpdateFollowUpRemind(in: tree.elements)"))
     }
 }

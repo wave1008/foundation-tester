@@ -299,9 +299,11 @@ public enum ProfileWorkerFactory {
         case .warnOnly(let line):
             return line
         case .press(let button, let deniesPermission):
-            return await pressResidualAlertButton(
+            let pressed = await pressResidualAlertButton(
                 client: client, label: worker.label, alert: alert, button: button,
                 deniesPermission: deniesPermission)
+            guard ResidualSystemAlertClearing.softwareUpdateLaterButtons.contains(button) else { return pressed }
+            return await deferSoftwareUpdateFollowUp(client: client, label: worker.label, alert: alert, later: button)
         case .clear:
             guard let device, let (resolved, repoRoot) = profile, let udid = worker.connection.udid else {
                 return nil
@@ -310,6 +312,40 @@ public enum ProfileWorkerFactory {
                 worker: worker, client: client, alert: alert, udid: udid,
                 device: (device.name, device.spec), resolved: resolved, repoRoot: repoRoot)
         }
+    }
+
+    /// アップデートの「あとで」の後に続けて出る「今夜インストール / あとで通知」を保留側で閉じ、両方を言う1行を返す。
+    /// **SpringBoard の木で探す** —— ブリッジの問い合わせ(`/systemalert`)はアラートしか見ないので、アクションシートで出ると
+    /// 「もう出ていない」に見えて素通りし、次のシナリオもシートに覆われたまま進む。押すのは「あとで通知」だけ(今夜インストールは押さない)。
+    /// 待つのは出るまで 6 回 × 0.5 秒 = 約 3 秒(押した直後はまだ描かれていないことがある。出なければ「あとで」だけで閉じた)
+    static func deferSoftwareUpdateFollowUp(client: BridgeClient, label: String, alert: String, later: String) async -> String {
+        for _ in 0..<6 {
+            if let tree = try? await client.systemUISnapshot(),
+               let remind = ResidualSystemAlertClearing.softwareUpdateFollowUpRemind(in: tree.elements) {
+                do {
+                    try await pressSystemUIButton(client: client, ref: remind.ref)
+                } catch {
+                    return ResidualSystemAlertClearing.failedMessage(
+                        label: label, alert: alert,
+                        reason: "pressing \u{201C}\(remind.label)\u{201D} on the follow-up choice failed: \(error.localizedDescription)")
+                }
+                return ResidualSystemAlertClearing.deferredUpdateMessage(
+                    label: label, alert: alert, later: later, remind: remind.label)
+            }
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+        if let after = await probeSystemAlert(client), after.present {
+            return ResidualSystemAlertClearing.failedMessage(
+                label: label, alert: alert, reason: "it is still there after pressing \u{201C}\(later)\u{201D}"
+                    + " (\(ResidualSystemAlertClearing.describe(after)))")
+        }
+        return ResidualSystemAlertClearing.deferredUpdateMessage(label: label, alert: alert, later: later, remind: nil)
+    }
+
+    /// 残ったアラートを消すために SpringBoard の木のボタンを押す**唯一の口**(押す経路を1か所に保つ。
+    /// ref は `systemUISnapshot` と同じ名前空間 = アプリの木の ref を渡さない)
+    static func pressSystemUIButton(client: BridgeClient, ref: Int) async throws {
+        try await client.systemUITap(ref: ref)
     }
 
     /// 残ったアラートのボタンを押す。木は **SpringBoard の木**(`/systemui/snapshot` = セッションを触らない)から取り、
@@ -323,7 +359,7 @@ public enum ProfileWorkerFactory {
                 label: label, alert: alert, reason: "the button \u{201C}\(button)\u{201D} was not found in the tree")
         }
         do {
-            try await client.systemUITap(ref: ref)
+            try await pressSystemUIButton(client: client, ref: ref)
         } catch {
             return ResidualSystemAlertClearing.failedMessage(
                 label: label, alert: alert, reason: "pressing \u{201C}\(button)\u{201D} failed: \(error.localizedDescription)")
