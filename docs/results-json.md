@@ -744,6 +744,26 @@ scanRecords(キャップ無し)を1回の走査に畳む。`fleetest api results
 - 確認方法は出力キャッシュと同じ: `--no-cache` の出力(パックを作る回・パックから読む回のどちらも)
   と一致すること(`generatedAt` 以外。`--scenario` の trend は timeline を含めて一致すること)
 
+### 他プロジェクトの machineHealth の部分結果(`MachineHealthPartialCache`)
+
+`machineHealth` は `--project` で絞らないので、出力キャッシュが外れるたびに**他の全プロジェクトの束まで**
+decode していた(E2E-Android の再計算 8.0 秒の大半。他の 18 プロジェクトの束 約 1.8 万)。他プロジェクトは
+machineHealth の行しか要らないので、**プロジェクトごとの行**を置いて、そのプロジェクトの入力が変わったときだけ数え直す
+(定義元は `Sources/FTCore/MachineHealthPartialCache.swift`)。同じ条件で 8.0 → 2.1 秒(18/18 が部分結果から。
+残りはこのプロジェクト自身の束と指紋)。
+
+- **置き場所**: `<other>/.fleetest/results-cache/machine-health-<since の引数の SHA-256>.json`(since の引数ごとに1つ =
+  ダッシュボードの `16h` と CLI の `90d` が交互に呼んでも互いを追い出さない。ダッシュボードの期間は 12 通りなので
+  1プロジェクトに最大その数・1つ数 KB)。名前を引数そのものにしないのは、長い `--since` でファイル名の上限を超えて
+  黙って書けなくなるため。**窓に run も記録も無いプロジェクトには書かない**(読むものが無い・`.fleetest/` を作らない)
+- **有効条件**: 出力キャッシュと**同じ式**(`ResultsOutputCache.validate` の欄ごとの版を共有)。鍵 = since の引数 +
+  実行ファイルの素性・指紋 = そのプロジェクトの `scanFingerprint`(出力キャッシュの scanDigest に混ぜている値と同じ)・
+  窓 = `cachedSinceKey <= requestedSinceKey <= oldestIncludedStartedAt`。進行中の run の扱いも同じ
+- **合わせ方**: `RunResultsQuery.mergedMachineHealth`。和・最大・最新(`>` = 同時刻は先の側)なので、**このプロジェクト →
+  他プロジェクトの列挙順**で渡せば、全プロジェクトを連結してまとめて数えた結果と一致する(`MachineHealthMergeTests` が
+  乱数のデータ 200 通りで固定)。出力キャッシュの `oldestIncludedStartedAt` は各部分結果の最古も含める
+- **`--no-cache` は部分結果も読まない**(書き直しは行う)。確認方法は同じ = `--no-cache` の出力と一致すること
+
 ## git での扱い
 
 **1 run = 1 ディレクトリ・1 シナリオ実行 = 1 ファイルの追加専用レイアウト**なので、

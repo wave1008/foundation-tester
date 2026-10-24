@@ -104,11 +104,22 @@ public enum ResultsOutputCache {
                                 scanDigest: String, sinceKey: String) -> Miss? {
         guard readable else { return .unreadable }
         guard let entry else { return .noEntry }
-        guard entry.formatVersion == formatVersion else { return .formatVersion }
-        guard entry.key == key else { return .key }
-        guard entry.scanDigest == scanDigest else { return .scanDigest }
-        guard entry.sinceKey <= sinceKey else { return .sinceMovedBackward }
-        if let oldest = entry.oldestIncludedStartedAt, sinceKey > oldest {
+        return validate(formatVersion: entry.formatVersion, expectedFormatVersion: formatVersion,
+                        storedKey: entry.key, key: key, storedScanDigest: entry.scanDigest, scanDigest: scanDigest,
+                        storedSinceKey: entry.sinceKey, sinceKey: sinceKey,
+                        oldestIncludedStartedAt: entry.oldestIncludedStartedAt)
+    }
+
+    /// 欄ごとの有効判定。`MachineHealthPartialCache` も同じ式を通す(窓の規則を2つに割らない)
+    public static func validate(formatVersion: Int, expectedFormatVersion: Int, storedKey: String, key: String,
+                                storedScanDigest: String, scanDigest: String,
+                                storedSinceKey: String, sinceKey: String,
+                                oldestIncludedStartedAt: String?) -> Miss? {
+        guard formatVersion == expectedFormatVersion else { return .formatVersion }
+        guard storedKey == key else { return .key }
+        guard storedScanDigest == scanDigest else { return .scanDigest }
+        guard storedSinceKey <= sinceKey else { return .sinceMovedBackward }
+        if let oldest = oldestIncludedStartedAt, sinceKey > oldest {
             return .recordAgedOut
         }
         return nil

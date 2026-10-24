@@ -21,16 +21,18 @@ final class MachineHealthAllProjectsWiringTests: XCTestCase {
     func testMachineHealthReadsEveryProject() throws {
         let code = try Self.code()
         XCTAssertTrue(code.contains("ProjectStore.all(repoRoot:"), "他のプロジェクトを列挙していない")
-        XCTAssertTrue(code.contains("machineHealth(runs: machineRuns, records: machineRecords)"),
-                      "machineHealth に全プロジェクト分の runs / records を渡していない")
-        XCTAssertTrue(code.contains("runs + otherScans.flatMap(\\.runs)"), "machineRuns に他プロジェクトの run を足していない")
+        XCTAssertTrue(code.contains("[RunResultsQuery.machineHealth(runs: runs, records: records)] + otherParts.map(\\.rows)"),
+                      "machineHealth にこのプロジェクト → 他プロジェクトの順で部分結果を合わせていない")
+        XCTAssertTrue(code.contains("machineHealth: machineHealth,"), "合わせた machineHealth を出力に載せていない")
+        XCTAssertTrue(code.contains("readCache: !noCache"), "--no-cache が部分結果のキャッシュも読まないこと")
     }
 
     /// 他プロジェクトの run が増えても出力キャッシュが外れること(指紋に他プロジェクトの results/ を混ぜる)
     func testCacheFingerprintCoversOtherProjects() throws {
         let code = try Self.code()
-        XCTAssertTrue(code.contains("+ otherProjects.map"), "scanDigest に他プロジェクトの指紋を混ぜていない")
-        XCTAssertTrue(code.contains("(machineRuns.map(\\.startedAt) + machineRecords.map(\\.startedAt)).min()"),
+        XCTAssertTrue(code.contains("zip(otherProjects, otherDigests).map { other, digest in other.name"),
+                      "scanDigest に他プロジェクトの指紋を混ぜていない")
+        XCTAssertTrue(code.contains("+ otherParts.compactMap(\\.oldestIncludedStartedAt)).min()"),
                       "窓から落ちた判定(oldestIncluded)が他プロジェクトの記録を見ていない")
     }
 }

@@ -149,4 +149,46 @@ extension RunResultsQuery {
         }
         .sorted { $0.host < $1.host }
     }
+
+    /// プロジェクトごとに `machineHealth` した行を合わせる。**`parts` を入力の並び(run・記録を連結した順)で渡せば、
+    /// 連結した入力をまとめて `machineHealth` した結果と一致する** —— 最新の取り方は `>`(同時刻は先の側が残る)なので、
+    /// 並びを変えると同時刻の lastFMDead / lastError が入れ替わる(`MachineHealthMergeTests` が等価を固定)
+    public static func mergedMachineHealth(_ parts: [[MachineHealthRow]]) -> [MachineHealthRow] {
+        func add(_ a: Int?, _ b: Int?) -> Int? { a == nil && b == nil ? nil : (a ?? 0) + (b ?? 0) }
+        func later<T>(_ a: T?, _ b: T?, at: (T) -> String) -> T? {
+            guard let a else { return b }
+            guard let b else { return a }
+            return at(b) > at(a) ? b : a
+        }
+        var byHost: [String: MachineHealthRow] = [:]
+        for row in parts.joined() {
+            guard let acc = byHost[row.host] else {
+                byHost[row.host] = row
+                continue
+            }
+            let fm: MachineFMUsage?
+            switch (acc.fm, row.fm) {
+            case (nil, nil): fm = nil
+            case (let one?, nil), (nil, let one?): fm = one
+            case (let a?, let b?):
+                fm = MachineFMUsage(
+                    scenarios: a.scenarios + b.scenarios, calls: a.calls + b.calls, failures: a.failures + b.failures,
+                    retries: a.retries + b.retries, retrySuccesses: a.retrySuccesses + b.retrySuccesses,
+                    skipped: a.skipped + b.skipped, totalMs: a.totalMs + b.totalMs, maxMs: max(a.maxMs, b.maxMs),
+                    gateWaitTotalMs: a.gateWaitTotalMs + b.gateWaitTotalMs,
+                    gateWaitMaxMs: max(a.gateWaitMaxMs, b.gateWaitMaxMs),
+                    lastError: later(a.lastError, b.lastError, at: \.at))
+            }
+            byHost[row.host] = MachineHealthRow(
+                host: row.host, runs: acc.runs + row.runs,
+                lastRunAt: later(acc.lastRunAt, row.lastRunAt, at: { $0 }),
+                fmDeadRuns: acc.fmDeadRuns + row.fmDeadRuns,
+                lastFMDead: later(acc.lastFMDead, row.lastFMDead, at: \.at),
+                guarded: add(acc.guarded, row.guarded), guardSkipped: add(acc.guardSkipped, row.guardSkipped),
+                guardStaleFrame: add(acc.guardStaleFrame, row.guardStaleFrame), fm: fm,
+                notes: acc.notes.merging(row.notes, uniquingKeysWith: +),
+                pacedSteps: add(acc.pacedSteps, row.pacedSteps), pacedMs: add(acc.pacedMs, row.pacedMs))
+        }
+        return byHost.values.sorted { $0.host < $1.host }
+    }
 }
