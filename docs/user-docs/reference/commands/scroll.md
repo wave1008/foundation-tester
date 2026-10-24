@@ -78,6 +78,13 @@ withScrollDown {
 }
 ```
 
+## Elements that only just peek in at the edge
+
+When the element a search finds only just peeks in at the edge it is scrolling towards, and less than a finger's
+width of it (44 pt / dp) is visible, fleetest slowly scrolls half the container once more before touching it.
+Touching such a thin strip can be taken by the screen-edge gestures (Android's back and home) or land on
+something else.
+
 ## Container-inference corrections
 
 `tap`/`scrollTo` etc. apply a set of corrections that rely on inferring the scroll container —

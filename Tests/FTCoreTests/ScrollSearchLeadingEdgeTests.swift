@@ -29,6 +29,13 @@ private final class ScriptedShelfDriver: AppDriver {
     func tap(x: Double, y: Double) async throws {}
     func press(ref: Int, duration: Double) async throws {}
     func swipe(_ direction: FTSwipeDirection) async throws { swipeCount += 1 }
+    /// 送り直しは遅いドラッグ(slowDrag)= drag で来る。台本を進めるのは払いと同じ
+    private(set) var dragCount = 0
+    func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
+              pressSeconds: Double, durationSeconds: Double) async throws {
+        dragCount += 1
+        swipeCount += 1
+    }
     func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent, path: FTSwipePath?) async throws {
         swipeCount += 1
     }
@@ -65,15 +72,25 @@ final class ScrollSearchLeadingEdgeTests: XCTestCase {
         let outcome = await search(driver)
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertEqual(driver.swipeCount, 1)
+        XCTAssertEqual(driver.dragCount, 1, "探索の払い(慣性が出る)ではなく遅いドラッグで送ること")
     }
 
-    /// 送っても縁に付いたまま(一覧の端)なら、それ以上は送らずに見つかったとする(往復しない)
+    /// 送っても縁に付いたまま(細いまま動かない)なら、それ以上は送らずに見つかったとする(往復しない)
     func testFlushElementThatDoesNotMoveCountsAfterOneNudge() async {
-        let atEnd = [shelf(), card(3, "card_0_14", x: 712, width: 368)]
+        let atEnd = [shelf(), card(3, "card_0_14", x: 1060, width: 20)]
         let driver = ScriptedShelfDriver(scripted: [atEnd])
         let outcome = await search(driver)
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertEqual(driver.swipeCount, 1)
+    }
+
+    /// 縁に付いていても、指で押せる大きさ(44pt/dp)以上見えていれば送らない(RN の XCUITest の 140pt のカード)
+    func testWideElementAtTheLeadingEdgeIsNotNudged() async {
+        let driver = ScriptedShelfDriver(scripted: [[shelf(), card(3, "card_0_14", x: 712, width: 368)]])
+        let outcome = await search(driver)
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(driver.swipeCount, 0)
+        XCTAssertEqual(StepExecutor.leadingEdgeNudgeMinVisiblePt, 44)
     }
 
     /// 縁から離れていれば送らない
@@ -82,6 +99,10 @@ final class ScrollSearchLeadingEdgeTests: XCTestCase {
         let outcome = await search(driver)
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertEqual(driver.swipeCount, 0)
+    }
+
+    func testNudgeRatioIsPinned() {
+        XCTAssertEqual(StepExecutor.leadingEdgeNudgeRatio, 0.5)
     }
 
     func testTouchesLeadingEdgeByFingerDirection() {

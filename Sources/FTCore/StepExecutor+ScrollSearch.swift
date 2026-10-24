@@ -138,6 +138,13 @@ extension StepExecutor {
         return (container.x + container.width / 2, fromY, toY)
     }
 
+    /// 進む先の縁に付いた要素を送り直す量(容器の送る向きの長さに対する比)。縁から出始めた要素の先頭が中央へ来る = 半分。
+    /// これより大きいと先頭が反対側の縁へ寄り、慣性が無くても次の判定で再び縁に付きうる
+    static let leadingEdgeNudgeRatio: Double = 0.5
+    /// 送り直す見えている厚みの上限(pt/dp。Android は `pointScale` で px へ)。根拠: 指で押せる大きさ(Apple の 44pt・Material の 48dp の
+    /// 小さいほう)。これ以上見えていれば中心を押して届く
+    static let leadingEdgeNudgeMinVisiblePt: Double = 44
+
     /// 広げるドラッグの所要(秒)。根拠は sheetExpandDrag の doc の実測(0.3 秒で全開・探索の 1.3 秒では戻った)
     static let sheetExpandDragSeconds: Double = 0.3
     /// これより払える距離が短ければ撃たない(pt)。探索の1本(実測 64pt)より短い払いでは広げられない
@@ -674,17 +681,28 @@ extension StepExecutor {
                 // **進む先の縁に付いている = 枠が見えている部分へ切り詰められている**ことがある(Android の Flutter は
                 // 画面の外にはみ出した要素の枠を見えている幅へ詰めて出すので、上の見切れの判定で分からない。実測: E2EY-Flutter の
                 // #card_0_14 が右端に 18px だけ出た所で見つかったとし、その中心 = 右端の戻るの帯を撃って飲まれた。並列で 5/5)。
-                // 同じ向きへ1回だけ送り直す(本当に縁ぴったりの要素なら、端で動かないか見える位置へ移るだけ = 次の周回で見つかる)。
-                // in-app の 1 ページ送り(pagesPerSwipe)は対象を飛び越すので除く(上の flushWithEdge と同じ理由)
+                // 同じ向きへ1回だけ、**容器の半分の距離を慣性の出ない遅いドラッグで**送り直す(縁から出始めた要素の先頭は中央までしか
+                // 動かない = 飛び越さない)。探索の払いで送ると慣性で反対側の縁の外まで流れ、以後は遠ざかる向きに送り続けて見つからなかった
+                // (E2EY-RN の XCUITest と Android の横向きで実測)。ドラッグが撃てなければ送らずに従来どおり見つかったとする。
+                // in-app の 1 ページ送り(pagesPerSwipe)は除く(上の flushWithEdge と同じ理由)
+                // **見えている厚みが指で押せる大きさ未満のときだけ**(`leadingEdgeNudgeMinVisiblePt`)。Android はどのフレームワークでも
+                // 見切れた行の枠を見えている部分へ詰めるので、縁に付いただけで送ると探索のたびに遅いドラッグ(最大 3 秒)を払う。
+                // 押せる大きさが見えていれば人もそのまま押す(RN の XCUITest の 140pt のカードは縁に付いていても押せる)
+                let alongVertical = direction == .up || direction == .down
                 if attempt < maxSwipes, !leadingEdgeNudged, !pagesPerSwipe,
-                   ScrollGeometry.touchesLeadingEdge(element.frame, viewport: viewport, finger: direction) {
+                   ScrollGeometry.touchesLeadingEdge(element.frame, viewport: viewport, finger: direction),
+                   (alongVertical ? element.frame.height : element.frame.width)
+                       < Self.leadingEdgeNudgeMinVisiblePt * driver.pointScale {
                     leadingEdgeNudged = true
-                    if try await swipeWithFallback(direction, intent: .search,
-                                                   path: scrollPath(step: step, intent: .search, in: snapshot),
-                                                   phase: &phase) { viaXCUITest = true }
-                    swipes += 1
-                    previousSnapshot = snapshot
-                    continue
+                    let extent = alongVertical ? viewport.height : viewport.width
+                    let jump = (direction == .up || direction == .left ? 1.0 : -1.0) * extent * Self.leadingEdgeNudgeRatio
+                    if await slowDrag(jump: jump,
+                                      container: ScrollGeometry.viewport(viewport, excludingKeyboard: effectiveKeyboard),
+                                      vertical: alongVertical, phase: &phase) {
+                        swipes += 1
+                        previousSnapshot = snapshot
+                        continue
+                    }
                 }
                 // **木に居ること ≠ 画面に居ること**: 中心が**画面**の外なら「見つかった」に
                 // しない(下の未検出経路へ合流)。**効くのは弾切れの周回だけ** —— それ以外は上の
