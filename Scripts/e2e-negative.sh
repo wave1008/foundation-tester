@@ -16,6 +16,7 @@
 #   Scripts/e2e-negative.sh --project E2E-iOS   # プロジェクトを絞る(併記可)
 #   Scripts/e2e-negative.sh --ios-device "<名前>" --android-device "<名前>"   # 台を変える
 #   Scripts/e2e-negative.sh --with-slow      # 表で "slow": true の対照も回す(出力の途切れの打ち切り = 約 8 分。既定は回さない)
+#   Scripts/e2e-negative.sh --project E2E-iOS --file 97_入力欄でないrefへのtype.swift   # 対照のファイル名で絞る(併記可。推奨の出た対照だけ回す)
 #
 # 台は**各 OS で1台に固定**(既定 = 表の最初のプロファイルで有効な、この Mac の最初のデバイス)。
 # 写真の権限アラートは台に残るので、同じ台で表の順に回す(順序の理由は表の _comment)。
@@ -34,6 +35,7 @@ TABLE="$ROOT/Scripts/negative-controls.json"
 RUN_IOS=1
 RUN_ANDROID=1
 PROJECTS=()
+FILES=()
 IOS_DEVICE=""
 ANDROID_DEVICE=""
 WITH_SLOW=0
@@ -43,6 +45,7 @@ while [ $# -gt 0 ]; do
     --ios) RUN_ANDROID=0; shift ;;
     --android) RUN_IOS=0; shift ;;
     --project) PROJECTS+=("$2"); shift 2 ;;
+    --file) FILES+=("$2"); shift 2 ;;
     --ios-device) IOS_DEVICE="$2"; shift 2 ;;
     --android-device) ANDROID_DEVICE="$2"; shift 2 ;;
     --with-slow) WITH_SLOW=1; shift ;;
@@ -53,12 +56,15 @@ done
 [ -x "$FLEETEST" ] || { echo "❌ $FLEETEST がありません(swift build --product fleetest)" >&2; exit 1; }
 
 # 回す対照の一覧: "<添字>\t<project>\t<file>\t<profile>\t<os>\t<class>\t<resetPhotos の bundle か ->"
-SELECTED="$(RUN_IOS=$RUN_IOS RUN_ANDROID=$RUN_ANDROID PROJECTS="${PROJECTS[*]:-}" WITH_SLOW=$WITH_SLOW python3 - "$TABLE" <<'PY'
+SELECTED="$(RUN_IOS=$RUN_IOS RUN_ANDROID=$RUN_ANDROID PROJECTS="${PROJECTS[*]:-}" FILES="${FILES[*]:-}" WITH_SLOW=$WITH_SLOW python3 - "$TABLE" <<'PY'
 import json, os, sys
 t = json.load(open(sys.argv[1]))["controls"]
 projects = set(os.environ["PROJECTS"].split()) if os.environ["PROJECTS"] else None
+files = set(os.environ["FILES"].split()) if os.environ["FILES"] else None
 for i, c in enumerate(t):
-    if c.get("slow") and os.environ["WITH_SLOW"] != "1": continue
+    # --file で名指しした対照は slow でも回す(名指し = 回す意思)
+    if c.get("slow") and os.environ["WITH_SLOW"] != "1" and not (files and c["file"] in files): continue
+    if files and c["file"] not in files: continue
     if c["os"] == "ios" and os.environ["RUN_IOS"] != "1": continue
     if c["os"] == "android" and os.environ["RUN_ANDROID"] != "1": continue
     if projects and c["project"] not in projects: continue

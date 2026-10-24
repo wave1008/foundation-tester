@@ -492,7 +492,9 @@ if [ -n "$STALE_VERIFICATIONS" ]; then
   printf '%s\n' "$STALE_VERIFICATIONS" | while IFS=$'\t' read -r unit why; do
     [ "$why" = never ] && why="未記録" || why="変更あり"
     case "$unit" in
-      negative:*) echo "   - 陽性対照 ${unit#negative:}($why)→ Scripts/e2e-negative.sh" ;;
+      negative:*)
+        rest="${unit#negative:}"
+        echo "   - 陽性対照 $rest($why)→ Scripts/e2e-negative.sh --project ${rest%%/*} --file ${rest##*/}" ;;
       *) echo "   - $unit($why)→ Scripts/$unit.sh" ;;
     esac
   done
